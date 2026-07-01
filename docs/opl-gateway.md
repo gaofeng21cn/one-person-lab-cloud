@@ -15,6 +15,22 @@ product surface. It supports:
 - Usage visibility and quota management.
 - A stable foundation for future Console billing and team policy.
 
+## Usage Model
+
+Gateway usage should be groupable by:
+
+- organization;
+- team;
+- user or service identity;
+- Workspace;
+- task or job;
+- agent package or Agent Instance;
+- provider and model.
+
+This gives Console enough information for quotas, budgets, package visibility,
+and downstream product reporting without making Gateway responsible for
+industry-specific policy.
+
 Gateway is technically a resource access capability, but it should not be
 hidden inside OPL Fabric. Users can directly configure it, use it, meter it, and
 pay for it.

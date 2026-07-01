@@ -1,0 +1,96 @@
+{
+  "status": "opl_cloud_whitepaper_ready",
+  "generated_at": "2026-07-01T00:00:00.000Z",
+  "source_markdown": "docs/public/whitepaper/opl-cloud-whitepaper.md",
+  "generated_pdf": "docs/public/whitepaper/opl-cloud-whitepaper.pdf",
+  "temp_markdown": "tmp/pdfs/opl-cloud-whitepaper/opl-cloud-whitepaper.pandoc.md",
+  "rendered_dir": "tmp/pdfs/opl-cloud-whitepaper/rendered",
+  "rendered_pages": 11,
+  "rendered_page_hashes": [
+    {
+      "page": "page-01.png",
+      "sha1": "b39ccd7e928c1da0dcec0b98bfd94708beffd0d8"
+    },
+    {
+      "page": "page-02.png",
+      "sha1": "b03b11ada81b09646028761b03b2f75df0c791f8"
+    },
+    {
+      "page": "page-03.png",
+      "sha1": "5f861b501f8547593803408ed35742fab1b307a8"
+    },
+    {
+      "page": "page-04.png",
+      "sha1": "a243964f6fa0cab654c9233a247435add2358689"
+    },
+    {
+      "page": "page-05.png",
+      "sha1": "9b2a84b6369601efbc2f540163459a94d94eda0c"
+    },
+    {
+      "page": "page-06.png",
+      "sha1": "a9203e86bce39c7c90ac4677d71e6a3878e4223e"
+    },
+    {
+      "page": "page-07.png",
+      "sha1": "2a4229780a4d728629161ec3063296b0e3483e2f"
+    },
+    {
+      "page": "page-08.png",
+      "sha1": "8aa5aaff79d878a7b4ed4a498e39a30541af5fbb"
+    },
+    {
+      "page": "page-09.png",
+      "sha1": "52422f16ebfe12bbc36a87b46ba51d8fb37e6c6d"
+    },
+    {
+      "page": "page-10.png",
+      "sha1": "cbbde23f2f710cc93a38c8bd4f8b9ccc4529d0fb"
+    },
+    {
+      "page": "page-11.png",
+      "sha1": "2f9126af25f2a97d01be7b0e51803142f23987c1"
+    }
+  ],
+  "pdf_pages": 11,
+  "pdf_page_size_pts": {
+    "width": 612,
+    "height": 792
+  },
+  "required_terms": [
+    "OPL Cloud 白皮书",
+    "OPL Gateway",
+    "OPL App",
+    "OPL Workspace",
+    "OPL Console",
+    "OPL Fabric",
+    "OPL Ledger",
+    "OPL Connect",
+    "OPL Compute",
+    "OPL Environments",
+    "OPL Agent Registry",
+    "计划",
+    "批准",
+    "执行",
+    "监控",
+    "回收",
+    "回执",
+    "OPL Cloud 的五大设计原则",
+    "OPL Cloud 的十大能力模块",
+    "标准任务生命周期",
+    "三类用户路径",
+    "系统模型",
+    "专业工作流",
+    "五类信任机制",
+    "本文边界"
+  ],
+  "required_terms_status": "present",
+  "tools": {
+    "pandoc": "/opt/homebrew/bin/pandoc",
+    "xelatex": "/opt/homebrew/bin/xelatex",
+    "pdfinfo": "/opt/homebrew/bin/pdfinfo",
+    "pdftoppm": "/opt/homebrew/bin/pdftoppm",
+    "pdftotext": "/opt/homebrew/bin/pdftotext"
+  },
+  "references": []
+}

@@ -11,14 +11,14 @@ OPL Cloud should learn the platform pattern, not the life-sciences packaging.
 
 | Claude Science pattern | OPL Cloud surface |
 | --- | --- |
-| Scientific workbench | OPL Workspace |
+| Scientific workbench | OPL App / OPL Workspace |
 | Team and admin enablement | OPL Console |
 | Claude/provider access | OPL Gateway |
 | HPC, SSH, local, and on-demand compute | OPL Fabric / OPL Compute |
 | Scientific databases and connectors | OPL Fabric / OPL Connect |
 | Exact code, environment, and history | OPL Fabric / OPL Environments + OPL Ledger |
 | Reviewer agent | OPL Ledger / Reviewer Gate |
-| Figures and manuscripts | Workspace artifact delivery surface |
+| Figures and manuscripts | App / Workspace artifact delivery surface |
 
 ## Product Principles
 
@@ -39,7 +39,8 @@ OPL Cloud should learn the platform pattern, not the life-sciences packaging.
 
 ## Minimum Provenance Path
 
-The first version can start with a simple Ledger receipt for each Workspace job:
+The first version can start with a simple Ledger receipt for each App action,
+Workspace action, or managed job:
 
 ```text
 plan → approval → command/code → environment → input refs → output refs → reviewer result → continuation entry
