@@ -5,23 +5,43 @@
 - OPL Gateway brand and public integration surface.
 - OPL Cloud product and architecture entry point.
 
+## First Cloud Slice
+
+- OPL Workspace: create one online OPL App instance with isolated URL, account,
+  storage directory, and base package.
+- OPL Console: manage users, packages, Gateway usage, and Workspace lifecycle.
+- OPL Fabric v0: support one Docker or VM compute path plus one volume or
+  bucket storage path.
+- OPL Ledger v0: generate receipt JSON for Workspace actions and jobs.
+
 ## In Development
 
-- OPL Console management surface.
-- OPL Workspace lifecycle management.
 - Workspace package and billing model.
+- Console management surface.
+- Gateway usage and package visibility.
 
-## Planned
+## Planned Fabric Adapters
 
-- Unified job adapter for controlled compute.
-- Provenance store and artifact receipts.
-- Domain reviewer gates for MAS, MAG, RCA, and BookForge.
-- Organization-level capability packs and connector policies.
+- GPU workers.
+- SSH and HPC adapters.
+- Literature databases.
+- Research databases.
+- Institutional storage refs.
+- Team-approved connector registry.
+- Versioned software environment catalog.
 
-## Non-goals For The First Version
+## Planned Ledger Capabilities
 
-- Full cloud IDE.
-- Generic plugin marketplace.
-- General-purpose infrastructure dashboard.
-- Life-sciences-only vertical packaging.
+- Artifact provenance.
+- Reviewer gates for MAS, MAG, RCA, and BookForge.
+- Policy decisions and audit records.
+- Continuation refs for resumed work.
 
+## First-Version Boundaries
+
+- No full cloud IDE.
+- No generic plugin marketplace.
+- No general-purpose infrastructure dashboard.
+- No life-sciences-only vertical packaging.
+- No separate frontstage product for OPL Environments until environment
+  management becomes a user-visible team workflow.

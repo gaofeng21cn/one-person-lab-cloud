@@ -18,10 +18,12 @@ runtime, compute node, and storage location remain implementation details.
 - View package-based billing with compute, storage, and AI usage breakdown.
 - Open the workspace through an isolated URL.
 - Reset or rotate workspace credentials.
+- Start approved jobs through OPL Fabric.
+- Display OPL Ledger receipts and reviewer results.
 
 ## Boundary
 
 OPL Workspace runs OPL App online. OPL Console manages workspace lifecycle.
-OPL Gateway provides AI capability access. These boundaries should stay visible
+OPL Gateway provides AI capability access. OPL Fabric runs approved resources.
+OPL Ledger records receipts and provenance. These boundaries should stay visible
 in product docs and implementation contracts.
-

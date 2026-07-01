@@ -5,7 +5,7 @@
 <h1 align="center">OPL Cloud</h1>
 
 <p align="center"><strong>Frontier AI infrastructure for One Person Lab</strong></p>
-<p align="center">AI access · online OPL workspaces · controlled compute · usage metering · reproducible evidence chains</p>
+<p align="center">AI gateway · online workspace · cloud console · resource fabric · evidence ledger</p>
 
 <!--
 Owner: `one-person-lab-cloud`
@@ -24,101 +24,118 @@ One Person Lab is built for complex knowledge work: research, grants,
 presentations, books, agents, and other projects that need progress, review,
 revision, files, and evidence over many rounds.
 
-Local-first work remains essential. The harder cloud problem is different:
+OPL Cloud extends that work from a local workbench into online and team
+workflows:
 
-- Can users access frontier AI capability through one stable OPL entry point?
-- Can a user start an online OPL App workspace without thinking about Docker
-  hosts, compute nodes, or storage placement?
-- Can long-running compute produce receipts instead of disappearing into logs?
-- Can teams manage usage, billing, permissions, and workspace lifecycle from
-  one console?
-- Can research artifacts keep enough provenance for review, audit, and later
-  continuation?
+- Users access frontier AI capability through one stable OPL entry point.
+- Users open managed online OPL App workspaces with isolated access and
+  resource packages.
+- Teams manage accounts, billing, permissions, workspaces, connectors, and
+  resource policies from one console.
+- Remote jobs run on approved compute, storage, software environments, and
+  external systems.
+- Important results keep receipts, provenance, reviewer checks, and
+  continuation entries.
 
-**OPL Cloud is the cloud infrastructure layer for those questions.**
+**OPL Cloud is the cloud infrastructure layer for those workflows.**
 
-It does not replace One Person Lab App. The App remains the local-first user
-workspace. OPL Cloud provides the remote control plane, AI gateway, managed
-workspace layer, controlled compute path, and evidence services that extend OPL
-from one machine to online and team workflows.
+It keeps OPL Workspace as the user workbench, OPL Console as the management
+surface, OPL Gateway as the AI capability entry point, OPL Fabric as the
+resource substrate, and OPL Ledger as the evidence record.
+
+## Product Map
+
+| Layer | Brand | Role | Surface |
+| --- | --- | --- | --- |
+| AI access | **OPL Gateway** | Models, keys, routing, provider policy, and usage metering | Product |
+| User workbench | **OPL Workspace** | Online OPL App, project workspace, task sessions, artifact preview, result delivery | Product |
+| Management | **OPL Console** | Organization, users, billing, quotas, workspace lifecycle, resource policy | Product |
+| Resource substrate | **OPL Fabric** | Compute, storage, software environments, connectors, and execution adapters | Platform |
+| Evidence record | **OPL Ledger** | Job receipts, artifact provenance, reviewer gates, audit records, continuation refs | Platform |
 
 ## Core Highlights
 
-**OPL Gateway as the AI capability foundation**<br/>
-Gateway is the first available Cloud component. It provides a unified access
-point for frontier AI APIs, token management, provider configuration, usage
-visibility, and downstream OPL workflows.
+**OPL Gateway stays top-level**<br/>
+Gateway is technically part of the resource substrate, but it is already a
+directly visible AI access and billing surface. It should remain a top-level OPL
+Cloud product rather than being hidden inside Fabric.
 
-**Managed online OPL workspaces**<br/>
-OPL Workspace is the planned cloud workspace product: each workspace should
-have an isolated URL, account, password, compute configuration, storage
-configuration, and package-based billing.
+**OPL Workspace is the user-facing workbench**<br/>
+Workspace is where users open projects, start tasks, inspect job status, preview
+artifacts, receive reviewer feedback, and collect deliverables.
 
-**A console for users, not infrastructure operators**<br/>
-OPL Console should manage accounts, organizations, billing, permissions,
-Gateway usage, and Workspace lifecycle. Docker hosts, compute nodes, and storage
-placement should stay behind the product boundary unless diagnostics need them.
+**OPL Console is the management plane**<br/>
+Console manages who can use Cloud, what they can access, how much they can
+spend, which workspaces can run, which connectors are approved, and which
+environments are available.
 
-**Controlled compute with receipts**<br/>
-Remote jobs should follow a simple pattern: plan, approve, run, collect
-artifacts, and leave a receipt. Local Docker, remote VM, GPU worker, SSH, and
-HPC-like execution can share one job contract over time.
+**OPL Fabric does the resource work**<br/>
+Fabric contains the compute pool, storage vault, environment catalog, connector
+registry, and execution adapters. Ordinary users should see productized choices
+such as standard compute, GPU acceleration, private data bucket, or
+institutional HPC.
 
-**Evidence chains for research and agent workflows**<br/>
-Cloud-side provenance should preserve refs to inputs, code, commands,
-environment, owner, reviewer checks, and continuation entry points without
-turning Cloud into the owner of sensitive source data.
+**OPL Ledger makes results accountable**<br/>
+Ledger records the plan, approval, commands or code, environment, input refs,
+output refs, reviewer results, owner, and continuation entry for meaningful
+Cloud work.
 
-**Curated capability packs, not a plugin marketplace**<br/>
-OPL Cloud should support team-approved capability packs for MAS, MAG, RCA,
-BookForge, and future Foundry Agents. Ordinary users should see professional
-entry points, not a raw catalog of skills, connectors, and runtimes.
+## OPL Fabric
 
-## Product Matrix
+OPL Fabric is the resource and connector substrate behind OPL Cloud.
 
-| Product | Role | Status |
-| --- | --- | --- |
-| **OPL Gateway** | Frontier AI capability gateway, API access, token management, provider routing, and usage metering | Available |
-| **OPL Console** | Cloud management console for accounts, organizations, billing, permissions, workspaces, and operations | In development |
-| **OPL Workspace** | Managed online OPL App workspace with isolated URL, credentials, compute, storage, and billing package | In development |
-| **Evidence Services** | Provenance store, reviewer gate, artifact receipts, and policy checks for research and agent workflows | Planned |
+```text
+OPL Fabric
+├─ OPL Connect        databases, literature sources, tools, APIs, internal systems
+├─ OPL Compute        Docker, VM, GPU, SSH, HPC, managed workers
+├─ OPL Environments   software stacks, package locks, container images, runtime manifests
+└─ Storage Vault      workspace volumes, private buckets, institutional storage refs
+```
 
-## Product Boundary
+`OPL Environments` is a sub-capability of Compute and Fabric. It should be
+maintained as a versioned environment catalog, not presented as a separate
+frontstage product in the first version.
 
-OPL Cloud is a product umbrella and architecture entry point. It should not
-become a second source of truth for OPL App, OPL Framework, domain agents, or
-Gateway service internals.
+## OPL Ledger
 
-| Repository or product | Owns |
-| --- | --- |
-| [`one-person-lab`](https://github.com/gaofeng21cn/one-person-lab) | OPL Framework, runtime contracts, CLI, stage execution, progress and evidence interfaces |
-| [`one-person-lab-app`](https://github.com/gaofeng21cn/one-person-lab-app) | Desktop App, Docker/WebUI user experience, packaging, release assets, GUI contracts |
-| **OPL Gateway** | AI capability access, token management, provider routing, usage metering, and Gateway integration assets |
-| **OPL Console** | Cloud account, organization, billing, workspace, permission, and operations management |
-| **OPL Workspace** | Managed online OPL App runtime instances and workspace lifecycle |
+OPL Ledger is the evidence layer for remote work and result delivery.
 
-Public Gateway integration assets may live outside this repository until a
-dedicated OPL Gateway implementation repository exists. This repository keeps
-the public OPL Cloud product narrative, architecture, and roadmap together.
+Every meaningful Workspace action or Cloud job should be able to leave a
+receipt:
 
-## Current Position
+```text
+plan → approval → run → artifacts → reviewer checks → receipt → continuation
+```
 
-- OPL Gateway is available and should be presented as the AI capability
-  foundation of OPL Cloud, not as a generic token platform.
-- OPL Console and OPL Workspace are under development.
-- Research provenance, reviewer gates, job adapters, and team capability packs
-  are planned Cloud capabilities.
-- Sensitive data should remain in user workspaces, institutional storage, or
-  private buckets by default; Cloud should store refs, metadata, lineage,
-  receipts, usage, and policy records unless configured otherwise.
+Ledger is not a file store by itself. It records what happened, which inputs and
+environments were used, which outputs were produced, what checks ran, and how
+the work can be resumed or reviewed later.
+
+## Minimum Viable Cloud
+
+The first practical version can stay small:
+
+1. Gateway: AI access, key management, routing, usage, and billing data.
+2. Workspace: one online OPL App instance with URL, account, storage directory,
+   and base package.
+3. Console: user, package, Gateway usage, and Workspace lifecycle management.
+4. Fabric v0: one Docker or VM compute path plus one volume or bucket storage
+   path.
+5. Ledger v0: receipt JSON for Workspace actions and jobs.
+
+HPC, GPU workers, literature databases, institutional storage, and software
+environment catalogs can enter as Fabric adapters after the first real
+Workspace job path works end to end.
 
 ## Documentation
 
 - [Product Matrix](docs/product-matrix.md)
 - [Architecture](docs/architecture.md)
 - [OPL Gateway](docs/opl-gateway.md)
-- [OPL Console](docs/opl-console.md)
 - [OPL Workspace](docs/opl-workspace.md)
+- [OPL Console](docs/opl-console.md)
+- [OPL Fabric](docs/opl-fabric.md)
+- [OPL Ledger](docs/opl-ledger.md)
 - [Research Provenance](docs/research-provenance.md)
 - [Roadmap](docs/roadmap.md)
 
@@ -128,13 +145,13 @@ the public OPL Cloud product narrative, architecture, and roadmap together.
   <summary><strong>Developer and operator notes</strong></summary>
 
 This repository currently contains product and architecture documentation. It
-does not ship the Gateway service, Console implementation, Workspace runtime, or
-billing system.
+does not ship the Gateway service, Console implementation, Workspace runtime,
+Fabric adapters, Ledger storage, or billing system.
 
-Before making readiness, release, billing, runtime, or security claims, use the
-owning service, repository, contract, runtime readback, or owner receipt. Docs
-in this repository explain the public product boundary; they do not prove live
-availability.
+Before making readiness, release, billing, runtime, security, or reproducibility
+claims, use the owning service, repository, contract, runtime readback, or owner
+receipt. Docs in this repository explain the public product boundary; they do
+not prove live availability.
 
 ### Repository Layout
 
@@ -168,3 +185,4 @@ PY
 ```
 
 </details>
+

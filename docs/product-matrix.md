@@ -2,26 +2,38 @@
 
 OPL Cloud is the umbrella brand for One Person Lab cloud infrastructure.
 
-| Layer | Product | Primary user value |
-| --- | --- | --- |
-| AI capability | OPL Gateway | One managed entry point for frontier AI access, tokens, providers, and usage metering |
-| Management | OPL Console | One cloud console for account, organization, workspace, billing, permission, and operations management |
-| Workspace | OPL Workspace | One managed online OPL App environment per user or task, with isolated access and resource configuration |
-| Evidence | Provenance and reviewer gate | Reproducible artifact lineage, reviewer receipts, and policy checks for research and agent workflows |
+| Layer | Brand | Primary user value | Surface |
+| --- | --- | --- | --- |
+| AI access | OPL Gateway | One managed entry point for frontier AI access, model routing, keys, provider policy, and usage metering | Product |
+| User workbench | OPL Workspace | One managed online OPL App environment for project work, task sessions, artifact preview, and result delivery | Product |
+| Management | OPL Console | One cloud console for accounts, organizations, billing, permissions, workspaces, connectors, and resource policy | Product |
+| Resource substrate | OPL Fabric | One resource layer for compute, storage, software environments, connectors, and execution adapters | Platform |
+| Evidence record | OPL Ledger | One evidence layer for job receipts, artifact provenance, reviewer gates, audit records, and continuation refs | Platform |
+
+## Product Surfaces
+
+The first three surfaces are product-facing:
+
+- OPL Gateway: the AI capability and usage entry point.
+- OPL Workspace: the user workbench.
+- OPL Console: the management surface.
+
+The next two surfaces are platform capabilities:
+
+- OPL Fabric: resource and connector substrate.
+- OPL Ledger: evidence and receipt record.
+
+## Gateway And Fabric
+
+Gateway is technically a resource access capability, but it remains top-level
+because users can directly configure it, use it, meter it, and pay for it.
+Fabric keeps the resource substrate behind Workspace and Console: compute,
+storage, environments, connectors, and execution adapters.
 
 ## Relationship To OPL App
 
-OPL App remains the user-facing local-first workspace. It can consume Cloud
-capabilities, but it should not become a cloud dashboard.
-
-OPL Cloud owns remote execution, billing, tenant policy, gateway access, job
-coordination, and evidence services. OPL App should display Cloud-backed refs
-and receipts without becoming their source of truth.
-
-## Relationship To OPL Gateway
-
-OPL Gateway is the first available component in the Cloud matrix. It should be
-presented as the AI capability foundation of OPL Cloud, even if its public
-integration scripts currently live outside a dedicated public implementation
-repository.
+OPL App remains the local-first user workbench. OPL Workspace hosts the online
+OPL App experience. OPL Cloud should extend App workflows with Gateway, Fabric,
+and Ledger capabilities while keeping source-of-truth claims with the owning
+services, repositories, contracts, runtime outputs, and receipts.
 

@@ -10,12 +10,17 @@ workspaces, and operational status across OPL Cloud products.
 - Account and organization management.
 - Gateway usage and billing visibility.
 - Workspace creation, configuration, suspension, and deletion.
-- Resource package selection for compute, storage, and AI usage.
+- Resource package selection for Gateway, Fabric, and Workspace usage.
+- Connector approval through OPL Fabric.
+- Environment policy through OPL Fabric.
+- Ledger policy for receipts, review gates, audit, and retention.
 - Operational receipts for user-visible actions.
 
-## Non-goals
+## Product Boundary
 
-- It is not a replacement for OPL App.
-- It is not a general cloud provider dashboard.
-- It should not expose raw infrastructure details that users do not need.
+OPL Console is the management surface. It should expose product choices and
+policy controls, not raw infrastructure internals by default.
 
+Users should see Workspace and task status in OPL Workspace. Administrators
+should use Console for organization, billing, resource, connector, environment,
+and policy management.

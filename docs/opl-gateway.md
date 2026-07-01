@@ -7,12 +7,17 @@ configuration, usage metering, and downstream OPL workflows.
 
 ## Role In OPL Cloud
 
-OPL Gateway is the first available OPL Cloud component. It supports:
+OPL Gateway is the first available OPL Cloud component and remains a top-level
+product surface. It supports:
 
 - OPL App AI capability access.
 - Codex and automation workflow integration.
 - Usage visibility and quota management.
 - A stable foundation for future Console billing and team policy.
+
+Gateway is technically a resource access capability, but it should not be
+hidden inside OPL Fabric. Users can directly configure it, use it, meter it, and
+pay for it.
 
 ## Public Surface
 
@@ -25,3 +30,8 @@ linked from this repository until a dedicated OPL Gateway repo exists.
 OPL Gateway should be described as OPL Cloud's AI capability foundation, not as
 a generic token platform.
 
+## Boundary With Fabric
+
+OPL Fabric owns general connectors, compute, storage, environments, and
+execution adapters. OPL Gateway owns frontier AI access, provider policy, model
+routing, keys, and usage metering.
