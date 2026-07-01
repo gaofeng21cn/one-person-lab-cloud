@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/branding/opl-cloud-logo.png" alt="OPL Cloud logo" width="132" />
+</p>
+
+<p align="center">
   <a href="./README.md"><strong>English</strong></a> | <a href="./README.zh-CN.md">中文</a>
 </p>
 
