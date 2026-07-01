@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="assets/branding/opl-cloud-overview.png" alt="OPL Cloud overview" width="100%" />
-</p>
-
-<p align="center">
   <a href="./README.md"><strong>English</strong></a> | <a href="./README.zh-CN.md">中文</a>
 </p>
 
@@ -17,6 +13,10 @@ Purpose: `public_cloud_entry`
 State: `active_public_entry`
 Machine boundary: Human-readable product and architecture entry. Machine truth for App, Framework, Gateway services, Workspace runtime, billing, jobs, receipts, and release status remains with the owning repositories, services, contracts, runtime outputs, and owner receipts.
 -->
+
+<p align="center">
+  <img src="assets/branding/opl-cloud-overview.png" alt="OPL Cloud overview" width="100%" />
+</p>
 
 ## Why OPL Cloud
 
@@ -168,4 +168,3 @@ PY
 ```
 
 </details>
-
