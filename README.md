@@ -56,9 +56,8 @@ resource substrate, and OPL Ledger as the evidence record.
 ## Core Highlights
 
 **OPL Gateway stays top-level**<br/>
-Gateway is technically part of the resource substrate, but it is already a
-directly visible AI access and billing surface. It should remain a top-level OPL
-Cloud product rather than being hidden inside Fabric.
+Gateway is the directly visible AI access, metering, and billing surface. It is
+the first available capability foundation for OPL Cloud.
 
 **OPL Workspace is the user-facing workbench**<br/>
 Workspace is where users open projects, start tasks, inspect job status, preview
@@ -88,13 +87,12 @@ OPL Fabric is the resource and connector substrate behind OPL Cloud.
 OPL Fabric
 ├─ OPL Connect        databases, literature sources, tools, APIs, internal systems
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC, managed workers
-├─ OPL Environments   software stacks, package locks, container images, runtime manifests
+├─ OPL Environments   reproducible software environments and runtime templates
 └─ Storage Vault      workspace volumes, private buckets, institutional storage refs
 ```
 
-`OPL Environments` is a sub-capability of Compute and Fabric. It should be
-maintained as a versioned environment catalog, not presented as a separate
-frontstage product in the first version.
+Together, these capabilities let workspaces connect materials, use tools, obtain
+compute resources, and run tasks in the right software environment.
 
 ## OPL Ledger
 
@@ -107,21 +105,20 @@ receipt:
 plan → approval → run → artifacts → reviewer checks → receipt → continuation
 ```
 
-Ledger is not a file store by itself. It records what happened, which inputs and
-environments were used, which outputs were produced, what checks ran, and how
-the work can be resumed or reviewed later.
+Ledger records what happened, which inputs and environments were used, which
+outputs were produced, what checks ran, and how the work can be resumed or
+reviewed later.
 
 ## Minimum Viable Cloud
 
-The first practical version can stay small:
+The first practical version should prove one complete path:
 
 1. Gateway: AI access, key management, routing, usage, and billing data.
 2. Workspace: one online OPL App instance with URL, account, storage directory,
    and base package.
 3. Console: user, package, Gateway usage, and Workspace lifecycle management.
-4. Fabric v0: one Docker or VM compute path plus one volume or bucket storage
-   path.
-5. Ledger v0: receipt JSON for Workspace actions and jobs.
+4. Fabric: one Docker or VM compute path plus one volume or bucket storage path.
+5. Ledger: inspectable receipts for Workspace actions and jobs.
 
 HPC, GPU workers, literature databases, institutional storage, and software
 environment catalogs can enter as Fabric adapters after the first real
@@ -144,14 +141,14 @@ Workspace job path works end to end.
 <details>
   <summary><strong>Developer and operator notes</strong></summary>
 
-This repository currently contains product and architecture documentation. It
-does not ship the Gateway service, Console implementation, Workspace runtime,
-Fabric adapters, Ledger storage, or billing system.
+This repository currently contains product and architecture documentation.
+Gateway services, Console implementation, Workspace runtime, Fabric adapters,
+Ledger storage, and billing systems live in their owning implementation
+surfaces.
 
-Before making readiness, release, billing, runtime, security, or reproducibility
-claims, use the owning service, repository, contract, runtime readback, or owner
-receipt. Docs in this repository explain the public product boundary; they do
-not prove live availability.
+Readiness, release, billing, runtime, security, and reproducibility claims
+should come from the owning service, repository, contract, runtime readback, or
+owner receipt.
 
 ### Repository Layout
 
@@ -185,4 +182,3 @@ PY
 ```
 
 </details>
-
