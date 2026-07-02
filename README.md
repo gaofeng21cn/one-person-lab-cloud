@@ -34,8 +34,10 @@ remote-resource workflows:
 - Users access frontier AI capability through one stable OPL entry point.
 - Users can work from OPL App locally or from OPL Workspace online with the
   same workbench model.
-- Teams manage accounts, billing, permissions, workspaces, connectors, and
-  resource policies from one console.
+- Local App and cloud Workspace can both use the same literature, data, tool,
+  compute, and evidence capabilities.
+- Teams manage accounts, billing, permissions, workspaces, and resource
+  policies from one console.
 - Remote jobs run on approved compute, storage, software environments, and
   external systems.
 - Important results keep receipts, provenance, reviewer checks, and
@@ -46,8 +48,10 @@ remote-resource workflows:
 It keeps OPL App and OPL Workspace as equivalent user workbench surfaces:
 OPL App is the local surface, and OPL Workspace is the cloud Docker/WebUI
 surface. Both can use OPL Gateway, OPL Fabric, and OPL Ledger capabilities.
-OPL Console manages the resources, permissions, lifecycle, and billing that are
-hosted or organization-managed through OPL Cloud.
+OPL Fabric and OPL Ledger are reusable platform capabilities, not capabilities
+locked behind one product surface. OPL Console governs the permissions,
+lifecycle, audit, and billing for resources hosted or organization-managed
+through OPL Cloud.
 
 ## Product Map
 
@@ -72,7 +76,8 @@ artifacts, receive reviewer feedback, and collect deliverables from either
 surface.
 
 **OPL Console is the management plane for managed resources**<br/>
-Console manages OPL Cloud-hosted or organization-managed accounts, billing,
+Console is the organization governance surface. It manages OPL Cloud-hosted or
+organization-managed accounts, billing,
 permissions, workspace lifecycle, connector approvals, environment policy, and
 resource quotas. User-provided local, SSH, or HPC resources can also use the
 standard Fabric flow; when an organization brings those resources under shared
@@ -80,8 +85,10 @@ policy, Console becomes the management surface.
 
 **OPL Fabric does the resource work**<br/>
 Fabric contains the compute pool, storage vault, environment catalog, connector
-registry, and execution adapters. Ordinary users should see productized choices
-such as standard compute, GPU acceleration, private data bucket, or
+registry, and execution adapters. OPL Connect is the Fabric capability for
+stable access to literature sources such as PubMed, databases, tools, and
+institutional systems. Ordinary users should see productized choices such as
+literature search, standard compute, GPU acceleration, private data bucket, or
 institutional HPC.
 
 **OPL Ledger makes results accountable**<br/>
@@ -105,6 +112,12 @@ OPL Fabric
 Together, these capabilities let OPL App and OPL Workspace connect materials,
 use tools, obtain compute resources, and run tasks in the right software
 environment.
+
+Literature connectors are a priority OPL Connect path. Early prototypes can
+start as ScholarSkills or MAS skills. When a connector becomes high-frequency,
+such as PubMed access for MAS, it should move into Fabric as a stable connector
+while domain skills keep ownership of search strategy, evidence judgment, and
+writing behavior.
 
 ## OPL Ledger
 
@@ -148,6 +161,7 @@ environment catalogs can enter OPL Cloud through the same Fabric flow.
 - [OPL Workspace](docs/opl-workspace.md)
 - [OPL Console](docs/opl-console.md)
 - [OPL Fabric](docs/opl-fabric.md)
+- [OPL Connect](docs/opl-connect.md)
 - [OPL Ledger](docs/opl-ledger.md)
 - [OPL Agent Lifecycle](docs/agent-lifecycle.md)
 - [Research Provenance](docs/research-provenance.md)

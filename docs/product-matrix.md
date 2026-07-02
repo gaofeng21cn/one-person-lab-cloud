@@ -23,6 +23,10 @@ The next two surfaces are platform capabilities:
 - OPL Fabric: resource and connector substrate.
 - OPL Ledger: evidence and receipt record.
 
+Fabric and Ledger can be used by more than one product surface. OPL Console
+governs hosted or organization-managed usage, while OPL App and OPL Workspace
+can call reusable platform capabilities directly.
+
 ## Gateway And Fabric
 
 Gateway is technically a resource access capability, but it remains top-level
@@ -60,3 +64,8 @@ organization-managed: billing, quotas, permissions, workspace lifecycle,
 connector approvals, environment policy, and audit policy belong there.
 User-provided local, SSH, or HPC resources can still use the standard Fabric
 flow without becoming Console-billed resources by default.
+
+The same pattern applies to connectors. PubMed access can start as a
+ScholarSkills or MAS skill prototype, then move into OPL Connect when it becomes
+a stable shared capability. Console manages it only when the connector is
+organization-approved, quota-controlled, audited, or billed.

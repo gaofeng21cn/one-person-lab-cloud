@@ -76,6 +76,26 @@ management surface when resources are OPL Cloud-hosted or organization-managed.
 User-provided local, SSH, or HPC resources can use the same pattern without
 being Console-billed resources by default.
 
+## Reusable Platform Capabilities
+
+OPL Fabric and OPL Ledger are shared platform capabilities, not private backend
+modules of OPL Console. Console governs managed usage. App and Workspace can
+call reusable capabilities directly through their capability profiles.
+
+For literature access, the intended flow is:
+
+```text
+MAS agent
+-> OPL App or OPL Workspace
+-> OPL Connect / PubMed connector
+-> normalized literature refs
+-> MAS evidence workflow
+-> OPL Ledger receipt refs when recorded
+```
+
+This lets high-frequency skill prototypes mature into stable platform
+connectors without moving domain judgment into Fabric.
+
 ## Data Boundary
 
 Cloud should store refs, metadata, lineage, receipts, usage, policy, and billing

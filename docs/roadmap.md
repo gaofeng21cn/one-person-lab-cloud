@@ -16,6 +16,8 @@ resource path:
   Ledger contracts as Workspace.
 - OPL Console: manage users, packages, Gateway usage, Workspace lifecycle, and
   managed-resource policy.
+- OPL Connect literature baseline: expose a stable PubMed connector usable from
+  local OPL App, cloud OPL Workspace, and MAS.
 - OPL Fabric v0: support one shared App/Workspace resource flow with Docker or
   VM compute plus one volume or bucket storage path.
 - OPL Ledger v0: generate receipt JSON for App actions, Workspace actions, and
@@ -36,9 +38,10 @@ resource path:
 | Platform capability clarity | Cloud must clarify reusable platform primitives before downstream products specialize them | [Platform Capability Gaps](platform-capability-gaps.md) |
 | Shared App/Workspace execution contract | One plan, approve, execute, monitor, collect, receipt contract works from local App and cloud Workspace | [Shared Execution Contract](contracts/shared-execution-contract.md) |
 | Managed-resource boundary | Console manages OPL Cloud-hosted or organization-managed resources; user-provided local, SSH, and HPC resources use Fabric without default Console billing | [Resource Ownership And Billing](contracts/resource-ownership-and-billing.md) |
+| Literature connector path | PubMed moves from high-frequency skill prototype into OPL Connect while MAS keeps domain strategy and evidence judgment | [OPL Connect](opl-connect.md) |
 | Workspace surface | Workspace is the cloud Docker/WebUI surface for OPL App with its own lifecycle | [Workspace Lifecycle](workspace-lifecycle.md) |
 | Console metering and billing | Billing starts from Gateway usage, Workspace package, managed compute, managed storage, and managed connectors | [Console Governance And Billing](console-governance-and-billing.md) |
-| Fabric adapter order | Start with Docker/VM and storage; add SSH/HPC after the shared contract works; add GPU and data connectors after job receipts stabilize | [Fabric Adapter Contract](fabric-adapter-contract.md) |
+| Fabric adapter order | Start with a read-only PubMed connector and one Docker/VM plus storage path; add SSH/HPC, GPU, and more data connectors after source refs and receipts stabilize | [Fabric Adapter Contract](fabric-adapter-contract.md) |
 | Ledger receipt schema | Receipts bind plan, approval, command/code, environment, input refs, output refs, review result, owner, cost, and continuation | [Ledger Receipt Schema](contracts/ledger-receipt-schema.md) |
 | Environment catalog | Environments stay inside Fabric while App and Workspace select approved templates | Environment manifest shape for runtime image, packages, locks, hardware needs, and owner |
 | Agent lifecycle | OPL Meta Agent builds packages; Console approves; Fabric binds resources; App or Workspace exposes Agent Instances; Ledger records Agent Runs | [OPL Agent Lifecycle](agent-lifecycle.md) and [Agent Registry Entry](contracts/agent-registry-entry.md) |
@@ -66,6 +69,9 @@ resource path:
 
 ### M2: Fabric v0
 
+- Provide one read-only PubMed connector through OPL Connect.
+- Let MAS request literature through the App or Workspace capability path.
+- Return normalized literature refs that MAS can use and Ledger can reference.
 - Run one managed Docker or VM job from App and Workspace through the shared
   plan, approve, execute, monitor, collect, receipt flow.
 - Attach one storage path and collect output refs.
@@ -85,8 +91,8 @@ resource path:
 - Add SSH/HPC adapters after the shared execution contract is stable.
 - Add GPU workers when job scheduling, environment selection, and cost capture
   are covered by receipts.
-- Add literature, database, and institutional storage connectors after access
-  policy and source refs are stable.
+- Add additional literature, database, and institutional storage connectors
+  after the PubMed baseline proves access policy and source refs.
 
 ### M5: Agent Lifecycle
 
@@ -98,9 +104,10 @@ resource path:
 
 ## Planned Fabric Adapters
 
+- PubMed read-only connector.
 - GPU workers.
 - SSH and HPC adapters.
-- Literature databases.
+- Additional literature databases.
 - Research databases.
 - Institutional storage refs.
 - Team-approved connector registry.

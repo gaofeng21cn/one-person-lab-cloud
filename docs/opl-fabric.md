@@ -8,6 +8,12 @@ adapters under one platform layer. The same Fabric flow can serve local OPL App,
 cloud OPL Workspace, user-provided SSH or HPC resources, and OPL Cloud-hosted
 resources.
 
+Fabric capabilities are reusable platform capabilities. OPL Console can govern
+organization-managed Fabric resources, but Fabric adapters do not require
+Console as their only entry point. Local OPL App, cloud OPL Workspace, and
+domain agents can use approved Fabric capabilities directly through their
+capability profiles.
+
 ```text
 OPL Fabric
 ├─ OPL Connect        databases, literature sources, tools, APIs, internal systems
@@ -38,6 +44,12 @@ proposed -> configured -> approved -> available -> suspended -> retired
 Connector records should clarify owner, credential boundary, data scope,
 available actions, approval policy, usage signal, and Ledger receipt behavior.
 
+Literature access should be the first stable Connect path. PubMed can move from
+a high-frequency MAS or ScholarSkills prototype into OPL Connect once the
+behavior is stable enough to share across App, Workspace, and agents. The skill
+continues to own domain strategy and evidence judgment; Connect owns API access,
+normalization, source refs, rate limits, and connector receipts.
+
 ## OPL Compute
 
 OPL Compute is the controlled compute layer.
@@ -63,10 +75,11 @@ flow without becoming Console-billed compute by default.
 
 Fabric should add adapters in dependency order:
 
-1. Docker or VM plus one storage path.
-2. SSH/HPC with user-provided credentials and explicit approval.
-3. OPL Cloud-hosted GPU or managed worker capacity.
-4. Literature, database, and institutional storage connectors.
+1. PubMed read-only connector as the first OPL Connect baseline.
+2. Docker or VM plus one storage path.
+3. SSH/HPC with user-provided credentials and explicit approval.
+4. OPL Cloud-hosted GPU or managed worker capacity.
+5. Database, institutional storage, and additional literature connectors.
 
 Each adapter should define the same fields: configuration, approval, execution,
 status, output collection, cost or usage signal when managed, and Ledger receipt

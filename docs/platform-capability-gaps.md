@@ -14,6 +14,7 @@ industry-specific workflows.
 | Workspace product flow | Basic role and lifecycle are defined | What a Workspace contains, how users enter it, how projects/tasks/artifacts/receipts appear | Workspace product flow |
 | Console governance | Scope and billing boundary are defined | Organization model, roles, approval targets, quota policy, audit policy | Organization and approval model |
 | Resource catalog | Fabric components are named | How compute, storage, connectors, environments, and agent registry are presented as product choices | Resource catalog model |
+| Literature connector baseline | PubMed is named as the first stable OPL Connect path | How MAS, App, Workspace, Connect, Console, and Ledger share one literature access flow | [OPL Connect](opl-connect.md) |
 | Connector governance | Connect examples exist | Connector lifecycle, approval, ownership, credentials, scope, audit | Connector lifecycle model |
 | Environment catalog | Environment role is named | Environment templates, image/package/version ownership, compatibility with agents and jobs | Environment catalog model |
 | Evidence records | Ledger shape is sketched | Human-readable receipt views, retention, review status, continuation, artifact refs | Evidence record model |
@@ -41,11 +42,12 @@ them without changing Cloud's core model.
 1. Workspace product flow.
 2. Organization and approval model.
 3. Resource catalog model.
-4. Evidence record model.
-5. Agent deployment model.
-6. Usage and quota model.
-7. Connector lifecycle model.
-8. Environment catalog model.
+4. Literature connector baseline.
+5. Evidence record model.
+6. Agent deployment model.
+7. Usage and quota model.
+8. Connector lifecycle model.
+9. Environment catalog model.
 
 This order starts from what users and administrators need to understand, then
 moves into platform internals.

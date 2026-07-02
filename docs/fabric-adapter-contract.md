@@ -39,10 +39,11 @@ Every implementation should provide these conceptual methods:
 
 ## Initial Adapter Order
 
-1. Docker or VM adapter with one storage path.
-2. SSH or HPC adapter with explicit user approval.
-3. GPU or managed worker adapter.
-4. Literature, database, and institutional storage connectors.
+1. PubMed read-only connector.
+2. Docker or VM adapter with one storage path.
+3. SSH or HPC adapter with explicit user approval.
+4. GPU or managed worker adapter.
+5. Database, institutional storage, and additional literature connectors.
 
 ## Adapter Categories
 
