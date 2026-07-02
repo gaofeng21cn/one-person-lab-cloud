@@ -1,7 +1,7 @@
 # Fabric Adapter Contract
 
-Fabric adapters connect OPL workbench actions to compute, storage, environments,
-connectors, and managed execution.
+Fabric adapters connect OPL workbench and approved domain-agent actions to
+compute, storage, environments, connectors, skill packs, and managed execution.
 
 Every adapter should fit the shared execution flow:
 
@@ -53,10 +53,13 @@ Every implementation should provide these conceptual methods:
 | Storage | Workspace volume, bucket, institutional storage ref |
 | Environment | Container image, package lock, runtime manifest |
 | Connector | Literature source, database, internal system, tool API |
+| Skill pack | MAS Scholar Skills references, shared packs, quality floors, approved tool bundles |
 | Agent | Agent package binding, instance preparation, run dispatch |
 
 ## Boundary
 
 Adapters prepare and run work. They report status, outputs, and cost signals.
-OPL Console applies management policy. OPL Ledger records receipts. The owning
-system remains the authority for the underlying resource state.
+OPL App, Workspace, MAS, and other approved callers can use them through
+capability profiles. OPL Console applies management policy for hosted or
+organization-managed usage. OPL Ledger records receipts. The owning system
+remains the authority for the underlying resource state and domain truth.

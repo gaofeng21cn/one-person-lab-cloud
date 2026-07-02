@@ -18,6 +18,10 @@ resource path:
   managed-resource policy.
 - OPL Connect literature baseline: expose a stable PubMed connector usable from
   local OPL App, cloud OPL Workspace, and MAS.
+- Skill-first connector path: let MAS and other domain skills prototype
+  high-frequency capabilities, then move stable literature, database, tool, or
+  large skill-pack access into Connect/Fabric while domain owners keep domain
+  truth.
 - OPL Fabric v0: support one shared App/Workspace resource flow with Docker or
   VM compute plus one volume or bucket storage path.
 - OPL Ledger v0: generate receipt JSON for App actions, Workspace actions, and
@@ -38,7 +42,7 @@ resource path:
 | Platform capability clarity | Cloud must clarify reusable platform primitives before downstream products specialize them | [Platform Capability Gaps](platform-capability-gaps.md) |
 | Shared App/Workspace execution contract | One plan, approve, execute, monitor, collect, receipt contract works from local App and cloud Workspace | [Shared Execution Contract](contracts/shared-execution-contract.md) |
 | Managed-resource boundary | Console manages OPL Cloud-hosted or organization-managed resources; user-provided local, SSH, and HPC resources use Fabric without default Console billing | [Resource Ownership And Billing](contracts/resource-ownership-and-billing.md) |
-| Literature connector path | PubMed moves from high-frequency skill prototype into OPL Connect while MAS keeps domain strategy and evidence judgment | [OPL Connect](opl-connect.md) |
+| Literature and skill-first connector path | PubMed, databases, tools, resources, and large skill packs move from high-frequency domain skill prototypes into OPL Connect while MAS and other domain owners keep domain strategy, quality floors, and evidence judgment | [OPL Connect](opl-connect.md) |
 | Workspace surface | Workspace is the cloud Docker/WebUI surface for OPL App with its own lifecycle | [Workspace Lifecycle](workspace-lifecycle.md) |
 | Console metering and billing | Billing starts from Gateway usage, Workspace package, managed compute, managed storage, and managed connectors | [Console Governance And Billing](console-governance-and-billing.md) |
 | Fabric adapter order | Start with a read-only PubMed connector and one Docker/VM plus storage path; add SSH/HPC, GPU, and more data connectors after source refs and receipts stabilize | [Fabric Adapter Contract](fabric-adapter-contract.md) |
@@ -71,6 +75,8 @@ resource path:
 
 - Provide one read-only PubMed connector through OPL Connect.
 - Let MAS request literature through the App or Workspace capability path.
+- Let MAS keep the primary domain skill while OPL Connect handles discovery,
+  sync, install, source refs, and connector receipts for stable shared paths.
 - Return normalized literature refs that MAS can use and Ledger can reference.
 - Run one managed Docker or VM job from App and Workspace through the shared
   plan, approve, execute, monitor, collect, receipt flow.

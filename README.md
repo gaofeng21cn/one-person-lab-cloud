@@ -45,22 +45,22 @@ remote-resource workflows:
 
 **OPL Cloud is the cloud infrastructure layer for those workflows.**
 
-It keeps OPL App and OPL Workspace as equivalent user workbench surfaces:
-OPL App is the local surface, and OPL Workspace is the cloud Docker/WebUI
-surface. Both can use OPL Gateway, OPL Fabric, and OPL Ledger capabilities.
-OPL Fabric and OPL Ledger are reusable platform capabilities, not capabilities
-locked behind one product surface. OPL Console governs the permissions,
-lifecycle, audit, and billing for resources hosted or organization-managed
-through OPL Cloud.
+Externally, OPL Cloud exposes OPL Gateway, OPL Workspace, and OPL Console as
+the user-visible products. Internally, it provides OPL Fabric and OPL Ledger as
+reusable platform capabilities. Local OPL App is the local workbench surface,
+and OPL Workspace is the cloud Docker/WebUI workbench surface. Both can call
+OPL Gateway, OPL Fabric, and OPL Ledger directly. OPL Console governs
+organization, permission, billing, resource policy, and lifecycle management,
+but it is not the only entry point for every Fabric capability.
 
 ## Product Map
 
 | Layer | Brand | Role | Surface |
 | --- | --- | --- | --- |
 | AI access | **OPL Gateway** | Models, keys, routing, provider policy, and usage metering | Product |
-| User workbench | **OPL App / OPL Workspace** | Local OPL App and cloud Docker/WebUI OPL App surfaces for project work, task sessions, artifact preview, and result delivery | Product |
+| User workbench | **OPL Workspace / OPL App integration** | Cloud Docker/WebUI OPL App and local OPL App share the same project work, task session, artifact preview, and result delivery model | Product / local entry |
 | Management | **OPL Console** | Organization, users, billing, quotas, workspace lifecycle, resource policy | Product |
-| Resource substrate | **OPL Fabric** | Compute, storage, software environments, connectors, and execution adapters | Platform |
+| Resource substrate | **OPL Fabric** | Connect, Compute, Storage, Environments, Gateway/App/Workspace adapters, connectors, and execution adapters | Platform |
 | Evidence record | **OPL Ledger** | Job receipts, artifact provenance, reviewer gates, audit records, continuation refs | Platform |
 
 ## Core Highlights
@@ -79,17 +79,19 @@ surface.
 Console is the organization governance surface. It manages OPL Cloud-hosted or
 organization-managed accounts, billing,
 permissions, workspace lifecycle, connector approvals, environment policy, and
-resource quotas. User-provided local, SSH, or HPC resources can also use the
-standard Fabric flow; when an organization brings those resources under shared
-policy, Console becomes the management surface.
+resource quotas. User-provided local, SSH, HPC, literature, database, tool, or
+large skill-pack resources can also use the standard Fabric flow; when an
+organization brings those resources under shared policy, Console becomes the
+management surface.
 
 **OPL Fabric does the resource work**<br/>
-Fabric contains the compute pool, storage vault, environment catalog, connector
-registry, and execution adapters. OPL Connect is the Fabric capability for
-stable access to literature sources such as PubMed, databases, tools, and
-institutional systems. Ordinary users should see productized choices such as
-literature search, standard compute, GPU acceleration, private data bucket, or
-institutional HPC.
+Fabric contains Connect, Compute, Storage, Environments, Gateway/App/Workspace
+adapters, agent package registry, and execution adapters. OPL Connect is the
+Fabric capability for stable access to literature sources such as PubMed,
+databases, tool libraries, institutional systems, external resources, and large
+skill packs. Ordinary users should see productized choices such as literature
+search, standard compute, GPU acceleration, private data bucket, institutional
+HPC, or team skill packs.
 
 **OPL Ledger makes results accountable**<br/>
 Ledger records the plan, approval, commands or code, environment, input refs,
@@ -102,9 +104,10 @@ OPL Fabric is the resource and connector substrate behind OPL Cloud.
 
 ```text
 OPL Fabric
-├─ OPL Connect        databases, literature sources, tools, APIs, internal systems
+├─ OPL Connect        databases, literature sources, tools, APIs, resources, skill packs
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC, managed workers
 ├─ OPL Environments   reproducible software environments and runtime templates
+├─ Gateway adapters   AI access profiles, usage signals, provider policy links
 ├─ OPL Agent Registry approved agent packages, versions, requirements
 └─ Storage Vault      workspace volumes, private buckets, institutional storage refs
 ```
@@ -114,10 +117,30 @@ use tools, obtain compute resources, and run tasks in the right software
 environment.
 
 Literature connectors are a priority OPL Connect path. Early prototypes can
-start as ScholarSkills or MAS skills. When a connector becomes high-frequency,
-such as PubMed access for MAS, it should move into Fabric as a stable connector
-while domain skills keep ownership of search strategy, evidence judgment, and
-writing behavior.
+start from MAS, ScholarSkills, or other domain skills. When PubMed, databases,
+tool libraries, or large skill packs become high-frequency paths, they should
+move into Fabric as stable connector capabilities. MAS, OPL App, and OPL
+Workspace can call the same connector directly, while domain skills keep
+ownership of search strategy, evidence judgment, quality floors, and writing
+behavior.
+
+## Skill-first Collaboration
+
+OPL Cloud supports a skill-first capability path: domain owners maintain the
+primary skill, enhancement packs provide references, packs, and quality floors,
+OPL Connect handles discovery, sync, install, and stable connection, and OPL
+Ledger records receipts and provenance.
+
+```text
+domain skill prototype
+-> high-frequency connector behavior
+-> OPL Connect / OPL Fabric
+-> MAS / Workspace / App usage
+-> OPL Ledger receipts and provenance
+```
+
+This keeps MAS and other domain systems in control of domain truth while mature
+connector capabilities become reusable OPL Cloud platform capabilities.
 
 ## OPL Ledger
 
@@ -132,7 +155,9 @@ plan → approval → run → artifacts → reviewer checks → receipt → cont
 
 Ledger records what happened, which inputs and environments were used, which
 outputs were produced, what checks ran, and how the work can be resumed or
-reviewed later.
+reviewed later. Ledger records receipts and provenance; it does not replace the
+domain truth, quality judgment, or delivery authority owned by MAS, MAG, RCA,
+BookForge, or another domain owner.
 
 ## Core Delivery Path
 

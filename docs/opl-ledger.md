@@ -6,6 +6,10 @@ It records what happened, which inputs and environments were used, which outputs
 were produced, what checks ran, and how the work can be reviewed or continued
 later.
 
+Ledger records receipts and provenance. It does not replace the domain source
+of truth, domain-quality judgment, or delivery authority owned by MAS, MAG, RCA,
+BookForge, OPL App, or another domain owner.
+
 ## Receipt Shape
 
 Every meaningful App action, Workspace action, or Cloud-managed job should be
@@ -23,6 +27,11 @@ plan → approval → command/code → environment → input refs → output ref
 - Policy decisions.
 - Audit records.
 - Continuation refs.
+
+For skill-first flows, Ledger should record which main skill, enhancement pack,
+connector, input refs, selected sources, outputs, and continuation entry were
+used. This gives MAS, Workspace, App, and other callers a shared evidence trail
+without moving domain truth into Ledger.
 
 ## Evidence Record View
 
@@ -47,9 +56,9 @@ artifact storage remain with the owning storage or domain system.
 
 ## What Ledger Does Not Own
 
-Ledger is not the file store, database, model provider, runtime scheduler, or
-domain-quality authority. It records references and receipts from the owning
-systems.
+Ledger is not the file store, database, model provider, runtime scheduler,
+connector owner, skill owner, or domain-quality authority. It records
+references, receipts, and provenance from the owning systems.
 
 ## Reviewer Gate
 

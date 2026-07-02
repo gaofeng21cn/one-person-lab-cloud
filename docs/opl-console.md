@@ -7,9 +7,10 @@ workspaces, and operational status for OPL Cloud-hosted or
 organization-managed resources.
 
 Console is a governance surface, not the only entry point for Fabric or Ledger.
-Local OPL App and cloud OPL Workspace can use reusable Fabric and Ledger
-capabilities directly. Console becomes active when a resource, connector,
-workspace, receipt policy, quota, or credential is hosted by OPL Cloud or
+Local OPL App, cloud OPL Workspace, MAS, and other domain agents can use
+reusable Fabric and Ledger capabilities directly when their capability profile
+allows it. Console becomes active when a resource, connector, workspace,
+receipt policy, quota, skill pack, or credential is hosted by OPL Cloud or
 managed by an organization.
 
 ## Initial Scope
@@ -20,6 +21,8 @@ managed by an organization.
 - Resource package selection for Gateway, Fabric, and Workspace usage.
 - Agent Package approval, version policy, and workspace access policy.
 - Connector approval through OPL Fabric.
+- Large skill-pack approval when a pack is shared, audited, quota-controlled,
+  or organization-managed.
 - Environment policy through OPL Fabric.
 - Ledger policy for receipts, review gates, audit, and retention.
 - Operational receipts for user-visible actions.
@@ -79,10 +82,11 @@ collect, and receipt flow from OPL App or OPL Workspace. Console becomes the
 management and billing surface when those resources are hosted by OPL Cloud,
 approved by an organization, or governed by team policy.
 
-The same rule applies to connectors. A local App can use a user-configured
-PubMed connector through OPL Connect without becoming Console-managed usage. A
-team-approved literature source, institution credential, paid database, or
-audited connector policy enters Console governance.
+The same rule applies to connectors and skill packs. A local App or MAS agent
+can use a user-configured PubMed connector or domain skill pack through
+OPL Connect without becoming Console-managed usage. A team-approved literature
+source, institution credential, paid database, shared skill pack, or audited
+connector policy enters Console governance.
 
 For agents, Console approves which Agent Packages are available to a team, which
 versions can be instantiated, and which quotas, connectors, environments, and

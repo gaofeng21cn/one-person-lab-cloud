@@ -10,7 +10,7 @@ This matrix defines when OPL Console manages and bills resources.
 | Organization-managed | Hospital, lab, or enterprise resource under shared policy | Yes | Billed or reported according to organization policy |
 | User-provided local | User laptop or local Docker | Optional visibility | Not Cloud-billed by default |
 | User-provided SSH or HPC | User credential to lab server or HPC login node | Optional visibility | Not Cloud-billed by default |
-| External provider | Model provider, storage provider, compute provider | Policy-managed when connected | Billed through provider usage, package, or pass-through policy |
+| External provider | Model provider, storage provider, compute provider, data source, or skill-pack source | Policy-managed when connected | Billed through provider usage, package, or pass-through policy |
 
 ## Metering Sources
 
@@ -18,7 +18,7 @@ This matrix defines when OPL Console manages and bills resources.
 - Workspace usage: package, uptime, storage allocation, user count.
 - Compute usage: adapter, runtime duration, GPU flag, queue signal.
 - Storage usage: volume, bucket, retention class, transfer signal.
-- Connector usage: connector, action, request count, data boundary signal.
+- Connector and skill-pack usage: connector, pack, action, request count, data boundary signal.
 - Agent usage: package, instance, run, resource profile, reviewer gate.
 
 ## Product Rule

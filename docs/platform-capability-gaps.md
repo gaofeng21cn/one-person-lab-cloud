@@ -15,6 +15,7 @@ industry-specific workflows.
 | Console governance | Scope and billing boundary are defined | Organization model, roles, approval targets, quota policy, audit policy | Organization and approval model |
 | Resource catalog | Fabric components are named | How compute, storage, connectors, environments, and agent registry are presented as product choices | Resource catalog model |
 | Literature connector baseline | PubMed is named as the first stable OPL Connect path | How MAS, App, Workspace, Connect, Console, and Ledger share one literature access flow | [OPL Connect](opl-connect.md) |
+| Skill-first capability path | Domain skills can prototype high-frequency capabilities | How main skills, enhancement packs, Connect install/sync, Fabric reuse, and Ledger provenance cooperate without moving domain truth into Cloud | [OPL Connect](opl-connect.md) |
 | Connector governance | Connect examples exist | Connector lifecycle, approval, ownership, credentials, scope, audit | Connector lifecycle model |
 | Environment catalog | Environment role is named | Environment templates, image/package/version ownership, compatibility with agents and jobs | Environment catalog model |
 | Evidence records | Ledger shape is sketched | Human-readable receipt views, retention, review status, continuation, artifact refs | Evidence record model |
@@ -31,6 +32,7 @@ primitives:
 - organizations and approvals;
 - AI access and usage;
 - compute, storage, connectors, and environments;
+- domain skill, enhancement pack, and large skill-pack connection paths;
 - agent package deployment;
 - receipts, provenance, and continuation records.
 

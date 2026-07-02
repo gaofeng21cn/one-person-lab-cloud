@@ -3,36 +3,40 @@
 OPL Fabric is the resource and connector substrate for OPL App, OPL Workspace,
 and OPL Cloud-managed execution.
 
-It keeps compute, storage, software environments, connectors, and execution
-adapters under one platform layer. The same Fabric flow can serve local OPL App,
-cloud OPL Workspace, user-provided SSH or HPC resources, and OPL Cloud-hosted
+It keeps Connect, Compute, Storage, Environments, Gateway/App/Workspace
+adapters, agent packages, and execution adapters under one platform layer. The
+same Fabric flow can serve local OPL App, cloud OPL Workspace, MAS and other
+domain agents, user-provided SSH or HPC resources, and OPL Cloud-hosted
 resources.
 
 Fabric capabilities are reusable platform capabilities. OPL Console can govern
 organization-managed Fabric resources, but Fabric adapters do not require
-Console as their only entry point. Local OPL App, cloud OPL Workspace, and
-domain agents can use approved Fabric capabilities directly through their
+Console as their only entry point. Local OPL App, cloud OPL Workspace, MAS, and
+other domain agents can use approved Fabric capabilities directly through their
 capability profiles.
 
 ```text
 OPL Fabric
-├─ OPL Connect        databases, literature sources, tools, APIs, internal systems
+├─ OPL Connect        databases, literature sources, tools, APIs, resources, skill packs
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC, managed workers
 ├─ OPL Environments   software stacks, package locks, container images, runtime manifests
+├─ Gateway adapters   AI access profiles, usage signals, provider policy links
 ├─ OPL Agent Registry approved agent packages, versions, requirements
 └─ Storage Vault      workspace volumes, private buckets, institutional storage refs
 ```
 
 ## OPL Connect
 
-OPL Connect is the connector registry for data, literature, tools, APIs, and
-internal systems.
+OPL Connect is the connector registry for data, literature, tools, APIs,
+resources, large skill packs, and internal systems.
 
 Examples:
 
 - Literature sources: PubMed, arXiv, Semantic Scholar, Crossref, Zotero.
 - Research databases: institutional databases, PostgreSQL, SQLite, DuckDB.
 - Tools and APIs: GitHub, Jupyter, Python, R, Office, PDF, MinerU, chart tools.
+- Skill and resource packs: MAS Scholar Skills references, shared prompt packs,
+  quality-floor packs, data dictionaries, and approved tool bundles.
 - Internal systems: ELN, shared drives, private APIs, hospital or lab systems.
 
 Each connector should have a lifecycle:
@@ -44,11 +48,13 @@ proposed -> configured -> approved -> available -> suspended -> retired
 Connector records should clarify owner, credential boundary, data scope,
 available actions, approval policy, usage signal, and Ledger receipt behavior.
 
-Literature access should be the first stable Connect path. PubMed can move from
-a high-frequency MAS or ScholarSkills prototype into OPL Connect once the
-behavior is stable enough to share across App, Workspace, and agents. The skill
-continues to own domain strategy and evidence judgment; Connect owns API access,
-normalization, source refs, rate limits, and connector receipts.
+Literature access should be the first stable Connect path. PubMed, databases,
+tool libraries, resource catalogs, or large skill packs can move from a
+high-frequency MAS, ScholarSkills, or other domain skill prototype into
+OPL Connect once the behavior is stable enough to share across App, Workspace,
+MAS, and agents. The domain skill continues to own strategy, evidence judgment,
+quality floors, and writing behavior; Connect owns discovery, sync, install,
+API access, normalization, source refs, rate limits, and connector receipts.
 
 ## OPL Compute
 

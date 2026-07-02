@@ -5,7 +5,8 @@ OPL Workspace, OPL Fabric, OPL Console, and OPL Ledger.
 
 The same contract should work for local App actions, cloud Workspace actions,
 managed Docker or VM jobs, SSH or HPC jobs, GPU jobs, and later connector-backed
-jobs.
+jobs. MAS and other domain agents can use the same contract as approved callers
+without routing every request through Console.
 
 ## Standard Flow
 
@@ -21,7 +22,8 @@ may be used.
 Required fields:
 
 - `request_id`
-- `surface`: `app`, `workspace`, or `console`
+- `surface`: `app`, `workspace`, `console`, or `domain_agent`
+- `caller_ref`
 - `actor`
 - `workspace_ref`
 - `goal`
@@ -93,3 +95,4 @@ review results, owner, and continuation entry.
 | OPL Console | Applies policy, package, quota, approval, and billing rules for managed resources |
 | OPL Fabric | Selects adapters, prepares resources, runs jobs, and collects outputs |
 | OPL Ledger | Records receipts, provenance, reviewer results, and continuation refs |
+| Domain agent | Uses approved Fabric capabilities while keeping domain truth, quality judgment, and delivery authority |

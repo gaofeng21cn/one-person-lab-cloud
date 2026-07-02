@@ -2,10 +2,12 @@
 
 OPL Connect is the connector capability inside OPL Fabric.
 
-It gives OPL App, OPL Workspace, OPL Console, and domain agents one stable way
-to use literature sources, databases, tools, APIs, and institutional systems.
-Console governs organization-managed connector access, but Connect itself is a
-platform capability that can be used from local App and cloud Workspace.
+It gives OPL App, OPL Workspace, OPL Console, MAS, and other domain agents one
+stable way to use literature sources, databases, tool libraries, resources,
+large skill packs, APIs, and institutional systems. Console governs
+organization-managed connector access, but Connect itself is a platform
+capability that can be used from local App, cloud Workspace, MAS, and other
+approved callers.
 
 ## First Stable Path: Literature Connectors
 
@@ -32,17 +34,42 @@ skill prototype
 -> reusable connector behavior
 -> OPL Connect adapter
 -> App / Workspace capability
+-> MAS / domain agent usage
 -> optional Console governance
 -> Ledger receipt refs
 ```
 
 | Stage | Owner | Purpose |
 | --- | --- | --- |
-| Skill prototype | ScholarSkills, MAS, or another domain skill | Explore search strategy, prompt shape, result ranking, and domain workflow |
-| Connector behavior | OPL Connect | Stabilize API access, normalization, error semantics, source refs, and rate-limit behavior |
+| Skill prototype | MAS, ScholarSkills, or another domain skill | Explore search strategy, prompt shape, result ranking, quality floor, and domain workflow |
+| Enhancement pack | MAS Scholar Skills or another enhancement pack | Provide references, packs, quality floors, examples, and reusable domain material |
+| Connector behavior | OPL Connect | Stabilize discovery, sync, install, API access, normalization, error semantics, source refs, and rate-limit behavior |
 | Workbench capability | OPL App and OPL Workspace | Let users and agents call the connector through the same capability path |
+| Domain use | MAS or another domain owner | Keep query intent, inclusion judgment, synthesis, writing behavior, and delivery authority |
 | Governance | OPL Console | Approve organization-managed connectors, credentials, quotas, and audit policy |
-| Evidence | OPL Ledger | Record connector refs, input query, selected sources, outputs, and continuation refs |
+| Evidence | OPL Ledger | Record connector refs, input query, selected sources, outputs, provenance, and continuation refs |
+
+## Skill-first Collaboration
+
+Domain owners keep the primary skill. MAS keeps the MAS skill and medical or
+academic judgment. MAS Scholar Skills and similar enhancement packs can supply
+references, reusable packs, examples, and quality floors. OPL Connect handles
+the platform work: discovery, sync, install, credentials, rate limits, source
+refs, normalized results, and stable connector behavior.
+
+This makes the path positive and incremental:
+
+```text
+domain skill
+-> enhancement pack
+-> high-frequency connector behavior
+-> OPL Connect / OPL Fabric capability
+-> MAS / Workspace / App usage
+-> Ledger receipt and provenance
+```
+
+OPL Ledger records what was used and where it came from. It does not replace
+the domain source of truth or the domain owner's quality judgment.
 
 ## MAS Literature Flow
 
@@ -60,19 +87,21 @@ MAS agent
 ```
 
 This keeps the chain smooth without making Fabric own medical or academic
-judgment. OPL Connect owns reliable access and normalized refs. MAS owns query
-intent, inclusion judgment, citation use, synthesis, and reviewer behavior.
+judgment. OPL Connect owns reliable access, discovery, installation, normalized
+refs, and connector receipts. MAS owns query intent, inclusion judgment,
+citation use, synthesis, reviewer behavior, and final domain truth.
 
 ## Maintenance Boundary
 
 | Concern | Owner |
 | --- | --- |
-| API access, request shape, retries, rate limits, source refs | OPL Connect |
-| Search strategy, citation judgment, evidence synthesis | MAS or the calling domain agent |
+| Discovery, sync, install, API access, request shape, retries, rate limits, source refs | OPL Connect |
+| Main skill, search strategy, citation judgment, evidence synthesis, quality floor | MAS or the calling domain agent |
+| References, packs, examples, quality floors | MAS Scholar Skills or another enhancement pack |
 | Local user configuration and capability display | OPL App |
 | Cloud workbench configuration and status display | OPL Workspace |
 | Organization credentials, quota, approval, audit policy | OPL Console |
-| Receipt refs and continuation entry | OPL Ledger |
+| Receipt refs, provenance, and continuation entry | OPL Ledger |
 
 ## First Version
 

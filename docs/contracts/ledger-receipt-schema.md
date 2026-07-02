@@ -4,7 +4,10 @@ This document defines the minimal receipt shape for OPL Ledger planning and
 implementation.
 
 Receipts are evidence records. They point to source systems, artifacts, logs,
-and review results instead of copying all underlying data into Ledger.
+and review results instead of copying all underlying data into Ledger. For
+skill-first flows, receipts can point to the main skill, enhancement packs,
+Connect adapter, source refs, and selected outputs without making Ledger the
+domain source of truth.
 
 ## Minimal JSON Shape
 
@@ -14,6 +17,7 @@ and review results instead of copying all underlying data into Ledger.
   "schema_version": "0.1",
   "surface": "workspace",
   "actor": "user-or-service-ref",
+  "caller_ref": "app-workspace-console-or-domain-agent-ref",
   "workspace_ref": "workspace-ref",
   "job_ref": "fabric-job-ref",
   "request": {
@@ -80,4 +84,5 @@ and review results instead of copying all underlying data into Ledger.
 Ledger receipts support review, audit, handoff, continuation, and later
 reproduction. Runtime truth still belongs to the owning runtime, storage truth
 belongs to the owning storage system, and domain-quality truth belongs to the
-responsible domain owner or reviewer.
+responsible domain owner or reviewer. Ledger records provenance and receipts;
+it does not replace MAS, ScholarSkills, or another domain owner.
