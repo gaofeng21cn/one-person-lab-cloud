@@ -1,6 +1,6 @@
 # OPL Workspace
 
-OPL Workspace is the cloud Docker/WebUI surface for OPL App.
+OPL Workspace is the cloud OPL App workbench.
 
 It should feel equivalent to OPL App in product role: a user workbench for
 projects, tasks, progress, artifacts, review, and delivery. The difference is
@@ -13,6 +13,14 @@ package.
 The product should feel closer to OPL App online than to a container hosting
 panel. Users choose the workspace they need; the underlying Docker runtime,
 compute node, and storage location remain implementation details.
+
+Use three terms consistently:
+
+| Term | Meaning |
+| --- | --- |
+| OPL Workspace | The user-visible cloud workbench product. |
+| Workspace Instance | One provisioned online OPL App instance with URL, account, runtime, and lifecycle. |
+| Workspace Storage | The persistent project files, volumes, buckets, output locations, and delivery space attached to an instance. |
 
 ## Workspace Product Flow
 

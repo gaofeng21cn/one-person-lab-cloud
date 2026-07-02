@@ -48,7 +48,7 @@ remote-resource workflows:
 Externally, OPL Cloud exposes OPL Gateway, OPL Workspace, and OPL Console as
 the user-visible products. Internally, it provides OPL Fabric and OPL Ledger as
 reusable platform capabilities. Local OPL App is the local workbench surface,
-and OPL Workspace is the cloud Docker/WebUI workbench surface. Both can call
+and OPL Workspace is the cloud OPL App workbench surface. Both can call
 OPL Gateway, OPL Fabric, and OPL Ledger directly. OPL Console governs
 organization, permission, billing, resource policy, and lifecycle management,
 but it is not the only entry point for every Fabric capability.
@@ -58,7 +58,7 @@ but it is not the only entry point for every Fabric capability.
 | Layer | Brand | Role | Surface |
 | --- | --- | --- | --- |
 | AI access | **OPL Gateway** | Models, keys, routing, provider policy, and usage metering | Product |
-| User workbench | **OPL Workspace / OPL App integration** | Cloud Docker/WebUI OPL App and local OPL App share the same project work, task session, artifact preview, and result delivery model | Product / local entry |
+| User workbench | **OPL Workspace / OPL App integration** | Cloud OPL App and local OPL App share the same project work, task session, artifact preview, and result delivery model | Product / local entry |
 | Management | **OPL Console** | Organization, users, billing, quotas, workspace lifecycle, resource policy | Product |
 | Resource substrate | **OPL Fabric** | Connect, Compute, Storage, Environments, Gateway/App/Workspace adapters, connectors, and execution adapters | Platform |
 | Evidence record | **OPL Ledger** | Job receipts, artifact provenance, reviewer gates, audit records, continuation refs | Platform |
@@ -68,7 +68,7 @@ but it is not the only entry point for every Fabric capability.
 | Module | Position | Direct consumers |
 | --- | --- | --- |
 | OPL App | Local workbench and first-class Cloud capability caller | Users, MAS, domain agents |
-| OPL Workspace | Cloud Docker/WebUI workbench using the same capability model as OPL App | Users, MAS, domain agents |
+| OPL Workspace | Cloud OPL App workbench using the same capability model as local OPL App | Users, MAS, domain agents |
 | OPL Fabric | General resource substrate for connectors, compute, storage, environments, agent packages, and execution adapters | App, Workspace, Console, MAS, domain agents |
 | OPL Connect | Connector capability inside Fabric for stable access, APIs, normalized source refs, error behavior, and rate-limit behavior | App, Workspace, MAS, domain agents; Console when governance applies |
 | OPL Console | Governance surface for organization-managed resources, credentials, quotas, approvals, billing, audit, and lifecycle | Admins and operators |
@@ -88,8 +88,8 @@ Gateway is the directly visible AI access, metering, and billing surface. It is
 the first available capability foundation for OPL Cloud.
 
 **OPL App and OPL Workspace are equivalent workbench surfaces**<br/>
-OPL App is the local workbench. OPL Workspace is the cloud Docker/WebUI
-workbench. Users open projects, start tasks, inspect job status, preview
+OPL App is the local workbench. OPL Workspace is the cloud OPL App workbench.
+Users open projects, start tasks, inspect job status, preview
 artifacts, receive reviewer feedback, and collect deliverables from either
 surface.
 
@@ -127,7 +127,7 @@ OPL Fabric
 ├─ OPL Environments   reproducible software environments and runtime templates
 ├─ Gateway adapters   AI access profiles, usage signals, provider policy links
 ├─ OPL Agent Registry approved agent packages, versions, requirements
-└─ Storage Vault      workspace volumes, private buckets, institutional storage refs
+└─ Workspace Storage      workspace volumes, private buckets, institutional storage refs
 ```
 
 Together, these capabilities let OPL App and OPL Workspace connect materials,

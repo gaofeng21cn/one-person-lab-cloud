@@ -28,7 +28,7 @@ OPL Fabric
 ├─ OPL Environments   software stacks, package locks, container images, runtime manifests
 ├─ Gateway adapters   AI access profiles, usage signals, provider policy links
 ├─ OPL Agent Registry approved agent packages, versions, requirements
-└─ Storage Vault      workspace volumes, private buckets, institutional storage refs
+└─ Workspace Storage      workspace volumes, private buckets, institutional storage refs
 ```
 
 ## OPL Connect
@@ -110,16 +110,16 @@ refs.
 
 ## OPL Environments
 
-OPL Environments is the versioned software environment catalog under Compute and
-Fabric.
+OPL Environments is the versioned software environment catalog used by Fabric
+compute paths.
 
 It covers software stacks such as Python, R, Quarto, LaTeX, CUDA,
 bioinformatics toolchains, Office/PDF tooling, OPL App runtime payloads, and
 domain-agent packages.
 
-In the first version, it stays inside Fabric. Console configures environment
-policy. OPL App and OPL Workspace select or inherit approved environment
-templates.
+Console configures environment policy for managed organizations. OPL App and
+OPL Workspace select or inherit approved environment templates through their
+capability profiles.
 
 Environment records clarify:
 
@@ -143,9 +143,9 @@ OPL Meta Agent can produce the blueprint and package candidate. Console approves
 the package for use. Fabric uses the registry record to prepare compute,
 storage, environments, and connectors for each App or Workspace Agent Instance.
 
-## Storage Vault
+## Workspace Storage
 
-Storage Vault covers workspace volumes, private buckets, institutional storage
+Workspace Storage covers workspace volumes, private buckets, institutional storage
 refs, database refs, retention policy, and data access boundaries.
 
 It is modeled separately from compute because data access, retention,
@@ -159,7 +159,7 @@ Console, MAS, and approved domain agents:
 | Resource type | User-facing examples | Platform owner |
 | --- | --- | --- |
 | Compute | Standard compute, GPU compute, SSH/HPC, managed worker | OPL Compute |
-| Storage | Workspace volume, private bucket, organization storage ref | Storage Vault |
+| Storage | Workspace volume, private bucket, organization storage ref | Workspace Storage |
 | Connector | Literature source, database, internal API, tool integration | OPL Connect |
 | Environment | Python/R, Quarto/LaTeX, CUDA, document tooling, agent runtime | OPL Environments |
 | Agent package | Approved package, version, requirements, review gates | OPL Agent Registry |

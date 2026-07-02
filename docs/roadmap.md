@@ -10,7 +10,7 @@
 The first Cloud slice proves the App/Workspace equivalence and one managed
 resource path:
 
-- OPL Workspace: create one cloud Docker/WebUI OPL App surface with isolated
+- OPL Workspace: create one cloud OPL App Workspace Instance with isolated
   URL, account, storage directory, and base package.
 - OPL App cloud connection: let local OPL App use the same Gateway, Fabric, and
   Ledger contracts as Workspace.
@@ -43,11 +43,11 @@ resource path:
 | Shared App/Workspace execution contract | One plan, approve, execute, monitor, collect, receipt contract works from local App and cloud Workspace | [Shared Execution Contract](contracts/shared-execution-contract.md) |
 | Managed-resource boundary | Console manages OPL Cloud-hosted or organization-managed resources; user-provided local, SSH, and HPC resources use Fabric without default Console billing | [Resource Ownership And Billing](contracts/resource-ownership-and-billing.md) |
 | Literature and skill-first connector path | PubMed, databases, tools, resources, and large skill packs move from high-frequency domain skill prototypes into OPL Connect while MAS and other domain owners keep domain strategy, quality floors, and evidence judgment | [OPL Connect](opl-connect.md) |
-| Workspace surface | Workspace is the cloud Docker/WebUI surface for OPL App with its own lifecycle | [Workspace Lifecycle](workspace-lifecycle.md) |
+| Workspace surface | Workspace is the cloud OPL App surface with Workspace Instance lifecycle | [Workspace Lifecycle](workspace-lifecycle.md) |
 | Console metering and billing | Billing starts from Gateway usage, Workspace package, managed compute, managed storage, and managed connectors | [Console Governance And Billing](console-governance-and-billing.md) |
 | Fabric adapter order | Start with a read-only PubMed connector and one Docker/VM plus storage path; add SSH/HPC, GPU, and more data connectors after source refs and receipts stabilize | [Fabric Adapter Contract](fabric-adapter-contract.md) |
 | Ledger receipt schema | Receipts bind plan, approval, command/code, environment, input refs, output refs, review result, owner, cost, and continuation | [Ledger Receipt Schema](contracts/ledger-receipt-schema.md) |
-| Environment catalog | Environments stay inside Fabric while App and Workspace select approved templates | Environment manifest shape for runtime image, packages, locks, hardware needs, and owner |
+| Environment catalog | Environments are the Fabric environment catalog selected or inherited by App and Workspace | Environment manifest shape for runtime image, packages, locks, hardware needs, and owner |
 | Agent lifecycle | OPL Meta Agent builds packages; Console approves; Fabric binds resources; App or Workspace exposes Agent Instances; Ledger records Agent Runs | [OPL Agent Lifecycle](agent-lifecycle.md) and [Agent Registry Entry](contracts/agent-registry-entry.md) |
 
 ## Milestones
@@ -67,7 +67,7 @@ resource path:
 ### M1: Gateway + Workspace Baseline
 
 - Use OPL Gateway as the first metered Cloud capability.
-- Create one Workspace instance as cloud Docker/WebUI OPL App.
+- Create one Workspace instance as cloud OPL App.
 - Expose the same Gateway configuration path to local OPL App.
 - Record basic usage events for Gateway and Workspace packages.
 
@@ -130,10 +130,10 @@ resource path:
 
 ## First-Version Focus
 
-- Keep OPL Workspace as the cloud Docker/WebUI surface for OPL App.
+- Keep OPL Workspace as the cloud OPL App surface.
 - Keep OPL Console focused on OPL Cloud-hosted or organization-managed
   resources, permissions, lifecycle, policy, and billing.
 - Keep OPL Fabric as the shared resource layer for local App, cloud Workspace,
   user-provided SSH/HPC, and OPL Cloud-hosted resources.
-- Keep OPL Environments inside Fabric until environment management becomes a
-  user-visible team workflow.
+- Keep OPL Environments as the Fabric environment catalog until environment
+  management becomes a user-visible team workflow.

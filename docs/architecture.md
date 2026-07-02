@@ -6,7 +6,7 @@ consumer, domain-agent callers, and two platform capabilities.
 ```text
 OPL Cloud
 ├─ OPL Gateway       user-visible frontier AI access, keys, routing, usage
-├─ OPL Workspace     user-visible cloud Docker/WebUI OPL App surface
+├─ OPL Workspace     user-visible cloud OPL App surface
 ├─ OPL Console       user-visible organization, billing, permissions, lifecycle, policy
 ├─ OPL App           local workbench consumer of Cloud platform capabilities
 ├─ MAS / agents      domain strategy, evidence judgment, writing, review
@@ -38,7 +38,7 @@ flowchart TB
     Env[OPL Environments]
     GatewayAdapters[Gateway/App/Workspace adapters]
     Registry[OPL Agent Registry]
-    Storage[Storage Vault]
+    Storage[Workspace Storage]
   end
 
   Fabric --> Connect
@@ -63,7 +63,7 @@ flowchart TB
 | Surface | Role |
 | --- | --- |
 | OPL Gateway | User-visible AI access, model routing, key management, provider policy, and usage metering |
-| OPL Workspace | User-visible cloud Docker/WebUI OPL App surface with isolated access URL, account, storage, and optional package |
+| OPL Workspace | User-visible cloud OPL App surface with isolated access URL, account, storage, and optional package |
 | OPL Console | User-visible management surface for account, organization, billing, quota, permission, managed workspace lifecycle, connector approval, and resource policy |
 | OPL App | Local OPL workbench surface that can directly use Gateway, Fabric, and Ledger capabilities |
 | MAS / domain agents | Domain strategy, query intent, quality judgment, synthesis, writing, review behavior, and delivery authority |

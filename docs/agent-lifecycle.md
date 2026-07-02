@@ -4,7 +4,7 @@ OPL Cloud can host agents built by OPL Meta Agent without becoming a separate
 agent-building product.
 
 Agent use should follow the same workbench split as the rest of OPL Cloud:
-OPL App is the local user surface, and OPL Workspace is the cloud Docker/WebUI
+OPL App is the local user surface, and OPL Workspace is the cloud OPL App
 surface. Both can expose approved Agent Instances.
 
 The standard lifecycle is:

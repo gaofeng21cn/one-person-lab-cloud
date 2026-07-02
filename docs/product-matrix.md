@@ -8,7 +8,7 @@ platform capabilities without making Console the only entry point.
 | Layer | Brand | Primary user value | Surface |
 | --- | --- | --- | --- |
 | AI access | OPL Gateway | One managed entry point for frontier AI access, model routing, keys, provider policy, and usage metering | Product |
-| User workbench | OPL Workspace / OPL App integration | Cloud Docker/WebUI OPL App and local OPL App share project work, task sessions, artifact preview, and result delivery | Product / local entry |
+| User workbench | OPL Workspace / OPL App integration | Cloud OPL App and local OPL App share project work, task sessions, artifact preview, and result delivery | Product / local entry |
 | Management | OPL Console | One cloud console for accounts, organizations, billing, permissions, workspaces, connectors, and resource policy | Product |
 | Resource substrate | OPL Fabric | One resource layer for Connect, Compute, Storage, Environments, Gateway/App/Workspace adapters, agent packages, and execution adapters | Platform |
 | Evidence record | OPL Ledger | One evidence layer for job receipts, artifact provenance, reviewer gates, audit records, and continuation refs | Platform |
@@ -18,7 +18,7 @@ platform capabilities without making Console the only entry point.
 The Cloud product-facing surfaces are:
 
 - OPL Gateway: the AI capability and usage entry point.
-- OPL Workspace: the cloud Docker/WebUI OPL App surface.
+- OPL Workspace: the cloud OPL App surface.
 - OPL Console: the management surface.
 
 OPL App remains the local workbench surface and a first-class consumer of Cloud
@@ -58,7 +58,7 @@ the Agent Run.
 
 ## Relationship To OPL App
 
-OPL App is the local workbench surface. OPL Workspace is the cloud Docker/WebUI
+OPL App is the local workbench surface. OPL Workspace is the cloud OPL App
 surface for the same OPL App experience. They should share the same task,
 artifact, resource-plan, approval, execution, collection, and receipt model.
 

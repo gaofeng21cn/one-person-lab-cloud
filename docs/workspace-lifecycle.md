@@ -1,6 +1,8 @@
 # Workspace Lifecycle
 
-OPL Workspace is the cloud Docker/WebUI surface for OPL App.
+OPL Workspace is the cloud OPL App workbench. A Workspace Instance is one
+provisioned online OPL App instance with its own URL, account, runtime, storage,
+and lifecycle.
 
 The lifecycle should be understandable as a workbench lifecycle, not as a
 container-hosting workflow.
