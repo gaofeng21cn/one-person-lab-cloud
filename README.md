@@ -63,6 +63,24 @@ but it is not the only entry point for every Fabric capability.
 | Resource substrate | **OPL Fabric** | Connect, Compute, Storage, Environments, Gateway/App/Workspace adapters, connectors, and execution adapters | Platform |
 | Evidence record | **OPL Ledger** | Job receipts, artifact provenance, reviewer gates, audit records, continuation refs | Platform |
 
+## Module Boundaries
+
+| Module | Position | Direct consumers |
+| --- | --- | --- |
+| OPL App | Local workbench and first-class Cloud capability caller | Users, MAS, domain agents |
+| OPL Workspace | Cloud Docker/WebUI workbench using the same capability model as OPL App | Users, MAS, domain agents |
+| OPL Fabric | General resource substrate for connectors, compute, storage, environments, agent packages, and execution adapters | App, Workspace, Console, MAS, domain agents |
+| OPL Connect | Connector capability inside Fabric for stable access, APIs, normalized source refs, error behavior, and rate-limit behavior | App, Workspace, MAS, domain agents; Console when governance applies |
+| OPL Console | Governance surface for organization-managed resources, credentials, quotas, approvals, billing, audit, and lifecycle | Admins and operators |
+| OPL Ledger | Receipt and provenance record for requests, source refs, outputs, review refs, and continuation entries | App, Workspace, Console, MAS, domain agents |
+| MAS / ScholarSkills | Domain strategy, literature intent, quality judgment, evidence synthesis, writing, and review behavior | MAS workflows and domain users |
+
+Console governs resources that are hosted by OPL Cloud or brought under
+organization policy. It is not the only call path. Local OPL App, cloud OPL
+Workspace, MAS, and approved domain agents can call Fabric and Connect directly
+through capability profiles. Ledger records receipts and provenance from those
+calls; it does not own connector implementation or domain judgment.
+
 ## Core Highlights
 
 **OPL Gateway stays top-level**<br/>
@@ -89,7 +107,7 @@ Fabric contains Connect, Compute, Storage, Environments, Gateway/App/Workspace
 adapters, agent package registry, and execution adapters. OPL Connect is the
 Fabric capability for stable access to literature sources such as PubMed,
 databases, tool libraries, institutional systems, external resources, and large
-skill packs. Ordinary users should see productized choices such as literature
+skill packs. Ordinary users see productized choices such as literature
 search, standard compute, GPU acceleration, private data bucket, institutional
 HPC, or team skill packs.
 
@@ -116,27 +134,29 @@ Together, these capabilities let OPL App and OPL Workspace connect materials,
 use tools, obtain compute resources, and run tasks in the right software
 environment.
 
-Literature connectors are a priority OPL Connect path. Early prototypes can
-start from MAS, ScholarSkills, or other domain skills. When PubMed, databases,
-tool libraries, or large skill packs become high-frequency paths, they should
-move into Fabric as stable connector capabilities. MAS, OPL App, and OPL
-Workspace can call the same connector directly, while domain skills keep
-ownership of search strategy, evidence judgment, quality floors, and writing
-behavior.
+The PubMed read-only connector is the first stable OPL Connect path. MAS or
+ScholarSkills can prototype search strategy, ranking, quality floors, evidence
+use, writing, and review behavior. When a connection becomes shared platform
+behavior, OPL Connect carries stable access, API shape, normalized source refs,
+credential boundaries, errors, retries, and rate limits. MAS, OPL App, and OPL
+Workspace call the same connector through capability profiles, and Ledger can
+record connector refs and provenance when a task needs a receipt.
 
 ## Skill-first Collaboration
 
-OPL Cloud supports a skill-first capability path: domain owners maintain the
-primary skill, enhancement packs provide references, packs, and quality floors,
-OPL Connect handles discovery, sync, install, and stable connection, and OPL
-Ledger records receipts and provenance.
+OPL Cloud supports a skill-first capability path: MAS, ScholarSkills, and other
+domain owners maintain strategy, quality judgment, and writing or review
+behavior; OPL Connect handles stable connector access, API behavior,
+normalization, source refs, errors, and rate limits; OPL Ledger records receipts
+and provenance.
 
 ```text
 domain skill prototype
--> high-frequency connector behavior
--> OPL Connect / OPL Fabric
--> MAS / Workspace / App usage
--> OPL Ledger receipts and provenance
+-> stable connector behavior
+-> OPL Connect inside OPL Fabric
+-> MAS / Workspace / App capability profile call
+-> normalized refs into MAS evidence workflow
+-> optional OPL Ledger receipt refs
 ```
 
 This keeps MAS and other domain systems in control of domain truth while mature
@@ -146,7 +166,7 @@ connector capabilities become reusable OPL Cloud platform capabilities.
 
 OPL Ledger is the evidence layer for remote work and result delivery.
 
-Every meaningful App, Workspace, or Cloud-managed job should be able to leave a
+Every meaningful App, Workspace, or Cloud-managed job can leave a
 receipt:
 
 ```text
@@ -209,9 +229,9 @@ Gateway services, Console implementation, Workspace runtime, Fabric adapters,
 Ledger storage, and billing systems live in their owning implementation
 surfaces.
 
-Readiness, release, billing, runtime, security, and reproducibility claims
-should come from the owning service, repository, contract, runtime readback, or
-owner receipt.
+Readiness, release, billing, runtime, security, and reproducibility claims come
+from the owning service, repository, contract, runtime readback, or owner
+receipt.
 
 ### Repository Layout
 

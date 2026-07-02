@@ -14,8 +14,8 @@ industry-specific workflows.
 | Workspace product flow | Basic role and lifecycle are defined | What a Workspace contains, how users enter it, how projects/tasks/artifacts/receipts appear | Workspace product flow |
 | Console governance | Scope and billing boundary are defined | Organization model, roles, approval targets, quota policy, audit policy | Organization and approval model |
 | Resource catalog | Fabric components are named | How compute, storage, connectors, environments, and agent registry are presented as product choices | Resource catalog model |
-| Literature connector baseline | PubMed is named as the first stable OPL Connect path | How MAS, App, Workspace, Connect, Console, and Ledger share one literature access flow | [OPL Connect](opl-connect.md) |
-| Skill-first capability path | Domain skills can prototype high-frequency capabilities | How main skills, enhancement packs, Connect install/sync, Fabric reuse, and Ledger provenance cooperate without moving domain truth into Cloud | [OPL Connect](opl-connect.md) |
+| Literature connector baseline | PubMed read-only is the first stable OPL Connect path | Implementation contract, examples, and tests for the request/result/receipt refs described in OPL Connect | [OPL Connect](opl-connect.md) |
+| Skill-first capability path | MAS and ScholarSkills keep domain strategy, quality judgment, writing, and review while Connect owns stable connector behavior | Concrete promotion checklist from skill prototype to shared connector | [OPL Connect](opl-connect.md) |
 | Connector governance | Connect examples exist | Connector lifecycle, approval, ownership, credentials, scope, audit | Connector lifecycle model |
 | Environment catalog | Environment role is named | Environment templates, image/package/version ownership, compatibility with agents and jobs | Environment catalog model |
 | Evidence records | Ledger shape is sketched | Human-readable receipt views, retention, review status, continuation, artifact refs | Evidence record model |
@@ -25,7 +25,7 @@ industry-specific workflows.
 ## Why These Gaps Matter
 
 Industry products can supply their own domain knowledge, rules, tools, review
-criteria, and deployment model. OPL Cloud should supply the reusable platform
+criteria, and deployment model. OPL Cloud supplies the reusable platform
 primitives:
 
 - workspaces;
@@ -38,6 +38,29 @@ primitives:
 
 When these primitives are clear, a downstream product can describe how it uses
 them without changing Cloud's core model.
+
+## Clarified Boundary
+
+OPL Fabric is the general resource substrate. OPL Connect is the connector
+capability inside Fabric. OPL Console governs only OPL Cloud-hosted or
+organization-managed resources; it is not the only entry point. OPL App, OPL
+Workspace, MAS, and other approved domain agents can call Fabric and Connect
+through capability profiles. OPL Ledger records receipt and provenance refs;
+MAS, ScholarSkills, and other domain owners keep strategy, quality judgment,
+writing, review, and delivery authority.
+
+For PubMed, the first stable path is:
+
+```text
+MAS skill
+-> OPL Connect PubMed read-only connector
+-> normalized refs
+-> MAS evidence workflow
+-> optional Ledger receipt refs
+```
+
+OPL App and OPL Workspace use the same path through their workbench capability
+profiles.
 
 ## Suggested Planning Order
 
