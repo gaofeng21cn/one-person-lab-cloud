@@ -1,58 +1,62 @@
 {
   "status": "opl_cloud_whitepaper_ready",
-  "generated_at": "2026-07-01T00:00:00.000Z",
+  "generated_at": "2026-07-04T00:00:00.000Z",
   "source_markdown": "docs/public/whitepaper/opl-cloud-whitepaper.md",
   "generated_pdf": "docs/public/whitepaper/opl-cloud-whitepaper.pdf",
   "temp_markdown": "tmp/pdfs/opl-cloud-whitepaper/opl-cloud-whitepaper.pandoc.md",
   "rendered_dir": "tmp/pdfs/opl-cloud-whitepaper/rendered",
-  "rendered_pages": 11,
+  "rendered_pages": 12,
   "rendered_page_hashes": [
     {
       "page": "page-01.png",
-      "sha1": "b39ccd7e928c1da0dcec0b98bfd94708beffd0d8"
+      "sha1": "8f2cb5189cdf6ad62ed8f9c8533aba2f72bcad31"
     },
     {
       "page": "page-02.png",
-      "sha1": "56dfa052b88d2fc48316a805201130448e6a6611"
+      "sha1": "b4cd81eb79da367aec646551ca65478e556f7ae8"
     },
     {
       "page": "page-03.png",
-      "sha1": "3d49f115ecb68794cf0bd0d06439400d4987bcf4"
+      "sha1": "17f40ba200fa3649b4cced46fcd1537bd8f2d335"
     },
     {
       "page": "page-04.png",
-      "sha1": "cb9f9567009ebf283e4dc17d1991aa6f8e0b1cbf"
+      "sha1": "ba15023fb651cb04d961edd83330eb5d7823929b"
     },
     {
       "page": "page-05.png",
-      "sha1": "ff6b86b5ac7578480ad8b982307e0545807094a9"
+      "sha1": "90fd8979a693c1cbbb564aa3ec6c613729971064"
     },
     {
       "page": "page-06.png",
-      "sha1": "c541222627d62690964995c636f0f8f92990e212"
+      "sha1": "d1b74267897e95e33f2989b30035466374fc7bf9"
     },
     {
       "page": "page-07.png",
-      "sha1": "3953d466f02edb0670ce7345c171c1855f955a6c"
+      "sha1": "e61622e5e20cdd39934372911c7f6310e16f022a"
     },
     {
       "page": "page-08.png",
-      "sha1": "b73ee371cbfcb846acf6900e4a93cb0212b402e7"
+      "sha1": "e71a348d79e30b2669d002d6d01b80711fe994e1"
     },
     {
       "page": "page-09.png",
-      "sha1": "2c62e1ae3edd40eb05c1639360289b79da59f470"
+      "sha1": "3a4e97c995de6043d1625faaf88f5e70dadb354d"
     },
     {
       "page": "page-10.png",
-      "sha1": "97374d91ed124de7ebe32867d674fbcb135fa370"
+      "sha1": "7bb53dbf6c9cf438246b8129b6819544c699426d"
     },
     {
       "page": "page-11.png",
-      "sha1": "7d87cf0fcea2c6b53acab48c781af429b16de6f3"
+      "sha1": "723410b95cec878d168fe25fd7d01c2346671a58"
+    },
+    {
+      "page": "page-12.png",
+      "sha1": "4ba57de880f09a92d13e997a0080d5f56fdb1bb3"
     }
   ],
-  "pdf_pages": 11,
+  "pdf_pages": 12,
   "pdf_page_size_pts": {
     "width": 612,
     "height": 792
@@ -76,13 +80,14 @@
     "回收",
     "回执",
     "OPL Cloud 的五大设计原则",
-    "OPL Cloud 的十大能力模块",
+    "OPL Cloud 的能力版图",
     "标准任务生命周期",
     "三类用户路径",
     "系统模型",
     "专业工作流",
     "五类信任机制",
-    "本文边界"
+    "本文边界",
+    "结语"
   ],
   "required_terms_status": "present",
   "tools": {

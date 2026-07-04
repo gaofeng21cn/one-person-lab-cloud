@@ -45,13 +45,14 @@ const requiredTerms = [
   '回收',
   '回执',
   'OPL Cloud 的五大设计原则',
-  'OPL Cloud 的十大能力模块',
+  'OPL Cloud 的能力版图',
   '标准任务生命周期',
   '三类用户路径',
   '系统模型',
   '专业工作流',
   '五类信任机制',
   '本文边界',
+  '结语',
 ];
 
 function run(command: string, args: string[], options: { env?: NodeJS.ProcessEnv } = {}) {
@@ -87,7 +88,7 @@ function parseMarkdownMetadata(markdown: string): WhitepaperMetadata {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) {
     throw new Error(`Whitepaper publication date must use YYYY-MM-DD, got ${publicationDate}.`);
   }
-  for (const section of ['## 定位摘要', '## OPL Cloud 的五大设计原则', '## OPL Cloud 的十大能力模块', '## 标准任务生命周期', '## 三类用户路径', '## 系统模型', '## 五类信任机制', '## 本文边界']) {
+  for (const section of ['## 定位摘要', '## OPL Cloud 的五大设计原则', '## OPL Cloud 的能力版图', '## 标准任务生命周期', '## 三类用户路径', '## 系统模型', '## 五类信任机制', '## 本文边界', '## 结语']) {
     if (!markdown.includes(section)) throw new Error(`Whitepaper Markdown must include ${section}.`);
   }
   const sectionCount = (markdown.match(/^##\s+/gm) ?? []).length;
