@@ -92,6 +92,7 @@
     "结语"
   ],
   "required_terms_status": "present",
+  "style_profile": "opl-whitepaper-pandoc-xelatex-v1",
   "tools": {
     "pandoc": "/opt/homebrew/bin/pandoc",
     "xelatex": "/opt/homebrew/bin/xelatex",
