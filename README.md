@@ -45,6 +45,20 @@ remote-resource workflows:
 
 **OPL Cloud is the cloud infrastructure layer for those workflows.**
 
+## Public Role Boundary
+
+This repository is the public navigation surface for the OPL Cloud product
+implementation family: OPL Gateway, OPL Workspace, OPL Console, OPL Fabric,
+and OPL Ledger. It explains the product and platform boundaries for that family
+and how those surfaces relate to OPL App, OPL Framework, MAS, and domain
+systems.
+
+OPL Cloud is not a replacement for OPL Framework. Runtime truth for task
+execution, App behavior, service state, Gateway APIs, Workspace runtime,
+Console governance, Fabric resources, Ledger receipts, billing, release status,
+and owner acceptance remains with the owning Framework, App, service
+implementations, contracts, runtime outputs, and owner receipts.
+
 Externally, OPL Cloud exposes OPL Gateway, OPL Workspace, and OPL Console as
 the user-visible products. Internally, it provides OPL Fabric and OPL Ledger as
 reusable platform capabilities. Local OPL App is the local workbench surface,
