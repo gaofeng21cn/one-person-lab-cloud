@@ -1,8 +1,10 @@
 {
   "status": "opl_cloud_whitepaper_ready",
   "generated_at": "2026-07-04T00:00:00.000Z",
-  "source_markdown": "docs/public/whitepaper/opl-cloud-whitepaper.md",
-  "generated_pdf": "docs/public/whitepaper/opl-cloud-whitepaper.pdf",
+  "source_markdown": "docs/whitepapers/opl-cloud-whitepaper.md",
+  "generated_markdown": "docs/site/latest/whitepapers/opl-cloud-whitepaper.md",
+  "generated_html": "docs/site/latest/whitepapers/opl-cloud-whitepaper.html",
+  "generated_pdf": "docs/site/latest/whitepapers/opl-cloud-whitepaper.pdf",
   "temp_markdown": "tmp/pdfs/opl-cloud-whitepaper/opl-cloud-whitepaper.pandoc.md",
   "rendered_dir": "tmp/pdfs/opl-cloud-whitepaper/rendered",
   "rendered_pages": 12,

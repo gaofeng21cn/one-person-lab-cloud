@@ -197,8 +197,8 @@ environment catalogs can enter OPL Cloud through the same Fabric flow.
 
 ## Documentation
 
-- [OPL Cloud Whitepaper Markdown](docs/public/whitepaper/opl-cloud-whitepaper.md)
-- [OPL Cloud Whitepaper PDF](docs/public/whitepaper/opl-cloud-whitepaper.pdf)
+- [OPL Cloud Whitepaper](https://gaofeng21cn.github.io/one-person-lab-cloud/latest/whitepapers/opl-cloud-whitepaper.html)
+- [OPL Cloud Whitepaper PDF](https://gaofeng21cn.github.io/one-person-lab-cloud/latest/whitepapers/opl-cloud-whitepaper.pdf)
 - [Product Matrix](docs/product-matrix.md)
 - [Architecture](docs/architecture.md)
 - [Platform Capability Gaps](docs/platform-capability-gaps.md)
