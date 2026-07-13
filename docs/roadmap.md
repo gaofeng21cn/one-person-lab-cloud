@@ -1,139 +1,55 @@
-# Roadmap
+# OPL Cloud Roadmap
 
-## Available
+This roadmap describes the target delivery order for the Cloud implementation
+family. It does not freeze current availability. Fresh service, contract,
+runtime and owner evidence is required for any delivered or ready claim.
 
-- OPL Gateway brand and public integration surface.
-- OPL Cloud product and architecture entry point.
+## Stable Design Decisions
 
-## First Cloud Slice
+- OPL App and OPL Workspace are continuous local/cloud workbenches.
+- Console owns organization policy, approval, quota, billing and managed
+  Workspace lifecycle.
+- Fabric owns resource discovery/binding and execution adapters.
+- Ledger owns receipt and provenance refs, not source or domain truth.
+- OPL Packages is the only Agent/capability package lifecycle, manifest, digest
+  and lock authority. Cloud does not create an Agent Registry.
+- Domain Agents own professional strategy, quality verdict and delivery.
 
-The first Cloud slice proves the App/Workspace equivalence and one managed
-resource path:
+## Functional And Structural Gaps
 
-- OPL Workspace: create one cloud OPL App Workspace Instance with isolated
-  URL, account, storage directory, and base package.
-- OPL App cloud connection: let local OPL App use the same Gateway, Fabric, and
-  Ledger contracts as Workspace.
-- OPL Console: manage users, packages, Gateway usage, Workspace lifecycle, and
-  managed-resource policy.
-- OPL Connect literature baseline: expose a stable PubMed connector usable from
-  local OPL App, cloud OPL Workspace, and MAS.
-- Skill-first connector path: let MAS and other domain skills prototype
-  high-frequency capabilities, then move stable literature, database, tool, or
-  large skill-pack access into Connect/Fabric while domain owners keep domain
-  truth.
-- OPL Fabric v0: support one shared App/Workspace resource flow with Docker or
-  VM compute plus one volume or bucket storage path.
-- OPL Ledger v0: generate receipt JSON for App actions, Workspace actions, and
-  managed jobs.
-- Agent lifecycle docs: define Agent Blueprint, Agent Package, OPL Agent
-  Registry, Agent Instance, Agent Run, and Ledger receipt boundaries.
-
-## In Development
-
-- Workspace package and billing model.
-- Console management surface.
-- Gateway usage and package visibility.
-
-## Planning Gaps To Close
-
-| Gap | Decision | Planning artifact |
+| Gap | Target outcome | Owner route |
 | --- | --- | --- |
-| Platform capability clarity | Cloud must clarify reusable platform primitives before downstream products specialize them | [Platform Capability Gaps](platform-capability-gaps.md) |
-| Shared App/Workspace execution contract | One plan, approve, execute, monitor, collect, receipt contract works from local App and cloud Workspace | [Shared Execution Contract](contracts/shared-execution-contract.md) |
-| Managed-resource boundary | Console manages OPL Cloud-hosted or organization-managed resources; user-provided local, SSH, and HPC resources use Fabric without default Console billing | [Resource Ownership And Billing](contracts/resource-ownership-and-billing.md) |
-| Literature and skill-first connector path | PubMed, databases, tools, resources, and large skill packs move from high-frequency domain skill prototypes into OPL Connect while MAS and other domain owners keep domain strategy, quality floors, and evidence judgment | [OPL Connect](opl-connect.md) |
-| Workspace surface | Workspace is the cloud OPL App surface with Workspace Instance lifecycle | [Workspace Lifecycle](workspace-lifecycle.md) |
-| Console metering and billing | Billing starts from Gateway usage, Workspace package, managed compute, managed storage, and managed connectors | [Console Governance And Billing](console-governance-and-billing.md) |
-| Fabric adapter order | Start with a read-only PubMed connector and one Docker/VM plus storage path; add SSH/HPC, GPU, and more data connectors after source refs and receipts stabilize | [Fabric Adapter Contract](fabric-adapter-contract.md) |
-| Ledger receipt schema | Receipts bind plan, approval, command/code, environment, input refs, output refs, review result, owner, cost, and continuation | [Ledger Receipt Schema](contracts/ledger-receipt-schema.md) |
-| Environment catalog | Environments are the Fabric environment catalog selected or inherited by App and Workspace | Environment manifest shape for runtime image, packages, locks, hardware needs, and owner |
-| Agent lifecycle | OPL Meta Agent builds packages; Console approves; Fabric binds resources; App or Workspace exposes Agent Instances; Ledger records Agent Runs | [OPL Agent Lifecycle](agent-lifecycle.md) and [Agent Registry Entry](contracts/agent-registry-entry.md) |
+| Workspace continuity | The same project/task/artifact model works locally and online | App + Workspace implementation owners |
+| Managed-resource policy | Organization approval and quotas are clear without routing every action through Console | Console |
+| Resource binding | Compute, storage, environments and connectors use one plan/execute/collect contract | Fabric |
+| Package projection | Console, Fabric and Workspace consume one OPL Package manifest/lock ref without copying truth | Framework OPL Packages + each consumer |
+| Connector boundary | Shared access stays generic; domain-specific adapters keep domain semantics | Connect + domain owner |
+| Evidence continuation | Runs return refs, review status and continuation without centralizing source data | Ledger + workbench |
 
-## Milestones
+## Suggested Delivery Order
 
-### M0: Planning Baseline
+1. Close the App/Workspace contract and one managed Workspace path.
+2. Close one resource execution path with explicit plan, approval, collection
+   and receipt.
+3. Project OPL Package status/actions into Cloud surfaces without a registry
+   copy or Cloud writer.
+4. Add Console organization policy for exact package and resource refs.
+5. Add connector, SSH/HPC, GPU and storage adapters only after the common
+   resource contract is stable.
+6. Add exact Ledger/public readback for user-visible actions and artifacts.
 
-- Align product docs on App/Workspace equivalence.
-- Clarify Workspace product flow.
-- Clarify Console organization and approval model.
-- Clarify Fabric resource catalog.
-- Clarify Ledger evidence record view.
-- Define resource ownership and billing matrix.
-- Define the shared execution contract.
-- Define minimal Ledger receipt schema.
-- Define Workspace lifecycle and Console scope.
+## Evidence Lane
 
-### M1: Gateway + Workspace Baseline
+Functional/structural completion and live evidence are separate. Contracts,
+docs, generated surfaces and tests can close structural gaps. Provider soak,
+real institutional data boundaries, managed-resource billing, real user paths
+and owner acceptance remain later evidence lanes and cannot be inferred from
+the structural work.
 
-- Use OPL Gateway as the first metered Cloud capability.
-- Create one Workspace instance as cloud OPL App.
-- Expose the same Gateway configuration path to local OPL App.
-- Record basic usage events for Gateway and Workspace packages.
+## Explicit Non-Goals
 
-### M2: Fabric v0
-
-- Provide one read-only PubMed connector through OPL Connect.
-- Let MAS request literature through the App or Workspace capability path.
-- Let MAS keep the primary domain skill while OPL Connect handles discovery,
-  sync, install, source refs, and connector receipts for stable shared paths.
-- Return normalized literature refs that MAS can use and Ledger can reference.
-- Run one managed Docker or VM job from App and Workspace through the shared
-  plan, approve, execute, monitor, collect, receipt flow.
-- Attach one storage path and collect output refs.
-- Record a Ledger receipt for each managed job.
-
-### M3: Console v0
-
-- Manage users, packages, Workspace lifecycle, Gateway usage, and managed
-  resource quotas.
-- Show which resources are OPL Cloud-hosted, organization-managed, or
-  user-provided.
-- Keep user-provided SSH/HPC resources outside default Console billing while
-  still supporting Fabric receipts.
-
-### M4: Fabric Adapters
-
-- Add SSH/HPC adapters after the shared execution contract is stable.
-- Add GPU workers when job scheduling, environment selection, and cost capture
-  are covered by receipts.
-- Add additional literature, database, and institutional storage connectors
-  after the PubMed baseline proves access policy and source refs.
-
-### M5: Agent Lifecycle
-
-- Register approved OPL-compatible Agent Packages.
-- Instantiate agents from OPL App or OPL Workspace.
-- Bind each Agent Instance to approved resources, connectors, environments, and
-  quotas.
-- Record Agent Run receipts in OPL Ledger.
-
-## Planned Fabric Adapters
-
-- PubMed read-only connector.
-- GPU workers.
-- SSH and HPC adapters.
-- Additional literature databases.
-- Research databases.
-- Institutional storage refs.
-- Team-approved connector registry.
-- Versioned software environment catalog.
-- OPL Agent Registry for approved OPL-compatible Agent Packages.
-
-## Planned Ledger Capabilities
-
-- Artifact provenance.
-- Reviewer gates for MAS, MAG, RCA, and BookForge.
-- Policy decisions and audit records.
-- Continuation refs for resumed work.
-- Agent Run receipts for App and Workspace Agent Instances.
-
-## First-Version Focus
-
-- Keep OPL Workspace as the cloud OPL App surface.
-- Keep OPL Console focused on OPL Cloud-hosted or organization-managed
-  resources, permissions, lifecycle, policy, and billing.
-- Keep OPL Fabric as the shared resource layer for local App, cloud Workspace,
-  user-provided SSH/HPC, and OPL Cloud-hosted resources.
-- Keep OPL Environments as the Fabric environment catalog until environment
-  management becomes a user-visible team workflow.
+- Do not rebuild package discovery, installation, lock or repair in Cloud.
+- Do not use Console policy approval as package-byte or domain-quality approval.
+- Do not use Fabric binding success as Agent readiness.
+- Do not use Ledger receipt presence as source truth or professional verdict.
+- Do not keep target connector examples as false current availability claims.

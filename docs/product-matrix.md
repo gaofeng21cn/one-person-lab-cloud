@@ -1,79 +1,48 @@
 # OPL Cloud Product Matrix
 
-OPL Cloud is the umbrella brand for One Person Lab cloud infrastructure.
-Its user-visible Cloud products are OPL Gateway, OPL Workspace, and
-OPL Console. OPL App is the local workbench that can consume the same Cloud
-platform capabilities without making Console the only entry point.
+OPL Cloud is the umbrella target architecture for One Person Lab cloud
+infrastructure. The repository navigates the implementation family; it does not
+claim that every listed service is deployed.
 
-| Layer | Brand | Primary user value | Surface |
+| Layer | Brand | Primary user value | Owner boundary |
 | --- | --- | --- | --- |
-| AI access | OPL Gateway | One managed entry point for frontier AI access, model routing, keys, provider policy, and usage metering | Product |
-| User workbench | OPL Workspace / OPL App integration | Cloud OPL App and local OPL App share project work, task sessions, artifact preview, and result delivery | Product / local entry |
-| Management | OPL Console | One cloud console for accounts, organizations, billing, permissions, workspaces, connectors, and resource policy | Product |
-| Resource substrate | OPL Fabric | One resource layer for Connect, Compute, Storage, Environments, Gateway/App/Workspace adapters, agent packages, and execution adapters | Platform |
-| Evidence record | OPL Ledger | One evidence layer for job receipts, artifact provenance, reviewer gates, audit records, and continuation refs | Platform |
+| AI access | OPL Gateway | Model access, routing and usage | No package or domain truth |
+| User workbench | OPL Workspace / OPL App | Continuous project, task, artifact and review experience | Displays owner projections |
+| Management | OPL Console | Organization, billing, permissions, approval and managed-resource policy | No package mutation or execution |
+| Resource substrate | OPL Fabric | Connect, Compute, Storage, Environments and execution adapters | Resource binding only |
+| Evidence record | OPL Ledger | Receipt, provenance, review and continuation refs | Refs only; no owner verdict |
+| Package lifecycle | OPL Packages | Manifest, digest, install, lock, update, rollback and repair | Framework-owned, not a Cloud registry |
+| Professional work | Domain Agents | Strategy, quality judgment and delivery authority | Domain-owned |
 
-## Product Surfaces
-
-The Cloud product-facing surfaces are:
-
-- OPL Gateway: the AI capability and usage entry point.
-- OPL Workspace: the cloud OPL App surface.
-- OPL Console: the management surface.
-
-OPL App remains the local workbench surface and a first-class consumer of Cloud
-platform capabilities.
-
-The next two surfaces are platform capabilities:
-
-- OPL Fabric: resource and connector substrate.
-- OPL Ledger: evidence and receipt record.
-
-Fabric and Ledger can be used by more than one product surface. OPL Console
-governs hosted or organization-managed usage, while OPL App, OPL Workspace, MAS,
-and other domain systems can call reusable platform capabilities directly when
-their capability profile allows it.
-
-## Gateway And Fabric
-
-Gateway is technically a resource access capability, but it remains top-level
-because users can directly configure it, use it, meter it, and pay for it.
-Fabric keeps the resource substrate behind OPL App, OPL Workspace, and Console:
-OPL Connect, OPL Compute, Storage, OPL Environments, Gateway/App/Workspace
-adapters, agent registry, and execution adapters.
-
-## Relationship To OPL Meta Agent
-
-OPL Meta Agent can create an Agent Blueprint and Agent Package candidate. OPL
-Cloud carries the package through approval, registry, instantiation, execution,
-and receipt:
+## Agent Use Across Products
 
 ```text
-Agent Blueprint → Agent Package → OPL Agent Registry → Agent Instance → Agent Run
+Agent Package candidate
+-> OPL Packages manifest / lock / lifecycle receipt
+-> optional Console organization availability policy
+-> Fabric resource binding
+-> App or Workspace Agent Instance
+-> Ledger run refs
 ```
 
-Console approves package versions and access policy. Fabric prepares resources.
-OPL App or OPL Workspace is where users run the Agent Instance. Ledger records
-the Agent Run.
+Console can allow an exact package ref for a team. Fabric can bind the resources
+declared by that ref. App and Workspace can expose it. Ledger can record it.
+Only OPL Packages can change installed package state.
 
-## Relationship To OPL App
+## Local And Cloud Workbench
 
-OPL App is the local workbench surface. OPL Workspace is the cloud OPL App
-surface for the same OPL App experience. They should share the same task,
-artifact, resource-plan, approval, execution, collection, and receipt model.
+OPL App is the local workbench and OPL Workspace is the cloud workbench. They
+share the same task, artifact, resource-plan, approval, execution, collection
+and receipt concepts. Console governance starts only when organization policy
+or managed Cloud resources apply.
 
-OPL Cloud should extend both surfaces with Gateway, Fabric, and Ledger
-capabilities while keeping source-of-truth claims with the owning services,
-repositories, contracts, runtime outputs, and receipts.
+User-provided local, SSH or HPC resources can follow the Fabric execution
+contract without becoming Console-billed resources by default. Sensitive data
+remains with its owner unless an explicit approved transfer says otherwise.
 
-Console management starts when a resource is OPL Cloud-hosted or
-organization-managed: billing, quotas, permissions, workspace lifecycle,
-connector approvals, environment policy, and audit policy belong there.
-User-provided local, SSH, or HPC resources can still use the standard Fabric
-flow without becoming Console-billed resources by default.
+## Currentness
 
-The same pattern applies to connectors. PubMed access, databases, tool
-libraries, resource catalogs, or large skill packs can start as a MAS,
-ScholarSkills, or other domain skill prototype, then move into OPL Connect when
-they become stable shared capabilities. Console manages them only when the
-connector is organization-approved, quota-controlled, audited, or billed.
+This matrix defines product responsibility. Current implementation and
+availability must be read from each service repo, contract, runtime health and
+owner receipt. Package state must be read from `opl packages` and its package
+lock, not from a Cloud catalog projection.

@@ -18,7 +18,7 @@ requested -> provisioning -> active -> suspended -> deleted
 
 | Action | Meaning | Main owner |
 | --- | --- | --- |
-| Create | Select package, compute, storage, and initial access policy | Console |
+| Create | Select permitted OPL Package refs, compute, storage, and initial access policy | Console policy; package state remains OPL Packages |
 | Provision | Prepare runtime, storage, credentials, URL, and base OPL App payload | Fabric |
 | Open | User enters the Workspace through an isolated URL | Workspace |
 | Rotate credentials | Reset username or password for the WebUI surface | Console |
@@ -37,7 +37,8 @@ Required planning fields:
 - `team_ref`
 - `url`
 - `status`
-- `package_ref`
+- `package_manifest_ref`
+- `package_lock_ref`
 - `compute_profile`
 - `storage_profile`
 - `gateway_policy_ref`
@@ -52,3 +53,7 @@ Required planning fields:
 Create, suspend, resume, delete, credential rotation, storage binding, and
 managed job actions should leave Ledger receipts when they affect user work,
 cost, security, or reproducibility.
+
+Workspace records only reference package truth. Provisioning cannot install,
+update, roll back, repair, or rewrite an OPL Package lock; those actions route to
+OPL Packages.

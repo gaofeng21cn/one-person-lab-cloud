@@ -1,67 +1,28 @@
-# Agent Registry Entry
+# Agent Registry Entry Tombstone
 
-OPL Agent Registry records approved OPL-compatible agent packages that can be
-instantiated from OPL App or OPL Workspace.
+Owner: `one-person-lab-cloud`
+Purpose: `retired_agent_registry_schema_pointer`
+State: `history_tombstone`
+Machine boundary: This file is not an active schema or registry source. It only
+preserves the old path and routes readers to the current package boundary.
 
-It is part of OPL Fabric and is managed through OPL Console policy.
+The former Cloud-owned `OPL Agent Registry` model is retired. It duplicated
+package identity, version and approval state across Fabric and Console, which
+could drift from the Framework package lock.
 
-## Registry Entry Shape
+The current boundary is:
 
-```json
-{
-  "agent_id": "agent.example",
-  "package_name": "Example Agent",
-  "package_version": "0.1.0",
-  "blueprint_ref": "blueprint-ref",
-  "package_ref": "package-ref",
-  "owner": "owner-ref",
-  "status": "approved",
-  "capabilities": [],
-  "required_connectors": [],
-  "required_environment": "environment-ref",
-  "required_compute": {
-    "profile": "standard",
-    "gpu": false
-  },
-  "required_storage": {
-    "profile": "workspace-volume"
-  },
-  "review_gates": [],
-  "allowed_teams": [],
-  "allowed_workspaces": [],
-  "quota_policy_ref": "quota-policy-ref",
-  "ledger_policy_ref": "ledger-policy-ref"
-}
-```
+| Former field or action | Current owner |
+| --- | --- |
+| Package id, version, digest and dependencies | Validated OPL Package manifest |
+| Installed state and current version | OPL Packages package lock |
+| Install, update, rollback, uninstall and repair | OPL Packages lifecycle transaction |
+| Lifecycle evidence | OPL Packages lifecycle receipt |
+| Organization/team availability | Console policy referencing an exact package ref |
+| Compute, storage, environment and connector requirements | Fabric binding derived from package requirements |
+| User-visible Agent Instance | OPL App / Workspace |
+| Run and review evidence refs | OPL Ledger |
 
-## Lifecycle
-
-```text
-Agent Blueprint
--> Agent Package
--> Registry review
--> Console approval
--> Fabric resource binding
--> App or Workspace Agent Instance
--> Agent Run
--> Ledger receipt
-```
-
-## Status Values
-
-- `draft`
-- `reviewing`
-- `approved`
-- `suspended`
-- `retired`
-
-## Required Review
-
-An approved registry entry should make these points clear:
-
-- what the agent is for;
-- which package version is approved;
-- which teams and workspaces may use it;
-- which connectors, compute, storage, and environment it needs;
-- which reviewer gates apply;
-- which Ledger receipt policy records each run.
+Active machine truth is obtained through the OPL Framework package contracts
+and fresh `opl packages ... --json` readback. Cloud surfaces may project those
+refs, but must not create another package registry, lock or lifecycle ledger.

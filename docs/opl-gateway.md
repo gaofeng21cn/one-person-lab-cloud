@@ -24,12 +24,12 @@ Gateway usage should be groupable by:
 - user or service identity;
 - Workspace;
 - task or job;
-- agent package or Agent Instance;
+- exact OPL Package ref or Agent Instance;
 - provider and model.
 
-This gives Console enough information for quotas, budgets, package visibility,
-and downstream product reporting without making Gateway responsible for
-industry-specific policy.
+This gives Console enough information for quotas, budgets, package-attributed
+usage, and downstream reporting without making Gateway responsible for package
+lifecycle or industry-specific policy.
 
 Gateway is technically a resource access capability, but it should not be
 hidden inside OPL Fabric. Users can directly configure it, use it, meter it, and

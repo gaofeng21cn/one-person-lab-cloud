@@ -1,58 +1,42 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildOplWhitepaper } from './opl-whitepaper-builder.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const explicitFrameworkRepo = process.env.OPL_FRAMEWORK_REPO?.trim();
+const candidates = explicitFrameworkRepo
+  ? [path.resolve(explicitFrameworkRepo)]
+  : [
+      path.resolve(repoRoot, '..', 'one-person-lab'),
+      path.resolve(repoRoot, '..', '..', 'one-person-lab'),
+    ];
 
-buildOplWhitepaper({
-  repoRoot,
-  sourceMarkdown: 'docs/whitepapers/opl-cloud-whitepaper.md',
-  outputName: 'opl-cloud-whitepaper',
-  status: 'opl_cloud_whitepaper_ready',
-  owner: 'One Person Lab',
-  coverLine: 'OPL Gateway / OPL Workspace / OPL Console / OPL Fabric / OPL Ledger',
-  headerTitle: 'OPL Cloud Whitepaper',
-  minSections: 8,
-  minPdfPages: 8,
-  requiredSections: [
-    '## 定位摘要',
-    '## OPL Cloud 的五大设计原则',
-    '## OPL Cloud 的能力版图',
-    '## 标准任务生命周期',
-    '## 三类用户路径',
-    '## 系统模型',
-    '## 五类信任机制',
-    '## 本文边界',
-    '## 结语',
+const frameworkRepo = candidates.find((candidate) =>
+  fs.existsSync(path.join(candidate, 'scripts', 'run-domain-whitepaper.ts')),
+);
+
+if (!frameworkRepo) {
+  const searched = candidates.map((candidate) => `  - ${candidate}`).join('\n');
+  throw new Error(
+    `Cannot locate the OPL Framework whitepaper toolchain. Set OPL_FRAMEWORK_REPO.\nSearched:\n${searched}`,
+  );
+}
+
+const result = spawnSync(
+  process.execPath,
+  [
+    '--experimental-strip-types',
+    path.join(frameworkRepo, 'scripts', 'run-domain-whitepaper.ts'),
+    '--repo-root',
+    repoRoot,
+    '--profile',
+    'contracts/whitepaper_profile.json',
   ],
-  requiredTerms: [
-    'OPL Cloud 白皮书',
-    'OPL Gateway',
-    'OPL App',
-    'OPL Workspace',
-    'OPL Console',
-    'OPL Fabric',
-    'OPL Ledger',
-    'OPL Connect',
-    'OPL Compute',
-    'OPL Environments',
-    'OPL Agent Registry',
-    '计划',
-    '批准',
-    '执行',
-    '监控',
-    '回收',
-    '回执',
-    'OPL Cloud 的五大设计原则',
-    'OPL Cloud 的能力版图',
-    '标准任务生命周期',
-    '三类用户路径',
-    '系统模型',
-    '专业工作流',
-    '五类信任机制',
-    '本文边界',
-    '结语',
-  ],
-});
+  { cwd: repoRoot, env: process.env, stdio: 'inherit' },
+);
+
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;

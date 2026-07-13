@@ -1,78 +1,49 @@
 # Platform Capability Gaps
 
-OPL Cloud is the general infrastructure substrate for OPL products and
-industry-specific platforms.
+OPL Cloud is the target infrastructure family for OPL products and domain
+Agents. This document separates functional/structural gaps from later live
+evidence; it does not claim implementation readiness.
 
-For downstream products to build on it safely, OPL Cloud needs to make several
-general capabilities clearer. These are platform capabilities, not
-industry-specific workflows.
+## Functional And Structural Gaps
 
-## Capability Gap Map
+| Capability | Target boundary | Gap to close |
+| --- | --- | --- |
+| Workspace workbench | Continuous App/Workspace project, task, artifact and review model | Close one explicit shared workbench contract |
+| Console governance | Organization policy, roles, approval, quota, billing and managed lifecycle | Keep policy distinct from package/resource mutation |
+| Fabric resources | Compute, storage, connector and environment availability/binding | Close one shared plan/execute/collect envelope |
+| Package projection | OPL Packages is sole manifest/digest/install/lock/update/rollback/repair owner | Make every Cloud surface consume exact refs without a registry copy |
+| Connector access | Connect owns shared access; domain adapters own domain semantics | Remove false shared-connector/currentness claims |
+| Evidence | Ledger records receipt/provenance/review/continuation refs | Keep refs connected to owner sources without copying truth |
+| Usage and quota | Console groups managed usage by organization/workspace/resource/task | Distinguish commercial service plans from OPL Packages |
 
-| Capability | Current state | Needs to be clearer | Suggested next planning artifact |
-| --- | --- | --- | --- |
-| Workspace product flow | Basic role and lifecycle are defined | What a Workspace contains, how users enter it, how projects/tasks/artifacts/receipts appear | Workspace product flow |
-| Console governance | Scope and billing boundary are defined | Organization model, roles, approval targets, quota policy, audit policy | Organization and approval model |
-| Resource catalog | Fabric components are named | How compute, storage, connectors, environments, and agent registry are presented as product choices | Resource catalog model |
-| Literature connector baseline | PubMed read-only is the first stable OPL Connect path | Implementation contract, examples, and tests for the request/result/receipt refs described in OPL Connect | [OPL Connect](opl-connect.md) |
-| Skill-first capability path | MAS and ScholarSkills keep domain strategy, quality judgment, writing, and review while Connect owns stable connector behavior | Concrete promotion checklist from skill prototype to shared connector | [OPL Connect](opl-connect.md) |
-| Connector governance | Connect examples exist | Connector lifecycle, approval, ownership, credentials, scope, audit | Connector lifecycle model |
-| Environment catalog | Environment role is named | Environment templates, image/package/version ownership, compatibility with agents and jobs | Environment catalog model |
-| Evidence records | Ledger shape is sketched | Human-readable receipt views, retention, review status, continuation, artifact refs | Evidence record model |
-| Agent deployment | Agent lifecycle is sketched | Package intake, approval, resource binding, instance creation, run records | Agent deployment model |
-| Usage and quota | Gateway/Console boundaries are named | Usage grouping across org, workspace, resource, connector, agent, and task | Usage and quota model |
+## Evidence Gaps
 
-## Why These Gaps Matter
+- real App-to-Workspace continuation;
+- real Cloud-hosted and institution-owned resource paths;
+- sensitive-data egress policy and owner acceptance;
+- provider and connector runtime evidence;
+- managed billing and quota readback;
+- exact user-visible receipts and continuation;
+- production soak and release evidence.
 
-Industry products can supply their own domain knowledge, rules, tools, review
-criteria, and deployment model. OPL Cloud supplies the reusable platform
-primitives:
+Docs, contracts, generated projections and focused tests can close structural
+gaps but cannot substitute for these evidence lanes.
 
-- workspaces;
-- organizations and approvals;
-- AI access and usage;
-- compute, storage, connectors, and environments;
-- domain skill, enhancement pack, and large skill-pack connection paths;
-- agent package deployment;
-- receipts, provenance, and continuation records.
+## Package No-Second-Truth Rule
 
-When these primitives are clear, a downstream product can describe how it uses
-them without changing Cloud's core model.
-
-## Clarified Boundary
-
-OPL Fabric is the general resource substrate. OPL Connect is the connector
-capability inside Fabric. OPL Console governs only OPL Cloud-hosted or
-organization-managed resources; it is not the only entry point. OPL App, OPL
-Workspace, MAS, and other approved domain agents can call Fabric and Connect
-through capability profiles. OPL Ledger records receipt and provenance refs;
-MAS, ScholarSkills, and other domain owners keep strategy, quality judgment,
-writing, review, and delivery authority.
-
-For PubMed, the first stable path is:
-
-```text
-MAS skill
--> OPL Connect PubMed read-only connector
--> normalized refs
--> MAS evidence workflow
--> optional Ledger receipt refs
-```
-
-OPL App and OPL Workspace use the same path through their workbench capability
-profiles.
+Cloud does not create an Agent Registry. OPL Packages provides the validated
+manifest, digest, dependency closure, installed state, lock and lifecycle
+receipt. Console projects organization availability, Fabric projects resource
+binding, Workspace projects user state/actions and Ledger stores refs. Every
+projection must route mutation back to OPL Packages.
 
 ## Suggested Planning Order
 
-1. Workspace product flow.
-2. Organization and approval model.
-3. Resource catalog model.
-4. Literature connector baseline.
-5. Evidence record model.
-6. Agent deployment model.
+1. Shared App/Workspace workbench contract.
+2. Package projection and owner routing.
+3. Organization and approval model.
+4. Resource plan/execution contract.
+5. Connector and domain-adapter boundary.
+6. Evidence/continuation model.
 7. Usage and quota model.
-8. Connector lifecycle model.
-9. Environment catalog model.
-
-This order starts from what users and administrators need to understand, then
-moves into platform internals.
+8. Live provider, resource and user-path evidence.

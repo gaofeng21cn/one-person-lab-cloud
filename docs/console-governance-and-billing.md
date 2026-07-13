@@ -5,48 +5,33 @@ organization-managed usage.
 
 ## Governance Scope
 
-Console manages:
+Console manages accounts, teams, roles, managed Workspace lifecycle, Gateway
+usage policy, compute/storage/connector/environment policy, quotas, budgets,
+approvals, audit policy and Ledger retention policy.
 
-- accounts, teams, and organizations;
-- Workspace lifecycle and packages;
-- Gateway usage and provider policy;
-- managed compute and storage packages;
-- connector approvals;
-- environment approvals;
-- agent package approvals;
-- quotas and budget controls;
-- Ledger receipt retention and reviewer-gate policy.
+For Agents and capability packages, Console stores only an organization
+availability policy referencing an exact OPL Package manifest/lock ref. It does
+not install, update, roll back, repair or write package state.
 
-## Package Model
+## Service Plan Model
 
-The first package model can stay simple:
+Billing plans are intentionally not called packages:
 
-| Package area | User-facing package | Metered breakdown |
+| Area | User-facing plan | Metered breakdown |
 | --- | --- | --- |
-| Gateway | AI usage package | provider, model, tokens, requests |
-| Workspace | Workspace package | instance, uptime, storage allocation |
-| Compute | Standard or accelerated compute | adapter, duration, GPU flag |
-| Storage | Workspace or private storage | allocation, retention, transfer signal |
-| Connectors | Approved connector access | connector actions and policy events |
-| Agents | Approved agent runs | package, instance, run, reviewer gate |
-
-## Policy Objects
-
-- `workspace_policy`
-- `gateway_policy`
-- `compute_policy`
-- `storage_policy`
-- `connector_policy`
-- `environment_policy`
-- `agent_policy`
-- `ledger_policy`
-- `budget_policy`
+| Gateway | AI usage plan | provider, model, tokens, requests |
+| Workspace | Workspace service plan | instance, uptime, storage allocation |
+| Compute | Standard or accelerated compute plan | adapter, duration, GPU flag |
+| Storage | Workspace or private storage plan | allocation, retention, transfer signal |
+| Connectors | Managed connector access | actions and policy events |
+| Agents | Agent-run usage | OPL Package ref, instance, run, reviewer gate |
 
 ## Billing Boundary
 
-Console can report all activity that flows through OPL Cloud contracts. Billing
-applies first to Gateway usage, OPL Cloud-hosted Workspace packages, managed
-compute, managed storage, and organization-managed connector packages.
+Billing applies first to Gateway usage, Cloud-hosted Workspace service plans,
+managed compute/storage and organization-managed connectors. User-provided
+local, SSH or HPC resources can produce usage and receipt refs without becoming
+Cloud-billed by default.
 
-User-provided local, SSH, or HPC resources can still produce receipts and usage
-signals without becoming Cloud-billed resources by default.
+Attaching an OPL Package ref to usage is attribution only; it grants no package
+lifecycle authority and no domain readiness claim.

@@ -92,7 +92,8 @@ review results, owner, and continuation entry.
 | --- | --- |
 | OPL App | Starts local or user-provided resource work through the same plan and receipt path |
 | OPL Workspace | Starts cloud workbench jobs and displays status, outputs, and receipts |
-| OPL Console | Applies policy, package, quota, approval, and billing rules for managed resources |
+| OPL Console | Applies organization policy, quota, approval, and billing rules for managed resources and exact package refs |
 | OPL Fabric | Selects adapters, prepares resources, runs jobs, and collects outputs |
 | OPL Ledger | Records receipts, provenance, reviewer results, and continuation refs |
+| OPL Packages | Owns package manifest, digest, install, lock, update, rollback, repair, and lifecycle receipts outside this resource-execution contract |
 | Domain agent | Uses approved Fabric capabilities while keeping domain truth, quality judgment, and delivery authority |

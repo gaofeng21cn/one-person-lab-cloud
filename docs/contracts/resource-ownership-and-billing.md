@@ -1,28 +1,26 @@
 # Resource Ownership And Billing
 
-This matrix defines when OPL Console manages and bills resources.
-
-## Ownership Matrix
+This matrix defines when Console manages or bills resources. `Service plan`
+means a commercial offering; `OPL Package` means a Framework-managed Agent or
+capability package. The two are not interchangeable.
 
 | Resource source | Example | Console management | Billing default |
 | --- | --- | --- | --- |
-| OPL Cloud-hosted | Managed Workspace, managed Docker or VM, managed storage | Yes | Billed by package and usage |
-| Organization-managed | Hospital, lab, or enterprise resource under shared policy | Yes | Billed or reported according to organization policy |
-| User-provided local | User laptop or local Docker | Optional visibility | Not Cloud-billed by default |
-| User-provided SSH or HPC | User credential to lab server or HPC login node | Optional visibility | Not Cloud-billed by default |
-| External provider | Model provider, storage provider, compute provider, data source, or skill-pack source | Policy-managed when connected | Billed through provider usage, package, or pass-through policy |
+| OPL Cloud-hosted | Managed Workspace, compute or storage | Yes | Service plan plus usage |
+| Organization-managed | Hospital, lab or enterprise resource under shared policy | Yes | Organization policy |
+| User-provided local | User laptop or local runtime | Optional visibility | Not Cloud-billed by default |
+| User-provided SSH/HPC | Lab server or HPC account | Optional visibility | Not Cloud-billed by default |
+| External provider | Model, storage, compute or data source | Policy-managed when connected | Provider or pass-through usage |
 
 ## Metering Sources
 
-- Gateway usage: provider, model, tokens, requests, cost signal.
-- Workspace usage: package, uptime, storage allocation, user count.
-- Compute usage: adapter, runtime duration, GPU flag, queue signal.
-- Storage usage: volume, bucket, retention class, transfer signal.
-- Connector and skill-pack usage: connector, pack, action, request count, data boundary signal.
-- Agent usage: package, instance, run, resource profile, reviewer gate.
+- Gateway: provider, model, tokens, requests and cost signal.
+- Workspace: service plan, uptime, storage allocation and users.
+- Compute: adapter, duration, GPU and queue signals.
+- Storage: allocation, retention and transfer signals.
+- Connector: provider action, request count and data-boundary signal.
+- Agent: exact OPL Package ref, instance, run, resource profile and review gate.
 
-## Product Rule
-
-Console should show user-facing packages first, then expose usage breakdowns for
-compute, storage, Gateway, connectors, and agent runs. Raw infrastructure fields
-belong in operator views and receipts.
+Console can attribute usage to an OPL Package ref but cannot change its
+manifest, digest, installed version or lock. Those facts remain with OPL
+Packages.

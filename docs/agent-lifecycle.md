@@ -1,70 +1,59 @@
-# OPL Agent Lifecycle
+# OPL Agent Lifecycle In Cloud
 
-OPL Cloud can host agents built by OPL Meta Agent without becoming a separate
-agent-building product.
-
-Agent use should follow the same workbench split as the rest of OPL Cloud:
-OPL App is the local user surface, and OPL Workspace is the cloud OPL App
-surface. Both can expose approved Agent Instances.
-
-The standard lifecycle is:
+OPL Cloud can expose standard OPL Agents without owning a second agent package
+platform. Agent design, package lifecycle, organization policy, resource
+binding, workbench use and run evidence remain separate responsibilities.
 
 ```text
-Agent Blueprint
-→ Agent Package
-→ OPL Agent Registry
-→ Console approval
-→ Fabric resource binding
-→ App / Workspace Agent Instance
-→ Agent Run
-→ Ledger receipt
+Agent design / domain source
+-> Agent Package candidate
+-> OPL Packages validated manifest
+-> install transaction + package lock + lifecycle receipt
+-> optional Console organization availability policy
+-> Fabric resource binding
+-> App / Workspace Agent Instance
+-> Agent Run
+-> Ledger receipt refs
 ```
 
 ## Lifecycle Objects
 
-| Object | Meaning | Owner surface |
+| Object | Meaning | Owner |
 | --- | --- | --- |
-| Agent Blueprint | The agent goal, boundary, stages, inputs, outputs, review rules, environment needs, connector needs, and acceptance evidence | OPL Meta Agent |
-| Agent Package | A versioned package that can be reviewed, approved, and installed for use | OPL Meta Agent and OPL Framework package flow |
-| OPL Agent Registry | The approved package index used by Console, Fabric, App, and Workspace | OPL Fabric |
-| Agent Instance | A package version enabled inside OPL App or OPL Workspace with specific permissions, resources, and quotas | OPL App / OPL Workspace |
-| Agent Run | One task execution by an Agent Instance | OPL Fabric and OPL Ledger |
+| Agent design | Goal, boundary, stages, inputs, outputs, review rules and authority functions | OMA / domain owner |
+| Agent Package | Versioned distributable candidate and its owner source | Package-owning repo |
+| Package manifest and lock | Validated identity, digest, dependencies, installed state and lifecycle commit point | OPL Packages |
+| Organization availability policy | Which package refs a team, role or workspace may use | OPL Console |
+| Resource binding | Compute, storage, environment and connector bindings for one instance or run | OPL Fabric |
+| Agent Instance | A package ref exposed in App or Workspace with explicit permissions and resources | OPL App / Workspace |
+| Agent Run | One execution with output and review refs | Runtime owner; Ledger records refs |
 
 ## Product Flow
 
-1. A user or team describes the agent they need.
-2. OPL Meta Agent turns the request into an Agent Blueprint.
-3. OPL Meta Agent produces an Agent Package candidate with tests, review
-   evidence, environment requirements, connector requirements, and owner route.
-4. OPL Console approves which package version can be used by which team.
-5. OPL Fabric binds the package to approved compute, storage, environments, and
-   connectors.
-6. OPL App or OPL Workspace creates an Agent Instance for a project or user.
-7. Users run the agent from App or Workspace.
-8. OPL Ledger records the plan, approval, execution, inputs, outputs, review
-   result, and continuation reference.
+1. OMA or another domain owner produces an Agent Package candidate.
+2. OPL Packages validates its manifest, dependency closure and trust boundary.
+3. OPL Packages performs install/update/rollback/repair as a recoverable
+   transaction and writes the package lock plus lifecycle receipt.
+4. When organization governance applies, Console decides whether that exact
+   package ref is available to a team, role or workspace. It does not mutate
+   the installation or lock.
+5. Fabric consumes the package requirements and policy refs to bind approved
+   compute, storage, environments and connectors. It does not register packages.
+6. App or Workspace exposes the instance and Framework-owned package actions.
+7. Ledger records run, package lock, resource, output, review and continuation
+   refs without becoming package or domain truth.
 
-## Deployment Model
+## Failure And Repair
 
-Agent deployment should make these decisions explicit before an Agent Instance
-is available:
+Package download, source replacement, dependency preparation, uninstall,
+rollback and repair remain inside the Framework package transaction. A failed
+Fabric binding is a resource failure; a denied Console policy is an
+organization-policy result; neither is permission to rewrite package state.
 
-- package version;
-- owner and support route;
-- approved teams or workspaces;
-- required compute profile;
-- required storage profile;
-- required connectors;
-- required environment;
-- review gates;
-- quota policy;
-- Ledger policy.
+## Authority Boundary
 
-## Boundary
-
-OPL Meta Agent builds and improves agent packages. OPL Console approves use.
-OPL Fabric prepares and runs the required resources. OPL App and OPL Workspace
-are where users use the agent. OPL Ledger records what happened.
-
-This keeps agent creation, deployment, management, execution, and evidence in
-one OPL Cloud path without creating a second platform.
+- Package present, lock current or resource binding successful does not mean
+  the domain Agent is ready or its output is professionally valid.
+- Console policy approval does not approve package bytes or domain quality.
+- Fabric execution success does not produce an owner verdict.
+- Ledger receipt presence does not replace package, resource or domain truth.

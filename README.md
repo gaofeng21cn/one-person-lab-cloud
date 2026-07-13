@@ -47,11 +47,11 @@ remote-resource workflows:
 
 ## Public Role Boundary
 
-This repository is the public navigation surface for the OPL Cloud product
-implementation family: OPL Gateway, OPL Workspace, OPL Console, OPL Fabric,
-and OPL Ledger. It explains the product and platform boundaries for that family
-and how those surfaces relate to OPL App, OPL Framework, MAS, and domain
-systems.
+This repository is the public navigation surface for the OPL Cloud target
+product architecture and implementation family: OPL Gateway, OPL Workspace,
+OPL Console, OPL Fabric, and OPL Ledger. It explains why those surfaces are
+separate and how they relate to OPL App, OPL Framework, MAS, and domain
+systems. It does not imply that every documented service is already delivered.
 
 OPL Cloud is not a replacement for OPL Framework. Runtime truth for task
 execution, App behavior, service state, Gateway APIs, Workspace runtime,
@@ -62,10 +62,11 @@ implementations, contracts, runtime outputs, and owner receipts.
 Externally, OPL Cloud exposes OPL Gateway, OPL Workspace, and OPL Console as
 the user-visible products. Internally, it provides OPL Fabric and OPL Ledger as
 reusable platform capabilities. Local OPL App is the local workbench surface,
-and OPL Workspace is the cloud OPL App workbench surface. Both can call
-OPL Gateway, OPL Fabric, and OPL Ledger directly. OPL Console governs
-organization, permission, billing, resource policy, and lifecycle management,
-but it is not the only entry point for every Fabric capability.
+and OPL Workspace is the cloud workbench surface. Both can use OPL Gateway,
+OPL Fabric, and OPL Ledger. OPL Console governs organization, permission,
+billing, resource policy, and approval. OPL Packages owns Agent/capability
+package manifest, digest, install, lock, update, rollback, and repair. Cloud
+surfaces consume those refs and do not maintain a second package registry.
 
 ## Product Map
 
@@ -83,10 +84,11 @@ but it is not the only entry point for every Fabric capability.
 | --- | --- | --- |
 | OPL App | Local workbench and first-class Cloud capability caller | Users, MAS, domain agents |
 | OPL Workspace | Cloud OPL App workbench using the same capability model as local OPL App | Users, MAS, domain agents |
-| OPL Fabric | General resource substrate for connectors, compute, storage, environments, agent packages, and execution adapters | App, Workspace, Console, MAS, domain agents |
+| OPL Fabric | General resource substrate for connectors, compute, storage, environments, and execution adapters | App, Workspace, Console, MAS, domain agents |
 | OPL Connect | Connector capability inside Fabric for stable access, APIs, normalized source refs, error behavior, and rate-limit behavior | App, Workspace, MAS, domain agents; Console when governance applies |
 | OPL Console | Governance surface for organization-managed resources, credentials, quotas, approvals, billing, audit, and lifecycle | Admins and operators |
 | OPL Ledger | Receipt and provenance record for requests, source refs, outputs, review refs, and continuation entries | App, Workspace, Console, MAS, domain agents |
+| OPL Packages | Framework-owned package manifest, digest, install, lock, update, rollback, and repair lifecycle | App, Workspace, Console, Fabric, domain agents consume refs/actions |
 | MAS / ScholarSkills | Domain strategy, literature intent, quality judgment, evidence synthesis, writing, and review behavior | MAS workflows and domain users |
 
 Console governs resources that are hosted by OPL Cloud or brought under
@@ -111,19 +113,18 @@ surface.
 Console is the organization governance surface. It manages OPL Cloud-hosted or
 organization-managed accounts, billing,
 permissions, workspace lifecycle, connector approvals, environment policy, and
-resource quotas. User-provided local, SSH, HPC, literature, database, tool, or
-large skill-pack resources can also use the standard Fabric flow; when an
+resource quotas. User-provided local, SSH, HPC, literature, database, or tool
+resources can also use the standard Fabric flow; when an
 organization brings those resources under shared policy, Console becomes the
-management surface.
+management surface. Console may permit an exact OPL Package ref but cannot
+install, update, lock, or repair it.
 
 **OPL Fabric does the resource work**<br/>
 Fabric contains Connect, Compute, Storage, Environments, Gateway/App/Workspace
-adapters, agent package registry, and execution adapters. OPL Connect is the
-Fabric capability for stable access to literature sources such as PubMed,
-databases, tool libraries, institutional systems, external resources, and large
-skill packs. Ordinary users see productized choices such as literature
-search, standard compute, GPU acceleration, private data bucket, institutional
-HPC, or team skill packs.
+adapters, resource bindings, and execution adapters. OPL Connect provides
+stable access to shared data sources, tool APIs, databases and institutional
+systems. Ordinary users see productized choices such as literature search,
+standard compute, GPU acceleration, private data buckets, or institutional HPC.
 
 **OPL Ledger makes results accountable**<br/>
 Ledger records the plan, approval, commands or code, environment, input refs,
@@ -136,11 +137,11 @@ OPL Fabric is the resource and connector substrate behind OPL Cloud.
 
 ```text
 OPL Fabric
-├─ OPL Connect        databases, literature sources, tools, APIs, resources, skill packs
+├─ OPL Connect        databases, literature sources, tools, APIs, external resources
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC, managed workers
 ├─ OPL Environments   reproducible software environments and runtime templates
 ├─ Gateway adapters   AI access profiles, usage signals, provider policy links
-├─ OPL Agent Registry approved agent packages, versions, requirements
+├─ Package bindings   OPL Packages manifest/lock refs and resource requirements
 └─ Workspace Storage      workspace volumes, private buckets, institutional storage refs
 ```
 
@@ -148,13 +149,11 @@ Together, these capabilities let OPL App and OPL Workspace connect materials,
 use tools, obtain compute resources, and run tasks in the right software
 environment.
 
-The PubMed read-only connector is the first stable OPL Connect path. MAS or
-ScholarSkills can prototype search strategy, ranking, quality floors, evidence
-use, writing, and review behavior. When a connection becomes shared platform
-behavior, OPL Connect carries stable access, API shape, normalized source refs,
-credential boundaries, errors, retries, and rate limits. MAS, OPL App, and OPL
-Workspace call the same connector through capability profiles, and Ledger can
-record connector refs and provenance when a task needs a receipt.
+OPL Connect carries stable shared access, API shape, normalized source refs,
+credential boundaries, errors, retries, and rate limits. Domain-specific
+access and normalization stay with the domain adapter when their semantics are
+not generic. Medical PubMed access currently belongs to the MAS adapter; Cloud
+does not expose a compatibility command or readiness claim for it.
 
 ## Skill-first Collaboration
 
@@ -198,9 +197,8 @@ BookForge, or another domain owner.
 OPL Cloud is organized around one complete delivery path:
 
 1. Gateway: AI access, key management, routing, usage, and billing data.
-2. Workspace: online OPL App instances with URL, account, storage directory, and
-   base package.
-3. Console: user, package, Gateway usage, and Workspace lifecycle management.
+2. Workspace: online OPL App instances with access, storage, and a resource plan.
+3. Console: user, policy, Gateway usage, and Workspace lifecycle management.
 4. Fabric: compute paths, storage paths, software environments, and connector
    capabilities.
 5. Ledger: inspectable receipts for App actions, Workspace actions, and managed
@@ -226,7 +224,7 @@ environment catalogs can enter OPL Cloud through the same Fabric flow.
 - [Research Provenance](docs/research-provenance.md)
 - [Shared Execution Contract](docs/contracts/shared-execution-contract.md)
 - [Ledger Receipt Schema](docs/contracts/ledger-receipt-schema.md)
-- [Agent Registry Entry](docs/contracts/agent-registry-entry.md)
+- [Retired Agent Registry Entry](docs/contracts/agent-registry-entry.md)
 - [Resource Ownership and Billing](docs/contracts/resource-ownership-and-billing.md)
 - [Workspace Lifecycle](docs/workspace-lifecycle.md)
 - [Console Governance and Billing](docs/console-governance-and-billing.md)

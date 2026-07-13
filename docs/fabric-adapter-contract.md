@@ -1,17 +1,13 @@
 # Fabric Adapter Contract
 
-Fabric adapters connect OPL workbench and approved domain-agent actions to
-compute, storage, environments, connectors, skill packs, and managed execution.
-
-Every adapter should fit the shared execution flow:
+Fabric adapters connect approved App, Workspace and domain-Agent actions to
+compute, storage, environments, connectors and managed execution.
 
 ```text
 plan -> approve -> execute -> monitor -> collect -> receipt
 ```
 
 ## Adapter Fields
-
-Required planning fields:
 
 - `adapter_id`
 - `adapter_type`
@@ -24,9 +20,11 @@ Required planning fields:
 - `cost_signal`
 - `ledger_receipt_policy_ref`
 
-## Adapter Methods
+When an adapter is distributed through an OPL Package, planning also carries
+the exact package manifest and lock refs. Fabric does not resolve or mutate
+them.
 
-Every implementation should provide these conceptual methods:
+## Adapter Methods
 
 - `validate_config`
 - `plan`
@@ -37,29 +35,23 @@ Every implementation should provide these conceptual methods:
 - `collect_outputs`
 - `emit_receipt_refs`
 
-## Initial Adapter Order
-
-1. PubMed read-only connector.
-2. Docker or VM adapter with one storage path.
-3. SSH or HPC adapter with explicit user approval.
-4. GPU or managed worker adapter.
-5. Database, institutional storage, and additional literature connectors.
-
 ## Adapter Categories
 
 | Category | Examples |
 | --- | --- |
 | Compute | Docker, VM, GPU, SSH, HPC, managed workers |
 | Storage | Workspace volume, bucket, institutional storage ref |
-| Environment | Container image, package lock, runtime manifest |
-| Connector | Literature source, database, internal system, tool API |
-| Skill pack | MAS Scholar Skills references, shared packs, quality floors, approved tool bundles |
-| Agent | Agent package binding, instance preparation, run dispatch |
+| Environment | Container image, runtime manifest, hardware profile |
+| Connector | Literature provider, database, internal system, tool API |
+| Agent resource binding | Package requirement refs, instance preparation, run dispatch |
+
+An Agent resource binding is not an Agent package registry. Package discovery,
+validation, install, digest, lock, update, rollback and repair are owned by OPL
+Packages. Fabric only consumes current refs and binds resources.
 
 ## Boundary
 
-Adapters prepare and run work. They report status, outputs, and cost signals.
-OPL App, Workspace, MAS, and other approved callers can use them through
-capability profiles. OPL Console applies management policy for hosted or
-organization-managed usage. OPL Ledger records receipts. The owning system
-remains the authority for the underlying resource state and domain truth.
+Console applies organization policy for hosted or managed usage. Ledger records
+refs. The resource owner remains authority for resource state; OPL Packages
+remains authority for package state; the domain owner remains authority for
+professional truth and quality.
