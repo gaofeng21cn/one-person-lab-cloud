@@ -18,9 +18,12 @@ The current boundary is:
 | Installed state and current version | OPL Packages package lock |
 | Install, update, rollback, uninstall and repair | OPL Packages lifecycle transaction |
 | Lifecycle evidence | OPL Packages lifecycle receipt |
-| Organization/team availability | Console policy referencing an exact package ref |
+| Account/service availability | Console policy referencing an exact package ref |
 | Compute, storage, environment and connector requirements | Fabric binding derived from package requirements |
 | User-visible Agent Instance | OPL App / Workspace |
+| Portable service entrypoint declaration | Package/domain owner contract |
+| Agent Service, immutable Revision, Deployment, endpoint and traffic state | OPL Serve |
+| External Invocation and Session lifecycle | OPL Runway; Serve projects status |
 | Run and review evidence refs | OPL Ledger |
 
 Active machine truth is obtained through the OPL Framework package contracts

@@ -3,6 +3,8 @@
 OPL Connect is the connector capability inside OPL Fabric. It gives App,
 Workspace and approved domain agents a stable way to access external data
 sources, literature providers, databases, tool APIs and institutional systems.
+Serve invocations can use the same capability through Runway and Fabric when an
+exact revision and consumer data policy permit it.
 
 ## Connector Responsibility
 
@@ -20,7 +22,7 @@ Connect does not own:
 - OPL Package discovery, install, update, rollback, repair or lock;
 - domain retrieval strategy, inclusion judgment or evidence synthesis;
 - source truth, professional quality verdict or delivery authority;
-- organization approval, quota or billing policy.
+- account/service approval, quota or billing policy.
 
 ## Standard Call Shape
 
@@ -33,7 +35,8 @@ App / Workspace / domain Agent
 -> optional Ledger receipt refs
 ```
 
-Console may approve organization-managed credentials, providers and quotas.
+Console may approve account-managed credentials, providers, service egress and
+quotas.
 Ledger may retain connector and source refs. Neither changes connector or
 domain truth.
 
@@ -65,7 +68,7 @@ exist in fresh Framework and MAS readback.
 | --- | --- |
 | Connector access, refs, credentials, provider errors/retries/rate limits | OPL Connect |
 | Adapter package manifest, install, lock, update and repair | OPL Packages |
-| Organization availability, credential approval, quota and audit policy | OPL Console |
+| Account/service availability, credential approval, quota and audit policy | OPL Console |
 | Resource and environment binding | OPL Fabric |
 | Retrieval strategy, evidence use, writing and review | Domain Agent |
 | Receipt/provenance refs and continuation entry | OPL Ledger |

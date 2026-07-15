@@ -2,8 +2,9 @@
 
 OPL Fabric is the resource and connector substrate used by OPL App, OPL
 Workspace, Cloud-managed jobs and approved domain-agent actions. It connects
-work to compute, storage, software environments and external systems through a
-shared plan, approval, execution, collection and receipt pattern.
+work and Serve invocations to compute, storage, software environments and
+external systems through a shared plan, approval, execution, collection and
+receipt pattern.
 
 Fabric is not a package registry or package lifecycle owner.
 
@@ -13,16 +14,17 @@ OPL Fabric
 ├─ OPL Compute        Docker, VM, GPU, SSH, HPC and managed workers
 ├─ OPL Environments   software stacks and runtime environment refs
 ├─ Workspace Storage  volumes, private buckets and institutional storage refs
-├─ Surface adapters   Gateway/App/Workspace integration
+├─ Surface adapters   Gateway/App/Workspace/Serve integration
 └─ Execution adapters resource binding, status and output collection
 ```
 
 ## Reusable Capability Boundary
 
-OPL Console governs Cloud-hosted or organization-managed use, but is not the
-only Fabric caller. App, Workspace and approved domain agents can call Fabric
-when their capability and policy refs allow it. Ledger records receipt refs.
-The resource owner remains authority for the underlying resource state.
+OPL Console governs Cloud-hosted or explicitly managed use, but is not the only
+Fabric caller. App, Workspace, Serve through Runway, and approved domain agents
+can call Fabric when their capability and policy refs allow it. Ledger records
+receipt refs. The resource owner remains authority for the underlying resource
+state.
 
 ## OPL Connect
 
@@ -44,9 +46,15 @@ later managed workers. Every path follows:
 plan -> approve -> execute -> monitor -> collect -> receipt
 ```
 
-Console policy becomes relevant for Cloud-hosted or organization-managed
+Console policy becomes relevant for Cloud-hosted or explicitly managed
 resources. User-provided resources can use the same flow without default Cloud
 billing.
+
+For Serve, Fabric may prepare an isolated sandbox or worker, inject approved
+secret refs, apply network/egress policy, enforce resource limits and collect
+outputs. The stable public endpoint remains the Serve Agent Edge. Fabric does
+not expose sandbox ports or own Service, Revision, Deployment, Invocation or
+Session identity.
 
 ## OPL Environments
 
@@ -79,6 +87,7 @@ Packages; a missing resource routes to Fabric or Console policy as applicable.
 | Connector | Literature source, database, internal API, tool integration | OPL Connect + source owner |
 | Environment | Python/R, CUDA, document tooling, runtime profile | OPL Environments |
 | Package requirement | Exact package ref and resource requirements | OPL Packages truth; Fabric projection only |
+| Serve execution | Sandbox/worker, network, secret and artifact binding for an exact Agent Revision | Runway lifecycle + Fabric resource truth |
 
 This catalog lets products select resources without exposing infrastructure
 internals or creating a second package registry.

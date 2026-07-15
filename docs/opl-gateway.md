@@ -12,24 +12,25 @@ product surface. It supports:
 
 - OPL App AI capability access.
 - Codex and automation workflow integration.
+- OPL Serve invocation and session model access.
 - Usage visibility and quota management.
-- A stable foundation for future Console billing and team policy.
+- A stable foundation for Console billing and account policy.
 
 ## Usage Model
 
 Gateway usage should be groupable by:
 
-- organization;
-- team;
-- user or service identity;
+- account;
+- user, publisher service or consumer identity;
 - Workspace;
+- Agent Service, Revision, Deployment and Invocation/Session;
 - task or job;
 - exact OPL Package ref or Agent Instance;
 - provider and model.
 
-This gives Console enough information for quotas, budgets, package-attributed
-usage, and downstream reporting without making Gateway responsible for package
-lifecycle or industry-specific policy.
+This gives Console enough information for quotas, budgets, service/package
+attribution and downstream reporting without making Gateway responsible for
+package lifecycle, service deployment or industry-specific policy.
 
 Gateway is technically a resource access capability, but it should not be
 hidden inside OPL Fabric. Users can directly configure it, use it, meter it, and
@@ -50,4 +51,5 @@ a generic token platform.
 
 OPL Fabric owns general connectors, compute, storage, environments, and
 execution adapters. OPL Gateway owns frontier AI access, provider policy, model
-routing, keys, and usage metering.
+routing, keys, and usage metering. OPL Serve owns the external Agent endpoint;
+it does not turn Gateway into the Agent Service control plane.

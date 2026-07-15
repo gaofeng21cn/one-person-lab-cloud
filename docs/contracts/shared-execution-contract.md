@@ -1,12 +1,12 @@
 # Shared Execution Contract
 
 This contract defines the common resource execution path for OPL App,
-OPL Workspace, OPL Fabric, OPL Console, and OPL Ledger.
+OPL Workspace, OPL Serve, OPL Fabric, OPL Console, and OPL Ledger.
 
 The same contract should work for local App actions, cloud Workspace actions,
 managed Docker or VM jobs, SSH or HPC jobs, GPU jobs, and later connector-backed
-jobs. MAS and other domain agents can use the same contract as approved callers
-without routing every request through Console.
+jobs or Agent Service invocations. MAS and other domain agents can use the same
+contract as approved callers without routing every request through Console.
 
 ## Standard Flow
 
@@ -22,10 +22,11 @@ may be used.
 Required fields:
 
 - `request_id`
-- `surface`: `app`, `workspace`, `console`, or `domain_agent`
+- `surface`: `app`, `workspace`, `serve`, `console`, or `domain_agent`
 - `caller_ref`
 - `actor`
-- `workspace_ref`
+- `workspace_ref` for App/Workspace-originated work
+- `service_ref`, `revision_ref`, and `invocation_or_session_ref` for Serve work
 - `goal`
 - `resource_profile`
 - `environment_ref`
@@ -92,8 +93,10 @@ review results, owner, and continuation entry.
 | --- | --- |
 | OPL App | Starts local or user-provided resource work through the same plan and receipt path |
 | OPL Workspace | Starts cloud workbench jobs and displays status, outputs, and receipts |
-| OPL Console | Applies organization policy, quota, approval, and billing rules for managed resources and exact package refs |
+| OPL Serve | Submits exact Agent Revision invocations/sessions through Runway and projects endpoint status, events and outputs |
+| OPL Console | Applies account/service policy, quota, approval, and billing rules for managed resources and exact package/revision refs |
 | OPL Fabric | Selects adapters, prepares resources, runs jobs, and collects outputs |
 | OPL Ledger | Records receipts, provenance, reviewer results, and continuation refs |
 | OPL Packages | Owns package manifest, digest, install, lock, update, rollback, repair, and lifecycle receipts outside this resource-execution contract |
+| OPL Runway | Owns Invocation/Session orchestration and execution-provider lifecycle for Serve work |
 | Domain agent | Uses approved Fabric capabilities while keeping domain truth, quality judgment, and delivery authority |

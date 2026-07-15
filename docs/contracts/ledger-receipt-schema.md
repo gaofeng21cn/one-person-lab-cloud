@@ -15,10 +15,17 @@ domain source of truth.
 {
   "receipt_id": "ledger.receipt.example",
   "schema_version": "0.1",
-  "surface": "workspace",
+  "surface": "serve",
   "actor": "user-or-service-ref",
-  "caller_ref": "app-workspace-console-or-domain-agent-ref",
-  "workspace_ref": "workspace-ref",
+  "caller_ref": "app-workspace-serve-console-or-domain-agent-ref",
+  "workspace_ref": "publisher-workspace-ref-or-null",
+  "service": {
+    "service_ref": "agent-service-ref-or-null",
+    "revision_ref": "agent-revision-ref-or-null",
+    "deployment_ref": "deployment-ref-or-null",
+    "invocation_or_session_ref": "invocation-or-session-ref-or-null",
+    "consumer_principal_ref": "consumer-principal-ref-or-null"
+  },
   "job_ref": "fabric-job-ref",
   "request": {
     "goal": "human-readable goal",
@@ -86,3 +93,7 @@ reproduction. Runtime truth still belongs to the owning runtime, storage truth
 belongs to the owning storage system, and domain-quality truth belongs to the
 responsible domain owner or reviewer. Ledger records provenance and receipts;
 it does not replace MAS, ScholarSkills, or another domain owner.
+
+For Serve receipts, Service/Revision/Deployment truth remains with OPL Serve and
+Invocation/Session truth remains with OPL Runway. Provider session identifiers,
+events and costs are refs to owning systems, not Ledger-owned runtime state.

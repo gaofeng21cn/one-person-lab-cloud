@@ -12,8 +12,8 @@ BookForge, OPL App, or another domain owner.
 
 ## Receipt Shape
 
-Every meaningful App action, Workspace action, or Cloud-managed job should be
-able to leave a receipt:
+Every meaningful App action, Workspace action, Serve deployment or invocation,
+or Cloud-managed job should be able to leave a receipt:
 
 ```text
 plan → approval → command/code → environment → input refs → output refs → reviewer result → owner → continuation entry
@@ -25,6 +25,7 @@ plan → approval → command/code → environment → input refs → output ref
 - Artifact provenance.
 - Reviewer checks.
 - Policy decisions.
+- Agent Service revision, deployment, traffic and invocation/session refs.
 - Audit records.
 - Continuation refs.
 
@@ -32,6 +33,12 @@ For skill-first flows, Ledger should record which main skill, enhancement pack,
 connector, input refs, selected sources, outputs, and continuation entry were
 used. This gives MAS, Workspace, App, and other callers a shared evidence trail
 without moving domain truth into Ledger.
+
+For Serve flows, a receipt should connect exact package digest, service,
+revision, deployment, consumer-policy, provider-session, resource, model-usage,
+input, output, artifact, review, cost and continuation refs where applicable.
+Ledger does not store provider secrets or become the canonical event/session
+store.
 
 ## Evidence Record View
 
