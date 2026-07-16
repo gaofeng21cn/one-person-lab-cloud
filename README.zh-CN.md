@@ -19,10 +19,8 @@ Machine boundary: 人读产品与架构入口。App、Framework、Gateway 服务
 -->
 
 <p align="center">
-  <img src="assets/branding/opl-cloud-overview.png" alt="OPL Cloud 核心基础设施关系图" width="100%" />
+  <img src="assets/branding/opl-cloud-overview-v2.png" alt="OPL Cloud 从本地工作到在线协作和按需发布的连续用户旅程" width="100%" />
 </p>
-
-<p align="center"><em>OPL Serve 在这组核心基础设施之上增加 Agent API、嵌入组件和托管 UI 发布能力。</em></p>
 
 ## 为什么需要 OPL Cloud
 

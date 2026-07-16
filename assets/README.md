@@ -3,10 +3,11 @@
 This directory is reserved for OPL Cloud product maps, architecture diagrams,
 and public screenshots.
 
-`branding/opl-cloud-overview.png` visualizes the five-part core infrastructure
-foundation. It is not an exhaustive product matrix: OPL Serve is the Agent
-publishing product across that foundation. The README matrix and product docs
-remain the current brand map. Deeper architecture notes may still use Mermaid
+`branding/opl-cloud-overview-v2.png` is the public README journey from local
+work through online continuation, private data, remote compute, shared review,
+and optional publication. `branding/opl-cloud-overview.png` remains available
+as the earlier five-part infrastructure reference, but it is no longer the
+README's primary product story. Deeper architecture notes may still use Mermaid
 diagrams directly in Markdown so GitHub can render them without generated image
 files.
 

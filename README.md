@@ -19,10 +19,8 @@ Machine boundary: Human-readable product and architecture entry. Machine truth f
 -->
 
 <p align="center">
-  <img src="assets/branding/opl-cloud-overview.png" alt="OPL Cloud core infrastructure overview" width="100%" />
+  <img src="assets/branding/opl-cloud-overview-v2.png" alt="OPL Cloud continuous journey from local work to online collaboration and optional publication" width="100%" />
 </p>
-
-<p align="center"><em>OPL Serve adds Agent API, Embed, and Hosted UI publication across this core infrastructure.</em></p>
 
 ## Why OPL Cloud
 
