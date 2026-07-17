@@ -1,5 +1,12 @@
 # Resource Ownership And Billing
 
+Owner: `one-person-lab-cloud`
+Purpose: `resource_ownership_billing_reference`
+State: `active_target_contract`
+Machine boundary: Human-readable planning matrix. It does not prove resource
+ownership, metering output, a billing event, price, account policy, or service
+availability.
+
 This matrix defines when Console manages or bills resources. `Service plan`
 means a commercial offering; `OPL Package` means a Framework-managed Agent or
 capability package. The two are not interchangeable.

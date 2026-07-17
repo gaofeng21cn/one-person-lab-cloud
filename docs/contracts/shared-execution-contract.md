@@ -1,5 +1,11 @@
 # Shared Execution Contract
 
+Owner: `one-person-lab-cloud`
+Purpose: `shared_execution_planning_contract`
+State: `active_target_contract`
+Machine boundary: Human-readable planning contract. It is not an executable
+schema, implementation, job record, runtime state, or readiness proof.
+
 This contract defines the common resource execution path for OPL App,
 OPL Workspace, OPL Serve, OPL Fabric, OPL Console, and OPL Ledger.
 

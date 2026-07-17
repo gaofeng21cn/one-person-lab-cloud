@@ -1,14 +1,21 @@
 # OPL Gateway
 
-OPL Gateway is the frontier AI capability gateway for One Person Lab.
+Owner: `one-person-lab-cloud`
+Purpose: `gateway_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target product definition. It does not prove
+a Gateway implementation, model availability, provider state, usage, billing,
+release, or production readiness.
 
-It provides a unified access point for AI APIs, token management, provider
-configuration, usage metering, and downstream OPL workflows.
+OPL Gateway is the target frontier-AI capability gateway for One Person Lab.
+
+Its target responsibilities are unified AI API access, credential and provider
+configuration, usage metering, and downstream OPL workflow integration.
 
 ## Role In OPL Cloud
 
-OPL Gateway is the first available OPL Cloud component and remains a top-level
-product surface. It supports:
+OPL Gateway is the first capability foundation in the target Cloud delivery
+order and remains a top-level product surface. Its planned consumers include:
 
 - OPL App AI capability access.
 - Codex and automation workflow integration.
@@ -38,9 +45,9 @@ pay for it.
 
 ## Public Surface
 
-The current public surface is integration-oriented rather than a standalone
-public implementation repository. Public scripts and setup instructions can be
-linked from this repository until a dedicated OPL Gateway repo exists.
+This repository currently defines only the target integration surface. A
+dedicated implementation owner, machine contract, runtime readback, and release
+evidence are required before availability can be claimed.
 
 ## Positioning
 

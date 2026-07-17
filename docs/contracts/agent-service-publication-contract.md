@@ -1,5 +1,12 @@
 # Agent Service Publication Contract
 
+Owner: `one-person-lab-cloud`
+Purpose: `agent_service_publication_planning_contract`
+State: `active_target_contract`
+Machine boundary: Human-readable planning contract. It is not an executable
+service schema, deployed control plane, endpoint, runtime readback, or
+production-readiness proof.
+
 This planning contract defines the target handoff from an exact OPL Agent Package
 to an externally usable OPL Serve service. It is a human-readable product and
 ownership contract, not an active runtime schema or deployment-readiness claim.

@@ -1,5 +1,11 @@
 # Ledger Receipt Schema
 
+Owner: `one-person-lab-cloud`
+Purpose: `ledger_receipt_planning_schema`
+State: `active_target_contract`
+Machine boundary: Human-readable target shape. It is not a registered machine
+schema, persisted receipt, runtime readback, domain verdict, or owner receipt.
+
 This document defines the minimal receipt shape for OPL Ledger planning and
 implementation.
 

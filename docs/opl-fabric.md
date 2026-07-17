@@ -1,10 +1,17 @@
 # OPL Fabric
 
-OPL Fabric is the resource and connector substrate used by OPL App, OPL
-Workspace, Cloud-managed jobs and approved domain-agent actions. It connects
-work and Serve invocations to compute, storage, software environments and
-external systems through a shared plan, approval, execution, collection and
-receipt pattern.
+Owner: `one-person-lab-cloud`
+Purpose: `fabric_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target platform definition. It does not prove
+resource availability, adapter implementation, binding success, runtime state,
+billing, or production readiness.
+
+OPL Fabric is the target resource and connector substrate for OPL App, OPL
+Workspace, Cloud-managed jobs, and approved domain-agent actions. The target
+connects work and Serve invocations to compute, storage, software environments,
+and external systems through a shared plan, approval, execution, collection,
+and receipt pattern.
 
 Fabric is not a package registry or package lifecycle owner.
 

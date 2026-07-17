@@ -1,5 +1,12 @@
 # OPL Agent Lifecycle In Cloud
 
+Owner: `one-person-lab-cloud`
+Purpose: `cloud_agent_lifecycle_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable cross-surface object and owner model. Actual
+package, service, invocation, resource, receipt, and domain truth stays with the
+owning Framework, service, runtime, and domain surfaces.
+
 OPL Cloud can expose standard OPL Agents in App/Workspace and publish them
 through OPL Serve without owning a second agent package platform. Agent design,
 package lifecycle, account policy, service publication, resource binding,

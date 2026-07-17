@@ -1,5 +1,12 @@
 # Workspace Identity And External SaaS Boundary
 
+Owner: `one-person-lab-cloud`
+Purpose: `workspace_identity_decision`
+State: `active_decision`
+Machine boundary: Human-readable product decision and owner exclusion. It does
+not prove a Workspace implementation, account state, collaboration policy,
+runtime, or release readiness.
+
 This document records the current OPL Cloud product decision. It is a planning
 boundary, not a delivery or runtime-readiness claim.
 

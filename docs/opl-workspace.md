@@ -1,5 +1,12 @@
 # OPL Workspace
 
+Owner: `one-person-lab-cloud`
+Purpose: `workspace_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target product definition. It does not prove
+a Workspace implementation, provisioned instance, package/resource state,
+release, or production readiness.
+
 OPL Workspace is the cloud OPL App workbench. It should feel like the same
 project, task, artifact, review and delivery experience in an online deployment,
 not like a container hosting panel.

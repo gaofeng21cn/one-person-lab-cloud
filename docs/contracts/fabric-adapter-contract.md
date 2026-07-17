@@ -1,7 +1,14 @@
 # Fabric Adapter Contract
 
-Fabric adapters connect approved App, Workspace, Serve and domain-Agent actions
-to compute, storage, environments, connectors and managed execution.
+Owner: `one-person-lab-cloud`
+Purpose: `fabric_adapter_planning_contract`
+State: `active_target_contract`
+Machine boundary: Human-readable planning contract. It is not an executable
+adapter schema, implementation, resource readback, or proof that an adapter is
+available or ready.
+
+Fabric adapters connect approved App, Workspace, Serve, and domain-Agent
+actions to compute, storage, environments, connectors, and managed execution.
 
 ```text
 plan -> approve -> execute -> monitor -> collect -> receipt
@@ -44,15 +51,15 @@ them.
 | Environment | Container image, runtime manifest, hardware profile |
 | Connector | Literature provider, database, internal system, tool API |
 | Agent resource binding | Package requirement refs, instance preparation, run dispatch |
-| Serve execution binding | Exact Agent Revision, sandbox/worker, secrets, network, artifact collection and provider refs |
+| Serve execution binding | Exact Agent Revision, sandbox/worker, secrets, network, artifact collection, and provider refs |
 
 An Agent resource binding is not an Agent package registry. Package discovery,
-validation, install, digest, lock, update, rollback and repair are owned by OPL
+validation, install, digest, lock, update, rollback, and repair are owned by OPL
 Packages. Fabric only consumes current refs and binds resources.
 
-A Serve execution binding is also not a public endpoint or service control
-plane. OPL Serve owns Service, Revision, Deployment and Agent Edge state; Runway
-owns Invocation/Session lifecycle. Fabric owns only the resource facts behind an
+A Serve execution binding is not a public endpoint or service control plane.
+OPL Serve owns Service, Revision, Deployment, and Agent Edge state; Runway owns
+Invocation/Session lifecycle. Fabric owns only the resource facts behind an
 approved execution.
 
 ## Boundary

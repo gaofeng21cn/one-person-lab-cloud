@@ -1,5 +1,12 @@
 # OPL Serve
 
+Owner: `one-person-lab-cloud`
+Purpose: `serve_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target product definition. It does not prove
+a Serve implementation, endpoint, deployment, traffic, security, billing,
+release, or production readiness.
+
 OPL Serve is the planned OPL Cloud product for publishing a validated OPL Agent
 as an externally usable service. It gives Agent builders a stable API and, when
 needed, an OPL-hosted user interface without turning the Agent package, sandbox,

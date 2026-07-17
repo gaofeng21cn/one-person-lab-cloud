@@ -7,8 +7,10 @@ on:
       - docs/whitepapers/**
       - README.md
       - README.zh-CN.md
+      - docs/README.md
       - docs/architecture.md
-      - docs/product-matrix.md
+      - docs/roadmap.md
+      - assets/branding/opl-cloud-overview-v2.png
       - contracts/whitepaper_profile.json
       - scripts/build-opl-cloud-whitepaper.ts
       - .github/workflows/whitepaper.yml

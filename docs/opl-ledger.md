@@ -1,6 +1,13 @@
 # OPL Ledger
 
-OPL Ledger is the evidence record for OPL Cloud work.
+Owner: `one-person-lab-cloud`
+Purpose: `ledger_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target evidence model. It is not a receipt
+store, runtime ledger, source database, quality verdict, owner receipt, or
+production-readiness source.
+
+OPL Ledger is the target evidence-record capability for OPL Cloud work.
 
 It records what happened, which inputs and environments were used, which outputs
 were produced, what checks ran, and how the work can be reviewed or continued

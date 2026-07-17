@@ -1,5 +1,12 @@
 # OPL Cloud Architecture
 
+Owner: `one-person-lab-cloud`
+Purpose: `architecture_boundary`
+State: `active_target_reference`
+Machine boundary: Canonical human-readable target product and authority split.
+It does not prove that any listed service, contract, runtime, billing path, or
+release is implemented or ready.
+
 OPL Cloud is the target product architecture and implementation-family
 navigation surface for extending OPL work from a local App into online
 workspaces, account-managed resources and remote execution. This document

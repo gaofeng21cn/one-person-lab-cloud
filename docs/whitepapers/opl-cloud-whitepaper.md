@@ -1,5 +1,12 @@
 # OPL Cloud 白皮书
 
+<!--
+Owner: `one-person-lab-cloud`
+Purpose: `public_cloud_whitepaper_source`
+State: `active_public_vision`
+Machine boundary: 面向用户的产品愿景源文，不持有 Cloud 服务实现、运行状态、账单、发布、领域质量或 owner acceptance 真相。
+-->
+
 > 让复杂知识工作跨越本机、私有数据、远端资源与对外服务，仍然保持连续、受控、可复查
 
 发布日期：2026-07-15
@@ -22,7 +29,7 @@ OPL Cloud 希望兑现五个用户结果：
 - Agent 开发者可以把经过验证的精确版本发布为 API、嵌入组件或托管界面，并直接获得统一服务栈。
 - 结果回到原工作链，并带有足够的来源、环境、审阅和继续线索。
 
-![OPL Cloud 让同一项目从本机自然延伸到在线协作、私有数据、远端计算与按需发布。](assets/branding/opl-cloud-overview-v2.png)
+![OPL Cloud 让同一项目从本机自然延伸到在线协作、私有数据、远端计算与按需发布。](https://raw.githubusercontent.com/gaofeng21cn/one-person-lab-cloud/6378876c4c7394e5e1a91818864e4b4a4465a5fc/assets/branding/opl-cloud-overview-v2.png)
 
 ## 为什么复杂知识工作需要不同的云
 

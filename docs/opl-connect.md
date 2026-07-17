@@ -1,10 +1,18 @@
 # OPL Connect
 
-OPL Connect is the connector capability inside OPL Fabric. It gives App,
-Workspace and approved domain agents a stable way to access external data
-sources, literature providers, databases, tool APIs and institutional systems.
-Serve invocations can use the same capability through Runway and Fabric when an
-exact revision and consumer data policy permit it.
+Owner: `one-person-lab-cloud`
+Purpose: `connect_target_reference`
+State: `active_target_reference`
+Machine boundary: Human-readable target connector definition. It does not prove
+provider access, adapter availability, package health, source truth, domain
+readiness, or production readiness.
+
+OPL Connect is the target connector capability inside OPL Fabric. It defines a
+stable access boundary for App, Workspace, and approved domain agents to use
+external data sources, literature providers, databases, tool APIs, and
+institutional systems. Serve invocations may use the same target capability
+through Runway and Fabric when an exact revision and consumer data policy permit
+it.
 
 ## Connector Responsibility
 

@@ -1,5 +1,11 @@
 # Assets
 
+Owner: `one-person-lab-cloud`
+Purpose: `public_asset_inventory`
+State: `active_support`
+Machine boundary: Human-readable asset inventory. The image files are the
+actual assets; this page does not define product, runtime, or release truth.
+
 This directory is reserved for OPL Cloud product maps, architecture diagrams,
 and public screenshots.
 
