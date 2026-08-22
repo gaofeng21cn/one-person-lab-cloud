@@ -21,6 +21,19 @@ type workspaceLaunchUnitStore struct {
 	row map[string]any
 }
 
+type workspaceLaunchValidatingUnitStore struct {
+	*workspaceLaunchUnitStore
+}
+
+func (s *workspaceLaunchValidatingUnitStore) PersistWorkspaceLaunchReconcile(ctx context.Context, update workspaceLaunchReconcileCAS) error {
+	current, found, err := s.GetRuntimeOperation(ctx, update.OperationID)
+	if err != nil || !found || stringValue(current["result"]) != update.ExpectedOperationResult ||
+		!workspaceLaunchReconcileIdentityMatches(current, update.DesiredOperation) {
+		return errWorkspaceLaunchCASConflict
+	}
+	return s.workspaceLaunchUnitStore.PersistWorkspaceLaunchReconcile(ctx, update)
+}
+
 type workspaceLaunchReceiptLedgerClient struct {
 	fakeLedgerClient
 	receipts []clients.Receipt
@@ -366,7 +379,8 @@ func workspaceLaunchUnknownComputeContinuationAuthorization(t *testing.T, row ma
 	return workspaceLaunchResumeAuthorization{
 		AuthorizationID: authorizationID, LaunchVersion: operation.Version, AuthorizedStage: operation.Stage, AuthorizedBy: "usr-admin",
 		AuthorizedAt: "2026-08-23T01:00:00Z", Reason: "provider read proves the original compute allocation can continue",
-		MutationBudget: 0, IdempotentReplayBudget: 1, AuthoritativeReadBudget: workspaceLaunchComputeFreshContinuationAdditionalReadBudget,
+		MutationBudget: 0, IdempotentReplayBudget: 1,
+		AuthoritativeReadBudget: workspaceLaunchRemainingComputeReadBudget(operation.Attempts[operation.Stage]),
 	}
 }
 
@@ -381,6 +395,9 @@ func workspaceLaunchUnknownComputeAfterFailedReplayRow(t *testing.T) map[string]
 	completedAt := "2026-08-23T01:01:00Z"
 	operation.ResumeAuthorization = &previous
 	operation.ResumeAuthorizationConsumedAt = completedAt
+	attempt := operation.Attempts[operation.Stage]
+	attempt.MaxPendingReadbacks = previous.ReadbacksAtAuthorization + previous.AuthoritativeReadBudget
+	operation.Attempts[operation.Stage] = attempt
 	operation.IdempotentReplayClaims[operation.Stage] = workspaceLaunchIdempotentReplayClaim{
 		AuthorizationID: previous.AuthorizationID, Stage: operation.Stage,
 		IdempotencyKey: operation.Attempts[operation.Stage].IdempotencyKey,
@@ -502,7 +519,7 @@ func TestWorkspaceLaunchUnknownComputeResumeContinuesProviderProvisioningReadOnl
 }
 
 func TestWorkspaceLaunchUnknownComputeResumeAcceptsPersistedHistoricalReadbackCounts(t *testing.T) {
-	for _, pendingReadbacks := range []int{0, 1, workspaceLaunchAuthoritativeReadBudget} {
+	for _, pendingReadbacks := range []int{0, 1, workspaceLaunchAuthoritativeReadBudget, 46} {
 		t.Run(strconv.Itoa(pendingReadbacks), func(t *testing.T) {
 			row := workspaceLaunchUnknownStageManualReviewRow(t, "ensure_compute_allocation")
 			operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -511,6 +528,7 @@ func TestWorkspaceLaunchUnknownComputeResumeAcceptsPersistedHistoricalReadbackCo
 			}
 			attempt := operation.Attempts[operation.Stage]
 			attempt.PendingReadbacks = pendingReadbacks
+			attempt.MaxPendingReadbacks = max(attempt.MaxPendingReadbacks, pendingReadbacks)
 			operation.Attempts[operation.Stage] = attempt
 			row, err = workspaceLaunchReconcileOperationRow(operation)
 			if err != nil {
@@ -519,10 +537,12 @@ func TestWorkspaceLaunchUnknownComputeResumeAcceptsPersistedHistoricalReadbackCo
 			pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
 			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{operation.Stage: {pending, pending}}}
 			authorization := workspaceLaunchUnknownComputeContinuationAuthorization(t, row, "resume-compute-readbacks-"+strconv.Itoa(pendingReadbacks))
-			got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), operation.ID, authorization)
+			got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}, adapter).Resume(context.Background(), operation.ID, authorization)
 			gotAttempt := got.Attempts[operation.Stage]
+			wantMaxPendingReadbacks := pendingReadbacks + workspaceLaunchRemainingComputeReadBudget(operation.Attempts[operation.Stage])
 			if err != nil || got.Status != "pending" || gotAttempt.PendingReadbacks != pendingReadbacks+1 ||
-				gotAttempt.MaxPendingReadbacks != pendingReadbacks+workspaceLaunchComputeFreshContinuationAdditionalReadBudget || gotAttempt.Unknown != 0 || adapter.mutations != 0 {
+				gotAttempt.MaxPendingReadbacks != wantMaxPendingReadbacks || gotAttempt.Unknown != 0 || adapter.mutations != 0 ||
+				got.ResumeAuthorization.ReadbacksAtAuthorization+got.ResumeAuthorization.AuthoritativeReadBudget != wantMaxPendingReadbacks {
 				t.Fatalf("historical readbacks=%d did not resume: operation=%s attempt=%#v err=%v", pendingReadbacks, workspaceLaunchReconcileResultSummary(got), gotAttempt, err)
 			}
 		})
@@ -656,6 +676,10 @@ func TestWorkspaceLaunchUnknownComputeResumeAllowsAnotherReviewedFailedReplayRep
 		t.Fatal(err)
 	}
 	first := *operation.ResumeAuthorization
+	productionAttempt := operation.Attempts[operation.Stage]
+	productionAttempt.PendingReadbacks = 46
+	productionAttempt.MaxPendingReadbacks = workspaceLaunchComputeFreshContinuationAdditionalReadBudget
+	operation.Attempts[operation.Stage] = productionAttempt
 	operation.ConsumedResumeAuthorizations = append(operation.ConsumedResumeAuthorizations, workspaceLaunchConsumedResumeAuthorization{
 		Authorization: first, ConsumedAt: operation.ResumeAuthorizationConsumedAt,
 	})
@@ -673,7 +697,7 @@ func TestWorkspaceLaunchUnknownComputeResumeAllowsAnotherReviewedFailedReplayRep
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &workspaceLaunchUnitStore{row: row}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
 	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
 	ready := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{
 		State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts("ensure_compute_allocation"),
