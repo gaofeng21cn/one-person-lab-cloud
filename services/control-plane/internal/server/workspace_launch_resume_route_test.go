@@ -283,6 +283,51 @@ func TestWorkspaceLaunchResumeRouteAcceptsComputeWindowAndRejectsItForOtherStage
 	}
 }
 
+func TestWorkspaceLaunchResumeRouteRequiresExactRemainingComputeWindow(t *testing.T) {
+	store := newMemoryTableStore()
+	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
+	fabric := &workspaceLaunchComputeResumeFabric{}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchUnknownStageManualReviewRow(t, "ensure_compute_allocation")
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := operation.Attempts[operation.Stage]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 46, workspaceLaunchComputeFreshContinuationAdditionalReadBudget
+	operation.Attempts[operation.Stage] = attempt
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+
+	tooLargeBody := `{"launchVersion":5,"authorizedStage":"ensure_compute_allocation","reason":"remaining compute window must stay bounded","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":18}`
+	tooLarge := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", tooLargeBody, "resume-route-compute-window-too-large")
+	if tooLarge.Code != http.StatusConflict || fabric.reads != 0 {
+		t.Fatalf("oversized remaining compute window status=%d body=%s reads=%d", tooLarge.Code, tooLarge.Body.String(), fabric.reads)
+	}
+
+	body := `{"launchVersion":5,"authorizedStage":"ensure_compute_allocation","reason":"continue within the exact remaining compute window","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":17}`
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, "resume-route-compute-window-remaining")
+	if response.Code != http.StatusOK || fabric.reads != 2 {
+		t.Fatalf("remaining compute window status=%d body=%s reads=%d", response.Code, response.Body.String(), fabric.reads)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	gotAttempt := got.Attempts[got.Stage]
+	if err != nil || !found || decodeErr != nil || got.Status != "pending" || got.Stage != "ensure_compute_allocation" ||
+		gotAttempt.PendingReadbacks != 47 || gotAttempt.MaxPendingReadbacks != workspaceLaunchMaximumPersistedReadbacks(got.Stage) ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.ReadbacksAtAuthorization != 46 || got.ResumeAuthorization.AuthoritativeReadBudget != 17 {
+		t.Fatalf("remaining compute window was not persisted exactly: found=%v operation=%s attempt=%#v errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(got), gotAttempt, err, decodeErr)
+	}
+}
+
 func TestAcceptanceBResumeExistingRoutePersistsApprovalBindingAndConvergesReady(t *testing.T) {
 	configureProductionAcceptanceBEnvironment(t)
 	store := newMemoryTableStore()
