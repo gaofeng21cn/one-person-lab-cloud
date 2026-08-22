@@ -607,6 +607,48 @@ func TestWorkspaceLaunchUnknownComputeResumeReauthorizesOneFailedReplayWithOrigi
 	}
 }
 
+func TestWorkspaceLaunchUnknownComputeResumeRetriesWaitingOwnershipWithOriginalKey(t *testing.T) {
+	row := workspaceLaunchUnknownComputeAfterFailedReplayRow(t)
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchUnitStore{row: row}
+	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"ensure_compute_allocation": {ownership, ownership, ownership, ownership, ownership}},
+		replayableStages:   map[string]bool{"ensure_compute_allocation": true},
+		mutationErrors:     map[string]error{"ensure_compute_allocation": errors.New("first ownership replay did not converge")},
+	}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 23, 2, 0, 0, 0, time.UTC) }
+	authorization := workspaceLaunchUnknownComputeContinuationAuthorization(t, row, "resume-unknown-compute-waiting-replacement")
+
+	waiting, err := reconciler.Resume(context.Background(), before.ID, authorization)
+	waitingAttempt := waiting.Attempts["ensure_compute_allocation"]
+	waitingClaim := waiting.IdempotentReplayClaims["ensure_compute_allocation"]
+	if err != nil || waiting.Status != "pending" || waiting.Stage != "ensure_compute_allocation" ||
+		waitingAttempt.Attempted != 1 || waitingAttempt.Status != "reserved" || waitingAttempt.PendingReadbacks != before.Attempts["ensure_compute_allocation"].PendingReadbacks+1 ||
+		waitingClaim.AuthorizationID != authorization.AuthorizationID || waitingClaim.Status != "waiting" ||
+		adapter.mutationsByStage["ensure_compute_allocation"] != 1 || adapter.mutationIdempotencyKey != before.Attempts["ensure_compute_allocation"].IdempotencyKey {
+		t.Fatalf("first ownership replay did not wait on the original attempt: operation=%s attempt=%#v claim=%#v mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(waiting), waitingAttempt, waitingClaim, adapter.mutationsByStage, err)
+	}
+
+	delete(adapter.mutationErrors, "ensure_compute_allocation")
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 23, 2, 11, 0, 0, time.UTC) }
+	got, err := reconciler.Reconcile(context.Background(), before.ID)
+	attempt := got.Attempts["ensure_compute_allocation"]
+	claim := got.IdempotentReplayClaims["ensure_compute_allocation"]
+	if err != nil || got.Status != "pending" || got.Stage != "storage" || attempt.Attempted != 1 || attempt.Max != 1 ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" || attempt.IdempotencyKey != before.Attempts["ensure_compute_allocation"].IdempotencyKey ||
+		adapter.mutationsByStage["ensure_compute_allocation"] != 2 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("waiting ownership replay did not converge with the original key: operation=%s attempt=%#v claim=%#v mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.mutationsByStage, err)
+	}
+}
+
 func TestWorkspaceLaunchUnknownComputeResumeRefusesASecondFailedReplayReplacement(t *testing.T) {
 	row := workspaceLaunchUnknownComputeAfterFailedReplayRow(t)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)

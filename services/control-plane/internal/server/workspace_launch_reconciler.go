@@ -506,6 +506,10 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 			return r.persist(ctx, operation)
 		}
 		if replayDispatched && claim.Status == "waiting" {
+			if attempt.PendingReadbacks < attempt.MaxPendingReadbacks &&
+				observation.State == workspaceLaunchStageOwnershipPending && r.adapter.CanReplayStage(operation) {
+				return r.mutateReservedStage(ctx, operation)
+			}
 			attempt.PendingReadbacks++
 			operation.Attempts[operation.Stage] = attempt
 			if attempt.PendingReadbacks >= attempt.MaxPendingReadbacks || workspaceLaunchPendingDeadlineExpired(operation.Stage, attempt, r.clockNow()) {

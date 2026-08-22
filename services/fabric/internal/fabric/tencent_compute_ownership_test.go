@@ -789,9 +789,17 @@ func newTencentWorkspaceLaunchComputeReadRecoveryFixture(t *testing.T) tencentWo
 		t.Fatal(err)
 	}
 	ctx := service.providerMutationContext(context.Background(), operation)
-	child, err := beginProviderMutationWithState(ctx, "tencent_compute_allocation_create", "compute_allocation", computeID, prepared.NodePoolID, tencentComputeMutationState{Allocation: allocation, Plan: prepared})
+	initial := ComputeAllocation{
+		ID: allocation.ID, OperationID: allocation.OperationID, AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID,
+		PackageID: allocation.PackageID, Provider: allocation.Provider, NodePoolID: allocation.NodePoolID,
+		Status: "provisioning", ProviderRequestID: providerRequestID("compute", input.Binding.IdempotencyKey),
+	}
+	child, err := beginProviderMutationWithState(ctx, "tencent_compute_allocation_create", "compute_allocation", computeID, prepared.NodePoolID, tencentComputeMutationState{Allocation: initial, Plan: prepared})
 	if err != nil || child == nil || !child.Fresh {
 		t.Fatalf("compute child=%#v err=%v", child, err)
+	}
+	if err := child.complete(ctx, allocation.ProviderRequestID, allocation, nil); err != nil {
+		t.Fatal(err)
 	}
 	return tencentWorkspaceLaunchComputeReadRecoveryFixture{
 		service: service, store: store, provider: provider, input: input,
