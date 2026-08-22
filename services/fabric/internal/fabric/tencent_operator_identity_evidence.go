@@ -143,7 +143,8 @@ func safeComputeClaimRecoveryReason(value, fallback string) string {
 func validComputeClaimFailureStage(value string) bool {
 	switch value {
 	case "", "cvm_pre_read", "cvm_conflict_check", "cvm_mutation_precondition", "cvm_rename_readback", "cvm_tag_readback", "cvm_final_readback",
-		"cvm_provisioner_transport", "cvm_mutation_evidence", "node_pre_cvm_read", "node_pre_read", "node_conflict_check", "node_patch_build",
+		"cvm_provisioner_transport", "cvm_mutation_evidence", "node_pre_cvm_read", "machine_pre_read", "machine_conflict_check", "machine_patch_build",
+		"machine_patch_readback", "node_pre_read", "node_pre_patch_read", "node_conflict_check", "node_patch_build",
 		"node_patch_readback", "node_final_readback", "claim_final_readback":
 		return true
 	default:

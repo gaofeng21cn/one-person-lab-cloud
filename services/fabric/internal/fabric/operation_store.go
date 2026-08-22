@@ -670,7 +670,8 @@ func sameProviderMutationReplayEpochIdentity(left, right providerMutationReplayE
 }
 
 func validProviderMutationReplayEpochTransition(expected, next FabricOperation) bool {
-	if !sameRuntimeReadbackIdentity(expected, next) || expected.Status != next.Status || expected.Status != "started" && expected.Status != "failed" ||
+	if !sameRuntimeReadbackIdentity(expected, next) || expected.Status != next.Status ||
+		expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) ||
 		!sameProviderMutationState(expected, next) {
 		return false
 	}
@@ -709,7 +710,8 @@ func sameProviderMutationTerminalIdentity(expected, next FabricOperation) bool {
 }
 
 func validProviderMutationReplayConvergence(expected, next FabricOperation) bool {
-	if expected.ID == "" || expected.Status != "started" && expected.Status != "failed" || next.Status != "succeeded" || next.FinishedAt.IsZero() ||
+	if expected.ID == "" || expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) ||
+		next.Status != "succeeded" || next.FinishedAt.IsZero() ||
 		!sameProviderMutationTerminalIdentity(expected, next) {
 		return false
 	}

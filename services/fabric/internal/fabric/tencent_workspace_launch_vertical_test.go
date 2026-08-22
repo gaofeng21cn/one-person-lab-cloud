@@ -139,6 +139,8 @@ func TestTencentWorkspaceLaunchComputePendingContinuesSameStageToOwnership(t *te
 		switch {
 		case len(args) > 1 && args[0] == "get" && args[1] == "node/"+allocation.NodeName:
 			return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+		case len(args) > 1 && args[0] == "get" && args[1] == computeClaimMachineResource(allocation):
+			return tencentOwnershipMachineReadback(allocation, false), nil
 		case len(args) > 1 && args[0] == "patch" && args[1] == "node/"+allocation.NodeName:
 			nodePatchCalls++
 			nodeOwned = true
@@ -754,6 +756,8 @@ func TestTencentWorkspaceLaunchCompletesTypedFiveStageChainWithGETOnlyReplay(t *
 				PackageID: allocation.PackageID, NodePoolID: allocation.NodePoolID,
 			}
 			return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+		case len(args) > 1 && args[0] == "get" && args[1] == computeClaimMachineResource(allocation):
+			return tencentOwnershipMachineReadback(allocation, false), nil
 		case len(args) > 0 && args[0] == "patch":
 			providerMutations["node_patch"]++
 			nodeOwned = true

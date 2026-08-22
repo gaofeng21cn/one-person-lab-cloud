@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,6 +35,24 @@ func tencentOwnershipNodeReadback(allocation ComputeAllocation, ownership Machin
 		"spec":     map[string]any{"taints": []any{map[string]any{"key": "oplcloud.cn/package-id", "value": ownership.PackageID, "effect": "NoSchedule"}}},
 		"status":   map[string]any{"addresses": []any{map[string]any{"type": "InternalIP", "address": allocation.PrivateIP}}},
 	})
+}
+
+func tencentOwnershipMachineReadback(allocation ComputeAllocation, legacy bool) []byte {
+	taint := map[string]any{"key": "oplcloud.cn/package-id", "value": allocation.PackageID, "effect": "NoSchedule"}
+	if legacy {
+		taint = map[string]any{"key": "oplcloud.cn/workspace-id", "value": "unallocated", "effect": "NoSchedule"}
+	}
+	return mustJSON(map[string]any{
+		"metadata": map[string]any{"name": allocation.MachineName, "resourceVersion": "11"},
+		"spec":     map[string]any{"taints": []any{taint}},
+	})
+}
+
+func tencentOwnershipKubernetesReadback(args []string, allocation ComputeAllocation, ownership MachineOwnership, nodeOwned bool) []byte {
+	if len(args) > 1 && strings.HasPrefix(args[1], "machines.node.tke.cloud.tencent.com/") {
+		return tencentOwnershipMachineReadback(allocation, false)
+	}
+	return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned)
 }
 
 func assertTencentOwnershipChildOperations(t *testing.T, store OperationStore, parent WorkspaceLaunchStageBinding, allocation ComputeAllocation) {
@@ -106,7 +125,7 @@ func TestTencentTagComputeMachineReplaysDeterministicOwnershipChildrenFromAuthor
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		switch args[0] {
 		case "get":
-			return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+			return tencentOwnershipKubernetesReadback(args, allocation, ownership, nodeOwned), nil
 		case "patch":
 			patchCalls++
 			operationID := providerMutationOperationID(parent, "tencent_kubernetes_node_claim", "compute_binding", allocation.ID, allocation.NodeName)
@@ -175,7 +194,7 @@ func TestTencentOwnershipReservedOrUnknownChildrenReplayWithGETOnly(t *testing.T
 				switch args[0] {
 				case "get":
 					getCalls++
-					return tencentOwnershipNodeReadback(allocation, ownership, true), nil
+					return tencentOwnershipKubernetesReadback(args, allocation, ownership, true), nil
 				case "patch":
 					patchCalls++
 					return nil, errors.New("unexpected repeated Node Patch")
@@ -267,7 +286,7 @@ func TestTencentOwnershipReservedChildrenReplayAuthoritativeAbsenceOnce(t *testi
 				switch args[0] {
 				case "get":
 					getCalls++
-					return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+					return tencentOwnershipKubernetesReadback(args, allocation, ownership, nodeOwned), nil
 				case "patch":
 					patchCalls++
 					nodeOwned = true
@@ -382,12 +401,88 @@ func (f tencentOwnershipReplayFixture) reserveChild(t *testing.T, action, bindin
 	if err != nil || attempt == nil || !attempt.Fresh {
 		t.Fatalf("reserve %s attempt=%#v err=%v", action, attempt, err)
 	}
-	if status == "failed" {
+	switch status {
+	case "failed":
 		if err := attempt.complete(f.ctx, f.ownership.ProviderRequestID, f.ownership, context.DeadlineExceeded); err != nil {
+			t.Fatal(err)
+		}
+	case "succeeded":
+		if err := attempt.complete(f.ctx, f.ownership.ProviderRequestID, f.ownership, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return providerMutationOperationID(f.parent, action, "compute_binding", f.allocation.ID, binding)
+}
+
+func TestTencentOwnershipCorrectsHistoricalSucceededNodeChildWithOriginalIdentity(t *testing.T) {
+	fixture := newTencentOwnershipReplayFixture(t, "historical-succeeded-node")
+	fixture.reserveChild(t, "tencent_cvm_ownership_tag", fixture.allocation.InstanceID, "succeeded")
+	childID := fixture.reserveChild(t, "tencent_kubernetes_node_claim", fixture.allocation.NodeName, "succeeded")
+	legacyNode := mustJSON(map[string]any{
+		"metadata": map[string]any{
+			"name": fixture.allocation.NodeName, "resourceVersion": "7",
+			"labels": map[string]string{
+				"medopl.cn/workload": "workspace", "oplcloud.cn/package-id": fixture.allocation.PackageID,
+				"oplcloud.cn/resource-id": fixture.ownership.ResourceID, "oplcloud.cn/account-id": fixture.ownership.AccountID,
+				"oplcloud.cn/workspace-id": fixture.ownership.WorkspaceID,
+			},
+		},
+		"spec":   map[string]any{"taints": []any{map[string]any{"key": "oplcloud.cn/workspace-id", "value": "unallocated", "effect": "NoSchedule"}}},
+		"status": map[string]any{"addresses": []any{map[string]any{"type": "InternalIP", "address": fixture.allocation.PrivateIP}}},
+	})
+	machineLegacy, nodeOwned := true, false
+	var patchTargets []string
+	fixture.provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action != "compute_claim_truth" {
+			t.Fatalf("historical correction called provider mutation %q", request.Action)
+		}
+		return tencentTargetOwnedProofResponse(fixture.allocation, fixture.prepared), nil
+	}
+	fixture.provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		switch args[0] {
+		case "get":
+			if args[1] == computeClaimMachineResource(fixture.allocation) {
+				return tencentOwnershipMachineReadback(fixture.allocation, machineLegacy), nil
+			}
+			if nodeOwned {
+				return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, true), nil
+			}
+			return legacyNode, nil
+		case "patch":
+			patchTargets = append(patchTargets, args[1])
+			switch args[1] {
+			case computeClaimMachineResource(fixture.allocation):
+				machineLegacy = false
+			case "node/" + fixture.allocation.NodeName:
+				if machineLegacy {
+					t.Fatal("historical correction patched Node before Machine")
+				}
+				nodeOwned = true
+			default:
+				t.Fatalf("unexpected correction target %q", args[1])
+			}
+			return nil, nil
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
+
+	if err := fixture.converge(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := fixture.store.Get(context.Background(), childID)
+	binding, bindingOK := decodeProviderMutationBinding(persisted)
+	epoch, epochOK := decodeProviderMutationReplayEpoch(persisted)
+	operations, listErr := fixture.store.List(context.Background())
+	wantTargets := []string{computeClaimMachineResource(fixture.allocation), "node/" + fixture.allocation.NodeName}
+	if err != nil || listErr != nil || len(operations) != 3 || persisted.ID != childID || persisted.OperationID != childID ||
+		persisted.IdempotencyKey != childID || persisted.Status != "succeeded" || !bindingOK || binding.FabricOperationID != childID ||
+		!epochOK || epoch.State != "succeeded" || epoch.ChildOperationID != childID || epoch.IdempotencyKey != childID ||
+		!slices.Equal(patchTargets, wantTargets) {
+		t.Fatalf("historical correction child=%#v binding=%#v/%v epoch=%#v/%v operations=%d patches=%#v err=%v listErr=%v",
+			persisted, binding, bindingOK, epoch, epochOK, len(operations), patchTargets, err, listErr)
+	}
 }
 
 func (f tencentOwnershipReplayFixture) converge() error {
@@ -420,7 +515,7 @@ func TestTencentOwnershipReplaySecondReadReadyConvergesWithoutMutation(t *testin
 			if args[0] != "get" {
 				t.Fatalf("ready race attempted kubectl mutation: %#v", args)
 			}
-			return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, true), nil
+			return tencentOwnershipKubernetesReadback(args, fixture.allocation, fixture.ownership, true), nil
 		}
 		if err := fixture.converge(); err != nil {
 			t.Fatal(err)
@@ -458,7 +553,7 @@ func TestTencentOwnershipReplaySecondReadReadyConvergesWithoutMutation(t *testin
 				return nil, errors.New("ready race attempted node mutation")
 			}
 			owned := nodeReads.Add(1) >= 3
-			return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, owned), nil
+			return tencentOwnershipKubernetesReadback(args, fixture.allocation, fixture.ownership, owned), nil
 		}
 		if err := fixture.converge(); err != nil {
 			t.Fatal(err)
@@ -500,7 +595,7 @@ func TestTencentOwnershipReplayUncertainReadFailsClosedWithoutMutation(t *testin
 				if args[0] == "patch" {
 					patchCalls.Add(1)
 				}
-				return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, false), nil
+				return tencentOwnershipKubernetesReadback(args, fixture.allocation, fixture.ownership, false), nil
 			}
 			if err := fixture.converge(); err == nil {
 				t.Fatal("uncertain authority unexpectedly converged")
@@ -538,7 +633,7 @@ func TestTencentOwnershipReplayResponseLossConvergesByGETOnly(t *testing.T) {
 		if args[0] != "get" {
 			t.Fatalf("response-loss attempted node mutation: %#v", args)
 		}
-		return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, true), nil
+		return tencentOwnershipKubernetesReadback(args, fixture.allocation, fixture.ownership, true), nil
 	}
 	if err := fixture.converge(); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("first response-loss err=%v", err)
@@ -601,7 +696,7 @@ func TestTencentOwnershipReplayConcurrentResumeHasOneWriter(t *testing.T) {
 			nodeMutationCalls.Add(1)
 			return nil, errors.New("concurrent replay attempted node mutation")
 		}
-		return tencentOwnershipNodeReadback(fixture.allocation, fixture.ownership, true), nil
+		return tencentOwnershipKubernetesReadback(args, fixture.allocation, fixture.ownership, true), nil
 	}
 	firstResult, secondResult := make(chan error, 1), make(chan error, 1)
 	go func() { firstResult <- fixture.converge() }()
@@ -721,7 +816,7 @@ func TestTencentWorkspaceLaunchComputeReplayReusesOwnershipCoreWithoutRepeatedMu
 		}
 		switch args[0] {
 		case "get":
-			return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+			return tencentOwnershipKubernetesReadback(args, allocation, ownership, nodeOwned), nil
 		case "patch":
 			patchCalls++
 			nodeOwned = true
@@ -838,7 +933,7 @@ func TestTencentWorkspaceLaunchComputeReadIsGETOnlyBeforeSameOperationOwnershipR
 		ownership := MachineOwnership{ResourceID: allocation.ID, AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID, PackageID: allocation.PackageID, NodePoolID: allocation.NodePoolID}
 		switch args[0] {
 		case "get":
-			return tencentOwnershipNodeReadback(allocation, ownership, nodeOwned), nil
+			return tencentOwnershipKubernetesReadback(args, allocation, ownership, nodeOwned), nil
 		case "patch":
 			patchCalls++
 			nodeOwned = true
@@ -936,6 +1031,9 @@ func TestTencentWorkspaceLaunchComputeReadMissingOwnershipFailsClosedOnAuthorita
 					if tc.mutateNode != nil {
 						raw = tc.mutateNode(raw)
 					}
+					if len(args) > 1 && strings.HasPrefix(args[1], "machines.node.tke.cloud.tencent.com/") {
+						return tencentOwnershipMachineReadback(fixture.allocation, false), nil
+					}
 					return raw, nil
 				case "patch":
 					patchCalls++
@@ -1006,7 +1104,7 @@ func TestTencentWorkspaceLaunchComputeReadPersistedRecoverableOwnershipRemainsGE
 	fixture.provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		switch args[0] {
 		case "get":
-			return tencentOwnershipNodeReadback(fixture.allocation, ownership, nodeOwned), nil
+			return tencentOwnershipKubernetesReadback(args, fixture.allocation, ownership, nodeOwned), nil
 		case "patch":
 			patchCalls++
 			nodeOwned = true
