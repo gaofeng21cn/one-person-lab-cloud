@@ -1101,7 +1101,7 @@ func workspaceLaunchUnknownComputeContinuationEligible(operation workspaceLaunch
 func workspaceLaunchFailedComputeReplayReauthorizationEligible(operation workspaceLaunchReconcileOperation) bool {
 	claim, found := operation.IdempotentReplayClaims[operation.Stage]
 	previous := operation.ResumeAuthorization
-	return found && len(operation.ConsumedResumeAuthorizations) == 0 && previous != nil && operation.ResumeAuthorizationConsumedAt != "" &&
+	return found && previous != nil && operation.ResumeAuthorizationConsumedAt != "" &&
 		claim.AuthorizationID == previous.AuthorizationID && claim.Stage == operation.Stage &&
 		claim.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1) && claim.Status == "failed" && claim.CompletedAt != "" &&
 		previous.AuthorizedStage == operation.Stage && previous.MutationBudget == 0 && previous.IdempotentReplayBudget == 1 &&
