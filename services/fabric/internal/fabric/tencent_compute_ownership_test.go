@@ -961,6 +961,77 @@ func TestTencentWorkspaceLaunchComputeReadMissingOwnershipFailsClosedOnAuthorita
 	}
 }
 
+func TestTencentWorkspaceLaunchComputeReadPersistedRecoverableOwnershipRemainsGETOnly(t *testing.T) {
+	fixture := newTencentWorkspaceLaunchComputeReadRecoveryFixture(t)
+	ownership, err := workspaceLaunchComputeOwnership(fixture.allocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership.Status = "quarantined"
+	if _, _, err := fixture.store.ClaimMachine(context.Background(), ownership); err != nil {
+		t.Fatal(err)
+	}
+
+	readCalls, truthCalls, tagCalls, patchCalls := 0, 0, 0, 0
+	tagOwned, nodeOwned := false, false
+	fixture.provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		switch request.Action {
+		case "read_compute_allocation":
+			readCalls++
+			return tencentComputeAllocationResponse(fixture.allocation, "req-persisted-recovery"), nil
+		case "compute_claim_truth":
+			truthCalls++
+			response := tencentTargetOwnedProofResponse(fixture.allocation, fixture.prepared)
+			if !tagOwned {
+				response.ProviderData["cvmOwnershipState"] = "recoverable"
+			}
+			return response, nil
+		case "tag_compute_machine":
+			tagCalls++
+			tagOwned = true
+			return provisionerResponse{OK: true, Status: "tagged", MutationEvidence: &ComputeClaimMutationEvidence{}}, nil
+		default:
+			t.Fatalf("unexpected provisioner action %q", request.Action)
+			return provisionerResponse{}, nil
+		}
+	}
+	fixture.provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		switch args[0] {
+		case "get":
+			return tencentOwnershipNodeReadback(fixture.allocation, ownership, nodeOwned), nil
+		case "patch":
+			patchCalls++
+			nodeOwned = true
+			return nil, nil
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
+
+	before, err := fixture.store.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, readErr := fixture.service.ReadWorkspaceLaunchStage(context.Background(), fixture.input)
+	after, listErr := fixture.store.List(context.Background())
+	persisted, ownershipErr := fixture.store.MachineOwnership(context.Background(), fixture.computeID)
+	if readErr != nil || result.State != "pending" || result.Reason != "ownership_pending" ||
+		listErr != nil || string(mustJSON(after)) != string(mustJSON(before)) ||
+		ownershipErr != nil || persisted.Status != "quarantined" || readCalls != 1 || truthCalls != 1 || tagCalls != 0 || patchCalls != 0 {
+		t.Fatalf("persisted recovery readback=%#v readErr=%v listErr=%v ownership=%#v ownershipErr=%v read=%d truth=%d tag=%d patch=%d",
+			result, readErr, listErr, persisted, ownershipErr, readCalls, truthCalls, tagCalls, patchCalls)
+	}
+
+	recovered, ensureErr := fixture.service.EnsureWorkspaceLaunchStage(context.Background(), fixture.input)
+	persisted, ownershipErr = fixture.store.MachineOwnership(context.Background(), fixture.computeID)
+	if ensureErr != nil || recovered.State != "ready" || recovered.Resources.ComputeAllocationID != fixture.computeID ||
+		ownershipErr != nil || persisted.Status != "active" || tagCalls != 1 || patchCalls != 1 {
+		t.Fatalf("persisted recovery ensure=%#v ensureErr=%v ownership=%#v ownershipErr=%v read=%d truth=%d tag=%d patch=%d",
+			recovered, ensureErr, persisted, ownershipErr, readCalls, truthCalls, tagCalls, patchCalls)
+	}
+}
+
 func TestTencentWorkspaceLaunchComputeStateUsesPersistedNodePoolAfterConfigurationDrift(t *testing.T) {
 	setProtectedResourceEnv(t)
 	setTencentProviderProfileEnv(t)
