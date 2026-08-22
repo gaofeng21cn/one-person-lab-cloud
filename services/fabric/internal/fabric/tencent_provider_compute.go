@@ -62,6 +62,13 @@ type tencentComputeMutationState struct {
 	Plan       ComputeAllocationPreparation `json:"plan"`
 }
 
+func tencentComputeMutationIdentityMatches(persisted, requested ComputeAllocation) bool {
+	return persisted.ID == requested.ID && persisted.OperationID == requested.OperationID &&
+		persisted.AccountID == requested.AccountID && persisted.WorkspaceID == requested.WorkspaceID &&
+		persisted.PackageID == requested.PackageID && persisted.Provider == requested.Provider &&
+		persisted.NodePoolID == requested.NodePoolID
+}
+
 func (p *TencentProvider) CreateComputeAllocation(ctx context.Context, input ComputeAllocationExecution) (ComputeAllocation, error) {
 	allocation, prepared := input.Allocation, input.Plan
 	workspacePlan, planErr := p.workspacePlanForContext(ctx, prepared.PackageID)
@@ -72,7 +79,21 @@ func (p *TencentProvider) CreateComputeAllocation(ctx context.Context, input Com
 	var mutation *providerMutationAttempt
 	var err error
 	if !input.DryRun {
-		mutation, err = beginProviderMutationWithState(ctx, "tencent_compute_allocation_create", "compute_allocation", allocation.ID, prepared.NodePoolID, tencentComputeMutationState{Allocation: allocation, Plan: prepared})
+		mutationState := tencentComputeMutationState{Allocation: allocation, Plan: prepared}
+		if journal := providerMutationJournalFromContext(ctx); journal != nil {
+			operationID := providerMutationOperationID(journal.parent, "tencent_compute_allocation_create", "compute_allocation", allocation.ID, prepared.NodePoolID)
+			if existing, getErr := journal.operations.Get(ctx, operationID); getErr == nil {
+				var persisted tencentComputeMutationState
+				if !decodeProviderMutationState(existing, &persisted) || !tencentComputeMutationIdentityMatches(persisted.Allocation, allocation) ||
+					!reflect.DeepEqual(persisted.Plan, prepared) {
+					return allocation, ErrLaunchStageBindingConflict
+				}
+				mutationState = persisted
+			} else if !errors.Is(getErr, ErrOperationNotFound) {
+				return allocation, getErr
+			}
+		}
+		mutation, err = beginProviderMutationWithState(ctx, "tencent_compute_allocation_create", "compute_allocation", allocation.ID, prepared.NodePoolID, mutationState)
 		if err != nil {
 			return allocation, err
 		}
