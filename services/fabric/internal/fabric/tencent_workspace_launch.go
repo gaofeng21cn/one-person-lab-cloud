@@ -189,6 +189,12 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 	providerState, err := encodeTencentWorkspaceLaunchState(state)
 	return WorkspaceLaunchProviderResult{Resources: resources, ProviderState: providerState}, err
 }
+
+func workspaceLaunchComputeOwnershipRecoverable(proof ComputeClaimProviderProof) bool {
+	return (proof.CVMOwnershipState == "recoverable" || proof.CVMOwnershipState == "target_owned") &&
+		(proof.NodeOwnershipState == "unallocated" || proof.NodeOwnershipState == "target_owned")
+}
+
 func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request WorkspaceLaunchProviderRequest) (WorkspaceLaunchProviderResult, error) {
 	input, binding := request.Input, request.Input.Binding
 	plan, planErr := decodeTencentWorkspacePlanEnvelope(request.ProviderPlan, input.PackageID, input.SizeGB)
@@ -223,14 +229,17 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 				return WorkspaceLaunchProviderResult{}, ownershipErr
 			}
 			proof, ownershipErr := p.ProveComputeClaimRecovery(ctx, readback, *state.ComputePlan, expected)
-			if ownershipErr != nil || (proof.CVMOwnershipState != "recoverable" && proof.CVMOwnershipState != "target_owned") ||
-				(proof.NodeOwnershipState != "unallocated" && proof.NodeOwnershipState != "target_owned") {
+			if ownershipErr != nil || !workspaceLaunchComputeOwnershipRecoverable(proof) {
 				return WorkspaceLaunchProviderResult{}, firstNonNil(ownershipErr, ErrLaunchStageBindingConflict)
 			}
 			return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchOwnershipPending
 		}
-		if p.readComputeMachineOwnership(ctx, readback, *state.ComputePlan, *state.Ownership, true) != nil {
-			return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
+		proof, ownershipErr := p.ProveComputeClaimRecovery(ctx, readback, *state.ComputePlan, *state.Ownership)
+		if ownershipErr != nil || !workspaceLaunchComputeOwnershipRecoverable(proof) {
+			return WorkspaceLaunchProviderResult{}, firstNonNil(ownershipErr, ErrLaunchStageBindingConflict)
+		}
+		if proof.CVMOwnershipState != "target_owned" || proof.NodeOwnershipState != "target_owned" {
+			return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchOwnershipPending
 		}
 		state.Compute = &readback
 		resources.ComputeAllocationID, resources.ComputeBindingRef = readback.ID, binding.FabricOperationID
