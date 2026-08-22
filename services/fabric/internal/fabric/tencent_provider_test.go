@@ -365,6 +365,11 @@ func TestComputeClaimNodeOwnershipUsesPackageTaintAndWorkspaceLabels(t *testing.
 			packageID: "basic", wantState: "unallocated", wantOK: true,
 		},
 		{
+			name:      "exact target labels with legacy taint remain recoverable",
+			raw:       `{"metadata":{"name":"10.0.0.8","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/workspace-id","value":"unallocated","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`,
+			packageID: "basic", wantState: "unallocated", wantOK: true,
+		},
+		{
 			name:      "legacy taint without pool identity conflicts",
 			raw:       `{"metadata":{"name":"10.0.0.8","labels":{}},"spec":{"taints":[{"key":"oplcloud.cn/workspace-id","value":"unallocated","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`,
 			packageID: "basic", wantState: "node_ownership_conflict", wantOK: false,
@@ -448,63 +453,104 @@ func TestComputeClaimNodePatchConvertsExactLegacyPoolTaintAtomically(t *testing.
 	}
 }
 
-func TestTencentClaimComputeNodeLegacyConversionConvergesOrFailsClosedOnTemplateDrift(t *testing.T) {
-	for _, tc := range []struct {
-		name            string
-		controllerDrift bool
-		wantErr         bool
-		wantGets        int
-	}{
-		{name: "converted target ownership replays without mutation", wantGets: 3},
-		{name: "controller restores legacy taint", controllerDrift: true, wantErr: true, wantGets: 7},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			setProtectedResourceEnv(t)
-			allocation, _, ownership := computeClaimProviderFixture()
-			provider := NewTencentProvider()
-			provider.convergenceWait = func(context.Context, int) error { return nil }
-			legacy := []byte(`{"metadata":{"name":"10.0.0.8","resourceVersion":"7","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic"}},"spec":{"taints":[{"key":"oplcloud.cn/workspace-id","value":"unallocated","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`)
-			target := []byte(`{"metadata":{"name":"10.0.0.8","resourceVersion":"8","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`)
-			owned, gets, patches := false, 0, 0
-			provider.kubectl = func(_ context.Context, args []string, stdin []byte) ([]byte, error) {
-				switch args[0] {
-				case "get":
-					gets++
-					if owned && !tc.controllerDrift {
-						return target, nil
-					}
-					return legacy, nil
-				case "patch":
-					patches++
-					var operations []map[string]any
-					if json.Unmarshal(stdin, &operations) != nil || len(operations) < 3 || operations[1]["op"] != "test" || operations[2]["op"] != "replace" {
-						t.Fatalf("legacy patch is not an atomic tested conversion: %s", stdin)
-					}
-					owned = true
-					return nil, nil
-				default:
-					t.Fatalf("unexpected kubectl args=%#v", args)
-					return nil, nil
-				}
+func TestTencentClaimComputeNodeLegacyConversionConvergesMachineBeforeNode(t *testing.T) {
+	setProtectedResourceEnv(t)
+	allocation, _, ownership := computeClaimProviderFixture()
+	provider := NewTencentProvider()
+	provider.convergenceWait = func(context.Context, int) error { return nil }
+	legacyNode := []byte(`{"metadata":{"name":"10.0.0.8","resourceVersion":"7","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/workspace-id","value":"unallocated","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`)
+	targetNode := []byte(`{"metadata":{"name":"10.0.0.8","resourceVersion":"8","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`)
+	machineLegacy, nodeOwned := true, false
+	patches := []string{}
+	provider.kubectl = func(_ context.Context, args []string, stdin []byte) ([]byte, error) {
+		switch args[0] {
+		case "get":
+			if args[1] == computeClaimMachineResource(allocation) {
+				return tencentOwnershipMachineReadback(allocation, machineLegacy), nil
 			}
+			if nodeOwned {
+				return targetNode, nil
+			}
+			return legacyNode, nil
+		case "patch":
+			var operations []map[string]any
+			if json.Unmarshal(stdin, &operations) != nil || len(operations) < 3 || operations[1]["op"] != "test" || operations[2]["op"] != "replace" {
+				t.Fatalf("legacy patch is not an atomic tested conversion: %s", stdin)
+			}
+			patches = append(patches, args[1])
+			switch args[1] {
+			case computeClaimMachineResource(allocation):
+				machineLegacy = false
+			case "node/" + allocation.NodeName:
+				if machineLegacy {
+					t.Fatal("Node was patched before its owning Machine")
+				}
+				nodeOwned = true
+			default:
+				t.Fatalf("unexpected patch target=%q", args[1])
+			}
+			return nil, nil
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
 
-			err := provider.ClaimComputeNode(context.Background(), allocation, ownership)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("controller drift unexpectedly converged")
-				}
-			} else {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := provider.ClaimComputeNode(context.Background(), allocation, ownership); err != nil {
-					t.Fatalf("target-owned replay: %v", err)
-				}
+	if err := provider.ClaimComputeNode(context.Background(), allocation, ownership); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.ClaimComputeNode(context.Background(), allocation, ownership); err != nil {
+		t.Fatalf("target-owned replay: %v", err)
+	}
+	wantPatches := []string{computeClaimMachineResource(allocation), "node/" + allocation.NodeName}
+	if !slices.Equal(patches, wantPatches) {
+		t.Fatalf("patch order=%#v want=%#v", patches, wantPatches)
+	}
+}
+
+func TestTencentClaimComputeNodeMachineConflictFailsClosedBeforePatch(t *testing.T) {
+	setProtectedResourceEnv(t)
+	allocation, _, ownership := computeClaimProviderFixture()
+	provider := NewTencentProvider()
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		if args[0] != "get" {
+			t.Fatalf("conflicting Machine reached mutation: %#v", args)
+		}
+		if args[1] == computeClaimMachineResource(allocation) {
+			return []byte(`{"metadata":{"name":"machine-alpha","resourceVersion":"11"},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"pro","effect":"NoSchedule"}]}}`), nil
+		}
+		return tencentOwnershipNodeReadback(allocation, ownership, false), nil
+	}
+	if err := provider.ClaimComputeNode(context.Background(), allocation, ownership); err == nil || !strings.Contains(err.Error(), "node_ownership_conflict") {
+		t.Fatalf("conflicting Machine err=%v", err)
+	}
+}
+
+func TestTencentClaimComputeNodeMachineCASConflictFailsClosedBeforeNodePatch(t *testing.T) {
+	setProtectedResourceEnv(t)
+	allocation, _, ownership := computeClaimProviderFixture()
+	provider := NewTencentProvider()
+	patches := []string{}
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		switch args[0] {
+		case "get":
+			if args[1] == computeClaimMachineResource(allocation) {
+				return tencentOwnershipMachineReadback(allocation, true), nil
 			}
-			if patches != 1 || gets != tc.wantGets {
-				t.Fatalf("gets=%d patches=%d want gets=%d patches=1 err=%v", gets, patches, tc.wantGets, err)
-			}
-		})
+			return []byte(`{"metadata":{"name":"10.0.0.8","resourceVersion":"7","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/package-id":"basic"}},"spec":{"taints":[{"key":"oplcloud.cn/workspace-id","value":"unallocated","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`), nil
+		case "patch":
+			patches = append(patches, args[1])
+			return nil, errors.New("Operation cannot be fulfilled: the object has been modified; resourceVersion conflict")
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
+	if err := provider.ClaimComputeNode(context.Background(), allocation, ownership); err == nil || !strings.Contains(err.Error(), "node_ownership_conflict") {
+		t.Fatalf("Machine CAS conflict err=%v", err)
+	}
+	if !slices.Equal(patches, []string{computeClaimMachineResource(allocation)}) {
+		t.Fatalf("CAS conflict patches=%#v", patches)
 	}
 }
 
@@ -1503,6 +1549,9 @@ func TestTencentTagComputeMachineConvergesProviderAndNodeWithStrictReadback(t *t
 		switch args[0] {
 		case "get":
 			events = append(events, "get")
+			if strings.HasPrefix(args[1], "machines.node.tke.cloud.tencent.com/") {
+				return []byte(`{"metadata":{"name":"machine-alpha","resourceVersion":"11"},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]}}`), nil
+			}
 			if nodeOwned {
 				return []byte(`{"metadata":{"name":"node-alpha","resourceVersion":"8","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`), nil
 			}
@@ -1524,7 +1573,7 @@ func TestTencentTagComputeMachineConvergesProviderAndNodeWithStrictReadback(t *t
 	}
 
 	err := provider.TagComputeMachine(context.Background(), ProviderMachine{MachineID: "machine-alpha", InstanceID: "ins-alpha", NodeName: "node-alpha", PrivateIP: "10.0.0.8"}, MachineOwnership{ResourceID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", PackageID: "basic", NodePoolID: "np-basic"})
-	if err != nil || !slices.Equal(events, []string{"provider", "get", "patch", "get"}) {
+	if err != nil || !slices.Equal(events, []string{"provider", "get", "get", "get", "patch", "get", "get"}) {
 		t.Fatalf("tag machine err=%v events=%#v", err, events)
 	}
 }
@@ -1539,6 +1588,9 @@ func TestTencentTagComputeMachineReadsNodeAfterPatchTimeout(t *testing.T) {
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		switch args[0] {
 		case "get":
+			if strings.HasPrefix(args[1], "machines.node.tke.cloud.tencent.com/") {
+				return []byte(`{"metadata":{"name":"machine-alpha","resourceVersion":"11"},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]}}`), nil
+			}
 			if nodeOwned {
 				return []byte(`{"metadata":{"name":"node-alpha","resourceVersion":"8","labels":{"medopl.cn/workload":"workspace","oplcloud.cn/resource-id":"compute-alpha","oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"taints":[{"key":"oplcloud.cn/package-id","value":"basic","effect":"NoSchedule"}]},"status":{"addresses":[{"type":"InternalIP","address":"10.0.0.8"}]}}`), nil
 			}

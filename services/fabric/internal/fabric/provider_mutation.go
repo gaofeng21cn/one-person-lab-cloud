@@ -363,7 +363,7 @@ func canonicalJSONObject(body []byte) ([]byte, bool) {
 }
 
 func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestID string, resource any, mutationErr error) error {
-	if a == nil || (!a.Fresh && a.operation.Status == "succeeded") {
+	if a == nil || (!a.Fresh && a.operation.Status == "succeeded" && !a.Replay) {
 		return nil
 	}
 	if !a.Replay && mutationErr == nil {
@@ -432,7 +432,7 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 }
 
 func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error) {
-	if a == nil || a.journal == nil || a.Fresh || a.operation.Status != "started" && a.operation.Status != "failed" {
+	if a == nil || a.journal == nil || a.Fresh || a.operation.Status != "started" && a.operation.Status != "failed" && !correctableSucceededNodeClaim(a.operation) {
 		return false, nil
 	}
 	store, ok := a.journal.operations.(providerMutationReplayStore)
@@ -473,6 +473,12 @@ func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error)
 	}
 	a.operation, a.Replay = next, true
 	return true, nil
+}
+
+func correctableSucceededNodeClaim(operation FabricOperation) bool {
+	binding, ok := decodeProviderMutationBinding(operation)
+	return ok && operation.Status == "succeeded" && binding.Action == "tencent_kubernetes_node_claim" &&
+		binding.ResourceKind == "compute_binding" && binding.ExpectedResourceBinding != ""
 }
 
 func (a *providerMutationAttempt) markReplayDispatch(ctx context.Context) error {

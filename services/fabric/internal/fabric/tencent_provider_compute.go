@@ -381,18 +381,62 @@ func (p *TencentProvider) convergeComputeClaimNode(ctx context.Context, allocati
 		}
 		return evidence, &computeClaimNodeConvergenceError{Reason: reason, Stage: "node_conflict_check", ProviderClass: "ownership_conflict"}
 	}
-	if nodeState == "target_owned" {
-		return evidence, nil
+	machineRaw, err := p.callKubectl(ctx, []string{"get", computeClaimMachineResource(allocation), "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		reason := computeClaimKubectlReason(err)
+		return evidence, &computeClaimNodeConvergenceError{Reason: reason, Stage: "machine_pre_read", ProviderClass: computeClaimKubectlErrorClass(err)}
 	}
-	patch, patchErr := computeClaimNodePatch(nodeRaw, allocation, ownership)
-	if patchErr != nil {
-		return evidence, &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "node_patch_build", ProviderClass: "ownership_conflict"}
+	machineState, machineOK := computeClaimMachineState(machineRaw, allocation)
+	if !machineOK {
+		return evidence, &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "machine_conflict_check", ProviderClass: "ownership_conflict"}
 	}
-	_, patchErr = p.callKubectl(ctx, []string{"patch", "node/" + allocation.NodeName, "--type=json", "--patch-file=/dev/stdin"}, patch, target)
-	if !computeClaimKubectlClientRejectedBeforeAPI(patchErr) {
-		evidence.Attempted = 1
+	if machineState != "target_owned" {
+		machinePatch, patchErr := computeClaimMachinePatch(machineRaw, allocation)
+		if patchErr != nil {
+			return evidence, &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "machine_patch_build", ProviderClass: "ownership_conflict"}
+		}
+		_, patchErr = p.callKubectl(ctx, []string{"patch", computeClaimMachineResource(allocation), "--type=json", "--patch-file=/dev/stdin"}, machinePatch, target)
+		if !computeClaimKubectlClientRejectedBeforeAPI(patchErr) {
+			evidence.Attempted = 1
+		}
+		machineRaw, err = p.callKubectl(ctx, []string{"get", computeClaimMachineResource(allocation), "-o", "json"}, nil, protectedresource.Target{})
+		machineState, machineOK = computeClaimMachineState(machineRaw, allocation)
+		if err != nil || !machineOK || machineState != "target_owned" {
+			if err != nil {
+				return computeClaimMissingNodeEvidence(evidence), &computeClaimNodeConvergenceError{Reason: computeClaimKubectlReason(err), Stage: "machine_patch_readback", ProviderClass: computeClaimKubectlErrorClass(err)}
+			}
+			providerClass := "readback_mismatch"
+			if !machineOK {
+				providerClass = "ownership_conflict"
+			}
+			return computeClaimMissingNodeEvidence(evidence), &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "machine_patch_readback", ProviderClass: providerClass}
+		}
+		// The write response can be lost; the exact Machine readback above is
+		// the authority for whether the same child may continue.
 	}
-	readbackState, readbackOK, readbackErr, readbackClass := p.readNodeOwnershipAfterMutation(ctx, allocation, ownership)
+
+	// Re-read the Node after fixing the owning Machine. TKE can update the Node
+	// between these writes, so the original resourceVersion must never be reused.
+	nodeRaw, err = p.callKubectl(ctx, []string{"get", "node/" + allocation.NodeName, "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return computeClaimMissingNodeEvidence(evidence), &computeClaimNodeConvergenceError{Reason: computeClaimKubectlReason(err), Stage: "node_pre_patch_read", ProviderClass: computeClaimKubectlErrorClass(err)}
+	}
+	nodeState, ok = computeClaimNodeOwnershipState(nodeRaw, allocation, ownership)
+	if !ok {
+		return computeClaimMissingNodeEvidence(evidence), &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "node_conflict_check", ProviderClass: "ownership_conflict"}
+	}
+	var patchErr error
+	if nodeState != "target_owned" {
+		patch, buildErr := computeClaimNodePatch(nodeRaw, allocation, ownership)
+		if buildErr != nil {
+			return computeClaimMissingNodeEvidence(evidence), &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "node_patch_build", ProviderClass: "ownership_conflict"}
+		}
+		_, patchErr = p.callKubectl(ctx, []string{"patch", "node/" + allocation.NodeName, "--type=json", "--patch-file=/dev/stdin"}, patch, target)
+		if !computeClaimKubectlClientRejectedBeforeAPI(patchErr) {
+			evidence.Attempted = 1
+		}
+	}
+	readbackState, readbackOK, readbackErr, readbackClass := p.readComputeClaimOwnershipAfterMutation(ctx, allocation, ownership)
 	if readbackOK && readbackState == "target_owned" {
 		evidence.Confirmed = evidence.Attempted
 		return evidence, nil
@@ -420,10 +464,15 @@ func (p *TencentProvider) convergeComputeClaimNode(ctx context.Context, allocati
 	return evidence, &computeClaimNodeConvergenceError{Reason: "node_ownership_conflict", Stage: "node_final_readback", ProviderClass: "readback_mismatch"}
 }
 
-// readNodeOwnershipAfterMutation performs bounded authoritative reads after a
-// patch. It never retries the patch itself: a target-owned readback is the only
-// success proof, while an explicit ownership conflict stops immediately.
-func (p *TencentProvider) readNodeOwnershipAfterMutation(ctx context.Context, allocation ComputeAllocation, ownership MachineOwnership) (string, bool, error, string) {
+func computeClaimMissingNodeEvidence(evidence ComputeClaimMutationEvidence) ComputeClaimMutationEvidence {
+	evidence.Missing = []string{"node_ownership"}
+	return evidence
+}
+
+// readComputeClaimOwnershipAfterMutation performs bounded authoritative reads
+// after the Machine and Node writes. It never retries either write: both exact
+// resources must reach the target state before the child operation succeeds.
+func (p *TencentProvider) readComputeClaimOwnershipAfterMutation(ctx context.Context, allocation ComputeAllocation, ownership MachineOwnership) (string, bool, error, string) {
 	var lastErr error
 	for attempt := 0; attempt < 6; attempt++ {
 		if attempt > 0 && p.convergenceWait != nil {
@@ -431,12 +480,24 @@ func (p *TencentProvider) readNodeOwnershipAfterMutation(ctx context.Context, al
 				return "unknown", false, err, computeClaimKubectlErrorClass(err)
 			}
 		}
-		raw, err := p.callKubectl(ctx, []string{"get", "node/" + allocation.NodeName, "-o", "json"}, nil, protectedresource.Target{})
+		machineRaw, err := p.callKubectl(ctx, []string{"get", computeClaimMachineResource(allocation), "-o", "json"}, nil, protectedresource.Target{})
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		state, ok := computeClaimNodeOwnershipState(raw, allocation, ownership)
+		machineState, machineOK := computeClaimMachineState(machineRaw, allocation)
+		if !machineOK {
+			return "node_ownership_conflict", false, nil, "ownership_conflict"
+		}
+		if machineState != "target_owned" {
+			continue
+		}
+		nodeRaw, err := p.callKubectl(ctx, []string{"get", "node/" + allocation.NodeName, "-o", "json"}, nil, protectedresource.Target{})
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		state, ok := computeClaimNodeOwnershipState(nodeRaw, allocation, ownership)
 		if ok && state == "target_owned" {
 			return state, true, nil, "readback_mismatch"
 		}
@@ -510,6 +571,57 @@ type computeClaimNodeDocument struct {
 	} `json:"status"`
 }
 
+type computeClaimMachineDocument struct {
+	Metadata struct {
+		Name            string `json:"name"`
+		ResourceVersion string `json:"resourceVersion"`
+	} `json:"metadata"`
+	Spec struct {
+		Taints []computeClaimNodeTaint `json:"taints"`
+	} `json:"spec"`
+}
+
+func computeClaimMachineResource(allocation ComputeAllocation) string {
+	return "machines.node.tke.cloud.tencent.com/" + allocation.MachineName
+}
+
+func computeClaimMachineState(raw []byte, allocation ComputeAllocation) (string, bool) {
+	var machine computeClaimMachineDocument
+	if json.Unmarshal(raw, &machine) != nil || machine.Metadata.Name != allocation.MachineName || machine.Metadata.ResourceVersion == "" || allocation.PackageID == "" {
+		return "node_ownership_conflict", false
+	}
+	if len(machine.Spec.Taints) != 1 {
+		return "node_ownership_conflict", false
+	}
+	taint := machine.Spec.Taints[0]
+	switch {
+	case taint.Key == "oplcloud.cn/package-id" && taint.Value == allocation.PackageID && taint.Effect == "NoSchedule":
+		return "target_owned", true
+	case taint.Key == "oplcloud.cn/workspace-id" && taint.Value == "unallocated" && taint.Effect == "NoSchedule":
+		return "legacy_unallocated", true
+	default:
+		return "node_ownership_conflict", false
+	}
+}
+
+func computeClaimMachinePatch(raw []byte, allocation ComputeAllocation) ([]byte, error) {
+	var machine computeClaimMachineDocument
+	if json.Unmarshal(raw, &machine) != nil || machine.Metadata.Name != allocation.MachineName || machine.Metadata.ResourceVersion == "" {
+		return nil, fmt.Errorf("machine_identity_mismatch")
+	}
+	state, ok := computeClaimMachineState(raw, allocation)
+	if !ok || state != "legacy_unallocated" {
+		return nil, fmt.Errorf("node_ownership_conflict")
+	}
+	legacy := []computeClaimNodeTaint{{Key: "oplcloud.cn/workspace-id", Value: "unallocated", Effect: "NoSchedule"}}
+	target := []computeClaimNodeTaint{{Key: "oplcloud.cn/package-id", Value: allocation.PackageID, Effect: "NoSchedule"}}
+	return json.Marshal([]map[string]any{
+		{"op": "test", "path": "/metadata/resourceVersion", "value": machine.Metadata.ResourceVersion},
+		{"op": "test", "path": "/spec/taints", "value": legacy},
+		{"op": "replace", "path": "/spec/taints", "value": target},
+	})
+}
+
 func computeClaimNodeState(labels map[string]string, taints []computeClaimNodeTaint, allocation ComputeAllocation, ownership MachineOwnership) (string, string, bool) {
 	if allocation.PackageID == "" || allocation.PackageID != ownership.PackageID {
 		return "node_ownership_conflict", "", false
@@ -566,7 +678,7 @@ func computeClaimNodeState(labels map[string]string, taints []computeClaimNodeTa
 			return "node_ownership_conflict", "", false
 		}
 	}
-	if present == 0 {
+	if present == 0 || present == len(expectedOwnership) && taintState == "legacy_unallocated" && workloadPresent {
 		return "unallocated", taintState, true
 	}
 	if present == len(expectedOwnership) && taintState == "package" && workloadPresent {
