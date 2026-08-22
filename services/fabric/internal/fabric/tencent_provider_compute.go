@@ -647,6 +647,8 @@ func computeClaimNodeState(labels map[string]string, taints []computeClaimNodeTa
 		taintState = "package"
 	case packageTaints == 0 && legacyTaints == 1 && len(taints) == 1:
 		taintState = "legacy_unallocated"
+	case packageTaints == 1 && legacyTaints == 1 && len(taints) == 2:
+		taintState = "package_with_legacy_unallocated"
 	default:
 		return "node_ownership_conflict", "", false
 	}
@@ -658,7 +660,7 @@ func computeClaimNodeState(labels map[string]string, taints []computeClaimNodeTa
 	}
 	// A legacy taint is safe to adopt only when the inherited pool labels prove
 	// the exact package template that emitted it.
-	if taintState == "legacy_unallocated" && (!workloadPresent || !packagePresent) {
+	if taintState != "package" && (!workloadPresent || !packagePresent) {
 		return "node_ownership_conflict", "", false
 	}
 
@@ -678,7 +680,8 @@ func computeClaimNodeState(labels map[string]string, taints []computeClaimNodeTa
 			return "node_ownership_conflict", "", false
 		}
 	}
-	if present == 0 || present == len(expectedOwnership) && taintState == "legacy_unallocated" && workloadPresent {
+	if present == 0 && taintState != "package_with_legacy_unallocated" ||
+		present == len(expectedOwnership) && taintState != "package" && workloadPresent {
 		return "unallocated", taintState, true
 	}
 	if present == len(expectedOwnership) && taintState == "package" && workloadPresent {
@@ -703,12 +706,12 @@ func computeClaimNodePatch(raw []byte, allocation ComputeAllocation, ownership M
 		{key: "oplcloud.cn/workspace-id", value: ownership.WorkspaceID},
 	}
 	patch := []map[string]any{{"op": "test", "path": "/metadata/resourceVersion", "value": node.Metadata.ResourceVersion}}
-	if taintState == "legacy_unallocated" {
-		legacy := []computeClaimNodeTaint{{Key: "oplcloud.cn/workspace-id", Value: "unallocated", Effect: "NoSchedule"}}
-		current := []computeClaimNodeTaint{{Key: "oplcloud.cn/package-id", Value: allocation.PackageID, Effect: "NoSchedule"}}
+	if taintState != "package" {
+		current := append([]computeClaimNodeTaint(nil), node.Spec.Taints...)
+		target := []computeClaimNodeTaint{{Key: "oplcloud.cn/package-id", Value: allocation.PackageID, Effect: "NoSchedule"}}
 		patch = append(patch,
-			map[string]any{"op": "test", "path": "/spec/taints", "value": legacy},
-			map[string]any{"op": "replace", "path": "/spec/taints", "value": current},
+			map[string]any{"op": "test", "path": "/spec/taints", "value": current},
+			map[string]any{"op": "replace", "path": "/spec/taints", "value": target},
 		)
 	}
 	if node.Metadata.Labels == nil {
