@@ -649,7 +649,7 @@ func TestWorkspaceLaunchUnknownComputeResumeRetriesWaitingOwnershipWithOriginalK
 	}
 }
 
-func TestWorkspaceLaunchUnknownComputeResumeRefusesASecondFailedReplayReplacement(t *testing.T) {
+func TestWorkspaceLaunchUnknownComputeResumeAllowsAnotherReviewedFailedReplayReplacement(t *testing.T) {
 	row := workspaceLaunchUnknownComputeAfterFailedReplayRow(t)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
 	if err != nil {
@@ -664,25 +664,41 @@ func TestWorkspaceLaunchUnknownComputeResumeRefusesASecondFailedReplayReplacemen
 	second.LaunchVersion = operation.Version
 	operation.ResumeAuthorization = &second
 	operation.ResumeAuthorizationConsumedAt = "2026-08-23T02:01:00Z"
-	claim := operation.IdempotentReplayClaims[operation.Stage]
-	claim.AuthorizationID = second.AuthorizationID
-	claim.CompletedAt = operation.ResumeAuthorizationConsumedAt
-	operation.IdempotentReplayClaims[operation.Stage] = claim
+	previousClaim := operation.IdempotentReplayClaims[operation.Stage]
+	previousClaim.AuthorizationID = second.AuthorizationID
+	previousClaim.CompletedAt = operation.ResumeAuthorizationConsumedAt
+	operation.IdempotentReplayClaims[operation.Stage] = previousClaim
 	operation.Version++
 	row, err = workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := stringValue(row["result"])
 	store := &workspaceLaunchUnitStore{row: row}
-	adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{
-		"ensure_compute_allocation": {State: workspaceLaunchStageOwnershipPending},
-	}, replayableStages: map[string]bool{"ensure_compute_allocation": true}}
+	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
+	ready := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{
+		State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts("ensure_compute_allocation"),
+	}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"ensure_compute_allocation": {ownership, ownership, ownership, ready}},
+		replayableStages:   map[string]bool{"ensure_compute_allocation": true},
+	}
 	authorization := workspaceLaunchUnknownComputeContinuationAuthorization(t, row, "resume-unknown-compute-third")
 
-	_, err = NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), operation.ID, authorization)
-	if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 0 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {
-		t.Fatalf("second failed replay replacement changed operation: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
+	got, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), operation.ID, authorization)
+	attempt := got.Attempts["ensure_compute_allocation"]
+	claim := got.IdempotentReplayClaims["ensure_compute_allocation"]
+	if err != nil || got.Status != "pending" || got.Stage != "storage" || attempt.Attempted != 1 || attempt.Max != 1 ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" || attempt.IdempotencyKey != operation.Attempts[operation.Stage].IdempotencyKey ||
+		adapter.reads != 4 || adapter.mutationsByStage["ensure_compute_allocation"] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" || got.ResumeAuthorizationConsumedAt == "" ||
+		len(got.ConsumedResumeAuthorizations) != 2 {
+		t.Fatalf("reviewed failed replay replacement did not continue the original attempt: operation=%s attempt=%#v claim=%#v history=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, got.ConsumedResumeAuthorizations, adapter.reads, adapter.mutationsByStage, err)
+	}
+	for _, stage := range []string{"storage", "attachment", "secret", "runtime", "activation", "receipt"} {
+		if adapter.mutationsByStage[stage] != 0 {
+			t.Fatalf("downstream stage %s started before the next reconcile: mutations=%#v", stage, adapter.mutationsByStage)
+		}
 	}
 }
 
