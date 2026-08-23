@@ -1902,11 +1902,20 @@ func (client *tencentSDKClient) DiscoverStorageVolume(request Request, _ map[str
 	if len(nameDisks) > 1 {
 		return Response{Ok: false, StorageState: "unknown", ErrorCode: "tencent_cbs_multiple_candidate", Message: "Tencent CBS discovery must return at most one logical disk.", ProviderRequestId: requestID, Retryable: false}
 	}
-	if len(exactDisks) != 1 || exactDisks[0] == nil || len(nameDisks) != 1 || nameDisks[0] == nil ||
-		stringValue(exactDisks[0].DiskId) != stringValue(nameDisks[0].DiskId) {
+	var disk *cbs2017.Disk
+	switch {
+	case len(exactDisks) == 1 && len(nameDisks) == 1:
+		if exactDisks[0] == nil || nameDisks[0] == nil || stringValue(exactDisks[0].DiskId) != stringValue(nameDisks[0].DiskId) {
+			return Response{Ok: false, StorageState: "unknown", ErrorCode: "tencent_cbs_identity_mismatch", Message: "Tencent CBS name and ownership tags do not identify the same unique disk.", ProviderRequestId: requestID, Retryable: false}
+		}
+		disk = nameDisks[0]
+	case len(exactDisks) == 1 && exactDisks[0] != nil:
+		disk = exactDisks[0]
+	case len(nameDisks) == 1 && nameDisks[0] != nil:
+		disk = nameDisks[0]
+	default:
 		return Response{Ok: false, StorageState: "unknown", ErrorCode: "tencent_cbs_identity_mismatch", Message: "Tencent CBS name and ownership tags do not identify the same unique disk.", ProviderRequestId: requestID, Retryable: false}
 	}
-	disk := nameDisks[0]
 	diskID := stringValue(disk.DiskId)
 	exactStorage := storage
 	exactStorage.Id = diskID
@@ -1973,9 +1982,13 @@ func (client *tencentSDKClient) describeRecoveryDisks(filters []*cbs2017.Filter)
 }
 
 func oneMonthCBSPeriod(created, deadline string) bool {
-	createdAt, createdErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(created))
-	deadlineAt, deadlineErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(deadline))
-	return createdErr == nil && deadlineErr == nil && deadlineAt.Equal(createdAt.AddDate(0, 1, 0))
+	createdAt, createdErr := parseTencentTime(created)
+	deadlineAt, deadlineErr := parseTencentTime(deadline)
+	if createdErr != nil || deadlineErr != nil {
+		return false
+	}
+	delta := deadlineAt.Sub(createdAt.AddDate(0, 1, 0))
+	return delta >= -time.Minute && delta <= time.Minute
 }
 
 func (client *tencentSDKClient) SyncStorageVolume(request Request, _ map[string]string) Response {
@@ -4476,11 +4489,19 @@ func deadlineAfter(current, previous string) bool {
 }
 
 func normalizeTencentDeadline(value string) string {
-	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+	parsed, err := parseTencentTime(value)
 	if err != nil {
 		return ""
 	}
 	return parsed.UTC().Format(time.RFC3339)
+}
+
+func parseTencentTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed, nil
+	}
+	return time.ParseInLocation("2006-01-02 15:04:05", value, time.FixedZone("UTC+8", 8*60*60))
 }
 
 func buildCreateNativeNodePoolRequest(request Request, env map[string]string) (*tke2022.CreateNodePoolRequest, *Response) {
