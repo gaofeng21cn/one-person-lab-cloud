@@ -656,6 +656,86 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {
 		t.Fatalf("unready runtime read result=%#v err=%v applyCalls=%d", result, err, fixture.applyCalls)
 	}
+	result, err = service.EnsureWorkspaceLaunchStage(context.Background(), input)
+	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {
+		t.Fatalf("succeeded child without revision proof replayed apply: result=%#v err=%v applyCalls=%d", result, err, fixture.applyCalls)
+	}
+
+	replacementImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("e", 64)
+	revisionInput := input
+	revisionInput.RuntimeImageRevision = &WorkspaceLaunchRuntimeImageRevision{
+		SchemaVersion: 1, LaunchOperationID: input.Binding.LaunchOperationID, WorkspaceID: input.Binding.WorkspaceID,
+		RuntimeOperationID: input.Binding.FabricOperationID, AuthorizationDigest: "sha256:" + strings.Repeat("f", 64),
+		PreviousImageDigest: image, ReplacementImageDigest: replacementImage,
+	}
+	classified, err := service.ReadWorkspaceLaunchStage(context.Background(), revisionInput)
+	if err != nil || classified.State != "pending" || classified.Reason != "runtime_image_revision_required" ||
+		classified.Binding != input.Binding || fixture.applyCalls != 1 {
+		t.Fatalf("runtime revision classification=%#v err=%v applyCalls=%d", classified, err, fixture.applyCalls)
+	}
+
+	revised, err := service.EnsureWorkspaceLaunchStage(context.Background(), revisionInput)
+	if err != nil || revised.State != "pending" || revised.Reason != "provider_provisioning" || fixture.applyCalls != 2 {
+		t.Fatalf("runtime revision apply=%#v err=%v applyCalls=%d", revised, err, fixture.applyCalls)
+	}
+	for _, testCase := range []struct {
+		name   string
+		mutate func(*WorkspaceLaunchStageInput)
+	}{
+		{name: "previous image", mutate: func(value *WorkspaceLaunchStageInput) {
+			value.RuntimeImageRevision.PreviousImageDigest = replacementImage
+		}},
+		{name: "replacement image", mutate: func(value *WorkspaceLaunchStageInput) {
+			value.RuntimeImageRevision.ReplacementImageDigest = "registry.example/opl/workspace@sha256:" + strings.Repeat("1", 64)
+		}},
+		{name: "authorization digest", mutate: func(value *WorkspaceLaunchStageInput) {
+			value.RuntimeImageRevision.AuthorizationDigest = "sha256:" + strings.Repeat("2", 64)
+		}},
+		{name: "workspace", mutate: func(value *WorkspaceLaunchStageInput) { value.RuntimeImageRevision.WorkspaceID = "ws-drift" }},
+		{name: "runtime operation", mutate: func(value *WorkspaceLaunchStageInput) {
+			value.RuntimeImageRevision.RuntimeOperationID = "launch-drift:runtime"
+		}},
+	} {
+		t.Run("revision proof rejects "+testCase.name, func(t *testing.T) {
+			drifted := revisionInput
+			revision := *revisionInput.RuntimeImageRevision
+			drifted.RuntimeImageRevision = &revision
+			testCase.mutate(&drifted)
+			beforeApplies := fixture.applyCalls
+			result, ensureErr := service.EnsureWorkspaceLaunchStage(context.Background(), drifted)
+			if ensureErr == nil || result.State != "" || fixture.applyCalls != beforeApplies {
+				t.Fatalf("drifted proof wrote provider state: result=%#v err=%v applyCalls=%d/%d", result, ensureErr, fixture.applyCalls, beforeApplies)
+			}
+		})
+	}
+	runtimeID := "rt_" + stableSuffix(input.Binding.WorkspaceID, input.Binding.FabricOperationID)[:18]
+	serviceName := k8sName(compute.ID)
+	childID := providerMutationOperationID(input.Binding, "tencent_workspace_runtime_apply", "workspace_runtime", runtimeID, serviceName)
+	child, err := store.Get(context.Background(), childID)
+	epoch, epochOK := decodeProviderMutationReplayEpoch(child)
+	if err != nil || !epochOK || epoch.State != "awaiting_readback" || epoch.ReplayClass != providerMutationRuntimeImageRevisionReplayClass ||
+		epoch.AuthorityDigest != revisionInput.RuntimeImageRevision.AuthorizationDigest || epoch.PreviousImageDigest != image || epoch.ReplacementImageDigest != replacementImage {
+		t.Fatalf("runtime revision journal child=%#v epoch=%#v epochOK=%v err=%v", child, epoch, epochOK, err)
+	}
+
+	fixture.unready = false
+	ready, err := service.ReadWorkspaceLaunchStage(context.Background(), revisionInput)
+	parent, parentErr := store.Get(context.Background(), input.Binding.FabricOperationID)
+	record, recordOK := decodeWorkspaceLaunchStageRecord(parent)
+	child, childErr := store.Get(context.Background(), childID)
+	epoch, epochOK = decodeProviderMutationReplayEpoch(child)
+	var revisedRuntime WorkspaceRuntime
+	if err != nil || ready.State != "ready" || ready.Binding != input.Binding || parentErr != nil || parent.Status != "succeeded" ||
+		!recordOK || record.RuntimeImageRevision == nil || *record.RuntimeImageRevision != *revisionInput.RuntimeImageRevision ||
+		childErr != nil || !epochOK || epoch.State != "succeeded" || !decodeOperationResource(child, &revisedRuntime) ||
+		revisedRuntime.ImageID != replacementImage || fixture.applyCalls != 2 {
+		t.Fatalf("runtime revision convergence ready=%#v err=%v parent=%#v parentErr=%v record=%#v recordOK=%v child=%#v childErr=%v epoch=%#v runtime=%#v applyCalls=%d",
+			ready, err, parent, parentErr, record, recordOK, child, childErr, epoch, revisedRuntime, fixture.applyCalls)
+	}
+	replayed, err := service.EnsureWorkspaceLaunchStage(context.Background(), revisionInput)
+	if err != nil || replayed.State != "ready" || fixture.applyCalls != 2 {
+		t.Fatalf("completed runtime revision replayed mutation: result=%#v err=%v applyCalls=%d", replayed, err, fixture.applyCalls)
+	}
 }
 
 func TestTencentWorkspaceLaunchRuntimeReplayRequiresExactRuntimeAndGatewayBindingReadback(t *testing.T) {

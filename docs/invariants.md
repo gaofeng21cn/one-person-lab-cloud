@@ -67,6 +67,10 @@ current implementation documentation.
 - Recovery continues the original operation and original resource identities.
   It cannot create a second purchase or silently replace an already confirmed
   resource.
+- An authorized image revision for an existing unready Runtime preserves the
+  Launch, Runtime operation, service identity, stage request hash, idempotency
+  key, and all non-Runtime resources; only owner-authoritative READY readback
+  may advance the original Launch.
 - Before an external write, the owning operation persists its identity and
   idempotency binding. An uncertain result converges through owner-authoritative
   readback before another write is considered.

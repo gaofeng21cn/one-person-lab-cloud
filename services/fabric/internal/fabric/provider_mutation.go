@@ -18,6 +18,7 @@ const providerMutationStatePayloadKey = "providerMutationState"
 const providerMutationReplayEpochPayloadKey = "providerMutationReplayEpoch"
 
 const providerMutationReplayLease = 30 * time.Second
+const providerMutationRuntimeImageRevisionReplayClass = "runtime_image_revision"
 
 type providerMutationJournalContextKey struct{}
 
@@ -53,6 +54,10 @@ type providerMutationReplayEpoch struct {
 	ParentFabricOperationID string `json:"parentFabricOperationId"`
 	ChildOperationID        string `json:"childOperationId"`
 	IdempotencyKey          string `json:"idempotencyKey"`
+	ReplayClass             string `json:"replayClass,omitempty"`
+	AuthorityDigest         string `json:"authorityDigest,omitempty"`
+	PreviousImageDigest     string `json:"previousImageDigest,omitempty"`
+	ReplacementImageDigest  string `json:"replacementImageDigest,omitempty"`
 	State                   string `json:"state"`
 	LeaseGeneration         int    `json:"leaseGeneration"`
 	LeaseExpiresAt          string `json:"leaseExpiresAt"`
@@ -248,6 +253,17 @@ func decodeProviderMutationReplayEpoch(operation FabricOperation) (providerMutat
 		epoch.IdempotencyKey != operation.IdempotencyKey || epoch.LeaseGeneration <= 0 {
 		return providerMutationReplayEpoch{}, false
 	}
+	if epoch.ReplayClass == "" {
+		if epoch.AuthorityDigest != "" || epoch.PreviousImageDigest != "" || epoch.ReplacementImageDigest != "" {
+			return providerMutationReplayEpoch{}, false
+		}
+	} else if epoch.ReplayClass != providerMutationRuntimeImageRevisionReplayClass ||
+		!strings.HasPrefix(epoch.AuthorityDigest, "sha256:") || len(epoch.AuthorityDigest) != len("sha256:")+64 ||
+		!validWorkspaceLaunchHash(strings.TrimPrefix(epoch.AuthorityDigest, "sha256:")) ||
+		!validWorkspaceRuntimeImageIdentity(epoch.PreviousImageDigest) || !validWorkspaceRuntimeImageIdentity(epoch.ReplacementImageDigest) ||
+		epoch.PreviousImageDigest == epoch.ReplacementImageDigest {
+		return providerMutationReplayEpoch{}, false
+	}
 	if _, err := time.Parse(time.RFC3339Nano, epoch.LeaseExpiresAt); err != nil {
 		return providerMutationReplayEpoch{}, false
 	}
@@ -432,7 +448,82 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 }
 
 func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error) {
-	if a == nil || a.journal == nil || a.Fresh || a.operation.Status != "started" && a.operation.Status != "failed" && !correctableSucceededNodeClaim(a.operation) {
+	return a.claimReplayWithClass(ctx, providerMutationReplayEpoch{}, false)
+}
+
+func (a *providerMutationAttempt) claimRuntimeImageRevision(ctx context.Context, revision WorkspaceLaunchRuntimeImageRevision, observed WorkspaceRuntime) (bool, error) {
+	if a == nil || a.journal == nil || a.Fresh || a.operation.Status != "succeeded" {
+		return false, nil
+	}
+	binding, bindingOK := decodeProviderMutationBinding(a.operation)
+	var persisted WorkspaceRuntime
+	if !bindingOK || binding.Action != "tencent_workspace_runtime_apply" || binding.ResourceKind != "workspace_runtime" ||
+		binding.Parent.Stage != "runtime" || binding.Parent.Action != "ensure_runtime" ||
+		binding.Parent.LaunchOperationID != revision.LaunchOperationID || binding.Parent.WorkspaceID != revision.WorkspaceID ||
+		binding.Parent.FabricOperationID != revision.RuntimeOperationID || !decodeOperationResource(a.operation, &persisted) ||
+		persisted.ID == "" || persisted.ID != binding.ResourceID || persisted.ID != observed.ID ||
+		persisted.OperationID != revision.RuntimeOperationID || persisted.OperationID != observed.OperationID ||
+		persisted.WorkspaceID != revision.WorkspaceID || persisted.WorkspaceID != observed.WorkspaceID ||
+		persisted.ServiceName == "" || persisted.ServiceName != binding.ExpectedResourceBinding || persisted.ServiceName != observed.ServiceName ||
+		persisted.ImageID != revision.PreviousImageDigest || observed.ImageID != revision.PreviousImageDigest {
+		return false, ErrLaunchStageBindingConflict
+	}
+	template := providerMutationReplayEpoch{
+		ReplayClass: providerMutationRuntimeImageRevisionReplayClass, AuthorityDigest: revision.AuthorizationDigest,
+		PreviousImageDigest: revision.PreviousImageDigest, ReplacementImageDigest: revision.ReplacementImageDigest,
+	}
+	return a.claimReplayWithClass(ctx, template, true)
+}
+
+func (a *providerMutationAttempt) runtimeImageRevisionClaimed(revision WorkspaceLaunchRuntimeImageRevision) bool {
+	if a == nil {
+		return false
+	}
+	epoch, ok := decodeProviderMutationReplayEpoch(a.operation)
+	return ok && epoch.ReplayClass == providerMutationRuntimeImageRevisionReplayClass && epoch.AuthorityDigest == revision.AuthorizationDigest &&
+		epoch.PreviousImageDigest == revision.PreviousImageDigest && epoch.ReplacementImageDigest == revision.ReplacementImageDigest &&
+		epoch.State != "blocked"
+}
+
+func convergeRuntimeImageRevisionReadback(ctx context.Context, revision WorkspaceLaunchRuntimeImageRevision, runtime WorkspaceRuntime) error {
+	journal := providerMutationJournalFromContext(ctx)
+	if journal == nil || journal.parent.Stage != "runtime" || journal.parent.LaunchOperationID != revision.LaunchOperationID ||
+		journal.parent.WorkspaceID != revision.WorkspaceID || journal.parent.FabricOperationID != revision.RuntimeOperationID ||
+		runtime.OperationID != revision.RuntimeOperationID || runtime.WorkspaceID != revision.WorkspaceID ||
+		runtime.ImageID != revision.ReplacementImageDigest {
+		return ErrLaunchStageBindingConflict
+	}
+	childID := providerMutationOperationID(journal.parent, "tencent_workspace_runtime_apply", "workspace_runtime", runtime.ID, runtime.ServiceName)
+	operation, err := journal.operations.Get(ctx, childID)
+	if err != nil {
+		return err
+	}
+	attempt := &providerMutationAttempt{journal: journal, operation: operation}
+	epoch, epochOK := decodeProviderMutationReplayEpoch(operation)
+	if !attempt.runtimeImageRevisionClaimed(revision) || !epochOK {
+		return ErrLaunchStageBindingConflict
+	}
+	if !runtime.Ready {
+		return nil
+	}
+	if epoch.State == "succeeded" {
+		var persisted WorkspaceRuntime
+		if !decodeOperationResource(operation, &persisted) || persisted.ID != runtime.ID || persisted.OperationID != runtime.OperationID ||
+			persisted.WorkspaceID != runtime.WorkspaceID || persisted.ServiceName != runtime.ServiceName || persisted.ImageID != runtime.ImageID {
+			return ErrLaunchStageBindingConflict
+		}
+		return nil
+	}
+	if epoch.State != "awaiting_readback" || !correctableSucceededRuntimeImageRevision(operation, epoch) {
+		return ErrLaunchStageBindingConflict
+	}
+	attempt.Replay = true
+	return attempt.complete(ctx, runtime.ProviderRequestID, runtime, nil)
+}
+
+func (a *providerMutationAttempt) claimReplayWithClass(ctx context.Context, template providerMutationReplayEpoch, allowSucceeded bool) (bool, error) {
+	if a == nil || a.journal == nil || a.Fresh ||
+		a.operation.Status != "started" && a.operation.Status != "failed" && !correctableSucceededNodeClaim(a.operation) && !(allowSucceeded && a.operation.Status == "succeeded") {
 		return false, nil
 	}
 	store, ok := a.journal.operations.(providerMutationReplayStore)
@@ -448,7 +539,9 @@ func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error)
 	dispatchStartedAt := ""
 	if _, exists := a.operation.RedactedProviderPayload[providerMutationReplayEpochPayloadKey]; exists {
 		epoch, valid := decodeProviderMutationReplayEpoch(a.operation)
-		if !valid || epoch.State == "succeeded" || epoch.State == "blocked" {
+		if !valid || epoch.State == "succeeded" || epoch.State == "blocked" ||
+			epoch.ReplayClass != template.ReplayClass || epoch.AuthorityDigest != template.AuthorityDigest ||
+			epoch.PreviousImageDigest != template.PreviousImageDigest || epoch.ReplacementImageDigest != template.ReplacementImageDigest {
 			return false, ErrLaunchStageBindingConflict
 		}
 		lease, leaseErr := time.Parse(time.RFC3339Nano, epoch.LeaseExpiresAt)
@@ -463,11 +556,16 @@ func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error)
 	}
 	next := a.operation
 	next.RedactedProviderPayload = maps.Clone(a.operation.RedactedProviderPayload)
-	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = providerMutationReplayEpoch{
-		SchemaVersion: 1, ReplayID: providerMutationReplayID(next, binding), ParentFabricOperationID: binding.Parent.FabricOperationID,
-		ChildOperationID: next.ID, IdempotencyKey: next.IdempotencyKey, State: "leased", LeaseGeneration: generation,
-		LeaseExpiresAt: now.Add(providerMutationReplayLease).Format(time.RFC3339Nano), DispatchStartedAt: dispatchStartedAt,
-	}
+	template.SchemaVersion = 1
+	template.ReplayID = providerMutationReplayID(next, binding)
+	template.ParentFabricOperationID = binding.Parent.FabricOperationID
+	template.ChildOperationID = next.ID
+	template.IdempotencyKey = next.IdempotencyKey
+	template.State = "leased"
+	template.LeaseGeneration = generation
+	template.LeaseExpiresAt = now.Add(providerMutationReplayLease).Format(time.RFC3339Nano)
+	template.DispatchStartedAt = dispatchStartedAt
+	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = template
 	if err := store.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
 		return false, err
 	}

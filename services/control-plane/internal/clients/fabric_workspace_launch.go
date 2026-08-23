@@ -98,16 +98,27 @@ type WorkspaceLaunchGatewayCredential struct {
 	Value string `json:"value"`
 }
 
+type WorkspaceLaunchRuntimeImageRevision struct {
+	SchemaVersion          int    `json:"schemaVersion"`
+	LaunchOperationID      string `json:"launchOperationId"`
+	WorkspaceID            string `json:"workspaceId"`
+	RuntimeOperationID     string `json:"runtimeOperationId"`
+	AuthorizationDigest    string `json:"authorizationDigest"`
+	PreviousImageDigest    string `json:"previousImageDigest"`
+	ReplacementImageDigest string `json:"replacementImageDigest"`
+}
+
 type WorkspaceLaunchStageInput struct {
-	Binding              WorkspaceLaunchStageBinding       `json:"binding"`
-	ProviderProfileRef   string                            `json:"providerProfileRef"`
-	PreflightBindingRef  string                            `json:"providerBindingRef"`
-	SpecDigest           string                            `json:"specDigest"`
-	PackageID            string                            `json:"packageId"`
-	SizeGB               int                               `json:"sizeGb"`
-	WorkspaceImageDigest string                            `json:"workspaceImageDigest"`
-	Resources            WorkspaceLaunchResources          `json:"resources"`
-	GatewayCredential    *WorkspaceLaunchGatewayCredential `json:"gatewayCredential,omitempty"`
+	Binding              WorkspaceLaunchStageBinding          `json:"binding"`
+	ProviderProfileRef   string                               `json:"providerProfileRef"`
+	PreflightBindingRef  string                               `json:"providerBindingRef"`
+	SpecDigest           string                               `json:"specDigest"`
+	PackageID            string                               `json:"packageId"`
+	SizeGB               int                                  `json:"sizeGb"`
+	WorkspaceImageDigest string                               `json:"workspaceImageDigest"`
+	Resources            WorkspaceLaunchResources             `json:"resources"`
+	GatewayCredential    *WorkspaceLaunchGatewayCredential    `json:"gatewayCredential,omitempty"`
+	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
 }
 
 type WorkspaceLaunchStageResult struct {

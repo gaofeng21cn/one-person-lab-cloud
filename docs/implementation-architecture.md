@@ -355,7 +355,30 @@ If an exhausted Runtime read budget was owned by a failed fresh typed-pending
 continuation, the READY transition also marks that continuation consumed so its
 persisted state remains coherent.
 
-When that authoritative read proves the original Runtime is genuinely unready,
+For the Tencent/TKE adapter, the same operator Resume request may also carry a
+replacement Workspace image digest when the exact original Runtime exists and
+its only drift is the old admitted image. Control Plane accepts the field only
+for `manual_review/runtime`, `providerProfileRef=tencent-tke`, the exact Launch
+version, `0/1/3` mutation/replay/read budgets, and a digest equal to the
+currently deployed `OPL_WORKSPACE_IMAGE`. Before classification it fixes the
+authorization's starting read count, then projects a schema-1 proof containing
+the authorization digest, original Launch/Workspace/Runtime identities, old
+image, and replacement image. The original `workspaceImageDigest`, Fabric
+binding, request hash, and `${operationId}:runtime` key remain unchanged.
+
+Fabric validates that proof only on the Runtime stage and only for an opted-in
+Tencent adapter. Exact old-image drift becomes
+`pending/runtime_image_revision_required`; any other image or identity drift is
+rejected. Ensure claims one replay epoch on the already-succeeded Tencent
+Runtime child mutation, records the authorization and image digests there,
+applies the replacement manifest once, and treats an unready replacement as
+read-only provider convergence. Every later read validates the same child proof
+before readiness. READY updates the original Runtime stage record and returns
+the same Launch to Activation; it does not create a repair operation or another
+Launch path. The persisted decoder accepts the production-shaped failed fresh
+continuation while the Runtime read ceiling expands from three to six.
+
+When an authoritative read proves a local-Docker Runtime is genuinely unready,
 the current local-Docker implementation exposes a distinct operator
 Fulfillment Repair command. Control Plane admits only the exact paid Launch
 whose Key, Debit, Compute, Storage, Attachment, and Secret are confirmed and
@@ -363,8 +386,7 @@ whose Activation and Receipt have not started. The operator provides only the
 new immutable image digest, reason, Launch version, and idempotency identity;
 Control Plane binds the authenticated operator user and server timestamp into
 the persisted repair authorization before mutation, and exact replay preserves
-those facts.
-all resource identities come from the persisted Launch. Fabric checks the
+those facts. All resource identities come from the persisted Launch. Fabric checks the
 persisted original Runtime evidence before mutation, serializes repair per
 Workspace, retains the Secret and all non-Runtime resources, replaces the
 container through the local-Docker adapter, and persists the replacement as the

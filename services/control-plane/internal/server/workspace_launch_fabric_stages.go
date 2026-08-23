@@ -65,6 +65,15 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 		PreflightBindingRef: operation.stringFact("preflightBindingRef"), SpecDigest: operation.stringFact("specDigest"), PackageID: operation.stringFact("packageId"),
 		SizeGB: operation.intFact("sizeGb"), WorkspaceImageDigest: operation.stringFact("workspaceImageDigest"), Resources: resources,
 	}
+	if operation.Stage == "runtime" && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
+		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {
+		authorization := *operation.ResumeAuthorization
+		input.RuntimeImageRevision = &clients.WorkspaceLaunchRuntimeImageRevision{
+			SchemaVersion: 1, LaunchOperationID: operation.ID, WorkspaceID: operation.stringFact("workspaceId"),
+			RuntimeOperationID: binding.FabricOperationID, AuthorizationDigest: workspaceLaunchResumeAuthorizationDigest(authorization),
+			PreviousImageDigest: input.WorkspaceImageDigest, ReplacementImageDigest: authorization.ReplacementWorkspaceImageDigest,
+		}
+	}
 	input.Binding.RequestHash = workspaceLaunchFabricRequestHash(input, operation.stringFact("requestHash"))
 	if includeCredential {
 		keyID := operation.int64Fact("workspaceApiKeyId")
@@ -138,6 +147,8 @@ func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperatio
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
 	case result.State == workspaceLaunchStagePending && result.Reason == "provider_provisioning":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStagePending}, nil
+	case operation.Stage == "runtime" && result.State == workspaceLaunchStagePending && result.Reason == "runtime_image_revision_required":
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}, nil
 	case operation.Stage == "ensure_compute_allocation" && result.State == workspaceLaunchStagePending && result.Reason == "ownership_pending":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}, nil
 	case result.State == workspaceLaunchStageReady && result.Reason == "none":

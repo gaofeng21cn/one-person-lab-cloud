@@ -399,7 +399,19 @@ zero-mutation, one-replay authorization advances only after authoritative
 `pending`, `unknown`, read failure, identity drift, or any ineligible attempt
 leaves the operation unchanged in `manual_review`.
 
-Fulfillment Repair is a separate operator mutation command under the same
+For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
+only by its immutable old Workspace image continues through that same Resume
+route and Reconciler. The administrator supplies the replacement digest, while
+Control Plane binds it to the current deployed Workspace image, exact Launch
+version, authenticated reviewer, original Runtime operation, and original
+stage idempotency key. The original admitted image and stage request hash do
+not change. Fabric admits only old-image-only drift, durably claims one image
+revision replay on the existing Tencent Runtime child operation, and requires
+the same authorization proof on every read and apply. READY advances the
+original Launch to Activation and its single Receipt. Any unrelated identity,
+image, proof, or provider drift remains fail-closed without another apply.
+
+Local-Docker Fulfillment Repair is a separate operator mutation command under the same
 Workspace Launch owner; it does not widen Recovery. It applies only after a
 resource-billed Launch has confirmed its Key, Debit, Compute, Storage,
 Attachment, and Secret, consumed its single Runtime attempt as unknown, and has

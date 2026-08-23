@@ -18,6 +18,8 @@ type tencentWorkspaceLaunchState struct {
 	Runtime     *WorkspaceRuntime             `json:"runtime,omitempty"`
 }
 
+func (*TencentProvider) WorkspaceLaunchRuntimeImageRevisionSupported() bool { return true }
+
 func encodeTencentWorkspaceLaunchState(state tencentWorkspaceLaunchState) (json.RawMessage, error) {
 	body, err := json.Marshal(state)
 	return body, err
@@ -169,11 +171,16 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 			storageState.Storage == nil || attachmentState.Attachment == nil || secretState.Secret == nil || secretRecord.GatewayKeyID <= 0 {
 			return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
 		}
+		workspaceImage := input.WorkspaceImageDigest
+		if input.RuntimeImageRevision != nil {
+			workspaceImage = input.RuntimeImageRevision.ReplacementImageDigest
+		}
 		runtimeInput := WorkspaceRuntimeInput{
 			WorkspaceID: binding.WorkspaceID, ComputeID: computeState.Compute.ID, VolumeID: storageState.Storage.ID,
 			AttachmentID: attachmentState.Attachment.ID, AttachmentOperationID: attachmentState.Attachment.OperationID,
-			RuntimeOperationID: binding.FabricOperationID, ImageID: input.WorkspaceImageDigest, GatewaySecretRef: secretState.Secret.SecretRef,
-			IdempotencyKey: binding.IdempotencyKey, OperationID: binding.FabricOperationID,
+			RuntimeOperationID: binding.FabricOperationID, ImageID: workspaceImage, GatewaySecretRef: secretState.Secret.SecretRef,
+			RuntimeImageRevision: input.RuntimeImageRevision,
+			IdempotencyKey:       binding.IdempotencyKey, OperationID: binding.FabricOperationID,
 		}
 		runtime, err := p.createWorkspaceRuntime(ctx, runtimeInput, *computeState.Compute, *storageState.Storage, tencentWorkspaceRuntimeGatewayBinding{
 			WorkspaceAPIKeyID: secretRecord.GatewayKeyID, SecretRef: secretState.Secret.SecretRef, Fingerprint: secretState.Secret.Fingerprint,
@@ -313,11 +320,16 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 			storageState.Storage == nil || attachmentState.Attachment == nil || secretState.Secret == nil || secretRecord.GatewayKeyID <= 0 {
 			return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
 		}
+		workspaceImage := input.WorkspaceImageDigest
+		if input.RuntimeImageRevision != nil {
+			workspaceImage = input.RuntimeImageRevision.ReplacementImageDigest
+		}
 		runtimeInput := WorkspaceRuntimeInput{
 			WorkspaceID: binding.WorkspaceID, ComputeID: computeState.Compute.ID, VolumeID: storageState.Storage.ID,
 			AttachmentID: attachmentState.Attachment.ID, AttachmentOperationID: attachmentState.Attachment.OperationID,
-			RuntimeOperationID: binding.FabricOperationID, ImageID: input.WorkspaceImageDigest, GatewaySecretRef: secretState.Secret.SecretRef,
-			IdempotencyKey: binding.IdempotencyKey, OperationID: binding.FabricOperationID,
+			RuntimeOperationID: binding.FabricOperationID, ImageID: workspaceImage, GatewaySecretRef: secretState.Secret.SecretRef,
+			RuntimeImageRevision: input.RuntimeImageRevision,
+			IdempotencyKey:       binding.IdempotencyKey, OperationID: binding.FabricOperationID,
 		}
 		runtimeID := "rt_" + stableSuffix(binding.WorkspaceID, binding.FabricOperationID)[:18]
 		serviceName := firstNonEmpty(computeState.Compute.ServiceName, k8sName(computeState.Compute.ID))
@@ -325,6 +337,11 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 			oplCostTags(binding.AccountID, binding.WorkspaceID, runtimeID, binding.FabricOperationID), tencentWorkspaceRuntimeGatewayBinding{
 				WorkspaceAPIKeyID: secretRecord.GatewayKeyID, SecretRef: secretState.Secret.SecretRef, Fingerprint: secretState.Secret.Fingerprint,
 			})
+		if err == nil && input.RuntimeImageRevision != nil {
+			if revisionErr := convergeRuntimeImageRevisionReadback(ctx, *input.RuntimeImageRevision, readback); revisionErr != nil {
+				return WorkspaceLaunchProviderResult{}, revisionErr
+			}
+		}
 		if err != nil || !readback.Ready ||
 			readback.Access.Username == "" || readback.Access.CredentialStatus == "" || readback.Access.CredentialVersion == "" || readback.Access.SecretRef == "" {
 			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchPending)
