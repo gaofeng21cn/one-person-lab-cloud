@@ -26,6 +26,26 @@ const (
 )
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		capabilities := r.Header.Values(productionAcceptanceBCapability)
+		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {
+			writeError(w, http.StatusUnauthorized, "workspace_launch_stage_diagnostic_capability_invalid")
+			return
+		}
+		operationID := strings.TrimSpace(r.PathValue("operationId"))
+		adapter := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).adapter
+		diagnostic, found, err := observeWorkspaceLaunchStage(r.Context(), app.tables, adapter, operationID)
+		w.Header().Set("Cache-Control", "no-store")
+		if !found {
+			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusConflict, "workspace_launch_stage_diagnostic_not_available")
+			return
+		}
+		writeJSON(w, http.StatusOK, diagnostic)
+	}))
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/disposable-reset-preview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		operationID := strings.TrimSpace(r.PathValue("operationId"))
 		preview, err := app.previewWorkspaceLaunchDisposableReset(r.Context(), service, operationID)
