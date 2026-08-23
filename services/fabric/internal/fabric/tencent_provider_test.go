@@ -3124,8 +3124,8 @@ func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testi
 			"kind": "PersistentVolume", "metadata": map[string]any{"name": "opl-storage-alpha-pv", "labels": labels},
 			"spec": map[string]any{
 				"capacity": map[string]any{"storage": "10Gi"}, "accessModes": []any{"ReadWriteOnce"}, "persistentVolumeReclaimPolicy": "Retain", "storageClassName": "",
-				"csi":          map[string]any{"driver": "com.tencent.cloud.csi.cbs", "volumeHandle": "disk-storage-alpha"},
-				"nodeAffinity": map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": "topology.kubernetes.io/zone", "operator": "In", "values": []any{"ap-guangzhou-3"}}}}}}},
+				"csi":          map[string]any{"driver": tencentCBSCSIDriver, "volumeHandle": "disk-storage-alpha"},
+				"nodeAffinity": map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": tencentCBSCSITopologyZoneKey, "operator": "In", "values": []any{"ap-guangzhou-3"}}}}}}},
 			},
 		}
 		pvc := map[string]any{
@@ -3193,6 +3193,9 @@ func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testi
 		}},
 		{name: "PV wrong zone", configure: func(current *fixture) {
 			current.items[0].(map[string]any)["spec"].(map[string]any)["nodeAffinity"].(map[string]any)["required"].(map[string]any)["nodeSelectorTerms"].([]any)[0].(map[string]any)["matchExpressions"].([]any)[0].(map[string]any)["values"] = []any{"ap-guangzhou-4"}
+		}},
+		{name: "PV legacy topology key", configure: func(current *fixture) {
+			current.items[0].(map[string]any)["spec"].(map[string]any)["nodeAffinity"].(map[string]any)["required"].(map[string]any)["nodeSelectorTerms"].([]any)[0].(map[string]any)["matchExpressions"].([]any)[0].(map[string]any)["key"] = "topology.kubernetes.io/zone"
 		}},
 		{name: "PV not RWO", configure: func(current *fixture) {
 			current.items[0].(map[string]any)["spec"].(map[string]any)["accessModes"] = []any{"ReadWriteMany"}
@@ -3701,8 +3704,12 @@ func TestTencentProviderCreatesStaticRetainedCBSVolumeInComputeZone(t *testing.T
 	}
 	items := manifest["items"].([]any)
 	pv, pvc := items[0].(map[string]any), items[1].(map[string]any)
-	if pv["kind"] != "PersistentVolume" || nested(pv, "spec", "csi", "driver") != "com.tencent.cloud.csi.cbs" || nested(pv, "spec", "csi", "volumeHandle") != "disk-storage-alpha" {
+	if pv["kind"] != "PersistentVolume" || nested(pv, "spec", "csi", "driver") != tencentCBSCSIDriver || nested(pv, "spec", "csi", "volumeHandle") != "disk-storage-alpha" {
 		t.Fatalf("static PV must bind the exact CBS disk: %#v", pv)
+	}
+	affinityExpression := nested(pv, "spec", "nodeAffinity", "required", "nodeSelectorTerms").([]any)[0].(map[string]any)["matchExpressions"].([]any)[0].(map[string]any)
+	if affinityExpression["key"] != "topology.com.tencent.cloud.csi.cbs/zone" || affinityExpression["values"].([]any)[0] != "ap-guangzhou-3" {
+		t.Fatalf("static PV must use Tencent CBS CSI topology: %#v", affinityExpression)
 	}
 	if nested(pv, "spec", "persistentVolumeReclaimPolicy") != "Retain" || nested(pv, "spec", "storageClassName") != "" || nested(pv, "spec", "accessModes", "0") != nil {
 		// AccessModes is asserted below because nested intentionally handles maps only.

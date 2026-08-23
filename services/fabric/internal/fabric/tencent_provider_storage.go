@@ -411,10 +411,10 @@ func (p *TencentProvider) ReadStaticStorageBinding(ctx context.Context, volume S
 	pvSpec, _ := pv["spec"].(map[string]any)
 	pvcSpec, _ := pvc["spec"].(map[string]any)
 	expectedCapacity := fmt.Sprintf("%dGi", volume.SizeGB)
-	expectedNodeAffinity := map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": "topology.kubernetes.io/zone", "operator": "In", "values": []any{volume.Zone}}}}}}}
+	expectedNodeAffinity := map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": tencentCBSCSITopologyZoneKey, "operator": "In", "values": []any{volume.Zone}}}}}}}
 	pvAccessModes, _ := pvSpec["accessModes"].([]any)
 	pvcAccessModes, _ := pvcSpec["accessModes"].([]any)
-	if stringValue(nested(pv, "spec", "csi", "driver")) != "com.tencent.cloud.csi.cbs" ||
+	if stringValue(nested(pv, "spec", "csi", "driver")) != tencentCBSCSIDriver ||
 		stringValue(nested(pv, "spec", "csi", "volumeHandle")) != volume.ProviderResourceID ||
 		stringValue(pvSpec["persistentVolumeReclaimPolicy"]) != "Retain" || stringValue(pvSpec["storageClassName"]) != "" ||
 		stringValue(pvcSpec["storageClassName"]) != "" || stringValue(pvcSpec["volumeName"]) != pvName ||

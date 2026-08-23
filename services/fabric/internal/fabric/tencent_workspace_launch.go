@@ -179,7 +179,7 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 			WorkspaceAPIKeyID: secretRecord.GatewayKeyID, SecretRef: secretState.Secret.SecretRef, Fingerprint: secretState.Secret.Fingerprint,
 		})
 		if err != nil || !runtime.Ready || runtime.Access.Username == "" || runtime.Access.CredentialStatus == "" || runtime.Access.CredentialVersion == "" || runtime.Access.SecretRef == "" {
-			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchUnavailable)
+			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchPending)
 		}
 		state.Runtime = &runtime
 		applyWorkspaceLaunchRuntimeResources(&resources, runtime, binding.FabricOperationID)
