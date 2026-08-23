@@ -485,6 +485,141 @@ func TestTencentOwnershipCorrectsHistoricalSucceededNodeChildWithOriginalIdentit
 	}
 }
 
+func TestTencentWorkspaceLaunchCorrectsSucceededComputeStageDualTaintWithOriginalIdentity(t *testing.T) {
+	fixture := newTencentWorkspaceLaunchComputeReadRecoveryFixture(t)
+	parent, err := fixture.store.Get(context.Background(), fixture.input.Binding.FabricOperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership, err := workspaceLaunchComputeOwnership(fixture.allocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership.ProviderRequestID, ownership.ClaimedAt = "req-succeeded-stage-correction", time.Now().UTC()
+	ownership, _, err = fixture.store.ClaimMachine(context.Background(), ownership)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownership.Status = "active"
+	if err := fixture.store.SaveMachineOwnership(context.Background(), ownership); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := fixture.service.providerMutationContext(context.Background(), parent)
+	for _, child := range []struct {
+		action, binding string
+	}{
+		{action: "tencent_cvm_ownership_tag", binding: fixture.allocation.InstanceID},
+		{action: "tencent_kubernetes_node_claim", binding: fixture.allocation.NodeName},
+	} {
+		attempt, beginErr := beginProviderMutation(ctx, child.action, "compute_binding", fixture.allocation.ID, child.binding)
+		if beginErr != nil || attempt == nil || !attempt.Fresh {
+			t.Fatalf("persist %s child attempt=%#v err=%v", child.action, attempt, beginErr)
+		}
+		if completeErr := attempt.complete(ctx, ownership.ProviderRequestID, ownership, nil); completeErr != nil {
+			t.Fatal(completeErr)
+		}
+	}
+
+	record, ok := decodeWorkspaceLaunchStageRecord(parent)
+	if !ok {
+		t.Fatal("decode succeeded compute stage record")
+	}
+	providerState, err := encodeTencentWorkspaceLaunchState(tencentWorkspaceLaunchState{
+		Compute: &fixture.allocation, ComputePlan: &fixture.prepared, Ownership: &ownership,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Resources = WorkspaceLaunchResources{
+		ComputeAllocationID: fixture.allocation.ID,
+		ComputeBindingRef:   fixture.input.Binding.FabricOperationID,
+	}
+	record.ProviderState = providerState
+	parent.Status, parent.FinishedAt = "succeeded", time.Now().UTC()
+	setWorkspaceLaunchStageRecord(&parent, record)
+	if err := fixture.store.SaveRuntime(context.Background(), parent); err != nil {
+		t.Fatal(err)
+	}
+
+	machineLegacy, nodeOwned := true, false
+	patchTargets := []string{}
+	nodeReadback := func() []byte {
+		taints := []any{map[string]any{"key": "oplcloud.cn/package-id", "value": fixture.allocation.PackageID, "effect": "NoSchedule"}}
+		if !nodeOwned {
+			taints = append(taints, map[string]any{"key": "oplcloud.cn/workspace-id", "value": "unallocated", "effect": "NoSchedule"})
+		}
+		return mustJSON(map[string]any{
+			"metadata": map[string]any{
+				"name": fixture.allocation.NodeName, "resourceVersion": "7",
+				"labels": map[string]string{
+					"medopl.cn/workload": "workspace", "oplcloud.cn/package-id": fixture.allocation.PackageID,
+					"oplcloud.cn/resource-id": ownership.ResourceID, "oplcloud.cn/account-id": ownership.AccountID,
+					"oplcloud.cn/workspace-id": ownership.WorkspaceID,
+				},
+			},
+			"spec":   map[string]any{"taints": taints},
+			"status": map[string]any{"addresses": []any{map[string]any{"type": "InternalIP", "address": fixture.allocation.PrivateIP}}},
+		})
+	}
+	fixture.provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		switch request.Action {
+		case "read_compute_allocation":
+			return tencentComputeAllocationResponse(fixture.allocation, "req-succeeded-stage-read"), nil
+		case "compute_claim_truth":
+			return tencentTargetOwnedProofResponse(fixture.allocation, fixture.prepared), nil
+		case "tag_compute_machine":
+			return provisionerResponse{}, errors.New("succeeded CVM child repeated mutation")
+		default:
+			t.Fatalf("unexpected provisioner action %q", request.Action)
+			return provisionerResponse{}, nil
+		}
+	}
+	fixture.provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		switch args[0] {
+		case "get":
+			if strings.HasPrefix(args[1], "machines.node.tke.cloud.tencent.com/") {
+				return tencentOwnershipMachineReadback(fixture.allocation, machineLegacy), nil
+			}
+			return nodeReadback(), nil
+		case "patch":
+			patchTargets = append(patchTargets, args[1])
+			switch args[1] {
+			case computeClaimMachineResource(fixture.allocation):
+				machineLegacy = false
+			case "node/" + fixture.allocation.NodeName:
+				if machineLegacy {
+					t.Fatal("succeeded stage correction patched Node before Machine")
+				}
+				nodeOwned = true
+			default:
+				t.Fatalf("unexpected patch target %q", args[1])
+			}
+			return nil, nil
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
+
+	readback, err := fixture.service.ReadWorkspaceLaunchStage(context.Background(), fixture.input)
+	if err != nil || readback.State != "pending" || readback.Reason != "ownership_pending" || len(patchTargets) != 0 {
+		t.Fatalf("succeeded stage readback=%#v patches=%#v err=%v", readback, patchTargets, err)
+	}
+	recovered, err := fixture.service.EnsureWorkspaceLaunchStage(context.Background(), fixture.input)
+	wantTargets := []string{computeClaimMachineResource(fixture.allocation), "node/" + fixture.allocation.NodeName}
+	if err != nil || recovered.State != "ready" || recovered.Resources.ComputeAllocationID != fixture.computeID ||
+		!slices.Equal(patchTargets, wantTargets) {
+		t.Fatalf("succeeded stage correction=%#v patches=%#v err=%v", recovered, patchTargets, err)
+	}
+	nodeChildID := providerMutationOperationID(fixture.input.Binding, "tencent_kubernetes_node_claim", "compute_binding", fixture.computeID, fixture.allocation.NodeName)
+	nodeChild, err := fixture.store.Get(context.Background(), nodeChildID)
+	epoch, epochOK := decodeProviderMutationReplayEpoch(nodeChild)
+	if err != nil || nodeChild.Status != "succeeded" || !epochOK || epoch.State != "succeeded" || epoch.ChildOperationID != nodeChildID {
+		t.Fatalf("succeeded node child=%#v epoch=%#v/%v err=%v", nodeChild, epoch, epochOK, err)
+	}
+}
+
 func (f tencentOwnershipReplayFixture) converge() error {
 	return f.provider.TagComputeMachine(f.ctx, providerMachineFromComputeAllocation(f.allocation), f.ownership)
 }
