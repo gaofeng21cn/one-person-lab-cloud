@@ -1,6 +1,7 @@
 package fabric
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -368,6 +369,9 @@ func (p *TencentProvider) ReadStaticStorageBinding(ctx context.Context, volume S
 	raw, err := p.callKubectl(ctx, []string{"get", "pv/" + pvName, "pvc/" + pvcName, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return volume, err
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return volume, ErrWorkspaceLaunchResourceAbsent
 	}
 	items, err := strictKubectlItems(raw)
 	if err != nil {
