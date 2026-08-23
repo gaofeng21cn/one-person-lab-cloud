@@ -11,7 +11,7 @@ in source, focused tests, or documentation.
 | --- | --- |
 | `opl-cloud-candidate-receipt-contract.json` | Candidate bundle tooling and the Candidate workflow |
 | `opl-cloud-distribution-contract.json` | Candidate/Release validation and the instance handoff |
-| `opl-cloud-fabric-launch-binding-contract.json` | Control Plane and Fabric stage request hashing |
+| `opl-cloud-fabric-launch-binding-contract.json` | Control Plane and Fabric stage request hashing and Runtime image revision proof |
 | `opl-cloud-workspace-runtime-abi-contract.json` | Control Plane and Fabric Workspace WebUI routing |
 
 The Candidate and Distribution contracts bind portable artifact identity; they
@@ -19,9 +19,11 @@ do not describe an instance deployment. Domains, provider selection, production
 Secrets, deployment, rollback, qualification, and receipts belong to the
 instance owner.
 
-The Fabric launch contract contains only the hash encoding and golden vectors
-that both Go modules consume. The Workspace Runtime ABI contains only the fixed
-protocol and port projected by both modules.
+The Fabric launch contract contains only the hash encoding, golden vectors, and
+bounded Runtime image revision proof that both Go modules consume. The proof is
+validated independently and preserves the original stage request hash. The
+Workspace Runtime ABI contains only the fixed protocol and port projected by
+both modules.
 
 ## Admission
 

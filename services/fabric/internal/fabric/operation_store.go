@@ -666,17 +666,18 @@ func validRuntimeReadbackConvergence(expected, next FabricOperation) bool {
 func sameProviderMutationReplayEpochIdentity(left, right providerMutationReplayEpoch) bool {
 	return left.SchemaVersion == right.SchemaVersion && left.ReplayID == right.ReplayID &&
 		left.ParentFabricOperationID == right.ParentFabricOperationID && left.ChildOperationID == right.ChildOperationID &&
-		left.IdempotencyKey == right.IdempotencyKey
+		left.IdempotencyKey == right.IdempotencyKey && left.ReplayClass == right.ReplayClass && left.AuthorityDigest == right.AuthorityDigest &&
+		left.PreviousImageDigest == right.PreviousImageDigest && left.ReplacementImageDigest == right.ReplacementImageDigest
 }
 
 func validProviderMutationReplayEpochTransition(expected, next FabricOperation) bool {
-	if !sameRuntimeReadbackIdentity(expected, next) || expected.Status != next.Status ||
-		expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) ||
-		!sameProviderMutationState(expected, next) {
-		return false
-	}
 	nextEpoch, nextOK := decodeProviderMutationReplayEpoch(next)
 	if !nextOK {
+		return false
+	}
+	if !sameRuntimeReadbackIdentity(expected, next) || expected.Status != next.Status ||
+		expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) && !correctableSucceededRuntimeImageRevision(expected, nextEpoch) ||
+		!sameProviderMutationState(expected, next) {
 		return false
 	}
 	_, expectedHasEpoch := expected.RedactedProviderPayload[providerMutationReplayEpochPayloadKey]
@@ -710,12 +711,12 @@ func sameProviderMutationTerminalIdentity(expected, next FabricOperation) bool {
 }
 
 func validProviderMutationReplayConvergence(expected, next FabricOperation) bool {
-	if expected.ID == "" || expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) ||
+	expectedEpoch, expectedOK := decodeProviderMutationReplayEpoch(expected)
+	if expected.ID == "" || expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) && !(expectedOK && correctableSucceededRuntimeImageRevision(expected, expectedEpoch)) ||
 		next.Status != "succeeded" || next.FinishedAt.IsZero() ||
 		!sameProviderMutationTerminalIdentity(expected, next) {
 		return false
 	}
-	expectedEpoch, expectedOK := decodeProviderMutationReplayEpoch(expected)
 	nextEpoch, nextOK := decodeProviderMutationReplayEpoch(next)
 	if !expectedOK || !nextOK || !sameProviderMutationReplayEpochIdentity(expectedEpoch, nextEpoch) ||
 		expectedEpoch.State != "leased" && expectedEpoch.State != "awaiting_readback" || nextEpoch.State != "succeeded" ||
@@ -726,6 +727,18 @@ func validProviderMutationReplayConvergence(expected, next FabricOperation) bool
 	expectedBinding, expectedBindingOK := decodeProviderMutationBinding(expected)
 	nextBinding, nextBindingOK := decodeProviderMutationBinding(next)
 	return expectedBindingOK && nextBindingOK && expectedBinding == nextBinding && sameProviderMutationState(expected, next)
+}
+
+func correctableSucceededRuntimeImageRevision(operation FabricOperation, epoch providerMutationReplayEpoch) bool {
+	binding, bindingOK := decodeProviderMutationBinding(operation)
+	var runtime WorkspaceRuntime
+	return bindingOK && operation.Status == "succeeded" && epoch.ReplayClass == providerMutationRuntimeImageRevisionReplayClass &&
+		binding.Action == "tencent_workspace_runtime_apply" && binding.ResourceKind == "workspace_runtime" &&
+		binding.Parent.Stage == "runtime" && binding.Parent.Action == "ensure_runtime" &&
+		epoch.ParentFabricOperationID == binding.Parent.FabricOperationID && epoch.ChildOperationID == operation.ID &&
+		decodeOperationResource(operation, &runtime) && runtime.ID == binding.ResourceID && runtime.WorkspaceID == binding.Parent.WorkspaceID &&
+		runtime.OperationID == binding.Parent.FabricOperationID && runtime.ServiceName == binding.ExpectedResourceBinding &&
+		runtime.ImageID == epoch.PreviousImageDigest
 }
 
 func (s *MemoryOperationStore) SaveRuntime(_ context.Context, operation FabricOperation) error {

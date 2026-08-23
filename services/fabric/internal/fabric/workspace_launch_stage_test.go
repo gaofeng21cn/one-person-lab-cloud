@@ -23,24 +23,39 @@ type workspaceLaunchStageHashGoldenVector struct {
 	SHA256 string `json:"sha256"`
 }
 
-func workspaceLaunchStageHashGoldenVectors(t *testing.T) []workspaceLaunchStageHashGoldenVector {
+type workspaceLaunchBindingContract struct {
+	StageRequestHash struct {
+		GoldenVectors []workspaceLaunchStageHashGoldenVector `json:"goldenVectors"`
+	} `json:"stageRequestHash"`
+	RuntimeImageRevisionProof struct {
+		SchemaVersion           int                                 `json:"schemaVersion"`
+		Stage                   string                              `json:"stage"`
+		ProviderProfileRef      string                              `json:"providerProfileRef"`
+		StageRequestHashBinding string                              `json:"stageRequestHashBinding"`
+		GoldenVector            WorkspaceLaunchRuntimeImageRevision `json:"goldenVector"`
+	} `json:"runtimeImageRevisionProof"`
+}
+
+func workspaceLaunchBindingContractForTest(t *testing.T) workspaceLaunchBindingContract {
 	t.Helper()
 	raw, err := os.ReadFile("../../../../packages/contracts/opl-cloud-fabric-launch-binding-contract.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var contract struct {
-		StageRequestHash struct {
-			GoldenVectors []workspaceLaunchStageHashGoldenVector `json:"goldenVectors"`
-		} `json:"stageRequestHash"`
-	}
+	var contract workspaceLaunchBindingContract
 	if err := json.Unmarshal(raw, &contract); err != nil {
 		t.Fatal(err)
 	}
 	if len(contract.StageRequestHash.GoldenVectors) != 5 {
 		t.Fatalf("golden vectors=%d, want 5", len(contract.StageRequestHash.GoldenVectors))
 	}
-	return contract.StageRequestHash.GoldenVectors
+	return contract
+
+}
+
+func workspaceLaunchStageHashGoldenVectors(t *testing.T) []workspaceLaunchStageHashGoldenVector {
+	t.Helper()
+	return workspaceLaunchBindingContractForTest(t).StageRequestHash.GoldenVectors
 }
 
 type workspaceLaunchRecordingProvider struct {
@@ -389,6 +404,29 @@ func TestWorkspaceLaunchStageRequestHashMatchesOwnerGoldenVectors(t *testing.T) 
 				t.Fatalf("workspaceLaunchStageRequestHash()=%s, owner golden=%s", got, vector.SHA256)
 			}
 		})
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionMatchesOwnerContract(t *testing.T) {
+	contract := workspaceLaunchBindingContractForTest(t).RuntimeImageRevisionProof
+	proof := contract.GoldenVector
+	input := WorkspaceLaunchStageInput{
+		Binding: WorkspaceLaunchStageBinding{
+			SchemaVersion: 1, LaunchOperationID: proof.LaunchOperationID, AccountID: "acct-alpha", WorkspaceID: proof.WorkspaceID,
+			Stage: contract.Stage, Action: "ensure_runtime", FabricOperationID: proof.RuntimeOperationID,
+			IdempotencyKey: proof.RuntimeOperationID,
+		},
+		ProviderProfileRef: contract.ProviderProfileRef, PackageID: "basic", SizeGB: 10,
+		WorkspaceImageDigest: proof.PreviousImageDigest, RuntimeImageRevision: &proof,
+	}
+	if contract.SchemaVersion != 1 || contract.Stage != "runtime" || contract.ProviderProfileRef != "tencent-tke" ||
+		contract.StageRequestHashBinding != "excluded_preserves_original_stage_hash" || !validWorkspaceLaunchRuntimeImageRevision(input, NewTencentProvider()) {
+		t.Fatalf("runtime image revision contract=%#v input=%#v", contract, input)
+	}
+	withProof := workspaceLaunchStageRequestHash(input, strings.Repeat("b", 64))
+	input.RuntimeImageRevision = nil
+	if withoutProof := workspaceLaunchStageRequestHash(input, strings.Repeat("b", 64)); withProof != withoutProof {
+		t.Fatalf("runtime image revision changed original stage hash: with=%s without=%s", withProof, withoutProof)
 	}
 }
 

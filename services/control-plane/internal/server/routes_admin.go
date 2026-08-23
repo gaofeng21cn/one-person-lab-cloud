@@ -224,18 +224,25 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		input := decodeJSON(r)
 		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
 		authorizedStage, reason := stringValue(input["authorizedStage"]), stringValue(input["reason"])
+		replacementWorkspaceImageDigest, replacementWorkspaceImageProvided := input["replacementWorkspaceImageDigest"].(string)
+		_, replacementWorkspaceImageFieldPresent := input["replacementWorkspaceImageDigest"]
 		mutationBudget, validBudget := input["mutationBudget"].(float64)
 		idempotentReplayBudget, replayProvided := input["idempotentReplayBudget"].(float64)
 		authoritativeReadBudget, readBudgetProvided := input["authoritativeReadBudget"].(float64)
 		exactFields := exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget"}) ||
-			exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget", "idempotentReplayBudget", "authoritativeReadBudget"})
+			exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget", "idempotentReplayBudget", "authoritativeReadBudget"}) ||
+			exactWorkspaceComputeClaimKeys(input, []string{"launchVersion", "authorizedStage", "reason", "mutationBudget", "idempotentReplayBudget", "authoritativeReadBudget", "replacementWorkspaceImageDigest"})
 		validAuthoritativeReadBudget := authoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget ||
 			authorizedStage == "ensure_compute_allocation" && authoritativeReadBudget > 0 &&
 				authoritativeReadBudget <= float64(workspaceLaunchComputeFreshContinuationAdditionalReadBudget)
+		validRuntimeImageRevision := !replacementWorkspaceImageFieldPresent || replacementWorkspaceImageProvided && authorizedStage == "runtime" &&
+			workspaceImageReferenceWithDigest(replacementWorkspaceImageDigest) && mutationBudget == 0 && replayProvided && readBudgetProvided &&
+			idempotentReplayBudget == 1 && authoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget
 		if operationID == "" || !exactFields ||
 			!validVersion || launchVersion > int64(^uint(0)>>1) || authorizedStage == "" || authorizedStage != strings.TrimSpace(authorizedStage) ||
 			reason == "" || reason != strings.TrimSpace(reason) || !validBudget || mutationBudget != 0 && mutationBudget != 1 ||
-			replayProvided != readBudgetProvided || replayProvided && (idempotentReplayBudget != 0 && idempotentReplayBudget != 1 || !validAuthoritativeReadBudget) {
+			replayProvided != readBudgetProvided || replayProvided && (idempotentReplayBudget != 0 && idempotentReplayBudget != 1 || !validAuthoritativeReadBudget) ||
+			!validRuntimeImageRevision {
 			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
 			return
 		}
@@ -243,6 +250,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: authorizedStage,
 			AuthorizedBy: app.sessionUserID(r), Reason: reason, MutationBudget: int(mutationBudget),
 			IdempotentReplayBudget: int(idempotentReplayBudget), AuthoritativeReadBudget: int(authoritativeReadBudget),
+			ReplacementWorkspaceImageDigest: replacementWorkspaceImageDigest,
 		}
 		if resumeExistingRequested && (!replayProvided || !readBudgetProvided) {
 			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())

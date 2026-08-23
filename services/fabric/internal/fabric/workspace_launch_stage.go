@@ -16,11 +16,12 @@ const workspaceLaunchStageRecordPayloadKey = "workspaceLaunchStageRecord"
 const workspaceLaunchStageRecordSchemaVersion = 2
 
 var (
-	ErrWorkspaceLaunchInputInvalid     = errors.New("workspace_launch_input_invalid")
-	ErrWorkspaceLaunchUnavailable      = errors.New("workspace_launch_unavailable")
-	ErrWorkspaceLaunchPending          = errors.New("workspace_launch_pending")
-	ErrWorkspaceLaunchOwnershipPending = errors.New("workspace_launch_ownership_pending")
-	ErrWorkspaceLaunchResourceAbsent   = errors.New("workspace_launch_resource_absent")
+	ErrWorkspaceLaunchInputInvalid                 = errors.New("workspace_launch_input_invalid")
+	ErrWorkspaceLaunchUnavailable                  = errors.New("workspace_launch_unavailable")
+	ErrWorkspaceLaunchPending                      = errors.New("workspace_launch_pending")
+	ErrWorkspaceLaunchOwnershipPending             = errors.New("workspace_launch_ownership_pending")
+	ErrWorkspaceLaunchRuntimeImageRevisionRequired = errors.New("workspace_launch_runtime_image_revision_required")
+	ErrWorkspaceLaunchResourceAbsent               = errors.New("workspace_launch_resource_absent")
 )
 
 type WorkspaceLaunchPreflightInput struct {
@@ -100,16 +101,27 @@ type WorkspaceLaunchGatewayCredential struct {
 	Value string `json:"value"`
 }
 
+type WorkspaceLaunchRuntimeImageRevision struct {
+	SchemaVersion          int    `json:"schemaVersion"`
+	LaunchOperationID      string `json:"launchOperationId"`
+	WorkspaceID            string `json:"workspaceId"`
+	RuntimeOperationID     string `json:"runtimeOperationId"`
+	AuthorizationDigest    string `json:"authorizationDigest"`
+	PreviousImageDigest    string `json:"previousImageDigest"`
+	ReplacementImageDigest string `json:"replacementImageDigest"`
+}
+
 type WorkspaceLaunchStageInput struct {
-	Binding              WorkspaceLaunchStageBinding       `json:"binding"`
-	ProviderProfileRef   string                            `json:"providerProfileRef"`
-	ProviderBindingRef   string                            `json:"providerBindingRef"`
-	SpecDigest           string                            `json:"specDigest"`
-	PackageID            string                            `json:"packageId"`
-	SizeGB               int                               `json:"sizeGb"`
-	WorkspaceImageDigest string                            `json:"workspaceImageDigest"`
-	Resources            WorkspaceLaunchResources          `json:"resources"`
-	GatewayCredential    *WorkspaceLaunchGatewayCredential `json:"gatewayCredential,omitempty"`
+	Binding              WorkspaceLaunchStageBinding          `json:"binding"`
+	ProviderProfileRef   string                               `json:"providerProfileRef"`
+	ProviderBindingRef   string                               `json:"providerBindingRef"`
+	SpecDigest           string                               `json:"specDigest"`
+	PackageID            string                               `json:"packageId"`
+	SizeGB               int                                  `json:"sizeGb"`
+	WorkspaceImageDigest string                               `json:"workspaceImageDigest"`
+	Resources            WorkspaceLaunchResources             `json:"resources"`
+	GatewayCredential    *WorkspaceLaunchGatewayCredential    `json:"gatewayCredential,omitempty"`
+	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
 }
 
 type WorkspaceLaunchStageResult struct {
@@ -121,14 +133,15 @@ type WorkspaceLaunchStageResult struct {
 }
 
 type workspaceLaunchStageRecord struct {
-	SchemaVersion      int                      `json:"schemaVersion"`
-	ProviderProfileRef string                   `json:"providerProfileRef"`
-	ProviderBindingRef string                   `json:"providerBindingRef"`
-	SpecDigest         string                   `json:"specDigest"`
-	RequestResources   WorkspaceLaunchResources `json:"requestResources"`
-	Resources          WorkspaceLaunchResources `json:"resources"`
-	GatewayKeyID       int64                    `json:"gatewayKeyId,omitempty"`
-	ProviderState      json.RawMessage          `json:"providerState,omitempty"`
+	SchemaVersion        int                                  `json:"schemaVersion"`
+	ProviderProfileRef   string                               `json:"providerProfileRef"`
+	ProviderBindingRef   string                               `json:"providerBindingRef"`
+	SpecDigest           string                               `json:"specDigest"`
+	RequestResources     WorkspaceLaunchResources             `json:"requestResources"`
+	Resources            WorkspaceLaunchResources             `json:"resources"`
+	GatewayKeyID         int64                                `json:"gatewayKeyId,omitempty"`
+	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
+	ProviderState        json.RawMessage                      `json:"providerState,omitempty"`
 }
 
 type persistedWorkspaceLaunchStageRecord struct {
@@ -151,6 +164,10 @@ type WorkspaceLaunchProviderResult struct {
 type workspaceLaunchProvider interface {
 	EnsureWorkspaceLaunchStage(context.Context, WorkspaceLaunchProviderRequest) (WorkspaceLaunchProviderResult, error)
 	ReadWorkspaceLaunchStage(context.Context, WorkspaceLaunchProviderRequest) (WorkspaceLaunchProviderResult, error)
+}
+
+type workspaceLaunchRuntimeImageRevisionProvider interface {
+	WorkspaceLaunchRuntimeImageRevisionSupported() bool
 }
 
 func validWorkspaceLaunchPreflightInput(input WorkspaceLaunchPreflightInput) bool {
@@ -307,6 +324,9 @@ func (s *Service) validateWorkspaceLaunchStageInput(ctx context.Context, input W
 		input.SizeGB < 10 || input.SizeGB%10 != 0 || !s.provider.ValidateWorkspaceImageReference(input.WorkspaceImageDigest) {
 		return ErrWorkspaceLaunchInputInvalid
 	}
+	if !validWorkspaceLaunchRuntimeImageRevision(input, s.provider) {
+		return ErrWorkspaceLaunchInputInvalid
+	}
 	admission, err := s.workspaceLaunchPreflight(ctx, input.ProviderBindingRef)
 	if err != nil {
 		return err
@@ -326,6 +346,25 @@ func (s *Service) validateWorkspaceLaunchStageInput(ctx context.Context, input W
 		return err
 	}
 	return nil
+}
+
+func validWorkspaceLaunchRuntimeImageRevision(input WorkspaceLaunchStageInput, provider Provider) bool {
+	revision := input.RuntimeImageRevision
+	if revision == nil {
+		return true
+	}
+	support, supported := provider.(workspaceLaunchRuntimeImageRevisionProvider)
+	if input.Binding.Stage != "runtime" || !supported || !support.WorkspaceLaunchRuntimeImageRevisionSupported() ||
+		revision.SchemaVersion != 1 || revision.LaunchOperationID != input.Binding.LaunchOperationID ||
+		revision.WorkspaceID != input.Binding.WorkspaceID || revision.RuntimeOperationID != input.Binding.FabricOperationID ||
+		revision.PreviousImageDigest != input.WorkspaceImageDigest || revision.PreviousImageDigest == revision.ReplacementImageDigest ||
+		!provider.ValidateWorkspaceImageReference(revision.PreviousImageDigest) || !provider.ValidateWorkspaceImageReference(revision.ReplacementImageDigest) {
+		return false
+	}
+	if !strings.HasPrefix(revision.AuthorizationDigest, "sha256:") || len(revision.AuthorizationDigest) != len("sha256:")+64 {
+		return false
+	}
+	return validWorkspaceLaunchHash(strings.TrimPrefix(revision.AuthorizationDigest, "sha256:"))
 }
 
 func validWorkspaceLaunchHash(value string) bool {
@@ -520,7 +559,7 @@ func workspaceLaunchStageOperationMatches(operation FabricOperation, input Works
 		operation.OperationID != input.Binding.FabricOperationID || operation.Action != input.Binding.Action ||
 		operation.ResourceKind != "workspace_launch_stage" || operation.ResourceID != input.Binding.FabricOperationID ||
 		operation.Provider != provider || record.ProviderProfileRef != provider || record.ProviderBindingRef != input.ProviderBindingRef || record.SpecDigest != input.SpecDigest ||
-		record.RequestResources != input.Resources {
+		record.RequestResources != input.Resources || !workspaceLaunchRuntimeImageRevisionMatches(operation, record, input) {
 		return workspaceLaunchStageRecord{}, false
 	}
 	keyID := workspaceLaunchStageCredentialKeyID(input)
@@ -532,6 +571,13 @@ func workspaceLaunchStageOperationMatches(operation FabricOperation, input Works
 		return workspaceLaunchStageRecord{}, false
 	}
 	return record, true
+}
+
+func workspaceLaunchRuntimeImageRevisionMatches(operation FabricOperation, record workspaceLaunchStageRecord, input WorkspaceLaunchStageInput) bool {
+	if record.RuntimeImageRevision != nil {
+		return input.RuntimeImageRevision != nil && *record.RuntimeImageRevision == *input.RuntimeImageRevision
+	}
+	return input.RuntimeImageRevision == nil || input.Binding.Stage == "runtime" && (operation.Status == "started" || operation.Status == "failed")
 }
 
 func workspaceLaunchRequiredPriorStages(stage string) []string {
@@ -632,13 +678,17 @@ func observedWorkspaceLaunchStageResult(input WorkspaceLaunchStageInput, state, 
 }
 
 func workspaceLaunchStageMayContinueEnsure(result WorkspaceLaunchStageResult) bool {
-	return result.State == "absent" || result.State == "pending" && result.Reason == "ownership_pending"
+	return result.State == "absent" || result.State == "pending" && (result.Reason == "ownership_pending" || result.Reason == "runtime_image_revision_required")
 }
 
-func (s *Service) persistWorkspaceLaunchStageResult(ctx context.Context, current FabricOperation, record workspaceLaunchStageRecord, result WorkspaceLaunchProviderResult) error {
+func (s *Service) persistWorkspaceLaunchStageResult(ctx context.Context, input WorkspaceLaunchStageInput, current FabricOperation, record workspaceLaunchStageRecord, result WorkspaceLaunchProviderResult) error {
 	next := current
 	next.Status, next.ErrorCode, next.Retryable, next.FinishedAt = "succeeded", "", false, s.now()
 	record.Resources, record.ProviderState = result.Resources, append(json.RawMessage(nil), result.ProviderState...)
+	if input.RuntimeImageRevision != nil {
+		revision := *input.RuntimeImageRevision
+		record.RuntimeImageRevision = &revision
+	}
 	setWorkspaceLaunchStageRecord(&next, record)
 	if current.Status == "started" {
 		return s.operations.SaveRuntime(ctx, next)
@@ -669,6 +719,15 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 	stageProvider, ok := s.provider.(workspaceLaunchProvider)
 	if !ok {
 		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
+	}
+	if input.RuntimeImageRevision != nil {
+		existing, getErr := s.operations.Get(ctx, input.Binding.FabricOperationID)
+		if getErr != nil {
+			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
+		}
+		if _, matches := workspaceLaunchStageOperationMatches(existing, input, s.provider.Descriptor().Name); !matches {
+			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
+		}
 	}
 	operation, record, err := newWorkspaceLaunchStageOperation(input, s.provider.Descriptor().Name, s.now)
 	if err != nil {
@@ -712,10 +771,16 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 		return WorkspaceLaunchStageResult{}, err
 	}
 	providerResult, err := stageProvider.EnsureWorkspaceLaunchStage(s.providerMutationContext(ctx, stored), request)
+	if errors.Is(err, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+		return pendingWorkspaceLaunchStageResult(input, "runtime_image_revision_required"), nil
+	}
 	if errors.Is(err, ErrWorkspaceLaunchOwnershipPending) {
 		return pendingWorkspaceLaunchStageResult(input, "ownership_pending"), nil
 	}
 	if errors.Is(err, ErrWorkspaceLaunchPending) {
+		if input.RuntimeImageRevision != nil {
+			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning"), nil
+		}
 		return pendingWorkspaceLaunchStageResult(input, stored.ErrorCode), nil
 	}
 	if err != nil {
@@ -727,7 +792,7 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 		s.failWorkspaceLaunchStage(ctx, stored, err)
 		return WorkspaceLaunchStageResult{}, err
 	}
-	if err := s.persistWorkspaceLaunchStageResult(ctx, stored, record, providerResult); err != nil {
+	if err := s.persistWorkspaceLaunchStageResult(ctx, input, stored, record, providerResult); err != nil {
 		latest, getErr := s.operations.Get(ctx, input.Binding.FabricOperationID)
 		if getErr != nil || latest.Status != "succeeded" {
 			return WorkspaceLaunchStageResult{}, err
@@ -764,6 +829,9 @@ func (s *Service) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceL
 		return WorkspaceLaunchStageResult{}, err
 	}
 	providerResult, err := stageProvider.ReadWorkspaceLaunchStage(s.providerReadContext(ctx, operation), request)
+	if errors.Is(err, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+		return pendingWorkspaceLaunchStageResult(input, "runtime_image_revision_required"), nil
+	}
 	if errors.Is(err, ErrWorkspaceLaunchOwnershipPending) {
 		return pendingWorkspaceLaunchStageResult(input, "ownership_pending"), nil
 	}
@@ -789,7 +857,7 @@ func (s *Service) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceL
 		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
 	}
 	if operation.Status != "succeeded" {
-		if err := s.persistWorkspaceLaunchStageResult(ctx, operation, record, providerResult); err != nil {
+		if err := s.persistWorkspaceLaunchStageResult(ctx, input, operation, record, providerResult); err != nil {
 			return WorkspaceLaunchStageResult{}, err
 		}
 	} else if !workspaceLaunchResourcesContain(providerResult.Resources, record.Resources) || !workspaceLaunchResourcesContain(record.Resources, providerResult.Resources) {

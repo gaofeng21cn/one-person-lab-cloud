@@ -101,9 +101,16 @@ func (app *controlPlaneServer) resumeWorkspaceLaunch(ctx context.Context, servic
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
+	_, _, authorizationExists := operation.resumeAuthorizationByID(authorization.AuthorizationID)
 	if existing, _, found := operation.resumeAuthorizationByID(authorization.AuthorizationID); found && authorization.AuthorizedAt == "" {
 		authorization.AuthorizedAt = existing.AuthorizedAt
 		authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
+	}
+	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists &&
+		(operation.Status != "manual_review" || operation.Stage != "runtime" || operation.stringFact("providerProfileRef") != "tencent-tke" ||
+			authorization.ReplacementWorkspaceImageDigest == operation.stringFact("workspaceImageDigest") ||
+			authorization.ReplacementWorkspaceImageDigest != currentWorkspaceImageDigest()) {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
 	if authorization.AuthorizedAt == "" {
 		authorization.AuthorizedAt = time.Now().UTC().Format(time.RFC3339)

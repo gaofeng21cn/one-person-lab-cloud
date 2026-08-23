@@ -56,7 +56,23 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 	}
 	if mutation != nil && !mutation.Fresh {
 		runtime, readErr := p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
-		if errors.Is(readErr, ErrWorkspaceLaunchResourceAbsent) {
+		if input.RuntimeImageRevision != nil && errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+			claimed, claimErr := mutation.claimRuntimeImageRevision(ctx, *input.RuntimeImageRevision, runtime)
+			if claimErr != nil || !claimed {
+				return WorkspaceRuntime{}, firstNonNil(claimErr, ErrWorkspaceLaunchPending)
+			}
+			runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
+			if errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+				if dispatchErr := mutation.markReplayDispatch(ctx); dispatchErr != nil {
+					return WorkspaceRuntime{}, dispatchErr
+				}
+				if _, readErr = p.callKubectl(ctx, []string{"apply", "-f", "-"}, workspaceManifestWithGatewayPlan(input, input.WorkspaceID, credentialSeed, runtimeID, serviceName, compute, volume, tags, gateway, workspacePlan.Compute), runtimeTarget); readErr == nil {
+					runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
+				}
+			}
+		} else if input.RuntimeImageRevision != nil && readErr == nil && !mutation.runtimeImageRevisionClaimed(*input.RuntimeImageRevision) {
+			return WorkspaceRuntime{}, ErrLaunchStageBindingConflict
+		} else if input.RuntimeImageRevision == nil && errors.Is(readErr, ErrWorkspaceLaunchResourceAbsent) {
 			claimed, claimErr := mutation.claimReplay(ctx)
 			if claimErr != nil || !claimed {
 				return WorkspaceRuntime{}, firstNonNil(claimErr, ErrWorkspaceLaunchPending)
@@ -70,6 +86,9 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 					runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
 				}
 			}
+		}
+		if input.RuntimeImageRevision != nil && readErr == nil && !runtime.Ready {
+			readErr = ErrWorkspaceLaunchPending
 		}
 		if readErr != nil {
 			_ = mutation.complete(ctx, "", WorkspaceRuntime{ID: runtimeID, WorkspaceID: input.WorkspaceID}, readErr)
@@ -103,7 +122,7 @@ func (p *TencentProvider) readWorkspaceRuntime(ctx context.Context, input Worksp
 		return runtime, err
 	}
 	if runtime.ID != runtimeID || runtime.OperationID != input.RuntimeOperationID || runtime.WorkspaceID != input.WorkspaceID ||
-		runtime.ServiceName != serviceName || runtime.ImageID != input.ImageID || runtime.URL == "" || !reflect.DeepEqual(runtime.CostTags, tags) {
+		runtime.ServiceName != serviceName || runtime.URL == "" || !reflect.DeepEqual(runtime.CostTags, tags) {
 		return runtime, fmt.Errorf("workspace_runtime_readback_mismatch")
 	}
 	if gateway == (tencentWorkspaceRuntimeGatewayBinding{}) {
@@ -116,6 +135,16 @@ func (p *TencentProvider) readWorkspaceRuntime(ctx context.Context, input Worksp
 		return runtime, firstNonNil(err, fmt.Errorf("workspace_runtime_gateway_secret_readback_mismatch"))
 	}
 	runtime.Access.Password = ""
+	if input.RuntimeImageRevision != nil {
+		if runtime.ImageID == input.RuntimeImageRevision.PreviousImageDigest {
+			return runtime, ErrWorkspaceLaunchRuntimeImageRevisionRequired
+		}
+		if runtime.ImageID != input.RuntimeImageRevision.ReplacementImageDigest {
+			return runtime, fmt.Errorf("workspace_runtime_readback_mismatch")
+		}
+	} else if runtime.ImageID != input.ImageID {
+		return runtime, fmt.Errorf("workspace_runtime_readback_mismatch")
+	}
 	return runtime, nil
 }
 

@@ -23,11 +23,12 @@ const workspaceLaunchComputePendingWindow = 10 * time.Minute
 const workspaceLaunchComputeFreshContinuationAdditionalReadBudget = int(workspaceLaunchComputePendingWindow / defaultWorkspaceLaunchInterval)
 
 const (
-	workspaceLaunchStageAbsent           = "absent"
-	workspaceLaunchStageOwnershipPending = "ownership_pending"
-	workspaceLaunchStagePending          = "pending"
-	workspaceLaunchStageReady            = "ready"
-	workspaceLaunchStageUnknown          = "unknown"
+	workspaceLaunchStageAbsent                      = "absent"
+	workspaceLaunchStageOwnershipPending            = "ownership_pending"
+	workspaceLaunchStagePending                     = "pending"
+	workspaceLaunchStageReady                       = "ready"
+	workspaceLaunchStageRuntimeImageRevisionPending = "runtime_image_revision_pending"
+	workspaceLaunchStageUnknown                     = "unknown"
 )
 
 var workspaceLaunchReconcileStages = []string{
@@ -181,17 +182,18 @@ type workspaceLaunchStageObservation struct {
 }
 
 type workspaceLaunchResumeAuthorization struct {
-	AuthorizationID           string                                           `json:"authorizationId"`
-	LaunchVersion             int                                              `json:"launchVersion"`
-	AuthorizedStage           string                                           `json:"authorizedStage"`
-	AuthorizedBy              string                                           `json:"authorizedBy"`
-	AuthorizedAt              string                                           `json:"authorizedAt"`
-	Reason                    string                                           `json:"reason"`
-	MutationBudget            int                                              `json:"mutationBudget"`
-	IdempotentReplayBudget    int                                              `json:"idempotentReplayBudget,omitempty"`
-	AuthoritativeReadBudget   int                                              `json:"authoritativeReadBudget,omitempty"`
-	ReadbacksAtAuthorization  int                                              `json:"readbacksAtAuthorization,omitempty"`
-	AcceptanceBResumeExisting *workspaceLaunchAcceptanceBResumeExistingBinding `json:"acceptanceBResumeExisting,omitempty"`
+	AuthorizationID                 string                                           `json:"authorizationId"`
+	LaunchVersion                   int                                              `json:"launchVersion"`
+	AuthorizedStage                 string                                           `json:"authorizedStage"`
+	AuthorizedBy                    string                                           `json:"authorizedBy"`
+	AuthorizedAt                    string                                           `json:"authorizedAt"`
+	Reason                          string                                           `json:"reason"`
+	MutationBudget                  int                                              `json:"mutationBudget"`
+	IdempotentReplayBudget          int                                              `json:"idempotentReplayBudget,omitempty"`
+	AuthoritativeReadBudget         int                                              `json:"authoritativeReadBudget,omitempty"`
+	ReadbacksAtAuthorization        int                                              `json:"readbacksAtAuthorization,omitempty"`
+	ReplacementWorkspaceImageDigest string                                           `json:"replacementWorkspaceImageDigest,omitempty"`
+	AcceptanceBResumeExisting       *workspaceLaunchAcceptanceBResumeExistingBinding `json:"acceptanceBResumeExisting,omitempty"`
 }
 
 type workspaceLaunchConsumedResumeAuthorization struct {
@@ -494,6 +496,20 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 		}
 		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStagePending}
 		return r.persist(ctx, operation)
+	case workspaceLaunchStageRuntimeImageRevisionPending:
+		attempt := operation.Attempts[operation.Stage]
+		if !workspaceLaunchRuntimeImageRevisionContinuationAuthorized(operation, attempt) {
+			return r.parkClaimedReplay(ctx, operation, workspaceLaunchStageUnknown)
+		}
+		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}
+		if claim, exists := operation.IdempotentReplayClaims[operation.Stage]; exists {
+			if claim.AuthorizationID != operation.ResumeAuthorization.AuthorizationID || claim.Stage != operation.Stage ||
+				claim.IdempotencyKey != attempt.IdempotencyKey || claim.Status != "waiting" {
+				return r.parkClaimedReplay(ctx, operation, workspaceLaunchStageUnknown)
+			}
+			return r.mutateReservedStage(ctx, operation)
+		}
+		return r.replayReservedStage(ctx, operation, attempt)
 	case workspaceLaunchStageOwnershipPending:
 		attempt := operation.Attempts[operation.Stage]
 		claim, replayDispatched := operation.IdempotentReplayClaims[operation.Stage]
@@ -801,7 +817,7 @@ func (r *WorkspaceLaunchReconciler) replayReservedStage(ctx context.Context, ope
 		return r.convergeClaimedReplay(ctx, claimed, observation)
 	case workspaceLaunchStagePending:
 		return r.waitClaimedReplay(ctx, claimed, workspaceLaunchStagePending)
-	case workspaceLaunchStageAbsent, workspaceLaunchStageOwnershipPending:
+	case workspaceLaunchStageAbsent, workspaceLaunchStageOwnershipPending, workspaceLaunchStageRuntimeImageRevisionPending:
 		return r.mutateReservedStage(ctx, claimed)
 	default:
 		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
@@ -899,7 +915,7 @@ func (r *WorkspaceLaunchReconciler) mutateReservedStage(ctx context.Context, res
 		reserved.advance()
 		return r.persist(ctx, reserved)
 	}
-	if (postRead.State == workspaceLaunchStagePending || postRead.State == workspaceLaunchStageOwnershipPending) &&
+	if (postRead.State == workspaceLaunchStagePending || postRead.State == workspaceLaunchStageOwnershipPending || postRead.State == workspaceLaunchStageRuntimeImageRevisionPending) &&
 		!errors.Is(mutationErr, errWorkspaceLaunchMutationNotDispatched) {
 		if _, replay := reserved.IdempotentReplayClaims[reserved.Stage]; replay {
 			return r.waitClaimedReplay(ctx, reserved, postRead.State)
@@ -975,6 +991,9 @@ func workspaceLaunchFreshContinuationReplayBudget(stage string) int {
 func workspaceLaunchMaximumPersistedReadbacks(stage string) int {
 	if stage == "ensure_compute_allocation" {
 		return workspaceLaunchAuthoritativeReadBudget + workspaceLaunchComputeFreshContinuationAdditionalReadBudget
+	}
+	if stage == "runtime" {
+		return 2 * workspaceLaunchAuthoritativeReadBudget
 	}
 	return workspaceLaunchAuthoritativeReadBudget
 }
@@ -1085,6 +1104,9 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 	if workspaceLaunchExhaustedStorageBindingReplayEligible(operation, attempt, authorization) {
 		return r.replayExhaustedStorageBinding(ctx, operation, attempt, authorization)
 	}
+	if workspaceLaunchRuntimeImageRevisionEligible(operation, attempt, authorization) {
+		return r.reviseUnknownRuntimeImage(ctx, operation, attempt, authorization)
+	}
 	if workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization) {
 		return r.recoverUnknownReadyStage(ctx, operation, attempt, authorization)
 	}
@@ -1103,6 +1125,49 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	return r.Reconcile(ctx, operationID)
+}
+
+func workspaceLaunchRuntimeImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	_, hasReplayClaim := operation.IdempotentReplayClaims[operation.Stage]
+	return workspaceLaunchRuntimeRepairEligible(operation) && operation.RuntimeRepair == nil && operation.stringFact("providerProfileRef") == "tencent-tke" &&
+		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
+		workspaceImageReferenceWithDigest(authorization.ReplacementWorkspaceImageDigest) &&
+		authorization.ReplacementWorkspaceImageDigest != operation.stringFact("workspaceImageDigest") &&
+		attempt.PendingReadbacks == attempt.MaxPendingReadbacks && attempt.MaxPendingReadbacks == workspaceLaunchAuthoritativeReadBudget &&
+		!hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage)
+}
+
+func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+) (workspaceLaunchReconcileOperation, error) {
+	authorization.ReadbacksAtAuthorization = attempt.PendingReadbacks
+	observed := operation
+	observed.ResumeAuthorization = &authorization
+	observed.ResumeAuthorizationConsumedAt = ""
+	observation, readErr := r.adapter.ReadStage(ctx, observed)
+	if readErr != nil || observation.State != workspaceLaunchStageRuntimeImageRevisionPending {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	attempt.Unknown, attempt.Status = 0, "reserved"
+	attempt.MaxPendingReadbacks = attempt.PendingReadbacks + authorization.AuthoritativeReadBudget
+	operation.Attempts[operation.Stage] = attempt
+	operation.rotateResumeAuthorization(authorization)
+	operation.Observations[operation.Stage] = observation
+	operation.Status = "pending"
+	if _, err := r.persist(ctx, operation); err != nil {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+	return r.Reconcile(ctx, operation.ID)
+}
+
+func workspaceLaunchRuntimeImageRevisionContinuationAuthorized(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
+	authorization := operation.ResumeAuthorization
+	return operation.Stage == "runtime" && authorization != nil && authorization.ReplacementWorkspaceImageDigest != "" &&
+		workspaceLaunchContinuationReadAuthorized(operation, attempt) && authorization.IdempotentReplayBudget == 1
 }
 
 func workspaceLaunchUnknownComputeContinuationEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
@@ -1579,8 +1644,9 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	for stage, observation := range operation.Observations {
 		allowed := workspaceLaunchStageCanonicalFacts[stage]
 		if allowed == nil || observation.State != workspaceLaunchStageReady && observation.State != workspaceLaunchStageAbsent && observation.State != workspaceLaunchStagePending &&
-			observation.State != workspaceLaunchStageOwnershipPending && observation.State != workspaceLaunchStageUnknown ||
+			observation.State != workspaceLaunchStageOwnershipPending && observation.State != workspaceLaunchStageRuntimeImageRevisionPending && observation.State != workspaceLaunchStageUnknown ||
 			observation.State == workspaceLaunchStageOwnershipPending && stage != "ensure_compute_allocation" ||
+			observation.State == workspaceLaunchStageRuntimeImageRevisionPending && stage != "runtime" ||
 			observation.State != workspaceLaunchStageReady && len(observation.Facts) != 0 {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_observations")
 		}
@@ -1703,6 +1769,7 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 		boundOperation := operationWithStage(operation, stage)
 		expectedReadBudget := workspaceLaunchFreshContinuationReadBudget(stage)
 		expectedReplayBudget := workspaceLaunchFreshContinuationReplayBudget(stage)
+		runtimeImageRevisionContinuation := stage == "runtime" && authorization.Status == "failed" && operation.hasRuntimeImageRevisionAuthorization()
 		if !exists || stage != authorization.Stage || !workspaceLaunchReconcileStageValid(stage) || stage == "succeeded" ||
 			authorization.SchemaVersion != workspaceLaunchFreshContinuationSchemaVersion || authorization.AuthorizationClass != workspaceLaunchFreshContinuationAuthorizationClass ||
 			authorization.AuthorizationID != workspaceLaunchFreshContinuationAuthorizationID(boundOperation, attempt, authorization.OperationVersion) ||
@@ -1711,7 +1778,7 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 			authorization.OperationVersion <= 0 || authorization.OperationVersion > operation.Version || authorization.MutationBudget != 0 ||
 			authorization.IdempotentReplayBudget != expectedReplayBudget || authorization.AuthoritativeReadBudget != expectedReadBudget ||
 			authorization.ReadbacksAtAuthorization != 1 || attempt.Attempted != 1 || attempt.Max != 1 ||
-			attempt.MaxPendingReadbacks != 1+expectedReadBudget || attempt.PendingReadbacks < authorization.ReadbacksAtAuthorization ||
+			attempt.MaxPendingReadbacks != 1+expectedReadBudget && !runtimeImageRevisionContinuation || attempt.PendingReadbacks < authorization.ReadbacksAtAuthorization ||
 			stage == "ensure_compute_allocation" && attempt.PendingDeadlineAt == "" {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_continuation_claim")
 		}
@@ -1731,9 +1798,14 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_continuation_claim")
 			}
 		case "failed":
-			if !validWorkspaceLaunchResumeAuthorizationConsumedAt(authorization.ConsumedAt) || operation.Stage != stage ||
-				(operation.Status != "manual_review" && (operation.Status != "failed" || operation.DisposableReset == nil)) ||
-				attempt.Confirmed != 0 || attempt.Unknown != 1 || attempt.Status != "unknown" || operation.Observations[stage].State != workspaceLaunchStageUnknown {
+			originalFailure := operation.Stage == stage &&
+				(operation.Status == "manual_review" || operation.Status == "failed" && operation.DisposableReset != nil) &&
+				attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" && operation.Observations[stage].State == workspaceLaunchStageUnknown
+			revisionContinuation := runtimeImageRevisionContinuation && (operation.Stage == stage && operation.Status == "pending" && attempt.Confirmed == 0 && attempt.Unknown == 0 && attempt.Status == "reserved" &&
+				(operation.Observations[stage].State == workspaceLaunchStageRuntimeImageRevisionPending || operation.Observations[stage].State == workspaceLaunchStagePending) ||
+				operation.Stage == stage && operation.Status == "manual_review" && attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" ||
+				operation.Stage != stage && attempt.Confirmed == 1 && attempt.Unknown == 0 && attempt.Status == "confirmed")
+			if !validWorkspaceLaunchResumeAuthorizationConsumedAt(authorization.ConsumedAt) || !originalFailure && !revisionContinuation {
 				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_continuation_claim")
 			}
 		default:
@@ -1768,7 +1840,8 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	}
 	for stage, authorization := range operation.FreshContinuationAuthorizations {
 		attempt := operation.Attempts[stage]
-		for readback := authorization.ReadbacksAtAuthorization + 1; readback <= attempt.PendingReadbacks; readback++ {
+		readbackLimit := min(attempt.PendingReadbacks, authorization.ReadbacksAtAuthorization+authorization.AuthoritativeReadBudget)
+		for readback := authorization.ReadbacksAtAuthorization + 1; readback <= readbackLimit; readback++ {
 			if _, exists := operation.ContinuationReadClaims[workspaceLaunchFreshContinuationClaimKey(authorization.AuthorizationID, readback)]; !exists {
 				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_continuation_claim")
 			}
@@ -1789,10 +1862,12 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	}
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		attempt, exists := operation.Attempts[stage]
+		extendedRuntimeReadback := stage == "runtime" && attempt.MaxPendingReadbacks > workspaceLaunchAuthoritativeReadBudget
 		if !exists || attempt.Max != 1 || attempt.Attempted < 0 || attempt.Attempted > 1 || attempt.Confirmed < 0 || attempt.Confirmed > attempt.Attempted ||
 			attempt.Unknown < 0 || attempt.Unknown > attempt.Attempted || attempt.Confirmed+attempt.Unknown > attempt.Attempted ||
 			attempt.MaxPendingReadbacks < workspaceLaunchLegacyV3AuthoritativeReadBudget || attempt.MaxPendingReadbacks > workspaceLaunchMaximumPersistedReadbacks(stage) ||
 			attempt.PendingReadbacks < 0 || attempt.PendingReadbacks > attempt.MaxPendingReadbacks ||
+			extendedRuntimeReadback && !operation.hasRuntimeImageRevisionAuthorization() ||
 			attempt.Status != "" && attempt.Status != "reserved" && attempt.Status != "confirmed" && attempt.Status != "unknown" {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_attempts")
 		}
@@ -1967,6 +2042,19 @@ func (operation workspaceLaunchReconcileOperation) resumeAuthorizationByID(autho
 	return workspaceLaunchResumeAuthorization{}, false, false
 }
 
+func (operation workspaceLaunchReconcileOperation) hasRuntimeImageRevisionAuthorization() bool {
+	if operation.ResumeAuthorization != nil && operation.ResumeAuthorization.AuthorizedStage == "runtime" &&
+		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {
+		return true
+	}
+	for _, consumed := range operation.ConsumedResumeAuthorizations {
+		if consumed.Authorization.AuthorizedStage == "runtime" && consumed.Authorization.ReplacementWorkspaceImageDigest != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (operation workspaceLaunchReconcileOperation) stringFact(field string) string {
 	var value string
 	_ = json.Unmarshal(operation.raw[field], &value)
@@ -2005,13 +2093,19 @@ func validWorkspaceLaunchResumeAuthorization(authorization workspaceLaunchResume
 	if authorization.AuthorizedStage == "ensure_compute_allocation" {
 		maximumReadBudget = workspaceLaunchComputeFreshContinuationAdditionalReadBudget
 	}
+	runtimeImageRevisionValid := authorization.ReplacementWorkspaceImageDigest == "" ||
+		authorization.AuthorizedStage == "runtime" && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+			authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization >= 0 &&
+			workspaceImageReferenceWithDigest(authorization.ReplacementWorkspaceImageDigest) &&
+			authorization.ReplacementWorkspaceImageDigest == strings.TrimSpace(authorization.ReplacementWorkspaceImageDigest)
 	if strings.TrimSpace(authorization.AuthorizationID) == "" || authorization.LaunchVersion <= 0 || !workspaceLaunchReconcileStageValid(authorization.AuthorizedStage) || authorization.AuthorizedStage == "succeeded" ||
 		strings.TrimSpace(authorization.AuthorizedBy) == "" || strings.TrimSpace(authorization.Reason) == "" || authorization.MutationBudget < 0 || authorization.MutationBudget > 1 ||
 		authorization.IdempotentReplayBudget < 0 || authorization.IdempotentReplayBudget > 1 || authorization.MutationBudget+authorization.IdempotentReplayBudget > 1 ||
 		authorization.AuthoritativeReadBudget < 0 || authorization.AuthoritativeReadBudget > maximumReadBudget || authorization.ReadbacksAtAuthorization < 0 ||
 		authorization.MutationBudget > 0 && (authorization.IdempotentReplayBudget != 0 || authorization.AuthoritativeReadBudget != 0) ||
 		authorization.IdempotentReplayBudget > 0 && authorization.AuthoritativeReadBudget == 0 ||
-		authorization.AuthorizationID != strings.TrimSpace(authorization.AuthorizationID) || authorization.AuthorizedBy != strings.TrimSpace(authorization.AuthorizedBy) || authorization.Reason != strings.TrimSpace(authorization.Reason) {
+		authorization.AuthorizationID != strings.TrimSpace(authorization.AuthorizationID) || authorization.AuthorizedBy != strings.TrimSpace(authorization.AuthorizedBy) || authorization.Reason != strings.TrimSpace(authorization.Reason) ||
+		!runtimeImageRevisionValid {
 		return false
 	}
 	authorizedAt, err := time.Parse(time.RFC3339, authorization.AuthorizedAt)

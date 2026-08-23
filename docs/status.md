@@ -49,6 +49,14 @@ is selected and configured by the medopl instance, not by the portable product.
   topology zone key for both manifests and strict readback. An identity-valid
   Runtime that exists but is not Ready remains typed provider-pending so the
   original Launch can converge by readback instead of being marked failed.
+  When that exact Runtime is blocked only by its old immutable image, the same
+  Resume route can bind an administrator-approved replacement to the currently
+  deployed Workspace image and replay the original Tencent Runtime child once.
+  The Launch, attempt, Fabric operation, Runtime ID/service, request hash,
+  idempotency key, debit, CBS, attachment, Secret, and downstream Receipt path
+  remain unchanged. Focused route and Tencent vertical tests cover the
+  production-shaped `3 -> 6` readback window, typed proof journal, zero-write
+  rejection matrices, delayed READY convergence, and no second apply.
 - Tencent prepaid preflight requires Candidate-bound schema-v3 evidence that
   the live Fabric identity has the active system policy
   `QcloudCVMFinanceAccess`. Both compute and storage checks re-read the current

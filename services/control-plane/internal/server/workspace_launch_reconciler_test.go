@@ -395,6 +395,57 @@ func workspaceLaunchUnknownRuntimeAbsentManualReviewRow(t *testing.T) map[string
 	return row
 }
 
+func workspaceLaunchRuntimeImageRevisionManualReviewRow(t *testing.T) map[string]any {
+	t.Helper()
+	operation := workspaceLaunchRuntimeRepairFixture(t)
+	provider, err := json.Marshal("tencent-tke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.raw["providerProfileRef"] = provider
+	operation.Version = 103
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = workspaceLaunchAuthoritativeReadBudget, workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	operationVersion := operation.Version - 13
+	authorizationID := workspaceLaunchFreshContinuationAuthorizationID(operation, attempt, operationVersion)
+	operation.FreshContinuationAuthorizations["runtime"] = workspaceLaunchFreshContinuationAuthorization{
+		SchemaVersion: workspaceLaunchFreshContinuationSchemaVersion, AuthorizationID: authorizationID,
+		AuthorizationClass: workspaceLaunchFreshContinuationAuthorizationClass,
+		AccountID:          operation.stringFact("accountId"), OperationID: operation.ID, WorkspaceID: operation.stringFact("workspaceId"),
+		Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey, Attempt: 1, OperationVersion: operationVersion,
+		AuthoritativeReadBudget: workspaceLaunchFreshContinuationAdditionalReadBudget, ReadbacksAtAuthorization: 1,
+		Status: "failed", ConsumedAt: "2026-08-23T07:58:00Z",
+	}
+	for readback := 2; readback <= workspaceLaunchAuthoritativeReadBudget; readback++ {
+		key := workspaceLaunchFreshContinuationClaimKey(authorizationID, readback)
+		operation.ContinuationReadClaims[key] = workspaceLaunchContinuationReadClaim{
+			SchemaVersion: workspaceLaunchFreshContinuationSchemaVersion, AuthorizationID: authorizationID,
+			Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey, Readback: readback,
+			Status: "pending", CompletedAt: "2026-08-23T07:58:00Z",
+		}
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func workspaceLaunchRuntimeImageRevisionAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
+	t.Helper()
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspaceLaunchResumeAuthorization{
+		AuthorizationID: authorizationID, LaunchVersion: operation.Version, AuthorizedStage: "runtime", AuthorizedBy: "usr-admin",
+		AuthorizedAt: "2026-08-23T12:00:00Z", Reason: "approved replacement of the exact failed runtime image on the original launch",
+		MutationBudget: 0, IdempotentReplayBudget: 1, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+		ReplacementWorkspaceImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("c", 64),
+	}
+}
+
 func workspaceLaunchUnknownStorageReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
 	t.Helper()
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -644,6 +695,95 @@ func TestWorkspaceLaunchUnknownRuntimeAuthoritativeAbsenceReplaysOriginalKey(t *
 		got.ResumeAuthorizationConsumedAt == "" {
 		t.Fatalf("absent Runtime did not replay the original operation: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
 			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionContinuesOriginalRuntimeStage(t *testing.T) {
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionPending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {revisionPending, revisionPending, revisionPending}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-revision")
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), before.ID, authorization)
+	attempt := got.Attempts["runtime"]
+	claim := got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Attempted != 1 || attempt.Max != 1 ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != before.Attempts["runtime"].IdempotencyKey || adapter.mutationsByStage["runtime"] != 1 ||
+		adapter.mutationOperationID != before.ID || adapter.mutationIdempotencyKey != before.Attempts["runtime"].IdempotencyKey ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest ||
+		got.ResumeAuthorizationConsumedAt == "" || got.RuntimeRepair != nil {
+		t.Fatalf("Runtime image revision forked the Launch or failed to continue it: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionRequiresExactImageOnlyClassification(t *testing.T) {
+	for _, state := range []string{workspaceLaunchStageReady, workspaceLaunchStagePending, workspaceLaunchStageAbsent, workspaceLaunchStageUnknown} {
+		t.Run(state, func(t *testing.T) {
+			row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+			before := stringValue(row["result"])
+			store := &workspaceLaunchUnitStore{row: row}
+			adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{"runtime": {State: state}}, replayableStages: map[string]bool{"runtime": true}}
+			authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-revision-"+state)
+
+			_, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
+			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 1 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {
+				t.Fatalf("classification %q changed the original Launch: reads=%d mutations=%d err=%v", state, adapter.reads, adapter.mutations, err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionProofPreservesOriginalFabricBinding(t *testing.T) {
+	operation := workspaceLaunchRuntimeRepairFixture(t)
+	base, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-proof")
+	operation.ResumeAuthorization = &authorization
+	revised, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := revised.RuntimeImageRevision
+	if revised.Binding != base.Binding || revised.WorkspaceImageDigest != base.WorkspaceImageDigest ||
+		proof == nil || proof.LaunchOperationID != operation.ID || proof.WorkspaceID != operation.stringFact("workspaceId") ||
+		proof.RuntimeOperationID != base.Binding.FabricOperationID || proof.PreviousImageDigest != base.WorkspaceImageDigest ||
+		proof.ReplacementImageDigest != authorization.ReplacementWorkspaceImageDigest ||
+		proof.AuthorizationDigest != workspaceLaunchResumeAuthorizationDigest(authorization) {
+		t.Fatalf("revision proof changed original Fabric identity: base=%#v revised=%#v", base, revised)
+	}
+}
+
+func TestWorkspaceLaunchDecoderRejectsExtendedRuntimeReadbackWithoutImageRevisionAuthorization(t *testing.T) {
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = 2 * workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeWorkspaceLaunchReconcileOperation(row); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+		t.Fatalf("extended Runtime readback decoded without image revision authorization: %v", err)
 	}
 }
 
@@ -2708,6 +2848,13 @@ func TestWorkspaceLaunchFabricRequestHashMatchesContractGoldenVectors(t *testing
 				SHA256 string `json:"sha256"`
 			} `json:"goldenVectors"`
 		} `json:"stageRequestHash"`
+		RuntimeImageRevisionProof struct {
+			SchemaVersion           int                                         `json:"schemaVersion"`
+			Stage                   string                                      `json:"stage"`
+			ProviderProfileRef      string                                      `json:"providerProfileRef"`
+			StageRequestHashBinding string                                      `json:"stageRequestHashBinding"`
+			GoldenVector            clients.WorkspaceLaunchRuntimeImageRevision `json:"goldenVector"`
+		} `json:"runtimeImageRevisionProof"`
 	}
 	if err := json.Unmarshal(contractJSON, &contract); err != nil {
 		t.Fatal(err)
@@ -2739,6 +2886,23 @@ func TestWorkspaceLaunchFabricRequestHashMatchesContractGoldenVectors(t *testing
 		if got := workspaceLaunchFabricRequestHash(input, vector.Payload.LaunchRequestHash); got != vector.SHA256 {
 			t.Fatalf("stage=%s hash=%s want=%s", vector.Stage, got, vector.SHA256)
 		}
+	}
+	proofContract := contract.RuntimeImageRevisionProof
+	proof := proofContract.GoldenVector
+	if proofContract.SchemaVersion != 1 || proofContract.Stage != "runtime" || proofContract.ProviderProfileRef != "tencent-tke" ||
+		proofContract.StageRequestHashBinding != "excluded_preserves_original_stage_hash" || proof.SchemaVersion != 1 ||
+		proof.LaunchOperationID == "" || proof.WorkspaceID == "" || proof.RuntimeOperationID == "" || proof.AuthorizationDigest == "" ||
+		proof.PreviousImageDigest == proof.ReplacementImageDigest {
+		t.Fatalf("invalid Runtime image revision contract=%#v", proofContract)
+	}
+	input := clients.WorkspaceLaunchStageInput{
+		Binding:   clients.WorkspaceLaunchStageBinding{Stage: "runtime", Action: "ensure_runtime"},
+		PackageID: "basic", SizeGB: 10, WorkspaceImageDigest: proof.PreviousImageDigest, RuntimeImageRevision: &proof,
+	}
+	withProof := workspaceLaunchFabricRequestHash(input, strings.Repeat("b", 64))
+	input.RuntimeImageRevision = nil
+	if withoutProof := workspaceLaunchFabricRequestHash(input, strings.Repeat("b", 64)); withProof != withoutProof {
+		t.Fatalf("Runtime image revision changed original stage hash: with=%s without=%s", withProof, withoutProof)
 	}
 }
 

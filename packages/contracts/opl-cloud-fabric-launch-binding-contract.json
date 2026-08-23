@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "owner": "services/fabric",
-  "purpose": "Keep Control Plane and Fabric compatible when hashing a Workspace launch stage request.",
+  "purpose": "Keep Control Plane and Fabric compatible when hashing a Workspace launch stage request and carrying a bounded Runtime image revision proof.",
   "state": "current",
-  "machineBoundary": "Shared stage request hash encoding and golden vectors consumed by services/control-plane and services/fabric.",
+  "machineBoundary": "Shared stage request hash encoding, golden vectors, and Runtime image revision proof consumed by services/control-plane and services/fabric.",
   "lifecycle": {
     "type": "long_term_contract",
     "removalCondition": "Replace only with a coordinated hash-format change in both consumer modules."
@@ -100,5 +100,20 @@
         "sha256": "a6c7feb4ee0a39f752ca68d5a841ce91f88283cd89bb5768638e22f788db63dd"
       }
     ]
+  },
+  "runtimeImageRevisionProof": {
+    "schemaVersion": 1,
+    "stage": "runtime",
+    "providerProfileRef": "tencent-tke",
+    "stageRequestHashBinding": "excluded_preserves_original_stage_hash",
+    "goldenVector": {
+      "schemaVersion": 1,
+      "launchOperationId": "launch-alpha",
+      "workspaceId": "ws-alpha",
+      "runtimeOperationId": "launch-alpha:runtime",
+      "authorizationDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "previousImageDigest": "ghcr.io/gaofeng21cn/one-person-lab-app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "replacementImageDigest": "ghcr.io/gaofeng21cn/one-person-lab-app@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
   }
 }

@@ -35,6 +35,47 @@ type workspaceLaunchStorageResumeFabric struct {
 	ready   bool
 }
 
+type workspaceLaunchRuntimeImageRevisionResumeFabric struct {
+	fakeFabricClient
+	reads   []clients.WorkspaceLaunchStageInput
+	ensures []clients.WorkspaceLaunchStageInput
+}
+
+func (*workspaceLaunchRuntimeImageRevisionResumeFabric) PreflightWorkspaceLaunch(context.Context, clients.WorkspaceLaunchPreflightInput) (clients.WorkspaceLaunchPreflight, error) {
+	return clients.WorkspaceLaunchPreflight{}, errors.New("unexpected runtime revision preflight")
+}
+
+func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) ReadWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	f.reads = append(f.reads, input)
+	if len(f.ensures) == 0 {
+		return clients.WorkspaceLaunchStageResult{
+			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "runtime_image_revision_required",
+			Binding: input.Binding, Resources: input.Resources,
+		}, nil
+	}
+	resources := input.Resources
+	resources.RuntimeID = "rt-original"
+	resources.RuntimeServiceName = "runtime-original"
+	resources.RuntimeUsername = "opl"
+	resources.RuntimeURL = "https://workspace.example/original"
+	resources.RuntimeCredentialStatus = "configured"
+	resources.RuntimeCredentialVersion = "v1"
+	resources.RuntimeCredentialSecretRef = "opl-gateway-ws-unit"
+	resources.RuntimeBindingRef = input.Binding.FabricOperationID
+	return clients.WorkspaceLaunchStageResult{
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		Binding: input.Binding, Resources: resources,
+	}, nil
+}
+
+func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) EnsureWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	f.ensures = append(f.ensures, input)
+	return clients.WorkspaceLaunchStageResult{
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "provider_provisioning",
+		Binding: input.Binding, Resources: input.Resources,
+	}, nil
+}
+
 func (*workspaceLaunchStorageResumeFabric) PreflightWorkspaceLaunch(context.Context, clients.WorkspaceLaunchPreflightInput) (clients.WorkspaceLaunchPreflight, error) {
 	return clients.WorkspaceLaunchPreflight{}, errors.New("unexpected storage preflight")
 }
@@ -319,6 +360,65 @@ func TestWorkspaceLaunchResumeRouteAcceptsComputeWindowAndRejectsItForOtherStage
 		got.Attempts[got.Stage].Attempted != 1 || got.Attempts[got.Stage].Unknown != 0 || got.ResumeAuthorization == nil ||
 		got.ResumeAuthorization.IdempotentReplayBudget != 1 || got.ResumeAuthorization.AuthoritativeReadBudget != workspaceLaunchComputeFreshContinuationAdditionalReadBudget {
 		t.Fatalf("compute resume route did not preserve the original operation: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+}
+
+func TestWorkspaceLaunchResumeRouteRevisesOriginalTencentRuntimeImage(t *testing.T) {
+	store := newMemoryTableStore()
+	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
+	fabric := &workspaceLaunchRuntimeImageRevisionResumeFabric{}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalResult := stringValue(row["result"])
+	originalKey := operation.Attempts["runtime"].IdempotencyKey
+	originalBinding := operation.ID + ":runtime"
+	replacementImage := "registry.example/workspace@sha256:" + strings.Repeat("c", 64)
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+
+	t.Setenv("OPL_WORKSPACE_IMAGE", "registry.example/workspace@sha256:"+strings.Repeat("d", 64))
+	body := fmt.Sprintf(`{"launchVersion":%d,"authorizedStage":"runtime","reason":"approved replacement on the original Tencent runtime stage","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":3,"replacementWorkspaceImageDigest":%q}`, operation.Version, replacementImage)
+	invalidBudgetBody := strings.Replace(body, `"mutationBudget":0`, `"mutationBudget":1`, 1)
+	invalidBudget := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", invalidBudgetBody, "resume-runtime-image-invalid-budget")
+	if invalidBudget.Code != http.StatusBadRequest || len(fabric.reads) != 0 || len(fabric.ensures) != 0 {
+		t.Fatalf("invalid Runtime image revision shape reached Fabric: status=%d body=%s reads=%d ensures=%d", invalidBudget.Code, invalidBudget.Body.String(), len(fabric.reads), len(fabric.ensures))
+	}
+	rejected := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, "resume-runtime-image-mismatch")
+	afterRejected, found, readErr := store.GetRuntimeOperation(context.Background(), operation.ID)
+	if rejected.Code != http.StatusConflict || readErr != nil || !found || stringValue(afterRejected["result"]) != originalResult || len(fabric.reads) != 0 || len(fabric.ensures) != 0 {
+		t.Fatalf("deployed image mismatch changed Launch: status=%d body=%s found=%v readErr=%v reads=%d ensures=%d", rejected.Code, rejected.Body.String(), found, readErr, len(fabric.reads), len(fabric.ensures))
+	}
+
+	t.Setenv("OPL_WORKSPACE_IMAGE", replacementImage)
+	authorizationID := "resume-runtime-image-original-launch"
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	persisted, found, readErr := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if response.Code != http.StatusOK || readErr != nil || !found || decodeErr != nil || got.Status != "pending" || got.Stage != "activation" ||
+		got.Attempts["runtime"].Confirmed != 1 || got.Attempts["runtime"].Unknown != 0 || got.Attempts["runtime"].MaxPendingReadbacks != 2*workspaceLaunchAuthoritativeReadBudget ||
+		got.Attempts["runtime"].IdempotencyKey != originalKey || got.ResumeAuthorization == nil || got.ResumeAuthorization.AuthorizationID != authorizationID ||
+		got.ResumeAuthorization.ReplacementWorkspaceImageDigest != replacementImage || got.ResumeAuthorizationConsumedAt == "" || got.RuntimeRepair != nil ||
+		len(fabric.reads) != 4 || len(fabric.ensures) != 1 {
+		t.Fatalf("runtime revision route did not continue original Launch: status=%d body=%s found=%v operation=%s reads=%d ensures=%d errors=%v/%v",
+			response.Code, response.Body.String(), found, workspaceLaunchReconcileResultSummary(got), len(fabric.reads), len(fabric.ensures), readErr, decodeErr)
+	}
+	expectedDigest := workspaceLaunchResumeAuthorizationDigest(*got.ResumeAuthorization)
+	for index, input := range append(append([]clients.WorkspaceLaunchStageInput(nil), fabric.reads...), fabric.ensures...) {
+		proof := input.RuntimeImageRevision
+		if input.Binding.LaunchOperationID != operation.ID || input.Binding.WorkspaceID != operation.stringFact("workspaceId") ||
+			input.Binding.FabricOperationID != originalBinding || input.Binding.IdempotencyKey != originalKey ||
+			input.WorkspaceImageDigest != operation.stringFact("workspaceImageDigest") || proof == nil ||
+			proof.LaunchOperationID != operation.ID || proof.WorkspaceID != operation.stringFact("workspaceId") || proof.RuntimeOperationID != originalBinding ||
+			proof.AuthorizationDigest != expectedDigest || proof.PreviousImageDigest != operation.stringFact("workspaceImageDigest") || proof.ReplacementImageDigest != replacementImage {
+			t.Fatalf("Fabric call %d changed original identity or typed proof: input=%#v", index, input)
+		}
 	}
 }
 
