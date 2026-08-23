@@ -3559,10 +3559,13 @@ func assertRecoveryCBSNameFilter(t *testing.T, request *cbs2017.DescribeDisksReq
 
 func TestTencentSDKDiscoversExactRecoveryCBSWithoutMutation(t *testing.T) {
 	disk := exactRecoveryDisk("disk-existing-alpha")
+	disk.CreateTime = common.StringPtr("2026-07-16 08:00:00")
+	disk.DeadlineTime = common.StringPtr("2026-08-16 08:00:01")
 	api := &pagedNativeCbsAPI{fakeNativeCbsAPI: &fakeNativeCbsAPI{}, pages: [][]*cbs2017.Disk{{disk}}, namePages: [][]*cbs2017.Disk{{disk}}}
 	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DiscoverStorageVolume(recoveryStorageRequest(), map[string]string{})
 
-	if !response.Ok || response.StorageState != "storage_existing_exact" || response.StorageVolumeId != "disk-existing-alpha" || response.MutationCount != 0 {
+	if !response.Ok || response.StorageState != "storage_existing_exact" || response.StorageVolumeId != "disk-existing-alpha" ||
+		response.ProviderData["deadline"] != "2026-08-16T00:00:01Z" || response.MutationCount != 0 {
 		t.Fatalf("discovery response=%#v", response)
 	}
 	if len(api.createDisksRequests) != 0 || len(api.describeDisksRequests) != 2 {
@@ -3570,6 +3573,39 @@ func TestTencentSDKDiscoversExactRecoveryCBSWithoutMutation(t *testing.T) {
 	}
 	assertRecoveryCBSFilters(t, api.describeDisksRequests[0], 0)
 	assertRecoveryCBSNameFilter(t, api.describeDisksRequests[1], 0)
+}
+
+func TestTencentSDKDiscoversExactRecoveryCBSWhileTagIndexLags(t *testing.T) {
+	disk := exactRecoveryDisk("disk-existing-alpha")
+	api := &pagedNativeCbsAPI{
+		fakeNativeCbsAPI: &fakeNativeCbsAPI{},
+		pages:            [][]*cbs2017.Disk{{}},
+		namePages:        [][]*cbs2017.Disk{{disk}},
+		nameTotal:        1,
+	}
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DiscoverStorageVolume(recoveryStorageRequest(), map[string]string{})
+
+	if !response.Ok || response.StorageState != "storage_existing_exact" || response.StorageVolumeId != "disk-existing-alpha" || response.MutationCount != 0 {
+		t.Fatalf("tag-index lag response=%#v", response)
+	}
+	if len(api.describeDisksRequests) != 2 || len(api.createDisksRequests) != 0 {
+		t.Fatalf("tag-index lag calls: DescribeDisks=%d CreateDisks=%d", len(api.describeDisksRequests), len(api.createDisksRequests))
+	}
+}
+
+func TestTencentSDKRecoveryCBSDiscoveryRejectsConflictingIndexes(t *testing.T) {
+	api := &pagedNativeCbsAPI{
+		fakeNativeCbsAPI: &fakeNativeCbsAPI{},
+		pages:            [][]*cbs2017.Disk{{exactRecoveryDisk("disk-by-tags")}},
+		namePages:        [][]*cbs2017.Disk{{exactRecoveryDisk("disk-by-name")}},
+		nameTotal:        1,
+	}
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DiscoverStorageVolume(recoveryStorageRequest(), map[string]string{})
+
+	if response.Ok || response.StorageState != "unknown" || response.ErrorCode != "tencent_cbs_identity_mismatch" ||
+		response.MutationCount != 0 || len(api.createDisksRequests) != 0 {
+		t.Fatalf("conflicting-index response=%#v CreateDisks=%d", response, len(api.createDisksRequests))
+	}
 }
 
 func TestTencentSDKRecoveryCBSDiscoveryReadsEveryPageAndRejectsMultipleCandidates(t *testing.T) {
@@ -3596,6 +3632,7 @@ func TestTencentSDKRecoveryCBSDiscoveryFailsClosedOnDescribeAndIdentityDrift(t *
 		api  *pagedNativeCbsAPI
 	}{
 		{name: "describe error", api: &pagedNativeCbsAPI{fakeNativeCbsAPI: &fakeNativeCbsAPI{}, describeErr: errors.New("describe unavailable")}},
+		{name: "nil candidate", api: &pagedNativeCbsAPI{fakeNativeCbsAPI: &fakeNativeCbsAPI{}, pages: [][]*cbs2017.Disk{{nil}}, total: 1}},
 		{name: "tag drift", api: &pagedNativeCbsAPI{fakeNativeCbsAPI: &fakeNativeCbsAPI{}, namePages: [][]*cbs2017.Disk{{func() *cbs2017.Disk {
 			disk := exactRecoveryDisk("disk-drift")
 			disk.Tags[0].Value = common.StringPtr("other")
@@ -4283,12 +4320,15 @@ func TestTencentSDKStorageVolumeReadbackFailsClosedOnBillingOrIdentityMismatch(t
 	}
 }
 
-func TestNormalizeTencentDeadlineRequiresExplicitTimezone(t *testing.T) {
-	if got := normalizeTencentDeadline("2026-08-16 00:00:00"); got != "" {
-		t.Fatalf("timezone-less deadline was accepted as %q", got)
+func TestNormalizeTencentDeadlineAcceptsTencentAndRFC3339Formats(t *testing.T) {
+	if got := normalizeTencentDeadline("2026-08-16 08:00:00"); got != "2026-08-16T00:00:00Z" {
+		t.Fatalf("Tencent deadline normalized to %q", got)
 	}
 	if got := normalizeTencentDeadline("2026-08-16T08:00:00+08:00"); got != "2026-08-16T00:00:00Z" {
 		t.Fatalf("RFC3339 deadline normalized to %q", got)
+	}
+	if got := normalizeTencentDeadline("2026/08/16 08:00:00"); got != "" {
+		t.Fatalf("ambiguous deadline was accepted as %q", got)
 	}
 }
 
@@ -4307,11 +4347,11 @@ func computeRenewalRequest() Request {
 	}
 }
 
-func TestTencentSDKSyncStorageVolumeRejectsTimezoneLessDeadline(t *testing.T) {
-	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: &fakeNativeCbsAPI{deadline: "2026-08-16 00:00:00"}}).SyncStorageVolume(cbsReadbackRequest(
+func TestTencentSDKSyncStorageVolumeAcceptsTencentDeadline(t *testing.T) {
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: &fakeNativeCbsAPI{deadline: "2026-08-16 08:00:00"}}).SyncStorageVolume(cbsReadbackRequest(
 		StorageInput{Id: "disk-storage-alpha", SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD"}), nil)
-	if response.Ok || response.ErrorCode != "tencent_cbs_readback_mismatch" || response.ProviderData["deadline"] != "" {
-		t.Fatalf("timezone-less CBS deadline did not fail closed: %#v", response)
+	if !response.Ok || response.ProviderData["deadline"] != "2026-08-16T00:00:00Z" {
+		t.Fatalf("Tencent CBS deadline was not normalized: %#v", response)
 	}
 }
 
