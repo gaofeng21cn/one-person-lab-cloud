@@ -25,6 +25,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -1240,11 +1241,19 @@ func oplCostTags(accountID string, workspaceID string, resourceID string, operat
 
 func k8sCostLabels(tags map[string]string) map[string]string {
 	return map[string]string{
-		"oplcloud.cn/account-id":   tags["opl_account_id"],
-		"oplcloud.cn/workspace-id": tags["opl_workspace_id"],
-		"oplcloud.cn/resource-id":  tags["opl_resource_id"],
-		"oplcloud.cn/operation-id": tags["opl_operation_id"],
+		"oplcloud.cn/account-id":   k8sCostLabelValue(tags["opl_account_id"]),
+		"oplcloud.cn/workspace-id": k8sCostLabelValue(tags["opl_workspace_id"]),
+		"oplcloud.cn/resource-id":  k8sCostLabelValue(tags["opl_resource_id"]),
+		"oplcloud.cn/operation-id": k8sCostLabelValue(tags["opl_operation_id"]),
 	}
+}
+
+func k8sCostLabelValue(value string) string {
+	if len(k8svalidation.IsValidLabelValue(value)) == 0 {
+		return value
+	}
+	digest := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%s-%x", compactID(value), digest[:7])
 }
 
 func mergeStringMaps(values ...map[string]string) map[string]string {
