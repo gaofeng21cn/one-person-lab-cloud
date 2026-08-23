@@ -1134,7 +1134,8 @@ func workspaceLaunchRuntimeImageRevisionEligible(operation workspaceLaunchReconc
 		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
 		workspaceImageReferenceWithDigest(authorization.ReplacementWorkspaceImageDigest) &&
 		authorization.ReplacementWorkspaceImageDigest != operation.stringFact("workspaceImageDigest") &&
-		attempt.PendingReadbacks == attempt.MaxPendingReadbacks && attempt.MaxPendingReadbacks == workspaceLaunchAuthoritativeReadBudget &&
+		attempt.MaxPendingReadbacks == workspaceLaunchAuthoritativeReadBudget &&
+		(attempt.PendingReadbacks == 0 || attempt.PendingReadbacks == attempt.MaxPendingReadbacks) &&
 		!hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage)
 }
 
@@ -1144,7 +1145,12 @@ func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	authorization.ReadbacksAtAuthorization = attempt.PendingReadbacks
+	// Older runtime manual-review rows can retain the configured read budget while
+	// reporting zero completed readbacks. Treat that configured budget as the
+	// consumed baseline for this explicitly authorized image revision so the
+	// replacement receives the same fresh three-read window as newer rows.
+	authorization.ReadbacksAtAuthorization = attempt.MaxPendingReadbacks
+	attempt.PendingReadbacks = attempt.MaxPendingReadbacks
 	observed := operation
 	observed.ResumeAuthorization = &authorization
 	observed.ResumeAuthorizationConsumedAt = ""

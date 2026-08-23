@@ -726,6 +726,45 @@ func TestWorkspaceLaunchRuntimeImageRevisionContinuesOriginalRuntimeStage(t *tes
 	}
 }
 
+func TestWorkspaceLaunchRuntimeImageRevisionAcceptsInitialUnknownWithConfiguredReadBudget(t *testing.T) {
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The production v103 row was parked immediately after the first runtime
+	// read failed: the configured three-read window exists, but no readback was
+	// completed and no fresh continuation authorization was persisted.
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks = 0
+	operation.Attempts["runtime"] = attempt
+	operation.FreshContinuationAuthorizations = map[string]workspaceLaunchFreshContinuationAuthorization{}
+	operation.ContinuationReadClaims = map[string]workspaceLaunchContinuationReadClaim{}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {read, read, read}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-revision-initial-unknown")
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), before.ID, authorization)
+	attempt = got.Attempts["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Confirmed != 1 || attempt.Unknown != 0 ||
+		attempt.Status != "confirmed" || attempt.PendingReadbacks != 3 || attempt.MaxPendingReadbacks != 6 ||
+		adapter.mutationsByStage["runtime"] != 1 || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("initial unknown runtime did not use the qualified image revision path: operation=%s attempt=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
 func TestWorkspaceLaunchRuntimeImageRevisionRequiresExactImageOnlyClassification(t *testing.T) {
 	for _, state := range []string{workspaceLaunchStageReady, workspaceLaunchStagePending, workspaceLaunchStageAbsent, workspaceLaunchStageUnknown} {
 		t.Run(state, func(t *testing.T) {
