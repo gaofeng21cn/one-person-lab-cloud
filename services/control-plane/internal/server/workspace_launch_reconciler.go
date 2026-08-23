@@ -1079,6 +1079,9 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 	if workspaceLaunchFailedStorageReplayRecoveryEligible(operation, attempt, authorization) {
 		return r.recoverFailedStorageReplayStage(ctx, operation, attempt, authorization)
 	}
+	if workspaceLaunchExhaustedStorageReadyReadEligible(operation, attempt, authorization) {
+		return r.readExhaustedStorageStage(ctx, operation, attempt, authorization)
+	}
 	if workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization) {
 		return r.recoverUnknownReadyStage(ctx, operation, attempt, authorization)
 	}
@@ -1211,11 +1214,16 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownStorageStage(
 }
 
 func workspaceLaunchFailedStorageReplayRecoveryEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	return workspaceLaunchFailedStorageReplayEvidenceMatches(operation, attempt) &&
+		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
+		operation.idempotentReplayAuthorizationCount(operation.Stage) == 1
+}
+
+func workspaceLaunchFailedStorageReplayEvidenceMatches(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
 	claim, hasClaim := operation.IdempotentReplayClaims[operation.Stage]
 	previous := operation.ResumeAuthorization
 	return operation.Status == "manual_review" && operation.boolFact("resourceBillingEnabled") && operation.Stage == "storage" &&
-		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
-		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
 		operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown && attempt.Max == 1 && attempt.Attempted == attempt.Max &&
 		attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" && attempt.PendingReadbacks >= 0 &&
 		attempt.PendingReadbacks <= attempt.MaxPendingReadbacks && attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1) &&
@@ -1223,8 +1231,7 @@ func workspaceLaunchFailedStorageReplayRecoveryEligible(operation workspaceLaunc
 		claim.IdempotencyKey == attempt.IdempotencyKey && claim.Status == "failed" && claim.CompletedAt != "" &&
 		operation.ResumeAuthorizationConsumedAt != "" && previous.AuthorizedStage == operation.Stage && previous.MutationBudget == 0 &&
 		previous.IdempotentReplayBudget == 1 && previous.AuthoritativeReadBudget > 0 &&
-		previous.ReadbacksAtAuthorization+previous.AuthoritativeReadBudget == attempt.MaxPendingReadbacks &&
-		operation.idempotentReplayAuthorizationCount(operation.Stage) == 1
+		previous.ReadbacksAtAuthorization+previous.AuthoritativeReadBudget == attempt.MaxPendingReadbacks
 }
 
 func (r *WorkspaceLaunchReconciler) recoverFailedStorageReplayStage(
@@ -1256,6 +1263,26 @@ func (r *WorkspaceLaunchReconciler) recoverFailedStorageReplayStage(
 	default:
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
+}
+
+func workspaceLaunchExhaustedStorageReadyReadEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	return workspaceLaunchFailedStorageReplayEvidenceMatches(operation, attempt) &&
+		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 0 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
+		operation.idempotentReplayAuthorizationCount(operation.Stage) == 2
+}
+
+func (r *WorkspaceLaunchReconciler) readExhaustedStorageStage(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+) (workspaceLaunchReconcileOperation, error) {
+	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	if readErr != nil || observation.State != workspaceLaunchStageReady {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	return r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
 }
 
 func workspaceLaunchUnknownRuntimeReadEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
