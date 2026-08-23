@@ -1082,6 +1082,9 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 	if workspaceLaunchExhaustedStorageReadyReadEligible(operation, attempt, authorization) {
 		return r.readExhaustedStorageStage(ctx, operation, attempt, authorization)
 	}
+	if workspaceLaunchExhaustedStorageBindingReplayEligible(operation, attempt, authorization) {
+		return r.replayExhaustedStorageBinding(ctx, operation, attempt, authorization)
+	}
 	if workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization) {
 		return r.recoverUnknownReadyStage(ctx, operation, attempt, authorization)
 	}
@@ -1248,18 +1251,7 @@ func (r *WorkspaceLaunchReconciler) recoverFailedStorageReplayStage(
 	case workspaceLaunchStageReady:
 		return r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
 	case workspaceLaunchStageAbsent:
-		delete(operation.IdempotentReplayClaims, operation.Stage)
-		authorization.ReadbacksAtAuthorization = attempt.PendingReadbacks
-		attempt.Unknown, attempt.Status = 0, "reserved"
-		attempt.MaxPendingReadbacks = attempt.PendingReadbacks + authorization.AuthoritativeReadBudget
-		operation.Attempts[operation.Stage] = attempt
-		operation.rotateResumeAuthorization(authorization)
-		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}
-		operation.Status = "pending"
-		if _, err := r.persist(ctx, operation); err != nil {
-			return workspaceLaunchReconcileOperation{}, err
-		}
-		return r.Reconcile(ctx, operation.ID)
+		return r.continueStorageReplayAfterAbsence(ctx, operation, attempt, authorization)
 	default:
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1283,6 +1275,46 @@ func (r *WorkspaceLaunchReconciler) readExhaustedStorageStage(
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
 	return r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
+}
+
+func workspaceLaunchExhaustedStorageBindingReplayEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	return workspaceLaunchFailedStorageReplayEvidenceMatches(operation, attempt) &&
+		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
+		operation.idempotentReplayAuthorizationCount(operation.Stage) == 2
+}
+
+func (r *WorkspaceLaunchReconciler) replayExhaustedStorageBinding(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+) (workspaceLaunchReconcileOperation, error) {
+	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	if readErr != nil || observation.State != workspaceLaunchStageAbsent {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	return r.continueStorageReplayAfterAbsence(ctx, operation, attempt, authorization)
+}
+
+func (r *WorkspaceLaunchReconciler) continueStorageReplayAfterAbsence(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+) (workspaceLaunchReconcileOperation, error) {
+	delete(operation.IdempotentReplayClaims, operation.Stage)
+	authorization.ReadbacksAtAuthorization = attempt.PendingReadbacks
+	attempt.Unknown, attempt.Status = 0, "reserved"
+	attempt.MaxPendingReadbacks = attempt.PendingReadbacks + authorization.AuthoritativeReadBudget
+	operation.Attempts[operation.Stage] = attempt
+	operation.rotateResumeAuthorization(authorization)
+	operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}
+	operation.Status = "pending"
+	if _, err := r.persist(ctx, operation); err != nil {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+	return r.Reconcile(ctx, operation.ID)
 }
 
 func workspaceLaunchUnknownRuntimeReadEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {

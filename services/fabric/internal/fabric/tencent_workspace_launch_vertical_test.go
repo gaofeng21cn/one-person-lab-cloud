@@ -301,10 +301,19 @@ func newTencentWorkspaceLaunchStorageResponseLossFixture(t *testing.T) tencentWo
 	if err != nil {
 		t.Fatal(err)
 	}
+	parent, err := store.Get(context.Background(), input.Binding.FabricOperationID)
+	if err != nil || parent.Status != "failed" {
+		t.Fatalf("response-loss parent=%#v err=%v", parent, err)
+	}
 	childID := providerMutationOperationID(input.Binding, "tencent_cbs_create", "storage_volume", workspaceLaunchStorageID(input.Binding), "")
 	child, err := store.Get(context.Background(), childID)
 	if err != nil || child.Status != "failed" {
 		t.Fatalf("response-loss child=%#v err=%v", child, err)
+	}
+	for _, operation := range operations {
+		if operation.Action == "tencent_static_storage_binding_apply" {
+			t.Fatalf("response-loss unexpectedly started static binding before CBS recovery: %#v", operation)
+		}
 	}
 	var state tencentCBSCreateMutationState
 	if !decodeProviderMutationState(child, &state) || !state.matches(StorageVolumeInput{
@@ -409,6 +418,20 @@ func TestTencentWorkspaceLaunchStorageResponseLossRecoversAfterStoreAndProviderR
 	}
 	if fixture.createCalls != 1 || applyCalls != 1 || bindingGETs < 2 || providerCalls == 0 {
 		t.Fatalf("reopened recovery create=%d provider=%d apply=%d bindingGET=%d", fixture.createCalls, providerCalls, applyCalls, bindingGETs)
+	}
+	parent, err := reopened.Get(context.Background(), fixture.input.Binding.FabricOperationID)
+	if err != nil || parent.Status != "succeeded" {
+		t.Fatalf("reopened recovery parent=%#v err=%v", parent, err)
+	}
+	cbsChildID := providerMutationOperationID(fixture.input.Binding, "tencent_cbs_create", "storage_volume", workspaceLaunchStorageID(fixture.input.Binding), "")
+	cbsChild, err := reopened.Get(context.Background(), cbsChildID)
+	if err != nil || cbsChild.Status != "succeeded" {
+		t.Fatalf("reopened recovery CBS child=%#v err=%v", cbsChild, err)
+	}
+	staticChildID := providerMutationOperationID(fixture.input.Binding, "tencent_static_storage_binding_apply", "storage_binding", workspaceLaunchStorageID(fixture.input.Binding), "disk-response-loss")
+	staticChild, err := reopened.Get(context.Background(), staticChildID)
+	if err != nil || staticChild.Status != "succeeded" {
+		t.Fatalf("reopened recovery static binding child=%#v err=%v", staticChild, err)
 	}
 }
 
