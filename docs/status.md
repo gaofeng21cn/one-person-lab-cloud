@@ -45,7 +45,10 @@ is selected and configured by the medopl instance, not by the portable product.
   annotations. If the original Runtime apply was rejected before creating any
   resource, the existing Resume route may require authoritative absence and
   replay that same Runtime operation key once; it does not create a new Launch
-  or alternate recovery path.
+  or alternate recovery path. Static Tencent CBS PVs use the CBS CSI driver's
+  topology zone key for both manifests and strict readback. An identity-valid
+  Runtime that exists but is not Ready remains typed provider-pending so the
+  original Launch can converge by readback instead of being marked failed.
 - Tencent prepaid preflight requires Candidate-bound schema-v3 evidence that
   the live Fabric identity has the active system policy
   `QcloudCVMFinanceAccess`. Both compute and storage checks re-read the current

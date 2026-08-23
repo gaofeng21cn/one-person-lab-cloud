@@ -510,6 +510,7 @@ type tencentRuntimeReadbackFixture struct {
 	applyCalls   int
 	getCalls     int
 	drift        func(map[string]map[string]any)
+	unready      bool
 	workspaceID  string
 	storage      StorageVolume
 	gatewayRef   string
@@ -556,6 +557,11 @@ func (fixture *tencentRuntimeReadbackFixture) resources() map[string]map[string]
 		},
 	}
 	resources["Pod"] = pod
+	if fixture.unready {
+		deployment["status"] = map[string]any{"observedGeneration": 1, "updatedReplicas": 1, "readyReplicas": 0, "availableReplicas": 0}
+		pod["status"] = map[string]any{"phase": "Pending", "conditions": []any{map[string]any{"type": "Ready", "status": "False"}}}
+		resources["Endpoints"]["subsets"] = []any{}
+	}
 	if fixture.drift != nil {
 		fixture.drift(resources)
 	}
@@ -590,6 +596,65 @@ func (fixture *tencentRuntimeReadbackFixture) kubectl(_ context.Context, args []
 	default:
 		fixture.t.Fatalf("unexpected kubectl args=%#v", args)
 		return nil, nil
+	}
+}
+
+func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
+	service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
+	compute := ComputeAllocation{
+		ID: "ca-compute-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", PackageID: "basic", NodePoolID: "np-basic",
+		MachineName: "machine-alpha", NodeName: "node-alpha", InstanceID: "ins-alpha", Zone: "ap-guangzhou-3", Provider: "tencent-tke",
+	}
+	storage := StorageVolume{
+		ID: "vol-storage-alpha", OperationID: "launch-alpha:storage", AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
+		Status: "ready", Provider: "tencent-tke", ProviderResourceID: "disk-alpha", SizeGB: 10, DiskType: "CLOUD_BSSD", Zone: compute.Zone,
+		ProviderData: map[string]string{"pvName": "vol-storage-alpha-pv", "pvcName": "vol-storage-alpha-data", "region": "ap-guangzhou"},
+		CostTags:     oplCostTags(compute.AccountID, compute.WorkspaceID, "vol-storage-alpha", "launch-alpha:storage"),
+	}
+	attachment := StorageAttachment{
+		ID: "att-alpha", OperationID: "launch-alpha:attachment", WorkspaceID: compute.WorkspaceID, ComputeID: compute.ID,
+		VolumeID: storage.ID, Status: "attached", Provider: "tencent-tke",
+	}
+	secret := GatewaySecret{SecretRef: "opl-gateway-ws-alpha", Version: "19", Fingerprint: "sha256:" + strings.Repeat("d", 64)}
+
+	computeResources := WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: "launch-alpha:ensure_compute_allocation"}
+	storageResources := computeResources
+	storageResources.StorageID, storageResources.StorageBindingRef = storage.ID, "launch-alpha:storage"
+	attachmentResources := storageResources
+	attachmentResources.AttachmentID, attachmentResources.AttachmentBindingRef = attachment.ID, "launch-alpha:attachment"
+	secretRequestResources := attachmentResources
+	secretRequestResources.GatewaySecretFingerprint = secret.Fingerprint
+	secretResources := secretRequestResources
+	secretResources.GatewaySecretRef, secretResources.GatewaySecretVersion, secretResources.SecretBindingRef = secret.SecretRef, secret.Version, "launch-alpha:secret"
+
+	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash,
+		"ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{}, computeResources,
+		tencentWorkspaceLaunchState{Compute: &compute}, 0)
+	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash,
+		"storage", "ensure_storage", computeResources, storageResources,
+		tencentWorkspaceLaunchState{Storage: &storage}, 0)
+	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash,
+		"attachment", "ensure_attachment", storageResources, attachmentResources,
+		tencentWorkspaceLaunchState{Attachment: &attachment}, 0)
+	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash,
+		"secret", "ensure_gateway_secret", secretRequestResources, secretResources,
+		tencentWorkspaceLaunchState{Secret: &secret}, 19)
+
+	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "runtime", "ensure_runtime", secretResources)
+	fixture := &tencentRuntimeReadbackFixture{
+		t: t, unready: true, workspaceID: input.Binding.WorkspaceID, storage: storage,
+		gatewayRef: secret.SecretRef, gatewayKeyID: 19, fingerprint: secret.Fingerprint,
+	}
+	provider.kubectl = fixture.kubectl
+
+	result, err := service.EnsureWorkspaceLaunchStage(context.Background(), input)
+	operation, operationErr := store.Get(context.Background(), input.Binding.FabricOperationID)
+	if err != nil || operationErr != nil || result.State != "pending" || operation.Status != "started" || fixture.applyCalls != 1 {
+		t.Fatalf("unready runtime result=%#v err=%v operation=%#v operationErr=%v applyCalls=%d", result, err, operation, operationErr, fixture.applyCalls)
+	}
+	result, err = service.ReadWorkspaceLaunchStage(context.Background(), input)
+	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {
+		t.Fatalf("unready runtime read result=%#v err=%v applyCalls=%d", result, err, fixture.applyCalls)
 	}
 }
 
