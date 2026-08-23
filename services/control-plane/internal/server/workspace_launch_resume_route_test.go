@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +26,44 @@ type workspaceLaunchResumeRouteSub2API struct {
 type workspaceLaunchComputeResumeFabric struct {
 	fakeFabricClient
 	reads int
+}
+
+type workspaceLaunchStorageResumeFabric struct {
+	fakeFabricClient
+	reads   int
+	ensures int
+	ready   bool
+}
+
+func (*workspaceLaunchStorageResumeFabric) PreflightWorkspaceLaunch(context.Context, clients.WorkspaceLaunchPreflightInput) (clients.WorkspaceLaunchPreflight, error) {
+	return clients.WorkspaceLaunchPreflight{}, errors.New("unexpected storage preflight")
+}
+
+func (f *workspaceLaunchStorageResumeFabric) ReadWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	f.reads++
+	if !f.ready {
+		return clients.WorkspaceLaunchStageResult{
+			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageAbsent, Reason: "failed_no_resource",
+			Binding: input.Binding, Resources: input.Resources,
+		}, nil
+	}
+	resources := input.Resources
+	resources.StorageID, resources.StorageBindingRef = "storage-route-ready", input.Binding.FabricOperationID
+	return clients.WorkspaceLaunchStageResult{
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		Binding: input.Binding, Resources: resources,
+	}, nil
+}
+
+func (f *workspaceLaunchStorageResumeFabric) EnsureWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	f.ensures++
+	f.ready = true
+	resources := input.Resources
+	resources.StorageID, resources.StorageBindingRef = "storage-route-ready", input.Binding.FabricOperationID
+	return clients.WorkspaceLaunchStageResult{
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		Binding: input.Binding, Resources: resources,
+	}, nil
 }
 
 func (*workspaceLaunchComputeResumeFabric) PreflightWorkspaceLaunch(context.Context, clients.WorkspaceLaunchPreflightInput) (clients.WorkspaceLaunchPreflight, error) {
@@ -280,6 +319,84 @@ func TestWorkspaceLaunchResumeRouteAcceptsComputeWindowAndRejectsItForOtherStage
 		got.Attempts[got.Stage].Attempted != 1 || got.Attempts[got.Stage].Unknown != 0 || got.ResumeAuthorization == nil ||
 		got.ResumeAuthorization.IdempotentReplayBudget != 1 || got.ResumeAuthorization.AuthoritativeReadBudget != workspaceLaunchComputeFreshContinuationAdditionalReadBudget {
 		t.Fatalf("compute resume route did not preserve the original operation: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+}
+
+func TestWorkspaceLaunchResumeRouteConvergesFailedStorageReplayReadyReadOnly(t *testing.T) {
+	store := newMemoryTableStore()
+	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
+	fabric := &workspaceLaunchStorageResumeFabric{ready: true}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimBefore := operation.IdempotentReplayClaims["storage"]
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+
+	body := fmt.Sprintf(`{"launchVersion":%d,"authorizedStage":"storage","reason":"authoritative read may confirm or replay the original storage attempt","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":3}`, operation.Version)
+	authorizationID := "resume-route-failed-storage-ready"
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	if response.Code != http.StatusOK || fabric.reads != 1 || fabric.ensures != 0 {
+		t.Fatalf("failed storage replay ready-read status=%d body=%s reads=%d ensures=%d", response.Code, response.Body.String(), fabric.reads, fabric.ensures)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || got.Stage != "attachment" || got.Status != "pending" ||
+		got.Attempts["storage"].Confirmed != 1 || got.Attempts["storage"].Unknown != 0 || got.IdempotentReplayClaims["storage"] != claimBefore ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.AuthorizationID != authorizationID || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("failed storage replay route did not persist ready transition: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+
+	readsBefore, persistedBefore := fabric.reads, stringValue(persisted["result"])
+	replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
+	if replayed.Code != http.StatusOK || fabric.reads != readsBefore || fabric.ensures != 0 || stringValue(after["result"]) != persistedBefore {
+		t.Fatalf("exact route retry repeated work: status=%d body=%s reads=%d/%d ensures=%d", replayed.Code, replayed.Body.String(), fabric.reads, readsBefore, fabric.ensures)
+	}
+}
+
+func TestWorkspaceLaunchResumeRouteReplaysFailedStorageAfterAuthoritativeAbsence(t *testing.T) {
+	store := newMemoryTableStore()
+	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
+	fabric := &workspaceLaunchStorageResumeFabric{}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+
+	body := fmt.Sprintf(`{"launchVersion":%d,"authorizedStage":"storage","reason":"authoritative absence permits one original-key storage replay","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":3}`, operation.Version)
+	authorizationID := "resume-route-failed-storage-absent"
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	if response.Code != http.StatusOK || fabric.ensures != 1 {
+		t.Fatalf("failed storage replay absent status=%d body=%s reads=%d ensures=%d", response.Code, response.Body.String(), fabric.reads, fabric.ensures)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || got.Stage != "attachment" || got.Status != "pending" ||
+		got.Attempts["storage"].Confirmed != 1 || got.Attempts["storage"].Unknown != 0 ||
+		got.IdempotentReplayClaims["storage"].AuthorizationID != authorizationID || got.IdempotentReplayClaims["storage"].Status != "succeeded" ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.AuthorizationID != authorizationID || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("failed storage replay route did not preserve the original launch: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+
+	readsBefore, persistedBefore := fabric.reads, stringValue(persisted["result"])
+	replayed := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
+	if replayed.Code != http.StatusOK || fabric.reads != readsBefore || fabric.ensures != 1 || stringValue(after["result"]) != persistedBefore {
+		t.Fatalf("exact route retry repeated storage: status=%d body=%s reads=%d/%d ensures=%d", replayed.Code, replayed.Body.String(), fabric.reads, readsBefore, fabric.ensures)
 	}
 }
 

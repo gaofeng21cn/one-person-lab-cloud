@@ -129,6 +129,7 @@ func validateTencentBootstrapProfiles(profiles []tencentSKUProfile) error {
 }
 
 var predebitIAMRequiredActions = []string{"tag:TagResources", "tag:ModifyResourcesTagValue"}
+var predebitIAMRequiredPolicies = []string{"QcloudCVMFinanceAccess"}
 
 type Request struct {
 	Action           string                 `json:"action"`
@@ -397,6 +398,7 @@ type tagNativeAPI interface {
 type tencentTagClient struct {
 	client         *common.Client
 	identityClient *common.Client
+	policyClient   *common.Client
 	region         string
 }
 
@@ -432,6 +434,29 @@ type getCallerIdentityResponse struct {
 	} `json:"Response"`
 }
 
+type listAttachedUserPoliciesRequest struct {
+	*tchttp.BaseRequest
+	TargetUin *uint64 `json:"TargetUin,omitempty" name:"TargetUin"`
+	Page      *uint64 `json:"Page,omitempty" name:"Page"`
+	Rp        *uint64 `json:"Rp,omitempty" name:"Rp"`
+}
+
+type attachedUserPolicy struct {
+	PolicyID   *uint64 `json:"PolicyId,omitempty" name:"PolicyId"`
+	PolicyName *string `json:"PolicyName,omitempty" name:"PolicyName"`
+	PolicyType *string `json:"PolicyType,omitempty" name:"PolicyType"`
+	Deactived  *uint64 `json:"Deactived,omitempty" name:"Deactived"`
+}
+
+type listAttachedUserPoliciesResponse struct {
+	*tchttp.BaseResponse
+	Response *struct {
+		TotalNum  *uint64               `json:"TotalNum,omitempty" name:"TotalNum"`
+		List      []*attachedUserPolicy `json:"List,omitempty" name:"List"`
+		RequestID *string               `json:"RequestId,omitempty" name:"RequestId"`
+	} `json:"Response"`
+}
+
 type predebitIAMIdentity struct {
 	Type        string `json:"type"`
 	PrincipalID string `json:"principalId"`
@@ -440,16 +465,21 @@ type predebitIAMIdentity struct {
 }
 
 type predebitIAMAttestation struct {
-	SchemaVersion   int                 `json:"schemaVersion"`
-	ProofMode       string              `json:"proofMode"`
-	ReleaseSHA      string              `json:"releaseSha"`
-	Identity        predebitIAMIdentity `json:"identity"`
-	RequiredActions []string            `json:"requiredActions"`
-	PolicyDigest    string              `json:"policyDigest"`
+	SchemaVersion    int                 `json:"schemaVersion"`
+	ProofMode        string              `json:"proofMode"`
+	ReleaseSHA       string              `json:"releaseSha"`
+	Identity         predebitIAMIdentity `json:"identity"`
+	RequiredActions  []string            `json:"requiredActions"`
+	RequiredPolicies []string            `json:"requiredPolicies"`
+	PolicyDigest     string              `json:"policyDigest"`
 }
 
 type callerIdentityNativeAPI interface {
 	CallerIdentity() (map[string]string, string, error)
+}
+
+type financePolicyNativeAPI interface {
+	ActiveFinancePolicy(string) (bool, string, error)
 }
 
 type createAndBindTag struct {
@@ -500,6 +530,60 @@ func (client *tencentTagClient) CallerIdentity() (map[string]string, string, err
 		return nil, "", fmt.Errorf("Tencent STS GetCallerIdentity response is missing requestId")
 	}
 	return identity, requestID, nil
+}
+
+func (client *tencentTagClient) ActiveFinancePolicy(userID string) (bool, string, error) {
+	policyClient := client.policyClient
+	if policyClient == nil {
+		policyClient = client.client
+	}
+	if policyClient == nil {
+		return false, "", fmt.Errorf("Tencent CAM client is missing")
+	}
+	targetUIN, err := strconv.ParseUint(strings.TrimSpace(userID), 10, 64)
+	if err != nil || targetUIN == 0 {
+		return false, "", fmt.Errorf("Tencent CAM user identity is invalid")
+	}
+	const pageSize uint64 = 200
+	var observed uint64
+	activePolicyIDs := map[uint64]struct{}{}
+	lastRequestID := ""
+	for page := uint64(1); page <= 200; page++ {
+		request := &listAttachedUserPoliciesRequest{
+			BaseRequest: &tchttp.BaseRequest{}, TargetUin: common.Uint64Ptr(targetUIN), Page: common.Uint64Ptr(page), Rp: common.Uint64Ptr(pageSize),
+		}
+		request.Init().WithApiInfo("cam", "2019-01-16", "ListAttachedUserPolicies")
+		response := &listAttachedUserPoliciesResponse{BaseResponse: &tchttp.BaseResponse{}}
+		if err := policyClient.Send(request, response); err != nil {
+			return false, "", err
+		}
+		if response.Response == nil || response.Response.TotalNum == nil || strings.TrimSpace(stringValue(response.Response.RequestID)) == "" {
+			return false, "", fmt.Errorf("Tencent CAM ListAttachedUserPolicies response is incomplete")
+		}
+		lastRequestID = strings.TrimSpace(stringValue(response.Response.RequestID))
+		observed += uint64(len(response.Response.List))
+		if observed > *response.Response.TotalNum {
+			return false, "", fmt.Errorf("Tencent CAM ListAttachedUserPolicies count is invalid")
+		}
+		for _, policy := range response.Response.List {
+			if policy == nil || strings.TrimSpace(stringValue(policy.PolicyName)) != predebitIAMRequiredPolicies[0] ||
+				strings.TrimSpace(stringValue(policy.PolicyType)) != "QCS" || policy.PolicyID == nil || *policy.PolicyID == 0 ||
+				policy.Deactived == nil || *policy.Deactived != 0 {
+				continue
+			}
+			activePolicyIDs[*policy.PolicyID] = struct{}{}
+		}
+		if observed == *response.Response.TotalNum {
+			if len(activePolicyIDs) > 1 {
+				return false, "", fmt.Errorf("Tencent CAM finance policy attachment is ambiguous")
+			}
+			return len(activePolicyIDs) == 1, lastRequestID, nil
+		}
+		if len(response.Response.List) == 0 {
+			return false, "", fmt.Errorf("Tencent CAM ListAttachedUserPolicies pagination did not advance")
+		}
+	}
+	return false, "", fmt.Errorf("Tencent CAM ListAttachedUserPolicies pagination exceeded the limit")
 }
 
 func (client *tencentTagClient) SetCVMTag(instanceID, key, value string, attached bool) (string, error) {
@@ -575,17 +659,29 @@ func (client *tencentSDKClient) PredebitIAMGate(_ Request, env map[string]string
 	if live["type"] != attestation.Identity.Type || live["principalId"] != attestation.Identity.PrincipalID || live["accountId"] != attestation.Identity.AccountID || live["userId"] != attestation.Identity.UserID {
 		return Response{Ok: false, ErrorCode: "predebit_iam_identity_mismatch", Message: "Tencent live STS identity does not match the deployment attestation.", Retryable: false, MutationCount: 0}
 	}
+	policyClient, ok := client.nativeTagClient.(financePolicyNativeAPI)
+	if !ok {
+		return Response{Ok: false, ErrorCode: "predebit_iam_finance_policy_unavailable", Message: "Tencent live CAM policy client is unavailable.", Retryable: false, MutationCount: 0}
+	}
+	active, policyRequestID, err := policyClient.ActiveFinancePolicy(live["userId"])
+	if err != nil {
+		return Response{Ok: false, ErrorCode: "predebit_iam_finance_policy_read_failed", Message: "Tencent live CAM finance policy could not be verified.", Retryable: true, MutationCount: 0}
+	}
+	if !active {
+		return Response{Ok: false, ErrorCode: "predebit_iam_finance_policy_missing", Message: "Tencent live CAM finance policy is not active.", Retryable: false, MutationCount: 0}
+	}
 	return Response{
-		Ok: true, Status: "ready", ProviderRequestId: requestID, MutationCount: 0,
+		Ok: true, Status: "ready", ProviderRequestId: policyRequestID, MutationCount: 0,
 		ProviderData: map[string]string{
 			"proofMode": attestation.ProofMode, "releaseSha": attestation.ReleaseSHA,
 			"requiredActions": strings.Join(attestation.RequiredActions, ","), "policyDigest": attestation.PolicyDigest,
+			"requiredPolicies": strings.Join(attestation.RequiredPolicies, ","), "identityRequestId": requestID,
 		},
 	}
 }
 
 func validPredebitIAMAttestation(attestation predebitIAMAttestation) bool {
-	if attestation.SchemaVersion != 1 || attestation.ProofMode != predebitIAMProofMode || !validLowerHex(attestation.ReleaseSHA, 40) ||
+	if attestation.SchemaVersion != 3 || attestation.ProofMode != predebitIAMProofMode || !validLowerHex(attestation.ReleaseSHA, 40) ||
 		len(attestation.RequiredActions) != len(predebitIAMRequiredActions) || !strings.HasPrefix(attestation.PolicyDigest, "sha256:") || !validLowerHex(strings.TrimPrefix(attestation.PolicyDigest, "sha256:"), 64) {
 		return false
 	}
@@ -594,7 +690,21 @@ func validPredebitIAMAttestation(attestation predebitIAMAttestation) bool {
 			return false
 		}
 	}
-	for _, value := range []string{attestation.Identity.Type, attestation.Identity.PrincipalID, attestation.Identity.AccountID, attestation.Identity.UserID} {
+	if len(attestation.RequiredPolicies) != len(predebitIAMRequiredPolicies) {
+		return false
+	}
+	for index, policy := range predebitIAMRequiredPolicies {
+		if attestation.RequiredPolicies[index] != policy {
+			return false
+		}
+	}
+	if attestation.Identity.Type != "CAMUser" {
+		return false
+	}
+	if userID, err := strconv.ParseUint(attestation.Identity.UserID, 10, 64); err != nil || userID == 0 {
+		return false
+	}
+	for _, value := range []string{attestation.Identity.PrincipalID, attestation.Identity.AccountID} {
 		if value == "" || value != strings.TrimSpace(value) {
 			return false
 		}
@@ -811,6 +921,10 @@ func newTencentSDKClient(env map[string]string) (*tencentSDKClient, *Response) {
 	stsProfile.HttpProfile.Endpoint = "sts.tencentcloudapi.com"
 	stsClient := &common.Client{}
 	stsClient.Init(env["TENCENTCLOUD_REGION"]).WithCredential(credential).WithProfile(stsProfile)
+	camProfile := profile.NewClientProfile()
+	camProfile.HttpProfile.Endpoint = "cam.tencentcloudapi.com"
+	camClient := &common.Client{}
+	camClient.Init(env["TENCENTCLOUD_REGION"]).WithCredential(credential).WithProfile(camProfile)
 
 	return &tencentSDKClient{
 		region:                env["TENCENTCLOUD_REGION"],
@@ -820,7 +934,7 @@ func newTencentSDKClient(env map[string]string) (*tencentSDKClient, *Response) {
 		nativeCvmClient:       cvmClient,
 		nativeCbsClient:       cbsClient,
 		nativeVpcClient:       vpcClient,
-		nativeTagClient:       &tencentTagClient{client: tagClient, identityClient: stsClient, region: env["TENCENTCLOUD_REGION"]},
+		nativeTagClient:       &tencentTagClient{client: tagClient, identityClient: stsClient, policyClient: camClient, region: env["TENCENTCLOUD_REGION"]},
 		convergenceContext:    context.Background(),
 		convergenceWait:       boundedConvergenceWait,
 		claimNodePoolTaintMigrationAttempt: func(ctx context.Context, operation fabricstore.FabricOperation) (fabricstore.FabricOperation, bool, error) {

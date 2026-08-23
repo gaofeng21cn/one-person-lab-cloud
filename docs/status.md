@@ -35,6 +35,16 @@ is selected and configured by the medopl instance, not by the portable product.
   An unknown Storage attempt is classified from its exact Fabric binding;
   ready advances read-only, pending remains bounded and read-only, and only
   authoritative absence permits one replay with the original idempotency key.
+  If that replay itself ends failed, the same Resume route may classify the
+  exact binding again: ready finishes read-only, while authoritative absence
+  replaces only the failed claim and permits one new authorization to replay
+  the original key. No new Launch, purchase, stage operation, or volume key is
+  created, and durable authorization history rejects every later replay grant.
+- Tencent prepaid preflight requires Candidate-bound schema-v3 evidence that
+  the live Fabric identity has the active system policy
+  `QcloudCVMFinanceAccess`. Both compute and storage checks re-read the current
+  STS identity and CAM attachment and fail before Debit when that proof is
+  absent; a successful price inquiry is not payment proof.
 - Source now keeps Tencent compute provisioning typed and pending for a
   persisted ten-minute window. A Ready Machine with recoverable ownership
   becomes compute-only `ownership_pending`; one durable same-key continuation

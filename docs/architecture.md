@@ -318,6 +318,14 @@ receipt -> succeeded`. Preflight is the read-only admission gate before the
 first external write. Runtime supplies the authoritative Workspace URL as
 readback/projection; URL is not a separate mutation stage.
 
+For Tencent prepaid resources, preflight must prove both the live deployment
+identity and its payment authority before Debit. The Candidate-bound deployment
+attestation includes the exact required Tag actions and Tencent system policy
+`QcloudCVMFinanceAccess`. Compute and storage preflight both re-read the live
+STS identity and current CAM attachment and reject a missing, inactive, or
+mismatched policy. Price inquiry alone is not payment proof and cannot admit a
+customer charge.
+
 Workspace deletion is another durable Control Plane operation, not an
 acceptance-runner cleanup. `workspace.delete.v2` first matches the immutable
 succeeded Launch and its exact Launch Receipt. Runtime, compute, storage, and
@@ -372,6 +380,15 @@ binding: `ready` confirms the attempt without mutation, `pending` remains
 read-only, and only authoritative `absent` may reuse the original idempotency
 key once. Unknown, conflict, read failure, identity drift, or another unproven
 result leaves the same Launch fail-closed without creating another volume.
+If that exact replay was dispatched and ended with a terminal failed claim, a
+new zero-mutation authorization may classify the same Fabric binding again.
+Exact `ready` confirms the original attempt without mutation. Authoritative
+`absent` may replace only that exact failed claim and replay the original
+idempotency key once; `pending`, `unknown`, read failure, conflict, or identity
+drift leaves the operation byte-for-byte unchanged. This remains the same
+Launch and Fabric operation and cannot create a second purchase or volume key.
+The durable authorization history rejects every later replay authorization,
+including when this final replay ends without a conclusive readback.
 For a resource-billed Launch whose Runtime exhausted its read budget and later
 became ready, an operator may authorize a zero-mutation, zero-replay read of the
 exact original Fabric binding. Only an authoritative `ready` result confirms the
