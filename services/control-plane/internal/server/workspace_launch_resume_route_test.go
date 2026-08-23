@@ -400,6 +400,38 @@ func TestWorkspaceLaunchResumeRouteReplaysFailedStorageAfterAuthoritativeAbsence
 	}
 }
 
+func TestWorkspaceLaunchResumeRouteConvergesExhaustedStorageReadyReadOnly(t *testing.T) {
+	store := newMemoryTableStore()
+	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
+	fabric := &workspaceLaunchStorageResumeFabric{ready: true}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchStorageAfterExhaustedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimBefore := operation.IdempotentReplayClaims["storage"]
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+
+	body := fmt.Sprintf(`{"launchVersion":%d,"authorizedStage":"storage","reason":"authoritative ready read may continue the original exhausted storage stage","mutationBudget":0,"idempotentReplayBudget":0,"authoritativeReadBudget":3}`, operation.Version)
+	authorizationID := "resume-route-exhausted-storage-ready"
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/workspace-launches/"+operation.ID+"/resume", body, authorizationID)
+	if response.Code != http.StatusOK || fabric.reads != 1 || fabric.ensures != 0 {
+		t.Fatalf("exhausted storage ready-read status=%d body=%s reads=%d ensures=%d", response.Code, response.Body.String(), fabric.reads, fabric.ensures)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || got.Stage != "attachment" || got.Status != "pending" ||
+		got.Attempts["storage"].Confirmed != 1 || got.Attempts["storage"].Unknown != 0 || got.IdempotentReplayClaims["storage"] != claimBefore ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.AuthorizationID != authorizationID || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("exhausted storage route did not persist ready transition: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+}
+
 func TestWorkspaceLaunchResumeRouteRequiresExactRemainingComputeWindow(t *testing.T) {
 	store := newMemoryTableStore()
 	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
