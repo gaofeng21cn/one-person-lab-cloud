@@ -389,12 +389,15 @@ drift leaves the operation byte-for-byte unchanged. This remains the same
 Launch and Fabric operation and cannot create a second purchase or volume key.
 The durable authorization history rejects every later replay authorization,
 including when this final replay ends without a conclusive readback.
-For a resource-billed Launch whose Runtime exhausted its read budget and later
-became ready, an operator may authorize a zero-mutation, zero-replay read of the
-exact original Fabric binding. Only an authoritative `ready` result confirms the
-existing attempt and advances the same Launch; `pending`, `absent`, `unknown`,
-read failure, or identity drift leaves the operation unchanged in
-`manual_review`.
+For a resource-billed Launch whose Runtime attempt is already
+`unknown/manual_review`, an operator may authorize recovery of the exact
+original Fabric binding through the same Reconciler. A zero-mutation,
+zero-replay authorization advances only after authoritative `ready` readback.
+When the original apply failed before any Runtime resource existed, a separate
+zero-mutation, one-replay authorization advances only after authoritative
+`absent` readback, then reuses the original Runtime idempotency key once.
+`pending`, `unknown`, read failure, identity drift, or any ineligible attempt
+leaves the operation unchanged in `manual_review`.
 
 Fulfillment Repair is a separate operator mutation command under the same
 Workspace Launch owner; it does not widen Recovery. It applies only after a

@@ -310,14 +310,16 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 		status = "unready"
 	}
 	runtimeID := stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-id"))
-	runtimeOperationID := stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id"))
+	runtimeOperationLabel := stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id"))
 	costTags := map[string]string{
 		"opl_account_id":   stringValue(nested(deployment, "metadata", "annotations", "opl_account_id")),
 		"opl_workspace_id": stringValue(nested(deployment, "metadata", "annotations", "opl_workspace_id")),
 		"opl_resource_id":  stringValue(nested(deployment, "metadata", "annotations", "opl_resource_id")),
 		"opl_operation_id": stringValue(nested(deployment, "metadata", "annotations", "opl_operation_id")),
 	}
-	if runtimeID == "" || runtimeOperationID == "" || costTags["opl_workspace_id"] != workspaceID || costTags["opl_resource_id"] != runtimeID || costTags["opl_operation_id"] != runtimeOperationID || costTags["opl_account_id"] == "" {
+	runtimeOperationID := costTags["opl_operation_id"]
+	if runtimeID == "" || runtimeOperationID == "" || runtimeOperationLabel != k8sCostLabelValue(runtimeOperationID) ||
+		costTags["opl_workspace_id"] != workspaceID || costTags["opl_resource_id"] != runtimeID || costTags["opl_account_id"] == "" {
 		return WorkspaceRuntime{WorkspaceID: workspaceID, ServiceName: serviceName}, workspaceRuntimeStatusError("readback_mismatch")
 	}
 	return WorkspaceRuntime{ID: runtimeID, OperationID: runtimeOperationID, WorkspaceID: workspaceID, URL: fmt.Sprintf("https://%s/w/%s/", p.workspaceDomain, workspaceID), Status: status, ServiceName: serviceName, ImageID: image, Access: access, Ready: ready, Checks: checks, CostTags: costTags}, nil

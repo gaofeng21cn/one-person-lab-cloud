@@ -1088,6 +1088,9 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 	if workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization) {
 		return r.recoverUnknownReadyStage(ctx, operation, attempt, authorization)
 	}
+	if workspaceLaunchUnknownRuntimeReplayEligible(operation, attempt, authorization) {
+		return r.recoverUnknownRuntimeAfterAbsence(ctx, operation, attempt, authorization)
+	}
 	if attempt.Status == "reserved" || attempt.Attempted >= attempt.Max {
 		return r.authorizeExhaustedStage(ctx, operation, attempt, authorization)
 	}
@@ -1324,6 +1327,40 @@ func workspaceLaunchUnknownRuntimeReadEligible(operation workspaceLaunchReconcil
 		operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown && attempt.Max == 1 && attempt.Attempted == attempt.Max &&
 		attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" &&
 		attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1)
+}
+
+func workspaceLaunchUnknownRuntimeReplayEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	_, hasFreshContinuation := operation.FreshContinuationAuthorizations[operation.Stage]
+	return operation.Status == "manual_review" && operation.boolFact("resourceBillingEnabled") && operation.Stage == "runtime" &&
+		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
+		operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown && attempt.Max == 1 && attempt.Attempted == attempt.Max &&
+		attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" && attempt.PendingReadbacks == 0 && attempt.MaxPendingReadbacks == 0 &&
+		attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1) && !hasFreshContinuation &&
+		!operation.idempotentReplayAuthorizationUsed(operation.Stage)
+}
+
+func (r *WorkspaceLaunchReconciler) recoverUnknownRuntimeAfterAbsence(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+) (workspaceLaunchReconcileOperation, error) {
+	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	if readErr != nil || observation.State != workspaceLaunchStageAbsent {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	authorization.ReadbacksAtAuthorization = attempt.PendingReadbacks
+	attempt.Unknown, attempt.Status = 0, "reserved"
+	attempt.MaxPendingReadbacks = attempt.PendingReadbacks + authorization.AuthoritativeReadBudget
+	operation.Attempts[operation.Stage] = attempt
+	operation.rotateResumeAuthorization(authorization)
+	operation.Observations[operation.Stage] = observation
+	operation.Status = "pending"
+	if _, err := r.persist(ctx, operation); err != nil {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+	return r.Reconcile(ctx, operation.ID)
 }
 
 func (r *WorkspaceLaunchReconciler) recoverUnknownReadyStage(ctx context.Context, operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {

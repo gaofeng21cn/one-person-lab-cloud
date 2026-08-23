@@ -328,6 +328,63 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeRecoveryPersistsReadyReadOnly(t *t
 	}
 }
 
+func TestPostgresWorkspaceLaunchUnknownRuntimeReplaySurvivesReconcilerRestart(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	accountID, ownerID := "acct-unit", "usr-unit"
+	account, owner := provisionedAccountRowsFor(accountID, ownerID, "runtime-replay-pg@example.com", 12)
+	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+
+	row := workspaceLaunchUnknownRuntimeAbsentManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+		t.Fatal(err)
+	}
+
+	startedAt := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	adapter := &workspaceLaunchUnitAdapter{
+		replayableStages:     map[string]bool{"runtime": true},
+		panicBeforeMutations: map[string]int{"runtime": 1},
+	}
+	authorization := workspaceLaunchUnknownRuntimeReplayAuthorization(t, row, "resume-postgres-runtime-absent")
+	firstProcess := NewWorkspaceLaunchReconciler(store, adapter)
+	firstProcess.now = func() time.Time { return startedAt }
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected simulated process crash")
+			}
+		}()
+		_, _ = firstProcess.Resume(ctx, operation.ID, authorization)
+	}()
+
+	persisted, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	durable, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	claim := durable.IdempotentReplayClaims["runtime"]
+	if err != nil || !found || decodeErr != nil || durable.Status != "pending" || durable.Stage != "runtime" ||
+		durable.Attempts["runtime"].Status != "reserved" || durable.Attempts["runtime"].Unknown != 0 ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "claimed" || durable.ResumeAuthorizationConsumedAt != "" ||
+		adapter.mutations != 0 {
+		t.Fatalf("PostgreSQL Runtime replay crash cut invalid: operation=%s claim=%#v mutations=%d errors=%v/%v",
+			workspaceLaunchReconcileResultSummary(durable), claim, adapter.mutations, err, decodeErr)
+	}
+
+	restartedProcess := NewWorkspaceLaunchReconciler(store, adapter)
+	restartedProcess.now = func() time.Time { return startedAt.Add(workspaceLaunchIdempotentReplayLease + time.Second) }
+	got, err := restartedProcess.Reconcile(ctx, operation.ID)
+	claim = got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || got.Attempts["runtime"].Confirmed != 1 ||
+		got.Attempts["runtime"].IdempotencyKey != operation.Attempts["runtime"].IdempotencyKey ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" || got.ResumeAuthorizationConsumedAt == "" ||
+		adapter.mutationsByStage["runtime"] != 1 || adapter.mutationIdempotencyKey != operation.Attempts["runtime"].IdempotencyKey {
+		t.Fatalf("PostgreSQL restart did not continue the original Runtime replay: operation=%s claim=%#v mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), claim, adapter.mutationsByStage, err)
+	}
+}
+
 func TestPostgresWorkspaceLaunchUnknownStorageRecoveryPersistsOriginalReplay(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
