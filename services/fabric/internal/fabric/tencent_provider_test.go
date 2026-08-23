@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"opl-cloud/services/fabric/internal/protectedresource"
+
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const testTencentProviderProfile = `{"schemaVersion":1,"packages":[{"id":"basic","name":"Basic Workspace","available":true,"compute":{"id":"pool-basic-2c4g","server":"2c4g","cpu":2,"memoryGb":4,"diskGb":10,"instanceType":"SA5.MEDIUM4"},"nodePoolId":"np-basic","maxReplicas":20,"zone":"ap-guangzhou-3","storage":{"sizeGb":10,"diskType":"CLOUD_BSSD"},"billing":{"chargeType":"PREPAID","periodMonths":1,"renewFlag":"NOTIFY_AND_MANUAL_RENEW"}},{"id":"pro","name":"Pro Workspace","available":true,"compute":{"id":"pool-pro-8c16g","server":"8c16g","cpu":8,"memoryGb":16,"diskGb":100,"instanceType":"SA5.2XLARGE16"},"nodePoolId":"np-pro","maxReplicas":20,"zone":"ap-guangzhou-3","storage":{"sizeGb":100,"diskType":"CLOUD_BSSD"},"billing":{"chargeType":"PREPAID","periodMonths":1,"renewFlag":"NOTIFY_AND_MANUAL_RENEW"}}]}`
@@ -3768,6 +3770,35 @@ func TestTencentProviderStagedStorageSeparatesCBSCreateAndStaticBinding(t *testi
 	readBound, err := provider.ReadStaticStorageBinding(context.Background(), bound)
 	if err != nil || readBound.Status != "ready" || applyCalls != 1 || getCalls == 0 {
 		t.Fatalf("static readback=%#v err=%v applyCalls=%d getCalls=%d", readBound, err, applyCalls, getCalls)
+	}
+}
+
+func TestK8sCostLabelsEncodeInvalidIdentityWithoutLosingAnnotations(t *testing.T) {
+	operationID := "workspace-launch-cb8e183cb27fbed187:storage"
+	volume := StorageVolume{
+		ID: "vol_a99b589a58e0b08d", AccountID: "acct-5283279be2acc0476d", WorkspaceID: "ws-609081bc2298edd18e",
+		OperationID: operationID, ProviderResourceID: "disk-nn77tmn0", SizeGB: 10, Zone: "na-siliconvalley-1",
+		CostTags: oplCostTags("acct-5283279be2acc0476d", "ws-609081bc2298edd18e", "vol_a99b589a58e0b08d", operationID),
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(staticCBSManifest(volume), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range manifest["items"].([]any) {
+		resource := item.(map[string]any)
+		label := stringValue(nested(resource, "metadata", "labels", "oplcloud.cn/operation-id"))
+		if label == operationID || len(k8svalidation.IsValidLabelValue(label)) != 0 || len(label) > 63 {
+			t.Fatalf("operation label must be a deterministic Kubernetes-safe identity: %q", label)
+		}
+		if annotation := stringValue(nested(resource, "metadata", "annotations", "opl_operation_id")); annotation != operationID {
+			t.Fatalf("operation annotation=%q want exact identity %q", annotation, operationID)
+		}
+	}
+	if got := k8sCostLabelValue("op-alpha"); got != "op-alpha" {
+		t.Fatalf("valid label identity changed: %q", got)
+	}
+	if first, second := k8sCostLabelValue(operationID), k8sCostLabelValue(operationID); first != second {
+		t.Fatalf("encoded identity is not deterministic: %q != %q", first, second)
 	}
 }
 
