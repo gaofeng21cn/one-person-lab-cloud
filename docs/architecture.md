@@ -365,6 +365,13 @@ cannot own a business stage, rewrite a resource identity, create a successor
 Launch, or call a provider directly. The exact public binding shape is admitted
 only with a real caller, source implementation in both owners, and focused
 tests; this architecture does not freeze a speculative universal JSON contract.
+For a resource-billed Launch whose original Storage attempt is already
+`unknown/manual_review`, an operator may authorize recovery of that exact
+stage through the same Reconciler. Fabric first reads the immutable original
+binding: `ready` confirms the attempt without mutation, `pending` remains
+read-only, and only authoritative `absent` may reuse the original idempotency
+key once. Unknown, conflict, read failure, identity drift, or another unproven
+result leaves the same Launch fail-closed without creating another volume.
 For a resource-billed Launch whose Runtime exhausted its read budget and later
 became ready, an operator may authorize a zero-mutation, zero-replay read of the
 exact original Fabric binding. Only an authoritative `ready` result confirms the

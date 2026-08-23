@@ -328,6 +328,46 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeRecoveryPersistsReadyReadOnly(t *t
 	}
 }
 
+func TestPostgresWorkspaceLaunchUnknownStorageRecoveryPersistsOriginalReplay(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	accountID, ownerID := "acct-unit", "usr-unit"
+	account, owner := provisionedAccountRowsFor(accountID, ownerID, "storage-recovery-pg@example.com", 11)
+	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+
+	row := workspaceLaunchUnknownStorageManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"storage": true}}
+	authorization := workspaceLaunchUnknownStorageReplayAuthorization(t, row, "resume-postgres-unknown-storage")
+	got, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(ctx, operation.ID, authorization)
+	attempt := got.Attempts["storage"]
+	claim := got.IdempotentReplayClaims["storage"]
+	if err != nil || got.Stage != "attachment" || got.Status != "pending" || attempt.Attempted != 1 || attempt.Confirmed != 1 ||
+		attempt.Unknown != 0 || attempt.IdempotencyKey != operation.Attempts["storage"].IdempotencyKey ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorizationConsumedAt == "" || adapter.mutationsByStage["storage"] != 1 {
+		t.Fatalf("PostgreSQL storage recovery did not persist: operation=%s claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	persisted, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	restarted, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != "attachment" ||
+		restarted.Attempts["storage"].IdempotencyKey != operation.Attempts["storage"].IdempotencyKey ||
+		restarted.IdempotentReplayClaims["storage"].AuthorizationID != authorization.AuthorizationID ||
+		restarted.IdempotentReplayClaims["storage"].Status != "succeeded" {
+		t.Fatalf("PostgreSQL storage recovery restart readback found=%v operation=%s errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(restarted), err, decodeErr)
+	}
+}
+
 func TestPostgresWorkspaceLaunchUnknownComputeResumePersistsOriginalAttemptContinuation(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)

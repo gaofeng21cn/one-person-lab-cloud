@@ -32,6 +32,9 @@ is selected and configured by the medopl instance, not by the portable product.
 - Workspace Launch persists one Control Plane operation and coordinates Key,
   debit, Fabric resource stages, activation, and one purchase Receipt. Unknown
   external results enter manual review and resume through the same operation.
+  An unknown Storage attempt is classified from its exact Fabric binding;
+  ready advances read-only, pending remains bounded and read-only, and only
+  authoritative absence permits one replay with the original idempotency key.
 - Source now keeps Tencent compute provisioning typed and pending for a
   persisted ten-minute window. A Ready Machine with recoverable ownership
   becomes compute-only `ownership_pending`; one durable same-key continuation
