@@ -452,7 +452,7 @@ func TestPostgresWorkspaceLaunchFailedStorageReplayPersistsAuthoritativeAbsentRe
 	}
 }
 
-func TestPostgresWorkspaceLaunchExhaustedStorageBindingRejectsFourthGrantAfterRestart(t *testing.T) {
+func TestPostgresWorkspaceLaunchRepeatedFailedStorageBindingCanResumeAfterRestart(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 	accountID, ownerID := "acct-unit", "usr-unit"
@@ -464,6 +464,7 @@ func TestPostgresWorkspaceLaunchExhaustedStorageBindingRejectsFourthGrantAfterRe
 	if err != nil {
 		t.Fatal(err)
 	}
+	originalKey := operation.Attempts["storage"].IdempotencyKey
 	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
 		t.Fatal(err)
 	}
@@ -489,13 +490,28 @@ func TestPostgresWorkspaceLaunchExhaustedStorageBindingRejectsFourthGrantAfterRe
 		t.Fatalf("PostgreSQL storage binding replay history did not survive restart: found=%v operation=%s errors=%v/%v",
 			found, workspaceLaunchReconcileResultSummary(restarted), err, decodeErr)
 	}
-	before := stringValue(persisted["result"])
-	fourthAdapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"storage": true}, replayableStages: map[string]bool{"storage": true}}
-	fourth := workspaceLaunchExhaustedStorageBindingReplayAuthorization(t, persisted, "resume-postgres-forbidden-fourth-replay")
-	_, err = NewWorkspaceLaunchReconciler(store, fourthAdapter).Resume(ctx, operation.ID, fourth)
-	after, _, _ := store.GetRuntimeOperation(ctx, operation.ID)
-	if !errors.Is(err, errWorkspaceLaunchGrantConflict) || fourthAdapter.reads != 0 || fourthAdapter.mutations != 0 || stringValue(after["result"]) != before {
-		t.Fatalf("PostgreSQL restart accepted fourth storage replay: reads=%d mutations=%d err=%v", fourthAdapter.reads, fourthAdapter.mutations, err)
+	fourthAdapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"storage": true}}
+	fourth := workspaceLaunchExhaustedStorageBindingReplayAuthorization(t, persisted, "resume-postgres-current-storage-evidence")
+	got, err := NewWorkspaceLaunchReconciler(store, fourthAdapter).Resume(ctx, operation.ID, fourth)
+	claim := got.IdempotentReplayClaims["storage"]
+	if err != nil || got.Status != "pending" || got.Stage != "attachment" ||
+		got.Attempts["storage"].Confirmed != 1 || got.Attempts["storage"].Unknown != 0 || got.Attempts["storage"].Status != "confirmed" ||
+		got.Attempts["storage"].IdempotencyKey != originalKey || claim.AuthorizationID != fourth.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorization == nil || *got.ResumeAuthorization != fourth || got.ResumeAuthorizationConsumedAt == "" ||
+		got.idempotentReplayAuthorizationCount("storage") != 4 || len(got.ConsumedResumeAuthorizations) != 3 ||
+		fourthAdapter.reads != 4 || fourthAdapter.mutationsByStage["storage"] != 1 || fourthAdapter.mutationIdempotencyKey != originalKey {
+		t.Fatalf("PostgreSQL restart did not continue current authorized storage replay: operation=%s reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), fourthAdapter.reads, fourthAdapter.mutationsByStage, err)
+	}
+
+	after, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	restartedAfter, decodeErr := decodeWorkspaceLaunchReconcileOperation(after)
+	if err != nil || !found || decodeErr != nil || restartedAfter.Version != got.Version || restartedAfter.Stage != "attachment" ||
+		restartedAfter.Attempts["storage"] != got.Attempts["storage"] || restartedAfter.IdempotentReplayClaims["storage"] != claim ||
+		restartedAfter.ResumeAuthorization == nil || *restartedAfter.ResumeAuthorization != fourth || restartedAfter.ResumeAuthorizationConsumedAt == "" ||
+		len(restartedAfter.ConsumedResumeAuthorizations) != 3 {
+		t.Fatalf("PostgreSQL authorized storage replay did not survive restart: found=%v operation=%s errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(restartedAfter), err, decodeErr)
 	}
 }
 

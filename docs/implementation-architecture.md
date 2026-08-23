@@ -336,9 +336,11 @@ Fabric read: exact `ready` confirms the original attempt without Ensure;
 authoritative `absent` replaces only the failed claim and permits one Ensure
 with the original idempotency key. `pending`, `unknown`, read failure, or
 identity drift returns conflict without persistence or Ensure. This is a
-continuation of the original Launch, not another workflow or operation. Its
-authorization becomes the final replay grant for that Storage attempt; durable
-authorization history rejects a third grant even if readback is inconclusive.
+continuation of the original Launch, not another workflow or operation. Durable
+authorization history remains audit evidence rather than a terminal retry cap.
+After another inconclusive replay, any continuation still requires a new
+single-use administrator authorization bound to the immediately preceding
+consumed authorization and its exact durable failed claim.
 
 A resource-billed Runtime already parked as `unknown/manual_review` has one
 narrow operator recovery path in the same Reconciler. It accepts only the

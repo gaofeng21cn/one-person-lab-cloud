@@ -760,7 +760,7 @@ func TestWorkspaceLaunchFailedStorageReplayAuthoritativeAbsentReplaysOriginalKey
 	}
 }
 
-func TestWorkspaceLaunchExhaustedStorageBindingReplayCannotBeAuthorizedAgain(t *testing.T) {
+func TestWorkspaceLaunchFailedStorageReplayCanBeReauthorizedAfterRepeatedReadbackFailure(t *testing.T) {
 	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
 	store := &workspaceLaunchUnitStore{row: row}
 	unknown := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}}
@@ -791,11 +791,23 @@ func TestWorkspaceLaunchExhaustedStorageBindingReplayCannotBeAuthorizedAgain(t *
 			workspaceLaunchReconcileResultSummary(parked), parked.idempotentReplayAuthorizationCount("storage"), adapter.reads, adapter.mutations, err)
 	}
 
-	persistedBefore := stringValue(store.row["result"])
-	fourth := workspaceLaunchExhaustedStorageBindingReplayAuthorization(t, store.row, "resume-storage-forbidden-fourth-replay")
-	_, err = reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, fourth)
-	if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 6 || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
-		t.Fatalf("exhausted storage accepted a fourth authorization: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
+	before, err := decodeWorkspaceLaunchReconcileOperation(store.row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readsBefore, mutationsBefore := adapter.reads, adapter.mutations
+	fourth := workspaceLaunchExhaustedStorageBindingReplayAuthorization(t, store.row, "resume-storage-current-evidence-replay")
+	got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, fourth)
+	attempt := got.Attempts["storage"]
+	claim := got.IdempotentReplayClaims["storage"]
+	if err != nil || got.Status != "pending" || got.Stage != "attachment" ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != before.Attempts["storage"].IdempotencyKey || claim.AuthorizationID != fourth.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorizationConsumedAt == "" || got.idempotentReplayAuthorizationCount("storage") != 4 ||
+		adapter.reads != readsBefore+4 || adapter.mutations != mutationsBefore+1 || adapter.mutationsByStage["storage"] != 1 ||
+		adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
+		t.Fatalf("current failed storage evidence did not permit one authorized replay: operation=%s attempt=%#v claim=%#v reads=%d/%d mutations=%d/%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
 	}
 }
 
