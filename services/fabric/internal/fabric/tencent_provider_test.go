@@ -4292,6 +4292,25 @@ func TestTencentProviderAuthoritativeAbsentReadbacksAreTypedAndMutationFree(t *t
 			t.Fatalf("static binding absent err=%v", err)
 		}
 	})
+
+	t.Run("static PV and PVC absent returns empty stdout", func(t *testing.T) {
+		for _, readback := range [][]byte{nil, []byte(" \n\t")} {
+			provider := NewTencentProvider()
+			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+				if len(args) != 6 || args[0] != "get" || args[3] != "--ignore-not-found" {
+					t.Fatalf("unexpected kubectl args=%#v", args)
+				}
+				return readback, nil
+			}
+			volume := StorageVolume{
+				ID: "storage-absent", OperationID: "launch-alpha:storage", AccountID: "acct-alpha", WorkspaceID: "ws-alpha",
+				ProviderResourceID: "disk-absent", SizeGB: 10, Zone: "ap-guangzhou-3",
+			}
+			if _, err := provider.ReadStaticStorageBinding(context.Background(), volume); !errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+				t.Fatalf("static binding empty readback=%q err=%v", readback, err)
+			}
+		}
+	})
 }
 
 func TestTencentGatewaySecretReadbackDistinguishesAbsentConflictAndOwnerError(t *testing.T) {
