@@ -319,6 +319,15 @@ compute ownership continuation. Budget exhaustion records
 `unknown/manual_review`. Schema-v3 rows missing the new fields decode with zero
 authorization and cannot read or mutate until explicitly reviewed.
 
+A resource-billed Storage attempt already parked as `unknown/manual_review`
+resumes only through the existing operator Resume route and the same Launch
+Reconciler. The authorization is bound to the original `Max=1` attempt,
+idempotency key, and Fabric operation with zero mutation budget, one replay
+budget, and a finite typed read budget. Fabric reads before any Ensure call:
+`ready` advances read-only, `pending` consumes only bounded reads, and `absent`
+permits one same-key replay. Unknown, conflict, read failure, or identity drift
+does not persist the authorization or issue another CBS mutation.
+
 A resource-billed Runtime already parked as `unknown/manual_review` has one
 narrow operator recovery path in the same Reconciler. It accepts only the
 original `Max=1` attempt and exact idempotency identity with zero mutation and

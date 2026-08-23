@@ -1724,6 +1724,11 @@ func (client *tencentSDKClient) CreateStorageVolume(request Request, env map[str
 	created, err := client.nativeCbsClient.CreateDisks(create)
 	if err != nil {
 		response := sdkErrorResponse("tencent_create_cbs_failed", err)
+		if providerCode := safeTencentProviderErrorCode(err); providerCode != "" {
+			response.Message = providerCode
+			response.ProviderData["providerErrorCode"] = providerCode
+			response.ProviderData["providerErrorMessage"] = providerCode
+		}
 		response.StorageState = "unknown"
 		response.MutationCount = 1
 		return response

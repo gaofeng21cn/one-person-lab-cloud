@@ -3337,6 +3337,7 @@ type fakeNativeCbsAPI struct {
 	omitPriceResponse               bool
 	priceResponse                   *cbs2017.InquiryPriceCreateDisksResponse
 	priceErr                        error
+	createErr                       error
 	priceRequestID                  string
 	diskID                          string
 	diskName                        string
@@ -3648,6 +3649,9 @@ func TestTencentSDKRecoveryStorageReplayNeverCreatesSecondCBS(t *testing.T) {
 
 func (api *fakeNativeCbsAPI) CreateDisks(request *cbs2017.CreateDisksRequest) (*cbs2017.CreateDisksResponse, error) {
 	api.createDisksRequests = append(api.createDisksRequests, request)
+	if api.createErr != nil {
+		return nil, api.createErr
+	}
 	return &cbs2017.CreateDisksResponse{Response: &cbs2017.CreateDisksResponseParams{
 		DiskIdSet: []*string{common.StringPtr(firstNonEmpty(api.diskID, "disk-storage-alpha"))}, RequestId: common.StringPtr("req-create-cbs"),
 	}}, nil
@@ -4073,6 +4077,27 @@ func TestTencentSDKCreateStorageVolumeUsesOneMonthPrepaidCBSAndStableToken(t *te
 	if len(api.describeDisksRequests) != 6 || len(api.describeDisksRequests[2].DiskIds) != 1 || stringValue(api.describeDisksRequests[2].DiskIds[0]) != "disk-storage-alpha" ||
 		len(api.describeDisksRequests[5].DiskIds) != 1 || stringValue(api.describeDisksRequests[5].DiskIds[0]) != "disk-storage-alpha" {
 		t.Fatalf("create must read back the exact CBS disk: %#v", api.describeDisksRequests)
+	}
+}
+
+func TestTencentSDKCreateStorageVolumePreservesOnlySafeProviderErrorCode(t *testing.T) {
+	api := &fakeNativeCbsAPI{createErr: tcerrors.NewTencentCloudSDKError(
+		"ResourceInsufficient.DiskSoldOut", "secret-id=must-not-leak", "req-cbs-create-failed",
+	)}
+	client := &tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}
+	request := recoveryStorageRequest()
+	request.Action = "create_storage_volume"
+
+	response := client.CreateStorageVolume(request, map[string]string{})
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Ok || response.ErrorCode != "tencent_create_cbs_failed" || response.Message != "ResourceInsufficient.DiskSoldOut" ||
+		response.ProviderRequestId != "req-cbs-create-failed" || response.ProviderData["providerErrorCode"] != "ResourceInsufficient.DiskSoldOut" ||
+		response.ProviderData["providerErrorMessage"] != "ResourceInsufficient.DiskSoldOut" || response.StorageState != "unknown" || response.MutationCount != 1 ||
+		len(api.createDisksRequests) != 1 || strings.Contains(string(encoded), "must-not-leak") {
+		t.Fatalf("unsafe or incomplete CBS failure response=%#v", response)
 	}
 }
 
