@@ -695,7 +695,11 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
 	}
 	if stored.Status == "succeeded" {
-		return s.readWorkspaceLaunchStage(ctx, input, stored, record)
+		observed, readErr := s.readWorkspaceLaunchStage(ctx, input, stored, record)
+		if readErr != nil || input.Binding.Stage != "ensure_compute_allocation" ||
+			observed.State != "pending" || observed.Reason != "ownership_pending" {
+			return observed, readErr
+		}
 	}
 	if !claimed {
 		observed, readErr := s.readWorkspaceLaunchStage(ctx, input, stored, record)

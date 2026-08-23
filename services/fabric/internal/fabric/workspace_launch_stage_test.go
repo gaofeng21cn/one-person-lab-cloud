@@ -331,6 +331,17 @@ func TestWorkspaceLaunchEnsureExistingRecordReadsBeforeIdempotentReplay(t *testi
 	if err != nil || again.State != "ready" || provider.ensureCalls != 1 {
 		t.Fatalf("ready replay repeated provider mutation: result=%#v ensures=%d err=%v", again, provider.ensureCalls, err)
 	}
+
+	provider.readErr = ErrWorkspaceLaunchOwnershipPending
+	recovered, err := service.EnsureWorkspaceLaunchStage(context.Background(), input)
+	if err != nil || recovered.State != "ready" || recovered.Resources.ComputeBindingRef != input.Binding.FabricOperationID || provider.ensureCalls != 2 {
+		t.Fatalf("succeeded stage ownership pending did not reach same-key correction: result=%#v ensures=%d err=%v", recovered, provider.ensureCalls, err)
+	}
+	provider.readErr = nil
+	ready, err := service.EnsureWorkspaceLaunchStage(context.Background(), input)
+	if err != nil || ready.State != "ready" || provider.ensureCalls != 2 {
+		t.Fatalf("corrected succeeded stage repeated provider mutation: result=%#v ensures=%d err=%v", ready, provider.ensureCalls, err)
+	}
 }
 
 func TestWorkspaceLaunchStageRejectsEveryPreflightIdentityDrift(t *testing.T) {
