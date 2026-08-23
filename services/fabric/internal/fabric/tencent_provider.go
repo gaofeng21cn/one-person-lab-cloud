@@ -34,6 +34,7 @@ const (
 	tencentProviderProfileEnv        = "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"
 	tencentProviderRegionEnv         = "OPL_TENCENT_REGION"
 	tencentCBSCSIDriver              = "com.tencent.cloud.csi.cbs"
+	tencentCBSFilesystem             = "ext4"
 	tencentCBSCSITopologyZoneKey     = "topology.com.tencent.cloud.csi.cbs/zone"
 	tencentWorkspaceRuntimeWebUIPort = 3000
 )
@@ -1043,7 +1044,7 @@ func (p *TencentProvider) CreateStorageAttachment(ctx context.Context, input Sto
 	expectedCapacity := fmt.Sprintf("%dGi", volume.SizeGB)
 	expectedNodeAffinity := map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": tencentCBSCSITopologyZoneKey, "operator": "In", "values": []any{volume.Zone}}}}}}}
 	if stringValue(nested(pvc, "status", "phase")) != "Bound" || stringValue(pvcSpec["volumeName"]) != pvName ||
-		stringValue(nested(pv, "spec", "csi", "driver")) != tencentCBSCSIDriver || stringValue(nested(pv, "spec", "csi", "volumeHandle")) != volume.ProviderResourceID ||
+		stringValue(nested(pv, "spec", "csi", "driver")) != tencentCBSCSIDriver || stringValue(nested(pv, "spec", "csi", "volumeHandle")) != volume.ProviderResourceID || stringValue(nested(pv, "spec", "csi", "fsType")) != tencentCBSFilesystem ||
 		stringValue(pvSpec["persistentVolumeReclaimPolicy"]) != "Retain" || stringValue(pvStorageClass) != "" || !pvcStorageClassSet || stringValue(pvcStorageClass) != "" ||
 		len(pvAccessModes) != 1 || stringValue(pvAccessModes[0]) != "ReadWriteOnce" || len(pvcAccessModes) != 1 || stringValue(pvcAccessModes[0]) != "ReadWriteOnce" ||
 		stringValue(nested(pv, "spec", "capacity", "storage")) != expectedCapacity || stringValue(nested(pvc, "spec", "resources", "requests", "storage")) != expectedCapacity ||
@@ -1105,7 +1106,7 @@ func staticCBSManifest(volume StorageVolume) []byte {
 		"spec": map[string]any{
 			"capacity": map[string]any{"storage": fmt.Sprintf("%dGi", volume.SizeGB)}, "accessModes": []string{"ReadWriteOnce"},
 			"persistentVolumeReclaimPolicy": "Retain", "storageClassName": "",
-			"csi":          map[string]any{"driver": tencentCBSCSIDriver, "volumeHandle": volume.ProviderResourceID},
+			"csi":          map[string]any{"driver": tencentCBSCSIDriver, "volumeHandle": volume.ProviderResourceID, "fsType": tencentCBSFilesystem},
 			"nodeAffinity": map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": tencentCBSCSITopologyZoneKey, "operator": "In", "values": []string{volume.Zone}}}}}}},
 		},
 	}
