@@ -416,6 +416,7 @@ func (p *TencentProvider) ReadStaticStorageBinding(ctx context.Context, volume S
 	pvcAccessModes, _ := pvcSpec["accessModes"].([]any)
 	if stringValue(nested(pv, "spec", "csi", "driver")) != tencentCBSCSIDriver ||
 		stringValue(nested(pv, "spec", "csi", "volumeHandle")) != volume.ProviderResourceID ||
+		stringValue(nested(pv, "spec", "csi", "fsType")) != tencentCBSFilesystem ||
 		stringValue(pvSpec["persistentVolumeReclaimPolicy"]) != "Retain" || stringValue(pvSpec["storageClassName"]) != "" ||
 		stringValue(pvcSpec["storageClassName"]) != "" || stringValue(pvcSpec["volumeName"]) != pvName ||
 		len(pvAccessModes) != 1 || stringValue(pvAccessModes[0]) != "ReadWriteOnce" || len(pvcAccessModes) != 1 || stringValue(pvcAccessModes[0]) != "ReadWriteOnce" ||

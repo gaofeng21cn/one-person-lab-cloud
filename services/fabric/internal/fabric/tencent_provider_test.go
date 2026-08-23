@@ -3124,7 +3124,7 @@ func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testi
 			"kind": "PersistentVolume", "metadata": map[string]any{"name": "opl-storage-alpha-pv", "labels": labels},
 			"spec": map[string]any{
 				"capacity": map[string]any{"storage": "10Gi"}, "accessModes": []any{"ReadWriteOnce"}, "persistentVolumeReclaimPolicy": "Retain", "storageClassName": "",
-				"csi":          map[string]any{"driver": tencentCBSCSIDriver, "volumeHandle": "disk-storage-alpha"},
+				"csi":          map[string]any{"driver": tencentCBSCSIDriver, "volumeHandle": "disk-storage-alpha", "fsType": tencentCBSFilesystem},
 				"nodeAffinity": map[string]any{"required": map[string]any{"nodeSelectorTerms": []any{map[string]any{"matchExpressions": []any{map[string]any{"key": tencentCBSCSITopologyZoneKey, "operator": "In", "values": []any{"ap-guangzhou-3"}}}}}}},
 			},
 		}
@@ -3190,6 +3190,12 @@ func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testi
 		}},
 		{name: "PV wrong disk", configure: func(current *fixture) {
 			current.items[0].(map[string]any)["spec"].(map[string]any)["csi"].(map[string]any)["volumeHandle"] = "disk-other"
+		}},
+		{name: "PV missing filesystem", configure: func(current *fixture) {
+			delete(current.items[0].(map[string]any)["spec"].(map[string]any)["csi"].(map[string]any), "fsType")
+		}},
+		{name: "PV wrong filesystem", configure: func(current *fixture) {
+			current.items[0].(map[string]any)["spec"].(map[string]any)["csi"].(map[string]any)["fsType"] = "xfs"
 		}},
 		{name: "PV wrong zone", configure: func(current *fixture) {
 			current.items[0].(map[string]any)["spec"].(map[string]any)["nodeAffinity"].(map[string]any)["required"].(map[string]any)["nodeSelectorTerms"].([]any)[0].(map[string]any)["matchExpressions"].([]any)[0].(map[string]any)["values"] = []any{"ap-guangzhou-4"}
@@ -3704,7 +3710,7 @@ func TestTencentProviderCreatesStaticRetainedCBSVolumeInComputeZone(t *testing.T
 	}
 	items := manifest["items"].([]any)
 	pv, pvc := items[0].(map[string]any), items[1].(map[string]any)
-	if pv["kind"] != "PersistentVolume" || nested(pv, "spec", "csi", "driver") != tencentCBSCSIDriver || nested(pv, "spec", "csi", "volumeHandle") != "disk-storage-alpha" {
+	if pv["kind"] != "PersistentVolume" || nested(pv, "spec", "csi", "driver") != tencentCBSCSIDriver || nested(pv, "spec", "csi", "volumeHandle") != "disk-storage-alpha" || nested(pv, "spec", "csi", "fsType") != tencentCBSFilesystem {
 		t.Fatalf("static PV must bind the exact CBS disk: %#v", pv)
 	}
 	affinityExpression := nested(pv, "spec", "nodeAffinity", "required", "nodeSelectorTerms").([]any)[0].(map[string]any)["matchExpressions"].([]any)[0].(map[string]any)
@@ -4434,33 +4440,50 @@ func TestTencentProviderStagedStorageRejectsCBSZoneDrift(t *testing.T) {
 	}
 }
 
-func TestTencentProviderStagedStorageRejectsStaticBindingLabelDriftWithoutApply(t *testing.T) {
-	provider := NewTencentProvider()
+func TestTencentProviderStagedStorageRejectsStaticBindingDriftWithoutApply(t *testing.T) {
 	volume := StorageVolume{
 		ID: "storage-label-drift", AccountID: "acct-staged", WorkspaceID: "workspace-staged", Provider: "tencent-tke", ProviderResourceID: "disk-label-drift", SizeGB: 10, Zone: "ap-guangzhou-3",
 		CostTags: oplCostTags("acct-staged", "workspace-staged", "storage-label-drift", "launch-staged:storage"), ProviderData: map[string]string{"pvName": "opl-storage-label-drift-pv", "pvcName": "opl-storage-label-drift-data", "region": "ap-guangzhou"},
 	}
-	manifest := map[string]any{}
-	if err := json.Unmarshal(staticCBSManifest(volume), &manifest); err != nil {
-		t.Fatal(err)
-	}
-	items := manifest["items"].([]any)
-	for _, item := range items {
-		resource := item.(map[string]any)
-		resource["metadata"].(map[string]any)["labels"].(map[string]any)["oplcloud.cn/workspace-id"] = "workspace-other"
-	}
-	items[1].(map[string]any)["status"] = map[string]any{"phase": "Bound"}
-	applyCalls := 0
-	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
-		if slices.Equal(args, []string{"apply", "-f", "-"}) {
-			applyCalls++
-			return nil, nil
-		}
-		return mustJSON(manifest), nil
-	}
-	readback, err := provider.ReadStaticStorageBinding(context.Background(), volume)
-	if err == nil || readback.Status == "ready" || applyCalls != 0 {
-		t.Fatalf("label drift must fail closed without apply: readback=%#v err=%v applyCalls=%d", readback, err, applyCalls)
+	for _, testCase := range []struct {
+		name   string
+		mutate func([]any)
+	}{
+		{name: "labels", mutate: func(items []any) {
+			for _, item := range items {
+				resource := item.(map[string]any)
+				resource["metadata"].(map[string]any)["labels"].(map[string]any)["oplcloud.cn/workspace-id"] = "workspace-other"
+			}
+		}},
+		{name: "missing filesystem", mutate: func(items []any) {
+			delete(items[0].(map[string]any)["spec"].(map[string]any)["csi"].(map[string]any), "fsType")
+		}},
+		{name: "wrong filesystem", mutate: func(items []any) {
+			items[0].(map[string]any)["spec"].(map[string]any)["csi"].(map[string]any)["fsType"] = "xfs"
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			provider := NewTencentProvider()
+			manifest := map[string]any{}
+			if err := json.Unmarshal(staticCBSManifest(volume), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			items := manifest["items"].([]any)
+			testCase.mutate(items)
+			items[1].(map[string]any)["status"] = map[string]any{"phase": "Bound"}
+			applyCalls := 0
+			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+				if slices.Equal(args, []string{"apply", "-f", "-"}) {
+					applyCalls++
+					return nil, nil
+				}
+				return mustJSON(manifest), nil
+			}
+			readback, err := provider.ReadStaticStorageBinding(context.Background(), volume)
+			if err == nil || readback.Status == "ready" || applyCalls != 0 {
+				t.Fatalf("binding drift must fail closed without apply: readback=%#v err=%v applyCalls=%d", readback, err, applyCalls)
+			}
+		})
 	}
 }
 
