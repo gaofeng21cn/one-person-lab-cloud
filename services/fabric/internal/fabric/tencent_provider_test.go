@@ -899,6 +899,7 @@ func successfulPredebitIAMResponse() provisionerResponse {
 		ProviderData: map[string]string{
 			"proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
 			"requiredActions": "tag:TagResources,tag:ModifyResourcesTagValue", "policyDigest": "sha256:" + strings.Repeat("b", 64),
+			"requiredPolicies": "QcloudCVMFinanceAccess",
 		},
 	}
 }
@@ -1030,6 +1031,9 @@ func TestTencentProviderMonthlyStoragePreflightNeverChecksNodePatchRBAC(t *testi
 		return nil, nil
 	}
 	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action == "predebit_iam_gate" {
+			return successfulPredebitIAMResponse(), nil
+		}
 		if request.Action != "storage_preflight" {
 			t.Fatalf("request=%#v", request)
 		}
@@ -1042,6 +1046,26 @@ func TestTencentProviderMonthlyStoragePreflightNeverChecksNodePatchRBAC(t *testi
 	result, err := provider.MonthlyPreflight(context.Background(), MonthlyPreflightInput{ResourceType: "storage", PackageID: "basic", SizeGB: 10, Zone: "na-siliconvalley-1"})
 	if err != nil || !result.Available {
 		t.Fatalf("preflight=%#v err=%v", result, err)
+	}
+}
+
+func TestTencentProviderMonthlyStoragePreflightRequiresFinancePolicyBeforeCBSChecks(t *testing.T) {
+	t.Setenv("RUN_TENCENT_CREATE_RELEASE_EXECUTION", "1")
+	provider := NewTencentProvider()
+	storageCalls := 0
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action == "predebit_iam_gate" {
+			response := successfulPredebitIAMResponse()
+			delete(response.ProviderData, "requiredPolicies")
+			return response, nil
+		}
+		storageCalls++
+		return provisionerResponse{}, errors.New("storage preflight must remain blocked")
+	}
+
+	result, err := provider.MonthlyPreflight(context.Background(), MonthlyPreflightInput{ResourceType: "storage", PackageID: "basic", SizeGB: 10, Zone: "na-siliconvalley-1"})
+	if err == nil || err.Error() != "predebit_iam_provider_mismatch" || result.Available || storageCalls != 0 {
+		t.Fatalf("preflight=%#v err=%v storageCalls=%d", result, err, storageCalls)
 	}
 }
 
@@ -1188,7 +1212,7 @@ func TestTencentProviderMonthlyPreflightReportEvaluatesBasicAndPro(t *testing.T)
 			}
 		}
 	}
-	wantCalls := []string{"basic:predebit_iam_gate", "basic:capacity_preflight", "basic:storage_preflight", "pro:predebit_iam_gate", "pro:capacity_preflight", "pro:storage_preflight"}
+	wantCalls := []string{"basic:predebit_iam_gate", "basic:capacity_preflight", "basic:storage_preflight", "pro:capacity_preflight", "pro:storage_preflight"}
 	if !reflect.DeepEqual(calls, wantCalls) {
 		t.Fatalf("calls=%#v want=%#v", calls, wantCalls)
 	}
@@ -1199,6 +1223,43 @@ func TestTencentProviderMonthlyPreflightReportEvaluatesBasicAndPro(t *testing.T)
 	for _, forbidden := range []string{"configured", "cls-production", "providerRequestId", "providerRequestIds", "rawResponse", "wallet", "userData"} {
 		if strings.Contains(encoded, forbidden) {
 			t.Fatalf("report leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestTencentProviderMonthlyPreflightReportSharesIAMFailureAcrossAllPackages(t *testing.T) {
+	t.Setenv("TENCENTCLOUD_SECRET_ID", "configured")
+	t.Setenv("TENCENTCLOUD_SECRET_KEY", "configured")
+	t.Setenv("TENCENTCLOUD_REGION", "na-siliconvalley")
+	t.Setenv("TENCENT_DEPLOY_CLUSTER_ID", "cls-production")
+	provider := NewTencentProvider()
+	iamCalls, providerCalls := 0, 0
+	provider.kubectl = func(context.Context, []string, []byte) ([]byte, error) {
+		t.Fatal("failed IAM report reached Kubernetes RBAC")
+		return nil, nil
+	}
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action == "predebit_iam_gate" {
+			iamCalls++
+			return provisionerResponse{OK: false, ErrorCode: "predebit_iam_finance_policy_missing", MutationCount: 0}, nil
+		}
+		providerCalls++
+		return provisionerResponse{}, errors.New("provider check must remain blocked")
+	}
+
+	report, err := provider.MonthlyPreflightReport(context.Background(), MonthlyPreflightReportInput{Zone: "na-siliconvalley-1"})
+	if err != nil || report.Status != "failed" || iamCalls != 1 || providerCalls != 0 || len(report.Packages) != 2 {
+		t.Fatalf("report=%#v iamCalls=%d providerCalls=%d err=%v", report, iamCalls, providerCalls, err)
+	}
+	for _, packageReport := range report.Packages {
+		if packageReport.Status != "failed" || len(packageReport.Items) != 10 || packageReport.Items[0].Stage != "tencent_predebit_iam" ||
+			packageReport.Items[0].Status != "failed" || packageReport.Items[0].ErrorCode != "predebit_iam_finance_policy_missing" {
+			t.Fatalf("package report=%#v", packageReport)
+		}
+		for _, item := range packageReport.Items[1:] {
+			if item.Status != "blocked" || !slices.Equal(item.BlockedBy, []string{"tencent_predebit_iam"}) {
+				t.Fatalf("provider stage escaped shared IAM failure: %#v", item)
+			}
 		}
 	}
 }

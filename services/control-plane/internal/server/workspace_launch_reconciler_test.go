@@ -400,6 +400,39 @@ func workspaceLaunchUnknownStorageManualReviewRow(t *testing.T) map[string]any {
 	return row
 }
 
+func workspaceLaunchUnknownStorageAfterFailedReplayRow(t *testing.T) map[string]any {
+	t.Helper()
+	row := workspaceLaunchUnknownStorageManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := workspaceLaunchUnknownStorageReplayAuthorization(t, row, "resume-unknown-storage-failed-replay")
+	completedAt := "2026-08-23T01:11:16Z"
+	operation.ResumeAuthorization = &previous
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	attempt := operation.Attempts[operation.Stage]
+	attempt.MaxPendingReadbacks = previous.ReadbacksAtAuthorization + previous.AuthoritativeReadBudget
+	operation.Attempts[operation.Stage] = attempt
+	operation.IdempotentReplayClaims[operation.Stage] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: previous.AuthorizationID, Stage: operation.Stage, IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	operation.Version++
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func workspaceLaunchFailedStorageReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
+	t.Helper()
+	authorization := workspaceLaunchUnknownStorageReplayAuthorization(t, row, authorizationID)
+	authorization.Reason = "authoritative read may confirm or replay the original storage attempt"
+	return authorization
+}
+
 func workspaceLaunchUnknownComputeContinuationAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
 	t.Helper()
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -590,6 +623,168 @@ func TestWorkspaceLaunchUnknownStorageRecoveryUsesAuthoritativeClassification(t 
 			_, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
 			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 1 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {
 				t.Fatalf("unproven storage changed operation: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceLaunchFailedStorageReplayConvergesReadyReadOnly(t *testing.T) {
+	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := *operation.ResumeAuthorization
+	claimBefore := operation.IdempotentReplayClaims["storage"]
+	store := &workspaceLaunchUnitStore{row: row}
+	adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"storage": true}, replayableStages: map[string]bool{"storage": true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	authorization := workspaceLaunchFailedStorageReplayAuthorization(t, row, "resume-failed-storage-ready-read")
+
+	got, err := reconciler.Resume(context.Background(), operation.ID, authorization)
+	attempt := got.Attempts["storage"]
+	claimAfter := got.IdempotentReplayClaims["storage"]
+	if err != nil || got.Stage != "attachment" || got.Status != "pending" || attempt.Attempted != 1 || attempt.Confirmed != 1 ||
+		attempt.Unknown != 0 || attempt.Status != "confirmed" || attempt.IdempotencyKey != operation.Attempts["storage"].IdempotencyKey ||
+		adapter.reads != 1 || adapter.mutations != 0 || got.ResumeAuthorization == nil || *got.ResumeAuthorization != authorization ||
+		got.ResumeAuthorizationConsumedAt == "" || claimAfter != claimBefore || len(got.ConsumedResumeAuthorizations) != 1 ||
+		got.ConsumedResumeAuthorizations[0].Authorization != previous {
+		t.Fatalf("failed storage replay did not converge ready read-only: operation=%s attempt=%#v claim=%#v reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claimAfter, adapter.reads, adapter.mutations, err)
+	}
+
+	readsBefore, persistedBefore := adapter.reads, stringValue(store.row["result"])
+	replayed, err := reconciler.Resume(context.Background(), operation.ID, authorization)
+	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("consumed storage ready-read repeated work: operation=%s reads=%d/%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchFailedStorageReplayReadyReadFailsClosed(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		read workspaceLaunchUnitReadResult
+	}{
+		{name: "pending", read: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}},
+		{name: "unknown", read: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}}},
+		{name: "read error", read: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err: errors.New("read failed")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+			before := stringValue(row["result"])
+			store := &workspaceLaunchUnitStore{row: row}
+			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"storage": {test.read}}, replayableStages: map[string]bool{"storage": true}}
+			authorization := workspaceLaunchFailedStorageReplayAuthorization(t, row, "resume-failed-storage-"+strings.ReplaceAll(test.name, " ", "-"))
+
+			_, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
+			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 1 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {
+				t.Fatalf("unproven failed storage replay changed operation: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceLaunchFailedStorageReplayAuthoritativeAbsentReplaysOriginalKeyOnce(t *testing.T) {
+	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := *operation.ResumeAuthorization
+	previousClaim := operation.IdempotentReplayClaims["storage"]
+	store := &workspaceLaunchUnitStore{row: row}
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"storage": true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	authorization := workspaceLaunchFailedStorageReplayAuthorization(t, row, "resume-failed-storage-authoritative-absent")
+
+	got, err := reconciler.Resume(context.Background(), operation.ID, authorization)
+	attempt := got.Attempts["storage"]
+	claim := got.IdempotentReplayClaims["storage"]
+	if err != nil || got.Stage != "attachment" || got.Status != "pending" || attempt.Attempted != 1 || attempt.Max != 1 ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != operation.Attempts["storage"].IdempotencyKey || adapter.mutationsByStage["storage"] != 1 ||
+		adapter.mutationIdempotencyKey != attempt.IdempotencyKey || claim.AuthorizationID != authorization.AuthorizationID ||
+		claim.AuthorizationID == previousClaim.AuthorizationID || claim.Status != "succeeded" || got.ResumeAuthorizationConsumedAt == "" ||
+		len(got.ConsumedResumeAuthorizations) != 1 || got.ConsumedResumeAuthorizations[0].Authorization != previous {
+		t.Fatalf("authoritative absent storage did not replay the original key once: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	readsBefore, mutationsBefore, persistedBefore := adapter.reads, adapter.mutations, stringValue(store.row["result"])
+	replayed, err := reconciler.Resume(context.Background(), operation.ID, authorization)
+	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != mutationsBefore ||
+		stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("consumed storage absent recovery repeated work: operation=%s reads=%d/%d mutations=%d/%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
+	}
+}
+
+func TestWorkspaceLaunchFailedStorageReplayCannotBeAuthorizedAgain(t *testing.T) {
+	row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+	store := &workspaceLaunchUnitStore{row: row}
+	unknown := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"storage": {{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}, unknown}},
+		replayableStages:   map[string]bool{"storage": true},
+	}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	first := workspaceLaunchFailedStorageReplayAuthorization(t, row, "resume-failed-storage-final-replay")
+
+	parked, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, first)
+	if err != nil || parked.Status != "manual_review" || parked.Stage != "storage" ||
+		parked.idempotentReplayAuthorizationCount("storage") != 2 || adapter.reads != 2 || adapter.mutations != 0 {
+		t.Fatalf("final storage replay did not park after unknown readback: operation=%s replayAuthorizations=%d reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(parked), parked.idempotentReplayAuthorizationCount("storage"), adapter.reads, adapter.mutations, err)
+	}
+
+	persistedBefore := stringValue(store.row["result"])
+	second := workspaceLaunchFailedStorageReplayAuthorization(t, store.row, "resume-failed-storage-forbidden-third-replay")
+	_, err = reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, second)
+	if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 2 || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("exhausted storage replay accepted another authorization: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchFailedStorageReplayReadyReadRequiresExactEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*workspaceLaunchReconcileOperation, *workspaceLaunchResumeAuthorization)
+	}{
+		{name: "claim not failed", mutate: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			claim := operation.IdempotentReplayClaims["storage"]
+			claim.Status = "succeeded"
+			operation.IdempotentReplayClaims["storage"] = claim
+		}},
+		{name: "claim key drift", mutate: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			claim := operation.IdempotentReplayClaims["storage"]
+			claim.IdempotencyKey += "-drift"
+			operation.IdempotentReplayClaims["storage"] = claim
+		}},
+		{name: "previous authorization unconsumed", mutate: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			operation.ResumeAuthorizationConsumedAt = ""
+		}},
+		{name: "missing replay budget", mutate: func(_ *workspaceLaunchReconcileOperation, authorization *workspaceLaunchResumeAuthorization) {
+			authorization.IdempotentReplayBudget = 0
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := workspaceLaunchUnknownStorageAfterFailedReplayRow(t)
+			operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			authorization := workspaceLaunchFailedStorageReplayAuthorization(t, row, "resume-failed-storage-evidence-"+strings.ReplaceAll(test.name, " ", "-"))
+			test.mutate(&operation, &authorization)
+			row, err = workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &workspaceLaunchUnitStore{row: row}
+			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"storage": true}, replayableStages: map[string]bool{"storage": true}}
+			_, err = NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), operation.ID, authorization)
+			if err == nil || adapter.reads != 0 || adapter.mutations != 0 {
+				t.Fatalf("drifted failed storage replay evidence reached owner: reads=%d mutations=%d err=%v", adapter.reads, adapter.mutations, err)
 			}
 		})
 	}

@@ -309,14 +309,28 @@ func (client *fakePredebitIAMClient) PredebitIAMGate(_ Request, _ map[string]str
 
 type fakePredebitTagAPI struct {
 	identityCalls int
+	financeCalls  int
 	tagCalls      int
 	identity      map[string]string
 	identityErr   error
+	financeActive *bool
+	financeErr    error
 }
 
 func (client *fakePredebitTagAPI) CallerIdentity() (map[string]string, string, error) {
 	client.identityCalls++
 	return maps.Clone(client.identity), "req-sts-live", client.identityErr
+}
+
+func (client *fakePredebitTagAPI) ActiveFinancePolicy(_ string) (bool, string, error) {
+	client.financeCalls++
+	if client.financeErr != nil {
+		return false, "", client.financeErr
+	}
+	if client.financeActive != nil {
+		return *client.financeActive, "req-cam-live", nil
+	}
+	return true, "req-cam-live", nil
 }
 
 func (client *fakePredebitTagAPI) SetCVMTag(_, _, _ string, _ bool) (string, error) {
@@ -392,7 +406,7 @@ func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing
 		"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789",
 	}
 	attestation, err := json.Marshal(map[string]any{
-		"schemaVersion": 1,
+		"schemaVersion": 3,
 		"proofMode":     "production_runner_deployment_attestation",
 		"releaseSha":    strings.Repeat("a", 40),
 		"identity":      identity,
@@ -400,7 +414,8 @@ func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing
 			"tag:TagResources",
 			"tag:ModifyResourcesTagValue",
 		},
-		"policyDigest": "sha256:" + strings.Repeat("b", 64),
+		"requiredPolicies": []string{"QcloudCVMFinanceAccess"},
+		"policyDigest":     "sha256:" + strings.Repeat("b", 64),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -413,8 +428,8 @@ func TestTencentSDKPredebitIAMGateReadsLiveIdentityWithoutTagMutation(t *testing
 
 	response := handleWithClient(Request{Action: "predebit_iam_gate"}, env, client)
 
-	if !response.Ok || response.Status != "ready" || response.ProviderRequestId != "req-sts-live" || response.MutationCount != 0 || tagAPI.identityCalls != 1 || tagAPI.tagCalls != 0 {
-		t.Fatalf("pre-debit IAM response=%#v identityCalls=%d tagCalls=%d", response, tagAPI.identityCalls, tagAPI.tagCalls)
+	if !response.Ok || response.Status != "ready" || response.ProviderRequestId != "req-cam-live" || response.MutationCount != 0 || tagAPI.identityCalls != 1 || tagAPI.financeCalls != 1 || tagAPI.tagCalls != 0 {
+		t.Fatalf("pre-debit IAM response=%#v identityCalls=%d financeCalls=%d tagCalls=%d", response, tagAPI.identityCalls, tagAPI.financeCalls, tagAPI.tagCalls)
 	}
 }
 
@@ -425,9 +440,10 @@ func TestTencentSDKPredebitIAMGateRejectsLiveIdentityDrift(t *testing.T) {
 	liveIdentity := maps.Clone(attestedIdentity)
 	liveIdentity["userId"] = "987654321"
 	attestation, err := json.Marshal(map[string]any{
-		"schemaVersion": 1, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
+		"schemaVersion": 3, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
 		"identity": attestedIdentity, "requiredActions": []string{"tag:TagResources", "tag:ModifyResourcesTagValue"},
-		"policyDigest": "sha256:" + strings.Repeat("b", 64),
+		"requiredPolicies": []string{"QcloudCVMFinanceAccess"},
+		"policyDigest":     "sha256:" + strings.Repeat("b", 64),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -448,20 +464,24 @@ func TestTencentSDKPredebitIAMGateRejectsMalformedDeploymentAttestationBeforeSTS
 	identity := `{"type":"CAMUser","principalId":"100000000001:123456789","accountId":"100000000001","userId":"123456789"}`
 	releaseSHA := strings.Repeat("a", 40)
 	validActions := `"requiredActions":["tag:TagResources","tag:ModifyResourcesTagValue"]`
+	validPolicies := `"requiredPolicies":["QcloudCVMFinanceAccess"]`
 	validDigest := `"policyDigest":"sha256:` + strings.Repeat("b", 64) + `"`
+	validFields := validActions + `,` + validPolicies + `,` + validDigest
 	for _, tc := range []struct {
 		name        string
 		attestation string
 		errorCode   string
 	}{
 		{name: "missing", attestation: "", errorCode: "predebit_iam_attestation_missing"},
-		{name: "unknown field", attestation: `{"schemaVersion":1,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,` + validDigest + `,"extra":true}`, errorCode: "predebit_iam_attestation_invalid"},
-		{name: "wrong schema", attestation: `{"schemaVersion":2,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
-		{name: "wrong proof mode", attestation: `{"schemaVersion":1,"proofMode":"online_permission_simulation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
-		{name: "release drift", attestation: `{"schemaVersion":1,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + strings.Repeat("c", 40) + `","identity":` + identity + `,` + validActions + `,` + validDigest + `}`, errorCode: "predebit_iam_release_mismatch"},
-		{name: "action order drift", attestation: `{"schemaVersion":1,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,"requiredActions":["tag:ModifyResourcesTagValue","tag:TagResources"],` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
-		{name: "extra action", attestation: `{"schemaVersion":1,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,"requiredActions":["tag:TagResources","tag:ModifyResourcesTagValue","cvm:RunInstances"],` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
-		{name: "uppercase digest", attestation: `{"schemaVersion":1,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,"policyDigest":"sha256:` + strings.Repeat("B", 64) + `"}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "unknown field", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validFields + `,"extra":true}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "wrong schema", attestation: `{"schemaVersion":2,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validFields + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "wrong proof mode", attestation: `{"schemaVersion":3,"proofMode":"online_permission_simulation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validFields + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "release drift", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + strings.Repeat("c", 40) + `","identity":` + identity + `,` + validFields + `}`, errorCode: "predebit_iam_release_mismatch"},
+		{name: "action order drift", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,"requiredActions":["tag:ModifyResourcesTagValue","tag:TagResources"],` + validPolicies + `,` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "extra action", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,"requiredActions":["tag:TagResources","tag:ModifyResourcesTagValue","cvm:RunInstances"],` + validPolicies + `,` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "missing finance policy", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "wrong finance policy", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,"requiredPolicies":["QcloudFinanceFullAccess"],` + validDigest + `}`, errorCode: "predebit_iam_attestation_invalid"},
+		{name: "uppercase digest", attestation: `{"schemaVersion":3,"proofMode":"production_runner_deployment_attestation","releaseSha":"` + releaseSHA + `","identity":` + identity + `,` + validActions + `,` + validPolicies + `,"policyDigest":"sha256:` + strings.Repeat("B", 64) + `"}`, errorCode: "predebit_iam_attestation_invalid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := protectedResourceEnv()
@@ -483,9 +503,10 @@ func TestTencentSDKPredebitIAMGateFailsClosedOnSTSReadError(t *testing.T) {
 		"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789",
 	}
 	attestation, err := json.Marshal(map[string]any{
-		"schemaVersion": 1, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
+		"schemaVersion": 3, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
 		"identity": identity, "requiredActions": []string{"tag:TagResources", "tag:ModifyResourcesTagValue"},
-		"policyDigest": "sha256:" + strings.Repeat("b", 64),
+		"requiredPolicies": []string{"QcloudCVMFinanceAccess"},
+		"policyDigest":     "sha256:" + strings.Repeat("b", 64),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -499,6 +520,38 @@ func TestTencentSDKPredebitIAMGateFailsClosedOnSTSReadError(t *testing.T) {
 
 	if response.Ok || response.ErrorCode != "predebit_iam_sts_failed" || strings.Contains(response.Message, "sts unavailable") || response.MutationCount != 0 || tagAPI.identityCalls != 1 || tagAPI.tagCalls != 0 {
 		t.Fatalf("pre-debit IAM response=%#v identityCalls=%d tagCalls=%d", response, tagAPI.identityCalls, tagAPI.tagCalls)
+	}
+}
+
+func TestTencentSDKPredebitIAMGateFailsClosedOnLiveFinancePolicy(t *testing.T) {
+	identity := map[string]string{
+		"type": "CAMUser", "principalId": "100000000001:123456789", "accountId": "100000000001", "userId": "123456789",
+	}
+	attestation, err := json.Marshal(map[string]any{
+		"schemaVersion": 3, "proofMode": "production_runner_deployment_attestation", "releaseSha": strings.Repeat("a", 40),
+		"identity": identity, "requiredActions": []string{"tag:TagResources", "tag:ModifyResourcesTagValue"},
+		"requiredPolicies": []string{"QcloudCVMFinanceAccess"}, "policyDigest": "sha256:" + strings.Repeat("b", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := protectedResourceEnv()
+	env["OPL_RELEASE_SHA"] = strings.Repeat("a", 40)
+	env["OPL_TENCENT_PREDEBIT_IAM_ATTESTATION"] = string(attestation)
+	missing := false
+	for _, test := range []struct {
+		name, errorCode string
+		api             *fakePredebitTagAPI
+	}{
+		{name: "missing", errorCode: "predebit_iam_finance_policy_missing", api: &fakePredebitTagAPI{identity: identity, financeActive: &missing}},
+		{name: "read error", errorCode: "predebit_iam_finance_policy_read_failed", api: &fakePredebitTagAPI{identity: identity, financeErr: errors.New("cam unavailable")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := handleWithClient(Request{Action: "predebit_iam_gate"}, env, &tencentSDKClient{nativeTagClient: test.api})
+			if response.Ok || response.ErrorCode != test.errorCode || response.MutationCount != 0 || test.api.identityCalls != 1 || test.api.financeCalls != 1 || test.api.tagCalls != 0 {
+				t.Fatalf("pre-debit IAM response=%#v identityCalls=%d financeCalls=%d tagCalls=%d", response, test.api.identityCalls, test.api.financeCalls, test.api.tagCalls)
+			}
+		})
 	}
 }
 
@@ -1185,6 +1238,45 @@ func TestTencentTagClientCreatesAndBindsMissingTagWithFullCVMQCS(t *testing.T) {
 		!strings.Contains(requests[1].body, `"ResourceList":["qcs::cvm:ap-guangzhou:uin/100000000001:instance/ins-alpha"]`) ||
 		!strings.Contains(requests[1].body, `"Tags":[{"TagKey":"opl_account_id","TagValue":"acct-alpha"}]`) {
 		t.Fatalf("requestID=%q requests=%#v", requestID, requests)
+	}
+}
+
+func TestTencentTagClientReadsExactActiveFinancePolicy(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		payload    string
+		wantActive bool
+		wantError  bool
+	}{
+		{name: "active system policy", payload: `{"Response":{"TotalNum":1,"List":[{"PolicyId":42,"PolicyName":"QcloudCVMFinanceAccess","PolicyType":"QCS","Deactived":0}],"RequestId":"req-cam"}}`, wantActive: true},
+		{name: "missing active state", payload: `{"Response":{"TotalNum":1,"List":[{"PolicyId":42,"PolicyName":"QcloudCVMFinanceAccess","PolicyType":"QCS"}],"RequestId":"req-cam"}}`},
+		{name: "custom lookalike", payload: `{"Response":{"TotalNum":1,"List":[{"PolicyId":42,"PolicyName":"QcloudCVMFinanceAccess","PolicyType":"User","Deactived":0}],"RequestId":"req-cam"}}`},
+		{name: "ambiguous", payload: `{"Response":{"TotalNum":2,"List":[{"PolicyId":42,"PolicyName":"QcloudCVMFinanceAccess","PolicyType":"QCS","Deactived":0},{"PolicyId":43,"PolicyName":"QcloudCVMFinanceAccess","PolicyType":"QCS","Deactived":0}],"RequestId":"req-cam"}}`, wantError: true},
+		{name: "missing total", payload: `{"Response":{"List":[],"RequestId":"req-cam"}}`, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var body string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				encoded, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body = string(encoded)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, test.payload)
+			}))
+			defer server.Close()
+			clientProfile := profile.NewClientProfile()
+			clientProfile.HttpProfile.Scheme = "http"
+			clientProfile.HttpProfile.Endpoint = strings.TrimPrefix(server.URL, "http://")
+			client := &tencentTagClient{policyClient: common.NewCommonClient(common.NewCredential("sid", "skey"), "ap-guangzhou", clientProfile)}
+
+			active, requestID, err := client.ActiveFinancePolicy("123456789")
+			if (err != nil) != test.wantError || active != test.wantActive || (!test.wantError && requestID != "req-cam") ||
+				!strings.Contains(body, `"TargetUin":123456789`) || !strings.Contains(body, `"Page":1`) || !strings.Contains(body, `"Rp":200`) {
+				t.Fatalf("active=%v requestID=%q err=%v body=%s", active, requestID, err, body)
+			}
+		})
 	}
 }
 

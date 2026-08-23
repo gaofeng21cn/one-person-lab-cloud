@@ -328,6 +328,18 @@ budget, and a finite typed read budget. Fabric reads before any Ensure call:
 permits one same-key replay. Unknown, conflict, read failure, or identity drift
 does not persist the authorization or issue another CBS mutation.
 
+After that same-key replay has a durable terminal `failed` claim and its
+administrator authorization is consumed, the existing Resume route accepts
+only a new zero-mutation, one-replay, three-read authorization bound to the
+same Storage attempt and identity. The Reconciler first performs one typed
+Fabric read: exact `ready` confirms the original attempt without Ensure;
+authoritative `absent` replaces only the failed claim and permits one Ensure
+with the original idempotency key. `pending`, `unknown`, read failure, or
+identity drift returns conflict without persistence or Ensure. This is a
+continuation of the original Launch, not another workflow or operation. Its
+authorization becomes the final replay grant for that Storage attempt; durable
+authorization history rejects a third grant even if readback is inconclusive.
+
 A resource-billed Runtime already parked as `unknown/manual_review` has one
 narrow operator recovery path in the same Reconciler. It accepts only the
 original `Max=1` attempt and exact idempotency identity with zero mutation and
@@ -455,6 +467,14 @@ partial or unknown provider results enter manual review without refund or
 repurchase. Ledger receipt failure retries only the receipt. Source and focused
 tests implement this behavior; live Sub2API and Tencent evidence remains pending,
 and the repository remains `code-complete=false`.
+
+Tencent compute and storage monthly preflight each call the zero-mutation IAM
+gate before their provider checks. The gate accepts only schema-v3,
+Candidate-bound deployment evidence for the live STS identity, the exact Tag
+actions, and `QcloudCVMFinanceAccess`; each call also reads the current STS
+identity and attached CAM system policies. The Fabric boundary revalidates all
+safe facts. `InquiryPriceCreateDisks` remains a price check and is never treated
+as evidence that `CreateDisks` may perform prepaid settlement.
 
 Activation readback is the Control Plane `GetWorkspace(workspaceId)` point-read
 projection matched to the original launch and Fabric bindings. The terminal
