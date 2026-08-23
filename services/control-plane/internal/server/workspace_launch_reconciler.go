@@ -1281,7 +1281,7 @@ func workspaceLaunchExhaustedStorageBindingReplayEligible(operation workspaceLau
 	return workspaceLaunchFailedStorageReplayEvidenceMatches(operation, attempt) &&
 		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
 		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
-		operation.idempotentReplayAuthorizationCount(operation.Stage) == 2
+		operation.idempotentReplayAuthorizationCount(operation.Stage) >= 2
 }
 
 func (r *WorkspaceLaunchReconciler) replayExhaustedStorageBinding(
