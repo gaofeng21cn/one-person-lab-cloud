@@ -40,6 +40,12 @@ is selected and configured by the medopl instance, not by the portable product.
   replaces only the failed claim and permits one new authorization to replay
   the original key. No new Launch, purchase, stage operation, or volume key is
   created, and durable authorization history rejects every later replay grant.
+- Tencent/TKE Runtime manifests encode Launch operation identities into valid
+  Kubernetes label values while retaining the exact Runtime operation ID in
+  annotations. If the original Runtime apply was rejected before creating any
+  resource, the existing Resume route may require authoritative absence and
+  replay that same Runtime operation key once; it does not create a new Launch
+  or alternate recovery path.
 - Tencent prepaid preflight requires Candidate-bound schema-v3 evidence that
   the live Fabric identity has the active system policy
   `QcloudCVMFinanceAccess`. Both compute and storage checks re-read the current

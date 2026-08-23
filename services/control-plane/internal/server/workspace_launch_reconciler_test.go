@@ -370,6 +370,31 @@ func workspaceLaunchUnknownRuntimeReadAuthorization(t *testing.T, row map[string
 	}
 }
 
+func workspaceLaunchUnknownRuntimeReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
+	t.Helper()
+	authorization := workspaceLaunchUnknownRuntimeReadAuthorization(t, row, authorizationID)
+	authorization.Reason = "authoritative absence permits the original runtime operation to continue"
+	authorization.IdempotentReplayBudget = 1
+	return authorization
+}
+
+func workspaceLaunchUnknownRuntimeAbsentManualReviewRow(t *testing.T) map[string]any {
+	t.Helper()
+	row := workspaceLaunchUnknownStageManualReviewRow(t, "runtime")
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := operation.Attempts[operation.Stage]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 0, 0
+	operation.Attempts[operation.Stage] = attempt
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
 func workspaceLaunchUnknownStorageReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
 	t.Helper()
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -596,6 +621,54 @@ func TestWorkspaceLaunchUnknownRuntimeRecoveryConvergesReadyReadOnly(t *testing.
 	replayed, err := reconciler.Resume(context.Background(), got.ID, authorization)
 	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
 		t.Fatalf("consumed Runtime recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v", workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchUnknownRuntimeAuthoritativeAbsenceReplaysOriginalKey(t *testing.T) {
+	row := workspaceLaunchUnknownRuntimeAbsentManualReviewRow(t)
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"runtime": true}}
+	authorization := workspaceLaunchUnknownRuntimeReplayAuthorization(t, row, "resume-unknown-runtime-absent")
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), before.ID, authorization)
+	attempt := got.Attempts["runtime"]
+	claim := got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Attempted != 1 || attempt.Max != 1 ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != before.Attempts["runtime"].IdempotencyKey || adapter.mutationsByStage["runtime"] != 1 ||
+		adapter.mutationOperationID != before.ID || adapter.mutationIdempotencyKey != attempt.IdempotencyKey || adapter.reads != 4 ||
+		claim.AuthorizationID != authorization.AuthorizationID || claim.IdempotencyKey != attempt.IdempotencyKey || claim.Status != "succeeded" ||
+		got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("absent Runtime did not replay the original operation: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
+func TestWorkspaceLaunchUnknownRuntimeReplayRefusesUnprovenAbsence(t *testing.T) {
+	tests := []struct {
+		name    string
+		adapter *workspaceLaunchUnitAdapter
+	}{
+		{name: "ready", adapter: &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"runtime": true}}},
+		{name: "pending", adapter: &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{"runtime": {State: workspaceLaunchStagePending}}}},
+		{name: "unknown", adapter: &workspaceLaunchUnitAdapter{unknownStages: map[string]bool{"runtime": true}}},
+		{name: "read error", adapter: &workspaceLaunchUnitAdapter{readErrors: map[string]error{"runtime": errors.New("read failed")}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			row := workspaceLaunchUnknownRuntimeAbsentManualReviewRow(t)
+			persistedBefore := stringValue(row["result"])
+			store := &workspaceLaunchUnitStore{row: row}
+			authorization := workspaceLaunchUnknownRuntimeReplayAuthorization(t, row, "resume-unknown-runtime-replay-"+strings.ReplaceAll(tc.name, " ", "-"))
+
+			_, err := NewWorkspaceLaunchReconciler(store, tc.adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
+			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || tc.adapter.reads != 1 || tc.adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+				t.Fatalf("unproven Runtime absence changed operation: reads=%d mutations=%d err=%v", tc.adapter.reads, tc.adapter.mutations, err)
+			}
+		})
 	}
 }
 

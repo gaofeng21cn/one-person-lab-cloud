@@ -2644,15 +2644,25 @@ func TestWorkspaceManifestBindsAttachmentAndRuntimeIdentity(t *testing.T) {
 	want := map[string]string{
 		"oplcloud.cn/account-id": compute.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID,
 		"oplcloud.cn/compute-allocation-id": compute.ID, "oplcloud.cn/storage-id": storage.ID,
-		"oplcloud.cn/attachment-id": input.AttachmentID, "oplcloud.cn/attachment-operation-id": input.AttachmentOperationID,
-		"oplcloud.cn/runtime-id": runtimeID, "oplcloud.cn/runtime-operation-id": input.RuntimeOperationID,
+		"oplcloud.cn/attachment-id": input.AttachmentID, "oplcloud.cn/attachment-operation-id": k8sCostLabelValue(input.AttachmentOperationID),
+		"oplcloud.cn/runtime-id": runtimeID, "oplcloud.cn/runtime-operation-id": k8sCostLabelValue(input.RuntimeOperationID),
 	}
 	for _, raw := range manifest["items"].([]any) {
 		resource := raw.(map[string]any)
+		labels := nested(resource, "metadata", "labels").(map[string]any)
+		for key, rawValue := range labels {
+			value, ok := rawValue.(string)
+			if !ok || len(k8svalidation.IsValidLabelValue(value)) != 0 {
+				t.Fatalf("%s has invalid Kubernetes label %s=%q", resource["kind"], key, value)
+			}
+		}
 		for key, value := range want {
 			if nested(resource, "metadata", "labels", key) != value {
 				t.Fatalf("%s missing %s=%s: %#v", resource["kind"], key, value, nested(resource, "metadata", "labels"))
 			}
+		}
+		if operationID := nested(resource, "metadata", "annotations", "opl_operation_id"); operationID != input.RuntimeOperationID {
+			t.Fatalf("%s operation annotation=%q want exact identity %q", resource["kind"], operationID, input.RuntimeOperationID)
 		}
 		if resource["kind"] == "Deployment" {
 			for key, value := range want {
@@ -3222,7 +3232,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 		"metadata": map[string]any{
 			"name":       "opl-compute-alpha",
 			"generation": 2,
-			"labels":     map[string]any{"app.kubernetes.io/name": "opl-compute-allocation", "app.kubernetes.io/instance": "opl-compute-alpha", "oplcloud.cn/compute-allocation-id": "compute-alpha", "oplcloud.cn/workspace-id": "ws-alpha", "oplcloud.cn/runtime-id": "rt-alpha", "oplcloud.cn/runtime-operation-id": "workspace-launch-alpha:workspace:runtime"},
+			"labels":     map[string]any{"app.kubernetes.io/name": "opl-compute-allocation", "app.kubernetes.io/instance": "opl-compute-alpha", "oplcloud.cn/compute-allocation-id": "compute-alpha", "oplcloud.cn/workspace-id": "ws-alpha", "oplcloud.cn/runtime-id": "rt-alpha", "oplcloud.cn/runtime-operation-id": k8sCostLabelValue("workspace-launch-alpha:workspace:runtime")},
 			"annotations": map[string]any{
 				"opl_account_id":   "acct-alpha",
 				"opl_workspace_id": "ws-alpha",

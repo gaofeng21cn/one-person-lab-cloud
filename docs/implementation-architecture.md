@@ -344,13 +344,16 @@ consumed authorization and its exact durable failed claim.
 
 A resource-billed Runtime already parked as `unknown/manual_review` has one
 narrow operator recovery path in the same Reconciler. It accepts only the
-original `Max=1` attempt and exact idempotency identity with zero mutation and
-zero replay budget, then performs the typed Fabric stage read. Exact `ready`
-facts confirm that attempt and advance to activation; every other observation
-or read error returns a conflict without persisting authorization, changing the
-operation, or calling Fabric ensure. If the exhausted Runtime read budget was
-owned by a failed fresh typed-pending continuation, the same READY transition
-also marks that continuation consumed so its persisted state remains coherent.
+original `Max=1` attempt and exact idempotency identity. A zero-mutation,
+zero-replay authorization advances only on exact `ready` facts. For an initial
+Runtime apply that left no provider resource and consumed no continuation or
+replay, a zero-mutation, one-replay, three-read authorization first requires
+authoritative `absent`, resets only that attempt to `reserved`, and calls the
+normal Reconciler with the original key. Every other observation or read error
+returns a conflict without persisting authorization or calling Fabric ensure.
+If an exhausted Runtime read budget was owned by a failed fresh typed-pending
+continuation, the READY transition also marks that continuation consumed so its
+persisted state remains coherent.
 
 When that authoritative read proves the original Runtime is genuinely unready,
 the current local-Docker implementation exposes a distinct operator

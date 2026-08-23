@@ -1141,9 +1141,9 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 		"oplcloud.cn/compute-allocation-id":   compute.ID,
 		"oplcloud.cn/storage-id":              storage.ID,
 		"oplcloud.cn/attachment-id":           input.AttachmentID,
-		"oplcloud.cn/attachment-operation-id": input.AttachmentOperationID,
+		"oplcloud.cn/attachment-operation-id": k8sCostLabelValue(input.AttachmentOperationID),
 		"oplcloud.cn/runtime-id":              runtimeID,
-		"oplcloud.cn/runtime-operation-id":    input.RuntimeOperationID,
+		"oplcloud.cn/runtime-operation-id":    k8sCostLabelValue(input.RuntimeOperationID),
 	}
 	labels := stringAnyMap(mergeStringMaps(runtimeSelectorLabels(serviceName, compute), identityLabels, k8sCostLabels(tags)))
 	pvcName := storagePVCName(storage)
