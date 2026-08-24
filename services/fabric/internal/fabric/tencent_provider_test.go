@@ -2453,6 +2453,9 @@ func TestWorkspaceManifestIsolatesTenantRuntime(t *testing.T) {
 			secret = candidate
 		}
 	}
+	if nested(deployment, "spec", "strategy", "type") != "Recreate" {
+		t.Fatalf("workspace Deployment must replace its single RWO-backed Pod in place: %#v", nested(deployment, "spec", "strategy"))
+	}
 	secretData := secret["data"].(map[string]any)
 	passwordBytes := decodeSecretValue(t, secretData, "webui_password")
 	if string(passwordBytes) != "opl_jngdohVMGgp2Kdvpg4f-OLuNAa1!" {
