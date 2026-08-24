@@ -1099,7 +1099,7 @@ func workspaceLaunchMaximumPersistedReadbacks(stage string) int {
 		return workspaceLaunchAuthoritativeReadBudget + workspaceLaunchComputeFreshContinuationAdditionalReadBudget
 	}
 	if stage == "runtime" {
-		return 6 * workspaceLaunchAuthoritativeReadBudget
+		return 7 * workspaceLaunchAuthoritativeReadBudget
 	}
 	return workspaceLaunchAuthoritativeReadBudget
 }
@@ -1277,8 +1277,11 @@ func workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation workspace
 	supersedeFailedRetainedImageRevision := previous.ReplacementWorkspaceImageDigest != "" &&
 		previous.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest &&
 		attempt.MaxPendingReadbacks == 5*workspaceLaunchAuthoritativeReadBudget
+	supersedeExhaustedFailedRetainedImageRevision := previous.ReplacementWorkspaceImageDigest != "" &&
+		previous.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest &&
+		attempt.MaxPendingReadbacks == 6*workspaceLaunchAuthoritativeReadBudget
 	return firstImageRevision || retryUndispatchedImageRevision || continueDispatchedImageRevision ||
-		supersedeUnreadyImageRevision || supersedeFailedRetainedImageRevision
+		supersedeUnreadyImageRevision || supersedeFailedRetainedImageRevision || supersedeExhaustedFailedRetainedImageRevision
 }
 
 func workspaceLaunchPostDispatchRuntimeImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
