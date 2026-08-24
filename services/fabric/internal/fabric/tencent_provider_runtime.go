@@ -56,13 +56,13 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 	}
 	if mutation != nil && !mutation.Fresh {
 		runtime, readErr := p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
-		if input.RuntimeImageRevision != nil && errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+		if input.RuntimeImageRevision != nil && (errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) || readErr == nil && !runtime.Ready) {
 			claimed, claimErr := mutation.claimRuntimeImageRevision(ctx, *input.RuntimeImageRevision, runtime)
 			if claimErr != nil || !claimed {
 				return WorkspaceRuntime{}, firstNonNil(claimErr, ErrWorkspaceLaunchPending)
 			}
 			runtime, readErr = p.readWorkspaceRuntime(ctx, input, runtimeID, serviceName, tags, gateway)
-			if errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
+			if errors.Is(readErr, ErrWorkspaceLaunchRuntimeImageRevisionRequired) || readErr == nil && !runtime.Ready {
 				if dispatchErr := mutation.markReplayDispatch(ctx); dispatchErr != nil {
 					return WorkspaceRuntime{}, dispatchErr
 				}

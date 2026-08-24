@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -883,6 +884,90 @@ func TestWorkspaceLaunchRuntimeImageRevisionRetriesSameUndispatchedReplacementOn
 	}
 }
 
+func TestWorkspaceLaunchRuntimeImageRevisionContinuesSameDispatchedReplacementOnce(t *testing.T) {
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v108-image")
+	previous.ReadbacksAtAuthorization = 2 * workspaceLaunchAuthoritativeReadBudget
+	completedAt := "2026-08-24T05:12:32Z"
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 3*workspaceLaunchAuthoritativeReadBudget, 3*workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	operation.Version = 111
+	operation.ResumeAuthorization = &previous
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	operation.IdempotentReplayClaims["runtime"] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: previous.AuthorizationID, Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {pending, pending, pending, pending}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v111-same-image")
+
+	continued, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), operation.ID, authorization)
+	attempt = continued.Attempts["runtime"]
+	claim := continued.IdempotentReplayClaims["runtime"]
+	if err != nil || continued.Status != "pending" || continued.Stage != "runtime" || attempt.Status != "reserved" ||
+		attempt.PendingReadbacks != 3*workspaceLaunchAuthoritativeReadBudget+1 || attempt.MaxPendingReadbacks != 4*workspaceLaunchAuthoritativeReadBudget ||
+		adapter.mutationsByStage["runtime"] != 1 || adapter.mutationOperationID != operation.ID ||
+		adapter.mutationIdempotencyKey != operation.Attempts["runtime"].IdempotencyKey || claim.AuthorizationID != authorization.AuthorizationID ||
+		claim.Status != "waiting" || continued.ResumeAuthorizationConsumedAt != "" {
+		t.Fatalf("post-dispatch Runtime continuation did not reapply once: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(continued), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	adapter.stageObservations = map[string]workspaceLaunchStageObservation{
+		"runtime": {State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts("runtime")},
+	}
+	continuedRow, err := workspaceLaunchReconcileOperationRow(continued)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchUnitStore{row: continuedRow}
+	converged, err := NewWorkspaceLaunchReconciler(store, adapter).Reconcile(context.Background(), operation.ID)
+	if err != nil || converged.Status != "pending" || converged.Stage != "activation" ||
+		converged.Attempts["runtime"].Status != "confirmed" || adapter.mutationsByStage["runtime"] != 1 ||
+		converged.IdempotentReplayClaims["runtime"].Status != "succeeded" || converged.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("post-dispatch Runtime continuation did not converge original Launch: operation=%s mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(converged), adapter.mutationsByStage, err)
+	}
+
+	for name, mutate := range map[string]func(*workspaceLaunchReconcileOperation, *workspaceLaunchResumeAuthorization){
+		"different image": func(_ *workspaceLaunchReconcileOperation, value *workspaceLaunchResumeAuthorization) {
+			value.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+		},
+		"fourth image window": func(value *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			attempt := value.Attempts["runtime"]
+			attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 4*workspaceLaunchAuthoritativeReadBudget, 4*workspaceLaunchAuthoritativeReadBudget
+			value.Attempts["runtime"] = attempt
+			value.ResumeAuthorization.ReadbacksAtAuthorization = 3 * workspaceLaunchAuthoritativeReadBudget
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := operation
+			candidate.Attempts = maps.Clone(operation.Attempts)
+			candidate.IdempotentReplayClaims = maps.Clone(operation.IdempotentReplayClaims)
+			prior := *operation.ResumeAuthorization
+			candidate.ResumeAuthorization = &prior
+			candidateAuthorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v111-rejected-"+strings.ReplaceAll(name, " ", "-"))
+			mutate(&candidate, &candidateAuthorization)
+			if workspaceLaunchRuntimeImageRevisionEligible(candidate, candidate.Attempts["runtime"], candidateAuthorization) {
+				t.Fatal("invalid post-dispatch Runtime continuation was eligible")
+			}
+		})
+	}
+}
+
 func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *testing.T) {
 	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -976,6 +1061,35 @@ func TestWorkspaceLaunchRuntimeImageRevisionProofPreservesOriginalFabricBinding(
 		proof.ReplacementImageDigest != authorization.ReplacementWorkspaceImageDigest ||
 		proof.AuthorizationDigest != workspaceLaunchResumeAuthorizationDigest(authorization) {
 		t.Fatalf("revision proof changed original Fabric identity: base=%#v revised=%#v", base, revised)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionContinuationRetainsDispatchedProof(t *testing.T) {
+	operation := workspaceLaunchRuntimeRepairFixture(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispatched := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v108-image")
+	dispatched.ReadbacksAtAuthorization = 2 * workspaceLaunchAuthoritativeReadBudget
+	continued := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v111-same-image")
+	continued.ReadbacksAtAuthorization = 3 * workspaceLaunchAuthoritativeReadBudget
+	operation.ResumeAuthorization = &continued
+	operation.ConsumedResumeAuthorizations = []workspaceLaunchConsumedResumeAuthorization{{Authorization: dispatched, ConsumedAt: "2026-08-24T05:12:32Z"}}
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 3*workspaceLaunchAuthoritativeReadBudget, 4*workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+
+	input, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false)
+	if err != nil || input.RuntimeImageRevision == nil || input.RuntimeImageRevision.AuthorizationDigest != workspaceLaunchResumeAuthorizationDigest(dispatched) ||
+		input.RuntimeImageRevision.AuthorizationDigest == workspaceLaunchResumeAuthorizationDigest(continued) ||
+		input.RuntimeImageRevision.ReplacementImageDigest != continued.ReplacementWorkspaceImageDigest {
+		t.Fatalf("post-dispatch continuation did not retain original Fabric proof: input=%#v err=%v", input, err)
+	}
+
+	operation.ConsumedResumeAuthorizations[0].Authorization.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+	if _, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+		t.Fatalf("drifted dispatched proof was accepted: %v", err)
 	}
 }
 

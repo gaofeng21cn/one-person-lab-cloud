@@ -483,6 +483,10 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 			operation.Status = "manual_review"
 			return r.persist(ctx, operation)
 		}
+		if _, claimed := operation.IdempotentReplayClaims[operation.Stage]; !claimed &&
+			workspaceLaunchPostDispatchRuntimeImageRevisionAuthorized(operation, attempt) {
+			return r.replayReservedStage(ctx, operation, attempt)
+		}
 		attempt.PendingReadbacks++
 		operation.Attempts[operation.Stage] = attempt
 		if attempt.PendingReadbacks >= attempt.MaxPendingReadbacks || workspaceLaunchPendingDeadlineExpired(operation.Stage, attempt, r.clockNow()) {
@@ -816,6 +820,9 @@ func (r *WorkspaceLaunchReconciler) replayReservedStage(ctx context.Context, ope
 	case workspaceLaunchStageReady:
 		return r.convergeClaimedReplay(ctx, claimed, observation)
 	case workspaceLaunchStagePending:
+		if workspaceLaunchPostDispatchRuntimeImageRevisionAuthorized(claimed, claimed.Attempts[claimed.Stage]) {
+			return r.mutateReservedStage(ctx, claimed)
+		}
 		return r.waitClaimedReplay(ctx, claimed, workspaceLaunchStagePending)
 	case workspaceLaunchStageAbsent, workspaceLaunchStageOwnershipPending, workspaceLaunchStageRuntimeImageRevisionPending:
 		return r.mutateReservedStage(ctx, claimed)
@@ -994,7 +1001,7 @@ func workspaceLaunchMaximumPersistedReadbacks(stage string) int {
 		return workspaceLaunchAuthoritativeReadBudget + workspaceLaunchComputeFreshContinuationAdditionalReadBudget
 	}
 	if stage == "runtime" {
-		return 3 * workspaceLaunchAuthoritativeReadBudget
+		return 4 * workspaceLaunchAuthoritativeReadBudget
 	}
 	return workspaceLaunchAuthoritativeReadBudget
 }
@@ -1158,7 +1165,29 @@ func workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation workspace
 	retryUndispatchedImageRevision := previous.ReplacementWorkspaceImageDigest != "" &&
 		previous.ReplacementWorkspaceImageDigest == authorization.ReplacementWorkspaceImageDigest &&
 		attempt.MaxPendingReadbacks == 2*workspaceLaunchAuthoritativeReadBudget
-	return firstImageRevision || retryUndispatchedImageRevision
+	continueDispatchedImageRevision := previous.ReplacementWorkspaceImageDigest != "" &&
+		previous.ReplacementWorkspaceImageDigest == authorization.ReplacementWorkspaceImageDigest &&
+		attempt.MaxPendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget
+	return firstImageRevision || retryUndispatchedImageRevision || continueDispatchedImageRevision
+}
+
+func workspaceLaunchPostDispatchRuntimeImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
+	previous := operation.ResumeAuthorization
+	return previous != nil && previous.ReplacementWorkspaceImageDigest != "" &&
+		previous.ReplacementWorkspaceImageDigest == authorization.ReplacementWorkspaceImageDigest &&
+		previous.ReadbacksAtAuthorization == 2*workspaceLaunchAuthoritativeReadBudget &&
+		attempt.PendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget &&
+		attempt.MaxPendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget
+}
+
+func workspaceLaunchPostDispatchRuntimeImageRevisionAuthorized(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
+	authorization := operation.ResumeAuthorization
+	return operation.Stage == "runtime" && authorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
+		authorization.ReplacementWorkspaceImageDigest != "" && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
+		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget &&
+		authorization.ReadbacksAtAuthorization == 3*workspaceLaunchAuthoritativeReadBudget &&
+		attempt.PendingReadbacks >= authorization.ReadbacksAtAuthorization &&
+		attempt.MaxPendingReadbacks == 4*workspaceLaunchAuthoritativeReadBudget
 }
 
 func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
@@ -1167,6 +1196,7 @@ func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
+	postDispatchContinuation := workspaceLaunchPostDispatchRuntimeImageRevisionEligible(operation, attempt, authorization)
 	// Older runtime manual-review rows can retain the configured read budget while
 	// reporting zero completed readbacks. Treat that configured budget as the
 	// consumed baseline for this explicitly authorized image revision so the
@@ -1174,10 +1204,10 @@ func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
 	authorization.ReadbacksAtAuthorization = attempt.MaxPendingReadbacks
 	attempt.PendingReadbacks = attempt.MaxPendingReadbacks
 	observed := operation
-	observed.ResumeAuthorization = &authorization
-	observed.ResumeAuthorizationConsumedAt = ""
+	observed.rotateResumeAuthorization(authorization)
 	observation, readErr := r.adapter.ReadStage(ctx, observed)
-	if readErr != nil || observation.State != workspaceLaunchStageRuntimeImageRevisionPending {
+	if readErr != nil || observation.State != workspaceLaunchStageRuntimeImageRevisionPending &&
+		(!postDispatchContinuation || observation.State != workspaceLaunchStagePending) {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
 	if workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation, attempt, authorization) {

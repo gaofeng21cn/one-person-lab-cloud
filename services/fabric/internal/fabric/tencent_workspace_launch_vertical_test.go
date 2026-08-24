@@ -615,6 +615,8 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 
 func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, completedGenericReplay bool) {
 	service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
+	now := time.Date(2026, 8, 24, 5, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
 	compute := ComputeAllocation{
 		ID: "ca-compute-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", PackageID: "basic", NodePoolID: "np-basic",
 		MachineName: "machine-alpha", NodeName: "node-alpha", InstanceID: "ins-alpha", Zone: "ap-guangzhou-3", Provider: "tencent-tke",
@@ -673,6 +675,14 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 	result, err = service.EnsureWorkspaceLaunchStage(context.Background(), input)
 	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {
 		t.Fatalf("succeeded child without revision proof replayed apply: result=%#v err=%v applyCalls=%d", result, err, fixture.applyCalls)
+	}
+	operation, err = store.Get(context.Background(), input.Binding.FabricOperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Status, operation.ErrorCode, operation.FinishedAt = "failed", "workspace_runtime_readback_mismatch", now
+	if err := store.SaveRuntime(context.Background(), operation); err != nil {
+		t.Fatal(err)
 	}
 	runtimeID := "rt_" + stableSuffix(input.Binding.WorkspaceID, input.Binding.FabricOperationID)[:18]
 	serviceName := k8sName(compute.ID)
@@ -740,22 +750,37 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 		t.Fatalf("runtime revision journal child=%#v epoch=%#v epochOK=%v err=%v", child, epoch, epochOK, err)
 	}
 
+	classified, err = service.ReadWorkspaceLaunchStage(context.Background(), revisionInput)
+	if err != nil || classified.State != "pending" || classified.Reason != "provider_provisioning" || fixture.applyCalls != 2 {
+		t.Fatalf("dispatched unready revision classification=%#v err=%v applyCalls=%d", classified, err, fixture.applyCalls)
+	}
+	now = now.Add(providerMutationReplayLease + time.Second)
+	continued, err := service.EnsureWorkspaceLaunchStage(context.Background(), revisionInput)
+	child, childErr := store.Get(context.Background(), childID)
+	epoch, epochOK = decodeProviderMutationReplayEpoch(child)
+	if err != nil || continued.State != "pending" || continued.Reason != "provider_provisioning" || fixture.applyCalls != 3 ||
+		childErr != nil || !epochOK || epoch.State != "awaiting_readback" || epoch.LeaseGeneration != wantLeaseGeneration+1 ||
+		epoch.AuthorityDigest != revisionInput.RuntimeImageRevision.AuthorizationDigest {
+		t.Fatalf("same dispatched revision did not reapply original manifest: result=%#v err=%v child=%#v childErr=%v epoch=%#v applyCalls=%d",
+			continued, err, child, childErr, epoch, fixture.applyCalls)
+	}
+
 	fixture.unready = false
 	ready, err := service.ReadWorkspaceLaunchStage(context.Background(), revisionInput)
 	parent, parentErr := store.Get(context.Background(), input.Binding.FabricOperationID)
 	record, recordOK := decodeWorkspaceLaunchStageRecord(parent)
-	child, childErr := store.Get(context.Background(), childID)
+	child, childErr = store.Get(context.Background(), childID)
 	epoch, epochOK = decodeProviderMutationReplayEpoch(child)
 	var revisedRuntime WorkspaceRuntime
 	if err != nil || ready.State != "ready" || ready.Binding != input.Binding || parentErr != nil || parent.Status != "succeeded" ||
 		!recordOK || record.RuntimeImageRevision == nil || *record.RuntimeImageRevision != *revisionInput.RuntimeImageRevision ||
 		childErr != nil || !epochOK || epoch.State != "succeeded" || !decodeOperationResource(child, &revisedRuntime) ||
-		revisedRuntime.ImageID != replacementImage || fixture.applyCalls != 2 {
+		revisedRuntime.ImageID != replacementImage || fixture.applyCalls != 3 {
 		t.Fatalf("runtime revision convergence ready=%#v err=%v parent=%#v parentErr=%v record=%#v recordOK=%v child=%#v childErr=%v epoch=%#v runtime=%#v applyCalls=%d",
 			ready, err, parent, parentErr, record, recordOK, child, childErr, epoch, revisedRuntime, fixture.applyCalls)
 	}
 	replayed, err := service.EnsureWorkspaceLaunchStage(context.Background(), revisionInput)
-	if err != nil || replayed.State != "ready" || fixture.applyCalls != 2 {
+	if err != nil || replayed.State != "ready" || fixture.applyCalls != 3 {
 		t.Fatalf("completed runtime revision replayed mutation: result=%#v err=%v applyCalls=%d", replayed, err, fixture.applyCalls)
 	}
 }

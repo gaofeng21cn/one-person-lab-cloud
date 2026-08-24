@@ -67,7 +67,10 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 	}
 	if operation.Stage == "runtime" && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
 		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {
-		authorization := *operation.ResumeAuthorization
+		authorization, ok := workspaceLaunchRuntimeImageRevisionProofAuthorization(operation)
+		if !ok {
+			return clients.WorkspaceLaunchStageInput{}, errInvalidWorkspaceLaunchOperation
+		}
 		input.RuntimeImageRevision = &clients.WorkspaceLaunchRuntimeImageRevision{
 			SchemaVersion: 1, LaunchOperationID: operation.ID, WorkspaceID: operation.stringFact("workspaceId"),
 			RuntimeOperationID: binding.FabricOperationID, AuthorizationDigest: workspaceLaunchResumeAuthorizationDigest(authorization),
@@ -135,6 +138,27 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 		}
 	}
 	return input, nil
+}
+
+func workspaceLaunchRuntimeImageRevisionProofAuthorization(operation workspaceLaunchReconcileOperation) (workspaceLaunchResumeAuthorization, bool) {
+	active := operation.ResumeAuthorization
+	if active == nil || active.AuthorizedStage != "runtime" || active.ReplacementWorkspaceImageDigest == "" {
+		return workspaceLaunchResumeAuthorization{}, false
+	}
+	if active.ReadbacksAtAuthorization != 3*workspaceLaunchAuthoritativeReadBudget {
+		return *active, true
+	}
+	if len(operation.ConsumedResumeAuthorizations) == 0 {
+		return workspaceLaunchResumeAuthorization{}, false
+	}
+	previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
+	if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
+		previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
+		previous.ReadbacksAtAuthorization != 2*workspaceLaunchAuthoritativeReadBudget ||
+		previous.ReplacementWorkspaceImageDigest != active.ReplacementWorkspaceImageDigest {
+		return workspaceLaunchResumeAuthorization{}, false
+	}
+	return previous, true
 }
 
 func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
