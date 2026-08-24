@@ -109,7 +109,7 @@ type DeviceUploadAttachmentEvidence struct {
 	FileChooserObserved          bool `json:"fileChooserObserved"`
 	UploadResponseOK             bool `json:"uploadResponseOk"`
 	UploadResponseStatus         int  `json:"uploadResponseStatus"`
-	PendingAttachmentVisible     bool `json:"pendingAttachmentObserved"`
+	PendingAttachmentVisible     bool `json:"pendingAttachmentVisible"`
 	MessageAccepted              bool `json:"messageAccepted"`
 	AssistantReplyObserved       bool `json:"assistantReplyObserved"`
 	UploadedContentReadbackValid bool `json:"uploadedContentReadbackValid"`
