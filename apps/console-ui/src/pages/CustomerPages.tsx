@@ -3,6 +3,8 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
+  CircleX,
   CircleDollarSign,
   Copy,
   ExternalLink,
@@ -412,6 +414,22 @@ function LaunchOperation({ compact, controller }: { compact?: boolean; controlle
           <div><dt>最后更新</dt><dd>{formatDate(operation.updatedAt, true)}</dd></div>
           <div><dt>errorCode</dt><dd>{operation.errorCode || "暂不可用"}</dd></div>
         </dl>
+      ) : null}
+      {operation.status === "manual_review" && operation.blockReason ? (
+        <section aria-label="开通诊断" className="launch-diagnostic">
+          <header><span>阻塞原因</span><code>{operation.blockReason}</code></header>
+          {operation.checks?.length ? (
+            <ul>
+              {operation.checks.map((check) => (
+                <li className={check.ok ? "is-ready" : "is-blocked"} key={check.name}>
+                  {check.ok ? <CircleCheck aria-hidden size={16} /> : <CircleX aria-hidden size={16} />}
+                  <code>{check.name}</code>
+                  <span>{check.ok ? "通过" : "未通过"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
       {controller.launchPollIssue ? <p className="inline-error">结果待确认。请刷新同一 operation，禁止重复购买。</p> : null}
       <div className="launch-operation-actions">

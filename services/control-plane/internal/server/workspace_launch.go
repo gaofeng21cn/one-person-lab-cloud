@@ -149,6 +149,14 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 	}
 	if operation.Status == "manual_review" {
 		response["failureStage"] = operation.Stage
+		if diagnostic := operation.Observations[operation.Stage].Diagnostic; diagnostic != nil {
+			response["blockReason"] = diagnostic.BlockReason
+			checks := make([]map[string]any, 0, len(diagnostic.Checks))
+			for _, check := range diagnostic.Checks {
+				checks = append(checks, map[string]any{"name": check.Name, "ok": check.OK})
+			}
+			response["checks"] = checks
+		}
 	}
 	if operation.ResumeAuthorization != nil {
 		authorization := *operation.ResumeAuthorization

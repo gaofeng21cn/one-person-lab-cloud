@@ -122,11 +122,28 @@ type WorkspaceLaunchStageInput struct {
 }
 
 type WorkspaceLaunchStageResult struct {
+	SchemaVersion int                             `json:"schemaVersion"`
+	State         string                          `json:"state"`
+	Reason        string                          `json:"reason"`
+	Binding       WorkspaceLaunchStageBinding     `json:"binding"`
+	Resources     WorkspaceLaunchResources        `json:"resources"`
+	Diagnostic    *WorkspaceLaunchStageDiagnostic `json:"diagnostic,omitempty"`
+}
+
+type WorkspaceLaunchStageDiagnostic struct {
 	SchemaVersion int                         `json:"schemaVersion"`
-	State         string                      `json:"state"`
-	Reason        string                      `json:"reason"`
-	Binding       WorkspaceLaunchStageBinding `json:"binding"`
-	Resources     WorkspaceLaunchResources    `json:"resources"`
+	Owner         string                      `json:"owner"`
+	BlockReason   string                      `json:"blockReason"`
+	ErrorCode     string                      `json:"errorCode,omitempty"`
+	Retryable     bool                        `json:"retryable"`
+	ObservedAt    string                      `json:"observedAt"`
+	Checks        []WorkspaceLaunchStageCheck `json:"checks,omitempty"`
+}
+
+type WorkspaceLaunchStageCheck struct {
+	Name    string         `json:"name"`
+	OK      bool           `json:"ok"`
+	Details map[string]any `json:"details,omitempty"`
 }
 
 func (c *fabricHTTPClient) PreflightWorkspaceLaunch(ctx context.Context, input WorkspaceLaunchPreflightInput) (WorkspaceLaunchPreflight, error) {

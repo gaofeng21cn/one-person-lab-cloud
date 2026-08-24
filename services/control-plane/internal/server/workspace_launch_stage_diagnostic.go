@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
 )
@@ -30,6 +32,11 @@ type workspaceLaunchStageDiagnostic struct {
 	Stage                   string                                `json:"stage"`
 	State                   string                                `json:"state"`
 	ErrorCode               string                                `json:"errorCode"`
+	Owner                   string                                `json:"owner"`
+	BlockReason             string                                `json:"blockReason"`
+	Retryable               bool                                  `json:"retryable"`
+	ObservedAt              string                                `json:"observedAt,omitempty"`
+	Checks                  []clients.WorkspaceLaunchStageCheck   `json:"checks,omitempty"`
 	Attempt                 workspaceLaunchStageDiagnosticAttempt `json:"attempt"`
 	AuthoritativeRead       bool                                  `json:"authoritativeRead"`
 	MutationBudget          int                                   `json:"mutationBudget"`
@@ -59,18 +66,34 @@ func observeWorkspaceLaunchStage(
 	}
 	digest := sha256.Sum256([]byte(operation.ID))
 	diagnostic := workspaceLaunchStageDiagnostic{
-		SchemaVersion: 1, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
+		SchemaVersion: 2, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
 		OperationVersion: operation.Version, OperationStatus: operation.Status, Stage: operation.Stage,
-		State: workspaceLaunchStageUnknown, ErrorCode: "none",
+		State: workspaceLaunchStageUnknown, ErrorCode: "none", Owner: workspaceLaunchStageOwner(operation.Stage),
+		BlockReason: "stage_observation_unknown",
 		Attempt: workspaceLaunchStageDiagnosticAttempt{
 			Attempted: attempt.Attempted, Confirmed: attempt.Confirmed, Unknown: attempt.Unknown,
 			Max: attempt.Max, Status: attempt.Status,
 		},
 		AuthoritativeRead: true, MutationBudget: 0,
 	}
+	startedAt := time.Now()
 	observation, readErr := adapter.ReadStage(ctx, operation)
+	outcome, errorCode := "success", "none"
 	if readErr != nil {
-		diagnostic.ErrorCode = workspaceLaunchStageReadErrorCode(readErr)
+		outcome, errorCode = "error", workspaceLaunchStageReadErrorCode(readErr)
+	}
+	blockReason := workspaceLaunchObservationBlockReason(observation)
+	if readErr != nil {
+		blockReason = errorCode
+		slog.ErrorContext(ctx, "workspace launch operator read",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "operator_authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+	} else {
+		slog.InfoContext(ctx, "workspace launch operator read",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "operator_authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+	}
+	if readErr != nil {
+		diagnostic.ErrorCode = errorCode
+		diagnostic.BlockReason = diagnostic.ErrorCode
 		return diagnostic, true, nil
 	}
 	if observation.State != workspaceLaunchStageAbsent && observation.State != workspaceLaunchStagePending &&
@@ -80,10 +103,46 @@ func observeWorkspaceLaunchStage(
 		return diagnostic, true, nil
 	}
 	diagnostic.State = observation.State
+	if observation.Diagnostic != nil {
+		diagnostic.Owner = observation.Diagnostic.Owner
+		diagnostic.BlockReason = observation.Diagnostic.BlockReason
+		diagnostic.Retryable = observation.Diagnostic.Retryable
+		diagnostic.ObservedAt = observation.Diagnostic.ObservedAt
+		diagnostic.Checks = append([]clients.WorkspaceLaunchStageCheck(nil), observation.Diagnostic.Checks...)
+		if observation.Diagnostic.ErrorCode != "" {
+			diagnostic.ErrorCode = observation.Diagnostic.ErrorCode
+		}
+	} else {
+		switch observation.State {
+		case workspaceLaunchStageReady:
+			diagnostic.BlockReason = "none"
+		case workspaceLaunchStageAbsent:
+			diagnostic.BlockReason = "stage_resource_absent"
+		case workspaceLaunchStagePending, workspaceLaunchStageOwnershipPending:
+			diagnostic.BlockReason = "stage_provider_pending"
+		}
+	}
 	if observation.State == workspaceLaunchStageUnknown {
-		diagnostic.ErrorCode = "stage_observation_unknown"
+		if diagnostic.ErrorCode == "none" {
+			diagnostic.ErrorCode = "stage_observation_unknown"
+		}
 	}
 	return diagnostic, true, nil
+}
+
+func workspaceLaunchStageOwner(stage string) string {
+	switch stage {
+	case "key", "activation":
+		return "cloud.control_plane"
+	case "debit":
+		return "cloud.sub2api"
+	case "ensure_compute_allocation", "storage", "attachment", "secret", "runtime":
+		return "fabric.tencent_tke"
+	case "receipt":
+		return "cloud.ledger"
+	default:
+		return "cloud.reconciler"
+	}
 }
 
 func workspaceLaunchStageReadErrorCode(err error) string {

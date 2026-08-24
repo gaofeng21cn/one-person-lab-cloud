@@ -3,7 +3,7 @@ import test from "node:test";
 
 import * as readApi from "../../apps/console-ui/src/api/console-read-api.ts";
 import { decodeSource } from "../../apps/console-ui/src/api/dtos.ts";
-import { unavailableSource } from "../../apps/console-ui/src/app/use-console-controller.ts";
+import { friendlyError, unavailableSource } from "../../apps/console-ui/src/app/use-console-controller.ts";
 import * as workspaceApi from "../../apps/console-ui/src/api/workspaces-api.ts";
 
 test("Workspace Gateway budget adapters use the scoped route and exact mutation boundary", async () => {
@@ -184,6 +184,10 @@ test("local unavailable fallbacks keep a stable reason code and a real fetch tim
   assert.equal(fallback.reasonCode, "control_plane_ledger_unavailable");
   assert.ok(fallback.fetchedAt);
   assert.ok(Number.isFinite(Date.parse(fallback.fetchedAt)));
+});
+
+test("monthly balance failures use the specific customer-facing balance message", () => {
+  assert.equal(friendlyError("monthly_balance_insufficient"), "可用余额不足");
 });
 
 test("Console read adapters normalize a legacy unavailable envelope with a stable reason code", async () => {

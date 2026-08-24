@@ -665,8 +665,18 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 
 	result, err := service.EnsureWorkspaceLaunchStage(context.Background(), input)
 	operation, operationErr := store.Get(context.Background(), input.Binding.FabricOperationID)
-	if err != nil || operationErr != nil || result.State != "pending" || operation.Status != "started" || fixture.applyCalls != 1 {
-		t.Fatalf("unready runtime result=%#v err=%v operation=%#v operationErr=%v applyCalls=%d", result, err, operation, operationErr, fixture.applyCalls)
+	persistedDiagnostic, diagnosticPersisted := decodeWorkspaceLaunchStageDiagnostic(operation)
+	var resultChecks []byte
+	if result.Diagnostic != nil {
+		resultChecks, _ = json.Marshal(result.Diagnostic.Checks)
+	}
+	persistedChecks, _ := json.Marshal(persistedDiagnostic.Checks)
+	if err != nil || operationErr != nil || result.State != "pending" || operation.Status != "started" || fixture.applyCalls != 1 ||
+		result.Diagnostic == nil || result.Diagnostic.Owner != "fabric.tencent_tke" || result.Diagnostic.BlockReason != "runtime_deployment_not_ready" ||
+		!result.Diagnostic.Retryable || result.Diagnostic.ObservedAt != now.Format(time.RFC3339Nano) || len(result.Diagnostic.Checks) != 11 ||
+		!diagnosticPersisted || persistedDiagnostic.Owner != result.Diagnostic.Owner || persistedDiagnostic.BlockReason != result.Diagnostic.BlockReason ||
+		persistedDiagnostic.ObservedAt != result.Diagnostic.ObservedAt || string(persistedChecks) != string(resultChecks) {
+		t.Fatalf("unready runtime result=%#v err=%v operation=%#v persistedDiagnostic=%#v operationErr=%v applyCalls=%d", result, err, operation, persistedDiagnostic, operationErr, fixture.applyCalls)
 	}
 	result, err = service.ReadWorkspaceLaunchStage(context.Background(), input)
 	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {

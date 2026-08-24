@@ -175,6 +175,9 @@ export interface WorkspaceLaunchResponse {
   url?: string;
   receiptId?: string;
   errorCode?: string;
+  failureStage?: string;
+  blockReason?: string;
+  checks?: RuntimeCheck[];
   createdAt?: string;
   updatedAt?: string;
 }

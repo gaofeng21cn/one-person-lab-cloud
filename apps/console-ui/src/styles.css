@@ -4030,6 +4030,62 @@ select:focus-visible,
   margin: 16px 24px 0;
 }
 
+.launch-diagnostic {
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  background: #fff8e6;
+  padding: 16px 24px;
+}
+
+.launch-diagnostic header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.launch-diagnostic header > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.launch-diagnostic code {
+  overflow-wrap: anywhere;
+}
+
+.launch-diagnostic ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.launch-diagnostic li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.launch-diagnostic li.is-ready svg {
+  color: #08783e;
+}
+
+.launch-diagnostic li.is-blocked svg {
+  color: #b42318;
+}
+
+.launch-diagnostic li.is-blocked span {
+  color: #b42318;
+}
+
 .usage-summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4230,7 +4286,8 @@ select:focus-visible,
   }
 
   .launch-confirm-list,
-  .operation-readback {
+  .operation-readback,
+  .launch-diagnostic ul {
     grid-template-columns: 1fr;
   }
 

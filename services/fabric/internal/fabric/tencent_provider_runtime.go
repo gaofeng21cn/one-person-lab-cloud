@@ -92,7 +92,7 @@ func (p *TencentProvider) createWorkspaceRuntime(ctx context.Context, input Work
 		}
 		if readErr != nil {
 			_ = mutation.complete(ctx, "", WorkspaceRuntime{ID: runtimeID, WorkspaceID: input.WorkspaceID}, readErr)
-			return WorkspaceRuntime{}, readErr
+			return runtime, readErr
 		}
 		if completeErr := mutation.complete(ctx, runtime.ProviderRequestID, runtime, nil); completeErr != nil {
 			return WorkspaceRuntime{}, completeErr

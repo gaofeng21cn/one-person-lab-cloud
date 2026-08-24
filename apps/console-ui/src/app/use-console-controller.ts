@@ -131,13 +131,14 @@ export function unavailableSource<T>(source: string): SourceEnvelope<T> {
   };
 }
 
-function friendlyError(error: unknown) {
+export function friendlyError(error: unknown) {
   const raw = String(error && typeof error === "object" && "message" in error ? error.message : error || "request_failed");
   const messages: Record<string, string> = {
     not_authenticated: "登录已失效，请重新登录",
     account_scope_forbidden: "没有权限访问该资源",
     workspace_purchase_not_enabled: "该账户尚未获得 Workspace 新购资格",
     insufficient_balance: "可用余额不足",
+    monthly_balance_insufficient: "可用余额不足",
     gateway_key_missing: "API Key 尚未就绪",
     gateway_key_ambiguous: "API Key 状态异常，请联系管理员",
     monthly_account_unmapped: "API 服务尚未开通",

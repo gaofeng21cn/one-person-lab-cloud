@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
+
+	"opl-cloud/services/control-plane/internal/clients"
 )
 
 const workspaceLaunchReconcileSchemaVersion = 3
@@ -177,8 +181,15 @@ type workspaceLaunchStageAttempt struct {
 }
 
 type workspaceLaunchStageObservation struct {
-	State string         `json:"state"`
-	Facts map[string]any `json:"facts,omitempty"`
+	State      string                                  `json:"state"`
+	Facts      map[string]any                          `json:"facts,omitempty"`
+	Diagnostic *clients.WorkspaceLaunchStageDiagnostic `json:"diagnostic,omitempty"`
+}
+
+func workspaceLaunchObservationWithState(observation workspaceLaunchStageObservation, state string) workspaceLaunchStageObservation {
+	observation.State = state
+	observation.Facts = nil
+	return observation
 }
 
 type workspaceLaunchResumeAuthorization struct {
@@ -350,6 +361,75 @@ type WorkspaceLaunchReconciler struct {
 	now     func() time.Time
 }
 
+func (r *WorkspaceLaunchReconciler) readStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
+	startedAt := time.Now()
+	observation, err := r.adapter.ReadStage(ctx, operation)
+	outcome, errorCode := "success", "none"
+	if err != nil {
+		outcome, errorCode = "error", workspaceLaunchStageReadErrorCode(err)
+	}
+	blockReason := workspaceLaunchObservationBlockReason(observation)
+	if err != nil {
+		blockReason = errorCode
+		slog.ErrorContext(ctx, "workspace launch external call",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+	} else {
+		slog.InfoContext(ctx, "workspace launch external call",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+	}
+	return observation, err
+}
+
+func (r *WorkspaceLaunchReconciler) mutateStage(ctx context.Context, operation workspaceLaunchReconcileOperation, idempotencyKey string) error {
+	startedAt := time.Now()
+	err := r.adapter.MutateStage(ctx, operation, idempotencyKey)
+	outcome, errorCode := "success", "none"
+	if err != nil {
+		outcome, errorCode = "error", workspaceLaunchStageReadErrorCode(err)
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "workspace launch external call",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "ensure", true, outcome, "not_observed", errorCode, errorCode, time.Since(startedAt))...)
+	} else {
+		slog.InfoContext(ctx, "workspace launch external call",
+			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "ensure", true, outcome, "not_observed", "none", errorCode, time.Since(startedAt))...)
+	}
+	return err
+}
+
+func workspaceLaunchLogAttrs(operationID, stage, action string, mutation bool, outcome, state, blockReason, errorCode string, duration time.Duration) []any {
+	digest := sha256.Sum256([]byte(operationID))
+	return []any{
+		"operation_digest", fmt.Sprintf("sha256:%x", digest),
+		"stage", stage,
+		"action", action,
+		"mutation", mutation,
+		"outcome", outcome,
+		"state", firstNonEmpty(state, "not_observed"),
+		"block_reason", firstNonEmpty(blockReason, "none"),
+		"error_code", firstNonEmpty(errorCode, "none"),
+		"duration_ms", duration.Milliseconds(),
+	}
+}
+
+func workspaceLaunchObservationBlockReason(observation workspaceLaunchStageObservation) string {
+	if observation.Diagnostic != nil && observation.Diagnostic.BlockReason != "" {
+		return observation.Diagnostic.BlockReason
+	}
+	switch observation.State {
+	case workspaceLaunchStageReady:
+		return "none"
+	case workspaceLaunchStageAbsent:
+		return "stage_resource_absent"
+	case workspaceLaunchStagePending, workspaceLaunchStageOwnershipPending, workspaceLaunchStageRuntimeImageRevisionPending:
+		return "stage_provider_pending"
+	case workspaceLaunchStageUnknown:
+		return "stage_observation_unknown"
+	default:
+		return "stage_observation_invalid"
+	}
+}
+
 func NewWorkspaceLaunchReconciler(store workspaceLaunchReconcileStore, adapter workspaceLaunchStageAdapter) *WorkspaceLaunchReconciler {
 	return &WorkspaceLaunchReconciler{store: store, adapter: adapter, now: time.Now}
 }
@@ -438,7 +518,7 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 		return r.persist(ctx, operation)
 	}
 
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil {
 		observation = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 	}
@@ -468,7 +548,7 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 			attempt.Status = "unknown"
 			operation.Attempts[operation.Stage] = attempt
 		}
-		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+		operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(observation, workspaceLaunchStageUnknown)
 		operation.completeIdempotentReplay("failed", r.clockNow())
 		operation.consumeResumeAuthorization(r.clockNow())
 		operation.Status = "manual_review"
@@ -477,7 +557,7 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 		attempt := operation.Attempts[operation.Stage]
 		if attempt.Attempted != 1 || attempt.Status != "reserved" || attempt.Confirmed != 0 || attempt.Unknown != 0 ||
 			!workspaceLaunchContinuationReadAuthorized(operation, attempt) {
-			operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+			operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(observation, workspaceLaunchStageUnknown)
 			operation.completeIdempotentReplay("failed", r.clockNow())
 			operation.consumeResumeAuthorization(r.clockNow())
 			operation.Status = "manual_review"
@@ -492,24 +572,24 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 		if attempt.PendingReadbacks >= attempt.MaxPendingReadbacks || workspaceLaunchPendingDeadlineExpired(operation.Stage, attempt, r.clockNow()) {
 			attempt.Unknown, attempt.Status = 1, "unknown"
 			operation.Attempts[operation.Stage] = attempt
-			operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+			operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(observation, workspaceLaunchStageUnknown)
 			operation.completeIdempotentReplay("failed", r.clockNow())
 			operation.consumeResumeAuthorization(r.clockNow())
 			operation.Status = "manual_review"
 			return r.persist(ctx, operation)
 		}
-		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStagePending}
+		operation.Observations[operation.Stage] = observation
 		return r.persist(ctx, operation)
 	case workspaceLaunchStageRuntimeImageRevisionPending:
 		attempt := operation.Attempts[operation.Stage]
 		if !workspaceLaunchRuntimeImageRevisionContinuationAuthorized(operation, attempt) {
-			return r.parkClaimedReplay(ctx, operation, workspaceLaunchStageUnknown)
+			return r.parkClaimedReplay(ctx, operation, observation)
 		}
 		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}
 		if claim, exists := operation.IdempotentReplayClaims[operation.Stage]; exists {
 			if claim.AuthorizationID != operation.ResumeAuthorization.AuthorizationID || claim.Stage != operation.Stage ||
 				claim.IdempotencyKey != attempt.IdempotencyKey || claim.Status != "waiting" {
-				return r.parkClaimedReplay(ctx, operation, workspaceLaunchStageUnknown)
+				return r.parkClaimedReplay(ctx, operation, observation)
 			}
 			return r.mutateReservedStage(ctx, operation)
 		}
@@ -554,7 +634,7 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 		return r.replayReservedStage(ctx, operation, attempt)
 	case workspaceLaunchStageAbsent:
 		if claim, exists := operation.IdempotentReplayClaims[operation.Stage]; exists && claim.Status == "waiting" {
-			return r.parkClaimedReplay(ctx, operation, workspaceLaunchStageUnknown)
+			return r.parkClaimedReplay(ctx, operation, observation)
 		}
 	default:
 		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
@@ -646,7 +726,7 @@ func (r *WorkspaceLaunchReconciler) continueFreshTypedPending(
 		return workspaceLaunchReconcileOperation{}, err
 	}
 
-	observation, readErr := r.adapter.ReadStage(ctx, claimed)
+	observation, readErr := r.readStage(ctx, claimed)
 	if readErr != nil {
 		observation = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 	}
@@ -673,11 +753,11 @@ func (r *WorkspaceLaunchReconciler) continueFreshTypedPending(
 	case workspaceLaunchStagePending, workspaceLaunchStageOwnershipPending:
 		claim.Status = "pending"
 		claimed.ContinuationReadClaims[claimKey] = claim
+		claimed.Observations[claimed.Stage] = observation
 		attempt = claimed.Attempts[claimed.Stage]
 		if attempt.PendingReadbacks >= attempt.MaxPendingReadbacks || workspaceLaunchPendingDeadlineExpired(claimed.Stage, attempt, r.clockNow()) {
 			return r.parkFreshTypedPending(ctx, claimed, attempt, authorization, claimKey)
 		}
-		claimed.Observations[claimed.Stage] = workspaceLaunchStageObservation{State: observation.State}
 		if observation.State == workspaceLaunchStageOwnershipPending {
 			if claimed.Stage != "ensure_compute_allocation" || authorization.IdempotentReplayBudget != 1 || !r.adapter.CanReplayStage(claimed) {
 				return r.parkFreshTypedPending(ctx, claimed, attempt, authorization, claimKey)
@@ -703,6 +783,7 @@ func (r *WorkspaceLaunchReconciler) continueFreshTypedPending(
 	case workspaceLaunchStageAbsent, workspaceLaunchStageUnknown:
 		claim.Status = "failed"
 		claimed.ContinuationReadClaims[claimKey] = claim
+		claimed.Observations[claimed.Stage] = observation
 		return r.parkFreshTypedPending(ctx, claimed, claimed.Attempts[claimed.Stage], authorization, claimKey)
 	default:
 		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
@@ -714,7 +795,7 @@ func (r *WorkspaceLaunchReconciler) convergeFreshComputeReplay(
 	operation workspaceLaunchReconcileOperation,
 	authorization workspaceLaunchFreshContinuationAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil {
 		observation = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 	}
@@ -722,11 +803,11 @@ func (r *WorkspaceLaunchReconciler) convergeFreshComputeReplay(
 	case workspaceLaunchStageReady:
 		return r.completeFreshComputeReplay(ctx, operation, authorization, observation)
 	case workspaceLaunchStagePending:
-		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStagePending}
+		operation.Observations[operation.Stage] = observation
 		return r.persist(ctx, operation)
 	case workspaceLaunchStageOwnershipPending:
-		mutationErr := r.adapter.MutateStage(ctx, operation, operation.Attempts[operation.Stage].IdempotencyKey)
-		postRead, postReadErr := r.adapter.ReadStage(ctx, operation)
+		mutationErr := r.mutateStage(ctx, operation, operation.Attempts[operation.Stage].IdempotencyKey)
+		postRead, postReadErr := r.readStage(ctx, operation)
 		if postReadErr != nil {
 			postRead = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 		}
@@ -746,6 +827,7 @@ func (r *WorkspaceLaunchReconciler) convergeFreshComputeReplay(
 			return parked, nil
 		}
 	case workspaceLaunchStageAbsent, workspaceLaunchStageUnknown:
+		operation.Observations[operation.Stage] = observation
 		return r.parkFreshTypedPending(ctx, operation, operation.Attempts[operation.Stage], authorization, "")
 	default:
 		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
@@ -796,7 +878,7 @@ func (r *WorkspaceLaunchReconciler) parkFreshTypedPending(
 	}
 	attempt.Unknown, attempt.Status = 1, "unknown"
 	operation.Attempts[operation.Stage] = attempt
-	operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+	operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(operation.Observations[operation.Stage], workspaceLaunchStageUnknown)
 	operation.completeIdempotentReplay("failed", r.clockNow())
 	authorization.Status, authorization.ConsumedAt = "failed", r.clockNow().Format(time.RFC3339Nano)
 	operation.FreshContinuationAuthorizations[operation.Stage] = authorization
@@ -812,9 +894,12 @@ func (r *WorkspaceLaunchReconciler) replayReservedStage(ctx context.Context, ope
 	if err != nil || !dispatch {
 		return claimed, err
 	}
-	observation, readErr := r.adapter.ReadStage(ctx, claimed)
-	if readErr != nil || observation.State == workspaceLaunchStageUnknown {
-		return r.parkClaimedReplay(ctx, claimed, workspaceLaunchStageUnknown)
+	observation, readErr := r.readStage(ctx, claimed)
+	if readErr != nil {
+		observation = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+	}
+	if observation.State == workspaceLaunchStageUnknown {
+		return r.parkClaimedReplay(ctx, claimed, observation)
 	}
 	switch observation.State {
 	case workspaceLaunchStageReady:
@@ -823,7 +908,7 @@ func (r *WorkspaceLaunchReconciler) replayReservedStage(ctx context.Context, ope
 		if workspaceLaunchPostDispatchRuntimeImageRevisionAuthorized(claimed, claimed.Attempts[claimed.Stage]) {
 			return r.mutateReservedStage(ctx, claimed)
 		}
-		return r.waitClaimedReplay(ctx, claimed, workspaceLaunchStagePending)
+		return r.waitClaimedReplay(ctx, claimed, observation)
 	case workspaceLaunchStageAbsent, workspaceLaunchStageOwnershipPending, workspaceLaunchStageRuntimeImageRevisionPending:
 		return r.mutateReservedStage(ctx, claimed)
 	default:
@@ -872,16 +957,16 @@ func (r *WorkspaceLaunchReconciler) convergeClaimedReplay(ctx context.Context, o
 	return r.persist(ctx, operation)
 }
 
-func (r *WorkspaceLaunchReconciler) waitClaimedReplay(ctx context.Context, operation workspaceLaunchReconcileOperation, state string) (workspaceLaunchReconcileOperation, error) {
+func (r *WorkspaceLaunchReconciler) waitClaimedReplay(ctx context.Context, operation workspaceLaunchReconcileOperation, observation workspaceLaunchStageObservation) (workspaceLaunchReconcileOperation, error) {
 	attempt := operation.Attempts[operation.Stage]
 	attempt.PendingReadbacks++
 	operation.Attempts[operation.Stage] = attempt
-	operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: state}
+	operation.Observations[operation.Stage] = observation
 	operation.completeIdempotentReplay("waiting", r.clockNow())
 	if attempt.PendingReadbacks >= attempt.MaxPendingReadbacks || workspaceLaunchPendingDeadlineExpired(operation.Stage, attempt, r.clockNow()) {
 		attempt.Unknown, attempt.Status = 1, "unknown"
 		operation.Attempts[operation.Stage] = attempt
-		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+		operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(observation, workspaceLaunchStageUnknown)
 		operation.completeIdempotentReplay("failed", r.clockNow())
 		operation.consumeResumeAuthorization(r.clockNow())
 		operation.Status = "manual_review"
@@ -891,11 +976,11 @@ func (r *WorkspaceLaunchReconciler) waitClaimedReplay(ctx context.Context, opera
 	return r.persist(ctx, operation)
 }
 
-func (r *WorkspaceLaunchReconciler) parkClaimedReplay(ctx context.Context, operation workspaceLaunchReconcileOperation, state string) (workspaceLaunchReconcileOperation, error) {
+func (r *WorkspaceLaunchReconciler) parkClaimedReplay(ctx context.Context, operation workspaceLaunchReconcileOperation, observation workspaceLaunchStageObservation) (workspaceLaunchReconcileOperation, error) {
 	attempt := operation.Attempts[operation.Stage]
 	attempt.Unknown, attempt.Status = 1, "unknown"
 	operation.Attempts[operation.Stage] = attempt
-	operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: state}
+	operation.Observations[operation.Stage] = workspaceLaunchObservationWithState(observation, workspaceLaunchStageUnknown)
 	operation.completeIdempotentReplay("failed", r.clockNow())
 	operation.consumeResumeAuthorization(r.clockNow())
 	operation.Status = "manual_review"
@@ -904,8 +989,8 @@ func (r *WorkspaceLaunchReconciler) parkClaimedReplay(ctx context.Context, opera
 
 func (r *WorkspaceLaunchReconciler) mutateReservedStage(ctx context.Context, reserved workspaceLaunchReconcileOperation) (workspaceLaunchReconcileOperation, error) {
 	attempt := reserved.Attempts[reserved.Stage]
-	mutationErr := r.adapter.MutateStage(ctx, reserved, attempt.IdempotencyKey)
-	postRead, postReadErr := r.adapter.ReadStage(ctx, reserved)
+	mutationErr := r.mutateStage(ctx, reserved, attempt.IdempotencyKey)
+	postRead, postReadErr := r.readStage(ctx, reserved)
 	if postReadErr != nil {
 		postRead = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 	}
@@ -926,7 +1011,7 @@ func (r *WorkspaceLaunchReconciler) mutateReservedStage(ctx context.Context, res
 	if (postRead.State == workspaceLaunchStagePending || postRead.State == workspaceLaunchStageOwnershipPending || postRead.State == workspaceLaunchStageRuntimeImageRevisionPending) &&
 		!errors.Is(mutationErr, errWorkspaceLaunchMutationNotDispatched) {
 		if _, replay := reserved.IdempotentReplayClaims[reserved.Stage]; replay {
-			return r.waitClaimedReplay(ctx, reserved, postRead.State)
+			return r.waitClaimedReplay(ctx, reserved, postRead)
 		}
 		attempt.PendingReadbacks = 1
 		attempt.MaxPendingReadbacks = 1 + workspaceLaunchFreshContinuationReadBudget(reserved.Stage)
@@ -943,11 +1028,11 @@ func (r *WorkspaceLaunchReconciler) mutateReservedStage(ctx context.Context, res
 		}
 		reserved.FreshContinuationAuthorizations[reserved.Stage] = authorization
 		reserved.consumeResumeAuthorization(r.clockNow())
-		reserved.Observations[reserved.Stage] = workspaceLaunchStageObservation{State: postRead.State}
+		reserved.Observations[reserved.Stage] = postRead
 		reserved.Status = "pending"
 		return r.persist(ctx, reserved)
 	}
-	reserved.Observations[reserved.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+	reserved.Observations[reserved.Stage] = workspaceLaunchObservationWithState(postRead, workspaceLaunchStageUnknown)
 	attempt.Unknown = 1
 	attempt.Status = "unknown"
 	reserved.Attempts[reserved.Stage] = attempt
@@ -1218,7 +1303,7 @@ func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
 	attempt.PendingReadbacks = attempt.MaxPendingReadbacks
 	observed := operation
 	observed.rotateResumeAuthorization(authorization)
-	observation, readErr := r.adapter.ReadStage(ctx, observed)
+	observation, readErr := r.readStage(ctx, observed)
 	if readErr != nil || observation.State != workspaceLaunchStageRuntimeImageRevisionPending &&
 		(!postDispatchContinuation || observation.State != workspaceLaunchStagePending) {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
@@ -1274,7 +1359,7 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownComputeStage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil || observation.State != workspaceLaunchStagePending && observation.State != workspaceLaunchStageOwnershipPending {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1324,7 +1409,7 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownStorageStage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1385,7 +1470,7 @@ func (r *WorkspaceLaunchReconciler) recoverFailedStorageReplayStage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1412,7 +1497,7 @@ func (r *WorkspaceLaunchReconciler) readExhaustedStorageStage(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil || observation.State != workspaceLaunchStageReady {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1432,7 +1517,7 @@ func (r *WorkspaceLaunchReconciler) replayExhaustedStorageBinding(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil || observation.State != workspaceLaunchStageAbsent {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1485,7 +1570,7 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownRuntimeAfterAbsence(
 	attempt workspaceLaunchStageAttempt,
 	authorization workspaceLaunchResumeAuthorization,
 ) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil || observation.State != workspaceLaunchStageAbsent {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1503,7 +1588,7 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownRuntimeAfterAbsence(
 }
 
 func (r *WorkspaceLaunchReconciler) recoverUnknownReadyStage(ctx context.Context, operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil || observation.State != workspaceLaunchStageReady {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1537,7 +1622,7 @@ func (r *WorkspaceLaunchReconciler) authorizeExhaustedStage(ctx context.Context,
 		!workspaceLaunchReservedStageReadEligible(operation, attempt, authorization) {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
-	observation, readErr := r.adapter.ReadStage(ctx, operation)
+	observation, readErr := r.readStage(ctx, operation)
 	if readErr != nil {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
@@ -1585,22 +1670,53 @@ func (r *WorkspaceLaunchReconciler) authorizeExhaustedStage(ctx context.Context,
 }
 
 func (r *WorkspaceLaunchReconciler) persist(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchReconcileOperation, error) {
+	startedAt := time.Now()
+	previousStage := workspaceLaunchPersistedStage(operation)
+	action, stage := "persist", operation.Stage
+	if previousStage != "" && previousStage != operation.Stage {
+		action, stage = "stage_advance", previousStage
+	} else if operation.Status == "manual_review" {
+		action = "manual_review"
+	}
+	observation := operation.Observations[stage]
 	operation.Version++
 	desired, err := workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
+		slog.ErrorContext(ctx, "workspace launch persist",
+			workspaceLaunchLogAttrs(operation.ID, stage, action, true, "error", observation.State, workspaceLaunchObservationBlockReason(observation), "operation_encode_failed", time.Since(startedAt))...)
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	projection, err := workspaceLaunchReceiptProjectionFor(operation)
 	if err != nil {
+		slog.ErrorContext(ctx, "workspace launch persist",
+			workspaceLaunchLogAttrs(operation.ID, stage, action, true, "error", observation.State, workspaceLaunchObservationBlockReason(observation), "receipt_projection_failed", time.Since(startedAt))...)
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	if err := r.store.PersistWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileCAS{
 		OperationID: operation.ID, ExpectedOperationResult: operation.PersistedResult, DesiredOperation: desired, WorkspaceReceiptProjection: projection,
 	}); err != nil {
+		errorCode := "persist_failed"
+		if errors.Is(err, errWorkspaceLaunchCASConflict) {
+			errorCode = "cas_conflict"
+		}
+		slog.ErrorContext(ctx, "workspace launch persist",
+			workspaceLaunchLogAttrs(operation.ID, stage, action, true, "error", observation.State, workspaceLaunchObservationBlockReason(observation), errorCode, time.Since(startedAt))...)
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	operation.PersistedResult = stringValue(desired["result"])
+	slog.InfoContext(ctx, "workspace launch persist",
+		workspaceLaunchLogAttrs(operation.ID, stage, action, true, "success", observation.State, workspaceLaunchObservationBlockReason(observation), "none", time.Since(startedAt))...)
 	return operation, nil
+}
+
+func workspaceLaunchPersistedStage(operation workspaceLaunchReconcileOperation) string {
+	var previous struct {
+		Stage string `json:"stage"`
+	}
+	if json.Unmarshal([]byte(operation.PersistedResult), &previous) != nil {
+		return ""
+	}
+	return previous.Stage
 }
 
 func workspaceLaunchReceiptProjectionFor(operation workspaceLaunchReconcileOperation) (*workspaceLaunchReceiptProjection, error) {
@@ -1721,7 +1837,8 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 			observation.State != workspaceLaunchStageOwnershipPending && observation.State != workspaceLaunchStageRuntimeImageRevisionPending && observation.State != workspaceLaunchStageUnknown ||
 			observation.State == workspaceLaunchStageOwnershipPending && stage != "ensure_compute_allocation" ||
 			observation.State == workspaceLaunchStageRuntimeImageRevisionPending && stage != "runtime" ||
-			observation.State != workspaceLaunchStageReady && len(observation.Facts) != 0 {
+			observation.State != workspaceLaunchStageReady && len(observation.Facts) != 0 ||
+			!validWorkspaceLaunchFabricDiagnostic(stage, observation.State, observation.Diagnostic) {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_observations")
 		}
 		if observation.State == workspaceLaunchStageReady {
@@ -2217,7 +2334,7 @@ func reduceWorkspaceLaunchStageObservation(operation *workspaceLaunchReconcileOp
 	if err != nil {
 		return workspaceLaunchStageObservation{}, err
 	}
-	reduced := workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: map[string]any{}}
+	reduced := workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: map[string]any{}, Diagnostic: observation.Diagnostic}
 	for field, encoded := range encodedFacts {
 		operation.raw[field] = encoded
 		reduced.Facts[field] = observation.Facts[field]

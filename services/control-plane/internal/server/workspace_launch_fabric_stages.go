@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"opl-cloud/services/control-plane/internal/clients"
 )
@@ -178,14 +179,15 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 
 func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
 	if result.SchemaVersion != clients.WorkspaceLaunchFabricSchemaVersion || result.Binding != input.Binding ||
-		!workspaceLaunchResourcesPreserveIdentity(input.Resources, result.Resources) {
+		!workspaceLaunchResourcesPreserveIdentity(input.Resources, result.Resources) ||
+		!validWorkspaceLaunchFabricDiagnostic(operation.Stage, result.State, result.Diagnostic) {
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	}
 	switch {
 	case result.State == workspaceLaunchStageAbsent && (result.Reason == "no_stage_record" || result.Reason == "started_no_resource" || result.Reason == "failed_no_resource"):
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
 	case result.State == workspaceLaunchStagePending && result.Reason == "provider_provisioning":
-		return workspaceLaunchStageObservation{State: workspaceLaunchStagePending}, nil
+		return workspaceLaunchStageObservation{State: workspaceLaunchStagePending, Diagnostic: result.Diagnostic}, nil
 	case operation.Stage == "runtime" && result.State == workspaceLaunchStagePending && result.Reason == "runtime_image_revision_required":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}, nil
 	case operation.Stage == "ensure_compute_allocation" && result.State == workspaceLaunchStagePending && result.Reason == "ownership_pending":
@@ -198,12 +200,44 @@ func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperatio
 		if _, err := validateWorkspaceLaunchStageFacts(operation.Stage, facts, true); err != nil {
 			return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 		}
-		return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts}, nil
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts, Diagnostic: result.Diagnostic}, nil
+	case result.State == workspaceLaunchStageUnknown && result.Diagnostic != nil && result.Reason == result.Diagnostic.ErrorCode:
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown, Diagnostic: result.Diagnostic}, nil
 	case result.State == workspaceLaunchStageUnknown && (result.Reason == "failed_no_resource_unproven" || result.Reason == "resource_absence_status_conflict"):
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	default:
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	}
+}
+
+func validWorkspaceLaunchFabricDiagnostic(stage, state string, diagnostic *clients.WorkspaceLaunchStageDiagnostic) bool {
+	if diagnostic == nil {
+		return true
+	}
+	if stage != "runtime" || diagnostic.SchemaVersion != 1 || diagnostic.Owner != "fabric.tencent_tke" ||
+		!workspaceLaunchStageDiagnosticErrorPattern.MatchString(diagnostic.BlockReason) || len(diagnostic.Checks) > 32 {
+		return false
+	}
+	if _, err := time.Parse(time.RFC3339Nano, diagnostic.ObservedAt); err != nil {
+		return false
+	}
+	if diagnostic.ErrorCode != "" && !workspaceLaunchStageDiagnosticErrorPattern.MatchString(diagnostic.ErrorCode) {
+		return false
+	}
+	if state == workspaceLaunchStageReady && (diagnostic.BlockReason != "none" || diagnostic.Retryable) ||
+		state != workspaceLaunchStageReady && diagnostic.BlockReason == "none" {
+		return false
+	}
+	for _, check := range diagnostic.Checks {
+		if !workspaceLaunchStageDiagnosticErrorPattern.MatchString(check.Name) {
+			return false
+		}
+		encoded, err := json.Marshal(check.Details)
+		if err != nil || len(encoded) > 16*1024 {
+			return false
+		}
+	}
+	return true
 }
 
 func workspaceLaunchFabricStageFacts(stage string, resources clients.WorkspaceLaunchResources, operation workspaceLaunchReconcileOperation) (map[string]any, error) {
