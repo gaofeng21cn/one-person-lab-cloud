@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
@@ -99,14 +100,40 @@ func TestWorkspaceProxyStripsPlatformCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer platform-session")
-	req.Header.Set("Cookie", "opl_session=platform-session; opl_ws_active=ws-alpha")
+	req.Header.Set("Cookie", "opl_session=platform-session; opl_ws_active=ws-alpha; "+workspaceGatewayRuntimeSessionCookieName("ws-alpha")+"=runtime-session")
 	req.Header.Set("X-OPL-CSRF", "csrf")
 	req.Header.Set("X-OPL-CSRF-Token", "csrf-token")
-	stripWorkspaceProxyCredentials(req)
-	for _, header := range []string{"Authorization", "Cookie", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
+	stripWorkspaceProxyCredentials(req, "ws-alpha")
+	for _, header := range []string{"Authorization", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
 		if got := req.Header.Get(header); got != "" {
 			t.Fatalf("proxy forwarded %s=%q", header, got)
 		}
+	}
+	if got := req.Header.Get("Cookie"); got != workspaceRuntimeSessionCookieName+"=runtime-session" {
+		t.Fatalf("proxy Runtime cookie = %q", got)
+	}
+	otherWorkspaceRequest := httptest.NewRequest(http.MethodGet, "http://workspace.medopl.cn/api/auth/user", nil)
+	otherWorkspaceRequest.AddCookie(&http.Cookie{Name: workspaceGatewayRuntimeSessionCookieName("ws-beta"), Value: "other-runtime-session"})
+	stripWorkspaceProxyCredentials(otherWorkspaceRequest, "ws-alpha")
+	if got := otherWorkspaceRequest.Header.Get("Cookie"); got != "" {
+		t.Fatalf("proxy forwarded another Workspace Runtime cookie = %q", got)
+	}
+}
+
+func TestWorkspaceProxyProjectsOnlyWorkspaceScopedRuntimeSessionCookie(t *testing.T) {
+	response := &http.Response{Header: http.Header{"Set-Cookie": []string{
+		"platform=forbidden; Path=/",
+		workspaceRuntimeSessionCookieName + "=runtime-session; Path=/; HttpOnly",
+	}}}
+	projectWorkspaceRuntimeSessionCookie(response, "ws-alpha")
+	cookies := response.Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("projected cookies = %#v", cookies)
+	}
+	cookie := cookies[0]
+	if cookie.Name != workspaceGatewayRuntimeSessionCookieName("ws-alpha") || cookie.Value != "runtime-session" ||
+		cookie.Path != "/" || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("projected Runtime cookie = %#v", cookie)
 	}
 }
 

@@ -1056,7 +1056,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		stripWorkspaceProxyCredentials(req)
+		stripWorkspaceProxyCredentials(req, workspaceID)
 		if proxyPath == "" {
 			proxyPath = "/"
 		}
@@ -1065,7 +1065,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		req.Host = target.Host
 	}
 	proxy.ModifyResponse = func(response *http.Response) error {
-		response.Header.Del("Set-Cookie")
+		projectWorkspaceRuntimeSessionCookie(response, workspaceID)
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -1074,9 +1074,39 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	proxy.ServeHTTP(w, r)
 }
 
-func stripWorkspaceProxyCredentials(r *http.Request) {
+const workspaceRuntimeSessionCookieName = "aionui-session"
+
+func workspaceGatewayRuntimeSessionCookieName(workspaceID string) string {
+	return "opl_ws_session_" + stableID("workspace-runtime-session", workspaceID)[:16]
+}
+
+func stripWorkspaceProxyCredentials(r *http.Request, workspaceID string) {
+	var runtimeSessionValue string
+	if cookie, err := r.Cookie(workspaceGatewayRuntimeSessionCookieName(workspaceID)); err == nil {
+		runtimeSessionValue = cookie.Value
+	}
 	for _, header := range []string{"Authorization", "Cookie", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
 		r.Header.Del(header)
+	}
+	if runtimeSessionValue != "" {
+		r.AddCookie(&http.Cookie{Name: workspaceRuntimeSessionCookieName, Value: runtimeSessionValue})
+	}
+}
+
+func projectWorkspaceRuntimeSessionCookie(response *http.Response, workspaceID string) {
+	cookies := response.Cookies()
+	response.Header.Del("Set-Cookie")
+	for _, cookie := range cookies {
+		if cookie.Name != workspaceRuntimeSessionCookieName {
+			continue
+		}
+		cookie.Name = workspaceGatewayRuntimeSessionCookieName(workspaceID)
+		cookie.Path = "/"
+		cookie.Domain = ""
+		cookie.HttpOnly = true
+		cookie.Secure = true
+		cookie.SameSite = http.SameSiteLaxMode
+		response.Header.Add("Set-Cookie", cookie.String())
 	}
 }
 

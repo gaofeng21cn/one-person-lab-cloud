@@ -628,17 +628,23 @@ func assertGatewayAccountingCanonicalWorkspaceOpen(t *testing.T, api *gatewayAcc
 		if request.URL.Host != operation.stringFact("runtimeServiceName")+":3000" || request.URL.Path != "/" || request.Host != operation.stringFact("runtimeServiceName")+":3000" {
 			upstreamMismatch = fmt.Sprintf("Workspace open upstream request = %s host=%q", request.URL.String(), request.Host)
 		}
-		for _, header := range []string{"Authorization", "Cookie", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
+		for _, header := range []string{"Authorization", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
 			if value := request.Header.Get(header); value != "" {
 				upstreamMismatch = fmt.Sprintf("Workspace open forwarded %s=%q", header, value)
 			}
 		}
+		if value := request.Header.Get("Cookie"); value != workspaceRuntimeSessionCookieName+"=runtime-session" {
+			upstreamMismatch = fmt.Sprintf("Workspace open Runtime Cookie=%q", value)
+		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Status:     "200 OK",
-			Header:     http.Header{"Content-Type": []string{"text/plain"}, "Set-Cookie": []string{"upstream=forbidden"}},
-			Body:       io.NopCloser(strings.NewReader("workspace-open")),
-			Request:    request,
+			Header: http.Header{"Content-Type": []string{"text/plain"}, "Set-Cookie": []string{
+				"upstream=forbidden; Path=/",
+				workspaceRuntimeSessionCookieName + "=refreshed-runtime-session; Path=/; HttpOnly",
+			}},
+			Body:    io.NopCloser(strings.NewReader("workspace-open")),
+			Request: request,
 		}, nil
 	})
 	defer func() { http.DefaultTransport = originalTransport }()
@@ -649,6 +655,7 @@ func assertGatewayAccountingCanonicalWorkspaceOpen(t *testing.T, api *gatewayAcc
 	}
 	request.Header.Set("Authorization", "Bearer platform-session")
 	request.Header.Set("X-OPL-CSRF", api.csrf)
+	request.AddCookie(&http.Cookie{Name: workspaceGatewayRuntimeSessionCookieName(operation.stringFact("workspaceId")), Value: "runtime-session"})
 	response, err := api.client.Do(request)
 	if err != nil {
 		t.Fatalf("canonical Workspace open: %v", err)
@@ -658,10 +665,17 @@ func assertGatewayAccountingCanonicalWorkspaceOpen(t *testing.T, api *gatewayAcc
 	if readErr != nil || response.StatusCode != http.StatusOK || string(body) != "workspace-open" || upstreamCalls != 1 || upstreamMismatch != "" {
 		t.Fatalf("canonical Workspace open status=%d body=%q calls=%d mismatch=%q err=%v", response.StatusCode, body, upstreamCalls, upstreamMismatch, readErr)
 	}
+	runtimeSessionFound := false
 	for _, cookie := range response.Cookies() {
 		if cookie.Name == "upstream" {
 			t.Fatalf("Workspace open forwarded upstream cookie: %#v", cookie)
 		}
+		if cookie.Name == workspaceGatewayRuntimeSessionCookieName(operation.stringFact("workspaceId")) {
+			runtimeSessionFound = cookie.Value == "refreshed-runtime-session" && cookie.Path == "/" && cookie.HttpOnly && cookie.Secure
+		}
+	}
+	if !runtimeSessionFound {
+		t.Fatalf("Workspace open did not project the scoped Runtime session: %#v", response.Cookies())
 	}
 }
 
