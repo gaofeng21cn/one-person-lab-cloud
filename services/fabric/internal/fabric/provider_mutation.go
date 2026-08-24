@@ -464,16 +464,83 @@ func (a *providerMutationAttempt) claimRuntimeImageRevision(ctx context.Context,
 		persisted.ID == "" || persisted.ID != binding.ResourceID || persisted.ID != observed.ID ||
 		persisted.OperationID != revision.RuntimeOperationID || persisted.OperationID != observed.OperationID ||
 		persisted.WorkspaceID != revision.WorkspaceID || persisted.WorkspaceID != observed.WorkspaceID ||
-		persisted.ServiceName == "" || persisted.ServiceName != binding.ExpectedResourceBinding || persisted.ServiceName != observed.ServiceName ||
-		persisted.ImageID != revision.PreviousImageDigest ||
-		observed.ImageID != revision.PreviousImageDigest && (observed.ImageID != revision.ReplacementImageDigest || observed.Ready) {
+		persisted.ServiceName == "" || persisted.ServiceName != binding.ExpectedResourceBinding || persisted.ServiceName != observed.ServiceName {
+		return false, ErrLaunchStageBindingConflict
+	}
+	directRevision := persisted.ImageID == revision.PreviousImageDigest &&
+		(observed.ImageID == revision.PreviousImageDigest || observed.ImageID == revision.ReplacementImageDigest && !observed.Ready)
+	supersession := a.runtimeImageRevisionSupersessionEligible(revision, persisted, observed)
+	if !directRevision && !supersession {
 		return false, ErrLaunchStageBindingConflict
 	}
 	template := providerMutationReplayEpoch{
 		ReplayClass: providerMutationRuntimeImageRevisionReplayClass, AuthorityDigest: revision.AuthorizationDigest,
 		PreviousImageDigest: revision.PreviousImageDigest, ReplacementImageDigest: revision.ReplacementImageDigest,
 	}
+	if supersession {
+		return a.claimRuntimeImageRevisionSupersession(ctx, template, persisted, observed)
+	}
 	return a.claimReplayWithClass(ctx, template, true)
+}
+
+func (a *providerMutationAttempt) runtimeImageRevisionSupersessionEligible(revision WorkspaceLaunchRuntimeImageRevision, persisted, observed WorkspaceRuntime) bool {
+	epoch, ok := decodeProviderMutationReplayEpoch(a.operation)
+	if !ok || epoch.ReplayClass != providerMutationRuntimeImageRevisionReplayClass || epoch.State != "awaiting_readback" ||
+		epoch.AuthorityDigest == revision.AuthorizationDigest || epoch.PreviousImageDigest != persisted.ImageID ||
+		epoch.ReplacementImageDigest != observed.ImageID || observed.Ready || observed.Status != "unready" ||
+		revision.PreviousImageDigest != epoch.ReplacementImageDigest || revision.ReplacementImageDigest == epoch.PreviousImageDigest ||
+		revision.ReplacementImageDigest == epoch.ReplacementImageDigest || !sameWorkspaceRuntimeRevisionIdentity(persisted, observed) {
+		return false
+	}
+	lease, err := time.Parse(time.RFC3339Nano, epoch.LeaseExpiresAt)
+	return err == nil && !lease.After(a.journal.now().UTC())
+}
+
+func sameWorkspaceRuntimeRevisionIdentity(persisted, observed WorkspaceRuntime) bool {
+	return persisted.ID == observed.ID && persisted.OperationID == observed.OperationID && persisted.WorkspaceID == observed.WorkspaceID &&
+		persisted.URL == observed.URL && persisted.ServiceName == observed.ServiceName &&
+		persisted.Access.Username == observed.Access.Username && persisted.Access.CredentialStatus == observed.Access.CredentialStatus &&
+		persisted.Access.CredentialVersion == observed.Access.CredentialVersion && persisted.Access.SecretRef == observed.Access.SecretRef &&
+		reflect.DeepEqual(persisted.CostTags, observed.CostTags)
+}
+
+func (a *providerMutationAttempt) claimRuntimeImageRevisionSupersession(
+	ctx context.Context,
+	template providerMutationReplayEpoch,
+	persisted WorkspaceRuntime,
+	observed WorkspaceRuntime,
+) (bool, error) {
+	store, ok := a.journal.operations.(providerMutationReplayStore)
+	if !ok {
+		return false, ErrRuntimeOperationNotCurrent
+	}
+	previous, ok := decodeProviderMutationReplayEpoch(a.operation)
+	binding, bindingOK := decodeProviderMutationBinding(a.operation)
+	if !ok || !bindingOK {
+		return false, ErrLaunchStageBindingConflict
+	}
+	now := a.journal.now().UTC()
+	baseline := observed
+	baseline.ProviderRequestID = persisted.ProviderRequestID
+	baseline.CreatedAt = persisted.CreatedAt
+	next := a.operation
+	fillOperationResource(&next, baseline)
+	template.SchemaVersion = 1
+	template.ReplayID = providerMutationReplayID(next, binding)
+	template.ParentFabricOperationID = binding.Parent.FabricOperationID
+	template.ChildOperationID = next.ID
+	template.IdempotencyKey = next.IdempotencyKey
+	template.State = "leased"
+	template.LeaseGeneration = previous.LeaseGeneration + 1
+	template.LeaseExpiresAt = now.Add(providerMutationReplayLease).Format(time.RFC3339Nano)
+	template.DispatchStartedAt = ""
+	template.CompletedAt = ""
+	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = template
+	if err := store.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
+		return false, err
+	}
+	a.operation, a.Replay = next, true
+	return true, nil
 }
 
 func (a *providerMutationAttempt) runtimeImageRevisionClaimed(revision WorkspaceLaunchRuntimeImageRevision) bool {

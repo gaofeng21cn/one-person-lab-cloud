@@ -447,6 +447,34 @@ func workspaceLaunchRuntimeImageRevisionAuthorization(t *testing.T, row map[stri
 	}
 }
 
+func workspaceLaunchRetainedRuntimeImageRevisionManualReviewRow(t *testing.T) map[string]any {
+	t.Helper()
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v111-retained-image")
+	previous.LaunchVersion = 111
+	previous.ReadbacksAtAuthorization = 3 * workspaceLaunchAuthoritativeReadBudget
+	completedAt := "2026-08-24T06:42:32Z"
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 4*workspaceLaunchAuthoritativeReadBudget, 4*workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	operation.Version = 116
+	operation.ResumeAuthorization = &previous
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	operation.IdempotentReplayClaims["runtime"] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: previous.AuthorizationID, Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
 func workspaceLaunchUnknownStorageReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
 	t.Helper()
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -973,6 +1001,34 @@ func TestWorkspaceLaunchRuntimeImageRevisionContinuesSameDispatchedReplacementOn
 	}
 }
 
+func TestWorkspaceLaunchRuntimeImageRevisionSupersedesExactUnreadyRetainedImage(t *testing.T) {
+	row := workspaceLaunchRetainedRuntimeImageRevisionManualReviewRow(t)
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionPending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {revisionPending, revisionPending, revisionPending}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v116-next-image")
+	authorization.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), before.ID, authorization)
+	attempt := got.Attempts["runtime"]
+	claim := got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Confirmed != 1 || attempt.Unknown != 0 ||
+		attempt.Status != "confirmed" || attempt.PendingReadbacks != 4*workspaceLaunchAuthoritativeReadBudget ||
+		attempt.MaxPendingReadbacks != 5*workspaceLaunchAuthoritativeReadBudget || attempt.IdempotencyKey != before.Attempts["runtime"].IdempotencyKey ||
+		adapter.mutationsByStage["runtime"] != 1 || claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest ||
+		got.ResumeAuthorizationConsumedAt == "" || got.RuntimeRepair != nil {
+		t.Fatalf("retained Runtime image was not superseded on the original Launch: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
 func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *testing.T) {
 	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -1095,6 +1151,35 @@ func TestWorkspaceLaunchRuntimeImageRevisionContinuationRetainsDispatchedProof(t
 	operation.ConsumedResumeAuthorizations[0].Authorization.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
 	if _, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
 		t.Fatalf("drifted dispatched proof was accepted: %v", err)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionSupersessionProofUsesRetainedImage(t *testing.T) {
+	row := workspaceLaunchRetainedRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := *operation.ResumeAuthorization
+	active := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v116-next-image-proof")
+	active.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+	active.ReadbacksAtAuthorization = 4 * workspaceLaunchAuthoritativeReadBudget
+	operation.ConsumedResumeAuthorizations = append(operation.ConsumedResumeAuthorizations, workspaceLaunchConsumedResumeAuthorization{
+		Authorization: previous, ConsumedAt: operation.ResumeAuthorizationConsumedAt,
+	})
+	operation.ResumeAuthorization = &active
+	operation.ResumeAuthorizationConsumedAt = ""
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = 5 * workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+
+	input, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), operation, false)
+	proof := input.RuntimeImageRevision
+	if err != nil || proof == nil || proof.AuthorizationDigest != workspaceLaunchResumeAuthorizationDigest(active) ||
+		proof.PreviousImageDigest != previous.ReplacementWorkspaceImageDigest ||
+		proof.ReplacementImageDigest != active.ReplacementWorkspaceImageDigest ||
+		input.WorkspaceImageDigest != operation.stringFact("workspaceImageDigest") || input.Binding.IdempotencyKey != operation.Attempts["runtime"].IdempotencyKey {
+		t.Fatalf("retained image supersession proof changed identity: input=%#v err=%v", input, err)
 	}
 }
 
