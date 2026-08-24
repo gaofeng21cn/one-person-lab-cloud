@@ -127,4 +127,5 @@ records deployment/rollback receipts. An allowlisted Cloud Release publisher,
 either the repository owner or `RenDeHuang`, may publish a successor Release
 only after the same Candidate passes the supported local path and Instance
 qualification, by promoting the qualified Cloud image bytes without rebuild;
-the current workflow does not yet provide this path.
+current source provides this path, while [status](status.md) records whether a
+hosted release cohort has actually completed it.

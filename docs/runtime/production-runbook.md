@@ -81,26 +81,32 @@ it does not create a Product Release.
 ### Publication
 
 After candidate qualification succeeds, an allowlisted Cloud Release publisher
-verifies the unused version, exact canonical SHA, candidate digest, required
-checks, local receipt, Instance receipt, release assets, checksums, and
-provenance. Both receipts must bind the same Cloud SHA and multi-architecture
-index digest while recording their own Workspace image and Provider Profile.
+supplies the exact canonical SHA and the Candidate, Local qualification,
+Instance qualification-decision, and `workspace_verified` run IDs. Admission
+validates their run/artifact provenance, native receipts, release assets,
+checksums, Product tree, and index/platform digests. All evidence must bind the
+same Cloud Candidate while retaining its owner-specific Workspace image and
+Provider Profile facts.
 The repository owner or `RenDeHuang` then explicitly dispatches the Release
 workflow from Cloud `main`; the original actor and current triggering actor must
 match. Publication must promote the exact qualified image bytes and must fail
 if it would rebuild a different digest.
 
-The current workflow does not yet meet that complete sequence: the portable
-multi-architecture Candidate source path exists, but neither qualification path
-yet returns its required receipt for the same Candidate and the formal manual
-dispatch still rebuilds the OCI image before publication. Until both receipts
-and exact-byte promotion are implemented, do not publish a successor to
-`v0.1.7`.
+The workflow now implements this sequence as admission, protected publication,
+and independent public readback. Only publication holds the global lock and
+write permissions. The Instance evidence reader Secret
+`OPL_INSTANCE_EVIDENCE_TOKEN` must be limited to `Actions: read` and
+`Contents: read` on `opl-instance-medopl`; it is not an Instance deployment
+credential. No hosted run has yet proved the new path for one current qualified
+Candidate, so do not claim or publish a successor to `v0.1.7` without that
+evidence.
 
-The workflow remains create-only for ordinary publication and rejects reuse of
-an existing tag, Release, or GHCR release tag. This prevents accidental
-overwrite; it is not a ban on a separate, explicit repository-owner cleanup or
-repair decision.
+Publication retries reconcile the same tag: they promote the admitted digest,
+replace the complete Release asset cohort, remove non-contract assets, and then
+read back the public bytes. A publication-tool failure never requires a version
+bump. Reuse is rejected only when the existing tag resolves to a different
+Product SHA; changed Product bytes require a new qualified Candidate and a
+product version decision.
 
 Do not publish a new Product Release solely for:
 
