@@ -162,6 +162,32 @@ func TestCanonicalWorkspaceLaunchFailurePersistsIndexedRedactedDiagnostic(t *tes
 	}
 }
 
+func TestCanonicalWorkspaceLaunchDecodeFailurePersistsExactCategory(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	store.runtimeOps[0]["result"] = "{"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	event := events[0]
+	diagnostic := mapField(event, "after")
+	if stringValue(event["resourceKind"]) != "workspace_launch" || stringValue(event["resourceId"]) != operation.ID ||
+		stringValue(diagnostic["reason"]) != "operation_decode_failed" || stringValue(diagnostic["decodeFailureCategory"]) != "invalid_json" {
+		t.Fatalf("audit event=%#v", event)
+	}
+}
+
 func TestRuntimeStatusCanonicalLaunchAuthorityDriftFailsBeforeFabric(t *testing.T) {
 	for _, test := range []struct {
 		name       string

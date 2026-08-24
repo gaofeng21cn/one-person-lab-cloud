@@ -1086,7 +1086,7 @@ func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Con
 		return workspaceLaunchReconcileOperation{}, errors.New("workspace_runtime_truth_unavailable")
 	}
 	if !found {
-		app.recordCanonicalWorkspaceLaunchFailure(ctx, workspace, "", "", "operation_absent", []string{"launch_present"})
+		app.recordCanonicalWorkspaceLaunchFailure(ctx, workspace, "", "", "operation_absent", []string{"launch_present"}, "")
 		return workspaceLaunchReconcileOperation{}, errors.New("workspace_runtime_truth_unavailable")
 	}
 	return operation, nil
@@ -1100,11 +1100,11 @@ func (app *controlPlaneServer) canonicalWorkspaceLaunch(
 	ctx context.Context,
 	workspace map[string]any,
 	projectionMismatches func(workspaceLaunchReconcileOperation, map[string]any) []string,
-	recordFailure func(context.Context, map[string]any, string, string, string, []string),
+	recordFailure func(context.Context, map[string]any, string, string, string, []string, string),
 ) (workspaceLaunchReconcileOperation, bool, error) {
-	record := func(operationID, accountID, reason string, failedFields []string) {
+	record := func(operationID, accountID, reason string, failedFields []string, decodeFailureCategory string) {
 		if recordFailure != nil {
-			recordFailure(ctx, workspace, operationID, accountID, reason, failedFields)
+			recordFailure(ctx, workspace, operationID, accountID, reason, failedFields, decodeFailureCategory)
 		}
 	}
 	workspaceID := stringValue(workspace["id"])
@@ -1112,19 +1112,19 @@ func (app *controlPlaneServer) canonicalWorkspaceLaunch(
 		WorkspaceID: workspaceID, Action: workspaceLaunchAction,
 	})
 	if err != nil {
-		record("", "", "operation_query_failed", []string{"launch_query"})
+		record("", "", "operation_query_failed", []string{"launch_query"}, "")
 		return workspaceLaunchReconcileOperation{}, false, err
 	}
 	if len(rows) == 0 {
 		return workspaceLaunchReconcileOperation{}, false, nil
 	}
 	if len(rows) != 1 {
-		record("", "", "operation_cardinality_invalid", []string{"launch_cardinality"})
+		record("", "", "operation_cardinality_invalid", []string{"launch_cardinality"}, "")
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
 	if err != nil {
-		record(firstNonEmpty(stringValue(rows[0]["operationId"]), stringValue(rows[0]["id"])), stringValue(rows[0]["accountId"]), "operation_decode_failed", []string{"launch_decodable"})
+		record(firstNonEmpty(stringValue(rows[0]["operationId"]), stringValue(rows[0]["id"])), stringValue(rows[0]["accountId"]), "operation_decode_failed", []string{"launch_decodable"}, workspaceLaunchDecodeFailureCategory(err))
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	var mismatches []string
@@ -1141,13 +1141,13 @@ func (app *controlPlaneServer) canonicalWorkspaceLaunch(
 		mismatches = projectionMismatches(operation, workspace)
 	}
 	if len(mismatches) > 0 {
-		record(operation.ID, operation.stringFact("accountId"), "canonical_facts_mismatch", mismatches)
+		record(operation.ID, operation.stringFact("accountId"), "canonical_facts_mismatch", mismatches, "")
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	return operation, true, nil
 }
 
-func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context.Context, workspace map[string]any, operationID, canonicalAccountID, reason string, failedFields []string) {
+func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context.Context, workspace map[string]any, operationID, canonicalAccountID, reason string, failedFields []string, decodeFailureCategory string) {
 	workspaceID := stringValue(workspace["id"])
 	workspaceDigest := sha256.Sum256([]byte(workspaceID))
 	operationDigest := sha256.Sum256([]byte(operationID))
@@ -1158,23 +1158,27 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 		resourceKind, resourceID = "workspace", workspaceID
 	}
 	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	diagnostic := map[string]any{
+		"schemaVersion":   1,
+		"owner":           "control_plane",
+		"stage":           "workspace_access",
+		"reason":          reason,
+		"failedFields":    append([]string(nil), failedFields...),
+		"workspaceDigest": workspaceDigestValue,
+		"operationDigest": operationDigestValue,
+		"mutation":        false,
+		"observedAt":      observedAt,
+	}
+	if decodeFailureCategory != "" {
+		diagnostic["decodeFailureCategory"] = decodeFailureCategory
+	}
 	event := map[string]any{
 		"id":              "audit-" + stableID(workspaceAccessCanonicalAuditAction, workspaceID, operationID, reason, strings.Join(failedFields, ","))[:12],
 		"targetAccountId": firstNonEmpty(canonicalAccountID, stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
 		"action":          workspaceAccessCanonicalAuditAction,
 		"resourceKind":    resourceKind,
 		"resourceId":      resourceID,
-		"after": map[string]any{
-			"schemaVersion":   1,
-			"owner":           "control_plane",
-			"stage":           "workspace_access",
-			"reason":          reason,
-			"failedFields":    append([]string(nil), failedFields...),
-			"workspaceDigest": workspaceDigestValue,
-			"operationDigest": operationDigestValue,
-			"mutation":        false,
-			"observedAt":      observedAt,
-		},
+		"after":     diagnostic,
 		"result":    "blocked",
 		"createdAt": observedAt,
 	}
@@ -1187,6 +1191,7 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 			"stage", "workspace_access",
 			"reason", reason,
 			"failed_fields", failedFields,
+			"decode_failure_category", decodeFailureCategory,
 			"diagnostic_persisted", persisted,
 			"error_code", "diagnostic_persist_failed",
 			"mutation", false,
@@ -1199,6 +1204,7 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 		"stage", "workspace_access",
 		"reason", reason,
 		"failed_fields", failedFields,
+		"decode_failure_category", decodeFailureCategory,
 		"diagnostic_persisted", persisted,
 		"error_code", "none",
 		"mutation", false,
