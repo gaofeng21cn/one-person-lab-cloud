@@ -677,8 +677,10 @@ func observedWorkspaceLaunchStageResult(input WorkspaceLaunchStageInput, state, 
 	return WorkspaceLaunchStageResult{SchemaVersion: WorkspaceLaunchFabricSchemaVersion, State: state, Reason: reason, Binding: input.Binding, Resources: input.Resources}
 }
 
-func workspaceLaunchStageMayContinueEnsure(result WorkspaceLaunchStageResult) bool {
-	return result.State == "absent" || result.State == "pending" && (result.Reason == "ownership_pending" || result.Reason == "runtime_image_revision_required")
+func workspaceLaunchStageMayContinueEnsure(input WorkspaceLaunchStageInput, result WorkspaceLaunchStageResult) bool {
+	return result.State == "absent" || result.State == "pending" &&
+		(result.Reason == "ownership_pending" || result.Reason == "runtime_image_revision_required" ||
+			input.RuntimeImageRevision != nil && result.Reason == "provider_provisioning")
 }
 
 func (s *Service) persistWorkspaceLaunchStageResult(ctx context.Context, input WorkspaceLaunchStageInput, current FabricOperation, record workspaceLaunchStageRecord, result WorkspaceLaunchProviderResult) error {
@@ -740,7 +742,7 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
 		} else {
 			observed, readErr := s.readWorkspaceLaunchStage(ctx, input, existing, existingRecord)
-			if readErr != nil || !workspaceLaunchStageMayContinueEnsure(observed) {
+			if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
 				return observed, readErr
 			}
 		}
@@ -762,7 +764,7 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 	}
 	if !claimed {
 		observed, readErr := s.readWorkspaceLaunchStage(ctx, input, stored, record)
-		if readErr != nil || !workspaceLaunchStageMayContinueEnsure(observed) {
+		if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
 			return observed, readErr
 		}
 	}
@@ -845,6 +847,9 @@ func (s *Service) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceL
 		return observedWorkspaceLaunchStageResult(input, "unknown", "resource_absence_status_conflict"), nil
 	}
 	if errors.Is(err, ErrWorkspaceLaunchPending) {
+		if input.RuntimeImageRevision != nil {
+			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning"), nil
+		}
 		if operation.Status == "started" {
 			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning"), nil
 		}

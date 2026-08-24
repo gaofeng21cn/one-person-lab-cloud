@@ -465,7 +465,8 @@ func (a *providerMutationAttempt) claimRuntimeImageRevision(ctx context.Context,
 		persisted.OperationID != revision.RuntimeOperationID || persisted.OperationID != observed.OperationID ||
 		persisted.WorkspaceID != revision.WorkspaceID || persisted.WorkspaceID != observed.WorkspaceID ||
 		persisted.ServiceName == "" || persisted.ServiceName != binding.ExpectedResourceBinding || persisted.ServiceName != observed.ServiceName ||
-		persisted.ImageID != revision.PreviousImageDigest || observed.ImageID != revision.PreviousImageDigest {
+		persisted.ImageID != revision.PreviousImageDigest ||
+		observed.ImageID != revision.PreviousImageDigest && (observed.ImageID != revision.ReplacementImageDigest || observed.Ready) {
 		return false, ErrLaunchStageBindingConflict
 	}
 	template := providerMutationReplayEpoch{
