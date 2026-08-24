@@ -3811,6 +3811,9 @@ func TestWorkspaceLaunchProjectionMatchesCanonicalCurrentResourceFields(t *testi
 		if workspaceLaunchProjectionMatches(operation, drifted) {
 			t.Fatalf("%s drift matched: %#v", drift.name, drifted)
 		}
+		if fields := workspaceLaunchProjectionMismatchFields(operation, drifted); len(fields) != 1 {
+			t.Fatalf("%s drift fields=%#v", drift.name, fields)
+		}
 	}
 }
 

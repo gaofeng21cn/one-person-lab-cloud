@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -19,6 +22,8 @@ var errWorkspaceKeyRotationInProgress = errors.New("workspace_key_rotation_in_pr
 var errWorkspaceKeyRotationDraining = errors.New("workspace_key_rotation_draining")
 var errWorkspaceKeyRotationConflict = errors.New("workspace_key_rotation_conflict")
 var errWorkspaceKeyRotationState = errors.New("workspace_key_rotation_state_failed")
+
+const workspaceAccessCanonicalAuditAction = "workspace.access.canonical_read"
 
 func (app *controlPlaneServer) workspaceStateRowsLocked(accountID string) []any {
 	rows := app.listWorkspaces(accountID)
@@ -1051,7 +1056,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		stripWorkspaceProxyCredentials(req)
+		stripWorkspaceProxyCredentials(req, workspaceID)
 		if proxyPath == "" {
 			proxyPath = "/"
 		}
@@ -1060,7 +1065,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		req.Host = target.Host
 	}
 	proxy.ModifyResponse = func(response *http.Response) error {
-		response.Header.Del("Set-Cookie")
+		projectWorkspaceRuntimeSessionCookie(response, workspaceID)
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -1069,43 +1074,177 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	proxy.ServeHTTP(w, r)
 }
 
-func stripWorkspaceProxyCredentials(r *http.Request) {
+const workspaceRuntimeSessionCookieName = "aionui-session"
+
+func workspaceGatewayRuntimeSessionCookieName(workspaceID string) string {
+	return "opl_ws_session_" + stableID("workspace-runtime-session", workspaceID)[:16]
+}
+
+func stripWorkspaceProxyCredentials(r *http.Request, workspaceID string) {
+	var runtimeSessionValue string
+	if cookie, err := r.Cookie(workspaceGatewayRuntimeSessionCookieName(workspaceID)); err == nil {
+		runtimeSessionValue = cookie.Value
+	}
 	for _, header := range []string{"Authorization", "Cookie", "X-OPL-CSRF", "X-OPL-CSRF-Token"} {
 		r.Header.Del(header)
+	}
+	if runtimeSessionValue != "" {
+		r.AddCookie(&http.Cookie{Name: workspaceRuntimeSessionCookieName, Value: runtimeSessionValue})
+	}
+}
+
+func projectWorkspaceRuntimeSessionCookie(response *http.Response, workspaceID string) {
+	cookies := response.Cookies()
+	response.Header.Del("Set-Cookie")
+	for _, cookie := range cookies {
+		if cookie.Name != workspaceRuntimeSessionCookieName {
+			continue
+		}
+		cookie.Name = workspaceGatewayRuntimeSessionCookieName(workspaceID)
+		cookie.Path = "/"
+		cookie.Domain = ""
+		cookie.HttpOnly = true
+		cookie.Secure = true
+		cookie.SameSite = http.SameSiteLaxMode
+		response.Header.Add("Set-Cookie", cookie.String())
 	}
 }
 
 func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, error) {
 	operation, found, err := app.canonicalWorkspaceLaunchForAccess(ctx, workspace)
-	if err != nil || !found {
+	if err != nil {
+		return workspaceLaunchReconcileOperation{}, errors.New("workspace_runtime_truth_unavailable")
+	}
+	if !found {
+		app.recordCanonicalWorkspaceLaunchFailure(ctx, workspace, "", "", "operation_absent", []string{"launch_present"}, "")
 		return workspaceLaunchReconcileOperation{}, errors.New("workspace_runtime_truth_unavailable")
 	}
 	return operation, nil
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, bool, error) {
-	return app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchProjectionMatches)
+	return app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchAccessProjectionMismatchFields, app.recordCanonicalWorkspaceLaunchFailure)
 }
 
-func (app *controlPlaneServer) canonicalWorkspaceLaunch(ctx context.Context, workspace map[string]any, matches func(workspaceLaunchReconcileOperation, map[string]any) bool) (workspaceLaunchReconcileOperation, bool, error) {
+func (app *controlPlaneServer) canonicalWorkspaceLaunch(
+	ctx context.Context,
+	workspace map[string]any,
+	projectionMismatches func(workspaceLaunchReconcileOperation, map[string]any) []string,
+	recordFailure func(context.Context, map[string]any, string, string, string, []string, string),
+) (workspaceLaunchReconcileOperation, bool, error) {
+	record := func(operationID, accountID, reason string, failedFields []string, decodeFailureCategory string) {
+		if recordFailure != nil {
+			recordFailure(ctx, workspace, operationID, accountID, reason, failedFields, decodeFailureCategory)
+		}
+	}
 	workspaceID := stringValue(workspace["id"])
 	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{
 		WorkspaceID: workspaceID, Action: workspaceLaunchAction,
 	})
 	if err != nil {
+		record("", "", "operation_query_failed", []string{"launch_query"}, "")
 		return workspaceLaunchReconcileOperation{}, false, err
 	}
 	if len(rows) == 0 {
 		return workspaceLaunchReconcileOperation{}, false, nil
 	}
 	if len(rows) != 1 {
+		record("", "", "operation_cardinality_invalid", []string{"launch_cardinality"}, "")
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
-	if err != nil || operation.Status != "succeeded" || operation.Stage != "succeeded" || operation.stringFact("receiptId") == "" ||
-		operation.stringFact("receiptOperationId") != operation.ID+":purchase-receipt" ||
-		!matches(operation, workspace) {
+	if err != nil {
+		failedFields := append([]string{"launch_decodable"}, workspaceLaunchDecodeFailedFields(err)...)
+		record(firstNonEmpty(stringValue(rows[0]["operationId"]), stringValue(rows[0]["id"])), stringValue(rows[0]["accountId"]), "operation_decode_failed", failedFields, workspaceLaunchDecodeFailureCategory(err))
+		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
+	}
+	var mismatches []string
+	switch {
+	case operation.Status != "succeeded":
+		mismatches = []string{"launch_status_succeeded"}
+	case operation.Stage != "succeeded":
+		mismatches = []string{"launch_stage_succeeded"}
+	case operation.stringFact("receiptId") == "":
+		mismatches = []string{"receipt_id_present"}
+	case operation.stringFact("receiptOperationId") != operation.ID+":purchase-receipt":
+		mismatches = []string{"receipt_operation_id_matches"}
+	default:
+		mismatches = projectionMismatches(operation, workspace)
+	}
+	if len(mismatches) > 0 {
+		record(operation.ID, operation.stringFact("accountId"), "canonical_facts_mismatch", mismatches, "")
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	return operation, true, nil
+}
+
+func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context.Context, workspace map[string]any, operationID, canonicalAccountID, reason string, failedFields []string, decodeFailureCategory string) {
+	workspaceID := stringValue(workspace["id"])
+	workspaceDigest := sha256.Sum256([]byte(workspaceID))
+	operationDigest := sha256.Sum256([]byte(operationID))
+	workspaceDigestValue := fmt.Sprintf("sha256:%x", workspaceDigest)
+	operationDigestValue := fmt.Sprintf("sha256:%x", operationDigest)
+	resourceKind, resourceID := "workspace_launch", operationID
+	if resourceID == "" {
+		resourceKind, resourceID = "workspace", workspaceID
+	}
+	diagnosticID := "audit-" + stableID(workspaceAccessCanonicalAuditAction, resourceKind, resourceID)[:12]
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	diagnostic := map[string]any{
+		"schemaVersion":   1,
+		"owner":           "control_plane",
+		"stage":           "workspace_access",
+		"reason":          reason,
+		"failedFields":    append([]string(nil), failedFields...),
+		"workspaceDigest": workspaceDigestValue,
+		"operationDigest": operationDigestValue,
+		"mutation":        false,
+		"observedAt":      observedAt,
+	}
+	if decodeFailureCategory != "" {
+		diagnostic["decodeFailureCategory"] = decodeFailureCategory
+	}
+	event := map[string]any{
+		"id":              diagnosticID,
+		"targetAccountId": firstNonEmpty(canonicalAccountID, stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
+		"action":          workspaceAccessCanonicalAuditAction,
+		"resourceKind":    resourceKind,
+		"resourceId":      resourceID,
+		"after":           diagnostic,
+		"result":          "blocked",
+		"createdAt":       observedAt,
+	}
+	persisted := true
+	if err := app.tables.SaveAuditEvent(ctx, event); err != nil {
+		persisted = false
+		slog.ErrorContext(ctx, "workspace access canonical launch read",
+			"diagnostic_id", diagnosticID,
+			"action", workspaceAccessCanonicalAuditAction,
+			"resource_kind", resourceKind,
+			"workspace_digest", workspaceDigestValue,
+			"operation_digest", operationDigestValue,
+			"stage", "workspace_access",
+			"reason", reason,
+			"failed_fields", failedFields,
+			"decode_failure_category", decodeFailureCategory,
+			"diagnostic_persisted", persisted,
+			"error_code", "diagnostic_persist_failed",
+			"mutation", false,
+		)
+		return
+	}
+	slog.InfoContext(ctx, "workspace access canonical launch read",
+		"diagnostic_id", diagnosticID,
+		"action", workspaceAccessCanonicalAuditAction,
+		"resource_kind", resourceKind,
+		"workspace_digest", fmt.Sprintf("sha256:%x", workspaceDigest),
+		"operation_digest", fmt.Sprintf("sha256:%x", operationDigest),
+		"stage", "workspace_access",
+		"reason", reason,
+		"failed_fields", failedFields,
+		"decode_failure_category", decodeFailureCategory,
+		"diagnostic_persisted", persisted,
+		"error_code", "none",
+		"mutation", false,
+	)
 }

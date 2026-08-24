@@ -123,6 +123,173 @@ func TestRuntimeStatusCanonicalSucceededLaunchUsesFabricAuthority(t *testing.T) 
 	}
 }
 
+func TestCanonicalWorkspaceLaunchFailurePersistsIndexedRedactedDiagnostic(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	workspace := cloneMap(store.workspaces["ws-alpha"])
+	workspace["runtimeId"] = "runtime-value-must-not-be-persisted"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), workspace); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	event := events[0]
+	diagnostic := mapField(event, "after")
+	failedFields, ok := diagnostic["failedFields"].([]string)
+	if stringValue(event["id"]) != "audit-"+stableID(workspaceAccessCanonicalAuditAction, "workspace_launch", operation.ID)[:12] ||
+		stringValue(event["action"]) != workspaceAccessCanonicalAuditAction ||
+		stringValue(event["resourceKind"]) != "workspace_launch" || stringValue(event["resourceId"]) != operation.ID ||
+		stringValue(event["targetAccountId"]) != "acct-alpha" || stringValue(event["result"]) != "blocked" ||
+		int(numberField(diagnostic, "schemaVersion", 0)) != 1 || stringValue(diagnostic["owner"]) != "control_plane" ||
+		stringValue(diagnostic["stage"]) != "workspace_access" || stringValue(diagnostic["reason"]) != "canonical_facts_mismatch" ||
+		!ok || len(failedFields) != 1 || failedFields[0] != "runtime_id" || diagnostic["mutation"] != false ||
+		!strings.HasPrefix(stringValue(diagnostic["workspaceDigest"]), "sha256:") ||
+		!strings.HasPrefix(stringValue(diagnostic["operationDigest"]), "sha256:") {
+		t.Fatalf("audit event=%#v", event)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil || strings.Contains(string(encoded), "runtime-value-must-not-be-persisted") {
+		t.Fatalf("diagnostic leaked mismatched value: %s err=%v", encoded, err)
+	}
+}
+
+func TestCanonicalWorkspaceLaunchDecodeFailurePersistsExactCategory(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	store.runtimeOps[0]["result"] = "{"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	event := events[0]
+	diagnostic := mapField(event, "after")
+	if stringValue(event["resourceKind"]) != "workspace_launch" || stringValue(event["resourceId"]) != operation.ID ||
+		stringValue(diagnostic["reason"]) != "operation_decode_failed" || stringValue(diagnostic["decodeFailureCategory"]) != "invalid_json" {
+		t.Fatalf("audit event=%#v", event)
+	}
+}
+
+func TestCanonicalWorkspaceLaunchDecodeFailurePersistsAttemptField(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime") + 1
+	operation.Attempts["runtime"] = attempt
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.runtimeOps[0] = row
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	diagnostic := mapField(events[0], "after")
+	failedFields, ok := diagnostic["failedFields"].([]string)
+	if stringValue(diagnostic["decodeFailureCategory"]) != "invalid_attempts" || !ok ||
+		len(failedFields) != 3 || failedFields[0] != "launch_decodable" || failedFields[1] != "runtime_max_pending_readbacks" ||
+		failedFields[2] != "runtime_runtime_revision_authorization" {
+		t.Fatalf("diagnostic=%#v", diagnostic)
+	}
+}
+
+func TestCanonicalWorkspaceLaunchDiagnosticRefinementReusesOperationIndex(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	store.runtimeOps[0]["result"] = "{"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, _, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil {
+		t.Fatal("invalid JSON launch unexpectedly decoded")
+	}
+	firstEvents, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(firstEvents) != 1 {
+		t.Fatalf("first audit events=%#v err=%v", firstEvents, err)
+	}
+
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime") + 1
+	operation.Attempts["runtime"] = attempt
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.runtimeOps[0] = row
+	if _, _, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil {
+		t.Fatal("invalid Runtime attempt unexpectedly decoded")
+	}
+	refinedEvents, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(refinedEvents) != 1 {
+		t.Fatalf("refined audit events=%#v err=%v", refinedEvents, err)
+	}
+	first, refined := firstEvents[0], refinedEvents[0]
+	diagnostic := mapField(refined, "after")
+	if stringValue(first["id"]) != stringValue(refined["id"]) ||
+		stringValue(refined["resourceKind"]) != "workspace_launch" || stringValue(refined["resourceId"]) != operation.ID ||
+		stringValue(diagnostic["decodeFailureCategory"]) != "invalid_attempts" {
+		t.Fatalf("diagnostic index was not refined in place: first=%#v refined=%#v", first, refined)
+	}
+}
+
+func TestCanonicalWorkspaceLaunchAccessAllowsPostLaunchRenewalIntent(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	ownerID := sessionUserIDForTest(t, server, owner)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, ownerID)
+	workspace := store.workspaces["ws-alpha"]
+	workspace["autoRenew"] = true
+	workspace["authorizedBy"] = ownerID
+	workspace["authorizedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+
+	app := server.(*controlPlaneHTTPHandler).app
+	got, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), workspace)
+	if readErr != nil || !found || got.ID != operation.ID {
+		t.Fatalf("post-Launch renewal intent blocked canonical access: found=%v operation=%#v err=%v", found, got, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 0 {
+		t.Fatalf("valid post-Launch renewal intent recorded a failure: events=%#v err=%v", events, err)
+	}
+}
+
 func TestRuntimeStatusCanonicalLaunchAuthorityDriftFailsBeforeFabric(t *testing.T) {
 	for _, test := range []struct {
 		name       string

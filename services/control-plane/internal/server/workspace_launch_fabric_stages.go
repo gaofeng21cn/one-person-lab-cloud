@@ -148,7 +148,8 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 	}
 	previousImageDigest := operation.stringFact("workspaceImageDigest")
 	if active.ReadbacksAtAuthorization == 4*workspaceLaunchAuthoritativeReadBudget ||
-		active.ReadbacksAtAuthorization == 5*workspaceLaunchAuthoritativeReadBudget {
+		active.ReadbacksAtAuthorization == 5*workspaceLaunchAuthoritativeReadBudget ||
+		active.ReadbacksAtAuthorization == 6*workspaceLaunchAuthoritativeReadBudget {
 		if len(operation.ConsumedResumeAuthorizations) == 0 {
 			return workspaceLaunchResumeAuthorization{}, "", false
 		}
