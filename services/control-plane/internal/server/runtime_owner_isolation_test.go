@@ -188,6 +188,39 @@ func TestCanonicalWorkspaceLaunchDecodeFailurePersistsExactCategory(t *testing.T
 	}
 }
 
+func TestCanonicalWorkspaceLaunchDecodeFailurePersistsAttemptField(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime") + 1
+	operation.Attempts["runtime"] = attempt
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.runtimeOps[0] = row
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	diagnostic := mapField(events[0], "after")
+	failedFields, ok := diagnostic["failedFields"].([]string)
+	if stringValue(diagnostic["decodeFailureCategory"]) != "invalid_attempts" || !ok ||
+		len(failedFields) != 2 || failedFields[0] != "launch_decodable" || failedFields[1] != "runtime_max_pending_readbacks" {
+		t.Fatalf("diagnostic=%#v", diagnostic)
+	}
+}
+
 func TestRuntimeStatusCanonicalLaunchAuthorityDriftFailsBeforeFabric(t *testing.T) {
 	for _, test := range []struct {
 		name       string

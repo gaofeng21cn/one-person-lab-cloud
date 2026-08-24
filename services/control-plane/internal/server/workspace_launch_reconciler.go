@@ -68,7 +68,8 @@ var workspaceLaunchReconcileForbiddenFields = []string{
 }
 
 type workspaceLaunchDecodeError struct {
-	category string
+	category     string
+	failedFields []string
 }
 
 func (err workspaceLaunchDecodeError) Error() string {
@@ -83,12 +84,24 @@ func invalidWorkspaceLaunchDecode(category string) error {
 	return workspaceLaunchDecodeError{category: category}
 }
 
+func invalidWorkspaceLaunchDecodeFields(category string, failedFields ...string) error {
+	return workspaceLaunchDecodeError{category: category, failedFields: append([]string(nil), failedFields...)}
+}
+
 func workspaceLaunchDecodeFailureCategory(err error) string {
 	var decodeErr workspaceLaunchDecodeError
 	if errors.As(err, &decodeErr) {
 		return decodeErr.category
 	}
 	return "unknown_decode_failure"
+}
+
+func workspaceLaunchDecodeFailedFields(err error) []string {
+	var decodeErr workspaceLaunchDecodeError
+	if errors.As(err, &decodeErr) {
+		return append([]string(nil), decodeErr.failedFields...)
+	}
+	return nil
 }
 
 type workspaceLaunchCanonicalFactKind string
@@ -1816,8 +1829,11 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	if len(raw["attempts"]) == 0 {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("missing_attempts")
 	}
-	if json.Unmarshal(raw["attempts"], &operation.Attempts) != nil || len(operation.Attempts) != len(workspaceLaunchReconcileStages)-1 {
-		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_attempts")
+	if json.Unmarshal(raw["attempts"], &operation.Attempts) != nil {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", "attempts_object")
+	}
+	if len(operation.Attempts) != len(workspaceLaunchReconcileStages)-1 {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", "attempts_cardinality")
 	}
 	for stage, attempt := range operation.Attempts {
 		if attempt.MaxPendingReadbacks == 0 {
@@ -2053,19 +2069,13 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	}
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		attempt, exists := operation.Attempts[stage]
-		extendedRuntimeReadback := stage == "runtime" && attempt.MaxPendingReadbacks > workspaceLaunchAuthoritativeReadBudget
-		if !exists || attempt.Max != 1 || attempt.Attempted < 0 || attempt.Attempted > 1 || attempt.Confirmed < 0 || attempt.Confirmed > attempt.Attempted ||
-			attempt.Unknown < 0 || attempt.Unknown > attempt.Attempted || attempt.Confirmed+attempt.Unknown > attempt.Attempted ||
-			attempt.MaxPendingReadbacks < workspaceLaunchLegacyV3AuthoritativeReadBudget || attempt.MaxPendingReadbacks > workspaceLaunchMaximumPersistedReadbacks(stage) ||
-			attempt.PendingReadbacks < 0 || attempt.PendingReadbacks > attempt.MaxPendingReadbacks ||
-			extendedRuntimeReadback && !operation.hasRuntimeImageRevisionAuthorization() ||
-			attempt.Status != "" && attempt.Status != "reserved" && attempt.Status != "confirmed" && attempt.Status != "unknown" {
-			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_attempts")
+		if failedFields := workspaceLaunchAttemptDecodeFailedFields(operation, stage, attempt, exists); len(failedFields) > 0 {
+			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", failedFields...)
 		}
 		if attempt.PendingDeadlineAt != "" {
 			deadline, err := time.Parse(time.RFC3339Nano, attempt.PendingDeadlineAt)
 			if stage != "ensure_compute_allocation" || err != nil || deadline.IsZero() {
-				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_attempts")
+				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", stage+"_pending_deadline")
 			}
 		}
 	}
@@ -2081,6 +2091,31 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("status_stage_mismatch")
 	}
 	return operation, nil
+}
+
+func workspaceLaunchAttemptDecodeFailedFields(operation workspaceLaunchReconcileOperation, stage string, attempt workspaceLaunchStageAttempt, exists bool) []string {
+	checks := []struct {
+		field string
+		valid bool
+	}{
+		{"present", exists},
+		{"max", attempt.Max == 1},
+		{"attempted", attempt.Attempted >= 0 && attempt.Attempted <= 1},
+		{"confirmed", attempt.Confirmed >= 0 && attempt.Confirmed <= attempt.Attempted},
+		{"unknown", attempt.Unknown >= 0 && attempt.Unknown <= attempt.Attempted},
+		{"outcome_count", attempt.Confirmed+attempt.Unknown <= attempt.Attempted},
+		{"max_pending_readbacks", attempt.MaxPendingReadbacks >= workspaceLaunchLegacyV3AuthoritativeReadBudget && attempt.MaxPendingReadbacks <= workspaceLaunchMaximumPersistedReadbacks(stage)},
+		{"pending_readbacks", attempt.PendingReadbacks >= 0 && attempt.PendingReadbacks <= attempt.MaxPendingReadbacks},
+		{"runtime_revision_authorization", stage != "runtime" || attempt.MaxPendingReadbacks <= workspaceLaunchAuthoritativeReadBudget || operation.hasRuntimeImageRevisionAuthorization()},
+		{"status", attempt.Status == "" || attempt.Status == "reserved" || attempt.Status == "confirmed" || attempt.Status == "unknown"},
+	}
+	failedFields := make([]string, 0)
+	for _, check := range checks {
+		if !check.valid {
+			failedFields = append(failedFields, stage+"_"+check.field)
+		}
+	}
+	return failedFields
 }
 
 func validWorkspaceLaunchDisposableResetEvidence(evidence workspaceLaunchDisposableResetEvidence, operationVersion int) bool {

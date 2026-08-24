@@ -1124,7 +1124,8 @@ func (app *controlPlaneServer) canonicalWorkspaceLaunch(
 	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
 	if err != nil {
-		record(firstNonEmpty(stringValue(rows[0]["operationId"]), stringValue(rows[0]["id"])), stringValue(rows[0]["accountId"]), "operation_decode_failed", []string{"launch_decodable"}, workspaceLaunchDecodeFailureCategory(err))
+		failedFields := append([]string{"launch_decodable"}, workspaceLaunchDecodeFailedFields(err)...)
+		record(firstNonEmpty(stringValue(rows[0]["operationId"]), stringValue(rows[0]["id"])), stringValue(rows[0]["accountId"]), "operation_decode_failed", failedFields, workspaceLaunchDecodeFailureCategory(err))
 		return workspaceLaunchReconcileOperation{}, true, errors.New("workspace_runtime_truth_unavailable")
 	}
 	var mismatches []string
