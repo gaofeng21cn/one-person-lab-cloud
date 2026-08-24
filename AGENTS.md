@@ -147,6 +147,19 @@ authorize publication.
   E2E, read the owning architecture/invariant sections and current machine
   contract, then update the source owner and its evidence projection together.
 
+## Testing Rules
+
+- New tests and rewritten tests must use typed structs from
+  `packages/contracts/go/` to construct inputs and assert outputs; do not
+  construct or assert `map[string]any` in tests.
+- If no matching contract type exists, define it in the contracts package before
+  writing the test.
+- When a production change breaks an old test, rewrite that test as a typed
+  version. Do not add production compatibility branches, defensive checks, or
+  extra fields to make an old test pass.
+- Before writing code, use `codegraph explore` to inspect the affected symbols,
+  callers, and coverage tests.
+
 ## High-Consequence Boundaries
 
 - Production-private endpoints, clusters, databases, and services are accessed
