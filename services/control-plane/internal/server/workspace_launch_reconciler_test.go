@@ -894,7 +894,7 @@ func TestWorkspaceLaunchRuntimeImageRevisionContinuesSameDispatchedReplacementOn
 	previous.ReadbacksAtAuthorization = 2 * workspaceLaunchAuthoritativeReadBudget
 	completedAt := "2026-08-24T05:12:32Z"
 	attempt := operation.Attempts["runtime"]
-	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 3*workspaceLaunchAuthoritativeReadBudget, 3*workspaceLaunchAuthoritativeReadBudget
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 2*workspaceLaunchAuthoritativeReadBudget, 3*workspaceLaunchAuthoritativeReadBudget
 	operation.Attempts["runtime"] = attempt
 	operation.Version = 111
 	operation.ResumeAuthorization = &previous
@@ -945,6 +945,11 @@ func TestWorkspaceLaunchRuntimeImageRevisionContinuesSameDispatchedReplacementOn
 	for name, mutate := range map[string]func(*workspaceLaunchReconcileOperation, *workspaceLaunchResumeAuthorization){
 		"different image": func(_ *workspaceLaunchReconcileOperation, value *workspaceLaunchResumeAuthorization) {
 			value.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+		},
+		"partial readback drift": func(value *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			attempt := value.Attempts["runtime"]
+			attempt.PendingReadbacks++
+			value.Attempts["runtime"] = attempt
 		},
 		"fourth image window": func(value *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
 			attempt := value.Attempts["runtime"]

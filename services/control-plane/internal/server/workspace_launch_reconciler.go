@@ -1138,13 +1138,14 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 func workspaceLaunchRuntimeImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
 	_, hasReplayClaim := operation.IdempotentReplayClaims[operation.Stage]
 	failedReplayReauthorization := workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation, attempt, authorization)
+	postDispatchContinuation := workspaceLaunchPostDispatchRuntimeImageRevisionEligible(operation, attempt, authorization)
 	return workspaceLaunchRuntimeRepairEligible(operation) && operation.RuntimeRepair == nil && operation.stringFact("providerProfileRef") == "tencent-tke" &&
 		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
 		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
 		workspaceImageReferenceWithDigest(authorization.ReplacementWorkspaceImageDigest) &&
 		authorization.ReplacementWorkspaceImageDigest != operation.stringFact("workspaceImageDigest") &&
 		(attempt.MaxPendingReadbacks == workspaceLaunchAuthoritativeReadBudget || failedReplayReauthorization) &&
-		(attempt.PendingReadbacks == 0 || attempt.PendingReadbacks == attempt.MaxPendingReadbacks) &&
+		(attempt.PendingReadbacks == 0 || attempt.PendingReadbacks == attempt.MaxPendingReadbacks || postDispatchContinuation) &&
 		(!hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage) || failedReplayReauthorization)
 }
 
@@ -1176,7 +1177,8 @@ func workspaceLaunchPostDispatchRuntimeImageRevisionEligible(operation workspace
 	return previous != nil && previous.ReplacementWorkspaceImageDigest != "" &&
 		previous.ReplacementWorkspaceImageDigest == authorization.ReplacementWorkspaceImageDigest &&
 		previous.ReadbacksAtAuthorization == 2*workspaceLaunchAuthoritativeReadBudget &&
-		attempt.PendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget &&
+		(attempt.PendingReadbacks == previous.ReadbacksAtAuthorization ||
+			attempt.PendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget) &&
 		attempt.MaxPendingReadbacks == 3*workspaceLaunchAuthoritativeReadBudget
 }
 
