@@ -80,35 +80,71 @@ func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (
 }
 
 func workspaceLaunchProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
+	return len(workspaceLaunchProjectionMismatchFields(operation, workspace)) == 0
+}
+
+func workspaceLaunchProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {
 	autoRenew := operation.boolFact("autoRenew")
 	authorizedBy, authorizedAt := "", ""
 	if autoRenew {
 		authorizedBy, authorizedAt = operation.stringFact("ownerUserId"), operation.CreatedAt
 	}
-	return workspaceLaunchStableProjectionMatches(operation, workspace) &&
-		int64(numberField(workspace, "workspaceApiKeyId", 0)) == operation.int64Fact("workspaceApiKeyId") &&
-		workspace["autoRenew"] == autoRenew && stringValue(workspace["authorizedBy"]) == authorizedBy && stringValue(workspace["authorizedAt"]) == authorizedAt
+	mismatches := workspaceLaunchStableProjectionMismatchFields(operation, workspace)
+	for _, check := range []struct {
+		field string
+		match bool
+	}{
+		{"workspace_api_key_id", int64(numberField(workspace, "workspaceApiKeyId", 0)) == operation.int64Fact("workspaceApiKeyId")},
+		{"auto_renew", workspace["autoRenew"] == autoRenew},
+		{"authorized_by", stringValue(workspace["authorizedBy"]) == authorizedBy},
+		{"authorized_at", stringValue(workspace["authorizedAt"]) == authorizedAt},
+	} {
+		if !check.match {
+			mismatches = append(mismatches, check.field)
+		}
+	}
+	return mismatches
 }
 
 func workspaceLaunchStableProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
-	return firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])) == operation.stringFact("accountId") &&
-		stringValue(workspace["ownerUserId"]) == operation.stringFact("ownerUserId") && stringValue(workspace["id"]) == operation.stringFact("workspaceId") &&
-		stringValue(workspace["name"]) == operation.stringFact("name") && stringValue(workspace["packageId"]) == operation.stringFact("packageId") &&
-		stringValue(workspace["url"]) == operation.stringFact("url") &&
-		firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])) == operation.stringFact("computeAllocationId") &&
-		stringValue(workspace["storageId"]) == operation.stringFact("storageId") &&
-		firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])) == operation.stringFact("attachmentId") &&
-		stringValue(workspace["runtimeId"]) == operation.stringFact("runtimeId") &&
-		stringValue(nested(workspace, "runtime", "serviceName")) == operation.stringFact("runtimeServiceName") &&
-		stringValue(nested(workspace, "access", "username")) == operation.stringFact("runtimeUsername") &&
-		stringValue(nested(workspace, "access", "credentialStatus")) == operation.stringFact("credentialStatus") &&
-		stringValue(nested(workspace, "access", "credentialVersion")) == operation.stringFact("credentialVersion") &&
-		stringValue(nested(workspace, "access", "secretRef")) == operation.stringFact("credentialSecretRef") &&
-		stringValue(workspace["priceVersion"]) == operation.stringFact("priceVersion") &&
-		int64(numberField(workspace, "totalUsdMicros", 0)) == operation.int64Fact("totalChargeUsdMicros") &&
-		stringValue(workspace["periodStart"]) == operation.stringFact("periodStart") && stringValue(workspace["paidThrough"]) == operation.stringFact("paidThrough") &&
-		int(numberField(workspace, "billingAnchorDay", 0)) == operation.intFact("billingAnchorDay") && int(numberField(workspace, "storageGb", 0)) == operation.intFact("sizeGb") &&
-		firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) == "running"
+	return len(workspaceLaunchStableProjectionMismatchFields(operation, workspace)) == 0
+}
+
+func workspaceLaunchStableProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {
+	checks := []struct {
+		field string
+		match bool
+	}{
+		{"account_id", firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])) == operation.stringFact("accountId")},
+		{"owner_user_id", stringValue(workspace["ownerUserId"]) == operation.stringFact("ownerUserId")},
+		{"workspace_id", stringValue(workspace["id"]) == operation.stringFact("workspaceId")},
+		{"name", stringValue(workspace["name"]) == operation.stringFact("name")},
+		{"package_id", stringValue(workspace["packageId"]) == operation.stringFact("packageId")},
+		{"url", stringValue(workspace["url"]) == operation.stringFact("url")},
+		{"compute_allocation_id", firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])) == operation.stringFact("computeAllocationId")},
+		{"storage_id", stringValue(workspace["storageId"]) == operation.stringFact("storageId")},
+		{"attachment_id", firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])) == operation.stringFact("attachmentId")},
+		{"runtime_id", stringValue(workspace["runtimeId"]) == operation.stringFact("runtimeId")},
+		{"runtime_service_name", stringValue(nested(workspace, "runtime", "serviceName")) == operation.stringFact("runtimeServiceName")},
+		{"runtime_username", stringValue(nested(workspace, "access", "username")) == operation.stringFact("runtimeUsername")},
+		{"credential_status", stringValue(nested(workspace, "access", "credentialStatus")) == operation.stringFact("credentialStatus")},
+		{"credential_version", stringValue(nested(workspace, "access", "credentialVersion")) == operation.stringFact("credentialVersion")},
+		{"credential_secret_ref", stringValue(nested(workspace, "access", "secretRef")) == operation.stringFact("credentialSecretRef")},
+		{"price_version", stringValue(workspace["priceVersion"]) == operation.stringFact("priceVersion")},
+		{"total_usd_micros", int64(numberField(workspace, "totalUsdMicros", 0)) == operation.int64Fact("totalChargeUsdMicros")},
+		{"period_start", stringValue(workspace["periodStart"]) == operation.stringFact("periodStart")},
+		{"paid_through", stringValue(workspace["paidThrough"]) == operation.stringFact("paidThrough")},
+		{"billing_anchor_day", int(numberField(workspace, "billingAnchorDay", 0)) == operation.intFact("billingAnchorDay")},
+		{"storage_gb", int(numberField(workspace, "storageGb", 0)) == operation.intFact("sizeGb")},
+		{"workspace_running", firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) == "running"},
+	}
+	mismatches := make([]string, 0)
+	for _, check := range checks {
+		if !check.match {
+			mismatches = append(mismatches, check.field)
+		}
+	}
+	return mismatches
 }
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchReceipt(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {

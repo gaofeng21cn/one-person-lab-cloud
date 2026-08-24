@@ -123,6 +123,45 @@ func TestRuntimeStatusCanonicalSucceededLaunchUsesFabricAuthority(t *testing.T) 
 	}
 }
 
+func TestCanonicalWorkspaceLaunchFailurePersistsIndexedRedactedDiagnostic(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	workspace := cloneMap(store.workspaces["ws-alpha"])
+	workspace["runtimeId"] = "runtime-value-must-not-be-persisted"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), workspace); readErr == nil || !found {
+		t.Fatalf("canonical read found=%v err=%v", found, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 1 {
+		t.Fatalf("audit events=%#v err=%v", events, err)
+	}
+	event := events[0]
+	diagnostic := mapField(event, "after")
+	failedFields, ok := diagnostic["failedFields"].([]string)
+	if stringValue(event["id"]) != "audit-"+stableID(workspaceAccessCanonicalAuditAction, "ws-alpha", operation.ID, "canonical_facts_mismatch", "runtime_id")[:12] ||
+		stringValue(event["action"]) != workspaceAccessCanonicalAuditAction ||
+		stringValue(event["resourceKind"]) != "workspace_launch" || stringValue(event["resourceId"]) != operation.ID ||
+		stringValue(event["targetAccountId"]) != "acct-alpha" || stringValue(event["result"]) != "blocked" ||
+		int(numberField(diagnostic, "schemaVersion", 0)) != 1 || stringValue(diagnostic["owner"]) != "control_plane" ||
+		stringValue(diagnostic["stage"]) != "workspace_access" || stringValue(diagnostic["reason"]) != "canonical_facts_mismatch" ||
+		!ok || len(failedFields) != 1 || failedFields[0] != "runtime_id" || diagnostic["mutation"] != false ||
+		!strings.HasPrefix(stringValue(diagnostic["workspaceDigest"]), "sha256:") ||
+		!strings.HasPrefix(stringValue(diagnostic["operationDigest"]), "sha256:") {
+		t.Fatalf("audit event=%#v", event)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil || strings.Contains(string(encoded), "runtime-value-must-not-be-persisted") {
+		t.Fatalf("diagnostic leaked mismatched value: %s err=%v", encoded, err)
+	}
+}
+
 func TestRuntimeStatusCanonicalLaunchAuthorityDriftFailsBeforeFabric(t *testing.T) {
 	for _, test := range []struct {
 		name       string

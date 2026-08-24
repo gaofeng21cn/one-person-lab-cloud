@@ -371,7 +371,7 @@ func (app *controlPlaneServer) newWorkspaceDeleteOperation(ctx context.Context, 
 	workspaceID := stringValue(workspace["id"])
 	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
 	ownerUserID := firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"]))
-	launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchStableProjectionMatches)
+	launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchStableProjectionMismatchFields, nil)
 	if err != nil || !found || launch.int64Fact("sub2apiUserId") != sub2APIUserID {
 		return workspaceDeleteOperation{}, errWorkspaceDeleteUnconfirmed
 	}
