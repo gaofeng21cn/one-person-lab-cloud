@@ -481,6 +481,45 @@ func TestWorkspaceLaunchResumeRouteSupersedesExactUnreadyRetainedTencentImage(t 
 	}
 }
 
+func TestWorkspaceLaunchResumeRouteSupersedesFailedRetainedTencentImageBeforeFreshReadback(t *testing.T) {
+	store := newMemoryTableStore()
+	fabric := &workspaceLaunchRuntimeImageRevisionResumeFabric{}
+	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, fabric, &testSub2APIClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := reservedOperatorSessionForTest(t, server)
+	row := workspaceLaunchFailedRetainedRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousImage := operation.ResumeAuthorization.ReplacementWorkspaceImageDigest
+	replacementImage := "registry.example/workspace@sha256:" + strings.Repeat("e", 64)
+	t.Setenv("OPL_WORKSPACE_IMAGE", replacementImage)
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+	body := fmt.Sprintf(`{"launchVersion":%d,"authorizedStage":"runtime","reason":"approved qualified image on the failed retained Tencent runtime","mutationBudget":0,"idempotentReplayBudget":1,"authoritativeReadBudget":3,"replacementWorkspaceImageDigest":%q}`, operation.Version, replacementImage)
+
+	response := requestWithMutationKeyForTest(t, server, operator, http.MethodPost,
+		"/api/operator/workspace-launches/"+operation.ID+"/resume", body, "resume-v119-failed-retained-image")
+	persisted, found, readErr := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if response.Code != http.StatusOK || readErr != nil || !found || decodeErr != nil || got.Status != "pending" || got.Stage != "activation" ||
+		got.Attempts["runtime"].Confirmed != 1 || got.Attempts["runtime"].MaxPendingReadbacks != 6*workspaceLaunchAuthoritativeReadBudget ||
+		len(fabric.ensures) != 1 || len(fabric.reads) == 0 {
+		t.Fatalf("failed retained Runtime image route did not continue the original Launch: status=%d body=%s operation=%s reads=%d ensures=%d errors=%v/%v",
+			response.Code, response.Body.String(), workspaceLaunchReconcileResultSummary(got), len(fabric.reads), len(fabric.ensures), readErr, decodeErr)
+	}
+	for _, input := range append(append([]clients.WorkspaceLaunchStageInput(nil), fabric.reads...), fabric.ensures...) {
+		proof := input.RuntimeImageRevision
+		if proof == nil || proof.PreviousImageDigest != previousImage || proof.ReplacementImageDigest != replacementImage ||
+			input.Binding.LaunchOperationID != operation.ID || input.Binding.FabricOperationID != operation.ID+":runtime" ||
+			input.Binding.IdempotencyKey != operation.Attempts["runtime"].IdempotencyKey {
+			t.Fatalf("failed retained Runtime image route changed typed identity: input=%#v", input)
+		}
+	}
+}
+
 func TestWorkspaceLaunchResumeRouteConvergesFailedStorageReplayReadyReadOnly(t *testing.T) {
 	store := newMemoryTableStore()
 	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")

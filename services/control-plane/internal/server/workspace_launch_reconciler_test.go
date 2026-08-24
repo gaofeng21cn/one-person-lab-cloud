@@ -475,6 +475,39 @@ func workspaceLaunchRetainedRuntimeImageRevisionManualReviewRow(t *testing.T) ma
 	return row
 }
 
+func workspaceLaunchFailedRetainedRuntimeImageRevisionManualReviewRow(t *testing.T) map[string]any {
+	t.Helper()
+	row := workspaceLaunchRetainedRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := *operation.ResumeAuthorization
+	retained := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v116-failed-retained-image")
+	retained.LaunchVersion = 116
+	retained.ReadbacksAtAuthorization = 4 * workspaceLaunchAuthoritativeReadBudget
+	retained.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+	completedAt := "2026-08-24T09:31:05Z"
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 4*workspaceLaunchAuthoritativeReadBudget, 5*workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	operation.Version = 119
+	operation.ConsumedResumeAuthorizations = append(operation.ConsumedResumeAuthorizations, workspaceLaunchConsumedResumeAuthorization{
+		Authorization: previous, ConsumedAt: operation.ResumeAuthorizationConsumedAt,
+	})
+	operation.ResumeAuthorization = &retained
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	operation.IdempotentReplayClaims["runtime"] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: retained.AuthorizationID, Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
 func workspaceLaunchUnknownStorageReplayAuthorization(t *testing.T, row map[string]any, authorizationID string) workspaceLaunchResumeAuthorization {
 	t.Helper()
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -1025,6 +1058,34 @@ func TestWorkspaceLaunchRuntimeImageRevisionSupersedesExactUnreadyRetainedImage(
 		got.ResumeAuthorization == nil || got.ResumeAuthorization.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest ||
 		got.ResumeAuthorizationConsumedAt == "" || got.RuntimeRepair != nil {
 		t.Fatalf("retained Runtime image was not superseded on the original Launch: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeImageRevisionSupersedesFailedRetainedImageBeforeFreshReadback(t *testing.T) {
+	row := workspaceLaunchFailedRetainedRuntimeImageRevisionManualReviewRow(t)
+	before, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionPending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {revisionPending, revisionPending, revisionPending}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-v119-next-image")
+	authorization.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("e", 64)
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), before.ID, authorization)
+	attempt := got.Attempts["runtime"]
+	claim := got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Confirmed != 1 || attempt.Unknown != 0 ||
+		attempt.Status != "confirmed" || attempt.PendingReadbacks != 5*workspaceLaunchAuthoritativeReadBudget ||
+		attempt.MaxPendingReadbacks != 6*workspaceLaunchAuthoritativeReadBudget || attempt.IdempotencyKey != before.Attempts["runtime"].IdempotencyKey ||
+		adapter.mutationsByStage["runtime"] != 1 || claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.ReplacementWorkspaceImageDigest != authorization.ReplacementWorkspaceImageDigest ||
+		got.ResumeAuthorizationConsumedAt == "" || got.RuntimeRepair != nil {
+		t.Fatalf("failed retained Runtime image was not superseded on the original Launch: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
 			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
 	}
 }

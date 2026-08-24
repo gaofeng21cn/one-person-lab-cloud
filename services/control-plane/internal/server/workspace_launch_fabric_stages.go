@@ -146,14 +146,15 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 		return workspaceLaunchResumeAuthorization{}, "", false
 	}
 	previousImageDigest := operation.stringFact("workspaceImageDigest")
-	if active.ReadbacksAtAuthorization == 4*workspaceLaunchAuthoritativeReadBudget {
+	if active.ReadbacksAtAuthorization == 4*workspaceLaunchAuthoritativeReadBudget ||
+		active.ReadbacksAtAuthorization == 5*workspaceLaunchAuthoritativeReadBudget {
 		if len(operation.ConsumedResumeAuthorizations) == 0 {
 			return workspaceLaunchResumeAuthorization{}, "", false
 		}
 		previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
 		if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
 			previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
-			previous.ReadbacksAtAuthorization != 3*workspaceLaunchAuthoritativeReadBudget ||
+			previous.ReadbacksAtAuthorization+workspaceLaunchAuthoritativeReadBudget != active.ReadbacksAtAuthorization ||
 			previous.ReplacementWorkspaceImageDigest == "" || previous.ReplacementWorkspaceImageDigest == active.ReplacementWorkspaceImageDigest {
 			return workspaceLaunchResumeAuthorization{}, "", false
 		}
