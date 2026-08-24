@@ -357,7 +357,7 @@ func validWorkspaceLaunchRuntimeImageRevision(input WorkspaceLaunchStageInput, p
 	if input.Binding.Stage != "runtime" || !supported || !support.WorkspaceLaunchRuntimeImageRevisionSupported() ||
 		revision.SchemaVersion != 1 || revision.LaunchOperationID != input.Binding.LaunchOperationID ||
 		revision.WorkspaceID != input.Binding.WorkspaceID || revision.RuntimeOperationID != input.Binding.FabricOperationID ||
-		revision.PreviousImageDigest != input.WorkspaceImageDigest || revision.PreviousImageDigest == revision.ReplacementImageDigest ||
+		revision.PreviousImageDigest == revision.ReplacementImageDigest ||
 		!provider.ValidateWorkspaceImageReference(revision.PreviousImageDigest) || !provider.ValidateWorkspaceImageReference(revision.ReplacementImageDigest) {
 		return false
 	}

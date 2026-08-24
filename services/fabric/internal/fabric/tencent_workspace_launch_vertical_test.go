@@ -765,22 +765,51 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 			continued, err, child, childErr, epoch, fixture.applyCalls)
 	}
 
+	nextImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("2", 64)
+	supersedingInput := input
+	supersedingInput.RuntimeImageRevision = &WorkspaceLaunchRuntimeImageRevision{
+		SchemaVersion: 1, LaunchOperationID: input.Binding.LaunchOperationID, WorkspaceID: input.Binding.WorkspaceID,
+		RuntimeOperationID: input.Binding.FabricOperationID, AuthorizationDigest: "sha256:" + strings.Repeat("3", 64),
+		PreviousImageDigest: replacementImage, ReplacementImageDigest: nextImage,
+	}
+	classified, err = service.ReadWorkspaceLaunchStage(context.Background(), supersedingInput)
+	if err != nil || classified.State != "pending" || classified.Reason != "runtime_image_revision_required" || fixture.applyCalls != 3 {
+		t.Fatalf("retained runtime revision classification=%#v err=%v applyCalls=%d", classified, err, fixture.applyCalls)
+	}
+	blocked, err := service.EnsureWorkspaceLaunchStage(context.Background(), supersedingInput)
+	if !errors.Is(err, ErrLaunchStageBindingConflict) || blocked != (WorkspaceLaunchStageResult{}) || fixture.applyCalls != 3 {
+		t.Fatalf("active retained runtime revision was not fail-closed: result=%#v err=%v applyCalls=%d", blocked, err, fixture.applyCalls)
+	}
+	now = now.Add(providerMutationReplayLease + time.Second)
+	superseded, err := service.EnsureWorkspaceLaunchStage(context.Background(), supersedingInput)
+	child, childErr = store.Get(context.Background(), childID)
+	epoch, epochOK = decodeProviderMutationReplayEpoch(child)
+	var retainedRuntime WorkspaceRuntime
+	retainedRuntimeOK := decodeOperationResource(child, &retainedRuntime)
+	if err != nil || superseded.State != "pending" || superseded.Reason != "provider_provisioning" || fixture.applyCalls != 4 ||
+		childErr != nil || !epochOK || epoch.State != "awaiting_readback" || epoch.LeaseGeneration != wantLeaseGeneration+2 ||
+		epoch.AuthorityDigest != supersedingInput.RuntimeImageRevision.AuthorizationDigest || epoch.PreviousImageDigest != replacementImage ||
+		epoch.ReplacementImageDigest != nextImage || !retainedRuntimeOK || retainedRuntime.ImageID != replacementImage || retainedRuntime.Ready {
+		t.Fatalf("retained runtime revision was not superseded exactly: result=%#v err=%v child=%#v childErr=%v epoch=%#v runtime=%#v/%v applyCalls=%d",
+			superseded, err, child, childErr, epoch, retainedRuntime, retainedRuntimeOK, fixture.applyCalls)
+	}
+
 	fixture.unready = false
-	ready, err := service.ReadWorkspaceLaunchStage(context.Background(), revisionInput)
+	ready, err := service.ReadWorkspaceLaunchStage(context.Background(), supersedingInput)
 	parent, parentErr := store.Get(context.Background(), input.Binding.FabricOperationID)
 	record, recordOK := decodeWorkspaceLaunchStageRecord(parent)
 	child, childErr = store.Get(context.Background(), childID)
 	epoch, epochOK = decodeProviderMutationReplayEpoch(child)
 	var revisedRuntime WorkspaceRuntime
 	if err != nil || ready.State != "ready" || ready.Binding != input.Binding || parentErr != nil || parent.Status != "succeeded" ||
-		!recordOK || record.RuntimeImageRevision == nil || *record.RuntimeImageRevision != *revisionInput.RuntimeImageRevision ||
+		!recordOK || record.RuntimeImageRevision == nil || *record.RuntimeImageRevision != *supersedingInput.RuntimeImageRevision ||
 		childErr != nil || !epochOK || epoch.State != "succeeded" || !decodeOperationResource(child, &revisedRuntime) ||
-		revisedRuntime.ImageID != replacementImage || fixture.applyCalls != 3 {
+		revisedRuntime.ImageID != nextImage || fixture.applyCalls != 4 {
 		t.Fatalf("runtime revision convergence ready=%#v err=%v parent=%#v parentErr=%v record=%#v recordOK=%v child=%#v childErr=%v epoch=%#v runtime=%#v applyCalls=%d",
 			ready, err, parent, parentErr, record, recordOK, child, childErr, epoch, revisedRuntime, fixture.applyCalls)
 	}
-	replayed, err := service.EnsureWorkspaceLaunchStage(context.Background(), revisionInput)
-	if err != nil || replayed.State != "ready" || fixture.applyCalls != 3 {
+	replayed, err := service.EnsureWorkspaceLaunchStage(context.Background(), supersedingInput)
+	if err != nil || replayed.State != "ready" || fixture.applyCalls != 4 {
 		t.Fatalf("completed runtime revision replayed mutation: result=%#v err=%v applyCalls=%d", replayed, err, fixture.applyCalls)
 	}
 }

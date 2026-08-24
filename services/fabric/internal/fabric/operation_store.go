@@ -679,13 +679,32 @@ func validSucceededGenericRuntimeImageRevisionEpochUpgrade(expected FabricOperat
 		next.DispatchStartedAt == "" && correctableSucceededRuntimeImageRevision(expected, next)
 }
 
+func validPendingRuntimeImageRevisionSupersession(expected, next FabricOperation, previous, current providerMutationReplayEpoch) bool {
+	var persisted, retained WorkspaceRuntime
+	return expected.Status == "succeeded" && previous.ReplayClass == providerMutationRuntimeImageRevisionReplayClass &&
+		previous.State == "awaiting_readback" && previous.DispatchStartedAt != "" && previous.CompletedAt == "" &&
+		current.ReplayClass == providerMutationRuntimeImageRevisionReplayClass && current.State == "leased" &&
+		previous.SchemaVersion == current.SchemaVersion && previous.ReplayID == current.ReplayID &&
+		previous.ParentFabricOperationID == current.ParentFabricOperationID && previous.ChildOperationID == current.ChildOperationID &&
+		previous.IdempotencyKey == current.IdempotencyKey && previous.AuthorityDigest != current.AuthorityDigest &&
+		current.PreviousImageDigest == previous.ReplacementImageDigest && current.ReplacementImageDigest != previous.PreviousImageDigest &&
+		current.ReplacementImageDigest != previous.ReplacementImageDigest && current.LeaseGeneration == previous.LeaseGeneration+1 &&
+		current.LeaseExpiresAt != previous.LeaseExpiresAt && current.DispatchStartedAt == "" && current.CompletedAt == "" &&
+		decodeOperationResource(expected, &persisted) && decodeOperationResource(next, &retained) &&
+		persisted.ImageID == previous.PreviousImageDigest && retained.ImageID == previous.ReplacementImageDigest &&
+		retained.Status == "unready" && !retained.Ready && retained.ProviderRequestID == persisted.ProviderRequestID &&
+		retained.CreatedAt.Equal(persisted.CreatedAt) && sameWorkspaceRuntimeRevisionIdentity(persisted, retained)
+}
+
 func validProviderMutationReplayEpochTransition(expected, next FabricOperation) bool {
 	nextEpoch, nextOK := decodeProviderMutationReplayEpoch(next)
 	if !nextOK {
 		return false
 	}
+	expectedEpoch, expectedEpochOK := decodeProviderMutationReplayEpoch(expected)
+	supersession := expectedEpochOK && validPendingRuntimeImageRevisionSupersession(expected, next, expectedEpoch, nextEpoch)
 	if !sameRuntimeReadbackIdentity(expected, next) || expected.Status != next.Status ||
-		expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) && !correctableSucceededRuntimeImageRevision(expected, nextEpoch) ||
+		expected.Status != "started" && expected.Status != "failed" && !correctableSucceededNodeClaim(expected) && !correctableSucceededRuntimeImageRevision(expected, nextEpoch) && !supersession ||
 		!sameProviderMutationState(expected, next) {
 		return false
 	}
@@ -693,12 +712,11 @@ func validProviderMutationReplayEpochTransition(expected, next FabricOperation) 
 	if !expectedHasEpoch {
 		return nextEpoch.State == "leased" && nextEpoch.LeaseGeneration == 1
 	}
-	expectedEpoch, expectedOK := decodeProviderMutationReplayEpoch(expected)
-	if !expectedOK {
+	if !expectedEpochOK {
 		return false
 	}
 	if !sameProviderMutationReplayEpochIdentity(expectedEpoch, nextEpoch) {
-		return validSucceededGenericRuntimeImageRevisionEpochUpgrade(expected, expectedEpoch, nextEpoch)
+		return validSucceededGenericRuntimeImageRevisionEpochUpgrade(expected, expectedEpoch, nextEpoch) || supersession
 	}
 	if expectedEpoch.State == "succeeded" || expectedEpoch.State == "blocked" {
 		return false

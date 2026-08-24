@@ -67,14 +67,14 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 	}
 	if operation.Stage == "runtime" && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
 		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {
-		authorization, ok := workspaceLaunchRuntimeImageRevisionProofAuthorization(operation)
+		authorization, previousImageDigest, ok := workspaceLaunchRuntimeImageRevisionProof(operation)
 		if !ok {
 			return clients.WorkspaceLaunchStageInput{}, errInvalidWorkspaceLaunchOperation
 		}
 		input.RuntimeImageRevision = &clients.WorkspaceLaunchRuntimeImageRevision{
 			SchemaVersion: 1, LaunchOperationID: operation.ID, WorkspaceID: operation.stringFact("workspaceId"),
 			RuntimeOperationID: binding.FabricOperationID, AuthorizationDigest: workspaceLaunchResumeAuthorizationDigest(authorization),
-			PreviousImageDigest: input.WorkspaceImageDigest, ReplacementImageDigest: authorization.ReplacementWorkspaceImageDigest,
+			PreviousImageDigest: previousImageDigest, ReplacementImageDigest: authorization.ReplacementWorkspaceImageDigest,
 		}
 	}
 	input.Binding.RequestHash = workspaceLaunchFabricRequestHash(input, operation.stringFact("requestHash"))
@@ -140,25 +140,39 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 	return input, nil
 }
 
-func workspaceLaunchRuntimeImageRevisionProofAuthorization(operation workspaceLaunchReconcileOperation) (workspaceLaunchResumeAuthorization, bool) {
+func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcileOperation) (workspaceLaunchResumeAuthorization, string, bool) {
 	active := operation.ResumeAuthorization
 	if active == nil || active.AuthorizedStage != "runtime" || active.ReplacementWorkspaceImageDigest == "" {
-		return workspaceLaunchResumeAuthorization{}, false
+		return workspaceLaunchResumeAuthorization{}, "", false
+	}
+	previousImageDigest := operation.stringFact("workspaceImageDigest")
+	if active.ReadbacksAtAuthorization == 4*workspaceLaunchAuthoritativeReadBudget {
+		if len(operation.ConsumedResumeAuthorizations) == 0 {
+			return workspaceLaunchResumeAuthorization{}, "", false
+		}
+		previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
+		if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
+			previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
+			previous.ReadbacksAtAuthorization != 3*workspaceLaunchAuthoritativeReadBudget ||
+			previous.ReplacementWorkspaceImageDigest == "" || previous.ReplacementWorkspaceImageDigest == active.ReplacementWorkspaceImageDigest {
+			return workspaceLaunchResumeAuthorization{}, "", false
+		}
+		return *active, previous.ReplacementWorkspaceImageDigest, true
 	}
 	if active.ReadbacksAtAuthorization != 3*workspaceLaunchAuthoritativeReadBudget {
-		return *active, true
+		return *active, previousImageDigest, true
 	}
 	if len(operation.ConsumedResumeAuthorizations) == 0 {
-		return workspaceLaunchResumeAuthorization{}, false
+		return workspaceLaunchResumeAuthorization{}, "", false
 	}
 	previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
 	if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
 		previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
 		previous.ReadbacksAtAuthorization != 2*workspaceLaunchAuthoritativeReadBudget ||
 		previous.ReplacementWorkspaceImageDigest != active.ReplacementWorkspaceImageDigest {
-		return workspaceLaunchResumeAuthorization{}, false
+		return workspaceLaunchResumeAuthorization{}, "", false
 	}
-	return previous, true
+	return previous, previousImageDigest, true
 }
 
 func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
