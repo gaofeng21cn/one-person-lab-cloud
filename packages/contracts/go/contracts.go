@@ -106,21 +106,37 @@ type LaunchStageState struct {
 }
 
 type DeviceUploadAttachmentEvidence struct {
-	FileChooserObserved         bool `json:"fileChooserObserved"`
-	UploadResponseOK            bool `json:"uploadResponseOk"`
-	UploadResponseStatus        int  `json:"uploadResponseStatus"`
-	PendingAttachmentTagVisible bool `json:"pendingAttachmentTagObserved"`
+	FileChooserObserved          bool `json:"fileChooserObserved"`
+	UploadResponseOK             bool `json:"uploadResponseOk"`
+	UploadResponseStatus         int  `json:"uploadResponseStatus"`
+	PendingAttachmentVisible     bool `json:"pendingAttachmentObserved"`
+	MessageAccepted              bool `json:"messageAccepted"`
+	AssistantReplyObserved       bool `json:"assistantReplyObserved"`
+	UploadedContentReadbackValid bool `json:"uploadedContentReadbackValid"`
+	SettingsStrayComposerVisible bool `json:"settingsStrayComposerVisible"`
 }
 
-func (evidence DeviceUploadAttachmentEvidence) Uploaded() error {
+func (evidence DeviceUploadAttachmentEvidence) Complete() error {
 	if !evidence.FileChooserObserved {
 		return fmt.Errorf("device file chooser not observed")
 	}
 	if !evidence.UploadResponseOK || evidence.UploadResponseStatus != 200 {
 		return fmt.Errorf("device upload response not accepted")
 	}
-	if !evidence.PendingAttachmentTagVisible {
-		return fmt.Errorf("pending attachment not attached to conversation")
+	if !evidence.PendingAttachmentVisible {
+		return fmt.Errorf("uploaded attachment not visible in conversation")
+	}
+	if !evidence.MessageAccepted {
+		return fmt.Errorf("attached message not accepted")
+	}
+	if !evidence.AssistantReplyObserved {
+		return fmt.Errorf("assistant reply not observed")
+	}
+	if !evidence.UploadedContentReadbackValid {
+		return fmt.Errorf("uploaded content not readable")
+	}
+	if evidence.SettingsStrayComposerVisible {
+		return fmt.Errorf("stray settings composer visible")
 	}
 	return nil
 }
