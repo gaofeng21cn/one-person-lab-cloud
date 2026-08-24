@@ -106,6 +106,14 @@ func workspaceLaunchProjectionMismatchFields(operation workspaceLaunchReconcileO
 	return mismatches
 }
 
+func workspaceLaunchAccessProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {
+	mismatches := workspaceLaunchStableProjectionMismatchFields(operation, workspace)
+	if int64(numberField(workspace, "workspaceApiKeyId", 0)) != operation.int64Fact("workspaceApiKeyId") {
+		mismatches = append(mismatches, "workspace_api_key_id")
+	}
+	return mismatches
+}
+
 func workspaceLaunchStableProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
 	return len(workspaceLaunchStableProjectionMismatchFields(operation, workspace)) == 0
 }

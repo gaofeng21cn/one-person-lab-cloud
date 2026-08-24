@@ -265,6 +265,31 @@ func TestCanonicalWorkspaceLaunchDiagnosticRefinementReusesOperationIndex(t *tes
 	}
 }
 
+func TestCanonicalWorkspaceLaunchAccessAllowsPostLaunchRenewalIntent(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	ownerID := sessionUserIDForTest(t, server, owner)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, ownerID)
+	workspace := store.workspaces["ws-alpha"]
+	workspace["autoRenew"] = true
+	workspace["authorizedBy"] = ownerID
+	workspace["authorizedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+
+	app := server.(*controlPlaneHTTPHandler).app
+	got, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), workspace)
+	if readErr != nil || !found || got.ID != operation.ID {
+		t.Fatalf("post-Launch renewal intent blocked canonical access: found=%v operation=%#v err=%v", found, got, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 0 {
+		t.Fatalf("valid post-Launch renewal intent recorded a failure: events=%#v err=%v", events, err)
+	}
+}
+
 func TestRuntimeStatusCanonicalLaunchAuthorityDriftFailsBeforeFabric(t *testing.T) {
 	for _, test := range []struct {
 		name       string

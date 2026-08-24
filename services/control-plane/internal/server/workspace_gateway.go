@@ -1093,7 +1093,7 @@ func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Con
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, bool, error) {
-	return app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchProjectionMismatchFields, app.recordCanonicalWorkspaceLaunchFailure)
+	return app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchAccessProjectionMismatchFields, app.recordCanonicalWorkspaceLaunchFailure)
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunch(
