@@ -663,6 +663,53 @@ func validRuntimeReadbackConvergence(expected, next FabricOperation) bool {
 		next.StartedAt.Equal(expected.StartedAt)
 }
 
+func sameOptionalTime(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Equal(*right)
+}
+
+func sameWorkspaceLaunchStageDiagnosticOperation(left, right FabricOperation) bool {
+	return sameRuntimeReadbackIdentity(left, right) && left.ErrorCode == right.ErrorCode && left.Retryable == right.Retryable &&
+		left.FinishedAt.Equal(right.FinishedAt) && left.CreatedAt.Equal(right.CreatedAt) &&
+		left.ComputePoolKey == right.ComputePoolKey && left.ComputePoolLeaseOwner == right.ComputePoolLeaseOwner &&
+		sameOptionalTime(left.ComputePoolLeaseExpires, right.ComputePoolLeaseExpires)
+}
+
+func workspaceLaunchStagePayloadWithoutDiagnostic(operation FabricOperation) (string, error) {
+	payload := make(map[string]any, len(operation.RedactedProviderPayload))
+	for key, value := range operation.RedactedProviderPayload {
+		if key != workspaceLaunchStageDiagnosticPayloadKey {
+			payload[key] = value
+		}
+	}
+	body, err := json.Marshal(payload)
+	return string(body), err
+}
+
+func validWorkspaceLaunchStageDiagnosticConvergence(expected, next FabricOperation) bool {
+	binding, bindingOK := decodeLaunchStageBinding(expected)
+	diagnostic, diagnosticOK := decodeWorkspaceLaunchStageDiagnostic(next)
+	if !bindingOK || !diagnosticOK || binding.Stage != "runtime" || expected.Provider != "tencent-tke" ||
+		!sameWorkspaceLaunchStageDiagnosticOperation(expected, next) {
+		return false
+	}
+	expectedPayload, expectedErr := workspaceLaunchStagePayloadWithoutDiagnostic(expected)
+	nextPayload, nextErr := workspaceLaunchStagePayloadWithoutDiagnostic(next)
+	if expectedErr != nil || nextErr != nil || expectedPayload != nextPayload {
+		return false
+	}
+	if previous, ok := decodeWorkspaceLaunchStageDiagnostic(expected); ok {
+		previousAt, previousErr := time.Parse(time.RFC3339Nano, previous.ObservedAt)
+		nextAt, nextErr := time.Parse(time.RFC3339Nano, diagnostic.ObservedAt)
+		if previousErr != nil || nextErr != nil || nextAt.Before(previousAt) {
+			return false
+		}
+	}
+	return true
+}
+
 func sameProviderMutationReplayEpochIdentity(left, right providerMutationReplayEpoch) bool {
 	return left.SchemaVersion == right.SchemaVersion && left.ReplayID == right.ReplayID &&
 		left.ParentFabricOperationID == right.ParentFabricOperationID && left.ChildOperationID == right.ChildOperationID &&
@@ -811,6 +858,30 @@ func (s *MemoryOperationStore) ConvergeRuntimeReadback(_ context.Context, expect
 			return payloadErr
 		}
 		if current.ID == expected.ID && sameRuntimeReadbackIdentity(current, expected) && currentPayload == expectedPayload {
+			s.operation[index] = next
+			return nil
+		}
+	}
+	return ErrRuntimeOperationNotCurrent
+}
+
+func (s *MemoryOperationStore) ConvergeWorkspaceLaunchStageDiagnostic(_ context.Context, expected, next FabricOperation) error {
+	if !validWorkspaceLaunchStageDiagnosticConvergence(expected, next) {
+		return ErrRuntimeOperationNotCurrent
+	}
+	expectedPayload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := range s.operation {
+		current := s.operation[index]
+		currentPayload, payloadErr := operationPayloadJSON(current)
+		if payloadErr != nil {
+			return payloadErr
+		}
+		if sameWorkspaceLaunchStageDiagnosticOperation(current, expected) && currentPayload == expectedPayload {
 			s.operation[index] = next
 			return nil
 		}
@@ -1856,6 +1927,46 @@ func (s *PostgresOperationStore) ConvergeRuntimeReadback(ctx context.Context, ex
 		expected.Action, expected.ResourceKind, expected.ResourceID, expected.AccountID, expected.WorkspaceID,
 		expected.Provider, expected.ProviderRequestID, expected.IdempotencyKey, expected.RequestHash, expected.Status,
 		expected.StartedAt, expectedPayload)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrRuntimeOperationNotCurrent
+	}
+	return nil
+}
+
+func (s *PostgresOperationStore) ConvergeWorkspaceLaunchStageDiagnostic(ctx context.Context, expected, next FabricOperation) error {
+	if !validWorkspaceLaunchStageDiagnosticConvergence(expected, next) {
+		return ErrRuntimeOperationNotCurrent
+	}
+	expectedPayload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return err
+	}
+	nextPayload, err := operationPayloadJSON(next)
+	if err != nil {
+		return err
+	}
+	var finishedAt any
+	if !expected.FinishedAt.IsZero() {
+		finishedAt = expected.FinishedAt
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE fabric_operations SET redacted_provider_payload = $1::jsonb
+		WHERE id = $2 AND operation_id = $3 AND caller_service = $4 AND action = $5 AND
+			resource_kind = $6 AND resource_id = $7 AND account_id = $8 AND workspace_id = $9 AND
+			provider = $10 AND provider_request_id = $11 AND idempotency_key = $12 AND request_hash = $13 AND
+			status = $14 AND started_at = $15 AND error_code = $16 AND retryable = $17 AND
+			finished_at IS NOT DISTINCT FROM $18 AND redacted_provider_payload::jsonb = $19::jsonb`,
+		nextPayload, expected.ID, expected.OperationID, expected.CallerService, expected.Action,
+		expected.ResourceKind, expected.ResourceID, expected.AccountID, expected.WorkspaceID,
+		expected.Provider, expected.ProviderRequestID, expected.IdempotencyKey, expected.RequestHash,
+		expected.Status, expected.StartedAt, expected.ErrorCode, expected.Retryable, finishedAt, expectedPayload)
 	if err != nil {
 		return err
 	}

@@ -185,11 +185,14 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 		runtime, err := p.createWorkspaceRuntime(ctx, runtimeInput, *computeState.Compute, *storageState.Storage, tencentWorkspaceRuntimeGatewayBinding{
 			WorkspaceAPIKeyID: secretRecord.GatewayKeyID, SecretRef: secretState.Secret.SecretRef, Fingerprint: secretState.Secret.Fingerprint,
 		})
+		diagnostic := tencentWorkspaceLaunchRuntimeDiagnostic(runtime, err)
 		if err != nil || !runtime.Ready || runtime.Access.Username == "" || runtime.Access.CredentialStatus == "" || runtime.Access.CredentialVersion == "" || runtime.Access.SecretRef == "" {
-			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchPending)
+			return WorkspaceLaunchProviderResult{Diagnostic: diagnostic}, firstNonNil(err, ErrWorkspaceLaunchPending)
 		}
 		state.Runtime = &runtime
 		applyWorkspaceLaunchRuntimeResources(&resources, runtime, binding.FabricOperationID)
+		providerState, encodeErr := encodeTencentWorkspaceLaunchState(state)
+		return WorkspaceLaunchProviderResult{Resources: resources, ProviderState: providerState, Diagnostic: diagnostic}, encodeErr
 	default:
 		return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchInputInvalid
 	}
@@ -337,22 +340,77 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 			oplCostTags(binding.AccountID, binding.WorkspaceID, runtimeID, binding.FabricOperationID), tencentWorkspaceRuntimeGatewayBinding{
 				WorkspaceAPIKeyID: secretRecord.GatewayKeyID, SecretRef: secretState.Secret.SecretRef, Fingerprint: secretState.Secret.Fingerprint,
 			})
+		diagnostic := tencentWorkspaceLaunchRuntimeDiagnostic(readback, err)
 		if err == nil && input.RuntimeImageRevision != nil {
 			if revisionErr := convergeRuntimeImageRevisionReadback(ctx, *input.RuntimeImageRevision, readback); revisionErr != nil {
-				return WorkspaceLaunchProviderResult{}, revisionErr
+				diagnostic.ErrorCode = errorCode(revisionErr)
+				diagnostic.BlockReason = "runtime_binding_readback_failed"
+				diagnostic.Retryable = false
+				return WorkspaceLaunchProviderResult{Diagnostic: diagnostic}, revisionErr
 			}
 		}
 		if err != nil || !readback.Ready ||
 			readback.Access.Username == "" || readback.Access.CredentialStatus == "" || readback.Access.CredentialVersion == "" || readback.Access.SecretRef == "" {
-			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchPending)
+			return WorkspaceLaunchProviderResult{Diagnostic: diagnostic}, firstNonNil(err, ErrWorkspaceLaunchPending)
 		}
 		state.Runtime = &readback
 		applyWorkspaceLaunchRuntimeResources(&resources, readback, binding.FabricOperationID)
+		providerState, encodeErr := encodeTencentWorkspaceLaunchState(state)
+		return WorkspaceLaunchProviderResult{Resources: resources, ProviderState: providerState, Diagnostic: diagnostic}, encodeErr
 	default:
 		return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchInputInvalid
 	}
 	providerState, err := encodeTencentWorkspaceLaunchState(state)
 	return WorkspaceLaunchProviderResult{Resources: resources, ProviderState: providerState}, err
+}
+
+func tencentWorkspaceLaunchRuntimeDiagnostic(runtime WorkspaceRuntime, readErr error) *WorkspaceLaunchStageDiagnostic {
+	diagnostic := &WorkspaceLaunchStageDiagnostic{
+		SchemaVersion: 1,
+		Owner:         "fabric.tencent_tke",
+		BlockReason:   "none",
+		Retryable:     false,
+		Checks:        append([]Check(nil), runtime.Checks...),
+	}
+	if readErr != nil && (!errors.Is(readErr, ErrWorkspaceLaunchPending) || len(runtime.Checks) == 0) {
+		diagnostic.BlockReason = "runtime_authoritative_read_failed"
+		diagnostic.ErrorCode = errorCode(readErr)
+		return diagnostic
+	}
+	if runtime.Ready && runtime.Access.Username != "" && runtime.Access.CredentialStatus != "" &&
+		runtime.Access.CredentialVersion != "" && runtime.Access.SecretRef != "" {
+		return diagnostic
+	}
+	diagnostic.BlockReason = workspaceLaunchRuntimeBlockReason(runtime)
+	diagnostic.Retryable = true
+	return diagnostic
+}
+
+func workspaceLaunchRuntimeBlockReason(runtime WorkspaceRuntime) string {
+	failed := map[string]bool{}
+	for _, check := range runtime.Checks {
+		if !check.OK {
+			failed[check.Name] = true
+		}
+	}
+	for _, candidate := range []struct {
+		checks []string
+		reason string
+	}{
+		{[]string{"workspace_image_pulled"}, "runtime_image_not_ready"},
+		{[]string{"pvc_bound", "deployment_uses_retained_pvc"}, "runtime_storage_not_ready"},
+		{[]string{"workspace_credentials_configured"}, "runtime_credentials_not_ready"},
+		{[]string{"deployment_ready", "ready_pod_uses_retained_pvc"}, "runtime_deployment_not_ready"},
+		{[]string{"service_targets_workspace", "workspace_network_policy", "service_endpoints_ready", "ingress_routes_workspace_gateway"}, "runtime_network_not_ready"},
+		{[]string{"workspace_runtime_isolation"}, "runtime_isolation_not_ready"},
+	} {
+		for _, check := range candidate.checks {
+			if failed[check] {
+				return candidate.reason
+			}
+		}
+	}
+	return "runtime_not_ready"
 }
 
 func (p *TencentProvider) ensureWorkspaceLaunchComputeOwnership(ctx context.Context, allocation ComputeAllocation, prepared ComputeAllocationPreparation) (MachineOwnership, error) {

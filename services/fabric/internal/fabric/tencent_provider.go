@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math"
 	"os"
@@ -142,7 +143,42 @@ func (p *TencentProvider) callKubectl(ctx context.Context, args []string, stdin 
 			return nil, err
 		}
 	}
-	return p.kubectl(ctx, args, stdin)
+	startedAt := time.Now()
+	output, err := p.kubectl(ctx, args, stdin)
+	if journal := providerMutationJournalFromContext(ctx); journal != nil && journal.parent.LaunchOperationID != "" {
+		outcome, errorCode := "success", "none"
+		if err != nil {
+			outcome, errorCode = "error", computeClaimKubectlErrorClass(err)
+		}
+		action := "kubectl"
+		if len(args) > 0 {
+			action = "kubectl_" + args[0]
+		}
+		mutation := args[0] != "get" && args[0] != "wait" && args[0] != "logs" && args[0] != "describe" && args[0] != "version"
+		blockReason := "none"
+		if err != nil {
+			blockReason = errorCode
+		}
+		digest := sha256.Sum256([]byte(journal.parent.LaunchOperationID))
+		attrs := []any{
+			"operation_digest", fmt.Sprintf("sha256:%x", digest),
+			"stage", journal.parent.Stage,
+			"action", action,
+			"mutation", mutation,
+			"outcome", outcome,
+			"state", "not_observed",
+			"block_reason", blockReason,
+			"error_code", errorCode,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"owner", "fabric.tencent_tke",
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "workspace launch provider call", attrs...)
+		} else {
+			slog.InfoContext(ctx, "workspace launch provider call", attrs...)
+		}
+	}
+	return output, err
 }
 
 type monthlyPreflightReportProvider interface {
