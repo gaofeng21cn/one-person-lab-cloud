@@ -539,20 +539,27 @@ func (a *providerMutationAttempt) claimReplayWithClass(ctx context.Context, temp
 	dispatchStartedAt := ""
 	if _, exists := a.operation.RedactedProviderPayload[providerMutationReplayEpochPayloadKey]; exists {
 		epoch, valid := decodeProviderMutationReplayEpoch(a.operation)
-		if !valid || epoch.State == "succeeded" || epoch.State == "blocked" ||
+		upgradeGenericSucceededRuntime := valid && allowSucceeded && a.operation.Status == "succeeded" &&
+			epoch.State == "succeeded" && epoch.ReplayClass == "" &&
+			template.ReplayClass == providerMutationRuntimeImageRevisionReplayClass
+		if !valid || !upgradeGenericSucceededRuntime && (epoch.State == "succeeded" || epoch.State == "blocked" ||
 			epoch.ReplayClass != template.ReplayClass || epoch.AuthorityDigest != template.AuthorityDigest ||
-			epoch.PreviousImageDigest != template.PreviousImageDigest || epoch.ReplacementImageDigest != template.ReplacementImageDigest {
+			epoch.PreviousImageDigest != template.PreviousImageDigest || epoch.ReplacementImageDigest != template.ReplacementImageDigest) {
 			return false, ErrLaunchStageBindingConflict
 		}
-		lease, leaseErr := time.Parse(time.RFC3339Nano, epoch.LeaseExpiresAt)
-		if leaseErr != nil {
-			return false, ErrLaunchStageBindingConflict
+		if upgradeGenericSucceededRuntime {
+			generation = epoch.LeaseGeneration + 1
+		} else {
+			lease, leaseErr := time.Parse(time.RFC3339Nano, epoch.LeaseExpiresAt)
+			if leaseErr != nil {
+				return false, ErrLaunchStageBindingConflict
+			}
+			if lease.After(now) {
+				return false, nil
+			}
+			generation = epoch.LeaseGeneration + 1
+			dispatchStartedAt = epoch.DispatchStartedAt
 		}
-		if lease.After(now) {
-			return false, nil
-		}
-		generation = epoch.LeaseGeneration + 1
-		dispatchStartedAt = epoch.DispatchStartedAt
 	}
 	next := a.operation
 	next.RedactedProviderPayload = maps.Clone(a.operation.RedactedProviderPayload)

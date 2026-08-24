@@ -670,6 +670,15 @@ func sameProviderMutationReplayEpochIdentity(left, right providerMutationReplayE
 		left.PreviousImageDigest == right.PreviousImageDigest && left.ReplacementImageDigest == right.ReplacementImageDigest
 }
 
+func validSucceededGenericRuntimeImageRevisionEpochUpgrade(expected FabricOperation, previous, next providerMutationReplayEpoch) bool {
+	return previous.ReplayClass == "" && previous.State == "succeeded" &&
+		previous.SchemaVersion == next.SchemaVersion && previous.ReplayID == next.ReplayID &&
+		previous.ParentFabricOperationID == next.ParentFabricOperationID && previous.ChildOperationID == next.ChildOperationID &&
+		previous.IdempotencyKey == next.IdempotencyKey && next.State == "leased" &&
+		next.LeaseGeneration == previous.LeaseGeneration+1 && next.LeaseExpiresAt != previous.LeaseExpiresAt &&
+		next.DispatchStartedAt == "" && correctableSucceededRuntimeImageRevision(expected, next)
+}
+
 func validProviderMutationReplayEpochTransition(expected, next FabricOperation) bool {
 	nextEpoch, nextOK := decodeProviderMutationReplayEpoch(next)
 	if !nextOK {
@@ -685,7 +694,13 @@ func validProviderMutationReplayEpochTransition(expected, next FabricOperation) 
 		return nextEpoch.State == "leased" && nextEpoch.LeaseGeneration == 1
 	}
 	expectedEpoch, expectedOK := decodeProviderMutationReplayEpoch(expected)
-	if !expectedOK || !sameProviderMutationReplayEpochIdentity(expectedEpoch, nextEpoch) {
+	if !expectedOK {
+		return false
+	}
+	if !sameProviderMutationReplayEpochIdentity(expectedEpoch, nextEpoch) {
+		return validSucceededGenericRuntimeImageRevisionEpochUpgrade(expected, expectedEpoch, nextEpoch)
+	}
+	if expectedEpoch.State == "succeeded" || expectedEpoch.State == "blocked" {
 		return false
 	}
 	switch {
