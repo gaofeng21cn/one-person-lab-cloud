@@ -21,12 +21,22 @@ if (unexpectedWorkflows.length > 0) {
 
 const release = await readFile(new URL(".github/workflows/release-opl-cloud-image.yml", root), "utf8");
 const releaseWorkflow = YAML.parse(release);
-const releaseBuild = releaseWorkflow.jobs?.build;
+const releaseAdmission = releaseWorkflow.jobs?.admission;
 const releasePublish = releaseWorkflow.jobs?.publish;
-if (releaseBuild?.environment !== undefined || releasePublish?.environment !== "cloud-release") {
-  throw new Error("Cloud Release must keep build read-only and publication in cloud-release");
+const releaseReadback = releaseWorkflow.jobs?.["public-readback"];
+if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify(["admission", "publish", "public-readback"]) ||
+    releaseWorkflow.concurrency !== undefined || releaseAdmission?.environment !== undefined || releaseAdmission?.concurrency !== undefined ||
+    releasePublish?.environment !== "cloud-release" || releasePublish?.needs !== "admission" ||
+    releasePublish?.concurrency?.group !== "opl-cloud-publication-global" ||
+    JSON.stringify(releaseReadback?.needs) !== JSON.stringify(["admission", "publish"]) ||
+    releaseReadback?.environment !== undefined || releaseReadback?.concurrency !== undefined) {
+  throw new Error("Cloud Release stage and publication serialization boundary is invalid");
 }
-for (const required of ["ghcr.io/${{ github.repository }}", "linux/amd64,linux/arm64", "gh release create", "compose.yaml"]) {
+const releaseCommands = Object.values(releaseWorkflow.jobs || {}).flatMap((job) => job.steps || []).map((step) => step.run || "").join("\n");
+if (releaseCommands.includes("docker buildx build")) {
+  throw new Error("Cloud Release must promote qualified Candidate bytes without rebuilding them");
+}
+for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx imagetools create", "gh release create", "--clobber", "workspace_verified", "compose.yaml"]) {
   if (!release.includes(required)) throw new Error(`Cloud release is missing: ${required}`);
 }
 
@@ -103,7 +113,7 @@ if (candidateContract.schemaVersion !== 2 || candidateReceipt?.schemaVersion !==
     candidateReceipt?.checksumManifest !== "SHA256SUMS") {
   throw new Error("Candidate receipt contract boundary is invalid");
 }
-if (contract.schemaVersion !== 2 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
+if (contract.schemaVersion !== 3 || contract.productRepository !== "gaofeng21cn/one-person-lab-cloud" ||
     contract.instanceHandoff?.repository !== "gaofeng21cn/opl-instance-medopl" ||
     contract.candidate?.formalPublication !== false ||
     contract.candidate?.instanceDeployment !== false ||
@@ -120,6 +130,21 @@ if (contract.schemaVersion !== 2 || contract.productRepository !== "gaofeng21cn/
     contract.candidate?.artifactLocator?.artifactNameTemplate !== "opl-cloud-candidate-{product.sha}-{provenance.workflowRunAttempt}" ||
     contract.candidate?.artifactLocator?.artifactNameProductShaField !== "product.sha" ||
     contract.candidate?.artifactLocator?.artifactNameRunAttemptField !== "provenance.workflowRunAttempt" ||
+    contract.distribution?.publication?.promotionMode !== "qualified_candidate_digest_without_rebuild" ||
+    JSON.stringify(contract.distribution?.publication?.requiredEvidence) !== JSON.stringify([
+      "candidate", "local_qualification", "instance_qualification_decision", "instance_workspace_verified"
+    ]) ||
+    contract.distribution?.publication?.instanceEvidenceReader?.secret !== "OPL_INSTANCE_EVIDENCE_TOKEN" ||
+    contract.distribution?.publication?.instanceEvidenceReader?.repository !== "gaofeng21cn/opl-instance-medopl" ||
+    JSON.stringify(contract.distribution?.publication?.instanceEvidenceReader?.permissions) !== JSON.stringify(["actions:read", "contents:read"]) ||
+    contract.distribution?.publication?.serialization?.concurrencyGroup !== "opl-cloud-publication-global" ||
+    contract.distribution?.publication?.serialization?.ownerJob !== "publish" ||
+    JSON.stringify(contract.distribution?.publication?.serialization?.unlockedJobs) !== JSON.stringify(["admission", "public-readback"]) ||
+    contract.distribution?.publication?.recovery?.sameTagAssetReplacement !== true ||
+    contract.distribution?.publication?.recovery?.versionBumpRequiredForPublicationFailure !== false ||
+    JSON.stringify(contract.distribution?.exactByteBinding) !== JSON.stringify([
+      "releaseTag", "productSha", "imageDigest", "releaseAssetSha256", "releaseAssetProvenance"
+    ]) ||
     contract.instanceHandoff?.artifactLocatorContract !== "packages/contracts/opl-cloud-distribution-contract.json#candidate.artifactLocator" ||
     JSON.stringify(contract.instanceHandoff?.inputs) !== JSON.stringify(["candidate_manifest_b64"])) {
   throw new Error("distribution owner boundary is invalid");

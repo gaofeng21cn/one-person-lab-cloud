@@ -37,7 +37,7 @@ identities.
 | K / `PB-K-DATA-RECOVERY-01` | `planned` | `P0` | Cloud defines schema/migration and restore validation obligations; it does not operate production backups | Cloud restore validator proves Control Plane, Fabric, and Ledger identities, operations, bindings, and receipts after an isolated restore | Instance owns encrypted schedules, retention, RPO/RTO, restore execution, and restore receipt |
 | L / `PB-L-ALERT-OPERATIONS-01` | `planned` | `P0` | Cloud service owners expose stable failure/recovery signals; current alerts are mainly process logs and Console projection | Fault tests emit stable active/recovered signals for worker, manual review, database, provider, Ledger, backup-readiness, and purchase-stop states | Instance routes signals to an external receiver and proves acknowledge, stop-purchase, recover, readback, close |
 | M / `PB-M-PUBLIC-BOUNDARY-01` | `planned` | `P0` | Control Plane owns auth/session/account lifecycle, Console owns public UI, and portable assets own ingress requirements; public registration abuse and data-exit paths are incomplete | Auth tests prove rate limits, non-enumerating failures, CSRF/session boundaries, disable revocation, no-store secret reads, and operator-assisted recovery/data exit | Instance owns TLS, domains, ingress, production Secrets, and public-browser receipt |
-| N / `PB-N-DISTRIBUTION-RELEASE-01` | `next` | `P0` | Cloud distribution owner; portable defaults still carry installation facts and formal Release still rebuilds instead of promoting qualified bytes | Clean install requires explicit immutable Workspace image/domain/Profile; publication verifies both qualification receipts and promotes the exact Candidate digest with matching assets/checksums | Instance deploys and rolls back the exact digest, retaining deployment and rollback receipts |
+| N / `PB-N-DISTRIBUTION-RELEASE-01` | `verify` | `P0` | Cloud distribution owner; source now admits the exact Candidate, Local qualification, Instance decision and `workspace_verified` evidence, then promotes that digest without rebuild, but portable defaults still carry installation facts and no hosted cohort has proved the full path | Clean install requires explicit immutable Workspace image/domain/Profile; publication promotes the exact Candidate digest with matching assets/checksums and same-tag recovery, then independently reads back the public cohort | Instance deploys and rolls back the exact digest, retaining deployment and rollback receipts |
 
 F is not a preliminary global rewrite. Each live capability tightens its own
 types while implementing the business outcome. H remains out of the critical
@@ -47,8 +47,9 @@ path until its named trigger exists.
 
 - Independent Account, Commerce, and Lifecycle owners may develop in parallel
   in separate worktrees with disjoint write sets.
-- A shared public contract, schema migration, generated projection, canonical
-  `main`, Candidate identity, or publication mutation has one serialized writer.
+- A shared public contract, schema migration, generated projection, or canonical
+  `main` has one writer during its mutation. Candidate builds are scoped to one
+  Product SHA; only the public publication job holds the global release lock.
 - Each work package closes first with domain, application, persistence, and
   boundary focused tests owned by that capability.
 - `npm run verify:local` remains the ordinary merge regression gate.

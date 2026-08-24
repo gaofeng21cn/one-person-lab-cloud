@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "owner": "OPL Cloud",
   "purpose": "Portable product distribution and instance handoff boundary.",
   "state": "current",
-  "machineBoundary": "Cloud publishes portable immutable product artifacts; the instance owner selects the provider and performs deployment.",
+  "machineBoundary": "Cloud promotes qualified digest-addressed Candidate bytes into portable product artifacts; the instance owner selects the provider and performs deployment.",
   "lifecycle": {
     "type": "long_term_contract",
     "removalCondition": "Replace only with a newer current contract for the same distribution and instance-handoff boundary."
@@ -55,7 +55,36 @@
       "predicateType": "https://github.com/gaofeng21cn/one-person-lab-cloud/attestations/opl-cloud-release/v1",
       "signerWorkflow": ".github/workflows/release-opl-cloud-image.yml"
     },
-    "immutableIdentity": [
+    "publication": {
+      "promotionMode": "qualified_candidate_digest_without_rebuild",
+      "requiredEvidence": [
+        "candidate",
+        "local_qualification",
+        "instance_qualification_decision",
+        "instance_workspace_verified"
+      ],
+      "instanceEvidenceReader": {
+        "secret": "OPL_INSTANCE_EVIDENCE_TOKEN",
+        "repository": "gaofeng21cn/opl-instance-medopl",
+        "permissions": [
+          "actions:read",
+          "contents:read"
+        ]
+      },
+      "serialization": {
+        "concurrencyGroup": "opl-cloud-publication-global",
+        "ownerJob": "publish",
+        "unlockedJobs": [
+          "admission",
+          "public-readback"
+        ]
+      },
+      "recovery": {
+        "sameTagAssetReplacement": true,
+        "versionBumpRequiredForPublicationFailure": false
+      }
+    },
+    "exactByteBinding": [
       "releaseTag",
       "productSha",
       "imageDigest",

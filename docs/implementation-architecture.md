@@ -140,7 +140,7 @@ image pins, secret references, promotion policy, and deployment receipts. The
 current fixed customer prices and `priceVersion` are implemented by the Cloud
 Control Plane catalog; an Instance does not override them. Instance repositories
 consume exact `one-person-lab-cloud` candidates for pre-publication qualification
-and immutable Releases after publication. Their internal artifacts may use the
+and digest-addressed Releases after publication. Their internal artifacts may use the
 `opl-cloud` identifier, but they never copy runtime code, product contracts, or
 spendable-balance state.
 
@@ -681,28 +681,33 @@ deployment evidence in their qualification receipts. The bundle still carries
 the current `opl-cloud.env.example`; removing its installation defaults is the
 `PB-N-DISTRIBUTION-RELEASE-01` roadmap gap.
 
-The formal Release workflow still cannot promote those already qualified bytes.
-It builds and validates the OCI layout in a read-only job, passes one
-digest-checked Actions artifact to a separate publish job, and grants
-`contents:write`, `packages:write`, `artifact-metadata:write`,
-`attestations:write`, and `id-token:write` only to that publish job under the
-protected `cloud-release` Environment. Both jobs run in one manual dispatch
-whose original and current triggering actors must match and be either the
-repository owner or `RenDeHuang`. The workflow rebuilds the image, so exact-byte
-promotion from an already qualified Candidate remains open. Until that gap
-closes, no successor to `v0.1.7` is admitted.
+The formal Release workflow has three recoverable stages. `admission` downloads
+one exact Candidate plus Local qualification, Instance qualification decision,
+and `workspace_verified` artifacts. It executes the Cloud and Instance-native
+validators from their exact source commits, binds the Product SHA/tree, index
+and platform digests, and seals a checksum-bound publication checkpoint. Its
+private Instance reader uses `OPL_INSTANCE_EVIDENCE_TOKEN`, scoped only to
+`Actions: read` and `Contents: read` on `opl-instance-medopl`.
 
-The build emits a SHA-256 manifest for every GitHub Release asset; the publish job
-checks those bytes, signs a GitHub OIDC-backed attestation that binds the
-workflow commit/ref, selected product SHA, release tag, image digest, and
-checksum-manifest digest, publishes the assets, downloads them again, and
-verifies both checksum and predicate identity. The image is identified by a
-version tag, exact product SHA, and immutable digest; mutable `latest` and
-`stable` tags are forbidden.
+`publish` is the only job under the protected `cloud-release` Environment and
+the only job holding the global publication lock or write permissions. It
+promotes the Candidate digest with `imagetools create`, attests the sealed
+assets, and reconciles the GitHub Release as one complete same-tag cohort; a
+publication-tool failure is retried on that tag and does not create a product
+version. `public-readback` has no environment or lock. It anonymously reads back
+the GHCR digest and Release bytes, verifies checksums, and verifies the OIDC
+attestations. The manual dispatch still requires matching original/current
+actors and either the repository owner or `RenDeHuang`.
+
+This source path no longer rebuilds qualified bytes. A successor to `v0.1.7`
+still requires a real hosted run whose four admission evidence sources bind one
+Candidate and whose public readback succeeds. Product capability changes choose
+new version tags; publication recovery does not. Mutable `latest` and `stable`
+tags remain forbidden.
 
 Current public Release, repository security, and Instance evidence is recorded
-in [status](status.md). Open Candidate qualification and exact-byte promotion
-work is recorded in the [roadmap](roadmap.md).
+in [status](status.md). Open Candidate qualification and distribution work is
+recorded in the [roadmap](roadmap.md).
 
 Control Plane remains one Pod. Existing load evidence covers request concurrency
 and replay, but its historical per-resource renewal scan is not proof of the

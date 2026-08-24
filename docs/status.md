@@ -160,9 +160,11 @@ index `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`.
 Its five installation assets match their API digests and `SHA256SUMS`.
 
 That proves the public bytes of `v0.1.7`; it does not prove current `main`, a
-clean installation, or medopl production readiness. No hosted run has yet built
-and qualified the current portable Candidate, and the formal Release workflow
-still rebuilds instead of promoting previously qualified bytes.
+clean installation, or medopl production readiness. Current source separates
+Candidate construction, qualification admission, public mutation, and public
+readback, and promotes the admitted digest without rebuilding it. No hosted run
+has yet exercised that path for one current qualified Candidate, so this remains
+source capability rather than evidence of a successor Product Release.
 
 ## Instance Evidence
 
