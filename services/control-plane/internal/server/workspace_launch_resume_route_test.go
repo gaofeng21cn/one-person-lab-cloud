@@ -377,6 +377,27 @@ func TestWorkspaceLaunchResumeRouteRevisesOriginalTencentRuntimeImage(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks = 0
+	operation.Attempts["runtime"] = attempt
+	operation.FreshContinuationAuthorizations = map[string]workspaceLaunchFreshContinuationAuthorization{}
+	operation.ContinuationReadClaims = map[string]workspaceLaunchContinuationReadClaim{}
+	previous := workspaceLaunchResumeAuthorization{
+		AuthorizationID: "resume-runtime-failed-original", LaunchVersion: 100, AuthorizedStage: "runtime", AuthorizedBy: "usr-admin",
+		AuthorizedAt: "2026-08-23T08:00:00Z", Reason: "continue the original runtime after authoritative readback",
+		MutationBudget: 0, IdempotentReplayBudget: 1, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+	}
+	completedAt := "2026-08-23T08:01:00Z"
+	operation.ResumeAuthorization = &previous
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	operation.IdempotentReplayClaims["runtime"] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: previous.AuthorizationID, Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
 	originalResult := stringValue(row["result"])
 	originalKey := operation.Attempts["runtime"].IdempotencyKey
 	originalBinding := operation.ID + ":runtime"

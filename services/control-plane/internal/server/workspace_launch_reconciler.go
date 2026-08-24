@@ -1129,6 +1129,7 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 
 func workspaceLaunchRuntimeImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
 	_, hasReplayClaim := operation.IdempotentReplayClaims[operation.Stage]
+	failedReplayReauthorization := workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation, attempt)
 	return workspaceLaunchRuntimeRepairEligible(operation) && operation.RuntimeRepair == nil && operation.stringFact("providerProfileRef") == "tencent-tke" &&
 		authorization.AuthorizedStage == operation.Stage && authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&
 		authorization.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && authorization.ReadbacksAtAuthorization == 0 &&
@@ -1136,7 +1137,19 @@ func workspaceLaunchRuntimeImageRevisionEligible(operation workspaceLaunchReconc
 		authorization.ReplacementWorkspaceImageDigest != operation.stringFact("workspaceImageDigest") &&
 		attempt.MaxPendingReadbacks == workspaceLaunchAuthoritativeReadBudget &&
 		(attempt.PendingReadbacks == 0 || attempt.PendingReadbacks == attempt.MaxPendingReadbacks) &&
-		!hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage)
+		(!hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage) || failedReplayReauthorization)
+}
+
+func workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
+	claim, found := operation.IdempotentReplayClaims[operation.Stage]
+	previous := operation.ResumeAuthorization
+	return found && previous != nil && operation.ResumeAuthorizationConsumedAt != "" &&
+		claim.AuthorizationID == previous.AuthorizationID && claim.Stage == "runtime" &&
+		claim.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operationWithStage(operation, "runtime"), 1) &&
+		claim.Status == "failed" && claim.CompletedAt != "" && previous.AuthorizedStage == "runtime" &&
+		previous.MutationBudget == 0 && previous.IdempotentReplayBudget == 1 &&
+		previous.AuthoritativeReadBudget == workspaceLaunchAuthoritativeReadBudget && previous.ReplacementWorkspaceImageDigest == "" &&
+		previous.ReadbacksAtAuthorization+previous.AuthoritativeReadBudget == attempt.MaxPendingReadbacks
 }
 
 func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
@@ -1157,6 +1170,9 @@ func (r *WorkspaceLaunchReconciler) reviseUnknownRuntimeImage(
 	observation, readErr := r.adapter.ReadStage(ctx, observed)
 	if readErr != nil || observation.State != workspaceLaunchStageRuntimeImageRevisionPending {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	if workspaceLaunchFailedRuntimeReplayImageRevisionEligible(operation, attempt) {
+		delete(operation.IdempotentReplayClaims, operation.Stage)
 	}
 	attempt.Unknown, attempt.Status = 0, "reserved"
 	attempt.MaxPendingReadbacks = attempt.PendingReadbacks + authorization.AuthoritativeReadBudget
