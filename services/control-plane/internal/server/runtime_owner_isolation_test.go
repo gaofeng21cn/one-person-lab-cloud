@@ -145,7 +145,7 @@ func TestCanonicalWorkspaceLaunchFailurePersistsIndexedRedactedDiagnostic(t *tes
 	event := events[0]
 	diagnostic := mapField(event, "after")
 	failedFields, ok := diagnostic["failedFields"].([]string)
-	if stringValue(event["id"]) != "audit-"+stableID(workspaceAccessCanonicalAuditAction, "ws-alpha", operation.ID, "canonical_facts_mismatch", "runtime_id")[:12] ||
+	if stringValue(event["id"]) != "audit-"+stableID(workspaceAccessCanonicalAuditAction, "workspace_launch", operation.ID)[:12] ||
 		stringValue(event["action"]) != workspaceAccessCanonicalAuditAction ||
 		stringValue(event["resourceKind"]) != "workspace_launch" || stringValue(event["resourceId"]) != operation.ID ||
 		stringValue(event["targetAccountId"]) != "acct-alpha" || stringValue(event["result"]) != "blocked" ||
@@ -216,8 +216,52 @@ func TestCanonicalWorkspaceLaunchDecodeFailurePersistsAttemptField(t *testing.T)
 	diagnostic := mapField(events[0], "after")
 	failedFields, ok := diagnostic["failedFields"].([]string)
 	if stringValue(diagnostic["decodeFailureCategory"]) != "invalid_attempts" || !ok ||
-		len(failedFields) != 2 || failedFields[0] != "launch_decodable" || failedFields[1] != "runtime_max_pending_readbacks" {
+		len(failedFields) != 3 || failedFields[0] != "launch_decodable" || failedFields[1] != "runtime_max_pending_readbacks" ||
+		failedFields[2] != "runtime_runtime_revision_authorization" {
 		t.Fatalf("diagnostic=%#v", diagnostic)
+	}
+}
+
+func TestCanonicalWorkspaceLaunchDiagnosticRefinementReusesOperationIndex(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	store.runtimeOps[0]["result"] = "{"
+
+	app := server.(*controlPlaneHTTPHandler).app
+	if _, _, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil {
+		t.Fatal("invalid JSON launch unexpectedly decoded")
+	}
+	firstEvents, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(firstEvents) != 1 {
+		t.Fatalf("first audit events=%#v err=%v", firstEvents, err)
+	}
+
+	attempt := operation.Attempts["runtime"]
+	attempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime") + 1
+	operation.Attempts["runtime"] = attempt
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.runtimeOps[0] = row
+	if _, _, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"]); readErr == nil {
+		t.Fatal("invalid Runtime attempt unexpectedly decoded")
+	}
+	refinedEvents, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(refinedEvents) != 1 {
+		t.Fatalf("refined audit events=%#v err=%v", refinedEvents, err)
+	}
+	first, refined := firstEvents[0], refinedEvents[0]
+	diagnostic := mapField(refined, "after")
+	if stringValue(first["id"]) != stringValue(refined["id"]) ||
+		stringValue(refined["resourceKind"]) != "workspace_launch" || stringValue(refined["resourceId"]) != operation.ID ||
+		stringValue(diagnostic["decodeFailureCategory"]) != "invalid_attempts" {
+		t.Fatalf("diagnostic index was not refined in place: first=%#v refined=%#v", first, refined)
 	}
 }
 

@@ -1158,6 +1158,7 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 	if resourceID == "" {
 		resourceKind, resourceID = "workspace", workspaceID
 	}
+	diagnosticID := "audit-" + stableID(workspaceAccessCanonicalAuditAction, resourceKind, resourceID)[:12]
 	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	diagnostic := map[string]any{
 		"schemaVersion":   1,
@@ -1174,19 +1175,22 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 		diagnostic["decodeFailureCategory"] = decodeFailureCategory
 	}
 	event := map[string]any{
-		"id":              "audit-" + stableID(workspaceAccessCanonicalAuditAction, workspaceID, operationID, reason, strings.Join(failedFields, ","))[:12],
+		"id":              diagnosticID,
 		"targetAccountId": firstNonEmpty(canonicalAccountID, stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
 		"action":          workspaceAccessCanonicalAuditAction,
 		"resourceKind":    resourceKind,
 		"resourceId":      resourceID,
-		"after":     diagnostic,
-		"result":    "blocked",
-		"createdAt": observedAt,
+		"after":           diagnostic,
+		"result":          "blocked",
+		"createdAt":       observedAt,
 	}
 	persisted := true
 	if err := app.tables.SaveAuditEvent(ctx, event); err != nil {
 		persisted = false
 		slog.ErrorContext(ctx, "workspace access canonical launch read",
+			"diagnostic_id", diagnosticID,
+			"action", workspaceAccessCanonicalAuditAction,
+			"resource_kind", resourceKind,
 			"workspace_digest", workspaceDigestValue,
 			"operation_digest", operationDigestValue,
 			"stage", "workspace_access",
@@ -1200,6 +1204,9 @@ func (app *controlPlaneServer) recordCanonicalWorkspaceLaunchFailure(ctx context
 		return
 	}
 	slog.InfoContext(ctx, "workspace access canonical launch read",
+		"diagnostic_id", diagnosticID,
+		"action", workspaceAccessCanonicalAuditAction,
+		"resource_kind", resourceKind,
 		"workspace_digest", fmt.Sprintf("sha256:%x", workspaceDigest),
 		"operation_digest", fmt.Sprintf("sha256:%x", operationDigest),
 		"stage", "workspace_access",
