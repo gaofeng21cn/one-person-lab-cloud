@@ -600,6 +600,20 @@ func (fixture *tencentRuntimeReadbackFixture) kubectl(_ context.Context, args []
 }
 
 func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
+	for _, testCase := range []struct {
+		name                   string
+		completedGenericReplay bool
+	}{
+		{name: "without prior replay epoch"},
+		{name: "after completed generic replay", completedGenericReplay: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t, testCase.completedGenericReplay)
+		})
+	}
+}
+
+func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, completedGenericReplay bool) {
 	service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
 	compute := ComputeAllocation{
 		ID: "ca-compute-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", PackageID: "basic", NodePoolID: "np-basic",
@@ -660,6 +674,12 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 	if err != nil || result.State != "pending" || result.Reason != "provider_provisioning" || fixture.applyCalls != 1 {
 		t.Fatalf("succeeded child without revision proof replayed apply: result=%#v err=%v applyCalls=%d", result, err, fixture.applyCalls)
 	}
+	runtimeID := "rt_" + stableSuffix(input.Binding.WorkspaceID, input.Binding.FabricOperationID)[:18]
+	serviceName := k8sName(compute.ID)
+	childID := providerMutationOperationID(input.Binding, "tencent_workspace_runtime_apply", "workspace_runtime", runtimeID, serviceName)
+	if completedGenericReplay {
+		seedSucceededGenericProviderReplayEpoch(t, store, childID)
+	}
 
 	replacementImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("e", 64)
 	revisionInput := input
@@ -708,13 +728,15 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 			}
 		})
 	}
-	runtimeID := "rt_" + stableSuffix(input.Binding.WorkspaceID, input.Binding.FabricOperationID)[:18]
-	serviceName := k8sName(compute.ID)
-	childID := providerMutationOperationID(input.Binding, "tencent_workspace_runtime_apply", "workspace_runtime", runtimeID, serviceName)
 	child, err := store.Get(context.Background(), childID)
 	epoch, epochOK := decodeProviderMutationReplayEpoch(child)
+	wantLeaseGeneration := 1
+	if completedGenericReplay {
+		wantLeaseGeneration = 2
+	}
 	if err != nil || !epochOK || epoch.State != "awaiting_readback" || epoch.ReplayClass != providerMutationRuntimeImageRevisionReplayClass ||
-		epoch.AuthorityDigest != revisionInput.RuntimeImageRevision.AuthorizationDigest || epoch.PreviousImageDigest != image || epoch.ReplacementImageDigest != replacementImage {
+		epoch.AuthorityDigest != revisionInput.RuntimeImageRevision.AuthorizationDigest || epoch.PreviousImageDigest != image ||
+		epoch.ReplacementImageDigest != replacementImage || epoch.LeaseGeneration != wantLeaseGeneration {
 		t.Fatalf("runtime revision journal child=%#v epoch=%#v epochOK=%v err=%v", child, epoch, epochOK, err)
 	}
 
@@ -736,6 +758,36 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 	if err != nil || replayed.State != "ready" || fixture.applyCalls != 2 {
 		t.Fatalf("completed runtime revision replayed mutation: result=%#v err=%v applyCalls=%d", replayed, err, fixture.applyCalls)
 	}
+}
+
+func seedSucceededGenericProviderReplayEpoch(t *testing.T, store *MemoryOperationStore, childID string) {
+	t.Helper()
+	child, err := store.Get(context.Background(), childID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, bindingOK := decodeProviderMutationBinding(child)
+	if !bindingOK || child.Status != "succeeded" {
+		t.Fatalf("runtime child cannot model completed generic replay: child=%#v binding=%#v/%v", child, binding, bindingOK)
+	}
+	now := time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)
+	epoch := providerMutationReplayEpoch{
+		SchemaVersion: 1, ReplayID: providerMutationReplayID(child, binding),
+		ParentFabricOperationID: binding.Parent.FabricOperationID, ChildOperationID: child.ID, IdempotencyKey: child.IdempotencyKey,
+		State: "succeeded", LeaseGeneration: 1, LeaseExpiresAt: now.Add(-time.Minute).Format(time.RFC3339Nano),
+		DispatchStartedAt: now.Add(-2 * time.Minute).Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano),
+	}
+	child.RedactedProviderPayload = maps.Clone(child.RedactedProviderPayload)
+	child.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = epoch
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for index := range store.operation {
+		if store.operation[index].ID == child.ID {
+			store.operation[index] = child
+			return
+		}
+	}
+	t.Fatal("runtime child disappeared while seeding completed generic replay")
 }
 
 func TestTencentWorkspaceLaunchRuntimeReplayRequiresExactRuntimeAndGatewayBindingReadback(t *testing.T) {

@@ -812,6 +812,77 @@ func TestWorkspaceLaunchRuntimeImageRevisionReauthorizesMatchingFailedReplay(t *
 	}
 }
 
+func TestWorkspaceLaunchRuntimeImageRevisionRetriesSameUndispatchedReplacementOnce(t *testing.T) {
+	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-undispatched")
+	previous.ReadbacksAtAuthorization = workspaceLaunchAuthoritativeReadBudget
+	completedAt := "2026-08-24T03:12:32Z"
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 2*workspaceLaunchAuthoritativeReadBudget, 2*workspaceLaunchAuthoritativeReadBudget
+	operation.Attempts["runtime"] = attempt
+	operation.Version = 108
+	operation.ResumeAuthorization = &previous
+	operation.ResumeAuthorizationConsumedAt = completedAt
+	operation.IdempotentReplayClaims["runtime"] = workspaceLaunchIdempotentReplayClaim{
+		AuthorizationID: previous.AuthorizationID, Stage: "runtime", IdempotencyKey: attempt.IdempotencyKey,
+		Status: "failed", CompletedAt: completedAt,
+	}
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{"runtime": {read, read, read}},
+		replayableStages:   map[string]bool{"runtime": true},
+	}
+	authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-undispatched-final")
+
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), operation.ID, authorization)
+	attempt = got.Attempts["runtime"]
+	claim := got.IdempotentReplayClaims["runtime"]
+	if err != nil || got.Status != "pending" || got.Stage != "activation" || attempt.Confirmed != 1 || attempt.Unknown != 0 ||
+		attempt.Status != "confirmed" || attempt.PendingReadbacks != 6 || attempt.MaxPendingReadbacks != 9 ||
+		adapter.mutationsByStage["runtime"] != 1 || claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		got.ResumeAuthorizationConsumedAt == "" || len(got.ConsumedResumeAuthorizations) == 0 ||
+		got.ConsumedResumeAuthorizations[len(got.ConsumedResumeAuthorizations)-1].Authorization.AuthorizationID != previous.AuthorizationID {
+		t.Fatalf("undispatched Runtime replacement did not continue once: operation=%s attempt=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	for name, mutate := range map[string]func(*workspaceLaunchReconcileOperation, *workspaceLaunchResumeAuthorization){
+		"different replacement": func(_ *workspaceLaunchReconcileOperation, value *workspaceLaunchResumeAuthorization) {
+			value.ReplacementWorkspaceImageDigest = "registry.example/workspace@sha256:" + strings.Repeat("d", 64)
+		},
+		"claim not failed": func(value *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			claim := value.IdempotentReplayClaims["runtime"]
+			claim.Status = "succeeded"
+			value.IdempotentReplayClaims["runtime"] = claim
+		},
+		"third image window": func(value *workspaceLaunchReconcileOperation, _ *workspaceLaunchResumeAuthorization) {
+			attempt := value.Attempts["runtime"]
+			attempt.PendingReadbacks, attempt.MaxPendingReadbacks = 3*workspaceLaunchAuthoritativeReadBudget, 3*workspaceLaunchAuthoritativeReadBudget
+			value.Attempts["runtime"] = attempt
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			candidateAuthorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-rejected-"+strings.ReplaceAll(name, " ", "-"))
+			mutate(&candidate, &candidateAuthorization)
+			if workspaceLaunchRuntimeImageRevisionEligible(candidate, candidate.Attempts["runtime"], candidateAuthorization) {
+				t.Fatal("invalid final Runtime image authorization was eligible")
+			}
+		})
+	}
+}
+
 func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *testing.T) {
 	row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -857,7 +928,8 @@ func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *tes
 			prior := *operation.ResumeAuthorization
 			candidate.ResumeAuthorization = &prior
 			mutate(&candidate)
-			if workspaceLaunchFailedRuntimeReplayImageRevisionEligible(candidate, candidate.Attempts["runtime"]) {
+			authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-mismatch-"+strings.ReplaceAll(name, " ", "-"))
+			if workspaceLaunchFailedRuntimeReplayImageRevisionEligible(candidate, candidate.Attempts["runtime"], authorization) {
 				t.Fatal("mismatched failed Runtime replay was eligible")
 			}
 		})

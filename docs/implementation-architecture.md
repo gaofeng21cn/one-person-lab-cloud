@@ -378,6 +378,15 @@ the same Launch to Activation; it does not create a repair operation or another
 Launch path. The persisted decoder accepts the production-shaped failed fresh
 continuation while the Runtime read ceiling expands from three to six.
 
+If that first image-revision authorization is consumed with a durable failed
+claim before the replacement manifest is dispatched, the same Resume route may
+authorize the same replacement digest once more from the exact six-read ceiling.
+Control Plane rejects a different digest or any later window; Fabric upgrades
+only the completed generic replay epoch on the same Tencent Runtime child to the
+first image-revision epoch. That final three-read window raises the persisted
+Runtime ceiling to nine without changing the Launch, Runtime operation, or
+idempotency key.
+
 When an authoritative read proves a local-Docker Runtime is genuinely unready,
 the current local-Docker implementation exposes a distinct operator
 Fulfillment Repair command. Control Plane admits only the exact paid Launch
