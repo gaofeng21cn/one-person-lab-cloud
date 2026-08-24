@@ -875,6 +875,7 @@ func (r *WorkspaceLaunchReconciler) waitClaimedReplay(ctx context.Context, opera
 		attempt.Unknown, attempt.Status = 1, "unknown"
 		operation.Attempts[operation.Stage] = attempt
 		operation.Observations[operation.Stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
+		operation.completeIdempotentReplay("failed", r.clockNow())
 		operation.consumeResumeAuthorization(r.clockNow())
 		operation.Status = "manual_review"
 	} else {

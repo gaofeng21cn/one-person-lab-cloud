@@ -2328,7 +2328,7 @@ func TestWorkspaceLaunchPendingReadbackIsBoundedAndCanConvergeReadOnly(t *testin
 					readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: append([]workspaceLaunchUnitReadResult{absent, absent, absent, pending}, tc.followups...)},
 				}
 				store := &workspaceLaunchUnitStore{row: row}
-				reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+				reconciler := NewWorkspaceLaunchReconciler(&workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: store}, adapter)
 				got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-pending-"+stage+"-"+strings.ReplaceAll(tc.name, " ", "-")))
 				for err == nil && got.Status == "pending" && got.Stage == stage && got.Attempts[stage].PendingReadbacks < got.Attempts[stage].MaxPendingReadbacks {
 					got, err = reconciler.Reconcile(context.Background(), got.ID)
@@ -2339,7 +2339,7 @@ func TestWorkspaceLaunchPendingReadbackIsBoundedAndCanConvergeReadOnly(t *testin
 					t.Fatalf("bounded pending mismatch: operation=%s attempt=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), attempt, adapter.mutationsByStage, err)
 				}
 				if tc.wantStatus == "manual_review" && (attempt.Unknown != 1 || attempt.Status != "unknown" || got.Observations[stage].State != workspaceLaunchStageUnknown ||
-					got.ResumeAuthorizationConsumedAt == "" || got.Observations[stage].State == workspaceLaunchStageAbsent) {
+					got.IdempotentReplayClaims[stage].Status != "failed" || got.ResumeAuthorizationConsumedAt == "" || got.Observations[stage].State == workspaceLaunchStageAbsent) {
 					t.Fatalf("exhaustion inferred absence or left authorization active: operation=%s attempt=%#v", workspaceLaunchReconcileResultSummary(got), attempt)
 				}
 			})
