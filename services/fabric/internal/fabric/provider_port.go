@@ -96,6 +96,10 @@ func providerPlanDigest(raw json.RawMessage) string {
 // plan remains an internal alias for existing validation helpers.
 type plan = ComputePlan
 
+type providerDescriptorReader interface {
+	Descriptor() ProviderDescriptor
+}
+
 type computeProvider interface {
 	PrepareComputeAllocation(context.Context, ComputeAllocationInput) (ComputeAllocationPreparation, error)
 	CreateComputeAllocation(context.Context, ComputeAllocationExecution) (ComputeAllocation, error)
@@ -103,6 +107,7 @@ type computeProvider interface {
 	SyncComputeAllocation(context.Context, ComputeAllocation) (ComputeAllocation, error)
 	RenewComputeAllocation(context.Context, ComputeAllocation) (ComputeAllocation, error)
 	DestroyComputeAllocation(context.Context, ComputeAllocation) (ComputeAllocation, error)
+	ValidateComputeAllocation(ComputeAllocation, ComputeAllocationPreparation) error
 }
 
 type storageProvider interface {
@@ -131,18 +136,31 @@ type runtimeRepairProvider interface {
 	RepairWorkspaceRuntime(context.Context, WorkspaceRuntimeInput, ComputeAllocation, StorageVolume) (WorkspaceRuntime, error)
 }
 
-// Provider is the retained live Fabric port.
+type workspaceImagePolicy interface {
+	ValidateWorkspaceImageReference(string) bool
+}
+
+type monthlyPreflightProvider interface {
+	MonthlyPreflight(context.Context, MonthlyPreflightInput) (MonthlyPreflight, error)
+}
+
+type providerReadiness interface {
+	Readiness(context.Context) (map[string]any, error)
+}
+
+// Provider is the infrastructure composition contract implemented by each
+// complete adapter. Fabric application capabilities receive the narrow ports
+// derived from it in NewServiceWithOperationStore.
 type Provider interface {
 	computeProvider
 	storageProvider
 	attachmentProvider
 	secretProvider
 	runtimeProvider
-	Descriptor() ProviderDescriptor
-	ValidateComputeAllocation(ComputeAllocation, ComputeAllocationPreparation) error
-	ValidateWorkspaceImageReference(string) bool
-	MonthlyPreflight(context.Context, MonthlyPreflightInput) (MonthlyPreflight, error)
-	Readiness(context.Context) (map[string]any, error)
+	providerDescriptorReader
+	workspaceImagePolicy
+	monthlyPreflightProvider
+	providerReadiness
 	providerPlanResolver
 }
 
@@ -187,7 +205,7 @@ type runtimeHealthSummaryProvider interface {
 	RuntimeHealthSummary(context.Context) (RuntimeHealthSummary, error)
 }
 
-func providerPlan(provider Provider, packageID string) (ComputePlan, bool) {
+func providerPlan(provider providerDescriptorReader, packageID string) (ComputePlan, bool) {
 	plan, ok := provider.Descriptor().Plans[packageID]
 	return plan, ok && plan.ID != "" && plan.InstanceType != ""
 }

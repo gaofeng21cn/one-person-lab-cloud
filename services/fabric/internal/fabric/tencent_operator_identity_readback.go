@@ -187,7 +187,7 @@ func withComputeClaimRecoveryBinding(payload map[string]any, binding computeClai
 }
 
 func (s *Service) computeClaimRecoveryLocalState(ctx context.Context, input ComputeClaimRecoveryInput) (FabricOperation, ComputeAllocation, ComputeAllocationPreparation, MachineOwnership, string, error) {
-	operation, found, err := s.operations.OperationByActionIdempotency(ctx, "create_compute_allocation", input.LaunchOperationID+":compute")
+	operation, found, err := s.computeClaims.OperationByActionIdempotency(ctx, "create_compute_allocation", input.LaunchOperationID+":compute")
 	if err != nil {
 		if errors.Is(err, ErrOperationIdentityConflict) {
 			return FabricOperation{}, ComputeAllocation{}, ComputeAllocationPreparation{}, MachineOwnership{}, "local_identity",
@@ -195,7 +195,7 @@ func (s *Service) computeClaimRecoveryLocalState(ctx context.Context, input Comp
 		}
 		return FabricOperation{}, ComputeAllocation{}, ComputeAllocationPreparation{}, MachineOwnership{}, "local_identity", err
 	}
-	storageOperation, storageFound, err := s.operations.OperationByActionIdempotency(ctx, "create_storage_volume", input.LaunchOperationID+":storage")
+	storageOperation, storageFound, err := s.computeClaims.OperationByActionIdempotency(ctx, "create_storage_volume", input.LaunchOperationID+":storage")
 	storageDisposition := computeClaimRecoveryStorageOperationDisposition(storageOperation, storageFound, input)
 	if errors.Is(err, ErrOperationIdentityConflict) {
 		storageDisposition = computeClaimStorageOperationConflict
@@ -222,7 +222,7 @@ func (s *Service) computeClaimRecoveryLocalState(ctx context.Context, input Comp
 		return FabricOperation{}, ComputeAllocation{}, ComputeAllocationPreparation{}, MachineOwnership{}, "local_identity",
 			fmt.Errorf("%w: local_identity", ErrComputeClaimRecoveryUnavailable)
 	}
-	ownership, err := s.operations.MachineOwnership(ctx, input.ComputeAllocationID)
+	ownership, err := s.machineOwnership.MachineOwnership(ctx, input.ComputeAllocationID)
 	if err != nil || !validComputeClaimRecoveryOwnership(allocation, ownership) {
 		return FabricOperation{}, ComputeAllocation{}, ComputeAllocationPreparation{}, MachineOwnership{}, "local_identity",
 			fmt.Errorf("%w: local_identity", ErrComputeClaimRecoveryUnavailable)
@@ -231,5 +231,5 @@ func (s *Service) computeClaimRecoveryLocalState(ctx context.Context, input Comp
 }
 
 func (s *Service) MachineOwnership(ctx context.Context, resourceID string) (MachineOwnership, error) {
-	return s.operations.MachineOwnership(ctx, strings.TrimSpace(resourceID))
+	return s.machineOwnership.MachineOwnership(ctx, strings.TrimSpace(resourceID))
 }

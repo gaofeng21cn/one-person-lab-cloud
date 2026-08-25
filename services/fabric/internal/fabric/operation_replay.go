@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-func replayResourceState(ctx context.Context, operations OperationStore) (map[string]ComputeAllocation, map[string]StorageVolume, map[string]StorageAttachment, map[string]WorkspaceRuntime) {
+func replayResourceState(ctx context.Context, operations interface {
+	List(context.Context) ([]FabricOperation, error)
+}) (map[string]ComputeAllocation, map[string]StorageVolume, map[string]StorageAttachment, map[string]WorkspaceRuntime) {
 	computes := map[string]ComputeAllocation{}
 	volumes := map[string]StorageVolume{}
 	attachments := map[string]StorageAttachment{}
@@ -104,7 +106,7 @@ func replayResourceState(ctx context.Context, operations OperationStore) (map[st
 }
 
 func (s *Service) hydrateMissingResourceState(ctx context.Context) error {
-	computes, volumes, attachments, err := projectWorkspaceLaunchDeleteResources(ctx, s.operations)
+	computes, volumes, attachments, err := projectWorkspaceLaunchDeleteResources(ctx, s.operationHistory)
 	if err != nil {
 		return err
 	}
@@ -197,7 +199,9 @@ func (s *workspaceLaunchDeleteStageSet) canonical(workspaceID string) (workspace
 	return candidate, ok && !s.workspaceConflict[workspaceID] && !s.resourceConflict[candidate.resourceID]
 }
 
-func projectWorkspaceLaunchDeleteResources(ctx context.Context, operations OperationStore) (map[string]ComputeAllocation, map[string]StorageVolume, map[string]StorageAttachment, error) {
+func projectWorkspaceLaunchDeleteResources(ctx context.Context, operations interface {
+	List(context.Context) ([]FabricOperation, error)
+}) (map[string]ComputeAllocation, map[string]StorageVolume, map[string]StorageAttachment, error) {
 	records, err := operations.List(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -506,7 +510,7 @@ func (s *Service) recordOperation(ctx context.Context, base FabricOperation, sta
 		operation.ErrorCode = errorCode(operationErr)
 	}
 	fillOperationResource(&operation, resource)
-	return s.operations.Append(ctx, operation)
+	return s.operationJournal.Append(ctx, operation)
 }
 
 func fillOperationResource(operation *FabricOperation, resource any) {

@@ -64,7 +64,6 @@ func mustStore(t *testing.T, err error) {
 func TestPublicResponsesSetSecurityHeaders(t *testing.T) {
 	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
 	want := map[string]string{
-		"Content-Security-Policy":   "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'",
 		"Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 		"X-Content-Type-Options":    "nosniff",
 		"X-Frame-Options":           "DENY",
@@ -82,6 +81,9 @@ func TestPublicResponsesSetSecurityHeaders(t *testing.T) {
 			server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, test.path, nil))
 			if rec.Code != test.status {
 				t.Fatalf("status = %d, want %d: %s", rec.Code, test.status, rec.Body.String())
+			}
+			if got := rec.Header().Get("Content-Security-Policy"); got != "" {
+				t.Fatalf("Content-Security-Policy = %q, want absent", got)
 			}
 			for name, value := range want {
 				if got := rec.Header().Get(name); got != value {

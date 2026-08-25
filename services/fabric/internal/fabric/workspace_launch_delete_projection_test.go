@@ -345,7 +345,7 @@ func (s *blockingWorkspaceLaunchDeleteListStore) List(ctx context.Context) ([]Fa
 func TestWorkspaceLaunchDeleteHydrationDoesNotOverwriteConcurrentResourceState(t *testing.T) {
 	service, store, _, resources := workspaceLaunchDeleteProjectionFixture(t)
 	blockingStore := &blockingWorkspaceLaunchDeleteListStore{OperationStore: store, started: make(chan struct{}), release: make(chan struct{})}
-	service.operations = blockingStore
+	service.operationHistory = blockingStore
 	done := make(chan error, 1)
 	go func() { done <- service.hydrateMissingResourceState(context.Background()) }()
 	<-blockingStore.started

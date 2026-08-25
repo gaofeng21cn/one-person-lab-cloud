@@ -40,6 +40,9 @@ type fabricOperationCursor struct {
 	ID        string    `json:"id"`
 }
 
+// OperationStore is the infrastructure composition contract implemented by the
+// unified in-memory and PostgreSQL backends. Application capabilities receive
+// the narrow ports derived from this backend in NewServiceWithOperationStore.
 type OperationStore interface {
 	Append(ctx context.Context, operation FabricOperation) error
 	Get(ctx context.Context, id string) (FabricOperation, error)
@@ -51,7 +54,6 @@ type OperationStore interface {
 	ComputeClaimTerminalOperation(ctx context.Context, approvalID, idempotencyKey string) (FabricOperation, bool, error)
 	ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
 	ClaimComputePoolRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
-	ReclaimRuntime(ctx context.Context, id string, priorStartedAt, startedAt time.Time) (FabricOperation, bool, error)
 	ComputePoolHead(ctx context.Context, poolKey string) (FabricOperation, bool, error)
 	TryClaimComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string, now, leaseExpiresAt time.Time) (FabricOperation, bool, error)
 	ReleaseComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string) error
@@ -62,7 +64,6 @@ type OperationStore interface {
 	ClaimMachine(ctx context.Context, ownership MachineOwnership) (MachineOwnership, bool, error)
 	SaveMachineOwnership(ctx context.Context, ownership MachineOwnership) error
 	MachineOwnership(ctx context.Context, resourceID string) (MachineOwnership, error)
-	ListMachineOwnerships(ctx context.Context) ([]MachineOwnership, error)
 	WithPoolLock(ctx context.Context, poolKey string, fn func(context.Context) error) error
 }
 
@@ -2100,7 +2101,7 @@ func (s *PostgresOperationStore) ListPage(ctx context.Context, cursor string, li
 }
 
 func (s *Service) ListOperationsPage(ctx context.Context, cursor string, limit int) (FabricOperationPage, error) {
-	return s.operations.ListPage(ctx, cursor, limit)
+	return s.operationHistory.ListPage(ctx, cursor, limit)
 }
 
 func validJobHeartbeatOperation(operation FabricOperation) bool {

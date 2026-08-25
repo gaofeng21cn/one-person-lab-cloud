@@ -23,12 +23,13 @@ const providerMutationRuntimeImageRevisionReplayClass = "runtime_image_revision"
 type providerMutationJournalContextKey struct{}
 
 type providerMutationJournal struct {
-	operations      OperationStore
-	parent          WorkspaceLaunchStageBinding
-	parentOperation FabricOperation
-	provider        string
-	now             func() time.Time
-	readOnly        bool
+	operations       ProviderMutationStore
+	machineOwnership MachineOwnershipStore
+	parent           WorkspaceLaunchStageBinding
+	parentOperation  FabricOperation
+	provider         string
+	now              func() time.Time
+	readOnly         bool
 }
 
 type providerMutationBinding struct {
@@ -65,11 +66,6 @@ type providerMutationReplayEpoch struct {
 	CompletedAt             string `json:"completedAt,omitempty"`
 }
 
-type providerMutationReplayStore interface {
-	SaveProviderMutationReplayEpoch(context.Context, FabricOperation, FabricOperation) error
-	ConvergeProviderMutationReplay(context.Context, FabricOperation, FabricOperation) error
-}
-
 type persistedProviderMutationBinding struct {
 	Binding providerMutationBinding `json:"binding"`
 	Digest  string                  `json:"digest"`
@@ -102,7 +98,7 @@ func (s *Service) providerOperationContext(ctx context.Context, operation Fabric
 		}
 	}
 	return context.WithValue(ctx, providerMutationJournalContextKey{}, &providerMutationJournal{
-		operations: s.operations, parent: binding, parentOperation: operation, provider: s.provider.Descriptor().Name, now: s.now, readOnly: readOnly,
+		operations: s.providerMutations, machineOwnership: s.machineOwnership, parent: binding, parentOperation: operation, provider: s.providerDescriptor.Descriptor().Name, now: s.now, readOnly: readOnly,
 	})
 }
 
@@ -396,10 +392,6 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 		if !ok {
 			return ErrLaunchStageBindingConflict
 		}
-		store, ok := a.journal.operations.(providerMutationReplayStore)
-		if !ok {
-			return ErrRuntimeOperationNotCurrent
-		}
 		if mutationErr != nil {
 			if epoch.State == "leased" {
 				if epoch.DispatchStartedAt == "" {
@@ -411,7 +403,7 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 				next = a.operation
 				next.RedactedProviderPayload = maps.Clone(a.operation.RedactedProviderPayload)
 				next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = epoch
-				return store.SaveProviderMutationReplayEpoch(ctx, a.operation, next)
+				return a.journal.operations.SaveProviderMutationReplayEpoch(ctx, a.operation, next)
 			}
 			return nil
 		}
@@ -420,7 +412,7 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 		next.RedactedProviderPayload = maps.Clone(next.RedactedProviderPayload)
 		next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = epoch
 		next.Status, next.ErrorCode = "succeeded", ""
-		return store.ConvergeProviderMutationReplay(ctx, a.operation, next)
+		return a.journal.operations.ConvergeProviderMutationReplay(ctx, a.operation, next)
 	}
 	if mutationErr == nil {
 		next.Status = "succeeded"
@@ -428,23 +420,15 @@ func (a *providerMutationAttempt) complete(ctx context.Context, providerRequestI
 		next.Status, next.ErrorCode = "failed", errorCode(mutationErr)
 	}
 	if !a.Fresh && a.operation.Status == "started" && mutationErr == nil {
-		converger, ok := a.journal.operations.(runtimeReadbackConverger)
-		if !ok {
-			return ErrRuntimeOperationNotCurrent
-		}
-		return converger.ConvergeRuntimeReadback(ctx, a.operation, next)
+		return a.journal.operations.ConvergeProviderMutationReadback(ctx, a.operation, next)
 	}
 	if !a.Fresh && a.operation.Status == "failed" {
 		if mutationErr != nil {
 			return nil
 		}
-		converger, ok := a.journal.operations.(runtimeReadbackConverger)
-		if !ok {
-			return ErrRuntimeOperationNotCurrent
-		}
-		return converger.ConvergeRuntimeReadback(ctx, a.operation, next)
+		return a.journal.operations.ConvergeProviderMutationReadback(ctx, a.operation, next)
 	}
-	return a.journal.operations.SaveRuntime(ctx, next)
+	return a.journal.operations.SaveProviderMutationOutcome(ctx, next)
 }
 
 func (a *providerMutationAttempt) claimReplay(ctx context.Context) (bool, error) {
@@ -510,10 +494,6 @@ func (a *providerMutationAttempt) claimRuntimeImageRevisionSupersession(
 	persisted WorkspaceRuntime,
 	observed WorkspaceRuntime,
 ) (bool, error) {
-	store, ok := a.journal.operations.(providerMutationReplayStore)
-	if !ok {
-		return false, ErrRuntimeOperationNotCurrent
-	}
 	previous, ok := decodeProviderMutationReplayEpoch(a.operation)
 	binding, bindingOK := decodeProviderMutationBinding(a.operation)
 	if !ok || !bindingOK {
@@ -536,7 +516,7 @@ func (a *providerMutationAttempt) claimRuntimeImageRevisionSupersession(
 	template.DispatchStartedAt = ""
 	template.CompletedAt = ""
 	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = template
-	if err := store.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
+	if err := a.journal.operations.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
 		return false, err
 	}
 	a.operation, a.Replay = next, true
@@ -594,10 +574,6 @@ func (a *providerMutationAttempt) claimReplayWithClass(ctx context.Context, temp
 		a.operation.Status != "started" && a.operation.Status != "failed" && !correctableSucceededNodeClaim(a.operation) && !(allowSucceeded && a.operation.Status == "succeeded") {
 		return false, nil
 	}
-	store, ok := a.journal.operations.(providerMutationReplayStore)
-	if !ok {
-		return false, ErrRuntimeOperationNotCurrent
-	}
 	now := a.journal.now().UTC()
 	binding, validBinding := decodeProviderMutationBinding(a.operation)
 	if !validBinding || binding.Parent.FabricOperationID == "" {
@@ -641,7 +617,7 @@ func (a *providerMutationAttempt) claimReplayWithClass(ctx context.Context, temp
 	template.LeaseExpiresAt = now.Add(providerMutationReplayLease).Format(time.RFC3339Nano)
 	template.DispatchStartedAt = dispatchStartedAt
 	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = template
-	if err := store.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
+	if err := a.journal.operations.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
 		return false, err
 	}
 	a.operation, a.Replay = next, true
@@ -665,10 +641,6 @@ func (a *providerMutationAttempt) markReplayDispatch(ctx context.Context) error 
 	if !ok || epoch.State != "leased" {
 		return ErrLaunchStageBindingConflict
 	}
-	store, ok := a.journal.operations.(providerMutationReplayStore)
-	if !ok {
-		return ErrRuntimeOperationNotCurrent
-	}
 	next := a.operation
 	next.RedactedProviderPayload = maps.Clone(a.operation.RedactedProviderPayload)
 	epoch.State = "awaiting_readback"
@@ -676,7 +648,7 @@ func (a *providerMutationAttempt) markReplayDispatch(ctx context.Context) error 
 		epoch.DispatchStartedAt = a.journal.now().UTC().Format(time.RFC3339Nano)
 	}
 	next.RedactedProviderPayload[providerMutationReplayEpochPayloadKey] = epoch
-	if err := store.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
+	if err := a.journal.operations.SaveProviderMutationReplayEpoch(ctx, a.operation, next); err != nil {
 		return err
 	}
 	a.operation = next

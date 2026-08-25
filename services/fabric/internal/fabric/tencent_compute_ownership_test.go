@@ -1288,7 +1288,8 @@ func TestTencentWorkspaceLaunchComputeStateUsesPersistedNodePoolAfterConfigurati
 	ownership.ResourceID = allocation.ID
 
 	store := NewMemoryOperationStore()
-	service := NewServiceWithOperationStore(NewTencentProvider(), store)
+	provider := NewTencentProvider()
+	service := NewServiceWithOperationStore(provider, store)
 	outer := newOperation(parent.Action, "workspace_launch_stage", parent.FabricOperationID, parent.AccountID, parent.WorkspaceID, parent.IdempotencyKey, parent.RequestHash, time.Now().UTC())
 	outer.ID, outer.OperationID, outer.Status = parent.FabricOperationID, parent.FabricOperationID, "started"
 	if err := bindLaunchStageOperation(&outer, &parent); err != nil {
@@ -1310,7 +1311,7 @@ func TestTencentWorkspaceLaunchComputeStateUsesPersistedNodePoolAfterConfigurati
 	}
 	for _, configuredNodePool := range []string{"np-basic-rotated", ""} {
 		t.Setenv("OPL_BASIC_COMPUTE_NODE_POOL_ID", configuredNodePool)
-		state, err := service.provider.(*TencentProvider).tencentWorkspaceLaunchComputeStateFromMutation(ctx, parent, "basic")
+		state, err := provider.tencentWorkspaceLaunchComputeStateFromMutation(ctx, parent, "basic")
 		if err != nil || state.Compute == nil || state.ComputePlan == nil || state.Ownership == nil ||
 			state.Compute.ID != allocation.ID || state.ComputePlan.NodePoolID != prepared.NodePoolID || state.Ownership.ResourceID != allocation.ID {
 			t.Fatalf("configuredNodePool=%q state=%#v err=%v", configuredNodePool, state, err)
@@ -1357,7 +1358,8 @@ func TestTencentWorkspaceLaunchComputeStateRejectsPersistedPackageOrNodePoolDrif
 			testCase.drift(&allocation, &prepared, &ownership)
 
 			store := NewMemoryOperationStore()
-			service := NewServiceWithOperationStore(NewTencentProvider(), store)
+			provider := NewTencentProvider()
+			service := NewServiceWithOperationStore(provider, store)
 			outer := newOperation(parent.Action, "workspace_launch_stage", parent.FabricOperationID, parent.AccountID, parent.WorkspaceID, parent.IdempotencyKey, parent.RequestHash, time.Now().UTC())
 			outer.ID, outer.OperationID, outer.Status = parent.FabricOperationID, parent.FabricOperationID, "started"
 			if err := bindLaunchStageOperation(&outer, &parent); err != nil {
@@ -1378,7 +1380,7 @@ func TestTencentWorkspaceLaunchComputeStateRejectsPersistedPackageOrNodePoolDrif
 				t.Fatal(err)
 			}
 
-			if _, err := service.provider.(*TencentProvider).tencentWorkspaceLaunchComputeStateFromMutation(ctx, parent, "basic"); !errors.Is(err, ErrLaunchStageBindingConflict) {
+			if _, err := provider.tencentWorkspaceLaunchComputeStateFromMutation(ctx, parent, "basic"); !errors.Is(err, ErrLaunchStageBindingConflict) {
 				t.Fatalf("persisted Package/NodePool identity drift err=%v", err)
 			}
 		})

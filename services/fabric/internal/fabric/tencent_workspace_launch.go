@@ -48,7 +48,7 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 		computeID := firstNonEmpty(resources.ComputeAllocationID, workspaceLaunchComputeID(binding))
 		pool := packageNodePoolConfig{NodePoolID: plan.NodePoolID, MaxReplicas: plan.MaxReplicas}
 		if journal := providerMutationJournalFromContext(ctx); journal != nil {
-			ownership, ownershipErr := journal.operations.MachineOwnership(ctx, computeID)
+			ownership, ownershipErr := journal.machineOwnership.MachineOwnership(ctx, computeID)
 			if ownershipErr == nil && (ownership.ResourceID != computeID || ownership.AccountID != binding.AccountID ||
 				ownership.WorkspaceID != binding.WorkspaceID || ownership.PackageID != input.PackageID || ownership.NodePoolID != pool.NodePoolID) {
 				return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
@@ -423,18 +423,18 @@ func (p *TencentProvider) ensureWorkspaceLaunchComputeOwnership(ctx context.Cont
 		return MachineOwnership{}, err
 	}
 	requested.ClaimedAt = journal.now()
-	ownership, _, err := journal.operations.ClaimMachine(ctx, requested)
+	ownership, _, err := journal.machineOwnership.ClaimMachine(ctx, requested)
 	if err != nil {
 		return MachineOwnership{}, err
 	}
 	err = p.convergeComputeMachineOwnership(ctx, allocation, prepared, ownership)
 	if err != nil {
 		ownership.Status = "quarantined"
-		_ = journal.operations.SaveMachineOwnership(ctx, ownership)
+		_ = journal.machineOwnership.SaveMachineOwnership(ctx, ownership)
 		return ownership, err
 	}
 	ownership.Status = "active"
-	if err := journal.operations.SaveMachineOwnership(ctx, ownership); err != nil {
+	if err := journal.machineOwnership.SaveMachineOwnership(ctx, ownership); err != nil {
 		return ownership, err
 	}
 	return ownership, nil
@@ -473,7 +473,7 @@ func (p *TencentProvider) tencentWorkspaceLaunchComputeStateFromMutation(ctx con
 		return tencentWorkspaceLaunchState{}, ErrLaunchStageBindingConflict
 	}
 	nodePoolID := child.ExpectedResourceBinding
-	ownership, ownershipErr := journal.operations.MachineOwnership(ctx, computeID)
+	ownership, ownershipErr := journal.machineOwnership.MachineOwnership(ctx, computeID)
 	if ownershipErr == nil {
 		if ownership.ResourceID != computeID || ownership.AccountID != binding.AccountID || ownership.WorkspaceID != binding.WorkspaceID ||
 			ownership.PackageID != packageID || ownership.NodePoolID != nodePoolID {

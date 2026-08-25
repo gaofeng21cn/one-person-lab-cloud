@@ -16,7 +16,7 @@ func (s *Service) CreateJob(ctx context.Context, input JobInput) (Job, error) {
 		return Job{}, ErrInvalidJobInput
 	}
 	requestHash := hashInput(input)
-	stored, found, err := s.operations.OperationByActionIdempotency(ctx, "create_job", input.IdempotencyKey)
+	stored, found, err := s.jobStore.OperationByActionIdempotency(ctx, "create_job", input.IdempotencyKey)
 	if err != nil {
 		return Job{}, err
 	}
@@ -60,7 +60,7 @@ func (s *Service) Job(ctx context.Context, jobID string) (Job, error) {
 }
 
 func (s *Service) jobLocked(ctx context.Context, jobID string, expire bool) (Job, error) {
-	operation, found, err := s.operations.LatestResourceOperation(ctx, "job", jobID)
+	operation, found, err := s.jobStore.LatestResourceOperation(ctx, "job", jobID)
 	if err != nil {
 		return Job{}, err
 	}
@@ -176,7 +176,7 @@ func (s *Service) HeartbeatJob(ctx context.Context, jobID string, input JobHeart
 	operation.CreatedAt = operationTime
 	fillOperationResource(&operation, job)
 	operation.RedactedProviderPayload["requestIdempotencyKey"] = input.IdempotencyKey
-	if _, err := s.operations.SaveJobHeartbeat(ctx, operation); err != nil {
+	if _, err := s.jobStore.SaveJobHeartbeat(ctx, operation); err != nil {
 		return Job{}, err
 	}
 	return job, nil
@@ -281,7 +281,7 @@ func (s *Service) activeLeasedJob(ctx context.Context, jobID, runnerID, leaseTok
 }
 
 func (s *Service) replayedJobTransition(ctx context.Context, action, jobID, idempotencyKey, requestHash string) (Job, bool, error) {
-	operation, found, err := s.operations.OperationByResourceActionIdempotency(ctx, "job", jobID, action, idempotencyKey)
+	operation, found, err := s.jobStore.OperationByResourceActionIdempotency(ctx, "job", jobID, action, idempotencyKey)
 	if err != nil {
 		return Job{}, false, err
 	}
@@ -311,11 +311,11 @@ func (s *Service) appendJobTransition(ctx context.Context, action, idempotencyKe
 	operation.CreatedAt = operationTime
 	operation.FinishedAt = operationTime
 	fillOperationResource(&operation, job)
-	return s.operations.Append(ctx, operation)
+	return s.jobStore.Append(ctx, operation)
 }
 
 func (s *Service) nextJobOperationTime(ctx context.Context, jobID string, now time.Time) (time.Time, error) {
-	latest, found, err := s.operations.LatestResourceOperation(ctx, "job", jobID)
+	latest, found, err := s.jobStore.LatestResourceOperation(ctx, "job", jobID)
 	if err != nil {
 		return time.Time{}, err
 	}

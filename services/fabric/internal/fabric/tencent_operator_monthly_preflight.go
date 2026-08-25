@@ -12,8 +12,8 @@ type monthlyProviderTruthProvider interface {
 }
 
 func (s *Service) MonthlyPreflightReport(ctx context.Context, input MonthlyPreflightReportInput) (MonthlyPreflightReport, error) {
-	provider, ok := s.provider.(monthlyPreflightReportProvider)
-	if !ok {
+	provider := s.optionalProviders.monthlyPreflightReports
+	if provider == nil {
 		return MonthlyPreflightReport{}, ErrMonthlyPreflightUnavailable
 	}
 	report, err := provider.MonthlyPreflightReport(ctx, input)
@@ -38,8 +38,8 @@ func (s *Service) MonthlyProviderTruth(ctx context.Context, computeID, storageID
 	if !validMonthlyProviderTruthIdentity(compute, storage) {
 		return unknown, fmt.Errorf("%w: local_identity", ErrMonthlyProviderTruthUnavailable)
 	}
-	provider, ok := s.provider.(monthlyProviderTruthProvider)
-	if !ok {
+	provider := s.optionalProviders.monthlyProviderTruth
+	if provider == nil {
 		return unknown, fmt.Errorf("%w: provider_unsupported", ErrMonthlyProviderTruthUnavailable)
 	}
 	result, err := provider.MonthlyProviderTruth(ctx, compute, storage)

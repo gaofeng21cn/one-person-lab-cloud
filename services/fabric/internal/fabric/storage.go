@@ -47,10 +47,10 @@ func (s *Service) CreateStorageVolume(ctx context.Context, input StorageVolumeIn
 	requestHash := hashInput(input)
 	var volume StorageVolume
 	lockKey := "storage-create:" + firstNonEmpty(input.IdempotencyKey, input.ID)
-	err := s.operations.WithPoolLock(ctx, lockKey, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, lockKey, func(lockCtx context.Context) error {
 		var err error
 		operation := newOperation("create_storage_volume", "storage_volume", input.ID, input.AccountID, input.WorkspaceID, input.IdempotencyKey, requestHash, s.now())
-		operations, err := s.operations.List(lockCtx)
+		operations, err := s.resourceOperations.List(lockCtx)
 		if err != nil {
 			return err
 		}
@@ -69,15 +69,15 @@ func (s *Service) CreateStorageVolume(ctx context.Context, input StorageVolumeIn
 			break
 		}
 		input.OperationID = operation.OperationID
-		if err := s.recordOperation(lockCtx, operation, "started", StorageVolume{ID: input.ID, OperationID: input.IdempotencyKey, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Provider: s.provider.Descriptor().Name, ProviderRequestID: providerRequestID("storage", input.IdempotencyKey)}, nil); err != nil {
+		if err := s.recordOperation(lockCtx, operation, "started", StorageVolume{ID: input.ID, OperationID: input.IdempotencyKey, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Provider: s.providerDescriptor.Descriptor().Name, ProviderRequestID: providerRequestID("storage", input.IdempotencyKey)}, nil); err != nil {
 			return err
 		}
-		volume, err = s.provider.CreateStorageVolume(s.providerMutationContext(lockCtx, operation), input)
+		volume, err = s.storageProvider.CreateStorageVolume(s.providerMutationContext(lockCtx, operation), input)
 		volume.ID = input.ID
 		volume.OperationID = input.IdempotencyKey
 		volume.AccountID = firstNonEmpty(volume.AccountID, input.AccountID)
 		volume.WorkspaceID = firstNonEmpty(volume.WorkspaceID, input.WorkspaceID)
-		volume.Provider = firstNonEmpty(volume.Provider, s.provider.Descriptor().Name)
+		volume.Provider = firstNonEmpty(volume.Provider, s.providerDescriptor.Descriptor().Name)
 		volume.Zone = firstNonEmpty(volume.Zone, input.Zone)
 		if volume.SizeGB == 0 {
 			volume.SizeGB = input.SizeGB
@@ -135,8 +135,8 @@ func (s *Service) ReadStorageVolume(ctx context.Context, volumeID string) (Stora
 	if existing.ID == "" {
 		return StorageVolume{}, fmt.Errorf("storage_volume_not_found")
 	}
-	reader, ok := s.provider.(storageVolumeStatusReader)
-	if !ok {
+	reader := s.optionalProviders.storageVolumeStatus
+	if reader == nil {
 		return existing, nil
 	}
 	volume, err := reader.ReadStorageVolumeStatus(ctx, existing)
@@ -172,7 +172,7 @@ func (s *Service) DestroyStorageVolume(ctx context.Context, volumeID string) (St
 	}
 
 	var result StorageVolume
-	err := s.operations.WithPoolLock(ctx, "storage-destroy:"+volumeID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, "storage-destroy:"+volumeID, func(lockCtx context.Context) error {
 		s.mu.Lock()
 		existing := cloneStorageVolume(s.volumes[volumeID])
 		s.mu.Unlock()
@@ -185,7 +185,7 @@ func (s *Service) DestroyStorageVolume(ctx context.Context, volumeID string) (St
 			return err
 		}
 
-		latest, found, err := s.operations.LatestResourceOperation(lockCtx, "storage_volume", volumeID)
+		latest, found, err := s.resourceOperations.LatestResourceOperation(lockCtx, "storage_volume", volumeID)
 		if err != nil {
 			return err
 		}
@@ -229,7 +229,7 @@ func (s *Service) DestroyStorageVolume(ctx context.Context, volumeID string) (St
 }
 
 func (s *Service) dispatchStorageDestroy(ctx context.Context, operation FabricOperation, existing, request StorageVolume, result *StorageVolume) error {
-	volume, providerErr := s.provider.DestroyStorageVolume(ctx, cloneStorageVolume(request))
+	volume, providerErr := s.storageProvider.DestroyStorageVolume(ctx, cloneStorageVolume(request))
 	if providerErr != nil && volume.ID == "" {
 		volume = cloneStorageVolume(request)
 	}
@@ -296,8 +296,8 @@ func isStorageDestroyEvidenceKey(key string) bool {
 }
 
 func (s *Service) recoverStorageDestroyByReadback(ctx context.Context, operation FabricOperation, existing, persisted StorageVolume, result *StorageVolume) error {
-	reader, ok := s.provider.(storageVolumeStatusReader)
-	if !ok {
+	reader := s.optionalProviders.storageVolumeStatus
+	if reader == nil {
 		return errStorageDestroyRecoveryUnconfirmed
 	}
 	readback, readErr := reader.ReadStorageVolumeStatus(ctx, cloneStorageVolume(persisted))
@@ -354,7 +354,7 @@ func (s *Service) SyncStorageVolume(ctx context.Context, volumeID string) (Stora
 	if err := s.recordOperation(ctx, operation, "started", existing, nil); err != nil {
 		return StorageVolume{}, err
 	}
-	volume, err := s.provider.SyncStorageVolume(ctx, existing)
+	volume, err := s.storageProvider.SyncStorageVolume(ctx, existing)
 	if volume.ID == "" {
 		volume.ID = existing.ID
 	}
@@ -365,7 +365,7 @@ func (s *Service) SyncStorageVolume(ctx context.Context, volumeID string) (Stora
 		volume.WorkspaceID = existing.WorkspaceID
 	}
 	if volume.Provider == "" {
-		volume.Provider = firstNonEmpty(existing.Provider, s.provider.Descriptor().Name)
+		volume.Provider = firstNonEmpty(existing.Provider, s.providerDescriptor.Descriptor().Name)
 	}
 	if volume.ProviderResourceID == "" {
 		volume.ProviderResourceID = existing.ProviderResourceID
@@ -395,7 +395,7 @@ func (s *Service) RenewStorageVolume(ctx context.Context, volumeID, idempotencyK
 		return StorageVolume{}, fmt.Errorf("storage_renew_identity_required")
 	}
 	var result StorageVolume
-	err := s.operations.WithPoolLock(ctx, "storage-renew:"+volumeID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, "storage-renew:"+volumeID, func(lockCtx context.Context) error {
 		s.mu.Lock()
 		existing := s.volumes[volumeID]
 		s.mu.Unlock()
@@ -403,7 +403,7 @@ func (s *Service) RenewStorageVolume(ctx context.Context, volumeID, idempotencyK
 			return fmt.Errorf("storage_volume_renew_identity_required")
 		}
 		requestHash := hashInput(map[string]string{"id": volumeID})
-		operations, err := s.operations.List(lockCtx)
+		operations, err := s.resourceOperations.List(lockCtx)
 		if err != nil {
 			return err
 		}
@@ -427,7 +427,7 @@ func (s *Service) RenewStorageVolume(ctx context.Context, volumeID, idempotencyK
 				return err
 			}
 		}
-		result, err = s.provider.RenewStorageVolume(lockCtx, existing)
+		result, err = s.storageProvider.RenewStorageVolume(lockCtx, existing)
 		if err != nil {
 			_ = s.recordOperation(lockCtx, operation, "failed", result, err)
 			return err
@@ -472,7 +472,7 @@ func (s *Service) CreateStorageAttachment(ctx context.Context, input StorageAtta
 	operation.ID = "fop_attachment_claim_" + stableSuffix("create_storage_attachment", input.IdempotencyKey)
 	operation.Status = "started"
 	operation.CreatedAt = now
-	fillOperationResource(&operation, StorageAttachment{ID: attachmentID, OperationID: input.IdempotencyKey, WorkspaceID: input.WorkspaceID, ComputeID: input.ComputeID, VolumeID: input.VolumeID, Provider: s.provider.Descriptor().Name, ProviderRequestID: providerRequestID("storage-attach", input.IdempotencyKey)})
+	fillOperationResource(&operation, StorageAttachment{ID: attachmentID, OperationID: input.IdempotencyKey, WorkspaceID: input.WorkspaceID, ComputeID: input.ComputeID, VolumeID: input.VolumeID, Provider: s.providerDescriptor.Descriptor().Name, ProviderRequestID: providerRequestID("storage-attach", input.IdempotencyKey)})
 	input.OperationID = input.IdempotencyKey
 	stored, claimed, err := s.claimRuntimeOperation(ctx, operation)
 	if err != nil {
@@ -483,8 +483,8 @@ func (s *Service) CreateStorageAttachment(ctx context.Context, input StorageAtta
 			return StorageAttachment{}, ErrStorageAttachmentIdempotencyConflict
 		}
 		if runtimeOperationNeedsReadback(stored, now) {
-			reader, ok := s.provider.(storageAttachmentReadbackProvider)
-			if !ok {
+			reader := s.optionalProviders.storageAttachmentReadback
+			if reader == nil {
 				return StorageAttachment{}, ErrStorageAttachmentOperationFailed
 			}
 			candidate := StorageAttachment{ID: stored.ResourceID, OperationID: input.IdempotencyKey, WorkspaceID: input.WorkspaceID, ComputeID: input.ComputeID, VolumeID: input.VolumeID}
@@ -505,7 +505,7 @@ func (s *Service) CreateStorageAttachment(ctx context.Context, input StorageAtta
 		}
 		return replayStorageAttachmentOperation(stored, requestHash)
 	}
-	attachment, err := s.provider.CreateStorageAttachment(s.providerMutationContext(ctx, operation), input, compute, volume)
+	attachment, err := s.attachmentProvider.CreateStorageAttachment(s.providerMutationContext(ctx, operation), input, compute, volume)
 	attachment.OperationID = input.IdempotencyKey
 	if err != nil {
 		_ = s.saveStorageAttachmentOperation(ctx, stored, "failed", attachment, err)
@@ -543,7 +543,7 @@ func (s *Service) saveStorageAttachmentOperation(ctx context.Context, operation 
 	operation.ErrorCode = errorCode(operationErr)
 	operation.Retryable = false
 	fillOperationResource(&operation, attachment)
-	return s.operations.SaveRuntime(ctx, operation)
+	return s.resourceOperations.SaveOperationOutcome(ctx, operation)
 }
 
 func (s *Service) DetachStorageAttachment(ctx context.Context, attachmentID string) (StorageAttachment, error) {
@@ -572,7 +572,7 @@ func (s *Service) DetachStorageAttachment(ctx context.Context, attachmentID stri
 	if err := s.recordOperation(ctx, operation, "started", existing, nil); err != nil {
 		return StorageAttachment{}, err
 	}
-	attachment, err := s.provider.DetachStorageAttachment(ctx, existing)
+	attachment, err := s.attachmentProvider.DetachStorageAttachment(ctx, existing)
 	if err != nil {
 		_ = s.recordOperation(ctx, operation, "failed", attachment, err)
 		return attachment, err
