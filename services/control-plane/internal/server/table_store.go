@@ -227,73 +227,9 @@ func workspaceCreateClaimCompatible(current, claim workspaceCreateOperationResul
 }
 
 type controlPlaneTableStore interface {
-	ListAccounts(ctx context.Context, accountID string) ([]map[string]any, error)
-	GetAccount(ctx context.Context, id string) (map[string]any, bool, error)
-	PageAccounts(ctx context.Context, query tablePageQuery) (tablePage, error)
-	CountAccountStatuses(ctx context.Context) (map[string]int, error)
-	SaveAccount(ctx context.Context, row map[string]any) error
-	ApplyWorkspacePurchaseEligibility(ctx context.Context, mutation workspacePurchaseEligibilityMutation) (map[string]any, error)
-	CreateProvisionedAccount(ctx context.Context, account, user map[string]any) error
-	ApplyUserLifecycle(ctx context.Context, user map[string]any) error
-	ListUsers(ctx context.Context, includeDeleted bool) ([]map[string]any, error)
-	GetUser(ctx context.Context, id string) (map[string]any, bool, error)
-	GetUserByEmail(ctx context.Context, email string, includeDeleted bool) (map[string]any, bool, error)
-	SaveUser(ctx context.Context, row map[string]any) error
-	DeleteUser(ctx context.Context, id string) error
-	ListSessions(ctx context.Context) (controlPlaneRecordSet, error)
-	GetSession(ctx context.Context, id string) (map[string]any, bool, error)
-	ListSessionsByUser(ctx context.Context, userID string) (controlPlaneRecordSet, error)
-	SaveSession(ctx context.Context, row map[string]any) error
-	DeleteSession(ctx context.Context, id string) error
-	ListComputes(ctx context.Context, accountID string) ([]map[string]any, error)
-	GetCompute(ctx context.Context, id string) (map[string]any, bool, error)
-	SaveCompute(ctx context.Context, row map[string]any) error
-	DeleteCompute(ctx context.Context, id string) error
-	ListStorages(ctx context.Context, accountID string) ([]map[string]any, error)
-	GetStorage(ctx context.Context, id string) (map[string]any, bool, error)
-	SaveStorage(ctx context.Context, row map[string]any) error
-	DeleteStorage(ctx context.Context, id string) error
-	ListAttachments(ctx context.Context, accountID string) ([]map[string]any, error)
-	GetAttachment(ctx context.Context, id string) (map[string]any, bool, error)
-	SaveAttachment(ctx context.Context, row map[string]any) error
-	DeleteAttachment(ctx context.Context, id string) error
-	ListWorkspaces(ctx context.Context, accountID string) ([]map[string]any, error)
-	GetWorkspace(ctx context.Context, id string) (map[string]any, bool, error)
-	PageWorkspaces(ctx context.Context, accountID string, query tablePageQuery) (tablePage, error)
-	CountWorkspaces(ctx context.Context) (int, error)
-	CountWorkspacesByAccount(ctx context.Context, accountIDs []string) (map[string]int, error)
-	SaveWorkspace(ctx context.Context, row map[string]any) error
-	CompareAndSwapWorkspaceAPIKey(ctx context.Context, workspaceID string, expectedID, newID int64) error
-	ClaimWorkspaceKeyRotation(ctx context.Context, row map[string]any) error
-	ApplyWorkspaceRenewalIntent(ctx context.Context, update workspaceRenewalIntentCAS) error
-	ClaimWorkspaceLaunchReconcile(ctx context.Context, claim workspaceLaunchReconcileClaim) error
-	PersistWorkspaceLaunchReconcile(ctx context.Context, update workspaceLaunchReconcileCAS) error
-	ApplyWorkspaceLaunchCanonicalFactRepair(ctx context.Context, update workspaceLaunchCanonicalFactRepairCAS) error
-	ClaimWorkspaceRenewal(ctx context.Context, claim workspaceRenewalClaimCAS) error
-	PersistWorkspaceRenewal(ctx context.Context, update workspaceRenewalPersistCAS) error
-	ActivateWorkspaceLaunchProjection(ctx context.Context, row map[string]any) (map[string]any, error)
-	ClaimWorkspaceCreate(ctx context.Context, workspace map[string]any, operation map[string]any) error
-	ApplyWorkspaceDelete(ctx context.Context, mutation workspaceDeleteStoreMutation) error
-	DeleteWorkspace(ctx context.Context, id string) error
-
-	ListAuditEvents(ctx context.Context, accountID string) ([]map[string]any, error)
-	SaveAuditEvent(ctx context.Context, row map[string]any) error
-	ListAnnouncements(ctx context.Context) ([]map[string]any, error)
-	ApplyAnnouncementMutation(ctx context.Context, mutation announcementMutation) (map[string]any, error)
-	ListAnnouncementReads(ctx context.Context, userID string) ([]map[string]any, error)
-	MarkAnnouncementRead(ctx context.Context, announcementID, userID, readAt string) (map[string]any, error)
-	ListSupportMappings(ctx context.Context, accountID string) ([]map[string]any, error)
-	CreateSupportMapping(ctx context.Context, row map[string]any, limit int) error
-	SaveSupportMapping(ctx context.Context, row map[string]any) error
-	ListRuntimeOperations(ctx context.Context) ([]map[string]any, error)
-	GetRuntimeOperation(ctx context.Context, id string) (map[string]any, bool, error)
-	PageRuntimeOperations(ctx context.Context, query runtimeOperationQuery) (tablePage, error)
-	SaveRuntimeOperation(ctx context.Context, row map[string]any) error
-	ReserveProductionE2EAttempt(ctx context.Context, claim productionE2EAttemptClaim) (map[string]any, error)
-	GetProductionE2EAttempt(ctx context.Context, id string) (map[string]any, bool, error)
-	CompleteProductionE2EAttempt(ctx context.Context, id, binding string) (map[string]any, error)
-	BillingReconciliation(ctx context.Context) (map[string]any, bool, error)
-	ApplyBillingReconciliation(ctx context.Context, mutation billingReconciliationMutation) error
+	IdentityStore
+	WorkspaceStore
+	SharedStore
 }
 
 func prepareWorkspaceLaunchProjection(row, owner, existing map[string]any) (map[string]any, error) {
