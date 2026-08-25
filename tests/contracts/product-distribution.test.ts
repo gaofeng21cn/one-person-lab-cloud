@@ -34,17 +34,17 @@ test("portable Compose isolates service credentials and databases", async () => 
 
 test("Cloud Release promotes an admitted Candidate and isolates public mutation", async () => {
   const workflow = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
+  const readbackWorkflow = YAML.parse(await readFile(".github/workflows/release-opl-cloud-public-readback.yml", "utf8"));
   const admission = workflow.jobs.admission;
   const publish = workflow.jobs.publish;
-  const readback = workflow.jobs["public-readback"];
+  const readback = readbackWorkflow.jobs["public-readback"];
   const publisherGate = "${{ github.ref == 'refs/heads/main' && github.actor == github.triggering_actor && (github.actor == github.repository_owner || github.actor == 'RenDeHuang') }}";
 
   assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
-  assert.deepEqual(Object.keys(workflow.jobs), ["admission", "publish", "public-readback"]);
+  assert.deepEqual(Object.keys(workflow.jobs), ["admission", "publish"]);
   assert.equal(workflow.concurrency, undefined);
   assert.equal(admission.if, publisherGate);
   assert.equal(publish.if, publisherGate);
-  assert.equal(readback.if, publisherGate);
   assert.deepEqual(admission.permissions, { actions: "read", contents: "read", packages: "read" });
   assert.equal(admission.environment, undefined);
   assert.equal(admission.concurrency, undefined);
@@ -54,14 +54,20 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   assert.equal(publish.permissions.contents, "write");
   assert.equal(publish.permissions.packages, "write");
   assert.equal(publish.permissions["id-token"], "write");
-  assert.deepEqual(readback.needs, ["admission", "publish"]);
+  assert.deepEqual(Object.keys(readbackWorkflow.on), ["workflow_run", "workflow_dispatch"]);
+  assert.deepEqual(readbackWorkflow.on.workflow_run.workflows, ["Release OPL Cloud"]);
+  assert.deepEqual(readbackWorkflow.on.workflow_run.types, ["completed"]);
+  assert.equal(readbackWorkflow.on.workflow_dispatch.inputs.publication_run_id.required, true);
+  assert.match(readback.if, /github\.event_name == 'workflow_run'/);
+  assert.match(readback.if, /github\.event_name == 'workflow_dispatch'/);
   assert.equal(readback.environment, undefined);
   assert.equal(readback.concurrency, undefined);
-  assert.deepEqual(readback.permissions, { actions: "read", attestations: "read", contents: "read" });
+  assert.deepEqual(readback.permissions, { actions: "read", attestations: "read", contents: "read", packages: "read" });
 
   const admissionCommands = admission.steps.map((step) => step.run || "").join("\n");
   const publishCommands = publish.steps.map((step) => step.run || "").join("\n");
   const readbackCommands = readback.steps.map((step) => step.run || "").join("\n");
+  const downloadStep = readback.steps.find((step) => step.uses?.startsWith("actions/download-artifact@"));
   const instanceGate = admission.steps.find((step) => step.id === "instance");
   assert.match(admissionCommands, /cloud-candidate-receipt\.ts validate-bundle/);
   assert.match(admissionCommands, /qualification-decision\.mjs.*gate/s);
@@ -73,6 +79,10 @@ test("Cloud Release promotes an admitted Candidate and isolates public mutation"
   assert.match(publishCommands, /published_digest.*EXPECTED_IMAGE_DIGEST/s);
   assert.match(publishCommands, /gh release create/);
   assert.match(publishCommands, /gh release upload.*--clobber/s);
+  assert.doesNotMatch(publishCommands, /curl -fsSL/);
+  assert.doesNotMatch(publishCommands, /gh attestation verify/);
+  assert.match(readbackCommands, /actions\/runs\/\$run_id\/artifacts/);
+  assert.equal(downloadStep.with["run-id"], "${{ steps.authority.outputs.run_id }}");
   assert.match(readbackCommands, /curl -fsSL/);
   assert.match(readbackCommands, /gh attestation verify/);
   assert.match(readbackCommands, /sha256sum --check --strict SHA256SUMS/);
@@ -98,10 +108,17 @@ test("Cloud distribution contract makes same-tag recovery explicit", async () =>
   assert.deepEqual(publication.serialization, {
     concurrencyGroup: "opl-cloud-publication-global",
     ownerJob: "publish",
-    unlockedJobs: ["admission", "public-readback"]
+    unlockedJobs: ["admission"]
   });
   assert.deepEqual(publication.recovery, {
     sameTagAssetReplacement: true,
     versionBumpRequiredForPublicationFailure: false
+  });
+  assert.deepEqual(contract.distribution.publicReadback, {
+    workflow: ".github/workflows/release-opl-cloud-public-readback.yml",
+    job: "public-readback",
+    trigger: "workflow_run",
+    manualRetryInput: "publication_run_id",
+    nonBlocking: true
   });
 });

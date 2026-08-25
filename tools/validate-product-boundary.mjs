@@ -10,6 +10,7 @@ const allowedWorkflows = new Set([
   "pull-request-ci.yml",
   "qualification.yml",
   "release-opl-cloud-image.yml",
+  "release-opl-cloud-public-readback.yml",
   "whitepaper.yml"
 ]);
 
@@ -23,21 +24,35 @@ const release = await readFile(new URL(".github/workflows/release-opl-cloud-imag
 const releaseWorkflow = YAML.parse(release);
 const releaseAdmission = releaseWorkflow.jobs?.admission;
 const releasePublish = releaseWorkflow.jobs?.publish;
-const releaseReadback = releaseWorkflow.jobs?.["public-readback"];
-if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify(["admission", "publish", "public-readback"]) ||
+const readback = await readFile(new URL(".github/workflows/release-opl-cloud-public-readback.yml", root), "utf8");
+const readbackWorkflow = YAML.parse(readback);
+const readbackJob = readbackWorkflow.jobs?.["public-readback"];
+if (JSON.stringify(Object.keys(releaseWorkflow.jobs || {})) !== JSON.stringify(["admission", "publish"]) ||
     releaseWorkflow.concurrency !== undefined || releaseAdmission?.environment !== undefined || releaseAdmission?.concurrency !== undefined ||
     releasePublish?.environment !== "cloud-release" || releasePublish?.needs !== "admission" ||
     releasePublish?.concurrency?.group !== "opl-cloud-publication-global" ||
-    JSON.stringify(releaseReadback?.needs) !== JSON.stringify(["admission", "publish"]) ||
-    releaseReadback?.environment !== undefined || releaseReadback?.concurrency !== undefined) {
+    JSON.stringify(Object.keys(readbackWorkflow.jobs || {})) !== JSON.stringify(["public-readback"]) ||
+    JSON.stringify(readbackWorkflow.on?.workflow_run?.workflows) !== JSON.stringify(["Release OPL Cloud"]) ||
+    JSON.stringify(readbackWorkflow.on?.workflow_run?.types) !== JSON.stringify(["completed"]) ||
+    readbackWorkflow.on?.workflow_dispatch?.inputs?.publication_run_id?.required !== true ||
+    readbackJob?.environment !== undefined || readbackJob?.concurrency !== undefined ||
+    readbackJob?.permissions?.contents !== "read" || readbackJob?.permissions?.actions !== "read" ||
+    readbackJob?.permissions?.attestations !== "read") {
   throw new Error("Cloud Release stage and publication serialization boundary is invalid");
 }
 const releaseCommands = Object.values(releaseWorkflow.jobs || {}).flatMap((job) => job.steps || []).map((step) => step.run || "").join("\n");
+const readbackCommands = (readbackJob?.steps || []).map((step) => step.run || "").join("\n");
 if (releaseCommands.includes("docker buildx build")) {
   throw new Error("Cloud Release must promote qualified Candidate bytes without rebuilding them");
 }
 for (const required of ["ghcr.io/${{ github.repository }}", "docker buildx imagetools create", "gh release create", "--clobber", "workspace_verified", "compose.yaml"]) {
   if (!release.includes(required)) throw new Error(`Cloud release is missing: ${required}`);
+}
+for (const required of ["actions/runs/$run_id/artifacts", "actions/download-artifact", "curl -fsSL", "gh attestation verify", "sha256sum --check --strict SHA256SUMS"]) {
+  if (!readback.includes(required) && !readbackCommands.includes(required)) throw new Error(`Cloud public readback is missing: ${required}`);
+}
+if (releaseCommands.includes("gh attestation verify") || releaseCommands.includes("curl -fsSL")) {
+  throw new Error("Cloud public readback must not remain in the publication workflow");
 }
 
 const candidate = await readFile(new URL(".github/workflows/build-opl-cloud-candidate.yml", root), "utf8");
@@ -139,9 +154,14 @@ if (contract.schemaVersion !== 3 || contract.productRepository !== "gaofeng21cn/
     JSON.stringify(contract.distribution?.publication?.instanceEvidenceReader?.permissions) !== JSON.stringify(["actions:read", "contents:read"]) ||
     contract.distribution?.publication?.serialization?.concurrencyGroup !== "opl-cloud-publication-global" ||
     contract.distribution?.publication?.serialization?.ownerJob !== "publish" ||
-    JSON.stringify(contract.distribution?.publication?.serialization?.unlockedJobs) !== JSON.stringify(["admission", "public-readback"]) ||
+    JSON.stringify(contract.distribution?.publication?.serialization?.unlockedJobs) !== JSON.stringify(["admission"]) ||
     contract.distribution?.publication?.recovery?.sameTagAssetReplacement !== true ||
     contract.distribution?.publication?.recovery?.versionBumpRequiredForPublicationFailure !== false ||
+    contract.distribution?.publicReadback?.workflow !== ".github/workflows/release-opl-cloud-public-readback.yml" ||
+    contract.distribution?.publicReadback?.job !== "public-readback" ||
+    contract.distribution?.publicReadback?.trigger !== "workflow_run" ||
+    contract.distribution?.publicReadback?.manualRetryInput !== "publication_run_id" ||
+    contract.distribution?.publicReadback?.nonBlocking !== true ||
     JSON.stringify(contract.distribution?.exactByteBinding) !== JSON.stringify([
       "releaseTag", "productSha", "imageDigest", "releaseAssetSha256", "releaseAssetProvenance"
     ]) ||

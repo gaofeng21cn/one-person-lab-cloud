@@ -681,7 +681,7 @@ deployment evidence in their qualification receipts. The bundle still carries
 the current `opl-cloud.env.example`; removing its installation defaults is the
 `PB-N-DISTRIBUTION-RELEASE-01` roadmap gap.
 
-The formal Release workflow has three recoverable stages. `admission` downloads
+The formal Release workflow has two recoverable stages. `admission` downloads
 one exact Candidate plus Local qualification, Instance qualification decision,
 and `workspace_verified` artifacts. It executes the Cloud and Instance-native
 validators from their exact source commits, binds the Product SHA/tree, index
@@ -694,10 +694,14 @@ the only job holding the global publication lock or write permissions. It
 promotes the Candidate digest with `imagetools create`, attests the sealed
 assets, and reconciles the GitHub Release as one complete same-tag cohort; a
 publication-tool failure is retried on that tag and does not create a product
-version. `public-readback` has no environment or lock. It anonymously reads back
-the GHCR digest and Release bytes, verifies checksums, and verifies the OIDC
-attestations. The manual dispatch still requires matching original/current
-actors and either the repository owner or `RenDeHuang`.
+version. The separate
+`.github/workflows/release-opl-cloud-public-readback.yml` workflow is a
+read-only follower triggered after a successful publication run. It downloads
+that run's sealed checkpoint, then anonymously reads back the GHCR digest and
+Release bytes, verifies checksums, and verifies the OIDC attestations. A failed
+follower never changes the publication result and can be retried with the
+publication run ID; the publication manual dispatch still requires matching
+original/current actors and either the repository owner or `RenDeHuang`.
 
 This source path no longer rebuilds qualified bytes. A successor to `v0.1.7`
 still requires a real hosted run whose four admission evidence sources bind one

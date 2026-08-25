@@ -75,14 +75,20 @@
         "concurrencyGroup": "opl-cloud-publication-global",
         "ownerJob": "publish",
         "unlockedJobs": [
-          "admission",
-          "public-readback"
+          "admission"
         ]
       },
       "recovery": {
         "sameTagAssetReplacement": true,
         "versionBumpRequiredForPublicationFailure": false
       }
+    },
+    "publicReadback": {
+      "workflow": ".github/workflows/release-opl-cloud-public-readback.yml",
+      "job": "public-readback",
+      "trigger": "workflow_run",
+      "manualRetryInput": "publication_run_id",
+      "nonBlocking": true
     },
     "exactByteBinding": [
       "releaseTag",
