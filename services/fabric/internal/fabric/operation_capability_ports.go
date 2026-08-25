@@ -30,10 +30,19 @@ type ComputeClaimStore interface {
 	SaveComputeClaimRecovery(ctx context.Context, current, next FabricOperation) error
 }
 
-type WorkspaceLaunchStageStore interface {
-	ClaimStageOperation(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
+type workspaceLaunchOperationReader interface {
 	Get(ctx context.Context, id string) (FabricOperation, error)
+}
+
+type WorkspaceLaunchPreflightStore interface {
+	workspaceLaunchOperationReader
+	ClaimStageOperation(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
+}
+
+type WorkspaceLaunchStageStore interface {
+	workspaceLaunchOperationReader
 	OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error)
+	ClaimStageOperation(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
 	SaveStageOutcome(ctx context.Context, operation FabricOperation) error
 	ConvergeStageReadback(ctx context.Context, expected, next FabricOperation) error
 	ConvergeStageDiagnostic(ctx context.Context, expected, next FabricOperation) error
@@ -116,4 +125,5 @@ var _ OperationHistoryStore = operationStoreCapabilityPorts{}
 var _ ResourceOperationStore = operationStoreCapabilityPorts{}
 var _ RuntimeOperationQueryStore = operationStoreCapabilityPorts{}
 var _ ComputeClaimStore = operationStoreCapabilityPorts{}
+var _ WorkspaceLaunchPreflightStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchStageStore = operationStoreCapabilityPorts{}

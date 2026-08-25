@@ -249,7 +249,7 @@ func (s *Service) persistWorkspaceLaunchPreflight(ctx context.Context, admission
 	operation.Provider = admission.ProviderProfileRef
 	operation.Status, operation.CreatedAt, operation.FinishedAt = "succeeded", now, now
 	operation.RedactedProviderPayload = map[string]any{workspaceLaunchPreflightPayloadKey: admission}
-	stored, claimed, err := s.workspaceLaunchStages.ClaimStageOperation(ctx, operation)
+	stored, claimed, err := s.workspaceLaunchPreflights.ClaimStageOperation(ctx, operation)
 	if err != nil {
 		return err
 	}
@@ -301,7 +301,7 @@ func decodeWorkspaceLaunchPreflight(operation FabricOperation) (workspaceLaunchP
 }
 
 func (s *Service) workspaceLaunchPreflight(ctx context.Context, ref string) (workspaceLaunchPreflightAdmission, error) {
-	operation, err := s.workspaceLaunchStages.Get(ctx, ref)
+	operation, err := s.workspaceLaunchPreflights.Get(ctx, ref)
 	if errors.Is(err, ErrOperationNotFound) {
 		return workspaceLaunchPreflightAdmission{}, ErrLaunchStageBindingNotFound
 	}
@@ -338,36 +338,6 @@ func (s *Service) ReadWorkspaceLaunchPreflight(ctx context.Context, input Worksp
 		ProviderBindingRef:   admission.ProviderBindingRef,
 		SpecDigest:           admission.SpecDigest,
 	}, nil
-}
-
-func (s *Service) validateWorkspaceLaunchStageInput(ctx context.Context, input WorkspaceLaunchStageInput) error {
-	if !validWorkspaceLaunchStageBinding(input.Binding) || strings.TrimSpace(input.ProviderProfileRef) == "" ||
-		strings.TrimSpace(input.ProviderBindingRef) == "" || !validWorkspaceLaunchHash(input.SpecDigest) || strings.TrimSpace(input.PackageID) == "" ||
-		input.SizeGB < 10 || input.SizeGB%10 != 0 || !s.workspaceImagePolicy.ValidateWorkspaceImageReference(input.WorkspaceImageDigest) {
-		return ErrWorkspaceLaunchInputInvalid
-	}
-	if !validWorkspaceLaunchRuntimeImageRevision(input, s.workspaceImagePolicy, s.optionalProviders.workspaceLaunchRuntimeImageRevision) {
-		return ErrWorkspaceLaunchInputInvalid
-	}
-	admission, err := s.workspaceLaunchPreflight(ctx, input.ProviderBindingRef)
-	if err != nil {
-		return err
-	}
-	preflight := admission.Input
-	if admission.ProviderProfileRef != input.ProviderProfileRef || admission.ProviderBindingRef != input.ProviderBindingRef || admission.SpecDigest != input.SpecDigest ||
-		preflight.LaunchOperationID != input.Binding.LaunchOperationID ||
-		preflight.AccountID != input.Binding.AccountID || preflight.WorkspaceID != input.Binding.WorkspaceID ||
-		preflight.PackageID != input.PackageID || preflight.SizeGB != input.SizeGB ||
-		preflight.WorkspaceImageDigest != input.WorkspaceImageDigest {
-		return ErrLaunchStageBindingConflict
-	}
-	if admission.ProviderProfileRef != s.providerDescriptor.Descriptor().Name || input.Binding.RequestHash != workspaceLaunchStageRequestHash(input, preflight.RequestHash) {
-		return ErrLaunchStageBindingConflict
-	}
-	if err := s.validateWorkspaceLaunchExpectedBinding(ctx, input); err != nil {
-		return err
-	}
-	return nil
 }
 
 func validWorkspaceLaunchRuntimeImageRevision(input WorkspaceLaunchStageInput, imagePolicy workspaceImagePolicy, revisionProvider workspaceLaunchRuntimeImageRevisionProvider) bool {
@@ -419,29 +389,6 @@ func workspaceLaunchCurrentStageBinding(stage string, resources WorkspaceLaunchR
 		"secret":                    resources.SecretBindingRef,
 		"runtime":                   resources.RuntimeBindingRef,
 	}[stage]
-}
-
-func (s *Service) validateWorkspaceLaunchExpectedBinding(ctx context.Context, input WorkspaceLaunchStageInput) error {
-	expected := workspaceLaunchCurrentStageBinding(input.Binding.Stage, input.Resources)
-	if input.Binding.ExpectedResourceBinding != expected {
-		return ErrLaunchStageBindingConflict
-	}
-	if expected == "" {
-		return nil
-	}
-	operation, err := s.workspaceLaunchStages.Get(ctx, expected)
-	if err != nil {
-		return ErrLaunchStageBindingConflict
-	}
-	persisted, ok := decodeLaunchStageBinding(operation)
-	record, recordOK := decodeWorkspaceLaunchStageRecord(operation)
-	if !ok || !recordOK || operation.Status != "succeeded" || persisted.LaunchOperationID != input.Binding.LaunchOperationID ||
-		persisted.AccountID != input.Binding.AccountID || persisted.WorkspaceID != input.Binding.WorkspaceID ||
-		persisted.Stage != input.Binding.Stage || operation.ID != expected || record.ProviderProfileRef != input.ProviderProfileRef ||
-		!workspaceLaunchResourcesContain(input.Resources, record.Resources) {
-		return ErrLaunchStageBindingConflict
-	}
-	return nil
 }
 
 func workspaceLaunchResourcesContain(actual, expected WorkspaceLaunchResources) bool {
@@ -639,31 +586,7 @@ func workspaceLaunchAttachmentID(binding WorkspaceLaunchStageBinding) string {
 }
 
 func (s *Service) WorkspaceLaunchProviderRequest(ctx context.Context, input WorkspaceLaunchStageInput, current workspaceLaunchStageRecord) (WorkspaceLaunchProviderRequest, error) {
-	admission, err := s.workspaceLaunchPreflight(ctx, input.ProviderBindingRef)
-	if err != nil || admission.SpecDigest != input.SpecDigest || admission.ProviderProfileRef != input.ProviderProfileRef {
-		return WorkspaceLaunchProviderRequest{}, ErrLaunchStageBindingConflict
-	}
-	request := WorkspaceLaunchProviderRequest{Input: input, Current: current, Prior: map[string]workspaceLaunchStageRecord{}, ProviderPlan: append(json.RawMessage(nil), admission.CanonicalProviderPlan...)}
-	for _, stage := range workspaceLaunchRequiredPriorStages(input.Binding.Stage) {
-		ref := workspaceLaunchStageBindingRef(stage, input.Resources)
-		if ref == "" {
-			return WorkspaceLaunchProviderRequest{}, ErrLaunchStageBindingConflict
-		}
-		operation, err := s.workspaceLaunchStages.Get(ctx, ref)
-		if err != nil {
-			return WorkspaceLaunchProviderRequest{}, ErrLaunchStageBindingConflict
-		}
-		binding, bindingOK := decodeLaunchStageBinding(operation)
-		record, recordOK := decodeWorkspaceLaunchStageRecord(operation)
-		if !bindingOK || !recordOK || operation.Status != "succeeded" || operation.ID != ref || binding.Stage != stage ||
-			binding.LaunchOperationID != input.Binding.LaunchOperationID || binding.AccountID != input.Binding.AccountID ||
-			binding.WorkspaceID != input.Binding.WorkspaceID || record.ProviderProfileRef != input.ProviderProfileRef || record.ProviderBindingRef != input.ProviderBindingRef || record.SpecDigest != input.SpecDigest ||
-			workspaceLaunchStageBindingRef(stage, record.Resources) != ref || !workspaceLaunchResourcesContain(input.Resources, record.Resources) {
-			return WorkspaceLaunchProviderRequest{}, ErrLaunchStageBindingConflict
-		}
-		request.Prior[stage] = record
-	}
-	return request, nil
+	return s.launchStages.WorkspaceLaunchProviderRequest(ctx, input, current)
 }
 
 func validWorkspaceLaunchProviderResult(input WorkspaceLaunchStageInput, result WorkspaceLaunchProviderResult) bool {
@@ -765,21 +688,6 @@ type workspaceLaunchStageDiagnosticConverger interface {
 	ConvergeWorkspaceLaunchStageDiagnostic(context.Context, FabricOperation, FabricOperation) error
 }
 
-func (s *Service) persistWorkspaceLaunchStageDiagnostic(ctx context.Context, operation FabricOperation, diagnostic *WorkspaceLaunchStageDiagnostic) (FabricOperation, error) {
-	if diagnostic == nil {
-		return operation, nil
-	}
-	if current, ok := decodeWorkspaceLaunchStageDiagnostic(operation); ok && hashInput(current) == hashInput(*diagnostic) {
-		return operation, nil
-	}
-	next := operation
-	setWorkspaceLaunchStageDiagnostic(&next, diagnostic)
-	if err := s.workspaceLaunchStages.ConvergeStageDiagnostic(ctx, operation, next); err != nil {
-		return FabricOperation{}, err
-	}
-	return next, nil
-}
-
 func pendingWorkspaceLaunchStageResult(input WorkspaceLaunchStageInput, reason string, diagnostic *WorkspaceLaunchStageDiagnostic) WorkspaceLaunchStageResult {
 	if reason == "" {
 		reason = "operation_pending"
@@ -803,231 +711,10 @@ func workspaceLaunchStageMayContinueEnsure(input WorkspaceLaunchStageInput, resu
 			input.RuntimeImageRevision != nil && result.Reason == "provider_provisioning")
 }
 
-func (s *Service) persistWorkspaceLaunchStageResult(ctx context.Context, input WorkspaceLaunchStageInput, current FabricOperation, record workspaceLaunchStageRecord, result WorkspaceLaunchProviderResult) error {
-	next := current
-	next.RedactedProviderPayload = maps.Clone(current.RedactedProviderPayload)
-	next.Status, next.ErrorCode, next.Retryable, next.FinishedAt = "succeeded", "", false, s.now()
-	record.Resources, record.ProviderState = result.Resources, append(json.RawMessage(nil), result.ProviderState...)
-	if input.RuntimeImageRevision != nil {
-		revision := *input.RuntimeImageRevision
-		record.RuntimeImageRevision = &revision
-	}
-	setWorkspaceLaunchStageRecord(&next, record)
-	setWorkspaceLaunchStageDiagnostic(&next, result.Diagnostic)
-	if current.Status == "started" {
-		return s.workspaceLaunchStages.SaveStageOutcome(ctx, next)
-	}
-	return s.workspaceLaunchStages.ConvergeStageReadback(ctx, current, next)
-}
-
-func (s *Service) failWorkspaceLaunchStage(ctx context.Context, current FabricOperation, err error) {
-	if current.Status != "started" {
-		return
-	}
-	next := current
-	next.Status, next.ErrorCode, next.Retryable, next.FinishedAt = "failed", errorCode(err), false, s.now()
-	_ = s.workspaceLaunchStages.SaveStageOutcome(ctx, next)
-}
-
 func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	if err := s.validateWorkspaceLaunchStageInput(ctx, input); err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	if input.Binding.Stage == "secret" && (input.GatewayCredential == nil || input.GatewayCredential.KeyID <= 0) {
-		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchInputInvalid
-	}
-	stageProvider := s.optionalProviders.workspaceLaunch
-	if stageProvider == nil {
-		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
-	}
-	if input.RuntimeImageRevision != nil {
-		existing, getErr := s.workspaceLaunchStages.Get(ctx, input.Binding.FabricOperationID)
-		if getErr != nil {
-			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-		}
-		if _, matches := workspaceLaunchStageOperationMatches(existing, input, s.providerDescriptor.Descriptor().Name); !matches {
-			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-		}
-	}
-	operation, record, err := newWorkspaceLaunchStageOperation(input, s.providerDescriptor.Descriptor().Name, s.now)
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	if existing, found, lookupErr := s.workspaceLaunchStages.OperationByActionIdempotency(ctx, input.Binding.Action, input.Binding.IdempotencyKey); lookupErr != nil {
-		return WorkspaceLaunchStageResult{}, lookupErr
-	} else if found && existing.Status == "failed" {
-		if existingRecord, matches := workspaceLaunchStageOperationMatches(existing, input, s.providerDescriptor.Descriptor().Name); !matches {
-			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-		} else {
-			observed, readErr := s.readWorkspaceLaunchStage(ctx, input, existing, existingRecord)
-			if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
-				return observed, readErr
-			}
-		}
-	}
-	stored, claimed, err := s.workspaceLaunchStages.ClaimStageOperation(ctx, operation)
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	record, ok := workspaceLaunchStageOperationMatches(stored, input, s.providerDescriptor.Descriptor().Name)
-	if !ok {
-		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-	}
-	if stored.Status == "succeeded" {
-		observed, readErr := s.readWorkspaceLaunchStage(ctx, input, stored, record)
-		if readErr != nil || input.Binding.Stage != "ensure_compute_allocation" ||
-			observed.State != "pending" || observed.Reason != "ownership_pending" {
-			return observed, readErr
-		}
-	}
-	if !claimed {
-		observed, readErr := s.readWorkspaceLaunchStage(ctx, input, stored, record)
-		if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
-			return observed, readErr
-		}
-		if observed.Diagnostic != nil {
-			current, getErr := s.workspaceLaunchStages.Get(ctx, input.Binding.FabricOperationID)
-			if getErr != nil {
-				return WorkspaceLaunchStageResult{}, getErr
-			}
-			var matches bool
-			if record, matches = workspaceLaunchStageOperationMatches(current, input, s.providerDescriptor.Descriptor().Name); !matches {
-				return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-			}
-			stored = current
-		}
-	}
-	request, err := s.WorkspaceLaunchProviderRequest(ctx, input, record)
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	providerResult, err := stageProvider.EnsureWorkspaceLaunchStage(s.providerMutationContext(ctx, stored), request)
-	diagnostic, diagnosticErr := workspaceLaunchStageDiagnosticAt(providerResult.Diagnostic, s.now())
-	if diagnosticErr != nil {
-		return WorkspaceLaunchStageResult{}, diagnosticErr
-	}
-	providerResult.Diagnostic = diagnostic
-	if err != nil && providerResult.Diagnostic != nil {
-		stored, diagnosticErr = s.persistWorkspaceLaunchStageDiagnostic(ctx, stored, providerResult.Diagnostic)
-		if diagnosticErr != nil {
-			return WorkspaceLaunchStageResult{}, diagnosticErr
-		}
-	}
-	if errors.Is(err, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
-		return pendingWorkspaceLaunchStageResult(input, "runtime_image_revision_required", providerResult.Diagnostic), nil
-	}
-	if errors.Is(err, ErrWorkspaceLaunchOwnershipPending) {
-		return pendingWorkspaceLaunchStageResult(input, "ownership_pending", providerResult.Diagnostic), nil
-	}
-	if errors.Is(err, ErrWorkspaceLaunchPending) {
-		if input.RuntimeImageRevision != nil {
-			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning", providerResult.Diagnostic), nil
-		}
-		return pendingWorkspaceLaunchStageResult(input, stored.ErrorCode, providerResult.Diagnostic), nil
-	}
-	if err != nil {
-		s.failWorkspaceLaunchStage(ctx, stored, err)
-		return WorkspaceLaunchStageResult{}, err
-	}
-	if !validWorkspaceLaunchProviderResult(input, providerResult) {
-		err = ErrWorkspaceLaunchUnavailable
-		s.failWorkspaceLaunchStage(ctx, stored, err)
-		return WorkspaceLaunchStageResult{}, err
-	}
-	if err := s.persistWorkspaceLaunchStageResult(ctx, input, stored, record, providerResult); err != nil {
-		latest, getErr := s.workspaceLaunchStages.Get(ctx, input.Binding.FabricOperationID)
-		if getErr != nil || latest.Status != "succeeded" {
-			return WorkspaceLaunchStageResult{}, err
-		}
-	}
-	return WorkspaceLaunchStageResult{
-		SchemaVersion: 1, State: "ready", Reason: "none", Binding: input.Binding, Resources: providerResult.Resources,
-		Diagnostic: providerResult.Diagnostic,
-	}, nil
+	return s.launchStages.EnsureWorkspaceLaunchStage(ctx, input)
 }
 
 func (s *Service) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	if err := s.validateWorkspaceLaunchStageInput(ctx, input); err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	operation, err := s.workspaceLaunchStages.Get(ctx, input.Binding.FabricOperationID)
-	if errors.Is(err, ErrOperationNotFound) {
-		return observedWorkspaceLaunchStageResult(input, "absent", "no_stage_record", nil), nil
-	}
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	record, ok := workspaceLaunchStageOperationMatches(operation, input, s.providerDescriptor.Descriptor().Name)
-	if !ok {
-		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-	}
-	return s.readWorkspaceLaunchStage(ctx, input, operation, record)
-}
-
-func (s *Service) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput, operation FabricOperation, record workspaceLaunchStageRecord) (WorkspaceLaunchStageResult, error) {
-	stageProvider := s.optionalProviders.workspaceLaunch
-	if stageProvider == nil {
-		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
-	}
-	request, err := s.WorkspaceLaunchProviderRequest(ctx, input, record)
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	providerResult, err := stageProvider.ReadWorkspaceLaunchStage(s.providerReadContext(ctx, operation), request)
-	diagnostic, diagnosticErr := workspaceLaunchStageDiagnosticAt(providerResult.Diagnostic, s.now())
-	if diagnosticErr != nil {
-		return WorkspaceLaunchStageResult{}, diagnosticErr
-	}
-	providerResult.Diagnostic = diagnostic
-	if err != nil && providerResult.Diagnostic != nil {
-		operation, diagnosticErr = s.persistWorkspaceLaunchStageDiagnostic(ctx, operation, providerResult.Diagnostic)
-		if diagnosticErr != nil {
-			return WorkspaceLaunchStageResult{}, diagnosticErr
-		}
-	}
-	if errors.Is(err, ErrWorkspaceLaunchRuntimeImageRevisionRequired) {
-		return pendingWorkspaceLaunchStageResult(input, "runtime_image_revision_required", providerResult.Diagnostic), nil
-	}
-	if errors.Is(err, ErrWorkspaceLaunchOwnershipPending) {
-		return pendingWorkspaceLaunchStageResult(input, "ownership_pending", providerResult.Diagnostic), nil
-	}
-	if errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
-		if operation.Status == "started" {
-			return observedWorkspaceLaunchStageResult(input, "absent", "started_no_resource", providerResult.Diagnostic), nil
-		}
-		if operation.Status == "failed" {
-			return observedWorkspaceLaunchStageResult(input, "absent", "failed_no_resource", providerResult.Diagnostic), nil
-		}
-		return observedWorkspaceLaunchStageResult(input, "unknown", "resource_absence_status_conflict", providerResult.Diagnostic), nil
-	}
-	if errors.Is(err, ErrWorkspaceLaunchPending) {
-		if input.RuntimeImageRevision != nil {
-			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning", providerResult.Diagnostic), nil
-		}
-		if operation.Status == "started" {
-			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning", providerResult.Diagnostic), nil
-		}
-		return observedWorkspaceLaunchStageResult(input, "unknown", "failed_no_resource_unproven", providerResult.Diagnostic), nil
-	}
-	if err != nil {
-		return WorkspaceLaunchStageResult{}, err
-	}
-	if !validWorkspaceLaunchProviderResult(input, providerResult) {
-		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
-	}
-	if operation.Status != "succeeded" {
-		if err := s.persistWorkspaceLaunchStageResult(ctx, input, operation, record, providerResult); err != nil {
-			return WorkspaceLaunchStageResult{}, err
-		}
-	} else if !workspaceLaunchResourcesContain(providerResult.Resources, record.Resources) || !workspaceLaunchResourcesContain(record.Resources, providerResult.Resources) {
-		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-	} else if providerResult.Diagnostic != nil {
-		if _, err := s.persistWorkspaceLaunchStageDiagnostic(ctx, operation, providerResult.Diagnostic); err != nil {
-			return WorkspaceLaunchStageResult{}, err
-		}
-	}
-	return WorkspaceLaunchStageResult{
-		SchemaVersion: 1, State: "ready", Reason: "none", Binding: input.Binding, Resources: providerResult.Resources,
-		Diagnostic: providerResult.Diagnostic,
-	}, nil
+	return s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
 }

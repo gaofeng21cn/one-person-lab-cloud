@@ -21,6 +21,9 @@ Current truth starts from [the docs index](../README.md),
 - [Console UI display freeze, 2026-07-31](./console-display-contract-v1-2026-07-31.md):
   PR #75 page, slide and visual freeze retained as provenance only; it is not a
   current UI authority.
+- [Fabric Launch Stage Engine design, 2026-08-26](./2026-08-26-fabric-launch-stage-engine-design.md)
+  and [implementation plan](./2026-08-26-fabric-launch-stage-engine.md): the
+  completed Owner boundary and migration sequence retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.
