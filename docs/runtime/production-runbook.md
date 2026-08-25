@@ -92,9 +92,13 @@ workflow from Cloud `main`; the original actor and current triggering actor must
 match. Publication must promote the exact qualified image bytes and must fail
 if it would rebuild a different digest.
 
-The workflow now implements this sequence as admission, protected publication,
-and independent public readback. Only publication holds the global lock and
-write permissions. The Instance evidence reader Secret
+The publication workflow now implements the core sequence as admission followed
+by protected publication. Only publication holds the global lock and write
+permissions. The separate `release-opl-cloud-public-readback.yml` follower is
+triggered by a successful publication run and performs anonymous GHCR/Release
+readback plus attestation checks from that run's sealed checkpoint. It is
+read-only and non-blocking; a failed follower can be retried with the original
+publication run ID. The Instance evidence reader Secret
 `OPL_INSTANCE_EVIDENCE_TOKEN` must be limited to `Actions: read` and
 `Contents: read` on `opl-instance-medopl`; it is not an Instance deployment
 credential. No hosted run has yet proved the new path for one current qualified
