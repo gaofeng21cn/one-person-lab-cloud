@@ -222,6 +222,45 @@ func TestCanonicalWorkspaceLaunchDecodeFailurePersistsAttemptField(t *testing.T)
 	}
 }
 
+func TestCanonicalWorkspaceLaunchAllowsAuthorizedHistoricalRuntimeReadbackWindow(t *testing.T) {
+	store := newMemoryTableStore()
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := tenantOwnerSessionForTest(t, server)
+	operation := seedCanonicalRuntimeAccessWorkspaceForTest(t, store, sessionUserIDForTest(t, server, owner))
+	attempt := operation.Attempts["runtime"]
+	attempt.PendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime")
+	attempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks("runtime")
+	operation.Attempts["runtime"] = attempt
+	operation.ConsumedResumeAuthorizations = []workspaceLaunchConsumedResumeAuthorization{{
+		Authorization: workspaceLaunchResumeAuthorization{
+			AuthorizationID: "resume-runtime-image-history",
+			LaunchVersion:   operation.Version - 1, AuthorizedStage: "runtime", AuthorizedBy: "usr-admin",
+			AuthorizedAt: "2026-08-24T06:42:32Z", Reason: "approved replacement of the exact failed runtime image on the original launch",
+			MutationBudget: 0, IdempotentReplayBudget: 1, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+			ReplacementWorkspaceImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("c", 64),
+		},
+		ConsumedAt: "2026-08-24T06:43:32Z",
+	}}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.runtimeOps[0] = row
+
+	app := server.(*controlPlaneHTTPHandler).app
+	got, found, readErr := app.canonicalWorkspaceLaunchForAccess(context.Background(), store.workspaces["ws-alpha"])
+	if readErr != nil || !found || got.ID != operation.ID {
+		t.Fatalf("authorized historical runtime readback was rejected: found=%v operation=%s err=%v", found, got.ID, readErr)
+	}
+	events, err := store.ListAuditEvents(context.Background(), "acct-alpha")
+	if err != nil || len(events) != 0 {
+		t.Fatalf("valid historical runtime readback recorded a diagnostic: events=%#v err=%v", events, err)
+	}
+}
+
 func TestCanonicalWorkspaceLaunchDiagnosticRefinementReusesOperationIndex(t *testing.T) {
 	store := newMemoryTableStore()
 	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
