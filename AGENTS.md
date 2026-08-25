@@ -176,3 +176,71 @@ authorize publication.
   text.
 - Run `codegraph init .` or `codegraph sync .` when the index is missing or stale.
 <!-- CODEGRAPH_END -->
+
+<!-- TESTING_RULES_START -->
+## Testing Rules
+
+- All new and rewritten tests MUST use typed structs from `packages/contracts/go/` for input construction and output assertion.
+- NEVER construct or assert `map[string]any` in test files.
+- If no contract type exists for your use case, create one in `packages/contracts/go/` first, then write the test.
+- When modifying production code causes existing tests to fail: rewrite the failed test using typed structs. Do NOT patch it to keep asserting the old map structure.
+- Do NOT add compatibility branches, extra fields, or defensive checks in production code just to make old tests pass.
+- If a type definition changes, update all consumers (including tests) in the same commit.
+
+## Before Writing Code
+
+- Use `codegraph explore "<symbol>"` to understand blast radius and covering tests before modifying any shared type or function.
+- Run `codegraph index` after pulling latest main to keep the index current.
+<!-- TESTING_RULES_END -->
+
+<!-- RECEIPT_RULES_START -->
+## Receipt And Evidence Persistence
+
+Every completed task that changes product behavior, deployment, or qualification MUST produce a persistent receipt. Git commits alone are not receipts.
+
+### What requires a receipt
+
+| Event | Receipt type | Where to store |
+|-------|-------------|----------------|
+| A workspace launch reaches succeeded on TKE | `launch-receipt` | `opl-instance-medopl/receipts/` |
+| A Candidate is built and qualified locally | `candidate-receipt` | `opl-instance-medopl/receipts/` |
+| A deployment succeeds and is verified | `deployment-verification-receipt` | `opl-instance-medopl/receipts/` |
+| A rollback is executed and verified | `rollback-receipt` | `opl-instance-medopl/receipts/` |
+| A workspace passes use acceptance (real request) | `workspace-use-receipt` | `opl-instance-medopl/receipts/` |
+| A roadmap package reaches `cloud_complete` | update `docs/roadmap.md` State field in same PR | cloud repo |
+
+### Receipt format
+
+Each receipt JSON file must include at minimum:
+
+```json
+{
+  "schemaVersion": 1,
+  "receiptType": "<type>",
+  "timestamp": "<RFC3339>",
+  "productSha": "<cloud commit sha>",
+  "cloudImageDigest": "sha256:<64hex>",
+  "workspaceImageDigest": "sha256:<64hex>",
+  "result": "<pass|fail>",
+  "evidence": {
+    "focusedTests": ["TestName1", "TestName2"],
+    "workflowRunId": "<github actions run id if applicable>"
+  }
+}
+```
+
+### Rules
+
+- Write the receipt in the SAME PR or workflow run as the action it records.
+- Never overwrite an existing receipt; append a new one with the current timestamp.
+- Receipts are redacted: no credentials, no raw keys, no customer data, no private IPs.
+- If a receipt cannot be produced (e.g., external system unavailable), record the attempt and failure reason instead of skipping.
+- Instance-side receipts go in `opl-instance-medopl/receipts/YYYY-MM-DD-<name>.json`.
+
+### Roadmap state sync
+
+When merging a PR that completes a roadmap package's Cloud-side work:
+1. Update the package State field in `docs/roadmap.md` (e.g., `active` → `verify`).
+2. Reference the receipt filename or PR number in the package description.
+3. Do NOT mark `complete` until the required Instance receipt also exists.
+<!-- RECEIPT_RULES_END -->
