@@ -84,7 +84,7 @@ func (s *Service) CreateComputeAllocation(ctx context.Context, input ComputeAllo
 	if strings.TrimSpace(input.PackageID) == "" || input.PackageID != strings.TrimSpace(input.PackageID) {
 		return ComputeAllocation{}, ErrUnsupportedComputePackage
 	}
-	if _, ok := providerPlan(s.provider, input.PackageID); !ok {
+	if _, ok := providerPlan(s.providerDescriptor, input.PackageID); !ok {
 		return ComputeAllocation{}, ErrUnsupportedComputePackage
 	}
 	if input.NodePoolID == "" {
@@ -104,7 +104,7 @@ func (s *Service) CreateComputeAllocation(ctx context.Context, input ComputeAllo
 		PackageID:         input.PackageID,
 		NodePoolID:        strings.TrimSpace(input.NodePoolID),
 		Status:            "provisioning",
-		Provider:          s.provider.Descriptor().Name,
+		Provider:          s.providerDescriptor.Descriptor().Name,
 		ProviderRequestID: providerRequestID("compute", input.IdempotencyKey),
 		CreatedAt:         now,
 	}
@@ -115,7 +115,7 @@ func (s *Service) CreateComputeAllocation(ctx context.Context, input ComputeAllo
 	operation.ComputePoolKey = allocation.NodePoolID
 	allocation.OperationID = operation.OperationID
 	fillOperationResource(&operation, allocation)
-	stored, claimed, err := s.operations.ClaimComputePoolRuntime(ctx, operation)
+	stored, claimed, err := s.computePool.ClaimComputePoolRuntime(ctx, operation)
 	if err != nil {
 		return ComputeAllocation{}, err
 	}
@@ -162,7 +162,7 @@ func (s *Service) finishCreateComputeAllocation(operation FabricOperation, alloc
 // reservation/readback budget above is intentionally a narrow launch boundary;
 // unrelated compute operations retain their existing retry semantics.
 func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation, allocation ComputeAllocation, dryRun bool) {
-	plan, planOK := providerPlan(s.provider, allocation.PackageID)
+	plan, planOK := providerPlan(s.providerDescriptor, allocation.PackageID)
 	if !planOK {
 		_ = computeAllocationFailure(context.Background(), s, operation, allocation, ComputeAllocationPreparation{}, ErrUnsupportedComputePackage)
 		return
@@ -174,7 +174,7 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 	}
 	claimLease := func(duration time.Duration) bool {
 		now := s.now()
-		current, claimed, claimErr := s.operations.TryClaimComputePoolHead(context.Background(), operation.ID, poolKey, leaseOwner, now, now.Add(duration))
+		current, claimed, claimErr := s.computePool.TryClaimComputePoolHead(context.Background(), operation.ID, poolKey, leaseOwner, now, now.Add(duration))
 		if claimErr != nil || !claimed {
 			return false
 		}
@@ -188,14 +188,14 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 	terminal := false
 	defer func() {
 		if !terminal {
-			_ = s.operations.ReleaseComputePoolHead(context.Background(), operation.ID, poolKey, leaseOwner)
+			_ = s.computePool.ReleaseComputePoolHead(context.Background(), operation.ID, poolKey, leaseOwner)
 		}
 	}()
 
 	prepared, hasPlan := decodeComputeAllocationPlan(operation)
 	if !hasPlan {
 		prepareCtx, cancel := context.WithTimeout(context.Background(), s.computeAllocationAttemptTimeout)
-		prepared, err = s.provider.PrepareComputeAllocation(prepareCtx, ComputeAllocationInput{
+		prepared, err = s.computeProvider.PrepareComputeAllocation(prepareCtx, ComputeAllocationInput{
 			ID: allocation.ID, AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID,
 			PackageID: allocation.PackageID, NodePoolID: allocation.NodePoolID, DryRun: dryRun,
 		})
@@ -214,7 +214,7 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 			return
 		}
 		operation.RedactedProviderPayload = preserveLaunchStageBinding(computeAllocationOperationPayload(allocation, prepared), operation.RedactedProviderPayload)
-		if err := s.operations.SaveRuntime(context.Background(), operation); err != nil {
+		if err := s.resourceOperations.SaveOperationOutcome(context.Background(), operation); err != nil {
 			return
 		}
 	}
@@ -230,14 +230,14 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 			return
 		}
 		attemptCtx, cancel := context.WithTimeout(context.Background(), s.computeAllocationAttemptTimeout)
-		result, err = s.provider.CreateComputeAllocation(s.providerMutationContext(attemptCtx, operation), ComputeAllocationExecution{Allocation: allocation, Plan: prepared, DryRun: dryRun})
+		result, err = s.computeProvider.CreateComputeAllocation(s.providerMutationContext(attemptCtx, operation), ComputeAllocationExecution{Allocation: allocation, Plan: prepared, DryRun: dryRun})
 		cancel()
 		attempted = true
 		result = mergeComputeAllocation(result, allocation, prepared)
 		if errors.Is(err, ErrComputeAllocationPending) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			operation.RedactedProviderPayload = preserveLaunchStageBinding(computeAllocationOperationPayload(result, prepared), operation.RedactedProviderPayload)
 			operation.ProviderRequestID = firstNonEmpty(result.ProviderRequestID, operation.ProviderRequestID)
-			if saveErr := s.operations.SaveRuntime(context.Background(), operation); saveErr != nil {
+			if saveErr := s.resourceOperations.SaveOperationOutcome(context.Background(), operation); saveErr != nil {
 				return
 			}
 			s.mu.Lock()
@@ -265,7 +265,7 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 	}
 	finalizeCtx, cancel := context.WithTimeout(context.Background(), s.computeAllocationFinalizeTimeout)
 	defer cancel()
-	if err := s.provider.ValidateComputeAllocation(result, prepared); err != nil {
+	if err := s.computeProvider.ValidateComputeAllocation(result, prepared); err != nil {
 		terminal = true
 		_ = computeAllocationFailure(context.Background(), s, operation, result, prepared, err)
 		return
@@ -282,25 +282,25 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 		InstanceID: machine.InstanceID, NodeName: machine.NodeName, Status: "claimed",
 		ProviderRequestID: result.ProviderRequestID, ClaimedAt: s.now(),
 	}
-	claimed, _, claimErr := s.operations.ClaimMachine(finalizeCtx, ownership)
+	claimed, _, claimErr := s.machineOwnership.ClaimMachine(finalizeCtx, ownership)
 	if claimErr != nil {
 		terminal = true
 		_ = computeAllocationFailure(context.Background(), s, operation, result, prepared, claimErr)
 		return
 	}
 	result.CostTags = oplCostTags(result.AccountID, result.WorkspaceID, result.ID, claimed.ID)
-	if tagErr := s.provider.TagComputeMachine(s.providerMutationContext(finalizeCtx, operation), machine, claimed); tagErr != nil {
+	if tagErr := s.computeProvider.TagComputeMachine(s.providerMutationContext(finalizeCtx, operation), machine, claimed); tagErr != nil {
 		claimed.Status = "quarantined"
-		_ = s.operations.SaveMachineOwnership(context.Background(), claimed)
+		_ = s.machineOwnership.SaveMachineOwnership(context.Background(), claimed)
 		terminal = true
 		_ = computeAllocationClaimPending(context.Background(), s, operation, result, prepared, tagErr)
 		return
 	}
-	verified, verifyErr := s.provider.SyncComputeAllocation(finalizeCtx, result)
+	verified, verifyErr := s.computeProvider.SyncComputeAllocation(finalizeCtx, result)
 	verified = mergeComputeAllocation(verified, result, prepared)
-	if verifyErr != nil || s.provider.ValidateComputeAllocation(verified, prepared) != nil || !isReadyResourceStatus(verified.Status) {
+	if verifyErr != nil || s.computeProvider.ValidateComputeAllocation(verified, prepared) != nil || !isReadyResourceStatus(verified.Status) {
 		claimed.Status = "quarantined"
-		_ = s.operations.SaveMachineOwnership(context.Background(), claimed)
+		_ = s.machineOwnership.SaveMachineOwnership(context.Background(), claimed)
 		if verifyErr == nil {
 			verifyErr = fmt.Errorf("compute_provider_readback_mismatch")
 		}
@@ -309,7 +309,7 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 		return
 	}
 	claimed.Status = "active"
-	if err := s.operations.SaveMachineOwnership(finalizeCtx, claimed); err != nil {
+	if err := s.machineOwnership.SaveMachineOwnership(finalizeCtx, claimed); err != nil {
 		terminal = true
 		_ = computeAllocationFailure(context.Background(), s, operation, verified, prepared, err)
 		return
@@ -318,7 +318,7 @@ func (s *Service) finishCreateComputeAllocationLegacy(operation FabricOperation,
 	operation.FinishedAt = s.now()
 	operation.ProviderRequestID = firstNonEmpty(verified.ProviderRequestID, operation.ProviderRequestID)
 	operation.RedactedProviderPayload = preserveLaunchStageBinding(computeAllocationOperationPayload(verified, prepared), operation.RedactedProviderPayload)
-	if err := s.operations.SaveRuntime(finalizeCtx, operation); err != nil {
+	if err := s.resourceOperations.SaveOperationOutcome(finalizeCtx, operation); err != nil {
 		return
 	}
 	terminal = true
@@ -387,7 +387,7 @@ func computeAllocationFailure(ctx context.Context, s *Service, operation FabricO
 	operation.FinishedAt = s.now()
 	operation.ProviderRequestID = firstNonEmpty(allocation.ProviderRequestID, operation.ProviderRequestID)
 	operation.RedactedProviderPayload = preserveNormalLaunchMutationBudget(computeAllocationOperationPayload(allocation, prepared), operation.RedactedProviderPayload)
-	if saveErr := s.operations.SaveRuntime(ctx, operation); saveErr != nil {
+	if saveErr := s.resourceOperations.SaveOperationOutcome(ctx, operation); saveErr != nil {
 		return saveErr
 	}
 	s.mu.Lock()
@@ -410,7 +410,7 @@ func computeAllocationClaimPending(ctx context.Context, s *Service, operation Fa
 	operation.FinishedAt = time.Time{}
 	operation.ProviderRequestID = firstNonEmpty(allocation.ProviderRequestID, operation.ProviderRequestID)
 	operation.RedactedProviderPayload = preserveNormalLaunchMutationBudget(computeAllocationOperationPayload(allocation, prepared), operation.RedactedProviderPayload)
-	if saveErr := s.operations.SaveRuntime(ctx, operation); saveErr != nil {
+	if saveErr := s.resourceOperations.SaveOperationOutcome(ctx, operation); saveErr != nil {
 		return saveErr
 	}
 	s.mu.Lock()
@@ -476,7 +476,7 @@ func (s *Service) SyncComputeAllocation(ctx context.Context, allocationID string
 		return ComputeAllocation{}, err
 	}
 	if existing.Status == "provisioning" && (existing.MachineName == "" || firstNonEmpty(existing.InstanceID, existing.CVMInstanceID) == "" || existing.NodeName == "") {
-		operations, err := s.operations.List(ctx)
+		operations, err := s.resourceOperations.List(ctx)
 		if err != nil {
 			return existing, err
 		}
@@ -506,7 +506,7 @@ func (s *Service) SyncComputeAllocation(ctx context.Context, allocationID string
 	if err := s.recordOperation(ctx, operation, "started", existing, nil); err != nil {
 		return ComputeAllocation{}, err
 	}
-	allocation, err := s.provider.SyncComputeAllocation(ctx, existing)
+	allocation, err := s.computeProvider.SyncComputeAllocation(ctx, existing)
 	if err != nil {
 		_ = s.recordOperation(ctx, operation, "failed", allocation, err)
 		return allocation, err
@@ -524,7 +524,7 @@ func (s *Service) SyncComputeAllocation(ctx context.Context, allocationID string
 		allocation.PackageID = existing.PackageID
 	}
 	if allocation.Provider == "" {
-		allocation.Provider = firstNonEmpty(existing.Provider, s.provider.Descriptor().Name)
+		allocation.Provider = firstNonEmpty(existing.Provider, s.providerDescriptor.Descriptor().Name)
 	}
 	if isExternallyDeletedComputeStatus(allocation.Status) {
 		if err := s.releaseMachineOwnership(ctx, allocationID); err != nil {
@@ -532,7 +532,7 @@ func (s *Service) SyncComputeAllocation(ctx context.Context, allocationID string
 			return allocation, err
 		}
 	} else if isReadyResourceStatus(allocation.Status) {
-		ownership, ownershipErr := s.operations.MachineOwnership(ctx, allocationID)
+		ownership, ownershipErr := s.machineOwnership.MachineOwnership(ctx, allocationID)
 		if ownershipErr != nil && ownershipErr != ErrMachineOwnershipNotFound {
 			_ = s.recordOperation(ctx, operation, "failed", allocation, ownershipErr)
 			return allocation, ownershipErr
@@ -555,7 +555,7 @@ func (s *Service) RenewComputeAllocation(ctx context.Context, allocationID, idem
 		return ComputeAllocation{}, fmt.Errorf("compute_renew_identity_required")
 	}
 	var result ComputeAllocation
-	err := s.operations.WithPoolLock(ctx, "compute-renew:"+allocationID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, "compute-renew:"+allocationID, func(lockCtx context.Context) error {
 		s.mu.Lock()
 		existing := s.computes[allocationID]
 		s.mu.Unlock()
@@ -563,7 +563,7 @@ func (s *Service) RenewComputeAllocation(ctx context.Context, allocationID, idem
 			return fmt.Errorf("compute_allocation_renew_identity_required")
 		}
 		requestHash := hashInput(map[string]string{"id": allocationID})
-		operations, err := s.operations.List(lockCtx)
+		operations, err := s.resourceOperations.List(lockCtx)
 		if err != nil {
 			return err
 		}
@@ -590,7 +590,7 @@ func (s *Service) RenewComputeAllocation(ctx context.Context, allocationID, idem
 		request := existing
 		request.ProviderData = maps.Clone(existing.ProviderData)
 		request.CostTags = maps.Clone(existing.CostTags)
-		result, err = s.provider.RenewComputeAllocation(lockCtx, request)
+		result, err = s.computeProvider.RenewComputeAllocation(lockCtx, request)
 		if err != nil {
 			_ = s.recordOperation(lockCtx, operation, "failed", result, err)
 			return err
@@ -635,7 +635,7 @@ func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID str
 	allocation := existing
 	startWorker := false
 	dispatchAuthorized := false
-	err := s.operations.WithPoolLock(ctx, "compute-destroy:"+allocationID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, "compute-destroy:"+allocationID, func(lockCtx context.Context) error {
 		latest, found, err := s.latestComputeDestroyOperation(lockCtx, allocationID)
 		if err != nil {
 			return err
@@ -693,7 +693,7 @@ func (s *Service) finishDestroyComputeAllocation(operation FabricOperation, exis
 	if existing.InstanceType != "" {
 		poolKey += ":" + existing.InstanceType
 	}
-	err := s.operations.WithPoolLock(ctx, poolKey, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, poolKey, func(lockCtx context.Context) error {
 		if latest, found, err := s.latestComputeDestroyOperation(lockCtx, existing.ID); err != nil {
 			return err
 		} else if found && latest.Status == "succeeded" {
@@ -706,14 +706,14 @@ func (s *Service) finishDestroyComputeAllocation(operation FabricOperation, exis
 		var providerErr error
 		phase := current.ProviderData[tencentComputeDestroyPhaseKey]
 		if current.Provider != "tencent-tke" {
-			allocation, providerErr = s.provider.DestroyComputeAllocation(lockCtx, current)
+			allocation, providerErr = s.computeProvider.DestroyComputeAllocation(lockCtx, current)
 		} else {
 			switch phase {
 			case tencentComputeDestroyPhaseDispatchAuthorized:
 				if !validTencentComputeDestroyDispatchEvidence(current) {
 					allocation, providerErr = current, fmt.Errorf("compute_destroy_recovery_identity_mismatch")
 				} else if dispatchAuthorized {
-					allocation, providerErr = s.provider.DestroyComputeAllocation(lockCtx, current)
+					allocation, providerErr = s.computeProvider.DestroyComputeAllocation(lockCtx, current)
 				} else {
 					allocation, providerErr = s.reconcileTencentComputeDestroy(lockCtx, current)
 				}
@@ -773,8 +773,8 @@ func (s *Service) reconcileTencentComputeDestroy(ctx context.Context, persisted 
 	if !validTencentComputeDestroyStableIdentity(persisted) {
 		return persisted, fmt.Errorf("compute_destroy_recovery_identity_mismatch")
 	}
-	reader, ok := s.provider.(computeDestroyStatusReader)
-	if !ok {
+	reader := s.optionalProviders.computeDestroyStatus
+	if reader == nil {
 		return persisted, fmt.Errorf("compute_destroy_recovery_unconfirmed")
 	}
 	readback, readErr := reader.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(persisted))
@@ -794,8 +794,8 @@ func (s *Service) reconcileTencentComputeDestroy(ctx context.Context, persisted 
 }
 
 func (s *Service) finalizeTencentComputeDestroy(ctx context.Context, confirmed ComputeAllocation) (ComputeAllocation, error) {
-	finalizer, ok := s.provider.(computeDestroyAbsenceFinalizer)
-	if !ok {
+	finalizer := s.optionalProviders.computeDestroyFinalizer
+	if finalizer == nil {
 		return confirmed, fmt.Errorf("compute_destroy_recovery_unconfirmed")
 	}
 	finalized, err := finalizer.finalizeComputeDestroyAfterAbsence(ctx, confirmed)
@@ -809,7 +809,7 @@ func (s *Service) finalizeTencentComputeDestroy(ctx context.Context, confirmed C
 }
 
 func (s *Service) releaseMachineOwnership(ctx context.Context, resourceID string) error {
-	ownership, err := s.operations.MachineOwnership(ctx, resourceID)
+	ownership, err := s.machineOwnership.MachineOwnership(ctx, resourceID)
 	if err == ErrMachineOwnershipNotFound {
 		return nil
 	}
@@ -819,7 +819,7 @@ func (s *Service) releaseMachineOwnership(ctx context.Context, resourceID string
 	now := s.now()
 	ownership.Status = "released"
 	ownership.ReleasedAt = &now
-	return s.operations.SaveMachineOwnership(ctx, ownership)
+	return s.machineOwnership.SaveMachineOwnership(ctx, ownership)
 }
 
 func isExternallyDeletedComputeStatus(status string) bool {
@@ -832,7 +832,7 @@ func isExternallyDeletedComputeStatus(status string) bool {
 }
 
 func (s *Service) latestComputeDestroyOperation(ctx context.Context, allocationID string) (FabricOperation, bool, error) {
-	operations, err := s.operations.List(ctx)
+	operations, err := s.resourceOperations.List(ctx)
 	if err != nil {
 		return FabricOperation{}, false, err
 	}
@@ -845,7 +845,7 @@ func (s *Service) latestComputeDestroyOperation(ctx context.Context, allocationI
 }
 
 func (s *Service) cancelPendingComputeCreation(ctx context.Context, allocationID string, allocation ComputeAllocation) error {
-	operations, err := s.operations.List(ctx)
+	operations, err := s.resourceOperations.List(ctx)
 	if err != nil {
 		return err
 	}

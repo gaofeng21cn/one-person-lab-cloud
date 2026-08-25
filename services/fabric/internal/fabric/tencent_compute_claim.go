@@ -286,7 +286,7 @@ func terminalizeComputeClaimPendingWithApproval(ctx context.Context, s *Service,
 	}
 	payload = withComputeClaimTerminalEvidence(payload, evidence)
 	next.RedactedProviderPayload = payload
-	if err := s.operations.SaveComputeClaimRecovery(ctx, operation, next); err != nil {
+	if err := s.computeClaims.SaveComputeClaimRecovery(ctx, operation, next); err != nil {
 		return err
 	}
 	s.mu.Lock()

@@ -29,7 +29,17 @@ type readinessRefresh struct {
 }
 
 type Service struct {
-	provider                         Provider
+	providerDescriptor               providerDescriptorReader
+	computeProvider                  computeProvider
+	storageProvider                  storageProvider
+	attachmentProvider               attachmentProvider
+	secretProvider                   secretProvider
+	runtimeProvider                  runtimeProvider
+	workspaceImagePolicy             workspaceImagePolicy
+	workspaceLaunchPlans             providerPlanResolver
+	monthlyPreflightProvider         monthlyPreflightProvider
+	providerReadiness                providerReadiness
+	optionalProviders                optionalProviderPorts
 	mu                               sync.Mutex
 	jobMu                            sync.Mutex
 	readinessMu                      sync.Mutex
@@ -44,7 +54,18 @@ type Service struct {
 	attachments                      map[string]StorageAttachment
 	destroying                       map[string]bool
 	reconciling                      map[string]bool
-	operations                       OperationStore
+	operationJournal                 OperationJournalStore
+	operationHistory                 OperationHistoryStore
+	resourceOperations               ResourceOperationStore
+	runtimeOperationQueries          RuntimeOperationQueryStore
+	computeClaims                    ComputeClaimStore
+	workspaceLaunchStages            WorkspaceLaunchStageStore
+	providerMutations                ProviderMutationStore
+	runtimeOperations                RuntimeOperationStore
+	machineOwnership                 MachineOwnershipStore
+	computePool                      ComputePoolStore
+	jobStore                         JobStore
+	resourceLocks                    ResourceLockStore
 	now                              func() time.Time
 	computeAllocationPollInterval    time.Duration
 	computeAllocationPollWindow      time.Duration
@@ -60,10 +81,17 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 	if operations == nil {
 		operations = NewMemoryOperationStore()
 	}
-	computes, volumes, attachments, _ := replayResourceState(context.Background(), operations)
+	ports := operationStoreCapabilityPorts{store: operations}
+	computes, volumes, attachments, _ := replayResourceState(context.Background(), ports)
 	return &Service{
-		provider: provider, computes: computes, volumes: volumes, attachments: attachments,
-		destroying: map[string]bool{}, reconciling: map[string]bool{}, operations: operations,
+		providerDescriptor: provider, computeProvider: provider, storageProvider: provider, attachmentProvider: provider,
+		secretProvider: provider, runtimeProvider: provider, workspaceImagePolicy: provider, workspaceLaunchPlans: provider,
+		monthlyPreflightProvider: provider, providerReadiness: provider, optionalProviders: optionalProviderPortsFrom(provider),
+		computes: computes, volumes: volumes, attachments: attachments,
+		destroying: map[string]bool{}, reconciling: map[string]bool{},
+		operationJournal: ports, operationHistory: ports, resourceOperations: ports, runtimeOperationQueries: ports,
+		computeClaims: ports, workspaceLaunchStages: ports, providerMutations: providerMutationStorePort(operations),
+		runtimeOperations: runtimeOperationPort(operations), machineOwnership: operations, computePool: operations, jobStore: operations, resourceLocks: operations,
 		now:                           func() time.Time { return time.Now().UTC() },
 		readinessTTL:                  readinessSuccessTTL,
 		readinessTimeout:              readinessProviderTimeout,
@@ -73,7 +101,7 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 }
 
 func (s *Service) Catalog(_ context.Context) Catalog {
-	return s.provider.Descriptor().Catalog
+	return s.providerDescriptor.Descriptor().Catalog
 }
 
 func (s *Service) MonthlyPreflight(ctx context.Context, input MonthlyPreflightInput) (MonthlyPreflight, error) {
@@ -81,7 +109,7 @@ func (s *Service) MonthlyPreflight(ctx context.Context, input MonthlyPreflightIn
 		(input.ResourceType == "compute" && input.SizeGB != 0) || (input.ResourceType == "storage" && input.SizeGB <= 0) {
 		return MonthlyPreflight{}, ErrInvalidMonthlyPreflight
 	}
-	result, err := s.provider.MonthlyPreflight(ctx, input)
+	result, err := s.monthlyPreflightProvider.MonthlyPreflight(ctx, input)
 	if err != nil {
 		return MonthlyPreflight{}, fmt.Errorf("%w: %v", ErrMonthlyPreflightUnavailable, err)
 	}
@@ -93,7 +121,7 @@ func (s *Service) MonthlyPreflight(ctx context.Context, input MonthlyPreflightIn
 	for _, key := range requiredRequestIDs {
 		validRequestIDs = validRequestIDs && strings.TrimSpace(result.ProviderRequestIDs[key]) != ""
 	}
-	pricingValid := !s.provider.Descriptor().RequiresMonthlyPricing ||
+	pricingValid := !s.providerDescriptor.Descriptor().RequiresMonthlyPricing ||
 		strings.TrimSpace(result.ChargeType) != "" && result.PeriodMonths > 0 && strings.TrimSpace(result.RenewFlag) != "" && result.ProviderPriceCNY > 0
 	if result.ResourceType != input.ResourceType || result.PackageID != input.PackageID || result.SizeGB != input.SizeGB || result.Zone != input.Zone || !result.Available ||
 		!pricingValid || math.IsNaN(result.ProviderPriceCNY) || math.IsInf(result.ProviderPriceCNY, 0) || !validRequestIDs ||
@@ -128,7 +156,7 @@ func (s *Service) Readiness(ctx context.Context) (map[string]any, error) {
 
 func (s *Service) refreshReadiness(refresh *readinessRefresh) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.readinessTimeout)
-	result, err := s.provider.Readiness(ctx)
+	result, err := s.providerReadiness.Readiness(ctx)
 	cancel()
 
 	s.readinessMu.Lock()
@@ -147,7 +175,7 @@ func (s *Service) refreshReadiness(refresh *readinessRefresh) {
 }
 
 func (s *Service) ListOperations(ctx context.Context) ([]FabricOperation, error) {
-	return s.operations.List(ctx)
+	return s.operationHistory.List(ctx)
 }
 
 func isReadyResourceStatus(status string) bool {

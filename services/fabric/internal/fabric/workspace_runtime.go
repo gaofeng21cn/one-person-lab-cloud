@@ -22,7 +22,7 @@ type workspaceRuntimeRepairBinding struct {
 }
 
 func (s *Service) claimRuntimeOperation(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
-	stored, claimed, err := s.operations.ClaimRuntime(ctx, operation)
+	stored, claimed, err := s.runtimeOperations.ClaimRuntime(ctx, operation)
 	// A stale runtime operation is never reclaimed into a new provider lease.
 	// The caller must first prove the already-attempted resource by readback and
 	// use the dedicated CAS path below.  This is what keeps a lost response from
@@ -38,10 +38,6 @@ func runtimeOperationNeedsReadback(operation FabricOperation, now time.Time) boo
 }
 
 func (s *Service) convergeRuntimeOperationReadback(ctx context.Context, expected FabricOperation, resource any, extra map[string]any) (FabricOperation, error) {
-	converger, ok := s.operations.(runtimeReadbackConverger)
-	if !ok {
-		return FabricOperation{}, ErrRuntimeOperationNotCurrent
-	}
 	next := expected
 	next.Status = "succeeded"
 	next.FinishedAt = s.now()
@@ -58,7 +54,7 @@ func (s *Service) convergeRuntimeOperationReadback(ctx context.Context, expected
 		}
 		next.RedactedProviderPayload = payload
 	}
-	if err := converger.ConvergeRuntimeReadback(ctx, expected, next); err != nil {
+	if err := s.runtimeOperations.ConvergeRuntimeReadback(ctx, expected, next); err != nil {
 		return FabricOperation{}, err
 	}
 	return next, nil
@@ -111,10 +107,10 @@ func (s *Service) CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 			return WorkspaceRuntime{}, ErrRuntimeIdempotencyConflict
 		}
 		if runtimeOperationNeedsReadback(stored, now) {
-			if err := validateRuntimeInput(input, compute, volume, attachment, action == "update_workspace_runtime", s.provider.ValidateWorkspaceImageReference); err != nil {
+			if err := validateRuntimeInput(input, compute, volume, attachment, action == "update_workspace_runtime", s.workspaceImagePolicy.ValidateWorkspaceImageReference); err != nil {
 				return WorkspaceRuntime{}, ErrRuntimeOperationFailed
 			}
-			readback, readErr := s.provider.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+			readback, readErr := s.runtimeProvider.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
 			readback.Access.Password = ""
 			if readErr != nil || !runtimeReadbackMatches(readback, input) {
 				return WorkspaceRuntime{}, ErrRuntimeOperationFailed
@@ -129,11 +125,11 @@ func (s *Service) CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 		}
 		return replayRuntimeOperation(stored, requestHash)
 	}
-	if err := validateRuntimeInput(input, compute, volume, attachment, action == "update_workspace_runtime", s.provider.ValidateWorkspaceImageReference); err != nil {
+	if err := validateRuntimeInput(input, compute, volume, attachment, action == "update_workspace_runtime", s.workspaceImagePolicy.ValidateWorkspaceImageReference); err != nil {
 		_ = s.saveRuntimeOperation(ctx, stored, "failed", WorkspaceRuntime{WorkspaceID: input.WorkspaceID, ProviderRequestID: stored.ProviderRequestID}, err)
 		return WorkspaceRuntime{}, err
 	}
-	runtime, err := s.provider.CreateWorkspaceRuntime(s.providerMutationContext(ctx, operation), input, compute, volume)
+	runtime, err := s.runtimeProvider.CreateWorkspaceRuntime(s.providerMutationContext(ctx, operation), input, compute, volume)
 	runtime.OperationID = input.RuntimeOperationID
 	runtime.Access.Password = ""
 	if err == nil && runtime.ImageID != input.ImageID {
@@ -156,7 +152,7 @@ func (s *Service) workspaceRuntimeForUpdate(ctx context.Context, input Workspace
 	if strings.TrimSpace(input.RuntimeOperationID) == "" || strings.TrimSpace(input.WorkspaceID) == "" || compute.ID == "" {
 		return WorkspaceRuntime{}, fmt.Errorf("runtime_operation_identity_mismatch")
 	}
-	operation, found, err := s.operations.OperationByResourceActionIdempotency(
+	operation, found, err := s.runtimeOperationQueries.OperationByResourceActionIdempotency(
 		ctx, "workspace_runtime", input.WorkspaceID, "create_workspace_runtime", input.RuntimeOperationID,
 	)
 	if err != nil {
@@ -180,15 +176,15 @@ func (s *Service) RepairWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 	volume := s.volumes[input.VolumeID]
 	attachment := s.attachments[input.AttachmentID]
 	s.mu.Unlock()
-	if err := validateRuntimeInput(input, compute, volume, attachment, true, s.provider.ValidateWorkspaceImageReference); err != nil {
+	if err := validateRuntimeInput(input, compute, volume, attachment, true, s.workspaceImagePolicy.ValidateWorkspaceImageReference); err != nil {
 		return WorkspaceRuntime{}, err
 	}
-	repairProvider, ok := s.provider.(runtimeRepairProvider)
-	if !ok {
+	repairProvider := s.optionalProviders.runtimeRepair
+	if repairProvider == nil {
 		return WorkspaceRuntime{}, fmt.Errorf("workspace_runtime_repair_unavailable")
 	}
 	var result WorkspaceRuntime
-	err := s.operations.WithPoolLock(ctx, "workspace-runtime-repair:"+input.WorkspaceID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, "workspace-runtime-repair:"+input.WorkspaceID, func(lockCtx context.Context) error {
 		predecessorOperation, found, err := s.previousRuntimeOperation(lockCtx, input.WorkspaceID, input.PreviousRuntimeOperationID, compute.AccountID)
 		if err != nil {
 			return err
@@ -200,7 +196,7 @@ func (s *Service) RepairWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 			predecessor.ID == "" || predecessor.ServiceName == "" || predecessor.ImageID == "" {
 			return ErrLaunchStageBindingConflict
 		}
-		latest, latestFound, err := s.operations.LatestResourceOperation(lockCtx, "workspace_runtime", input.WorkspaceID)
+		latest, latestFound, err := s.runtimeOperationQueries.LatestResourceOperation(lockCtx, "workspace_runtime", input.WorkspaceID)
 		if err != nil {
 			return err
 		}
@@ -234,7 +230,7 @@ func (s *Service) RepairWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 				return nil
 			}
 			if stored.Status == "failed" {
-				readback, readErr := s.provider.WorkspaceRuntimeStatus(lockCtx, input.WorkspaceID)
+				readback, readErr := s.runtimeProvider.WorkspaceRuntimeStatus(lockCtx, input.WorkspaceID)
 				readback.Access.Password = ""
 				if readErr != nil || !readback.Ready || !runtimeReadbackMatches(readback, input) {
 					return ErrRuntimeOperationFailed
@@ -275,8 +271,8 @@ func (s *Service) providerMutationContextForRuntimeRepair(ctx context.Context, o
 		RequestHash: operation.RequestHash,
 	}
 	return context.WithValue(ctx, providerMutationJournalContextKey{}, &providerMutationJournal{
-		operations: s.operations, parent: binding, parentOperation: operation,
-		provider: s.provider.Descriptor().Name, now: s.now,
+		operations: s.providerMutations, machineOwnership: s.machineOwnership, parent: binding, parentOperation: operation,
+		provider: s.providerDescriptor.Descriptor().Name, now: s.now,
 	})
 }
 
@@ -284,13 +280,13 @@ func (s *Service) providerMutationContextForRuntimeRepair(ctx context.Context, o
 // and the legacy Launch Stage parent used by already-persisted launches. The
 // latter owns a succeeded provider child even when the Runtime was unready.
 func (s *Service) previousRuntimeOperation(ctx context.Context, workspaceID, previousOperationID, accountID string) (FabricOperation, bool, error) {
-	operation, found, err := s.operations.OperationByResourceActionIdempotency(
+	operation, found, err := s.runtimeOperationQueries.OperationByResourceActionIdempotency(
 		ctx, "workspace_runtime", workspaceID, "create_workspace_runtime", previousOperationID,
 	)
 	if err != nil || found {
 		return operation, found, err
 	}
-	operations, err := s.operations.List(ctx)
+	operations, err := s.runtimeOperationQueries.List(ctx)
 	if err != nil {
 		return FabricOperation{}, false, err
 	}
@@ -321,7 +317,7 @@ func (s *Service) saveRuntimeRepairOperation(ctx context.Context, operation Fabr
 	operation.ErrorCode, operation.Retryable = errorCode(operationErr), false
 	fillOperationResource(&operation, runtime)
 	operation.RedactedProviderPayload[workspaceRuntimeRepairPayloadKey] = binding
-	return s.operations.SaveRuntime(ctx, operation)
+	return s.runtimeOperations.SaveRuntime(ctx, operation)
 }
 
 func (s *Service) DestroyWorkspaceRuntime(ctx context.Context, workspaceID, idempotencyKey string) (WorkspaceRuntime, error) {
@@ -335,14 +331,14 @@ func (s *Service) DestroyWorkspaceRuntime(ctx context.Context, workspaceID, idem
 	operation.Status = "started"
 	operation.CreatedAt = now
 	fillOperationResource(&operation, WorkspaceRuntime{WorkspaceID: workspaceID, ProviderRequestID: providerRequestID("runtime-destroy", idempotencyKey)})
-	stored, claimed, err := s.operations.ClaimRuntime(ctx, operation)
+	stored, claimed, err := s.runtimeOperations.ClaimRuntime(ctx, operation)
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
 	if !claimed {
 		return replayRuntimeOperation(stored, requestHash)
 	}
-	runtime, err := s.provider.DestroyWorkspaceRuntime(ctx, workspaceID)
+	runtime, err := s.runtimeProvider.DestroyWorkspaceRuntime(ctx, workspaceID)
 	runtime.Access.Password = ""
 	runtime.WorkspaceID = firstNonEmpty(runtime.WorkspaceID, workspaceID)
 	runtime.ProviderRequestID = firstNonEmpty(runtime.ProviderRequestID, providerRequestID("runtime-destroy", idempotencyKey))
@@ -380,18 +376,18 @@ func (s *Service) saveRuntimeOperation(ctx context.Context, operation FabricOper
 	operation.ErrorCode = errorCode(operationErr)
 	operation.Retryable = false
 	fillOperationResource(&operation, runtime)
-	return s.operations.SaveRuntime(ctx, operation)
+	return s.runtimeOperations.SaveRuntime(ctx, operation)
 }
 
 func (s *Service) workspaceRuntimeStatus(ctx context.Context, workspaceID string) (WorkspaceRuntime, FabricOperation, error) {
-	runtime, err := s.provider.WorkspaceRuntimeStatus(ctx, workspaceID)
+	runtime, err := s.runtimeProvider.WorkspaceRuntimeStatus(ctx, workspaceID)
 	if err != nil {
 		return runtime, FabricOperation{}, err
 	}
 	if runtime.Status != "running" && runtime.Status != "unready" {
 		return runtime, FabricOperation{}, nil
 	}
-	matches, err := s.operations.WorkspaceRuntimeIdentityCandidates(ctx, workspaceID)
+	matches, err := s.runtimeOperationQueries.WorkspaceRuntimeIdentityCandidates(ctx, workspaceID)
 	if err != nil {
 		return runtime, FabricOperation{}, err
 	}
@@ -497,7 +493,7 @@ func (s *Service) ObserveWorkspaceRuntimeDelete(ctx context.Context, workspaceID
 	if observation.WorkspaceID == "" {
 		return observation
 	}
-	if provider, ok := s.provider.(workspaceRuntimeDeleteObservationProvider); ok {
+	if provider := s.optionalProviders.workspaceRuntimeDeleteObservation; provider != nil {
 		result, err := provider.ObserveWorkspaceRuntimeDelete(ctx, observation.WorkspaceID)
 		if err != nil {
 			if errors.Is(err, ErrLaunchStageBindingConflict) {
@@ -594,17 +590,16 @@ func (s *Service) UpsertGatewaySecret(ctx context.Context, input GatewaySecretIn
 		if runtimeOperationNeedsReadback(stored, now) {
 			var readback GatewaySecret
 			var readErr error
-			switch provider := s.provider.(type) {
-			case gatewaySecretReadbackProvider:
+			if provider := s.optionalProviders.gatewaySecretReadback; provider != nil {
 				readback, readErr = provider.ReadGatewaySecret(ctx, input)
-			case runtimeGatewaySecretProvider:
+			} else if provider := s.optionalProviders.runtimeGatewaySecrets; provider != nil {
 				var binding WorkspaceRuntimeGatewaySecretBinding
 				binding, readErr = provider.WorkspaceRuntimeGatewaySecret(ctx, input.WorkspaceID)
 				if readErr == nil && (binding.WorkspaceID != input.WorkspaceID || binding.WorkspaceAPIKeyID != input.WorkspaceAPIKeyID || !binding.Bound) {
 					readErr = fmt.Errorf("gateway_secret_readback_mismatch")
 				}
 				readback = GatewaySecret{SecretRef: binding.SecretRef, Version: keyDigest[:16], Fingerprint: binding.Fingerprint}
-			default:
+			} else {
 				readErr = fmt.Errorf("gateway_secret_readback_unavailable")
 			}
 			if readErr != nil || !gatewaySecretReadbackMatches(readback, input) {
@@ -623,7 +618,7 @@ func (s *Service) UpsertGatewaySecret(ctx context.Context, input GatewaySecretIn
 		}
 		return GatewaySecret{}, fmt.Errorf("gateway_secret_operation_%s", stored.Status)
 	}
-	secret, providerErr := s.provider.UpsertGatewaySecret(s.providerMutationContext(ctx, operation), input)
+	secret, providerErr := s.secretProvider.UpsertGatewaySecret(s.providerMutationContext(ctx, operation), input)
 	stored.Status = operationStatus(providerErr)
 	stored.FinishedAt = s.now()
 	stored.ErrorCode = errorCode(providerErr)
@@ -632,7 +627,7 @@ func (s *Service) UpsertGatewaySecret(ctx context.Context, input GatewaySecretIn
 	if binding != nil {
 		stored.RedactedProviderPayload[launchStageBindingPayloadKey] = binding
 	}
-	if saveErr := s.operations.SaveRuntime(ctx, stored); saveErr != nil && providerErr == nil {
+	if saveErr := s.runtimeOperations.SaveRuntime(ctx, stored); saveErr != nil && providerErr == nil {
 		return GatewaySecret{}, saveErr
 	}
 	return secret, providerErr
@@ -642,8 +637,8 @@ func (s *Service) BindWorkspaceRuntimeGatewaySecret(ctx context.Context, input W
 	if strings.TrimSpace(input.WorkspaceID) == "" || input.WorkspaceAPIKeyID <= 0 || input.SecretRef != gatewaySecretName(input.WorkspaceID) || strings.TrimSpace(input.Fingerprint) == "" || strings.TrimSpace(input.IdempotencyKey) == "" {
 		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_input_required")
 	}
-	provider, ok := s.provider.(runtimeGatewaySecretProvider)
-	if !ok {
+	provider := s.optionalProviders.runtimeGatewaySecrets
+	if provider == nil {
 		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_unavailable")
 	}
 	return provider.BindWorkspaceRuntimeGatewaySecret(ctx, input)
@@ -653,8 +648,8 @@ func (s *Service) WorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID
 	if strings.TrimSpace(workspaceID) == "" {
 		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_input_required")
 	}
-	provider, ok := s.provider.(runtimeGatewaySecretProvider)
-	if !ok {
+	provider := s.optionalProviders.runtimeGatewaySecrets
+	if provider == nil {
 		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_unavailable")
 	}
 	return provider.WorkspaceRuntimeGatewaySecret(ctx, workspaceID)

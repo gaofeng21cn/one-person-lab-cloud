@@ -419,8 +419,9 @@ func TestWorkspaceLaunchRuntimeImageRevisionMatchesOwnerContract(t *testing.T) {
 		ProviderProfileRef: contract.ProviderProfileRef, PackageID: "basic", SizeGB: 10,
 		WorkspaceImageDigest: proof.PreviousImageDigest, RuntimeImageRevision: &proof,
 	}
+	provider := NewTencentProvider()
 	if contract.SchemaVersion != 1 || contract.Stage != "runtime" || contract.ProviderProfileRef != "tencent-tke" ||
-		contract.StageRequestHashBinding != "excluded_preserves_original_stage_hash" || !validWorkspaceLaunchRuntimeImageRevision(input, NewTencentProvider()) {
+		contract.StageRequestHashBinding != "excluded_preserves_original_stage_hash" || !validWorkspaceLaunchRuntimeImageRevision(input, provider, provider) {
 		t.Fatalf("runtime image revision contract=%#v input=%#v", contract, input)
 	}
 	withProof := workspaceLaunchStageRequestHash(input, strings.Repeat("b", 64))

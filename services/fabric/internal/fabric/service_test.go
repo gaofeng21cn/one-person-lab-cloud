@@ -834,7 +834,7 @@ func TestStorageCreateReplayFlagComesOnlyFromPersistedFabricAttempt(t *testing.T
 		IdempotencyKey: "launch-alpha:storage", ExpectedRecoveryState: "storage_not_started",
 	}
 	operation := newOperation("create_storage_volume", "storage_volume", input.ID, input.AccountID, input.WorkspaceID, input.IdempotencyKey, hashInput(input), time.Now().UTC())
-	if err := (&Service{operations: store, now: func() time.Time { return time.Now().UTC() }}).recordOperation(
+	if err := (&Service{operationJournal: store, now: func() time.Time { return time.Now().UTC() }}).recordOperation(
 		context.Background(), operation, "started",
 		StorageVolume{ID: input.ID, OperationID: input.IdempotencyKey, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Provider: "tencent-tke"}, nil,
 	); err != nil {
@@ -1337,12 +1337,13 @@ func TestWorkspaceRuntimeCreationDoesNotReturnCredential(t *testing.T) {
 
 func TestWorkspaceRuntimeStatusBackfillsCreatedRuntimeIdentity(t *testing.T) {
 	provider := liveRuntimeWithoutIDProvider{runtimeIDs: map[string]string{"runtime-status-identity": "runtime-stable"}}
-	service := runtimeTestService(provider, NewMemoryOperationStore())
+	store := NewMemoryOperationStore()
+	service := runtimeTestService(provider, store)
 	created, err := service.CreateWorkspaceRuntime(context.Background(), runtimeTestInput("runtime-status-identity"))
 	if err != nil || created.ID != "runtime-stable" {
 		t.Fatalf("created runtime=%#v err=%v", created, err)
 	}
-	service.operations = rejectFullOperationListStore{OperationStore: service.operations}
+	service.runtimeOperationQueries = operationStoreCapabilityPorts{store: rejectFullOperationListStore{OperationStore: store}}
 
 	live, err := service.WorkspaceRuntimeStatus(context.Background(), "workspace-alpha")
 	if err != nil {

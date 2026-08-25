@@ -111,6 +111,21 @@ is selected and configured by the medopl instance, not by the portable product.
 - Fabric operation reads use bounded lookup and cursor pagination, and repeated
   job heartbeats reuse one mutable operation identity. A fresh sealed external
   scan has not yet closed the earlier resource-history finding.
+- Fabric application callers no longer retain the broad `OperationStore`.
+  Machine Ownership, Compute Pool admission/leases, Jobs, Runtime operations,
+  resource locks, Compute claim recovery, Workspace Launch stages, provider
+  mutation journaling, operation history, and resource operation outcomes use
+  capability-specific ports. One in-memory or PostgreSQL backend still owns the
+  same tables and is adapted into those ports at service composition; no schema,
+  persistence authority, or public behavior changed.
+- Fabric application callers also no longer retain the broad `Provider`.
+  Provider Profile, Compute, Storage Volume, Attachment, Gateway Secret,
+  Workspace Runtime, image policy, Launch plan, monthly preflight, and readiness
+  use capability-specific ports. Optional Launch, repair, destroy-readback,
+  provider-facts, and diagnostic capabilities are resolved once at service
+  composition. Local-Docker and Tencent/TKE remain complete adapters behind one
+  composition contract; no adapter object, public contract, or provider behavior
+  changed.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.

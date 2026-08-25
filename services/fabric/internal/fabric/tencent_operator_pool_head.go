@@ -19,7 +19,7 @@ func (s *Service) ReadComputePoolHead(ctx context.Context, nodePoolID string) (C
 	if !validComputePoolNodePoolID(nodePoolID) {
 		return result, ErrInvalidMonthlyPreflight
 	}
-	head, found, err := s.operations.ComputePoolHead(ctx, nodePoolID)
+	head, found, err := s.computePool.ComputePoolHead(ctx, nodePoolID)
 	if err != nil {
 		return result, fmt.Errorf("%w: compute_pool_head_read_failed", ErrMonthlyPreflightUnavailable)
 	}
@@ -50,7 +50,7 @@ func (s *Service) ReadComputePoolHead(ctx context.Context, nodePoolID string) (C
 	}
 	binding, bindingOK := automaticComputeClaimRecoveryBinding(head, allocation, plan)
 	persisted, bindingPresent, bindingValid := decodeComputeClaimRecoveryBinding(head)
-	ownership, ownershipErr := s.operations.MachineOwnership(ctx, allocation.ID)
+	ownership, ownershipErr := s.machineOwnership.MachineOwnership(ctx, allocation.ID)
 	requestHashRecovery := exactUnmarkedLegacyKubectlClientRejection(head, allocation, plan)
 	historicalRecovery := ownershipErr == nil && exactHistoricalComputeClaimRecoveryWithoutLedger(head, allocation, plan, ownership)
 	if bindingOK && (requestHashRecovery || historicalRecovery || !bindingPresent || bindingValid && persisted == binding) &&
@@ -119,7 +119,7 @@ func (s *Service) ComputePoolHeadTerminalizationAuthorization(ctx context.Contex
 		input.IdempotencyKey != input.ApprovalID || !validSHA256Hex(input.ApprovalDigest) {
 		return ComputePoolHeadTerminalizationAuthorization{}, ErrInvalidComputePoolHeadTerminalization
 	}
-	operation, found, err := s.operations.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
+	operation, found, err := s.computeClaims.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
 	if err != nil {
 		return ComputePoolHeadTerminalizationAuthorization{}, err
 	}
@@ -151,7 +151,7 @@ func (s *Service) computePoolHeadTerminalizationCandidate(ctx context.Context, n
 	if !validComputePoolNodePoolID(nodePoolID) {
 		return computePoolHeadTerminalizationCandidate{}, ErrInvalidComputePoolHeadTerminalization
 	}
-	operation, found, err := s.operations.ComputePoolHead(ctx, nodePoolID)
+	operation, found, err := s.computePool.ComputePoolHead(ctx, nodePoolID)
 	if err != nil || !found || operation.Status != "claim_pending" || operation.ComputePoolKey != nodePoolID {
 		return computePoolHeadTerminalizationCandidate{}, fmt.Errorf("%w: exact_claim_pending_head_required", ErrComputePoolHeadTerminalizationUnavailable)
 	}
@@ -164,7 +164,7 @@ func (s *Service) computePoolHeadTerminalizationCandidate(ctx context.Context, n
 	}
 	binding, bindingPresent, bindingValid := decodeComputeClaimRecoveryBinding(operation)
 	ledger, ledgerPresent, ledgerValid := decodeComputeClaimRecoveryMutation(operation)
-	ownership, ownershipErr := s.operations.MachineOwnership(ctx, allocation.ID)
+	ownership, ownershipErr := s.machineOwnership.MachineOwnership(ctx, allocation.ID)
 	if !bindingPresent || !bindingValid || !validComputePoolHeadTerminalizationBinding(operation, binding) || !ledgerPresent || !ledgerValid ||
 		ownershipErr != nil || ownership.Status != "quarantined" || !validComputeClaimRecoveryOwnership(allocation, ownership) {
 		return computePoolHeadTerminalizationCandidate{}, fmt.Errorf("%w: terminalization_binding_invalid", ErrComputePoolHeadTerminalizationUnavailable)
@@ -245,7 +245,7 @@ func (s *Service) ReadComputePoolHeadTerminalizationResult(ctx context.Context, 
 }
 
 func (s *Service) computePoolHeadTerminalizationReplay(ctx context.Context, input ComputePoolHeadTerminalizationInput) (ComputePoolHeadTerminalizationReadback, bool, error) {
-	operation, found, err := s.operations.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
+	operation, found, err := s.computeClaims.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
 	if err != nil {
 		if errors.Is(err, ErrOperationIdentityConflict) {
 			return ComputePoolHeadTerminalizationReadback{}, true, ErrComputePoolHeadTerminalizationConflict

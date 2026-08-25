@@ -58,8 +58,8 @@ func (s *Service) ProviderFactsBatch(ctx context.Context, input ProviderFactsBat
 }
 
 func (s *Service) RuntimeHealthSummary(ctx context.Context) (RuntimeHealthSummary, error) {
-	provider, ok := s.provider.(runtimeHealthSummaryProvider)
-	if !ok {
+	provider := s.optionalProviders.runtimeHealth
+	if provider == nil {
 		return RuntimeHealthSummary{}, ErrRuntimeHealthSummaryUnavailable
 	}
 	readCtx, cancel := context.WithTimeout(ctx, runtimeHealthSummaryTimeout)
@@ -93,8 +93,8 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 		result.ErrorCode = "provider_fact_resource_type_invalid"
 		return result
 	}
-	provider, ok := s.provider.(providerFactsReader)
-	if !ok {
+	provider := s.optionalProviders.providerFacts
+	if provider == nil {
 		result.ErrorCode = "provider_facts_unavailable"
 		return result
 	}

@@ -319,7 +319,7 @@ func localDockerRuntimeReplayFixture(t *testing.T, visibleOnRead int) (*LocalDoc
 	store := NewMemoryOperationStore()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	ctx := context.WithValue(context.Background(), providerMutationJournalContextKey{}, &providerMutationJournal{
-		operations: store, parent: binding, parentOperation: FabricOperation{ID: binding.FabricOperationID}, provider: "local-docker", now: func() time.Time { return now },
+		operations: providerMutationStorePort(store), machineOwnership: store, parent: binding, parentOperation: FabricOperation{ID: binding.FabricOperationID}, provider: "local-docker", now: func() time.Time { return now },
 	})
 	return provider, runner, ctx, store, input, compute, volume
 }
