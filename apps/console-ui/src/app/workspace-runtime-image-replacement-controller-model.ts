@@ -5,7 +5,7 @@ export interface WorkspaceRuntimeImageReplacementIntent {
   readonly idempotencyKey: string;
 }
 
-/** Keep the browser-generated mutation key within Control Plane's opaque-ID contract. */
+/** Keep the browser-generated mutation key within Control Plane's 48-char opaque-ID contract. */
 export function workspaceRuntimeImageReplacementIdempotencyKey(createNonce: () => string): string {
   return `wri-${createNonce()}`;
 }
