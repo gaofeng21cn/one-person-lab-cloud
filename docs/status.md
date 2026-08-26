@@ -135,6 +135,14 @@ is selected and configured by the medopl instance, not by the portable product.
   convergence no longer execute on the broad Service receiver. Existing
   Local-Docker and Tencent/TKE behavior, HTTP contracts, payloads, and database
   schema are unchanged.
+- Fabric non-secret Workspace Runtime status reads now have one internal
+  `workspaceRuntimeReadEngine` owner. It receives only the provider Runtime
+  status reader and the persisted Runtime identity-candidate reader. Public
+  status and observation classify provider facts only after exact persisted
+  identity matching and redact passwords; Runtime create/repair response-loss
+  recovery reuses the Engine's read-only Provider port without changing its
+  operation CAS. Runtime mutations, Gateway Secret reads, and delete-residue
+  observation remain separate capabilities with their existing owners.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.

@@ -34,7 +34,7 @@ type Service struct {
 	storageProvider                  storageProvider
 	attachmentProvider               attachmentProvider
 	secretProvider                   secretProvider
-	runtimeProvider                  runtimeProvider
+	runtimeProvider                  runtimeMutationProvider
 	workspaceImagePolicy             workspaceImagePolicy
 	workspaceLaunchPlans             providerPlanResolver
 	monthlyPreflightProvider         monthlyPreflightProvider
@@ -58,6 +58,7 @@ type Service struct {
 	operationHistory                 OperationHistoryStore
 	resourceOperations               ResourceOperationStore
 	runtimeOperationQueries          RuntimeOperationQueryStore
+	runtimeRead                      *workspaceRuntimeReadEngine
 	computeClaims                    ComputeClaimStore
 	workspaceLaunchPreflights        WorkspaceLaunchPreflightStore
 	launchStages                     *launchStageEngine
@@ -109,6 +110,7 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 		service.machineOwnership,
 		func() time.Time { return service.now() },
 	)
+	service.runtimeRead = newWorkspaceRuntimeReadEngine(provider, ports)
 	return service
 }
 

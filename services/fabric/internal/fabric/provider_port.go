@@ -126,10 +126,18 @@ type secretProvider interface {
 	UpsertGatewaySecret(context.Context, GatewaySecretInput) (GatewaySecret, error)
 }
 
-type runtimeProvider interface {
+type runtimeMutationProvider interface {
 	CreateWorkspaceRuntime(context.Context, WorkspaceRuntimeInput, ComputeAllocation, StorageVolume) (WorkspaceRuntime, error)
 	DestroyWorkspaceRuntime(context.Context, string) (WorkspaceRuntime, error)
+}
+
+type runtimeResourceReader interface {
 	WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error)
+}
+
+type runtimeProvider interface {
+	runtimeMutationProvider
+	runtimeResourceReader
 }
 
 type runtimeRepairProvider interface {
