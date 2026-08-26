@@ -393,3 +393,19 @@ npm run verify:local
 ```
 
 Expected: PASS with a clean worktree.
+
+## Execution Result
+
+- The pure Launch model covers intent key reuse and conflict, unknown-result
+  retention, recovery classification, polling termination, and
+  `resourceBillingMode === "none"` submission.
+- `useWorkspaceLaunchController` owns the complete Launch browser lifecycle;
+  `useConsoleController` composes it and real Launch views consume the narrow
+  `WorkspaceLaunchController` type without flat compatibility fields.
+- Focused model tests passed `6/6`; `npm run test:source` passed `83/83`;
+  fake-only Console browser acceptance passed `3/3`, including one Launch write
+  and authoritative Workspace readback.
+- `npm run typecheck`, `npm run lint`, `npm run build`, and
+  `npm run verify:local` passed. No persistence, schema, service contract,
+  Local-Docker, qualification, or Instance action changed, so no Instance
+  receipt was required.
