@@ -70,12 +70,14 @@ The composition root provides only current dependencies:
 - a read-only wallet `RemoteState` projection;
 - a session/request-current guard for suppressing stale completion;
 - `navigate` and `flash` commands;
-- a callback that refreshes the authoritative Workspace list after confirmed
-  completion.
+- the current request generation needed to bind submit, poll, and readback to
+  the same Session/request scope.
 
 The capability continues to call the existing typed API functions from
 `console-read-api.ts` and `workspaces-api.ts`. No new transport abstraction is
-added until another current caller needs one.
+added until another current caller needs one. In particular,
+`findWorkspaceInPages` remains the authoritative completion readback; a list
+refresh callback cannot replace it.
 
 ## Narrow Output
 
