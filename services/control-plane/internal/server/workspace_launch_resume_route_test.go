@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -49,7 +50,7 @@ func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) ReadWorkspaceLaunchSta
 	f.reads = append(f.reads, input)
 	if len(f.ensures) == 0 {
 		return clients.WorkspaceLaunchStageResult{
-			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "runtime_image_revision_required",
+			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStagePending), Reason: "runtime_image_revision_required",
 			Binding: input.Binding, Resources: input.Resources,
 		}, nil
 	}
@@ -63,7 +64,7 @@ func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) ReadWorkspaceLaunchSta
 	resources.RuntimeCredentialSecretRef = "opl-gateway-ws-unit"
 	resources.RuntimeBindingRef = input.Binding.FabricOperationID
 	return clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageReady), Reason: "none",
 		Binding: input.Binding, Resources: resources,
 	}, nil
 }
@@ -71,7 +72,7 @@ func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) ReadWorkspaceLaunchSta
 func (f *workspaceLaunchRuntimeImageRevisionResumeFabric) EnsureWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
 	f.ensures = append(f.ensures, input)
 	return clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "provider_provisioning",
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStagePending), Reason: "provider_provisioning",
 		Binding: input.Binding, Resources: input.Resources,
 	}, nil
 }
@@ -84,14 +85,14 @@ func (f *workspaceLaunchStorageResumeFabric) ReadWorkspaceLaunchStage(_ context.
 	f.reads++
 	if !f.ready {
 		return clients.WorkspaceLaunchStageResult{
-			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageAbsent, Reason: "failed_no_resource",
+			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageAbsent), Reason: "failed_no_resource",
 			Binding: input.Binding, Resources: input.Resources,
 		}, nil
 	}
 	resources := input.Resources
 	resources.StorageID, resources.StorageBindingRef = "storage-route-ready", input.Binding.FabricOperationID
 	return clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageReady), Reason: "none",
 		Binding: input.Binding, Resources: resources,
 	}, nil
 }
@@ -102,7 +103,7 @@ func (f *workspaceLaunchStorageResumeFabric) EnsureWorkspaceLaunchStage(_ contex
 	resources := input.Resources
 	resources.StorageID, resources.StorageBindingRef = "storage-route-ready", input.Binding.FabricOperationID
 	return clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageReady, Reason: "none",
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageReady), Reason: "none",
 		Binding: input.Binding, Resources: resources,
 	}, nil
 }
@@ -114,7 +115,7 @@ func (*workspaceLaunchComputeResumeFabric) PreflightWorkspaceLaunch(context.Cont
 func (f *workspaceLaunchComputeResumeFabric) ReadWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
 	f.reads++
 	return clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "provider_provisioning",
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStagePending), Reason: "provider_provisioning",
 		Binding: input.Binding, Resources: input.Resources,
 	}, nil
 }
@@ -380,7 +381,7 @@ func TestWorkspaceLaunchResumeRouteRevisesOriginalTencentRuntimeImage(t *testing
 	attempt := operation.Attempts["runtime"]
 	attempt.PendingReadbacks = 0
 	operation.Attempts["runtime"] = attempt
-	operation.FreshContinuationAuthorizations = map[string]workspaceLaunchFreshContinuationAuthorization{}
+	operation.FreshContinuationAuthorizations = map[contracts.Stage]workspaceLaunchFreshContinuationAuthorization{}
 	operation.ContinuationReadClaims = map[string]workspaceLaunchContinuationReadClaim{}
 	previous := workspaceLaunchResumeAuthorization{
 		AuthorizationID: "resume-runtime-failed-original", LaunchVersion: 100, AuthorizedStage: "runtime", AuthorizedBy: "usr-admin",
@@ -888,16 +889,18 @@ func TestAcceptanceBResumeExistingRoutePersistsApprovalBindingAndConvergesReady(
 	if response.Code != http.StatusOK || client.createCalls != 0 {
 		t.Fatalf("Acceptance B resume status=%d body=%s creates=%d", response.Code, response.Body.String(), client.createCalls)
 	}
-	var payload map[string]any
+	var payload contracts.WorkspaceLaunchResumeAuthorizationProjection
 	if json.Unmarshal(response.Body.Bytes(), &payload) != nil {
 		t.Fatalf("invalid response body=%s", response.Body.String())
 	}
-	readback, _ := payload["resumeAuthorizationReadback"].(map[string]any)
-	binding, _ := readback["acceptanceBResumeExisting"].(map[string]any)
-	publicAuthorization, _ := payload["resumeAuthorization"].(map[string]any)
-	if readback["status"] != "consumed" || binding["approvalId"] != "acceptance-b-resume-existing-approval" ||
-		binding["canonicalCloudTree"] != strings.Repeat("d", 40) || binding["authoritativeState"] != workspaceLaunchStageReady ||
-		publicAuthorization["acceptanceBResumeExisting"] != nil {
+	readback := payload.ResumeAuthorizationReadback
+	if readback == nil || readback.AcceptanceBResumeExisting == nil || payload.ResumeAuthorization == nil {
+		t.Fatalf("Acceptance B response missing typed authorization projection body=%s", response.Body.String())
+	}
+	binding := readback.AcceptanceBResumeExisting
+	if readback.Status != "consumed" || binding.ApprovalID != "acceptance-b-resume-existing-approval" ||
+		binding.CanonicalCloudTree != strings.Repeat("d", 40) || binding.AuthoritativeState != contracts.StageStateReady ||
+		payload.ResumeAuthorization.AcceptanceBResumeExisting != nil {
 		t.Fatalf("Acceptance B readback=%#v", readback)
 	}
 }
@@ -965,7 +968,7 @@ func TestAcceptanceBResumePrepareRouteRequiresOperatorAndCapability(t *testing.T
 	var approval productionAcceptanceBResumeExistingApproval
 	persisted, found, readErr := store.GetRuntimeOperation(context.Background(), operation.ID)
 	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &approval) != nil || approval.OperationMode != "acceptance_b_resume_existing" ||
-		approval.Authorization.OperationID != operation.ID || approval.Reconciliation.AuthoritativeStageState != workspaceLaunchStageReady ||
+		approval.Authorization.OperationID != operation.ID || approval.Reconciliation.AuthoritativeStageState != string(workspaceLaunchStageReady) ||
 		readErr != nil || !found || stringValue(persisted["result"]) != persistedBefore || client.convergenceReads != 1 || client.createCalls != 0 {
 		t.Fatalf("prepare route status=%d body=%s reads=%d creates=%d found=%v err=%v", response.Code, response.Body.String(), client.convergenceReads, client.createCalls, found, readErr)
 	}

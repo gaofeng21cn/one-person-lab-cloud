@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain"
@@ -1160,9 +1161,9 @@ func (app *controlPlaneServer) canonicalWorkspaceLaunch(
 	}
 	var mismatches []string
 	switch {
-	case operation.Status != "succeeded":
+	case operation.Status != contracts.StatusSucceeded:
 		mismatches = []string{"launch_status_succeeded"}
-	case operation.Stage != "succeeded":
+	case operation.Stage != contracts.StageSucceeded:
 		mismatches = []string{"launch_stage_succeeded"}
 	case operation.stringFact("receiptId") == "":
 		mismatches = []string{"receipt_id_present"}

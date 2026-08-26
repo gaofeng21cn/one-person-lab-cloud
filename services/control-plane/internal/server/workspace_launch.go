@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -97,8 +98,8 @@ func isWorkspaceLaunchAction(action string) bool {
 }
 
 func terminalWorkspaceLaunchStatus(status string) bool {
-	switch status {
-	case "succeeded", "failed", "refunded":
+	switch contracts.LaunchStatus(status) {
+	case contracts.StatusSucceeded, contracts.StatusFailed, contracts.StatusRefunded:
 		return true
 	default:
 		return false
@@ -136,7 +137,7 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 	}
 	response := map[string]any{
 		"operationId": operation.ID, "schemaVersion": operation.SchemaVersion, "version": operation.Version,
-		"status": operation.Status, "stage": operation.Stage, "phase": operation.Stage,
+		"status": string(operation.Status), "stage": string(operation.Stage), "phase": string(operation.Stage),
 		"accountId": operation.stringFact("accountId"), "workspaceId": operation.stringFact("workspaceId"),
 		"name": operation.stringFact("name"), "packageId": operation.stringFact("packageId"), "sizeGb": operation.intFact("sizeGb"),
 		"autoRenew": operation.boolFact("autoRenew"), "priceVersion": operation.stringFact("priceVersion"),
@@ -147,8 +148,8 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 		"runtimeServiceName": operation.stringFact("runtimeServiceName"), "url": operation.stringFact("url"), "receiptId": operation.stringFact("receiptId"),
 		"continuationAttemptBudgets": operation.Attempts,
 	}
-	if operation.Status == "manual_review" {
-		response["failureStage"] = operation.Stage
+	if operation.Status == contracts.StatusManualReview {
+		response["failureStage"] = string(operation.Stage)
 		if diagnostic := operation.Observations[operation.Stage].Diagnostic; diagnostic != nil {
 			response["blockReason"] = diagnostic.BlockReason
 			checks := make([]map[string]any, 0, len(diagnostic.Checks))

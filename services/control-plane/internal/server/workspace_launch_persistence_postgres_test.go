@@ -770,7 +770,7 @@ func TestPostgresWorkspaceLaunchCanonicalOperatorActivationPersistsAuthoritative
 
 func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(t *testing.T) {
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			ctx := context.Background()
 			store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 			suffix := strconv.Itoa(stageIndex)
@@ -804,8 +804,8 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 			}
 
 			adapter := &workspaceLaunchUnitAdapter{
-				replayableStages:     map[string]bool{stage: true},
-				panicBeforeMutations: map[string]int{stage: 1},
+				replayableStages:     map[string]bool{string(stage): true},
+				panicBeforeMutations: map[string]int{string(stage): 1},
 			}
 			startedAt := time.Date(2026, 8, 15, 3, 0, 0, 0, time.UTC)
 			firstProcess := NewWorkspaceLaunchReconciler(store, adapter)
@@ -816,7 +816,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 						t.Fatal("expected simulated process crash")
 					}
 				}()
-				_, _ = firstProcess.Resume(ctx, operation.ID, workspaceLaunchReservedStageAuthorization(t, row, "resume-postgres-crash-"+stage))
+				_, _ = firstProcess.Resume(ctx, operation.ID, workspaceLaunchReservedStageAuthorization(t, row, "resume-postgres-crash-"+string(stage)))
 			}()
 
 			durableRow, found, err := store.GetRuntimeOperation(ctx, operation.ID)
@@ -833,7 +833,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 			recovered, err := restartedProcess.Reconcile(ctx, operation.ID)
 			recoveredAttempt := recovered.Attempts[stage]
 			if err != nil || recovered.Stage != workspaceLaunchReconcileStages[stageIndex+1] || recoveredAttempt.Attempted != 1 || recoveredAttempt.Max != 1 ||
-				recoveredAttempt.Confirmed != 1 || recovered.IdempotentReplayClaims[stage].Status != "succeeded" || adapter.mutationsByStage[stage] != 1 ||
+				recoveredAttempt.Confirmed != 1 || recovered.IdempotentReplayClaims[stage].Status != "succeeded" || adapter.mutationsByStage[string(stage)] != 1 ||
 				adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
 				t.Fatalf("PostgreSQL restart skipped or duplicated replay: operation=%s attempt=%#v claim=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(recovered), recoveredAttempt, recovered.IdempotentReplayClaims[stage], adapter.mutationsByStage, err)
 			}
@@ -843,7 +843,7 @@ func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(
 
 func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing.T) {
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			ctx := context.Background()
 			store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
 			suffix := strconv.Itoa(stageIndex)
@@ -876,8 +876,8 @@ func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing
 				mustStore(t, store.SaveWorkspace(ctx, workspaceLaunchUnitActivationProjectionRow(t, command.WorkspaceID, command.AccountID, command.OwnerUserID)))
 			}
 
-			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-postgres-concurrent-"+stage)
-			adapter := &workspaceLaunchUnitAdapter{barrier: make(chan struct{}), replayableStages: map[string]bool{stage: true}}
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-postgres-concurrent-"+string(stage))
+			adapter := &workspaceLaunchUnitAdapter{barrier: make(chan struct{}), replayableStages: map[string]bool{string(stage): true}}
 			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
 			start := make(chan struct{})
 			results := make(chan error, 2)
@@ -908,7 +908,7 @@ func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing
 			durableAttempt := durable.Attempts[stage]
 			if err != nil || successes != 1 || conflicts != 1 || durable.Stage != workspaceLaunchReconcileStages[stageIndex+1] || durableAttempt.Attempted != 1 || durableAttempt.Max != 1 ||
 				durableAttempt.Confirmed != 1 || durable.IdempotentReplayClaims[stage].Status != "succeeded" || durable.ResumeAuthorizationConsumedAt == "" ||
-				adapter.mutationsByStage[stage] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
+				adapter.mutationsByStage[string(stage)] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
 				t.Fatalf("PostgreSQL replay CAS mismatch: operation=%s successes=%d conflicts=%d mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(durable), successes, conflicts, adapter.mutationsByStage, err)
 			}
 		})

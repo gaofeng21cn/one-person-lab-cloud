@@ -111,7 +111,7 @@ func (f *disposableResetFabric) ReadWorkspaceLaunchStage(_ context.Context, inpu
 	f.reads++
 	result, ok := f.stages[input.Binding.Stage]
 	if !ok {
-		return clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: workspaceLaunchStageAbsent, Reason: "no_stage_record", Binding: input.Binding, Resources: input.Resources}, nil
+		return clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: string(workspaceLaunchStageAbsent), Reason: "no_stage_record", Binding: input.Binding, Resources: input.Resources}, nil
 	}
 	result.Binding = input.Binding
 	return result, nil
@@ -241,7 +241,7 @@ func TestWorkspaceLaunchDisposableResetPreviewRouteInventoriesOwnersWithoutMutat
 
 func TestWorkspaceLaunchDisposableResetPreviewFailsClosedOnFabricResidual(t *testing.T) {
 	server, fabric, _, operation := disposableResetPreviewFixture(t)
-	fabric.stages["storage"] = clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: workspaceLaunchStageReady, Reason: "none", Resources: clients.WorkspaceLaunchResources{StorageID: "vol-residual", StorageBindingRef: operation.ID + ":storage"}}
+	fabric.stages["storage"] = clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: string(workspaceLaunchStageReady), Reason: "none", Resources: clients.WorkspaceLaunchResources{StorageID: "vol-residual", StorageBindingRef: operation.ID + ":storage"}}
 	operator := reservedOperatorSessionForTest(t, server)
 	req := httptest.NewRequest(http.MethodGet, "/api/operator/workspace-launches/"+operation.ID+"/disposable-reset-preview", nil)
 	addAuth(req, operator)

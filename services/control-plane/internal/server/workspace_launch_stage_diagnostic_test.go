@@ -92,7 +92,7 @@ func TestWorkspaceLaunchStageDiagnosticReadsWithoutPersisting(t *testing.T) {
 	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
 	if err != nil || !found || diagnostic.SchemaVersion != 2 || diagnostic.OperationIdentityDigest == "" ||
 		diagnostic.OperationVersion != operation.Version || diagnostic.OperationStatus != "manual_review" ||
-		diagnostic.Stage != "runtime" || diagnostic.State != workspaceLaunchStagePending || diagnostic.ErrorCode != "none" ||
+		diagnostic.Stage != "runtime" || diagnostic.State != string(workspaceLaunchStagePending) || diagnostic.ErrorCode != "none" ||
 		diagnostic.Owner != "fabric.tencent_tke" || diagnostic.BlockReason != "runtime_deployment_not_ready" || !diagnostic.Retryable ||
 		diagnostic.ObservedAt != "2026-08-24T10:48:02Z" || len(diagnostic.Checks) != 1 || diagnostic.Checks[0].Name != "deployment_ready" ||
 		!diagnostic.AuthoritativeRead || diagnostic.MutationBudget != 0 || diagnostic.Attempt.Attempted != 1 ||
@@ -112,7 +112,7 @@ func TestWorkspaceLaunchStageDiagnosticReturnsSafeFabricError(t *testing.T) {
 		"storage": &clients.FabricHTTPError{StatusCode: http.StatusServiceUnavailable, Body: `{"error":"UnauthorizedOperation: secret material"}`},
 	}}
 	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), &workspaceLaunchUnitStore{row: row}, adapter, operation.ID)
-	if err != nil || !found || diagnostic.State != workspaceLaunchStageUnknown || diagnostic.ErrorCode != "UnauthorizedOperation" ||
+	if err != nil || !found || diagnostic.State != string(workspaceLaunchStageUnknown) || diagnostic.ErrorCode != "UnauthorizedOperation" ||
 		strings.Contains(diagnostic.ErrorCode, "secret") || adapter.reads != 1 || adapter.mutations != 0 {
 		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
 	}

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const (
@@ -389,8 +391,8 @@ func productionAcceptanceBResumeExistingCandidate(
 	observation workspaceLaunchStageObservation,
 	now time.Time,
 ) (productionAcceptanceBResumeExistingApproval, bool) {
-	if !productionAcceptanceBResumeExistingPrepareRequestValid(request) || !productionAcceptanceBReleaseCurrent(request.Release) || operation.Status != "manual_review" ||
-		!workspaceLaunchReconcileStageValid(operation.Stage) || operation.Stage == "succeeded" ||
+	if !productionAcceptanceBResumeExistingPrepareRequestValid(request) || !productionAcceptanceBReleaseCurrent(request.Release) || operation.Status != contracts.StatusManualReview ||
+		!workspaceLaunchReconcileStageValid(operation.Stage) || operation.Stage == contracts.StageSucceeded ||
 		(observation.State != workspaceLaunchStageReady && observation.State != workspaceLaunchStageAbsent && observation.State != workspaceLaunchStagePending) ||
 		operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
 		return productionAcceptanceBResumeExistingApproval{}, false
@@ -429,12 +431,12 @@ func productionAcceptanceBResumeExistingCandidate(
 	approval.ExpiresAt = now.UTC().Add(productionAcceptanceBResumePrepareLifetime).Format(time.RFC3339)
 	approval.Release = request.Release
 	approval.Authorization.AuthorizationID, approval.Authorization.OperationID = request.AuthorizationID, operation.ID
-	approval.Authorization.LaunchVersion, approval.Authorization.AuthorizedStage = operation.Version, operation.Stage
+	approval.Authorization.LaunchVersion, approval.Authorization.AuthorizedStage = operation.Version, string(operation.Stage)
 	approval.Authorization.ReasonSHA256 = request.ReasonSHA256
 	approval.Authorization.MutationBudget = authorization.MutationBudget
 	approval.Authorization.IdempotentReplayBudget = authorization.IdempotentReplayBudget
 	approval.Authorization.AuthoritativeReadBudget = authorization.AuthoritativeReadBudget
-	approval.Reconciliation.OperationStatus, approval.Reconciliation.AuthoritativeStageState = operation.Status, observation.State
+	approval.Reconciliation.OperationStatus, approval.Reconciliation.AuthoritativeStageState = string(operation.Status), string(observation.State)
 	approval.Reconciliation.Attempt.Attempted, approval.Reconciliation.Attempt.Confirmed = attempt.Attempted, attempt.Confirmed
 	approval.Reconciliation.Attempt.Unknown, approval.Reconciliation.Attempt.Max = attempt.Unknown, attempt.Max
 	approval.Reconciliation.Attempt.Status = attempt.Status
@@ -459,7 +461,8 @@ func productionAcceptanceBResumeExistingApproved(
 		}
 		return strings.TrimSpace(values[0])
 	}
-	attempt, attemptFound := operation.Attempts[authorization.AuthorizedStage]
+	authorizedStage := authorization.AuthorizedStage
+	attempt, attemptFound := operation.Attempts[authorizedStage]
 	identityDigests := workspaceLaunchAcceptanceBIdentityDigests(operation)
 	approvalAttempt := approval.Reconciliation.Attempt
 	approved := expiryErr == nil && now.Before(expiresAt) && approval.SchemaVersion == 1 && approval.OperationMode == "acceptance_b_resume_existing" &&
@@ -467,12 +470,12 @@ func productionAcceptanceBResumeExistingApproved(
 		secureHeaderMatches(headerValue(productionAcceptanceBCapability), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) &&
 		productionAcceptanceBReleaseCurrent(approval.Release) &&
 		approval.Authorization.AuthorizationID == authorization.AuthorizationID && approval.Authorization.OperationID == operation.ID &&
-		approval.Authorization.LaunchVersion == authorization.LaunchVersion && approval.Authorization.AuthorizedStage == authorization.AuthorizedStage &&
+		approval.Authorization.LaunchVersion == authorization.LaunchVersion && approval.Authorization.AuthorizedStage == string(authorization.AuthorizedStage) &&
 		approval.Authorization.ReasonSHA256 == acceptanceBDigestParts(authorization.Reason) &&
 		approval.Authorization.MutationBudget == authorization.MutationBudget && approval.Authorization.IdempotentReplayBudget == authorization.IdempotentReplayBudget &&
 		approval.Authorization.AuthoritativeReadBudget == authorization.AuthoritativeReadBudget &&
-		operation.Status == "manual_review" && operation.Stage == authorization.AuthorizedStage && operation.Version == authorization.LaunchVersion && attemptFound &&
-		approval.Reconciliation.OperationStatus == operation.Status && approval.Reconciliation.AuthoritativeStageState == observation.State &&
+		operation.Status == contracts.StatusManualReview && operation.Stage == authorizedStage && operation.Version == authorization.LaunchVersion && attemptFound &&
+		approval.Reconciliation.OperationStatus == string(operation.Status) && approval.Reconciliation.AuthoritativeStageState == string(observation.State) &&
 		observation.State != workspaceLaunchStageUnknown && (observation.State == workspaceLaunchStageReady || observation.State == workspaceLaunchStageAbsent || observation.State == workspaceLaunchStagePending) &&
 		approvalAttempt.Attempted == attempt.Attempted && approvalAttempt.Confirmed == attempt.Confirmed && approvalAttempt.Unknown == attempt.Unknown &&
 		approvalAttempt.Max == attempt.Max && approvalAttempt.Status == attempt.Status &&
@@ -484,7 +487,7 @@ func productionAcceptanceBResumeExistingApproved(
 	return workspaceLaunchAcceptanceBResumeExistingBinding{
 		SchemaVersion: 1, ApprovalID: approval.ApprovalID, ApprovalSHA256: productionAcceptanceBResumeExistingApprovalDigest(approval),
 		CanonicalCloudSHA: approval.Release.CanonicalCloudSHA, CanonicalCloudTree: approval.Release.CanonicalCloudTree,
-		DeployedCloudImageDigest: approval.Release.DeployedCloudImageDigest, AuthoritativeState: observation.State, IdentityDigests: identityDigests,
+		DeployedCloudImageDigest: approval.Release.DeployedCloudImageDigest, AuthoritativeState: string(observation.State), IdentityDigests: identityDigests,
 	}, true
 }
 
@@ -523,7 +526,7 @@ func productionAcceptanceBResumeExistingReplayApproved(
 		headerValue(productionAcceptanceBApprovalID) == approval.ApprovalID &&
 		secureHeaderMatches(headerValue(productionAcceptanceBCapability), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) &&
 		approval.Authorization.AuthorizationID == authorization.AuthorizationID && approval.Authorization.OperationID == operationID &&
-		approval.Authorization.LaunchVersion == authorization.LaunchVersion && approval.Authorization.AuthorizedStage == authorization.AuthorizedStage &&
+		approval.Authorization.LaunchVersion == authorization.LaunchVersion && approval.Authorization.AuthorizedStage == string(authorization.AuthorizedStage) &&
 		approval.Authorization.ReasonSHA256 == acceptanceBDigestParts(authorization.Reason) &&
 		approval.Authorization.MutationBudget == authorization.MutationBudget && approval.Authorization.IdempotentReplayBudget == authorization.IdempotentReplayBudget &&
 		approval.Authorization.AuthoritativeReadBudget == authorization.AuthoritativeReadBudget &&
@@ -631,10 +634,10 @@ func controlledBasicPilotMetrics(ctx context.Context, store controlPlaneTableSto
 			failures["operation_decode_failed"]++
 			continue
 		}
-		if !terminalWorkspaceLaunchStatus(operation.Status) {
+		if !terminalWorkspaceLaunchStatus(string(operation.Status)) {
 			inFlight++
-			stages[safeControlledPilotMetricCode(operation.Stage)]++
-			if operation.Status == "manual_review" {
+			stages[safeControlledPilotMetricCode(string(operation.Stage))]++
+			if operation.Status == contracts.StatusManualReview {
 				manualReview++
 			}
 		}
@@ -721,15 +724,15 @@ func workspaceLaunchOperationDiagnostic(row map[string]any, decodeErr error) map
 			diagnostic[field] = value
 		}
 	}
-	var stage string
+	var stage contracts.Stage
 	if json.Unmarshal(raw["stage"], &stage) == nil && workspaceLaunchReconcileStageValid(stage) {
-		diagnostic["stage"] = stage
+		diagnostic["stage"] = string(stage)
 	}
 	diagnostic["attemptsKeys"], diagnostic["attemptsKeyCount"], diagnostic["attemptsSummary"] = workspaceLaunchDiagnosticObjectSummary(
-		raw["attempts"], "status", workspaceLaunchReconcileStageValid, validWorkspaceLaunchDiagnosticAttemptStatus,
+		raw["attempts"], "status", func(value string) bool { return workspaceLaunchReconcileStageValid(contracts.Stage(value)) }, validWorkspaceLaunchDiagnosticAttemptStatus,
 	)
 	diagnostic["observationsKeys"], diagnostic["observationsKeyCount"], diagnostic["observationsSummary"] = workspaceLaunchDiagnosticObjectSummary(
-		raw["observations"], "state", workspaceLaunchReconcileStageValid, validWorkspaceLaunchDiagnosticObservationState,
+		raw["observations"], "state", func(value string) bool { return workspaceLaunchReconcileStageValid(contracts.Stage(value)) }, validWorkspaceLaunchDiagnosticObservationState,
 	)
 	diagnostic["missingCanonicalKeys"] = workspaceLaunchMissingCanonicalKeys(raw)
 	forbidden := make([]string, 0)
@@ -784,7 +787,8 @@ func validWorkspaceLaunchDiagnosticAttemptStatus(value string) bool {
 }
 
 func validWorkspaceLaunchDiagnosticObservationState(value string) bool {
-	return value == workspaceLaunchStageAbsent || value == workspaceLaunchStagePending || value == workspaceLaunchStageReady || value == workspaceLaunchStageUnknown
+	state := contracts.StageState(value)
+	return state == workspaceLaunchStageAbsent || state == workspaceLaunchStagePending || state == workspaceLaunchStageReady || state == workspaceLaunchStageUnknown
 }
 
 func workspaceLaunchMissingCanonicalKeys(raw map[string]json.RawMessage) []string {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -65,7 +66,7 @@ func workspaceLaunchRuntimeRepairFixture(t *testing.T) workspaceLaunchReconcileO
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stage := range []string{"key", "debit", "ensure_compute_allocation", "storage", "attachment", "secret"} {
+	for _, stage := range []contracts.Stage{contracts.StageKey, contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret} {
 		operation.Stage = stage
 		facts := workspaceLaunchReadyFacts(stage)
 		if stage == "debit" {
@@ -112,8 +113,8 @@ func TestWorkspaceLaunchRuntimeRepairEligibility(t *testing.T) {
 		t.Fatal("canonical paid Runtime failure is not eligible for repair")
 	}
 
-	for _, stage := range []string{"key", "debit", "ensure_compute_allocation", "storage", "attachment", "secret"} {
-		t.Run(stage+" must be confirmed", func(t *testing.T) {
+	for _, stage := range []contracts.Stage{contracts.StageKey, contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret} {
+		t.Run(string(stage)+" must be confirmed", func(t *testing.T) {
 			operation := cloneWorkspaceLaunchRuntimeRepairFixture(t, base)
 			attempt := operation.Attempts[stage]
 			attempt.Confirmed, attempt.Status = 0, "unknown"
@@ -122,7 +123,7 @@ func TestWorkspaceLaunchRuntimeRepairEligibility(t *testing.T) {
 				t.Fatalf("repair accepted unconfirmed %s", stage)
 			}
 		})
-		t.Run(stage+" must be ready", func(t *testing.T) {
+		t.Run(string(stage)+" must be ready", func(t *testing.T) {
 			operation := cloneWorkspaceLaunchRuntimeRepairFixture(t, base)
 			operation.Observations[stage] = workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}
 			if workspaceLaunchRuntimeRepairEligible(operation) {
@@ -205,7 +206,7 @@ func TestWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T
 	if len(fabricCalls) != 0 {
 		t.Fatalf("repair repeated an earlier Fabric stage: %v", fabricCalls)
 	}
-	for _, stage := range []string{"key", "debit", "ensure_compute_allocation", "storage", "attachment", "secret", "runtime", "activation", "receipt"} {
+	for _, stage := range []contracts.Stage{contracts.StageKey, contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime, contracts.StageActivation, contracts.StageReceipt} {
 		attempt := got.Attempts[stage]
 		if attempt.Attempted != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" {
 			t.Fatalf("%s attempt after repair = %#v", stage, attempt)

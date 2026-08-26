@@ -9,15 +9,16 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
-var workspaceLaunchFabricStages = map[string]string{
-	"ensure_compute_allocation": "ensure_compute_allocation",
-	"storage":                   "ensure_storage",
-	"attachment":                "ensure_attachment",
-	"secret":                    "ensure_gateway_secret",
-	"runtime":                   "ensure_runtime",
+var workspaceLaunchFabricStages = map[contracts.Stage]string{
+	contracts.StageCompute:    "ensure_compute_allocation",
+	contracts.StageStorage:    "ensure_storage",
+	contracts.StageAttachment: "ensure_attachment",
+	contracts.StageSecret:     "ensure_gateway_secret",
+	contracts.StageRuntime:    "ensure_runtime",
 }
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchFabricStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
@@ -36,7 +37,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) mutateWorkspaceLaunchFabricSta
 	if idempotencyKey != workspaceLaunchStageIdempotencyKey(operation, 1) {
 		return errInvalidWorkspaceLaunchOperation
 	}
-	input, err := a.workspaceLaunchFabricStageInput(ctx, operation, operation.Stage == "secret")
+	input, err := a.workspaceLaunchFabricStageInput(ctx, operation, operation.Stage == contracts.StageSecret)
 	if err != nil {
 		return err
 	}
@@ -55,9 +56,9 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 		LaunchOperationID: operation.ID,
 		AccountID:         operation.stringFact("accountId"),
 		WorkspaceID:       operation.stringFact("workspaceId"),
-		Stage:             operation.Stage,
+		Stage:             string(operation.Stage),
 		Action:            action,
-		FabricOperationID: operation.ID + ":" + operation.Stage,
+		FabricOperationID: operation.ID + ":" + string(operation.Stage),
 		IdempotencyKey:    workspaceLaunchStageIdempotencyKey(operation, 1),
 	}
 	binding.ExpectedResourceBinding = workspaceLaunchCurrentStageBinding(operation)
@@ -66,7 +67,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 		PreflightBindingRef: operation.stringFact("preflightBindingRef"), SpecDigest: operation.stringFact("specDigest"), PackageID: operation.stringFact("packageId"),
 		SizeGB: operation.intFact("sizeGb"), WorkspaceImageDigest: operation.stringFact("workspaceImageDigest"), Resources: resources,
 	}
-	if operation.Stage == "runtime" && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
+	if operation.Stage == contracts.StageRuntime && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
 		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {
 		authorization, previousImageDigest, ok := workspaceLaunchRuntimeImageRevisionProof(operation)
 		if !ok {
@@ -143,7 +144,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 
 func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcileOperation) (workspaceLaunchResumeAuthorization, string, bool) {
 	active := operation.ResumeAuthorization
-	if active == nil || active.AuthorizedStage != "runtime" || active.ReplacementWorkspaceImageDigest == "" {
+	if active == nil || active.AuthorizedStage != contracts.StageRuntime || active.ReplacementWorkspaceImageDigest == "" {
 		return workspaceLaunchResumeAuthorization{}, "", false
 	}
 	previousImageDigest := operation.stringFact("workspaceImageDigest")
@@ -154,7 +155,7 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 			return workspaceLaunchResumeAuthorization{}, "", false
 		}
 		previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
-		if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
+		if previous.AuthorizedStage != contracts.StageRuntime || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
 			previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
 			previous.ReadbacksAtAuthorization+workspaceLaunchAuthoritativeReadBudget != active.ReadbacksAtAuthorization ||
 			previous.ReplacementWorkspaceImageDigest == "" || previous.ReplacementWorkspaceImageDigest == active.ReplacementWorkspaceImageDigest {
@@ -169,7 +170,7 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 		return workspaceLaunchResumeAuthorization{}, "", false
 	}
 	previous := operation.ConsumedResumeAuthorizations[len(operation.ConsumedResumeAuthorizations)-1].Authorization
-	if previous.AuthorizedStage != "runtime" || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
+	if previous.AuthorizedStage != contracts.StageRuntime || previous.MutationBudget != 0 || previous.IdempotentReplayBudget != 1 ||
 		previous.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
 		previous.ReadbacksAtAuthorization != 2*workspaceLaunchAuthoritativeReadBudget ||
 		previous.ReplacementWorkspaceImageDigest != active.ReplacementWorkspaceImageDigest {
@@ -179,21 +180,22 @@ func workspaceLaunchRuntimeImageRevisionProof(operation workspaceLaunchReconcile
 }
 
 func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperation, input clients.WorkspaceLaunchStageInput, result clients.WorkspaceLaunchStageResult) (workspaceLaunchStageObservation, error) {
+	state := contracts.StageState(result.State)
 	if result.SchemaVersion != clients.WorkspaceLaunchFabricSchemaVersion || result.Binding != input.Binding ||
 		!workspaceLaunchResourcesPreserveIdentity(input.Resources, result.Resources) ||
-		!validWorkspaceLaunchFabricDiagnostic(operation.Stage, result.State, result.Diagnostic) {
+		!validWorkspaceLaunchFabricDiagnostic(string(operation.Stage), result.State, result.Diagnostic) {
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	}
 	switch {
-	case result.State == workspaceLaunchStageAbsent && (result.Reason == "no_stage_record" || result.Reason == "started_no_resource" || result.Reason == "failed_no_resource"):
+	case state == workspaceLaunchStageAbsent && (result.Reason == "no_stage_record" || result.Reason == "started_no_resource" || result.Reason == "failed_no_resource"):
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
-	case result.State == workspaceLaunchStagePending && result.Reason == "provider_provisioning":
+	case state == workspaceLaunchStagePending && result.Reason == "provider_provisioning":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStagePending, Diagnostic: result.Diagnostic}, nil
-	case operation.Stage == "runtime" && result.State == workspaceLaunchStagePending && result.Reason == "runtime_image_revision_required":
+	case operation.Stage == contracts.StageRuntime && state == workspaceLaunchStagePending && result.Reason == "runtime_image_revision_required":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageRuntimeImageRevisionPending}, nil
-	case operation.Stage == "ensure_compute_allocation" && result.State == workspaceLaunchStagePending && result.Reason == "ownership_pending":
+	case operation.Stage == contracts.StageCompute && state == workspaceLaunchStagePending && result.Reason == "ownership_pending":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}, nil
-	case result.State == workspaceLaunchStageReady && result.Reason == "none":
+	case state == workspaceLaunchStageReady && result.Reason == "none":
 		facts, err := workspaceLaunchFabricStageFacts(operation.Stage, result.Resources, operation)
 		if err != nil {
 			return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
@@ -202,9 +204,9 @@ func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperatio
 			return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 		}
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts, Diagnostic: result.Diagnostic}, nil
-	case result.State == workspaceLaunchStageUnknown && result.Diagnostic != nil && result.Reason == result.Diagnostic.ErrorCode:
+	case state == workspaceLaunchStageUnknown && result.Diagnostic != nil && result.Reason == result.Diagnostic.ErrorCode:
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown, Diagnostic: result.Diagnostic}, nil
-	case result.State == workspaceLaunchStageUnknown && (result.Reason == "failed_no_resource_unproven" || result.Reason == "resource_absence_status_conflict"):
+	case state == workspaceLaunchStageUnknown && (result.Reason == "failed_no_resource_unproven" || result.Reason == "resource_absence_status_conflict"):
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	default:
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
@@ -225,8 +227,9 @@ func validWorkspaceLaunchFabricDiagnostic(stage, state string, diagnostic *clien
 	if diagnostic.ErrorCode != "" && !workspaceLaunchStageDiagnosticErrorPattern.MatchString(diagnostic.ErrorCode) {
 		return false
 	}
-	if state == workspaceLaunchStageReady && (diagnostic.BlockReason != "none" || diagnostic.Retryable) ||
-		state != workspaceLaunchStageReady && diagnostic.BlockReason == "none" {
+	stageState := contracts.StageState(state)
+	if stageState == workspaceLaunchStageReady && (diagnostic.BlockReason != "none" || diagnostic.Retryable) ||
+		stageState != workspaceLaunchStageReady && diagnostic.BlockReason == "none" {
 		return false
 	}
 	for _, check := range diagnostic.Checks {
@@ -241,21 +244,21 @@ func validWorkspaceLaunchFabricDiagnostic(stage, state string, diagnostic *clien
 	return true
 }
 
-func workspaceLaunchFabricStageFacts(stage string, resources clients.WorkspaceLaunchResources, operation workspaceLaunchReconcileOperation) (map[string]any, error) {
+func workspaceLaunchFabricStageFacts(stage contracts.Stage, resources clients.WorkspaceLaunchResources, operation workspaceLaunchReconcileOperation) (map[string]any, error) {
 	switch stage {
-	case "ensure_compute_allocation":
+	case contracts.StageCompute:
 		return map[string]any{"computeAllocationId": resources.ComputeAllocationID, "computeBindingRef": resources.ComputeBindingRef}, nil
-	case "storage":
+	case contracts.StageStorage:
 		return map[string]any{"storageId": resources.StorageID, "storageBindingRef": resources.StorageBindingRef}, nil
-	case "attachment":
+	case contracts.StageAttachment:
 		return map[string]any{"attachmentId": resources.AttachmentID, "attachmentBindingRef": resources.AttachmentBindingRef}, nil
-	case "secret":
+	case contracts.StageSecret:
 		return map[string]any{
 			"gatewaySecretRef": resources.GatewaySecretRef, "gatewaySecretVersion": resources.GatewaySecretVersion,
 			"secretBindingRef": resources.SecretBindingRef, "workspaceKeyStatus": "configured",
 			"workspaceKeyFingerprint": operation.stringFact("workspaceKeyFingerprint"),
 		}, nil
-	case "runtime":
+	case contracts.StageRuntime:
 		return map[string]any{
 			"runtimeId": resources.RuntimeID, "runtimeReady": true, "runtimeServiceName": resources.RuntimeServiceName,
 			"runtimeBindingRef": resources.RuntimeBindingRef, "runtimeUsername": resources.RuntimeUsername, "url": resources.RuntimeURL,
@@ -297,10 +300,12 @@ func workspaceLaunchResourcesPreserveIdentity(current, result clients.WorkspaceL
 }
 
 func workspaceLaunchCurrentStageBinding(operation workspaceLaunchReconcileOperation) string {
-	return map[string]string{
-		"ensure_compute_allocation": operation.stringFact("computeBindingRef"),
-		"storage":                   operation.stringFact("storageBindingRef"), "attachment": operation.stringFact("attachmentBindingRef"),
-		"secret": operation.stringFact("secretBindingRef"), "runtime": operation.stringFact("runtimeBindingRef"),
+	return map[contracts.Stage]string{
+		contracts.StageCompute:    operation.stringFact("computeBindingRef"),
+		contracts.StageStorage:    operation.stringFact("storageBindingRef"),
+		contracts.StageAttachment: operation.stringFact("attachmentBindingRef"),
+		contracts.StageSecret:     operation.stringFact("secretBindingRef"),
+		contracts.StageRuntime:    operation.stringFact("runtimeBindingRef"),
 	}[operation.Stage]
 }
 

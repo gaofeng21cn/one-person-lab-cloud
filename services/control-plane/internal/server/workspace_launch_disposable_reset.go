@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -94,7 +95,7 @@ func classifyWorkspaceLaunchDisposableReset(row map[string]any, facts workspaceL
 func classifyWorkspaceLaunchDisposableResetInventory(row map[string]any, inventory workspaceLaunchDisposableResetInventory) (workspaceLaunchDisposableResetClassification, error) {
 	facts := inventory.Facts
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil || operation.SchemaVersion != workspaceLaunchReconcileSchemaVersion || operation.Version <= 0 || operation.Stage != "debit" || operation.Status != "manual_review" ||
+	if err != nil || operation.SchemaVersion != workspaceLaunchReconcileSchemaVersion || operation.Version <= 0 || operation.Stage != contracts.StageDebit || operation.Status != contracts.StatusManualReview ||
 		stringValue(row["action"]) != workspaceLaunchAction || !facts.DisposableAuthority ||
 		facts.WorkspaceProjection != workspaceLaunchDisposableOwnerAbsent || facts.CompetingOperations != workspaceLaunchDisposableOwnerAbsent ||
 		facts.PreflightBinding != workspaceLaunchDisposableOwnerConfirmed || facts.FabricStages != workspaceLaunchDisposableOwnerAbsent ||
@@ -104,7 +105,7 @@ func classifyWorkspaceLaunchDisposableResetInventory(row map[string]any, invento
 	}
 	classification := workspaceLaunchDisposableResetClassification{
 		OperationID: operation.ID, AccountID: operation.stringFact("accountId"), WorkspaceID: operation.stringFact("workspaceId"),
-		PreflightBindingRef: operation.stringFact("preflightBindingRef"), Version: operation.Version, Stage: operation.Stage, Status: operation.Status,
+		PreflightBindingRef: operation.stringFact("preflightBindingRef"), Version: operation.Version, Stage: string(operation.Stage), Status: string(operation.Status),
 		Facts: facts, Observations: cloneWorkspaceLaunchDisposableObservations(inventory.Observations),
 		PlanSteps: workspaceLaunchDisposableMinimalPlan(facts),
 	}
@@ -236,7 +237,7 @@ func (app *controlPlaneServer) previewWorkspaceLaunchDisposableReset(ctx context
 		return workspaceLaunchDisposableResetPreview{}, errWorkspaceLaunchDisposableResetNotEligible
 	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil || operation.ID != operationID || operation.Stage != "debit" || operation.Status != "manual_review" {
+	if err != nil || operation.ID != operationID || operation.Stage != contracts.StageDebit || operation.Status != contracts.StatusManualReview {
 		return workspaceLaunchDisposableResetPreview{}, errWorkspaceLaunchDisposableResetNotEligible
 	}
 	inventory := app.workspaceLaunchDisposableResetInventory(ctx, service, operation)
@@ -249,7 +250,7 @@ func (app *controlPlaneServer) previewWorkspaceLaunchDisposableReset(ctx context
 		OperationIdentityDigest: workspaceLaunchDisposableResetIdentityDigest("operation", operation.ID),
 		AccountIdentityDigest:   workspaceLaunchDisposableResetIdentityDigest("account", operation.stringFact("accountId")),
 		WorkspaceIdentityDigest: workspaceLaunchDisposableResetIdentityDigest("workspace", operation.stringFact("workspaceId")),
-		OperationVersion:        operation.Version, Stage: operation.Stage, Status: operation.Status,
+		OperationVersion:        operation.Version, Stage: string(operation.Stage), Status: string(operation.Status),
 		OwnerStates: workspaceLaunchDisposableResetOwnerStates(inventory.Facts), OwnerObservations: cloneWorkspaceLaunchDisposableObservations(inventory.Observations),
 		Blockers: append([]string(nil), inventory.Blockers...), MutationBudget: 0,
 	}
@@ -369,7 +370,7 @@ func readWorkspaceLaunchDisposableFabric(ctx context.Context, service *controlpl
 	}
 	stageIdentities, resourceIdentities := make([]string, 0), make([]string, 0)
 	stageState := workspaceLaunchDisposableOwnerAbsent
-	for _, stage := range []string{"ensure_compute_allocation", "storage", "attachment", "secret", "runtime"} {
+	for _, stage := range []contracts.Stage{contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime} {
 		staged := operationWithStage(operation, stage)
 		input, inputErr := (&controlPlaneWorkspaceLaunchStageAdapter{app: &controlPlaneServer{}, service: service}).workspaceLaunchFabricStageInput(ctx, staged, false)
 		if inputErr != nil {
@@ -383,10 +384,11 @@ func readWorkspaceLaunchDisposableFabric(ctx context.Context, service *controlpl
 			result.blockers = append(result.blockers, "fabric_stage_unavailable")
 			break
 		}
+		readbackState := contracts.StageState(readback.State)
 		if readback.SchemaVersion == clients.WorkspaceLaunchFabricSchemaVersion && readback.Binding == input.Binding &&
-			(readback.State == workspaceLaunchStageReady || readback.State == workspaceLaunchStagePending) {
+			(readbackState == workspaceLaunchStageReady || readbackState == workspaceLaunchStagePending) {
 			stageState = workspaceLaunchDisposableOwnerConflict
-			stageIdentities = append(stageIdentities, stage)
+			stageIdentities = append(stageIdentities, string(stage))
 			resourceIdentities = append(resourceIdentities, workspaceLaunchDisposableResourceIdentities(readback.Resources)...)
 			continue
 		}
@@ -398,7 +400,7 @@ func readWorkspaceLaunchDisposableFabric(ctx context.Context, service *controlpl
 		}
 		if observation.State != workspaceLaunchStageAbsent {
 			stageState = workspaceLaunchDisposableOwnerConflict
-			stageIdentities = append(stageIdentities, stage)
+			stageIdentities = append(stageIdentities, string(stage))
 			for key, value := range observation.Facts {
 				if strings.HasSuffix(key, "Id") || strings.HasSuffix(key, "Ref") {
 					resourceIdentities = append(resourceIdentities, fmt.Sprint(value))

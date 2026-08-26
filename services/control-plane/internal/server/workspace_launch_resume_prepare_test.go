@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
-func canonicalResumePrepareRequest(_ workspaceLaunchReconcileOperation, _ string) productionAcceptanceBResumeExistingPrepareRequest {
+func canonicalResumePrepareRequest(_ workspaceLaunchReconcileOperation, _ contracts.StageState) productionAcceptanceBResumeExistingPrepareRequest {
 	var request productionAcceptanceBResumeExistingPrepareRequest
 	request.ApprovalID = "acceptance-b-resume-prepare"
 	request.AuthorizationID = "acceptance-b-resume-auth"
@@ -53,10 +55,10 @@ func TestProductionAcceptanceBResumePrepareBuildsExactReadOnlyCandidate(t *testi
 	if approval.SchemaVersion != 1 || approval.OperationMode != "acceptance_b_resume_existing" || approval.ApprovalID != request.ApprovalID ||
 		approval.ExpiresAt != now.Add(productionAcceptanceBResumePrepareLifetime).Format(time.RFC3339) || approval.Release != request.Release ||
 		approval.Authorization.OperationID != operation.ID || approval.Authorization.LaunchVersion != operation.Version ||
-		approval.Authorization.AuthorizedStage != operation.Stage || approval.Authorization.ReasonSHA256 != request.ReasonSHA256 ||
+		approval.Authorization.AuthorizedStage != string(operation.Stage) || approval.Authorization.ReasonSHA256 != request.ReasonSHA256 ||
 		approval.Authorization.MutationBudget != 0 || approval.Authorization.IdempotentReplayBudget != 1 ||
 		approval.Authorization.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
-		approval.Reconciliation.AuthoritativeStageState != workspaceLaunchStageAbsent || approval.IdentityDigests != workspaceLaunchAcceptanceBIdentityDigests(operation) {
+		approval.Reconciliation.AuthoritativeStageState != string(workspaceLaunchStageAbsent) || approval.IdentityDigests != workspaceLaunchAcceptanceBIdentityDigests(operation) {
 		t.Fatalf("unexpected candidate: %#v", approval)
 	}
 	if adapter.reads != 1 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {

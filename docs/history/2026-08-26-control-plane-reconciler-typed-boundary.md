@@ -7,7 +7,7 @@ observation state while preserving schema-v3 bytes and behavior.
 codec as the persistence anti-corruption layer, and migrate one complete
 Reconcile flow without changing external contracts or child state machines.
 
-**Tech Stack:** Go 1.24+ contract module, Control Plane Go module, PostgreSQL
+**Tech Stack:** Go 1.22 contract module, Control Plane Go module, PostgreSQL
 CAS integration tests, repository local verification.
 
 ## Task 1: Add the missing shared Stage state

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 func canonicalProductionAcceptanceBApproval(t *testing.T) map[string]any {
@@ -103,7 +105,7 @@ func configureProductionAcceptanceBEnvironment(t *testing.T) {
 	t.Setenv("OPL_BASIC_COMPUTE_INSTANCE_TYPE", "SA5.MEDIUM4")
 }
 
-func canonicalProductionAcceptanceBResumeExistingApproval(operation workspaceLaunchReconcileOperation, authorization workspaceLaunchResumeAuthorization, authoritativeState string) map[string]any {
+func canonicalProductionAcceptanceBResumeExistingApproval(operation workspaceLaunchReconcileOperation, authorization workspaceLaunchResumeAuthorization, authoritativeState contracts.StageState) map[string]any {
 	attempt := operation.Attempts[authorization.AuthorizedStage]
 	digests := workspaceLaunchAcceptanceBIdentityDigests(operation)
 	return map[string]any{
@@ -200,7 +202,7 @@ func TestProductionAcceptanceBResumeExistingApprovalBindsServerAuthority(t *test
 		workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, time.Now(),
 	)
 	if !approved || binding.ApprovalID != "acceptance-b-resume-existing-approval" || binding.CanonicalCloudTree != strings.Repeat("d", 40) ||
-		binding.IdentityDigests != workspaceLaunchAcceptanceBIdentityDigests(operation) || binding.AuthoritativeState != workspaceLaunchStageAbsent {
+		binding.IdentityDigests != workspaceLaunchAcceptanceBIdentityDigests(operation) || binding.AuthoritativeState != string(workspaceLaunchStageAbsent) {
 		t.Fatalf("canonical resume-existing approval not bound: approved=%v binding=%#v", approved, binding)
 	}
 

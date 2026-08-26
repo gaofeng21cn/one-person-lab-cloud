@@ -20,6 +20,7 @@ ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src/services/control-plane
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
+COPY packages/contracts/go /src/packages/contracts/go
 COPY services/control-plane/go.mod services/control-plane/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/control-plane ./

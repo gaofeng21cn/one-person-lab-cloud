@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -56,8 +57,8 @@ func observeWorkspaceLaunchStage(
 		return workspaceLaunchStageDiagnostic{}, found, err
 	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-	if err != nil || operation.ID != operationID || operation.Status != "manual_review" ||
-		!workspaceLaunchReconcileStageValid(operation.Stage) || operation.Stage == "succeeded" {
+	if err != nil || operation.ID != operationID || operation.Status != contracts.StatusManualReview ||
+		!workspaceLaunchReconcileStageValid(operation.Stage) || operation.Stage == contracts.StageSucceeded {
 		return workspaceLaunchStageDiagnostic{}, true, errWorkspaceLaunchGrantConflict
 	}
 	attempt, found := operation.Attempts[operation.Stage]
@@ -67,8 +68,8 @@ func observeWorkspaceLaunchStage(
 	digest := sha256.Sum256([]byte(operation.ID))
 	diagnostic := workspaceLaunchStageDiagnostic{
 		SchemaVersion: 2, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
-		OperationVersion: operation.Version, OperationStatus: operation.Status, Stage: operation.Stage,
-		State: workspaceLaunchStageUnknown, ErrorCode: "none", Owner: workspaceLaunchStageOwner(operation.Stage),
+		OperationVersion: operation.Version, OperationStatus: string(operation.Status), Stage: string(operation.Stage),
+		State: string(workspaceLaunchStageUnknown), ErrorCode: "none", Owner: workspaceLaunchStageOwner(operation.Stage),
 		BlockReason: "stage_observation_unknown",
 		Attempt: workspaceLaunchStageDiagnosticAttempt{
 			Attempted: attempt.Attempted, Confirmed: attempt.Confirmed, Unknown: attempt.Unknown,
@@ -86,10 +87,10 @@ func observeWorkspaceLaunchStage(
 	if readErr != nil {
 		blockReason = errorCode
 		slog.ErrorContext(ctx, "workspace launch operator read",
-			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "operator_authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), "operator_authoritative_read", false, outcome, string(observation.State), blockReason, errorCode, time.Since(startedAt))...)
 	} else {
 		slog.InfoContext(ctx, "workspace launch operator read",
-			workspaceLaunchLogAttrs(operation.ID, operation.Stage, "operator_authoritative_read", false, outcome, observation.State, blockReason, errorCode, time.Since(startedAt))...)
+			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), "operator_authoritative_read", false, outcome, string(observation.State), blockReason, errorCode, time.Since(startedAt))...)
 	}
 	if readErr != nil {
 		diagnostic.ErrorCode = errorCode
@@ -102,7 +103,7 @@ func observeWorkspaceLaunchStage(
 		diagnostic.ErrorCode = "stage_observation_invalid"
 		return diagnostic, true, nil
 	}
-	diagnostic.State = observation.State
+	diagnostic.State = string(observation.State)
 	if observation.Diagnostic != nil {
 		diagnostic.Owner = observation.Diagnostic.Owner
 		diagnostic.BlockReason = observation.Diagnostic.BlockReason
@@ -130,15 +131,15 @@ func observeWorkspaceLaunchStage(
 	return diagnostic, true, nil
 }
 
-func workspaceLaunchStageOwner(stage string) string {
+func workspaceLaunchStageOwner(stage contracts.Stage) string {
 	switch stage {
-	case "key", "activation":
+	case contracts.StageKey, contracts.StageActivation:
 		return "cloud.control_plane"
-	case "debit":
+	case contracts.StageDebit:
 		return "cloud.sub2api"
-	case "ensure_compute_allocation", "storage", "attachment", "secret", "runtime":
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
 		return "fabric.tencent_tke"
-	case "receipt":
+	case contracts.StageReceipt:
 		return "cloud.ledger"
 	default:
 		return "cloud.reconciler"

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -24,15 +25,15 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) ReadStage(ctx context.Context,
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, errWorkspaceLaunchStageAdapterUnavailable
 	}
 	switch operation.Stage {
-	case "key":
+	case contracts.StageKey:
 		return a.readWorkspaceLaunchKey(ctx, operation)
-	case "debit":
+	case contracts.StageDebit:
 		return a.readWorkspaceLaunchDebit(ctx, operation)
-	case "ensure_compute_allocation", "storage", "attachment", "secret", "runtime":
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
 		return a.readWorkspaceLaunchFabricStage(ctx, operation)
-	case "activation":
+	case contracts.StageActivation:
 		return a.readWorkspaceLaunchActivation(ctx, operation)
-	case "receipt":
+	case contracts.StageReceipt:
 		return a.readWorkspaceLaunchReceipt(ctx, operation)
 	default:
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, errInvalidWorkspaceLaunchOperation
@@ -43,7 +44,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) CanMutateStage(operation works
 	if a == nil || a.app == nil || a.service == nil {
 		return false
 	}
-	return operation.Stage != "key" || a.workspaceLaunchKeyMutationCredentialValid(operation)
+	return operation.Stage != contracts.StageKey || a.workspaceLaunchKeyMutationCredentialValid(operation)
 }
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) CanReplayStage(operation workspaceLaunchReconcileOperation) bool {
@@ -51,9 +52,9 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) CanReplayStage(operation works
 		return false
 	}
 	switch operation.Stage {
-	case "key":
+	case contracts.StageKey:
 		return a.workspaceLaunchKeyMutationCredentialValid(operation)
-	case "debit", "ensure_compute_allocation", "storage", "attachment", "secret", "runtime", "activation", "receipt":
+	case contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime, contracts.StageActivation, contracts.StageReceipt:
 		return true
 	default:
 		return false
@@ -65,15 +66,15 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) MutateStage(ctx context.Contex
 		return errWorkspaceLaunchStageAdapterUnavailable
 	}
 	switch operation.Stage {
-	case "key":
+	case contracts.StageKey:
 		return a.mutateWorkspaceLaunchKey(ctx, operation, idempotencyKey)
-	case "debit":
+	case contracts.StageDebit:
 		return a.mutateWorkspaceLaunchDebit(ctx, operation)
-	case "ensure_compute_allocation", "storage", "attachment", "secret", "runtime":
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
 		return a.mutateWorkspaceLaunchFabricStage(ctx, operation, idempotencyKey)
-	case "activation":
+	case contracts.StageActivation:
 		return a.mutateWorkspaceLaunchActivation(ctx, operation, idempotencyKey)
-	case "receipt":
+	case contracts.StageReceipt:
 		return a.mutateWorkspaceLaunchReceipt(ctx, operation, idempotencyKey)
 	default:
 		return errInvalidWorkspaceLaunchOperation
@@ -107,7 +108,7 @@ func (app *controlPlaneServer) resumeWorkspaceLaunch(ctx context.Context, servic
 		authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
 	}
 	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists &&
-		(operation.Status != "manual_review" || operation.Stage != "runtime" || operation.stringFact("providerProfileRef") != "tencent-tke" ||
+		(operation.Status != contracts.StatusManualReview || operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "tencent-tke" ||
 			authorization.ReplacementWorkspaceImageDigest == operation.stringFact("workspaceImageDigest") ||
 			authorization.ReplacementWorkspaceImageDigest != currentWorkspaceImageDigest()) {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
