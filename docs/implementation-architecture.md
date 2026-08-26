@@ -178,6 +178,41 @@ It never exposes or directly calls Sub2API management APIs;
 `OPL_SUB2API_BASE_URL` remains server-only, and Cloud does not inject a second
 Runtime Gateway base URL.
 
+### Console Controller Owner Map
+
+The browser application currently composes the remaining capabilities through
+`apps/console-ui/src/app/use-console-controller.ts`. This is an implementation
+inventory, not a promise to create one hook per row. A capability is extracted
+only when its browser lifecycle, invariant, failure model, and real consumers
+form one complete slice.
+
+| Capability | Current root facts | Completion proof | Real consumers | Domain authority | Extraction decision |
+| --- | --- | --- | --- | --- | --- |
+| Workspace Delete | delete intent, shared command busy, delete issue, paged Workspace absence readback | authoritative Workspace list confirms `absent`; no refund or wallet mutation is inferred by the browser | Customer Workspace detail | Control Plane Workspace lifecycle | separate slice; resource absence has a different failure model from renewal |
+| Workspace Renewal | per-Workspace intent, shared command busy, detail generation, response and list/detail readback | returned renewal fields and authoritative Workspace projection match the requested setting | Customer Workspace detail | Control Plane Workspace lifecycle | separate slice; account period and eligibility semantics must not share Delete state |
+| Workspace Budget | per-Workspace/key intent, request signature, busy claim, detail generation, typed result matching | returned Workspace/key identity and all requested limits match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | separate slice; configuration conflict is not a Workspace lifecycle transition |
+| Support Mapping | ticket projection, loading/error state, create intent, command busy, post-write ticket reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | independent low-risk slice |
+| Billing / Receipt | billing view, cursor and cursor stack, selected Receipt, list/detail generations | selected Receipt ID matches the Ledger detail response | Customer billing page and overview receipt links | Ledger | keep as a query controller unless a mutation lifecycle is introduced |
+| Gateway Usage | selected Key, period/page state, Key/usage generations and summary/detail readback | the selected Key, period and page identify the returned usage projection | Customer usage page | Sub2API/Gateway | separate query lifecycle from Billing despite both being read-only |
+| Operator Account | account pagination, provision intent/operation, disable and purchase-eligibility intents, account readback | account command result is reconciled into the operator account projection | Admin accounts page | Control Plane Account/Access | one Account lifecycle controller may contain these related operations |
+| Wallet Adjustment / Recovery | wallet intent, operation projection, recovery intent, shared command busy, operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | never merge with ordinary Account lifecycle; money and recovery are a separate failure model |
+| Announcement Lifecycle | create/publish/withdraw intents, per-announcement busy, operator announcement reload | `draft -> published -> withdrawn` transition is confirmed by the announcement projection | Admin announcement page | Control Plane operator/content | separate state-machine slice |
+
+The root remains the Composition Root: Session, Router, global toast,
+session-wide freshness guards, shared read sources, route loading order, and
+aggregate reset orchestration. A child controller receives narrow typed
+dependencies and owns its own command intent, busy semantics, local freshness,
+authoritative readback, and reset. It must not receive the complete root
+controller, root setters, or another capability's internal state.
+
+This map makes the current coupling explicit. In particular, `commandBusy` is
+currently shared by unrelated writes, while `findWorkspaceInPages`,
+`workspaceDetailRequestGeneration`, and `resetConsoleState` cross several
+capabilities. These are migration seams, not shared domain facts. The next
+slice is selected only after its real page consumers are switched and the
+corresponding root state, intent, timer/generation, readback, and command are
+removed. Session is not extracted until every child reset contract is explicit.
+
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires
 approved real service/resource evidence. `production-proven` requires the same
