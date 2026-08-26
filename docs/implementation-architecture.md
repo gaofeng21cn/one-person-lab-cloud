@@ -213,6 +213,14 @@ slice is selected only after its real page consumers are switched and the
 corresponding root state, intent, timer/generation, readback, and command are
 removed. Session is not extracted until every child reset contract is explicit.
 
+Support Mapping is the first post-inventory slice. Its
+`useSupportController` owns ticket loading/error state, the mapping intent and
+idempotency key, the command busy state, local read freshness, POST response
+identity validation, and the GET list readback. `ConsoleShell` consumes only
+the typed `SupportController`; the root supplies Session, mutation freshness,
+toast/error rendering, and reset composition. No support state or command
+remains in the broad root.
+
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires
 approved real service/resource evidence. `production-proven` requires the same
