@@ -15,6 +15,8 @@ import {
   getOperatorOverview,
   getOperatorReconciliation,
   getOperatorWorkspace,
+  getOperatorWorkspaceRuntimeImagePolicy,
+  getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
   markAnnouncementRead,
   provisionOperatorAccount,
@@ -39,13 +41,14 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import { useBillingController } from "./use-billing-controller.ts";
 import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
+import { useWorkspaceRuntimeImageReplacementController } from "./use-workspace-runtime-image-replacement-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
 import { useSupportController } from "./use-support-controller.ts";
@@ -69,6 +72,8 @@ function initialSources(): ConsoleSources {
     operatorAccounts: emptyRemote(),
     operatorWorkspaces: emptyRemote(),
     operatorWorkspaceDetail: emptyRemote(),
+    operatorWorkspaceImagePolicy: emptyRemote(),
+    operatorWorkspaceImagePreview: emptyRemote(),
     operatorReconciliation: emptyRemote(),
     operatorHealth: emptyRemote(),
     operatorAnnouncements: emptyRemote()
@@ -182,6 +187,7 @@ export function useConsoleController() {
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
+    workspaceRuntimeImageReplacementCapability.reset();
     workspaceBudgetCapability.reset();
     gatewayUsageCapability.reset();
     billingCapability.reset();
@@ -365,6 +371,24 @@ export function useConsoleController() {
     mutationError
   });
   const support: SupportController = supportCapability;
+
+  const workspaceRuntimeImageReplacementCapability = useWorkspaceRuntimeImageReplacementController({
+    session,
+    workspaceId: selectedOperatorWorkspaceId,
+    preview: sources.operatorWorkspaceImagePreview.value,
+    currentMutationRequest,
+    refreshWorkspace: async (workspaceId) => {
+      if (!session) return;
+      await openOperatorWorkspace(workspaceId);
+    },
+    refreshPreview: async (workspaceId) => {
+      if (!session) return;
+      await loadOperatorWorkspaceImagePreview(requestGeneration.current, session, workspaceId);
+    },
+    flash,
+    mutationError
+  });
+  const workspaceRuntimeImageReplacement: WorkspaceRuntimeImageReplacementController = workspaceRuntimeImageReplacementCapability;
 
   const billingCapability = useBillingController({
     route: path === "/console" || path === "/console/overview"
@@ -570,6 +594,30 @@ export function useConsoleController() {
     }
   };
 
+  const loadOperatorWorkspaceImagePolicy = async (generation: number, activeSession: AuthSession) => {
+    beginSource("operatorWorkspaceImagePolicy");
+    try {
+      const result = await getOperatorWorkspaceRuntimeImagePolicy();
+      if (isRequestCurrent(generation, activeSession.user.id)) updateSource("operatorWorkspaceImagePolicy", { value: result, loading: false, error: "" });
+    } catch (error) {
+      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorWorkspaceImagePolicy", error, unavailableSource("control-plane"));
+    }
+  };
+
+  const loadOperatorWorkspaceImagePreview = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
+    beginSource("operatorWorkspaceImagePreview");
+    try {
+      const result = await getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId);
+      if (isRequestCurrent(generation, activeSession.user.id) && selectedOperatorWorkspaceIdRef.current === workspaceId) {
+        updateSource("operatorWorkspaceImagePreview", { value: result, loading: false, error: "" });
+      }
+    } catch (error) {
+      if (isRequestCurrent(generation, activeSession.user.id) && selectedOperatorWorkspaceIdRef.current === workspaceId) {
+        failSource("operatorWorkspaceImagePreview", error, unavailableSource("control-plane+fabric"));
+      }
+    }
+  };
+
   const loadOperatorReconciliation = async (generation: number, activeSession: AuthSession) => {
     beginSource("operatorReconciliation");
     try {
@@ -646,7 +694,10 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/admin/resources") {
-      await loadOperatorWorkspaces(generation, activeSession);
+      await Promise.all([
+        loadOperatorWorkspaces(generation, activeSession),
+        loadOperatorWorkspaceImagePolicy(generation, activeSession)
+      ]);
       return;
     }
     if (routePath === "/admin/announcements") {
@@ -819,12 +870,20 @@ export function useConsoleController() {
     selectedOperatorWorkspaceIdRef.current = workspaceId;
     setSelectedOperatorWorkspaceId(workspaceId);
     beginSource("operatorWorkspaceDetail");
+    beginSource("operatorWorkspaceImagePreview");
     try {
-      const result = await getOperatorWorkspace(workspaceId);
+      const [result, preview] = await Promise.all([
+        getOperatorWorkspace(workspaceId),
+        getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId)
+      ]);
       if (selectedOperatorWorkspaceIdRef.current !== workspaceId) return;
       updateSource("operatorWorkspaceDetail", { value: result, loading: false, error: "" });
+      updateSource("operatorWorkspaceImagePreview", { value: preview, loading: false, error: "" });
     } catch (error) {
-      if (selectedOperatorWorkspaceIdRef.current === workspaceId) failSource("operatorWorkspaceDetail", error, unavailableSource("control-plane+fabric+ledger"));
+      if (selectedOperatorWorkspaceIdRef.current === workspaceId) {
+        failSource("operatorWorkspaceDetail", error, unavailableSource("control-plane+fabric+ledger"));
+        failSource("operatorWorkspaceImagePreview", error, unavailableSource("control-plane+fabric"));
+      }
     }
   };
 
@@ -1048,6 +1107,7 @@ export function useConsoleController() {
     selectedOperatorWorkspaceId,
     setSelectedOperatorWorkspaceId,
     openOperatorWorkspace,
+    workspaceRuntimeImageReplacement,
     disableOperatorAccount,
     setOperatorWorkspacePurchaseEligibility,
     walletAdjustmentOperation: walletAdjustment.operation,

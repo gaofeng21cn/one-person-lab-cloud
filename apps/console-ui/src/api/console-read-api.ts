@@ -31,6 +31,9 @@ import type {
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
+  OperatorWorkspaceRuntimeImagePolicyDTO,
+  OperatorWorkspaceRuntimeImagePreviewDTO,
+  WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentOperationDTO,
   WalletAdjustmentRecoveryRequest,
   WalletAdjustmentRequest,
@@ -217,6 +220,38 @@ export function getOperatorWorkspaces(page = 1, pageSize = 20, signal?: AbortSig
 
 export function getOperatorWorkspace(workspaceId: string, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceDTO>> {
   return sourceGet<OperatorWorkspaceDTO>(`/api/operator/workspaces/${encodeURIComponent(workspaceId)}`, signal);
+}
+
+export function getOperatorWorkspaceRuntimeImagePolicy(signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>> {
+  return sourceGet<OperatorWorkspaceRuntimeImagePolicyDTO>("/api/operator/workspace-runtime-image-policy", signal);
+}
+
+export function getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId: string, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>> {
+  return sourceGet<OperatorWorkspaceRuntimeImagePreviewDTO>(`/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/preview`, signal);
+}
+
+export function createOperatorWorkspaceRuntimeImageReplacement(
+  workspaceId: string,
+  replacementImageDigest: string,
+  reason: string,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceRuntimeImageReplacementDTO> {
+  return postJson<unknown>(
+    `/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements`,
+    { replacementImageDigest, reason }, csrfToken, idempotencyKey
+  ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
+}
+
+export function getOperatorWorkspaceRuntimeImageReplacement(
+  workspaceId: string,
+  operationId: string,
+  signal?: AbortSignal
+): Promise<WorkspaceRuntimeImageReplacementDTO> {
+  return getJson<unknown>(
+    `/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/${encodeURIComponent(operationId)}`,
+    { signal }
+  ).then(decodeDto<WorkspaceRuntimeImageReplacementDTO>);
 }
 
 export function getOperatorReconciliation(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorReconciliationPageDTO>> {

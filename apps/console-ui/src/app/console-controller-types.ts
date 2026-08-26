@@ -19,6 +19,8 @@ import type {
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
+  OperatorWorkspaceRuntimeImagePolicyDTO,
+  OperatorWorkspaceRuntimeImagePreviewDTO,
   PlanId,
   PricingCatalogResponse,
   PricingPlan,
@@ -34,6 +36,7 @@ import type {
   WorkspacePricePreview,
   WorkspaceListData,
   WorkspaceRuntimeDTO,
+  WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
 
@@ -62,6 +65,8 @@ export interface ConsoleSources {
   operatorAccounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
   operatorWorkspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
   operatorWorkspaceDetail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
+  operatorWorkspaceImagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
+  operatorWorkspaceImagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
   operatorReconciliation: RemoteState<SourceEnvelope<OperatorReconciliationPageDTO>>;
   operatorHealth: RemoteState<SourceEnvelope<OperatorHealthDTO>>;
   operatorAnnouncements: RemoteState<SourceEnvelope<OperatorAnnouncementPageDTO>>;
@@ -124,6 +129,16 @@ export interface WorkspaceDeleteController {
   busy: boolean;
   issue: "" | "unavailable" | "unconfirmed";
   deleteCurrentWorkspace: () => Promise<void>;
+}
+
+export type WorkspaceRuntimeImageReplacementIssue = "" | "unavailable" | "unconfirmed" | "timeout";
+
+export interface WorkspaceRuntimeImageReplacementController {
+  operation: WorkspaceRuntimeImageReplacementDTO | null;
+  busy: boolean;
+  issue: WorkspaceRuntimeImageReplacementIssue;
+  replaceWorkspaceRuntimeImage: () => Promise<boolean>;
+  refreshWorkspaceRuntimeImageReplacement: () => Promise<void>;
 }
 
 export interface WorkspaceRenewalController {
