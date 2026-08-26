@@ -185,12 +185,12 @@ is selected and configured by the medopl instance, not by the portable product.
   Focused model tests cover intent reuse, input/account conflict, and
   recovery-key derivation.
 - The remaining broad Console controller has been mapped by capability before
-  another extraction. Billing/Receipt, Operator Account, and Announcement
-  Lifecycle retain explicit candidate owners, lifecycle/failure boundaries,
-  root state and intent seams, readback proof, reset boundaries, and real page
-  consumers in `docs/implementation-architecture.md`. Session, Router, global
-  toast, shared reads, route orchestration, and aggregate reset remain
-  Composition Root responsibilities.
+  another extraction. Operator Account and Announcement Lifecycle retain
+  explicit candidate owners, lifecycle/failure boundaries, root state and
+  intent seams, readback proof, reset boundaries, and real page consumers in
+  `docs/implementation-architecture.md`. Session, Router, global toast, shared
+  reads, route orchestration, and aggregate reset remain Composition Root
+  responsibilities.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET
@@ -207,6 +207,14 @@ is selected and configured by the medopl instance, not by the portable product.
   authoritative empty Key collection clears both projections, and Usage and
   Summary failures remain independent. Focused browser regressions are part of
   the ordinary local/PR gate.
+- Console Billing/Receipt now has one typed `useBillingController` query owner
+  for the billing view, Receipt list/detail remote state, selected Receipt ID,
+  opaque cursor stack, independent list/detail freshness, and route/session/
+  reset. Overview requests the latest 3 Receipts, while Billing requests 20 and
+  owns cursor navigation and detail selection. Ledger remains the Receipt
+  authority; Workspace terms continue to use the Workspace projection. The
+  broad root retains only Session, Router, error, and aggregate route/reset
+  composition for this capability.
 - Console Workspace Delete now has one `useWorkspaceDeleteController` owner for
   the stable delete intent, Delete-specific busy and issue state, Session and
   Workspace freshness, and final paged absence readback. A command response,

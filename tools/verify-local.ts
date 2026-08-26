@@ -35,6 +35,7 @@ export const databaseFreeGoTestSpecs = Object.freeze([
 export const localVerificationSteps = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
+  { name: "Billing browser tests", command: "npm", args: ["run", "test:browser:billing"] },
   { name: "Gateway usage browser tests", command: "npm", args: ["run", "test:browser:gateway-usage"] },
   { name: "Workspace lifecycle browser tests", command: "npm", args: ["run", "test:browser:workspace-lifecycle"] },
   { name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
