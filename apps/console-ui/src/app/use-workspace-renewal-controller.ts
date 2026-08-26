@@ -13,6 +13,7 @@ import {
   type WorkspaceRenewalIntent,
   type WorkspaceRenewalIssue
 } from "./workspace-renewal-controller-model.ts";
+import type { WorkspaceRenewalController } from "./console-controller-types.ts";
 
 interface WorkspaceRenewalDependencies {
   session: AuthSession | null;
@@ -24,10 +25,7 @@ interface WorkspaceRenewalDependencies {
   mutationError: (error: unknown) => string;
 }
 
-export interface WorkspaceRenewalCapability {
-  busy: boolean;
-  issue: WorkspaceRenewalIssue;
-  updateCurrentWorkspaceRenewal: (autoRenew: boolean) => Promise<boolean>;
+export interface WorkspaceRenewalCapability extends WorkspaceRenewalController {
   reset: () => void;
 }
 

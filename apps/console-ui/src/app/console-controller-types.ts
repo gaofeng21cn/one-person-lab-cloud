@@ -124,6 +124,12 @@ export interface WorkspaceDeleteController {
   deleteCurrentWorkspace: () => Promise<void>;
 }
 
+export interface WorkspaceRenewalController {
+  busy: boolean;
+  issue: "" | "unconfirmed";
+  updateCurrentWorkspaceRenewal: (autoRenew: boolean) => Promise<boolean>;
+}
+
 export interface SupportController {
   tickets: SupportTicketPageDTO | null;
   loading: boolean;

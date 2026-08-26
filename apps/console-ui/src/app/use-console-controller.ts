@@ -44,14 +44,14 @@ import {
   getWorkspaceGatewayBudget,
   getWorkspaces,
   getWorkspaceRuntimeStatus,
-  updateWorkspaceGatewayBudget,
-  updateWorkspaceRenewal,
+  updateWorkspaceGatewayBudget
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController } from "./console-controller-types.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
+import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
 import { useSupportController } from "./use-support-controller.ts";
@@ -62,11 +62,6 @@ type WorkspaceBudgetIntent = {
   keyId: string;
   signature: string;
   input: WorkspaceGatewayBudgetUpdateRequest;
-  idempotencyKey: string;
-};
-
-type WorkspaceRenewalIntent = {
-  autoRenew: boolean;
   idempotencyKey: string;
 };
 
@@ -208,7 +203,6 @@ export function useConsoleController() {
   const workspaceDetailRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
-  const workspaceRenewalIntents = useRef(new Map<string, WorkspaceRenewalIntent>());
   const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
   const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
@@ -249,6 +243,7 @@ export function useConsoleController() {
     workspaceLaunchCapability.reset();
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
+    workspaceRenewalCapability.reset();
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
     selectedUsageKeyIdRef.current = "";
@@ -269,7 +264,6 @@ export function useConsoleController() {
     setCommandBusy(false);
     setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
-    workspaceRenewalIntents.current.clear();
     workspaceBudgetBusyClaim.current = null;
     workspaceBudgetIntents.current.clear();
     workspaceDetailRequestGeneration.current += 1;
@@ -351,6 +345,36 @@ export function useConsoleController() {
     friendlyError
   });
   const workspaceDelete: WorkspaceDeleteController = workspaceDeleteCapability;
+
+  const workspaceRenewalCapability = useWorkspaceRenewalController({
+    session,
+    workspace: activeWorkspace,
+    activeWorkspaceId,
+    currentMutationRequest,
+    onWorkspaceReadback: (readback) => {
+      if (!readback.available || !readback.data) return;
+      const workspace = readback.data;
+      setSources((current) => {
+        const currentList = current.workspaces.value;
+        const workspaces = currentList?.available
+          ? {
+              ...current.workspaces,
+              value: {
+                ...currentList,
+                data: {
+                  ...currentList.data,
+                  items: currentList.data.items.map((item) => item.id === workspace.id ? workspace : item)
+                }
+              }
+            }
+          : current.workspaces;
+        return { ...current, workspaces, workspaceDetail: { value: readback, loading: false, error: "" } };
+      });
+    },
+    flash,
+    mutationError
+  });
+  const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
 
   const walletAdjustmentCapability = useWalletAdjustmentController({
     session,
@@ -462,10 +486,6 @@ export function useConsoleController() {
         updateSource("runtime", { value: unavailableSource("fabric"), loading: false, error: "" });
         updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
         return;
-      }
-      const renewalIntent = workspaceRenewalIntents.current.get(workspaceId);
-      if (renewalIntent?.autoRenew === detail.data.autoRenew) {
-        workspaceRenewalIntents.current.delete(workspaceId);
       }
       workspaceKeyId = detail.data.workspaceApiKeyId || "";
     } catch (error) {
@@ -819,77 +839,6 @@ export function useConsoleController() {
     if (!session || page < 1) return;
     const generation = requestGeneration.current;
     await loadWorkspaces(generation, session, page, 10);
-  };
-
-  const updateCurrentWorkspaceRenewal = async (autoRenew: boolean) => {
-    const detailSource = sources.workspaceDetail.value;
-    const workspace = detailSource?.available ? detailSource.data : null;
-    if (!session || !workspace || commandBusy || workspace.renewalStatus !== "active") return false;
-    const requestStillCurrent = currentMutationRequest();
-    const workspaceDetailGeneration = workspaceDetailRequestGeneration.current;
-    const workspaceStillCurrent = () => workspaceDetailGeneration === workspaceDetailRequestGeneration.current
-      && workspaceIdFromPath(window.location.pathname) === workspace.id;
-    let intent = workspaceRenewalIntents.current.get(workspace.id);
-    if (intent && intent.autoRenew !== autoRenew) {
-      flash("上次自动续费更新结果待确认，请按原设置重试", "danger");
-      return false;
-    }
-    if (!intent) {
-      intent = {
-        autoRenew,
-        idempotencyKey: `workspace-renewal:${workspace.id}:${crypto.randomUUID()}`
-      };
-      workspaceRenewalIntents.current.set(workspace.id, intent);
-    }
-    setCommandBusy(true);
-    try {
-      const response = await updateWorkspaceRenewal(workspace.id, { autoRenew }, session.csrfToken, intent.idempotencyKey);
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      if (response.autoRenew !== autoRenew || !response.renewalStatus.trim()
-        || [response.effectiveAfter, response.nextRenewalAt, response.paidThrough].some((value) => Number.isNaN(Date.parse(value)))) {
-        throw new Error("workspace_renewal_response_mismatch");
-      }
-      const readback = await findWorkspaceInPages(workspace.id);
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      if (!readback.available || !readback.data || readback.data.id !== workspace.id
-        || readback.data.autoRenew !== response.autoRenew || readback.data.paidThrough !== response.paidThrough
-        || readback.data.nextRenewalAt !== response.nextRenewalAt) {
-        throw new Error("workspace_renewal_readback_mismatch");
-      }
-      workspaceRenewalIntents.current.delete(workspace.id);
-      setSources((current) => {
-        const currentList = current.workspaces.value;
-        const workspaces = currentList?.available
-          ? {
-              ...current.workspaces,
-              value: {
-                ...currentList,
-                data: {
-                  ...currentList.data,
-                  items: currentList.data.items.map((item) => item.id === workspace.id ? readback.data : item)
-                }
-              }
-            }
-          : current.workspaces;
-        return {
-          ...current,
-          workspaces,
-          workspaceDetail: { value: readback, loading: false, error: "" }
-        };
-      });
-      flash(autoRenew ? "自动续费已开启" : "自动续费已关闭");
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      const status = error && typeof error === "object" && "status" in error
-        ? Number((error as { status?: number }).status)
-        : 0;
-      if (status > 0 && status < 500) workspaceRenewalIntents.current.delete(workspace.id);
-      flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
   };
 
   const updateWorkspaceBudget = async (input: WorkspaceGatewayBudgetUpdateRequest) => {
@@ -1274,7 +1223,9 @@ export function useConsoleController() {
     workspaceDeleteBusy: workspaceDelete.busy,
     workspaceDeleteIssue: workspaceDelete.issue,
     deleteCurrentWorkspace: workspaceDelete.deleteCurrentWorkspace,
-    updateCurrentWorkspaceRenewal,
+    workspaceRenewalBusy: workspaceRenewal.busy,
+    workspaceRenewalIssue: workspaceRenewal.issue,
+    updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
     support,
     workspaceSecrets,
     workspaceBudgetBusy,
