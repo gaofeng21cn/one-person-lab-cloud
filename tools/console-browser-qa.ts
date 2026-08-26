@@ -1386,6 +1386,8 @@ export async function runConsoleBrowserQa({
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-detail", name);
       if (name === "desktop") {
+        await page.clock.install();
+        await page.clock.pauseAt(new Date());
         const passwordRow = page.locator("dt", { hasText: "密码" }).locator("..");
         await passwordRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_PASSWORDS["ws-1"]);
@@ -1393,7 +1395,19 @@ export async function runConsoleBrowserQa({
         const keyRow = page.locator("dt", { hasText: "Workspace Key" }).locator("..");
         await keyRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_KEYS["9"]);
+        if (await page.getByText(WORKSPACE_PASSWORDS["ws-1"], { exact: true }).count()) {
+          throw new Error("console_browser_workspace_secret_mutual_exclusion_failed");
+        }
         await keyRow.getByRole("button", { name: "复制" }).click();
+        await page.clock.fastForward(59_999);
+        if (await page.getByText(WORKSPACE_KEYS["9"], { exact: true }).count() !== 1) {
+          throw new Error("console_browser_workspace_secret_expired_early");
+        }
+        await page.clock.fastForward(1);
+        if (await page.getByText(WORKSPACE_KEYS["9"], { exact: true }).count()) {
+          throw new Error("console_browser_workspace_secret_expiry_failed");
+        }
+        await page.clock.resume();
       }
 
       await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();

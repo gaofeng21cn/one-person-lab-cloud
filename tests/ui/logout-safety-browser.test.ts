@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { chromium } from "playwright";
 
+import type { RuntimeCredentialResponse } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
@@ -155,6 +156,81 @@ test("a late login response cannot restore an account or cancel logout", async (
     assert.equal(await page.getByText("late@example.com", { exact: true }).count(), 0);
     assert.equal(await page.getByText(CONSOLE_DEMO_CREDENTIALS.admin.email, { exact: true }).count(), 0);
     await page.getByRole("button", { name: "登录", exact: true }).waitFor({ state: "visible" });
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Workspace Secret controller rejects late reveal and refreshes after rotation", async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
+    await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
+    await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL(/\/console\/overview$/);
+    await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+
+    let releaseReveal: (() => void) | undefined;
+    const revealReleased = new Promise<void>((resolve) => { releaseReveal = resolve; });
+    let holdReveal: ((route: import("playwright").Route) => void) | undefined;
+    const revealHeld = new Promise<import("playwright").Route>((resolve) => { holdReveal = resolve; });
+    const lateResponse: RuntimeCredentialResponse = {
+      workspaceId: "ws-1",
+      access: {
+        account: "owner",
+        username: "owner",
+        password: "late-workspace-secret",
+        credentialStatus: "active",
+        credentialVersion: "late"
+      }
+    };
+    await page.route("**/api/workspaces/ws-1/runtime-credentials/reveal", async (route) => {
+      holdReveal?.(route);
+      await revealReleased;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(lateResponse)
+      });
+    });
+
+    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "密码" }).first();
+    await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+    await revealHeld;
+    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.waitForURL(/\/console\/workspaces$/);
+
+    releaseReveal?.();
+    await page.waitForTimeout(50);
+    assert.equal(await page.getByText(lateResponse.access.password, { exact: true }).count(), 0);
+
+    await page.getByRole("link", { name: /Pilot Workspace/ }).first().click();
+    await page.waitForURL(/\/console\/workspaces\/ws-1$/);
+    await page.unroute("**/api/workspaces/ws-1/runtime-credentials/reveal");
+    const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "密码" }).first();
+    await currentPasswordRow.getByRole("button", { name: "显示", exact: true }).click();
+    await currentPasswordRow.locator("code").waitFor({ state: "visible" });
+    const currentPassword = String(await currentPasswordRow.locator("code").textContent());
+    assert.ok(currentPassword && !currentPassword.includes("••"));
+    assert.notEqual(currentPassword, lateResponse.access.password);
+
+    const rotationReadback = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === "/api/workspaces" && url.searchParams.get("pageSize") === "50";
+    });
+    await page.getByRole("button", { name: "轮换密码", exact: true }).click();
+    await page.getByText("Workspace 凭证已轮换", { exact: true }).waitFor({ state: "visible" });
+    await rotationReadback;
+    await page.waitForFunction((previousPassword) => {
+      const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
+      const row = rows.find((candidate) => candidate.textContent?.includes("密码"));
+      const value = row?.querySelector("code")?.textContent || "";
+      return Boolean(value) && !value.includes("••") && value !== previousPassword;
+    }, currentPassword);
   } finally {
     await browser.close();
     await demo.close();

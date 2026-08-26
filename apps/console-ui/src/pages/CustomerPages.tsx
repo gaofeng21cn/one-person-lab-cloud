@@ -19,7 +19,7 @@ import {
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { WorkspaceLaunchController } from "../app/console-controller-types.ts";
+import type { WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -31,7 +31,8 @@ import type {
   SourceEnvelope,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
-  WorkspaceGatewayBudgetUpdateRequest
+  WorkspaceGatewayBudgetUpdateRequest,
+  WorkspaceRuntimeDTO
 } from "../api/dtos.ts";
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
@@ -555,6 +556,20 @@ function WorkspaceBudgetPanel({ controller }: { controller: ConsoleController })
   </section>;
 }
 
+function WorkspaceAccessRows({ controller, runtime }: {
+  controller: WorkspaceSecretController;
+  runtime: WorkspaceRuntimeDTO;
+}) {
+  const mount = runtime.checks.find((check) => check.name === "ready_pod_uses_retained_pvc");
+  const service = runtime.checks.find((check) => check.name !== "ready_pod_uses_retained_pvc" && check.name.includes("ready"));
+  const canOpen = runtime.status === "running" && runtime.ready && Boolean(runtime.url);
+  return <dl className="data-list"><div><dt>Runtime ready</dt><dd>{runtime.ready ? "是" : "否"}</dd></div><div><dt>挂载检查</dt><dd>{mount ? (mount.ok ? "通过" : "未通过") : "-"}</dd></div><div><dt>服务健康</dt><dd>{service ? (service.ok ? "通过" : "未通过") : runtime.ready ? "通过" : "-"}</dd></div><div><dt>Workspace URL</dt><dd>{runtime.url ? <a href={runtime.url} rel="noreferrer" target="_blank">{runtime.url}<ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div><div><dt>用户名</dt><dd>{runtime.access?.username || controller.credential?.username || "-"}</dd></div>
+    <SecretRow busy={controller.workspaceBusy} label="密码" onCopy={() => void controller.copyWorkspacePassword()} onHide={controller.clear} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.credential)} value={controller.credential?.password} />
+    <SecretRow busy={controller.gatewayKeyBusy} label="Workspace Key" onCopy={() => void controller.copyWorkspaceKey()} onHide={controller.clear} onReveal={() => void controller.revealWorkspaceKey()} revealed={Boolean(controller.gatewayKey)} value={controller.gatewayKey?.value} />
+    <div><dt>操作</dt><dd className="workspace-actions"><Button busy={controller.workspaceBusy} onClick={() => void controller.rotateWorkspacePassword()} variant="outline">轮换密码</Button><Button color="primary" disabled={!canOpen} onClick={() => runtime.url && window.open(runtime.url, "_blank", "noopener,noreferrer")}>打开 WebUI<ExternalLink aria-hidden size={16} /></Button></dd></div>
+  </dl>;
+}
+
 function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) {
   const workspaceSource = controller.sources.workspaceDetail.value;
   const runtime = sourceData(controller.sources.runtime.value);
@@ -569,16 +584,7 @@ function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) 
           {controller.workspaceDeleteIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="删除结果待确认" description="Workspace 权威列表尚未确认该 Workspace 已删除。" /> : null}
           <section className="panel workspace-access-panel"><div className="panel-title"><h2>访问与凭据</h2><span>Secret 60 秒后自动隐藏</span></div>
             <SourceState error={controller.sources.runtime.error} loading={controller.sources.runtime.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.runtime.value} unavailableTitle="Runtime 状态暂不可用">
-              {(runtimeData) => {
-                const mount = runtimeData.checks.find((check) => check.name === "ready_pod_uses_retained_pvc");
-                const service = runtimeData.checks.find((check) => check.name !== "ready_pod_uses_retained_pvc" && check.name.includes("ready"));
-                const canOpen = runtimeData.status === "running" && runtimeData.ready && Boolean(runtimeData.url);
-                return <dl className="data-list"><div><dt>Runtime ready</dt><dd>{runtimeData.ready ? "是" : "否"}</dd></div><div><dt>挂载检查</dt><dd>{mount ? (mount.ok ? "通过" : "未通过") : "-"}</dd></div><div><dt>服务健康</dt><dd>{service ? (service.ok ? "通过" : "未通过") : runtimeData.ready ? "通过" : "-"}</dd></div><div><dt>Workspace URL</dt><dd>{runtimeData.url ? <a href={runtimeData.url} rel="noreferrer" target="_blank">{runtimeData.url}<ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div><div><dt>用户名</dt><dd>{runtimeData.access?.username || controller.secrets.workspace?.username || "-"}</dd></div>
-                  <SecretRow busy={controller.workspaceSecretBusy} label="密码" onCopy={() => void controller.copyText(controller.secrets.workspace?.password, "Workspace 密码已复制")} onHide={controller.clearSecrets} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.secrets.workspace)} value={controller.secrets.workspace?.password} />
-                  <SecretRow busy={controller.gatewaySecretBusy} label="Workspace Key" onCopy={() => void controller.copyText(controller.secrets.apiKey?.value, "Workspace Key 已复制")} onHide={controller.clearSecrets} onReveal={() => void controller.revealWorkspaceKey()} revealed={Boolean(controller.secrets.apiKey)} value={controller.secrets.apiKey?.value} />
-                  <div><dt>操作</dt><dd className="workspace-actions"><Button busy={controller.workspaceSecretBusy} onClick={() => void controller.rotateWorkspacePassword()} variant="outline">轮换密码</Button><Button color="primary" disabled={!canOpen} onClick={() => runtimeData.url && window.open(runtimeData.url, "_blank", "noopener,noreferrer")}>打开 WebUI<ExternalLink aria-hidden size={16} /></Button></dd></div>
-                </dl>;
-              }}
+              {(runtimeData) => <WorkspaceAccessRows controller={controller.workspaceSecrets} runtime={runtimeData} />}
             </SourceState>
           </section>
           <WorkspaceBudgetPanel controller={controller} />
@@ -686,7 +692,7 @@ function ReceiptCursorNotice({ controller }: { controller: ConsoleController }) 
 
 function ReceiptDetail({ controller, receipt }: { controller: ConsoleController; receipt: BillingReceipt | null }) {
   const components = receipt?.components;
-  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={() => { controller.clearReceiptDetail(); controller.clearSecrets(); }} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.sources.receiptDetail.error} loading={controller.sources.receiptDetail.loading} onRetry={() => controller.selectedReceiptId && void controller.selectReceipt(controller.selectedReceiptId)} source={controller.sources.receiptDetail.value} unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>Receipt ID</dt><dd>{detail.receiptId}</dd></div><div><dt>类型</dt><dd>{receiptLabel(detail.type)}</dd></div><div><dt>状态</dt><dd>{statusLabel(detail.status)}</dd></div><div><dt>创建时间</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>Workspace ID</dt><dd>{detail.workspaceId || "-"}</dd></div><div><dt>总额</dt><dd>{formatUsdMicros(detail.totalUsdMicros ?? detail.chargeUsdMicros)}</dd></div>{detail.refundUsdMicros !== undefined ? <div><dt>退款额</dt><dd>{formatUsdMicros(detail.refundUsdMicros)}</dd></div> : null}<div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>价格版本</dt><dd>{detail.priceVersion || "-"}</dd></div><div><dt>计算组成金额</dt><dd>{components?.compute ? formatUsdMicros(components.compute.chargeUsdMicros) : "-"}</dd></div><div><dt>存储组成金额和容量</dt><dd>{components?.storage ? `${formatUsdMicros(components.storage.chargeUsdMicros)} · ${components.storage.sizeGb} GB` : "-"}</dd></div><div><dt>扣款引用</dt><dd>{detail.chargeReference || "-"}</dd></div></dl>}</SourceState></section>;
+  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.clearReceiptDetail} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.sources.receiptDetail.error} loading={controller.sources.receiptDetail.loading} onRetry={() => controller.selectedReceiptId && void controller.selectReceipt(controller.selectedReceiptId)} source={controller.sources.receiptDetail.value} unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>Receipt ID</dt><dd>{detail.receiptId}</dd></div><div><dt>类型</dt><dd>{receiptLabel(detail.type)}</dd></div><div><dt>状态</dt><dd>{statusLabel(detail.status)}</dd></div><div><dt>创建时间</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>Workspace ID</dt><dd>{detail.workspaceId || "-"}</dd></div><div><dt>总额</dt><dd>{formatUsdMicros(detail.totalUsdMicros ?? detail.chargeUsdMicros)}</dd></div>{detail.refundUsdMicros !== undefined ? <div><dt>退款额</dt><dd>{formatUsdMicros(detail.refundUsdMicros)}</dd></div> : null}<div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>价格版本</dt><dd>{detail.priceVersion || "-"}</dd></div><div><dt>计算组成金额</dt><dd>{components?.compute ? formatUsdMicros(components.compute.chargeUsdMicros) : "-"}</dd></div><div><dt>存储组成金额和容量</dt><dd>{components?.storage ? `${formatUsdMicros(components.storage.chargeUsdMicros)} · ${components.storage.sizeGb} GB` : "-"}</dd></div><div><dt>扣款引用</dt><dd>{detail.chargeReference || "-"}</dd></div></dl>}</SourceState></section>;
 }
 
 function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: ConsoleController }) {

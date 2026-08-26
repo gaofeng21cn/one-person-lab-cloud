@@ -29,7 +29,6 @@ import {
   provisionOperatorAccount,
   publishOperatorAnnouncement,
   recoverWalletAdjustment,
-  revealGatewayKey,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand,
   withdrawOperatorAnnouncement
 } from "../api/console-read-api.ts";
@@ -54,18 +53,16 @@ import {
   getWorkspaceGatewayBudget,
   getWorkspaces,
   getWorkspaceRuntimeStatus,
-  revealWorkspaceCredentials,
-  rotateWorkspaceCredentials,
   updateWorkspaceGatewayBudget,
   updateWorkspaceRenewal,
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSecrets, ConsoleSources, GlobalSlide, RemoteState, WorkspaceLaunchController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
+import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 
-const secretLifetimeMs = 60_000;
 const operatorPageSize = 20;
 
 type WorkspaceBudgetIntent = {
@@ -202,9 +199,6 @@ export function useConsoleController() {
   const [usagePeriod, setUsagePeriod] = useState<GatewayUsagePeriod>("month");
   const [usagePage, setUsagePage] = useState(1);
   const [workspaceDeleteIssue, setWorkspaceDeleteIssue] = useState<"" | "unavailable" | "unconfirmed">("");
-  const [secrets, setSecrets] = useState<ConsoleSecrets>({ apiKey: null, workspace: null });
-  const [workspaceSecretBusy, setWorkspaceSecretBusy] = useState(false);
-  const [gatewaySecretBusy, setGatewaySecretBusy] = useState(false);
   const [workspaceBudgetBusy, setWorkspaceBudgetBusy] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
@@ -216,7 +210,6 @@ export function useConsoleController() {
 
   const requestGeneration = useRef(0);
   const sessionGeneration = useRef(0);
-  const secretRequestGeneration = useRef(0);
   const loginAttemptGeneration = useRef(0);
   const loginAbortController = useRef<AbortController | null>(null);
   const logoutAttemptGeneration = useRef(0);
@@ -231,10 +224,8 @@ export function useConsoleController() {
   const usageRequestGeneration = useRef(0);
   const workspaceDetailRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
-  const secretTimer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
   const workspaceDeleteIntent = useRef<{ workspaceId: string; idempotencyKey: string } | null>(null);
-  const runtimeRotationIntent = useRef<{ workspaceId: string; idempotencyKey: string } | null>(null);
   const workspaceRenewalIntents = useRef(new Map<string, WorkspaceRenewalIntent>());
   const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
   const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
@@ -264,18 +255,6 @@ export function useConsoleController() {
     toastTimer.current = window.setTimeout(() => setToast({ text: "", tone: "good" }), 3200);
   };
 
-  const clearSecrets = () => {
-    secretRequestGeneration.current += 1;
-    if (secretTimer.current) window.clearTimeout(secretTimer.current);
-    secretTimer.current = undefined;
-    setSecrets({ apiKey: null, workspace: null });
-  };
-
-  const armSecretTimeout = () => {
-    if (secretTimer.current) window.clearTimeout(secretTimer.current);
-    secretTimer.current = window.setTimeout(clearSecrets, secretLifetimeMs);
-  };
-
   const clearReceiptDetail = () => {
     receiptDetailRequestGeneration.current += 1;
     selectedReceiptIdRef.current = "";
@@ -284,7 +263,7 @@ export function useConsoleController() {
   };
 
   const resetConsoleState = () => {
-    clearSecrets();
+    workspaceSecretCapability.reset();
     setSources(initialSources());
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
@@ -314,7 +293,6 @@ export function useConsoleController() {
     setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
     workspaceDeleteIntent.current = null;
-    runtimeRotationIntent.current = null;
     workspaceRenewalIntents.current.clear();
     workspaceBudgetBusyClaim.current = null;
     workspaceBudgetIntents.current.clear();
@@ -355,6 +333,28 @@ export function useConsoleController() {
     const userId = sessionRef.current?.user.id;
     return () => generation === sessionGeneration.current && userId === sessionRef.current?.user.id;
   };
+
+  const activeWorkspaceId = workspaceIdFromPath(path);
+  const activeWorkspaceSource = sources.workspaceDetail.value;
+  const activeWorkspace = activeWorkspaceSource?.available
+    && activeWorkspaceSource.data?.id === activeWorkspaceId
+    ? activeWorkspaceSource.data
+    : null;
+
+  const workspaceSecretCapability = useWorkspaceSecretController({
+    session,
+    workspace: activeWorkspace,
+    activeWorkspaceId,
+    currentMutationRequest,
+    refreshWorkspaceDetail: async (workspaceId) => {
+      if (!session) return;
+      await loadWorkspaceDetail(requestGeneration.current, session, workspaceId);
+    },
+    flash,
+    friendlyError,
+    mutationError
+  });
+  const workspaceSecrets: WorkspaceSecretController = workspaceSecretCapability;
 
   const workspaceLaunchCapability = useWorkspaceLaunchController({
     session,
@@ -691,7 +691,7 @@ export function useConsoleController() {
   useEffect(() => {
     if (path !== "/login") invalidateLoginAttempt();
     const generation = ++requestGeneration.current;
-    clearSecrets();
+    workspaceSecretCapability.clear();
     setWorkspaceDeleteIssue("");
     setSidebarOpen(false);
     setGlobalSlide("");
@@ -741,7 +741,6 @@ export function useConsoleController() {
     logoutInFlight.current = false;
     requestGeneration.current += 1;
     sessionGeneration.current += 1;
-    clearSecrets();
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
   }, []);
 
@@ -806,14 +805,13 @@ export function useConsoleController() {
   const refreshCurrentPage = async () => {
     if (!session) return;
     const generation = ++requestGeneration.current;
-    clearSecrets();
+    workspaceSecretCapability.clear();
     await loadRoute(generation, session, path);
   };
 
   const changeWorkspacePage = async (page: number) => {
     if (!session || page < 1) return;
     const generation = requestGeneration.current;
-    clearSecrets();
     await loadWorkspaces(generation, session, page, 10);
   };
 
@@ -1035,70 +1033,6 @@ export function useConsoleController() {
     }
   };
 
-  const revealWorkspacePassword = async () => {
-    const workspace = sources.workspaceDetail.value?.available ? sources.workspaceDetail.value.data : null;
-    if (!session || !workspace || workspaceSecretBusy) return;
-    clearSecrets();
-    const activeGeneration = ++secretRequestGeneration.current;
-    setWorkspaceSecretBusy(true);
-    try {
-      const response = await revealWorkspaceCredentials(workspace.id, session.csrfToken);
-      if (activeGeneration !== secretRequestGeneration.current || path !== window.location.pathname || workspace.id !== workspaceIdFromPath(window.location.pathname)) return;
-      setSecrets({ apiKey: null, workspace: response.access });
-      armSecretTimeout();
-    } catch (error) {
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (activeGeneration === secretRequestGeneration.current) setWorkspaceSecretBusy(false);
-    }
-  };
-
-  const revealWorkspaceKey = async () => {
-    const workspace = sources.workspaceDetail.value?.available ? sources.workspaceDetail.value.data : null;
-    if (!session || !workspace?.workspaceApiKeyId || gatewaySecretBusy) return;
-    clearSecrets();
-    const activeGeneration = ++secretRequestGeneration.current;
-    setGatewaySecretBusy(true);
-    try {
-      const response = await revealGatewayKey(workspace.workspaceApiKeyId, session.csrfToken);
-      if (activeGeneration !== secretRequestGeneration.current || path !== window.location.pathname) return;
-      if (!response.available) throw new Error("gateway_key_unavailable");
-      setSecrets({ apiKey: response.data, workspace: null });
-      armSecretTimeout();
-    } catch (error) {
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (activeGeneration === secretRequestGeneration.current) setGatewaySecretBusy(false);
-    }
-  };
-
-  const rotateWorkspacePassword = async () => {
-    const workspace = sources.workspaceDetail.value?.available ? sources.workspaceDetail.value.data : null;
-    if (!session || !workspace || workspaceSecretBusy) return;
-    const requestStillCurrent = currentMutationRequest();
-    if (!runtimeRotationIntent.current || runtimeRotationIntent.current.workspaceId !== workspace.id) {
-      runtimeRotationIntent.current = { workspaceId: workspace.id, idempotencyKey: `runtime-credential:${crypto.randomUUID()}` };
-    }
-    clearSecrets();
-    const activeGeneration = ++secretRequestGeneration.current;
-    setWorkspaceSecretBusy(true);
-    try {
-      const response = await rotateWorkspaceCredentials(workspace.id, session.csrfToken, runtimeRotationIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      runtimeRotationIntent.current = null;
-      if (activeGeneration !== secretRequestGeneration.current || workspace.id !== workspaceIdFromPath(window.location.pathname)) return;
-      setSecrets({ apiKey: null, workspace: response.access });
-      armSecretTimeout();
-      flash("Workspace 凭证已轮换");
-      await loadWorkspaceDetail(requestGeneration.current, session, workspace.id);
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    } finally {
-      if (requestStillCurrent() && activeGeneration === secretRequestGeneration.current) setWorkspaceSecretBusy(false);
-    }
-  };
-
   const copyText = async (value: string | undefined, message: string) => {
     if (!value) return;
     try {
@@ -1216,7 +1150,6 @@ export function useConsoleController() {
 
   const chooseUsageKey = async (keyId: string) => {
     if (!session) return;
-    clearSecrets();
     selectedUsageKeyIdRef.current = keyId;
     setSelectedUsageKeyId(keyId);
     await loadUsage(requestGeneration.current, session, keyId, 1, usagePeriod);
@@ -1532,15 +1465,9 @@ export function useConsoleController() {
     supportError,
     loadSupportTickets,
     createSupportMapping,
-    secrets,
-    clearSecrets,
-    workspaceSecretBusy,
-    gatewaySecretBusy,
+    workspaceSecrets,
     workspaceBudgetBusy,
     updateWorkspaceBudget,
-    revealWorkspacePassword,
-    revealWorkspaceKey,
-    rotateWorkspacePassword,
     copyText,
     billingView,
     setBillingView,
