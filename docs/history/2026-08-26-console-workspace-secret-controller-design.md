@@ -82,7 +82,8 @@ and on unmount.
 ## Invariants
 
 - At most one Secret kind is visible at a time.
-- A revealed Secret is cleared after exactly 60 seconds unless cleared earlier.
+- A reveal arms one `60,000ms` timer whose callback clears the Secret unless it
+  was cleared earlier.
 - Route, Session, selected Workspace, logout/reset, and unmount changes clear
   the Secret and invalidate pending completions.
 - A completion from an invalidated request cannot restore cleared Secret data

@@ -36,6 +36,10 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-26-console-workspace-launch-controller.md):
   the completed browser Launch lifecycle Owner and narrow view-consumer
   migration retained as provenance.
+- [Console Workspace Secret Controller design, 2026-08-26](./2026-08-26-console-workspace-secret-controller-design.md)
+  and [implementation plan](./2026-08-26-console-workspace-secret-controller.md):
+  the completed ephemeral Workspace access-secret lifecycle Owner, reset
+  boundary, and narrow view-consumer migration retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.
