@@ -143,13 +143,21 @@ test("Customer Announcement refreshes the current list scope after an Overview c
   const commandHeld = deferred();
   const releaseCommand = deferred();
   const commandSettled = deferred();
+  const currentScopeRefreshStarted = deferred();
+  let listReads = 0;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route("**/api/announcements?*", async (route) => {
       const pageSize = Number(new URL(route.request().url()).searchParams.get("pageSize"));
-      await fulfill(route, announcementPage(pageSize === 3
-        ? [target]
-        : [announcement("announcement-list", "List current")], pageSize));
+      if (pageSize === 3) {
+        await fulfill(route, announcementPage([target], pageSize));
+        return;
+      }
+      listReads += 1;
+      if (listReads === 2) currentScopeRefreshStarted.resolve();
+      await fulfill(route, announcementPage([
+        announcement("announcement-list", listReads === 1 ? "List current" : "List refreshed")
+      ], pageSize));
     });
     await page.route("**/api/announcements/announcement-overview/read", async (route) => {
       commandHeld.resolve();
@@ -166,8 +174,10 @@ test("Customer Announcement refreshes the current list scope after an Overview c
 
     releaseCommand.resolve();
     await commandSettled.promise;
-    await settle(page);
-    assert.equal(await announcementCard(page, "List current").count(), 1);
+    await currentScopeRefreshStarted.promise;
+    await announcementCard(page, "List refreshed").waitFor({ state: "visible" });
+    assert.equal(listReads, 2);
+    assert.equal(await announcementCard(page, "List current").count(), 0);
   } finally {
     releaseCommand.resolve();
     await browser.close();
@@ -222,8 +232,10 @@ test("Customer Announcement does not downgrade a valid receipt when projection r
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   const target = announcement("announcement-refresh", "Refresh failure");
-  const keys: string[] = [];
-  let projection = target;
+  const other = announcement("announcement-refresh-other", "Follow-up read");
+  const refreshFailed = deferred();
+  const writes: string[] = [];
+  let projection = [target, other];
   let failRefresh = false;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -231,25 +243,32 @@ test("Customer Announcement does not downgrade a valid receipt when projection r
       const pageSize = Number(new URL(route.request().url()).searchParams.get("pageSize"));
       if (pageSize === 20 && failRefresh) {
         failRefresh = false;
-        return route.abort("failed");
+        await route.abort("failed");
+        refreshFailed.resolve();
+        return;
       }
-      await fulfill(route, announcementPage([projection], pageSize));
+      await fulfill(route, announcementPage(projection, pageSize));
     });
-    await page.route("**/api/announcements/announcement-refresh/read", async (route) => {
-      keys.push(route.request().headers()["idempotency-key"] || "");
-      projection = { ...target, read: true };
-      failRefresh = true;
-      await fulfill(route, receipt(target.id));
+    await page.route("**/api/announcements/*/read", async (route) => {
+      const announcementId = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-2) || "");
+      writes.push(announcementId);
+      projection = projection.map((item) => item.id === announcementId ? { ...item, read: true } : item);
+      if (announcementId === target.id) failRefresh = true;
+      await fulfill(route, receipt(announcementId));
     });
 
     await login(page, demo.origin);
     await openAnnouncementList(page);
     await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
+    await refreshFailed.promise;
+    await settle(page);
     await announcementCard(page, target.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).count(), 0);
     assert.equal(await page.locator(".toast").count(), 0);
 
-    assert.equal(keys.length, 1);
-    assert.ok(keys[0]);
+    await announcementCard(page, other.title).getByRole("button", { name: "标记已读", exact: true }).click();
+    await announcementCard(page, other.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(writes, [target.id, other.id]);
   } finally {
     await browser.close();
     await demo.close();
@@ -260,15 +279,28 @@ test("Customer Announcement retains its intent until receipt identity matches an
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   const target = announcement("announcement-mismatch", "Mismatch read");
+  const other = announcement("announcement-mismatch-other", "Mismatch follow-up");
+  const conflictingReadbackCompleted = deferred();
   const keys: string[] = [];
-  let projection = target;
+  let listReads = 0;
+  let projection = [target, other];
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/announcements?*", (route) => fulfill(route, announcementPage([projection], 20)));
-    await page.route("**/api/announcements/announcement-mismatch/read", async (route) => {
-      keys.push(route.request().headers()["idempotency-key"] || "");
-      if (keys.length === 1) return fulfill(route, receipt("announcement-other"));
-      await fulfill(route, receipt(target.id));
+    await page.route("**/api/announcements?*", async (route) => {
+      const pageSize = Number(new URL(route.request().url()).searchParams.get("pageSize"));
+      if (pageSize === 20) listReads += 1;
+      await fulfill(route, announcementPage(projection, pageSize));
+      if (pageSize === 20 && listReads === 2) conflictingReadbackCompleted.resolve();
+    });
+    await page.route("**/api/announcements/*/read", async (route) => {
+      const announcementId = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-2) || "");
+      if (announcementId === target.id) {
+        keys.push(route.request().headers()["idempotency-key"] || "");
+        if (keys.length === 1) return fulfill(route, receipt("announcement-other"));
+      } else {
+        projection = projection.map((item) => ({ ...item, read: true }));
+      }
+      await fulfill(route, receipt(announcementId));
     });
 
     await login(page, demo.origin);
@@ -276,14 +308,81 @@ test("Customer Announcement retains its intent until receipt identity matches an
     const read = () => announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
     await read();
     await page.getByRole("status").waitFor({ state: "visible" });
+    await page.waitForFunction((title) => {
+      const card = [...document.querySelectorAll<HTMLElement>(".announcement-item")]
+        .find((item) => item.textContent?.includes(title));
+      const button = card?.querySelector<HTMLButtonElement>("button");
+      return button && !button.disabled;
+    }, target.title);
     await read();
-    await page.getByRole("status").waitFor({ state: "visible" });
+    await conflictingReadbackCompleted.promise;
+    await settle(page);
     await announcementCard(page, target.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).count(), 0);
+
+    await announcementCard(page, other.title).getByRole("button", { name: "标记已读", exact: true }).click();
+    await announcementCard(page, other.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(keys.length, 2);
     assert.ok(keys[0]);
     assert.equal(keys[1], keys[0]);
   } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Customer Announcement ordinary refresh cannot supersede and downgrade a durable read receipt", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const target = announcement("announcement-refresh-race", "Refresh race");
+  const mutationReadbackHeld = deferred();
+  const releaseMutationReadback = deferred();
+  const mutationReadbackSettled = deferred();
+  const ordinaryRefreshCompleted = deferred();
+  let listReads = 0;
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/announcements?*", async (route) => {
+      const pageSize = Number(new URL(route.request().url()).searchParams.get("pageSize"));
+      if (pageSize !== 20) {
+        await fulfill(route, announcementPage([target], pageSize));
+        return;
+      }
+
+      listReads += 1;
+      if (listReads === 2) {
+        mutationReadbackHeld.resolve();
+        await releaseMutationReadback.promise;
+        await fulfill(route, announcementPage([target], pageSize));
+        mutationReadbackSettled.resolve();
+        return;
+      }
+      await fulfill(route, announcementPage([target], pageSize));
+      if (listReads === 3) ordinaryRefreshCompleted.resolve();
+    });
+    await page.route("**/api/announcements/announcement-refresh-race/read", (route) => fulfill(route, receipt(target.id)));
+
+    await login(page, demo.origin);
+    await openAnnouncementList(page);
+    await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
+    await mutationReadbackHeld.promise;
+    await announcementCard(page, target.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
+
+    await page.locator(".announcements-page").getByRole("button", { name: "刷新", exact: true }).click();
+    await ordinaryRefreshCompleted.promise;
+    await settle(page);
+    assert.equal(await announcementCard(page, target.title).getByText("已读", { exact: true }).count(), 1);
+    assert.equal(await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).count(), 0);
+
+    releaseMutationReadback.resolve();
+    await mutationReadbackSettled.promise;
+    await settle(page);
+    assert.equal(listReads, 3);
+    assert.equal(await announcementCard(page, target.title).getByText("已读", { exact: true }).count(), 1);
+    assert.equal(await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).count(), 0);
+  } finally {
+    releaseMutationReadback.resolve();
     await browser.close();
     await demo.close();
   }
@@ -340,9 +439,12 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   const target = announcement("announcement-session", "Session read");
-  const requestHeld = deferred();
-  const releaseRequest = deferred();
-  const requestSettled = deferred();
+  const oldRequestHeld = deferred();
+  const releaseOldRequest = deferred();
+  const oldRequestSettled = deferred();
+  const newRequestHeld = deferred();
+  const releaseNewRequest = deferred();
+  const newRequestSettled = deferred();
   const keys: string[] = [];
   let projection = target;
   try {
@@ -354,19 +456,22 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
     await page.route("**/api/announcements/announcement-session/read", async (route) => {
       keys.push(route.request().headers()["idempotency-key"] || "");
       if (keys.length === 1) {
-        requestHeld.resolve();
-        await releaseRequest.promise;
+        oldRequestHeld.resolve();
+        await releaseOldRequest.promise;
         await fulfill(route, receipt(target.id));
-        requestSettled.resolve();
+        oldRequestSettled.resolve();
         return;
       }
+      newRequestHeld.resolve();
+      await releaseNewRequest.promise;
       projection = { ...target, read: true };
       await fulfill(route, receipt(target.id));
+      newRequestSettled.resolve();
     });
 
     await login(page, demo.origin);
     await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
-    await requestHeld.promise;
+    await oldRequestHeld.promise;
     await page.getByRole("button", { name: "打开账号菜单", exact: true }).click();
     await page.getByRole("complementary", { name: "Account Settings" }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForFunction(() => window.location.pathname === "/");
@@ -380,10 +485,18 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
     await read.waitFor({ state: "visible" });
     assert.equal(await read.isDisabled(), false);
     await read.click();
-    await announcementCard(page, target.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
+    await newRequestHeld.promise;
+    assert.equal(await read.isDisabled(), true);
+    assert.equal(keys.length, 2);
 
-    releaseRequest.resolve();
-    await requestSettled.promise;
+    releaseOldRequest.resolve();
+    await oldRequestSettled.promise;
+    await settle(page);
+    assert.equal(await read.isDisabled(), true);
+    assert.equal(keys.length, 2);
+
+    releaseNewRequest.resolve();
+    await newRequestSettled.promise;
     await announcementCard(page, target.title).getByText("已读", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(keys.length, 2);
@@ -391,7 +504,8 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
     assert.ok(keys[1]);
     assert.notEqual(keys[1], keys[0]);
   } finally {
-    releaseRequest.resolve();
+    releaseOldRequest.resolve();
+    releaseNewRequest.resolve();
     await browser.close();
     await demo.close();
   }

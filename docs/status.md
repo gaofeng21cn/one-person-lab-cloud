@@ -220,10 +220,11 @@ is selected and configured by the medopl instance, not by the portable product.
 - Console Customer Announcement Read now has one
   `useCustomerAnnouncementController` owner for the active published
   projection, Overview/list query scopes, per-announcement unresolved read
-  intents, the in-flight claim and busy projection, route/Session/query
-  freshness, typed receipt validation and projection, current-scope refresh,
-  and reset. Customer overview and announcements pages consume the typed
-  capability. Overview remains limited to 3 items and the list to 20. A valid
+  intents, the in-flight claim and busy projection, Session-confirmed receipt
+  IDs, route/Session/query freshness, typed receipt validation and projection,
+  current-scope refresh, and reset. Customer overview and announcements pages
+  consume the typed capability. Overview remains limited to 3 items and the
+  list to 20. A valid
   Control Plane receipt completes the durable read fact; refresh failure cannot
   downgrade it, target absence is valid in a bounded active projection, and a
   visible `read=false` conflict cannot commit. Focused model and browser tests

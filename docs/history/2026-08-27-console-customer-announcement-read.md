@@ -78,4 +78,3 @@
 3. Run specification and code-quality reviews; resolve all findings.
 4. Commit and prepare a PR. Do not run the PostgreSQL/full gate because no
    persistence or cross-service contract changes.
-

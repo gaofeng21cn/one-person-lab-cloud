@@ -49,3 +49,13 @@ export function announcementReadbackMatches(page: AnnouncementPageDTO, announcem
   const announcement = page.items.find((candidate) => candidate.id === announcementId);
   return !announcement || announcement.read;
 }
+
+export function announcementReadbackPreservesReceipts(
+  page: AnnouncementPageDTO,
+  confirmedAnnouncementIds: Iterable<string>
+) {
+  for (const announcementId of confirmedAnnouncementIds) {
+    if (!announcementReadbackMatches(page, announcementId)) return false;
+  }
+  return true;
+}
