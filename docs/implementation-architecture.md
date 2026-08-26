@@ -205,6 +205,14 @@ dependencies and owns its own command intent, busy semantics, local freshness,
 authoritative readback, and reset. It must not receive the complete root
 controller, root setters, or another capability's internal state.
 
+The Composition Root owns independent monotonic read generations for Runtime
+and monotonic projection leases for `workspaceDetail` and `workspaceBudget`.
+Renewal and Budget controllers may commit their typed
+owner readback only while the corresponding lease is current; a successful
+commit invalidates older route reads, while a newer route read invalidates an
+older mutation completion. Separate leases keep the two source lifecycles from
+cancelling each other, and neither lease can cancel a Runtime read.
+
 This map makes the current coupling explicit. `commandBusy` now remains only
 with operator Account provisioning; Workspace Delete and Renewal no longer
 share it. `findWorkspaceInPages` is a thin API adapter used independently by
@@ -232,7 +240,9 @@ requires the authoritative Workspace projection to match `autoRenew`,
 scopes its intent and readback to the exact Workspace Gateway Key. The three
 controllers have independent busy, freshness, failure, and reset state; the
 Workspace detail page only cross-disables Delete and Renewal while either
-conflicting command is active.
+conflicting command is active. Navigation invalidates active requests and busy
+claims without deleting unresolved per-Workspace intents; Session replacement
+is the boundary that clears all three controllers.
 
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires

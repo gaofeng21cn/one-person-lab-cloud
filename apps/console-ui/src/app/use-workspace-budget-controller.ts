@@ -18,7 +18,7 @@ import {
   workspaceBudgetResultMatchesInput,
   type WorkspaceBudgetIntent
 } from "./workspace-budget-controller-model.ts";
-import type { WorkspaceBudgetController } from "./console-controller-types.ts";
+import type { WorkspaceBudgetController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 
 interface WorkspaceBudgetDependencies {
   session: AuthSession | null;
@@ -26,6 +26,7 @@ interface WorkspaceBudgetDependencies {
   budget: SourceEnvelope<WorkspaceGatewayBudgetDTO> | null;
   activeWorkspaceId: string;
   currentMutationRequest: () => () => boolean;
+  workspaceBudgetProjectionLease: () => WorkspaceSourceProjectionLease;
   updateBudgetSource: (value: SourceEnvelope<WorkspaceGatewayBudgetDTO>) => void;
   flash: (text: string, tone?: "good" | "danger") => void;
   mutationError: (error: unknown) => string;
@@ -41,13 +42,14 @@ export function useWorkspaceBudgetController({
   budget,
   activeWorkspaceId,
   currentMutationRequest,
+  workspaceBudgetProjectionLease,
   updateBudgetSource,
   flash,
   mutationError
 }: WorkspaceBudgetDependencies): WorkspaceBudgetCapability {
   const [busy, setBusy] = useState(false);
   const requestGeneration = useRef(0);
-  const intent = useRef<WorkspaceBudgetIntent | null>(null);
+  const intents = useRef(new Map<string, WorkspaceBudgetIntent>());
   const busyClaim = useRef<symbol | null>(null);
   const scope = useRef({
     userId: session?.user.id || "",
@@ -62,7 +64,7 @@ export function useWorkspaceBudgetController({
 
   const reset = useCallback(() => {
     requestGeneration.current += 1;
-    intent.current = null;
+    intents.current.clear();
     busyClaim.current = null;
     setBusy(false);
   }, []);
@@ -73,11 +75,12 @@ export function useWorkspaceBudgetController({
   }, [reset, session?.csrfToken, session?.user.id]);
 
   useEffect(() => {
-    reset();
-    return reset;
-  }, [activeWorkspaceId, reset]);
+    requestGeneration.current += 1;
+    busyClaim.current = null;
+    setBusy(false);
+  }, [activeWorkspaceId]);
 
-  const requestIsCurrent = useCallback((
+  const requestOwnsActiveScope = useCallback((
     generation: number,
     requestStillCurrent: () => boolean,
     userId: string,
@@ -88,6 +91,17 @@ export function useWorkspaceBudgetController({
     && scope.current.userId === userId
     && scope.current.csrfToken === csrfToken
     && scope.current.workspaceId === workspaceId, []);
+
+  const requestIsCurrent = useCallback((
+    generation: number,
+    requestStillCurrent: () => boolean,
+    projectionLease: WorkspaceSourceProjectionLease,
+    userId: string,
+    csrfToken: string,
+    workspaceId: string
+  ) => projectionLease.isCurrent()
+    && requestOwnsActiveScope(generation, requestStillCurrent, userId, csrfToken, workspaceId),
+  [requestOwnsActiveScope]);
 
   const update = useCallback(async (input: WorkspaceGatewayBudgetUpdateRequest): Promise<boolean> => {
     const currentWorkspace = workspace;
@@ -100,22 +114,23 @@ export function useWorkspaceBudgetController({
     const workspaceId = currentWorkspace.id;
     const keyId = currentBudget.data.keyId;
     const requestStillCurrent = currentMutationRequest();
+    const projectionLease = workspaceBudgetProjectionLease();
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     const generation = ++requestGeneration.current;
+    const currentIntent = intents.current.get(workspaceId) ?? null;
     const nextIntent = resolveWorkspaceBudgetIntent(
-      intent.current,
+      currentIntent,
       workspaceId,
       keyId,
       input,
       () => `workspace-gateway-budget:${workspaceId}:${crypto.randomUUID()}`
     );
-    if (intent.current && intent.current.workspaceId === workspaceId && intent.current.keyId === keyId
-      && nextIntent !== intent.current) {
+    if (currentIntent && currentIntent.keyId === keyId && nextIntent !== currentIntent) {
       flash("上次模型预算更新结果待确认，请使用相同设置重试", "danger");
       return false;
     }
-    intent.current = nextIntent;
+    intents.current.set(workspaceId, nextIntent);
     const claim = Symbol("workspace-budget");
     busyClaim.current = claim;
     setBusy(true);
@@ -128,12 +143,13 @@ export function useWorkspaceBudgetController({
         csrfToken,
         nextIntent.idempotencyKey
       );
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
       if (!response.available || !workspaceBudgetIdentityMatches(response.data, workspaceId, keyId)) {
         throw new Error("workspace_gateway_budget_response_mismatch");
       }
       if (!workspaceBudgetResultMatchesInput(response.data, nextIntent.input)) {
-        intent.current = null;
+        if (!projectionLease.commit()) return false;
+        if (intents.current.get(workspaceId) === nextIntent) intents.current.delete(workspaceId);
         updateBudgetSource(response);
         flash("模型预算已变化，请按最新状态重新提交", "danger");
         return false;
@@ -142,29 +158,36 @@ export function useWorkspaceBudgetController({
       // The mutation response is only an acknowledgement. Read the owner projection again
       // before clearing the intent or showing success to the user.
       const readback = await getWorkspaceGatewayBudget(workspaceId, keyId);
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
       if (!readback.available || !workspaceBudgetIdentityMatches(readback.data, workspaceId, keyId)
         || !workspaceBudgetResultMatchesInput(readback.data, nextIntent.input)) {
-        if (readback.available) updateBudgetSource(readback);
-        throw new Error("workspace_gateway_budget_readback_mismatch");
+        if (readback.available) {
+          if (!projectionLease.commit()) return false;
+          updateBudgetSource(readback);
+        }
+        flash(mutationError(new Error("workspace_gateway_budget_readback_mismatch")), "danger");
+        return false;
       }
-      intent.current = null;
+      if (!projectionLease.commit()) return false;
+      if (intents.current.get(workspaceId) === nextIntent) intents.current.delete(workspaceId);
       updateBudgetSource(readback);
       flash("模型预算已更新");
       return true;
     } catch (error) {
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
-      if (!shouldRetainWorkspaceBudgetIntent(error)) intent.current = null;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
+      if (!shouldRetainWorkspaceBudgetIntent(error) && intents.current.get(workspaceId) === nextIntent) {
+        intents.current.delete(workspaceId);
+      }
       flash(mutationError(error), "danger");
       return false;
     } finally {
       if (busyClaim.current === claim
-        && requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
+        && requestOwnsActiveScope(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
         busyClaim.current = null;
         setBusy(false);
       }
     }
-  }, [activeWorkspaceId, budget, currentMutationRequest, flash, mutationError, requestIsCurrent, session, updateBudgetSource, workspace]);
+  }, [activeWorkspaceId, budget, currentMutationRequest, flash, mutationError, requestIsCurrent, requestOwnsActiveScope, session, updateBudgetSource, workspace, workspaceBudgetProjectionLease]);
 
   return { busy, update, reset };
 }

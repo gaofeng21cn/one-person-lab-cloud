@@ -42,7 +42,7 @@ export function useWorkspaceDeleteController({
   const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState<WorkspaceDeleteIssue>("");
   const requestGeneration = useRef(0);
-  const intent = useRef<WorkspaceDeleteIntent | null>(null);
+  const intents = useRef(new Map<string, WorkspaceDeleteIntent>());
   const scope = useRef({
     userId: session?.user.id || "",
     csrfToken: session?.csrfToken || "",
@@ -56,7 +56,7 @@ export function useWorkspaceDeleteController({
 
   const reset = useCallback(() => {
     requestGeneration.current += 1;
-    intent.current = null;
+    intents.current.clear();
     setBusy(false);
     setIssue("");
   }, []);
@@ -67,9 +67,10 @@ export function useWorkspaceDeleteController({
   }, [reset, session?.csrfToken, session?.user.id]);
 
   useEffect(() => {
-    reset();
-    return reset;
-  }, [activeWorkspaceId, reset]);
+    requestGeneration.current += 1;
+    setBusy(false);
+    setIssue("");
+  }, [activeWorkspaceId]);
 
   const requestIsCurrent = (
     generation: number,
@@ -98,7 +99,7 @@ export function useWorkspaceDeleteController({
         flash("删除结果尚未获得权威回读确认", "danger");
         return false;
       }
-      intent.current = null;
+      intents.current.delete(workspaceId);
       setIssue("");
       flash("Workspace 已删除");
       navigate("/console/workspaces");
@@ -122,11 +123,11 @@ export function useWorkspaceDeleteController({
     const workspaceId = workspace.id;
     const generation = ++requestGeneration.current;
     const resolved = resolveWorkspaceDeleteIntent(
-      intent.current,
+      intents.current.get(workspaceId) ?? null,
       workspaceId,
       () => workspaceDeleteIdempotencyKey(workspaceId)
     );
-    intent.current = resolved;
+    intents.current.set(workspaceId, resolved);
     setBusy(true);
     setIssue("");
 
@@ -134,7 +135,7 @@ export function useWorkspaceDeleteController({
       const result = await deleteWorkspace(workspaceId, csrfToken, resolved.idempotencyKey);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       if (!result.available) {
-        intent.current = null;
+        if (intents.current.get(workspaceId) === resolved) intents.current.delete(workspaceId);
         setIssue("unavailable");
         flash("Workspace 删除暂不可用", "danger");
         return;
@@ -146,7 +147,9 @@ export function useWorkspaceDeleteController({
         await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
         return;
       }
-      if (!shouldRetainWorkspaceDeleteIntent(error)) intent.current = null;
+      if (!shouldRetainWorkspaceDeleteIntent(error) && intents.current.get(workspaceId) === resolved) {
+        intents.current.delete(workspaceId);
+      }
       setIssue("unconfirmed");
       flash(friendlyError(error), "danger");
     } finally {

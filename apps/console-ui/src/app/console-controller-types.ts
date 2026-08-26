@@ -42,6 +42,11 @@ export interface RemoteState<T> {
   error: string;
 }
 
+export interface WorkspaceSourceProjectionLease {
+  isCurrent: () => boolean;
+  commit: () => boolean;
+}
+
 export interface ConsoleSources {
   workspaces: RemoteState<SourceEnvelope<WorkspaceListData>>;
   workspaceDetail: RemoteState<SourceEnvelope<WorkspaceDTO | null>>;

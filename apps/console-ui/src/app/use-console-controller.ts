@@ -45,7 +45,7 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
@@ -168,6 +168,8 @@ export function useConsoleController() {
   const selectedUsageKeyIdRef = useRef("");
   const usageRequestGeneration = useRef(0);
   const workspaceDetailRequestGeneration = useRef(0);
+  const workspaceRuntimeRequestGeneration = useRef(0);
+  const workspaceBudgetRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
@@ -230,6 +232,8 @@ export function useConsoleController() {
     setCommandBusy(false);
     setAnnouncementBusy("");
     workspaceDetailRequestGeneration.current += 1;
+    workspaceRuntimeRequestGeneration.current += 1;
+    workspaceBudgetRequestGeneration.current += 1;
     operatorProvisionIntent.current = null;
     announcementCreateIntent.current = null;
     operatorDisableIntents.current.clear();
@@ -262,6 +266,30 @@ export function useConsoleController() {
     const generation = sessionGeneration.current;
     const userId = sessionRef.current?.user.id;
     return () => generation === sessionGeneration.current && userId === sessionRef.current?.user.id;
+  };
+
+  const workspaceDetailProjectionLease = (): WorkspaceSourceProjectionLease => {
+    const generation = workspaceDetailRequestGeneration.current;
+    return {
+      isCurrent: () => generation === workspaceDetailRequestGeneration.current,
+      commit: () => {
+        if (generation !== workspaceDetailRequestGeneration.current) return false;
+        workspaceDetailRequestGeneration.current += 1;
+        return true;
+      }
+    };
+  };
+
+  const workspaceBudgetProjectionLease = (): WorkspaceSourceProjectionLease => {
+    const generation = workspaceBudgetRequestGeneration.current;
+    return {
+      isCurrent: () => generation === workspaceBudgetRequestGeneration.current,
+      commit: () => {
+        if (generation !== workspaceBudgetRequestGeneration.current) return false;
+        workspaceBudgetRequestGeneration.current += 1;
+        return true;
+      }
+    };
   };
 
   const activeWorkspaceId = workspaceIdFromPath(path);
@@ -314,6 +342,7 @@ export function useConsoleController() {
     workspace: activeWorkspace,
     activeWorkspaceId,
     currentMutationRequest,
+    workspaceDetailProjectionLease,
     onWorkspaceReadback: (readback) => {
       if (!readback.available || !readback.data) return;
       const workspace = readback.data;
@@ -345,6 +374,7 @@ export function useConsoleController() {
     budget: sources.workspaceBudget.value,
     activeWorkspaceId,
     currentMutationRequest,
+    workspaceBudgetProjectionLease,
     updateBudgetSource: (value) => updateSource("workspaceBudget", { value, loading: false, error: "" }),
     flash,
     mutationError
@@ -444,45 +474,66 @@ export function useConsoleController() {
     }
   };
 
+  const loadWorkspaceRuntime = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
+    const runtimeGeneration = ++workspaceRuntimeRequestGeneration.current;
+    const readStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
+      && runtimeGeneration === workspaceRuntimeRequestGeneration.current
+      && workspaceIdFromPath(window.location.pathname) === workspaceId;
+    updateSource("runtime", { value: null, loading: true, error: "" });
+    try {
+      const result = await getWorkspaceRuntimeStatus(workspaceId);
+      if (readStillCurrent()) updateSource("runtime", { value: result, loading: false, error: "" });
+    } catch (error) {
+      if (readStillCurrent()) failSource("runtime", error, unavailableSource("fabric"));
+    }
+  };
+
   const loadWorkspaceDetail = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
     const workspaceDetailGeneration = ++workspaceDetailRequestGeneration.current;
-    const readStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
-      && workspaceDetailGeneration === workspaceDetailRequestGeneration.current
+    const workspaceBudgetGeneration = ++workspaceBudgetRequestGeneration.current;
+    const routeStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
       && workspaceIdFromPath(window.location.pathname) === workspaceId;
+    const detailReadStillCurrent = () => routeStillCurrent()
+      && workspaceDetailGeneration === workspaceDetailRequestGeneration.current;
+    const budgetReadStillCurrent = () => routeStillCurrent()
+      && workspaceBudgetGeneration === workspaceBudgetRequestGeneration.current;
     beginSource("workspaceDetail");
-    updateSource("runtime", { value: null, loading: false, error: "" });
     updateSource("workspaceBudget", { value: null, loading: false, error: "" });
-    let workspaceKeyId = "";
+    const detailRequest = findWorkspaceInPages(workspaceId);
+    const runtimeRead = loadWorkspaceRuntime(generation, activeSession, workspaceId);
     try {
-      const detail = await findWorkspaceInPages(workspaceId);
-      if (!readStillCurrent()) return;
-      updateSource("workspaceDetail", { value: detail, loading: false, error: "" });
-      if (!detail.available || detail.data === null) {
-        updateSource("runtime", { value: unavailableSource("fabric"), loading: false, error: "" });
-        updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+      let workspaceKeyId = "";
+      try {
+        const detail = await detailRequest;
+        if (!routeStillCurrent()) return;
+        if (detailReadStillCurrent()) {
+          updateSource("workspaceDetail", { value: detail, loading: false, error: "" });
+        }
+        if (!detail.available || detail.data === null) {
+          if (detailReadStillCurrent() && budgetReadStillCurrent()) {
+            updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+          }
+          return;
+        }
+        workspaceKeyId = detail.data.workspaceApiKeyId || "";
+      } catch (error) {
+        if (!detailReadStillCurrent()) return;
+        failSource("workspaceDetail", error, unavailableSource("control-plane"));
+        if (budgetReadStillCurrent()) {
+          updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+        }
         return;
       }
-      workspaceKeyId = detail.data.workspaceApiKeyId || "";
-    } catch (error) {
-      if (!readStillCurrent()) return;
-      failSource("workspaceDetail", error, unavailableSource("control-plane"));
-      updateSource("runtime", { value: unavailableSource("fabric"), loading: false, error: "" });
-      updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
-      return;
+      beginSource("workspaceBudget");
+      try {
+        const result = await getWorkspaceGatewayBudget(workspaceId, workspaceKeyId);
+        if (budgetReadStillCurrent()) updateSource("workspaceBudget", { value: result, loading: false, error: "" });
+      } catch (error) {
+        if (budgetReadStillCurrent()) failSource("workspaceBudget", error, unavailableSource("sub2api"));
+      }
+    } finally {
+      await runtimeRead;
     }
-    beginSource("runtime");
-    beginSource("workspaceBudget");
-    const [runtimeResult, budgetResult] = await Promise.allSettled([
-      getWorkspaceRuntimeStatus(workspaceId),
-      getWorkspaceGatewayBudget(workspaceId, workspaceKeyId)
-    ]);
-    if (!readStillCurrent()) return;
-    if (runtimeResult.status === "fulfilled") {
-      updateSource("runtime", { value: runtimeResult.value, loading: false, error: "" });
-    } else failSource("runtime", runtimeResult.reason, unavailableSource("fabric"));
-    if (budgetResult.status === "fulfilled") {
-      updateSource("workspaceBudget", { value: budgetResult.value, loading: false, error: "" });
-    } else failSource("workspaceBudget", budgetResult.reason, unavailableSource("sub2api"));
   };
 
   const loadUsage = async (generation: number, activeSession: AuthSession, keyId: string, page = 1, period: GatewayUsagePeriod = usagePeriod) => {
@@ -693,7 +744,6 @@ export function useConsoleController() {
     if (path !== "/login") invalidateLoginAttempt();
     const generation = ++requestGeneration.current;
     workspaceSecretCapability.clear();
-    workspaceDeleteCapability.reset();
     setSidebarOpen(false);
     setGlobalSlide("");
     if (logoutState.current !== "idle") return;

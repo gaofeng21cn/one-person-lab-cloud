@@ -13,13 +13,14 @@ import {
   type WorkspaceRenewalIntent,
   type WorkspaceRenewalIssue
 } from "./workspace-renewal-controller-model.ts";
-import type { WorkspaceRenewalController } from "./console-controller-types.ts";
+import type { WorkspaceRenewalController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 
 interface WorkspaceRenewalDependencies {
   session: AuthSession | null;
   workspace: WorkspaceDTO | null;
   activeWorkspaceId: string;
   currentMutationRequest: () => () => boolean;
+  workspaceDetailProjectionLease: () => WorkspaceSourceProjectionLease;
   onWorkspaceReadback?: (readback: SourceEnvelope<WorkspaceDTO | null>) => void;
   flash: (text: string, tone?: "good" | "danger") => void;
   mutationError: (error: unknown) => string;
@@ -34,6 +35,7 @@ export function useWorkspaceRenewalController({
   workspace,
   activeWorkspaceId,
   currentMutationRequest,
+  workspaceDetailProjectionLease,
   onWorkspaceReadback,
   flash,
   mutationError
@@ -41,7 +43,8 @@ export function useWorkspaceRenewalController({
   const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState<WorkspaceRenewalIssue>("");
   const requestGeneration = useRef(0);
-  const intent = useRef<WorkspaceRenewalIntent | null>(null);
+  const intents = useRef(new Map<string, WorkspaceRenewalIntent>());
+  const issues = useRef(new Map<string, WorkspaceRenewalIssue>());
   const scope = useRef({
     userId: session?.user.id || "",
     csrfToken: session?.csrfToken || "",
@@ -55,7 +58,8 @@ export function useWorkspaceRenewalController({
 
   const reset = useCallback(() => {
     requestGeneration.current += 1;
-    intent.current = null;
+    intents.current.clear();
+    issues.current.clear();
     setBusy(false);
     setIssue("");
   }, []);
@@ -66,21 +70,23 @@ export function useWorkspaceRenewalController({
   }, [reset, session?.csrfToken, session?.user.id]);
 
   useEffect(() => {
-    reset();
-    return reset;
-  }, [activeWorkspaceId, reset]);
+    requestGeneration.current += 1;
+    setBusy(false);
+    setIssue(issues.current.get(activeWorkspaceId) ?? "");
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
-    const current = intent.current;
+    const current = workspace ? intents.current.get(workspace.id) : undefined;
     if (!busy && current && workspace
       && current.workspaceId === workspace.id
       && current.autoRenew === workspace.autoRenew) {
-      intent.current = null;
+      intents.current.delete(workspace.id);
+      issues.current.delete(workspace.id);
       setIssue("");
     }
   }, [busy, workspace?.autoRenew, workspace?.id]);
 
-  const requestIsCurrent = useCallback((
+  const requestOwnsActiveScope = useCallback((
     generation: number,
     requestStillCurrent: () => boolean,
     userId: string,
@@ -94,14 +100,27 @@ export function useWorkspaceRenewalController({
   []
   );
 
+  const requestIsCurrent = useCallback((
+    generation: number,
+    requestStillCurrent: () => boolean,
+    projectionLease: WorkspaceSourceProjectionLease,
+    userId: string,
+    csrfToken: string,
+    workspaceId: string
+  ) => projectionLease.isCurrent()
+    && requestOwnsActiveScope(generation, requestStillCurrent, userId, csrfToken, workspaceId),
+  [requestOwnsActiveScope]
+  );
+
   const updateCurrentWorkspaceRenewal = useCallback(async (autoRenew: boolean): Promise<boolean> => {
     if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || workspace.renewalStatus !== "active") return false;
 
     const requestStillCurrent = currentMutationRequest();
+    const projectionLease = workspaceDetailProjectionLease();
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     const workspaceId = workspace.id;
-    let currentIntent = intent.current;
+    let currentIntent = intents.current.get(workspaceId);
     if (currentIntent && currentIntent.workspaceId === workspaceId && currentIntent.autoRenew !== autoRenew) {
       flash("上次自动续费更新结果待确认，请按原设置重试", "danger");
       return false;
@@ -112,39 +131,44 @@ export function useWorkspaceRenewalController({
       autoRenew,
       () => `workspace-renewal:${workspaceId}:${crypto.randomUUID()}`
     );
-    intent.current = currentIntent;
+    intents.current.set(workspaceId, currentIntent);
     const generation = ++requestGeneration.current;
     setBusy(true);
     setIssue("");
 
     try {
       const response = await updateWorkspaceRenewal(workspaceId, { autoRenew }, csrfToken, currentIntent.idempotencyKey);
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
       if (!workspaceRenewalResponseMatches(response, autoRenew)) {
         throw new Error("workspace_renewal_response_mismatch");
       }
 
       const readback = await findWorkspaceInPages(workspaceId);
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
       if (!workspaceRenewalReadbackMatches(readback, workspaceId, response)) {
         throw new Error("workspace_renewal_readback_mismatch");
       }
+      if (!projectionLease.commit()) return false;
 
-      intent.current = null;
+      if (intents.current.get(workspaceId) === currentIntent) intents.current.delete(workspaceId);
+      issues.current.delete(workspaceId);
       setIssue("");
       onWorkspaceReadback?.(readback);
       flash(autoRenew ? "自动续费已开启" : "自动续费已关闭");
       return true;
     } catch (error) {
-      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
-      if (!shouldRetainWorkspaceRenewalIntent(error) && intent.current === currentIntent) intent.current = null;
+      if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
+      if (!shouldRetainWorkspaceRenewalIntent(error) && intents.current.get(workspaceId) === currentIntent) {
+        intents.current.delete(workspaceId);
+      }
+      issues.current.set(workspaceId, "unconfirmed");
       setIssue("unconfirmed");
       flash(mutationError(error), "danger");
       return false;
     } finally {
-      if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setBusy(false);
+      if (requestOwnsActiveScope(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setBusy(false);
     }
-  }, [activeWorkspaceId, busy, currentMutationRequest, flash, mutationError, onWorkspaceReadback, requestIsCurrent, session, workspace]);
+  }, [activeWorkspaceId, busy, currentMutationRequest, flash, mutationError, onWorkspaceReadback, requestIsCurrent, requestOwnsActiveScope, session, workspace, workspaceDetailProjectionLease]);
 
   return { busy, issue, updateCurrentWorkspaceRenewal, reset };
 }
