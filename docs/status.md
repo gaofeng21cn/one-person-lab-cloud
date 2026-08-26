@@ -207,13 +207,17 @@ is selected and configured by the medopl instance, not by the portable product.
   idempotent replay. Focused model and browser tests cover normalization,
   identity/readback invariants, late list results, route exit, response loss,
   stale readback, and Session reset.
-- The remaining broad Console controller has been mapped by capability before
-  another extraction. Announcement Lifecycle retains an explicit candidate
-  owner, lifecycle/failure boundary, root state and intent seams, readback
-  proof, reset boundary, and real page consumers in
-  `docs/implementation-architecture.md`. Session, Router, global toast, shared
-  reads, route orchestration, and aggregate reset remain Composition Root
-  responsibilities.
+- Console Operator Announcement Lifecycle now has one
+  `useOperatorAnnouncementController` owner for the operator projection,
+  normalized create intent, per-announcement publish/withdraw intents, busy
+  claims, route/Session/list freshness, authoritative readback, and reset.
+  Admin overview and announcement routes consume the typed capability and keep
+  only dialog/form state. Command identity, target status, schedule, and final
+  projection mismatches fail closed; response-loss retries retain the original
+  key until readback succeeds. Focused model and browser tests cover stale list
+  completion, route exit/re-entry claims, response loss, readback mismatch, and
+  Session reset. Customer announcement loading and read receipts remain a
+  separate lifecycle in the Composition Root.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET

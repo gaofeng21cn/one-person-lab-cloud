@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import type { OperatorAnnouncementController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -139,16 +140,10 @@ function SourceTable({ rows }: { rows: Array<{ label: string; source: SourceEnve
   );
 }
 
-function AnnouncementList({ announcements, busy, controller, onBusy }: {
+function AnnouncementList({ announcements, controller }: {
   announcements: AnnouncementDTO[];
-  busy: string;
-  controller: ConsoleController;
-  onBusy: (id: string) => void;
+  controller: OperatorAnnouncementController;
 }) {
-  const run = async (id: string, action: () => Promise<void>) => {
-    onBusy(id);
-    try { await action(); } finally { onBusy(""); }
-  };
   return (
     <div className="announcement-list">
       {announcements.map((announcement) => (
@@ -163,8 +158,8 @@ function AnnouncementList({ announcements, busy, controller, onBusy }: {
             <div><dt>结束时间</dt><dd>{announcement.endsAt ? formatDate(announcement.endsAt, true) : "未设置"}</dd></div>
           </dl>
           <footer className="table-actions">
-            {["draft", "scheduled"].includes(announcement.status) ? <Button busy={busy === announcement.id} onClick={() => void run(announcement.id, () => controller.publishAnnouncement(announcement.id))} size="sm" variant="outline">发布</Button> : null}
-            {announcement.status === "published" ? <Button busy={busy === announcement.id} color="danger" onClick={() => void run(announcement.id, () => controller.withdrawAnnouncement(announcement.id))} size="sm" variant="ghost">撤下</Button> : null}
+            {["draft", "scheduled"].includes(announcement.status) ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} onClick={() => void controller.publish(announcement.id)} size="sm" variant="outline">发布</Button> : null}
+            {announcement.status === "published" ? <Button busy={controller.busyAnnouncementIds.includes(announcement.id)} color="danger" onClick={() => void controller.withdraw(announcement.id)} size="sm" variant="ghost">撤下</Button> : null}
           </footer>
         </article>
       ))}
@@ -172,21 +167,18 @@ function AnnouncementList({ announcements, busy, controller, onBusy }: {
   );
 }
 
-function AnnouncementDraftModal({ controller, onClose, open }: { controller: ConsoleController; onClose: () => void; open: boolean }) {
+function AnnouncementDraftModal({ controller, onClose, open }: { controller: OperatorAnnouncementController; onClose: () => void; open: boolean }) {
   const [form, setForm] = useState<AnnouncementDraftRequest>({ title: "", body: "", startsAt: "", endsAt: "" });
-  const [busy, setBusy] = useState(false);
   const updateForm = (field: keyof AnnouncementDraftRequest, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!form.title.trim() || !form.body.trim()) return;
-    setBusy(true);
-    const ok = await controller.createAnnouncement({
+    const ok = await controller.create({
       title: form.title.trim(),
       body: form.body.trim(),
       ...(form.startsAt?.trim() ? { startsAt: form.startsAt.trim() } : {}),
       ...(form.endsAt?.trim() ? { endsAt: form.endsAt.trim() } : {})
     });
-    setBusy(false);
     if (ok) {
       setForm({ title: "", body: "", startsAt: "", endsAt: "" });
       onClose();
@@ -196,7 +188,7 @@ function AnnouncementDraftModal({ controller, onClose, open }: { controller: Con
     <Modal
       className="modal"
       description="草稿由 Control Plane 保存；发布和撤下会单独确认并写入审计。"
-      footer={<><Button disabled={busy} onClick={onClose} variant="outline">取消</Button><Button busy={busy} color="primary" form="announcement-draft-form" type="submit">保存草稿</Button></>}
+      footer={<><Button disabled={controller.createBusy} onClick={onClose} variant="outline">取消</Button><Button busy={controller.createBusy} color="primary" form="announcement-draft-form" type="submit">保存草稿</Button></>}
       onClose={onClose}
       open={open}
       title="新建公告草稿"
@@ -213,10 +205,10 @@ function AnnouncementDraftModal({ controller, onClose, open }: { controller: Con
 
 function OverviewPage({ controller }: { controller: ConsoleController }) {
   const [draftOpen, setDraftOpen] = useState(false);
-  const [announcementBusy, setAnnouncementBusy] = useState("");
   const overviewSource = controller.sources.operatorOverview.value;
   const overview = sourceData(overviewSource);
-  const announcements = sourceData(controller.sources.operatorAnnouncements.value)?.items || [];
+  const announcementController = controller.operatorAnnouncements;
+  const announcements = sourceData(announcementController.announcements.value)?.items || [];
   const health = overallHealth(overview?.health);
   const reconciliationCount = overview?.reconciliation.available ? overview.reconciliation.data.total : null;
   const attentionPath = reconciliationCount && reconciliationCount > 0 ? "/admin/billing" : health.label !== "正常" ? "/admin/system" : "";
@@ -271,11 +263,11 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
 
       <section className="panel" data-slide="A-OV-02">
         <div className="panel-title"><div><h2>公告管理</h2></div><Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button></div>
-        <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={controller.sources.operatorAnnouncements.error} loading={controller.sources.operatorAnnouncements.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.operatorAnnouncements.value} unavailableTitle="公告暂不可用">
-          {() => <AnnouncementList announcements={announcements} busy={announcementBusy} controller={controller} onBusy={setAnnouncementBusy} />}
+        <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">
+          {() => <AnnouncementList announcements={announcements} controller={announcementController} />}
         </SourceState>
       </section>
-      <AnnouncementDraftModal controller={controller} onClose={() => setDraftOpen(false)} open={draftOpen} />
+      <AnnouncementDraftModal controller={announcementController} onClose={() => setDraftOpen(false)} open={draftOpen} />
     </section>
   );
 }

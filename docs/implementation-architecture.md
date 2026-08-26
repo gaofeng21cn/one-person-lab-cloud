@@ -196,7 +196,7 @@ form one complete slice.
 | Gateway Usage | `useGatewayUsageController` owns Key collection, selected Key, period/page, independent usage/summary state, and Key/usage generations | only the current Session, route, Key, period and request generation may commit; an empty authoritative Key collection clears both projections | Customer usage page | Sub2API/Gateway | extracted; query freshness and partial failure remain separate from Billing/Receipt |
 | Operator Account | `useOperatorAccountController` owns account projection/pagination, provision intent/operation, per-account disable and purchase-eligibility intents, busy claims, local freshness, readback, and reset | typed command identity and target fields must match; provision, disable, and eligibility complete only after the authoritative paged Account projection matches | Admin accounts page; Wallet Adjustment depends only on its narrow `refresh` port | Control Plane Account/Access; Sub2API remains Gateway identity/wallet authority | extracted; same-semantic response-loss retries resend the original key, without claiming server-side replay semantics for provision or disable |
 | Wallet Adjustment / Recovery | `useWalletAdjustmentController` owns wallet intent, operation projection, recovery intent, busy, and operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | extracted; money and recovery remain separate from Account lifecycle |
-| Announcement Lifecycle | create/publish/withdraw intents, per-announcement busy, operator announcement reload | `draft -> published -> withdrawn` transition is confirmed by the announcement projection | Admin announcement page | Control Plane operator/content | separate state-machine slice |
+| Operator Announcement Lifecycle | `useOperatorAnnouncementController` owns the operator projection, normalized create intent, per-announcement publish/withdraw intents, busy claims, local freshness, authoritative readback, and reset | typed command identity, target status and schedule must match; `draft/scheduled -> scheduled|published -> withdrawn` completes only after the operator projection matches | Admin overview and announcement routes | Control Plane operator/content | extracted state-machine slice; customer published-list/read receipts remain separate |
 
 The root remains the Composition Root: Session, Router, global toast,
 session-wide freshness guards, shared read sources, route loading order, and
@@ -221,6 +221,17 @@ the owning Workspace controllers, while aggregate route loading and
 only after its real page consumers are switched and the corresponding root
 state, intent, timer/generation, readback, reset and command are removed.
 Session is not extracted until every child reset contract is explicit.
+
+Operator Announcement Lifecycle is owned by
+`useOperatorAnnouncementController`. Create, publish, and withdraw retain their
+same-semantic idempotency key until both the typed command response and the
+authoritative operator list agree on announcement identity, content, schedule,
+and target status. Per-announcement claims survive route exit until the pending
+request settles, while local scope and list generations reject old route or
+Session completions. `AdminPages` keeps only dialog visibility and draft form
+fields. Customer announcement loading and read receipts remain in the
+Composition Root because their published-only projection, list limits, user
+identity, and failure model are different from operator content mutation.
 
 Support Mapping is the first post-inventory slice. Its
 `useSupportController` owns ticket loading/error state, the mapping intent and
