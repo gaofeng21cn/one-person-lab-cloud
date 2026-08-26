@@ -143,6 +143,12 @@ is selected and configured by the medopl instance, not by the portable product.
   recovery reuses the Engine's read-only Provider port without changing its
   operation CAS. Runtime mutations, Gateway Secret reads, and delete-residue
   observation remain separate capabilities with their existing owners.
+- The next typed-operations slice is the Control Plane
+  `WorkspaceLaunchReconciler`. It owns the Launch business cursor,
+  attempt/lease/CAS transitions, continuation authorization, settlement
+  coordination, and Workspace projection. Its current schema-v3 decoder still
+  exposes durable stage facts through raw JSON maps and string/int fact
+  accessors; no typed Reconciler migration or behavior change is claimed yet.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.
