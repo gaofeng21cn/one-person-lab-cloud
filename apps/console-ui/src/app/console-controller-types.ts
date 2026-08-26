@@ -67,9 +67,17 @@ export type BillingView = "terms" | "receipts";
 export type WorkspaceLaunchStep = "configure" | "confirm";
 export type GlobalSlide = "account" | "support" | "";
 
-export interface ConsoleSecrets {
-  apiKey: GatewayKeySecretDTO | null;
-  workspace: WorkspaceCredentialAccess | null;
+export interface WorkspaceSecretController {
+  credential: WorkspaceCredentialAccess | null;
+  gatewayKey: GatewayKeySecretDTO | null;
+  workspaceBusy: boolean;
+  gatewayKeyBusy: boolean;
+  clear: () => void;
+  revealWorkspacePassword: () => Promise<void>;
+  revealWorkspaceKey: () => Promise<void>;
+  rotateWorkspacePassword: () => Promise<void>;
+  copyWorkspacePassword: () => Promise<void>;
+  copyWorkspaceKey: () => Promise<void>;
 }
 
 export interface ConsoleTransientState {

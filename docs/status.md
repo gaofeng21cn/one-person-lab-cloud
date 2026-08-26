@@ -163,6 +163,27 @@ is selected and configured by the medopl instance, not by the portable product.
   guards. Launch views consume `WorkspaceLaunchController` instead of the broad
   controller; existing Control Plane APIs and DTOs, `30 x 10s` polling,
   customer-visible behavior, navigation, and request order are unchanged.
+- Console Workspace access Secrets now have one
+  `useWorkspaceSecretController` owner for the mutually exclusive Runtime
+  credential and Workspace Gateway Key projections, the `60,000ms` timer,
+  request invalidation, independent busy facts, and Runtime rotation intent.
+  Session, Router, Workspace sources, authoritative detail refresh, and toast
+  remain in the root and enter through narrow dependencies; the access view
+  consumes `WorkspaceSecretController`. Route, Session, Workspace, logout,
+  reset, and unmount changes invalidate pending completions and clear the
+  projection and busy state. Mismatched credential/Key identities fail closed,
+  while valid API payloads, request order, Secret lifetime, copy behavior, and
+  customer-visible text remain unchanged.
+- The remaining broad Console controller has been mapped by capability before
+  another extraction. Workspace Delete, Workspace Renewal, Workspace Budget,
+  Support Mapping, Billing/Receipt, Gateway Usage, Operator Account, Wallet
+  Adjustment/Recovery, and Announcement Lifecycle now have explicit candidate
+  owners, lifecycle/failure boundaries, root state and intent seams, readback
+  proof, reset boundaries, and real page consumers in
+  `docs/implementation-architecture.md`. This is an inventory fact, not a
+  claim that those controllers already exist. Session, Router, global toast,
+  shared reads, route orchestration, and aggregate reset remain Composition
+  Root responsibilities.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.
