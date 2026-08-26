@@ -62,7 +62,7 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSecrets, ConsoleSources, GlobalSlide, RemoteState } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSecrets, ConsoleSources, GlobalSlide, RemoteState, WorkspaceLaunchController } from "./console-controller-types.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 
 const secretLifetimeMs = 60_000;
@@ -287,7 +287,7 @@ export function useConsoleController() {
     clearSecrets();
     setSources(initialSources());
     setGlobalSlide("");
-    workspaceLaunch.reset();
+    workspaceLaunchCapability.reset();
     setWorkspaceDeleteIssue("");
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
@@ -356,7 +356,7 @@ export function useConsoleController() {
     return () => generation === sessionGeneration.current && userId === sessionRef.current?.user.id;
   };
 
-  const workspaceLaunch = useWorkspaceLaunchController({
+  const workspaceLaunchCapability = useWorkspaceLaunchController({
     session,
     wallet: sources.wallet,
     isRequestCurrent,
@@ -366,6 +366,7 @@ export function useConsoleController() {
     flash,
     friendlyError
   });
+  const workspaceLaunch: WorkspaceLaunchController = workspaceLaunchCapability;
 
   const loadWorkspaces = async (generation: number, activeSession: AuthSession, page = workspacePageNumber, pageSize = 10) => {
     beginSource("workspaces");
@@ -637,11 +638,11 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/console/workspaces") {
-      await Promise.all([loadWorkspaces(generation, activeSession, workspacePageNumber, 10), workspaceLaunch.recover(generation, activeSession)]);
+      await Promise.all([loadWorkspaces(generation, activeSession, workspacePageNumber, 10), workspaceLaunchCapability.recover(generation, activeSession)]);
       return;
     }
     if (routePath === "/console/workspaces/new") {
-      await Promise.all([loadWallet(generation, activeSession), workspaceLaunch.loadCatalog(generation, activeSession), workspaceLaunch.recover(generation, activeSession)]);
+      await Promise.all([loadWallet(generation, activeSession), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
       return;
     }
     if (workspacePage(routePath) === "detail") {
