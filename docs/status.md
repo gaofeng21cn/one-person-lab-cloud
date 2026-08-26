@@ -189,16 +189,28 @@ is selected and configured by the medopl instance, not by the portable product.
   `useWalletAdjustmentController` owner for the durable adjustment operation,
   response-loss idempotency intent, manual-review recovery, operation readback,
   account projection refresh, and Wallet-specific busy/reset state. `AdminPages`
-  consumes that typed capability; the broad Console controller retains only
-  composition and shared operator account loading. Wallet balance, Receipt,
+  consumes that typed capability; it requests account refresh through the
+  Operator Account capability's narrow port. Wallet balance, Receipt,
   audit, and Sub2API facts remain owned by their services, and the exact
   operation/recovery API identities and customer-visible behavior are unchanged.
   Focused model tests cover intent reuse, input/account conflict, and
   recovery-key derivation.
+- Console Operator Account now has one `useOperatorAccountController` owner for
+  the account projection and pagination, normalized provision intent and
+  operation, per-account disable and purchase-eligibility intents, busy claims,
+  route/Session/request freshness, authoritative paged readback, and reset.
+  `AdminPages` consumes the typed capability and keeps only dialog/form state;
+  Wallet Adjustment receives only its `refresh` port. Command identity or
+  target mismatches and stale projections fail closed, while a same-semantic
+  response-loss retry reuses the original client key. This does not claim that
+  Control Plane provision or disable already implements strict server-side
+  idempotent replay. Focused model and browser tests cover normalization,
+  identity/readback invariants, late list results, route exit, response loss,
+  stale readback, and Session reset.
 - The remaining broad Console controller has been mapped by capability before
-  another extraction. Operator Account and Announcement Lifecycle retain
-  explicit candidate owners, lifecycle/failure boundaries, root state and
-  intent seams, readback proof, reset boundaries, and real page consumers in
+  another extraction. Announcement Lifecycle retains an explicit candidate
+  owner, lifecycle/failure boundary, root state and intent seams, readback
+  proof, reset boundary, and real page consumers in
   `docs/implementation-architecture.md`. Session, Router, global toast, shared
   reads, route orchestration, and aggregate reset remain Composition Root
   responsibilities.

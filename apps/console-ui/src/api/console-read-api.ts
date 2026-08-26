@@ -24,7 +24,9 @@ import type {
   BillingReviewResolutionRequest,
   ProvisionAccountRequest,
   OperatorAccountCommandDTO,
+  OperatorProvisionAccountCommandDTO,
   OperatorAccountPageDTO,
+  OperatorWorkspacePurchaseEligibilityCommandDTO,
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
   OperatorOverviewDTO,
@@ -280,16 +282,16 @@ export function recoverWalletAdjustment(operationId: string, input: WalletAdjust
   return postJson<unknown>(`/api/operator/wallet-adjustments/${encodeURIComponent(operationId)}/recover`, input, csrfToken, idempotencyKey).then(decodeDto<WalletAdjustmentOperationDTO>);
 }
 
-export function provisionOperatorAccount(input: ProvisionAccountRequest, csrfToken: string, idempotencyKey: string): Promise<OperatorAccountCommandDTO> {
-  return postJson<unknown>("/api/operator/accounts", input, csrfToken, idempotencyKey).then(decodeDto<OperatorAccountCommandDTO>);
+export function provisionOperatorAccount(input: ProvisionAccountRequest, csrfToken: string, idempotencyKey: string): Promise<OperatorProvisionAccountCommandDTO> {
+  return postJson<unknown>("/api/operator/accounts", input, csrfToken, idempotencyKey).then(decodeDto<OperatorProvisionAccountCommandDTO>);
 }
 
 export function disableOperatorAccount(accountId: string, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorAccountCommandDTO> {
   return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/disable`, { confirmationAccountId: accountId, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorAccountCommandDTO>);
 }
 
-export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorAccountCommandDTO> {
-  return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`, { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorAccountCommandDTO>);
+export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabled: boolean, reason: string, csrfToken: string, idempotencyKey: string): Promise<OperatorWorkspacePurchaseEligibilityCommandDTO> {
+  return postJson<unknown>(`/api/operator/accounts/${encodeURIComponent(accountId)}/workspace-purchase-eligibility`, { confirmationAccountId: accountId, enabled, reason }, csrfToken, idempotencyKey).then(decodeDto<OperatorWorkspacePurchaseEligibilityCommandDTO>);
 }
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string): Promise<OperationStatusDTO> {

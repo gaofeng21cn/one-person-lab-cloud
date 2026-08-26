@@ -653,7 +653,14 @@ export interface ProvisionAccountRequest {
 
 export interface OperatorAccountCommandDTO extends OperationStatusDTO {
   accountId: string;
-  workspacePurchaseEnabled?: boolean;
+}
+
+export interface OperatorProvisionAccountCommandDTO extends OperatorAccountCommandDTO {
+  workspacePurchaseEnabled: boolean;
+}
+
+export interface OperatorWorkspacePurchaseEligibilityCommandDTO extends OperatorAccountCommandDTO {
+  workspacePurchaseEnabled: boolean;
 }
 
 export interface ResourceFact {

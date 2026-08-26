@@ -5,6 +5,12 @@ import test from "node:test";
 
 import { chromium } from "playwright";
 
+import type {
+  OperatorAccountPageDTO,
+  OperatorProvisionAccountCommandDTO,
+  ProvisionAccountRequest,
+  SourceEnvelope
+} from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
@@ -113,6 +119,41 @@ test("Console demo rotates a caller-supplied Session ID during login", async () 
     assert.notEqual(victimClient.cookie, attackerClient.cookie);
     assert.equal((await victimClient.request("/api/auth/me")).status, 200);
     assert.equal((await attackerClient.request("/api/auth/me")).status, 401);
+  } finally {
+    await demo.close();
+  }
+});
+
+test("Console demo projects gateway-only admission exactly as returned by provision", async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  try {
+    const adminClient = new DemoClient(demo.origin);
+    assert.equal((await adminClient.postJson("/api/auth/login", CONSOLE_DEMO_CREDENTIALS.admin)).status, 200);
+    const input: ProvisionAccountRequest = {
+      email: "gateway-only@example.com",
+      password: "CorrectHorseBatteryStaple!",
+      admission: "gateway_only"
+    };
+
+    const provisionResponse = await adminClient.postCommandJson(
+      "/api/operator/accounts",
+      input,
+      "gateway-only-account-provision"
+    );
+    assert.equal(provisionResponse.status, 200);
+    const command = await provisionResponse.json() as OperatorProvisionAccountCommandDTO;
+    assert.equal(command.status, "succeeded");
+    assert.equal(command.workspacePurchaseEnabled, false);
+
+    const projectionResponse = await adminClient.request("/api/operator/accounts?page=1&pageSize=20");
+    assert.equal(projectionResponse.status, 200);
+    const projection = await projectionResponse.json() as SourceEnvelope<OperatorAccountPageDTO>;
+    assert.equal(projection.available, true);
+    if (!projection.available) assert.fail("operator account projection unavailable");
+    const account = projection.data.items.find((item) => item.accountId === command.accountId);
+    assert.ok(account);
+    assert.equal(account.email, input.email);
+    assert.equal(account.workspacePurchaseEnabled, command.workspacePurchaseEnabled);
   } finally {
     await demo.close();
   }

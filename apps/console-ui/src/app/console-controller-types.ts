@@ -13,6 +13,9 @@ import type {
   GatewayUsageSummaryDTO,
   GatewayWallet,
   OperatorAccountPageDTO,
+  OperatorAccountDTO,
+  OperatorProvisionAccountCommandDTO,
+  ProvisionAccountRequest,
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
   OperatorOverviewDTO,
@@ -62,7 +65,6 @@ export interface ConsoleSources {
   announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
   operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
-  operatorAccounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
   operatorWorkspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
   operatorWorkspaceDetail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
   operatorWorkspaceImagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
@@ -198,4 +200,22 @@ export interface BillingController {
   closeReceipt: () => void;
   nextPage: () => Promise<void>;
   previousPage: () => Promise<void>;
+}
+
+export interface OperatorAccountController {
+  accounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
+  page: number;
+  pages: number;
+  provisionOperation: OperatorProvisionAccountCommandDTO | null;
+  provisionBusy: boolean;
+  busyAccountIds: string[];
+  refresh: () => Promise<void>;
+  changePage: (page: number) => Promise<void>;
+  setProvisionOperation: (operation: OperatorProvisionAccountCommandDTO | null) => void;
+  provision: (input: ProvisionAccountRequest) => Promise<{
+    operation: OperatorProvisionAccountCommandDTO;
+    account: OperatorAccountDTO | null;
+  } | null>;
+  disable: (accountId: string) => Promise<void>;
+  setWorkspacePurchaseEligibility: (accountId: string, enabled: boolean) => Promise<void>;
 }
