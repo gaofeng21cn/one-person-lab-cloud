@@ -72,7 +72,9 @@ export function useWorkspaceRenewalController({
 
   useEffect(() => {
     const current = intent.current;
-    if (!busy && current?.workspaceId === workspace?.id && current.autoRenew === workspace.autoRenew) {
+    if (!busy && current && workspace
+      && current.workspaceId === workspace.id
+      && current.autoRenew === workspace.autoRenew) {
       intent.current = null;
       setIssue("");
     }

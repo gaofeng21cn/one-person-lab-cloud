@@ -63,7 +63,7 @@ test("Workspace delete does not relabel an owner not-found response as route una
   );
 });
 
-test("Workspace delete releases command busy after a route change without applying the late result", async () => {
+test("Workspace delete scopes busy to the active Workspace and rejects a late result", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   let releaseDelete: (() => void) | undefined;
@@ -112,16 +112,12 @@ test("Workspace delete releases command busy after a route change without applyi
     await page.getByRole("heading", { name: "Second Workspace", exact: true }).waitFor({ state: "visible" });
 
     const secondDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
-    assert.equal(await secondDelete.getAttribute("aria-busy"), "true");
-    assert.equal(await secondDelete.isDisabled(), true);
+    assert.equal(await secondDelete.getAttribute("aria-busy"), null);
+    assert.equal(await secondDelete.isDisabled(), false);
     const readsBeforeRelease = workspaceListReads;
 
     releaseDelete?.();
-    await page.waitForFunction(() => {
-      const button = [...document.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent?.includes("删除 Workspace"));
-      return Boolean(button && !button.hasAttribute("disabled") && button.getAttribute("aria-busy") !== "true");
-    });
+    await page.waitForTimeout(250);
 
     assert.equal(await secondDelete.isDisabled(), false);
     assert.equal(workspaceListReads, readsBeforeRelease);
