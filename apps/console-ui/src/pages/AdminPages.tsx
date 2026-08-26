@@ -304,6 +304,7 @@ function AccountActions({ account, controller, openAccount }: {
   openAccount: (account: OperatorAccountDTO, next: AccountDialog) => void;
 }) {
   const reservedAdmin = account.accountId === "acct-admin" || account.role === "admin";
+  const busy = controller.operatorAccounts.busyAccountIds.includes(account.accountId);
   return (
     <div className="operator-card-actions">
       <Button onClick={() => openAccount(account, "detail")} size="sm" variant="ghost">查看账户</Button>
@@ -312,11 +313,11 @@ function AccountActions({ account, controller, openAccount }: {
         ? <span className="account-read-only">保留管理员账户仅查看</span>
         : account.status === "active"
           ? <>
-            <Button color={account.workspacePurchaseEnabled ? "danger" : "primary"} onClick={() => void controller.setOperatorWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)} size="sm" variant="ghost">
+            <Button color={account.workspacePurchaseEnabled ? "danger" : "primary"} disabled={busy} onClick={() => void controller.operatorAccounts.setWorkspacePurchaseEligibility(account.accountId, !account.workspacePurchaseEnabled)} size="sm" variant="ghost">
               {account.workspacePurchaseEnabled ? <ShieldOff aria-hidden size={15} /> : <ShieldCheck aria-hidden size={15} />}
               {account.workspacePurchaseEnabled ? "撤销新购" : "授予新购"}
             </Button>
-            <Button color="danger" onClick={() => void controller.disableOperatorAccount(account.accountId)} size="sm" variant="ghost"><Ban aria-hidden size={15} />停用</Button>
+            <Button color="danger" disabled={busy} onClick={() => void controller.operatorAccounts.disable(account.accountId)} size="sm" variant="ghost"><Ban aria-hidden size={15} />停用</Button>
           </>
           : <span className="account-read-only">账户已停用</span>}
     </div>
@@ -355,8 +356,8 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
     event.preventDefault();
     if (!form.email.trim() || !form.password) return;
     const email = form.email.trim();
-    controller.setOperatorProvisionOperation(null);
-    const operation = await controller.provisionAccount({ email, password: form.password, admission: form.admission, ...(form.name.trim() ? { name: form.name.trim() } : {}) });
+    controller.operatorAccounts.setProvisionOperation(null);
+    const operation = await controller.operatorAccounts.provision({ email, password: form.password, admission: form.admission, ...(form.name.trim() ? { name: form.name.trim() } : {}) });
     if (operation) {
       setSubmittedEmail(email);
       setAccount(operation.account);
@@ -369,14 +370,14 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
     setSubmittedEmail("");
     setCompleted(false);
     setAccount(null);
-    controller.setOperatorProvisionOperation(null);
+    controller.operatorAccounts.setProvisionOperation(null);
     onClose();
   };
   return (
     <Modal
       className="modal"
       description="将创建 Account、Console User、Sub2API 身份及一对一映射；产品范围由本次准入选择决定。"
-      footer={completed ? <Button onClick={close} variant="outline">完成</Button> : <><Button disabled={controller.commandBusy} onClick={close} variant="outline">取消</Button><Button busy={controller.commandBusy} color="primary" form="provision-account-form" type="submit">开通用户</Button></>}
+      footer={completed ? <Button onClick={close} variant="outline">完成</Button> : <><Button disabled={controller.operatorAccounts.provisionBusy} onClick={close} variant="outline">取消</Button><Button busy={controller.operatorAccounts.provisionBusy} color="primary" form="provision-account-form" type="submit">开通用户</Button></>}
       onClose={close}
       open={open}
       title="开通用户"
@@ -389,10 +390,10 @@ function ProvisionAccountModal({ controller, onClose, open }: { controller: Cons
             <div><dt>Account ID</dt><dd>{account?.accountId || "暂不可用"}</dd></div>
             <div><dt>Console User ID</dt><dd>{account?.consoleUserId || "暂不可用"}</dd></div>
             <div><dt>Sub2API User ID</dt><dd>{account?.gatewayIdentity.available ? account.gatewayIdentity.data.userId : "暂不可用"}</dd></div>
-            <div><dt>operation ID</dt><dd>{controller.operatorProvisionOperation?.operationId || "暂不可用"}</dd></div>
-            <div><dt>状态</dt><dd>{controller.operatorProvisionOperation?.status || "暂不可用"}</dd></div>
-            <div><dt>phase</dt><dd>{controller.operatorProvisionOperation?.phase || "暂不可用"}</dd></div>
-            <div><dt>errorCode</dt><dd>{controller.operatorProvisionOperation?.errorCode || "暂不可用"}</dd></div>
+            <div><dt>operation ID</dt><dd>{controller.operatorAccounts.provisionOperation?.operationId || "暂不可用"}</dd></div>
+            <div><dt>状态</dt><dd>{controller.operatorAccounts.provisionOperation?.status || "暂不可用"}</dd></div>
+            <div><dt>phase</dt><dd>{controller.operatorAccounts.provisionOperation?.phase || "暂不可用"}</dd></div>
+            <div><dt>errorCode</dt><dd>{controller.operatorAccounts.provisionOperation?.errorCode || "暂不可用"}</dd></div>
           </dl>
         </section>
       ) : (
@@ -524,7 +525,8 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
 function AccountsPage({ controller }: { controller: ConsoleController }) {
   const [dialog, setDialog] = useState<AccountDialog>("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
-  const accounts = sourceData(controller.sources.operatorAccounts.value)?.items || [];
+  const accountController = controller.operatorAccounts;
+  const accounts = sourceData(accountController.accounts.value)?.items || [];
   const selectedAccount = accounts.find((account) => account.accountId === selectedAccountId) || null;
   const openAccount = (account: OperatorAccountDTO, next: AccountDialog) => {
     controller.setWalletAdjustmentOperation(null);
@@ -534,7 +536,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
   return (
     <section className="panel" data-slide="A-ACC-01 A-ACC-02 A-ACC-03">
       <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
-      <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={controller.sources.operatorAccounts.error} loading={controller.sources.operatorAccounts.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.operatorAccounts.value} unavailableTitle="账户数据暂不可用">
+      <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
         {(data) => <>
           <div className="table-wrap operator-account-table"><table><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
             <tr key={account.accountId}>
@@ -555,7 +557,7 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
           <div className="operator-account-mobile-list">{data.items.map((account) => <OperatorAccountMobileCard account={account} controller={controller} key={account.accountId} openAccount={openAccount} />)}</div>
         </>}
       </SourceState>
-      <Pagination current={controller.operatorAccountPage} label="账号分页" onChange={(page) => void controller.changeOperatorAccountPage(page)} pages={controller.operatorAccountPages} />
+      <Pagination current={accountController.page} label="账号分页" onChange={(page) => void accountController.changePage(page)} pages={accountController.pages} />
       <ProvisionAccountModal controller={controller} onClose={() => setDialog("")} open={dialog === "provision"} />
       <AccountDetailModal account={dialog === "detail" ? selectedAccount : null} onClose={() => setDialog("")} />
       <WalletAdjustmentModal account={dialog === "wallet" ? selectedAccount : null} controller={controller} onClose={() => setDialog("")} />

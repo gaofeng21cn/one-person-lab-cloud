@@ -164,6 +164,7 @@ function operatorAccount(accountId, status, overrides = {}) {
   const email = overrides.email || (disabled ? "stopped@example.com" : "pilot@example.com");
   return {
     accountId, consoleUserId: overrides.consoleUserId || (disabled ? "user-stopped" : "user-customer"), role: "owner", sub2apiUserId: userId, email, status,
+    workspacePurchaseEnabled: overrides.workspacePurchaseEnabled ?? !disabled,
     gatewayIdentity: source({ userId, email, status }, "sub2api"),
     wallet: source({ userId, currency: "USD", usdMicros: disabled ? "0" : "50000000", status: "active" }, "sub2api"),
     keyCount: source(disabled ? 0 : 2, "sub2api"),
@@ -711,13 +712,23 @@ export async function apiFixture(route, state, session = state) {
     if (!operation) {
       const accountId = `acct-${state.operatorAccounts.length + 1}`;
       const userId = String(20 + state.operatorAccounts.length);
+      const workspacePurchaseEnabled = input.admission !== "gateway_only";
       const account = operatorAccount(accountId, "active", {
         email: String(input.email || "").trim().toLowerCase(),
         consoleUserId: `user-${state.operatorAccounts.length + 1}`,
-        sub2apiUserId: userId
+        sub2apiUserId: userId,
+        workspacePurchaseEnabled
       });
       state.operatorAccounts.push(account);
-      operation = { operationId: `account-provision-${accountId}`, accountId, status: "succeeded", phase: "completed", createdAt: NOW, updatedAt: NOW };
+      operation = {
+        operationId: `account-provision-${accountId}`,
+        accountId,
+        status: "succeeded",
+        phase: "completed",
+        workspacePurchaseEnabled,
+        createdAt: NOW,
+        updatedAt: NOW
+      };
       state.operatorProvisionWriteResults.set(writeIdentity, operation);
     }
     if (state.faultInjection && !state.lostOperatorProvisionResponses.has(writeIdentity)) {

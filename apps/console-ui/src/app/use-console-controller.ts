@@ -3,13 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
   createOperatorAnnouncement,
-  disableOperatorAccount as disableOperatorAccountCommand,
   getAnnouncements,
   getGatewayAccountUsageSummary,
   getGatewayBalanceHistory,
   getGatewayEndpoint,
   getGatewayWallet,
-  getOperatorAccountsPage,
   getOperatorAnnouncements,
   getOperatorHealth,
   getOperatorOverview,
@@ -19,18 +17,13 @@ import {
   getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
   markAnnouncementRead,
-  provisionOperatorAccount,
   publishOperatorAnnouncement,
-  setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand,
   withdrawOperatorAnnouncement
 } from "../api/console-read-api.ts";
 import type {
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
   AuthSession,
-  OperatorAccountDTO,
-  OperatorAccountCommandDTO,
-  ProvisionAccountRequest,
   SourceEnvelope
 } from "../api/dtos.ts";
 import {
@@ -41,9 +34,10 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, OperatorAccountController, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import { useBillingController } from "./use-billing-controller.ts";
 import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
+import { useOperatorAccountController } from "./use-operator-account-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
@@ -69,7 +63,6 @@ function initialSources(): ConsoleSources {
     announcements: emptyRemote(),
     endpoint: emptyRemote(),
     operatorOverview: emptyRemote(),
-    operatorAccounts: emptyRemote(),
     operatorWorkspaces: emptyRemote(),
     operatorWorkspaceDetail: emptyRemote(),
     operatorWorkspaceImagePolicy: emptyRemote(),
@@ -135,12 +128,9 @@ export function useConsoleController() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspacePageNumber, setWorkspacePageNumber] = useState(1);
   const [balanceHistoryPage, setBalanceHistoryPage] = useState(1);
-  const [operatorAccountPage, setOperatorAccountPage] = useState(1);
   const [operatorWorkspacePage, setOperatorWorkspacePage] = useState(1);
   const [selectedOperatorWorkspaceId, setSelectedOperatorWorkspaceId] = useState("");
-  const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
-  const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
 
   const requestGeneration = useRef(0);
   const sessionGeneration = useRef(0);
@@ -155,9 +145,6 @@ export function useConsoleController() {
   const workspaceBudgetRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
-  const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
-  const operatorDisableIntents = useRef(new Map<string, string>());
-  const operatorWorkspaceEligibilityIntents = useRef(new Map<string, { enabled: boolean; idempotencyKey: string }>());
   const announcementCreateIntent = useRef<{ input: AnnouncementDraftRequest; idempotencyKey: string } | null>(null);
   const announcementPublishIntents = useRef(new Map<string, { input: AnnouncementScheduleRequest; idempotencyKey: string }>());
   const announcementWithdrawIntents = useRef(new Map<string, string>());
@@ -191,21 +178,17 @@ export function useConsoleController() {
     workspaceBudgetCapability.reset();
     gatewayUsageCapability.reset();
     billingCapability.reset();
+    operatorAccountCapability.reset();
     setWorkspacePageNumber(1);
     setBalanceHistoryPage(1);
-    setOperatorAccountPage(1);
     setOperatorWorkspacePage(1);
     setSelectedOperatorWorkspaceId("");
     selectedOperatorWorkspaceIdRef.current = "";
-    setOperatorProvisionOperation(null);
-    setCommandBusy(false);
     setAnnouncementBusy("");
     workspaceDetailRequestGeneration.current += 1;
     workspaceRuntimeRequestGeneration.current += 1;
     workspaceBudgetRequestGeneration.current += 1;
-    operatorProvisionIntent.current = null;
     announcementCreateIntent.current = null;
-    operatorDisableIntents.current.clear();
     announcementPublishIntents.current.clear();
     announcementWithdrawIntents.current.clear();
   };
@@ -350,13 +333,20 @@ export function useConsoleController() {
   });
   const workspaceBudget: WorkspaceBudgetController = workspaceBudgetCapability;
 
+  const operatorAccountCapability = useOperatorAccountController({
+    active: path === "/admin/accounts",
+    currentSession: () => sessionRef.current,
+    flash,
+    friendlyError,
+    mutationError,
+    unavailableSource
+  });
+  const operatorAccounts: OperatorAccountController = operatorAccountCapability;
+
   const walletAdjustmentCapability = useWalletAdjustmentController({
     session,
     currentMutationRequest,
-    refreshAccounts: async () => {
-      if (!session) return;
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-    },
+    refreshAccounts: operatorAccountCapability.refresh,
     flash,
     friendlyError,
     mutationError
@@ -545,42 +535,6 @@ export function useConsoleController() {
     }
   };
 
-  const loadOperatorAccounts = async (generation: number, activeSession: AuthSession, page = operatorAccountPage) => {
-    beginSource("operatorAccounts");
-    try {
-      const result = await getOperatorAccountsPage(page, operatorPageSize);
-      if (isRequestCurrent(generation, activeSession.user.id)) {
-        updateSource("operatorAccounts", { value: result, loading: false, error: "" });
-        setOperatorAccountPage(page);
-      }
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorAccounts", error, unavailableSource("control-plane+sub2api"));
-    }
-  };
-
-  const findOperatorAccountByEmail = async (email: string, accountId: string, requestStillCurrent: () => boolean) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    for (let page = 1; ; page += 1) {
-      const result = await getOperatorAccountsPage(page, 50);
-      if (!requestStillCurrent()) return null;
-      if (!result.available) return null;
-      if (result.data.page !== page || result.data.pageSize !== 50) throw new Error("operator_account_page_mismatch");
-      const authoritativeAccount = result.data.items.find((account) => account.accountId === accountId
-        && account.email.trim().toLowerCase() === normalizedEmail
-        && Boolean(account.consoleUserId)
-        && account.gatewayIdentity.available
-        && account.gatewayIdentity.data.userId === account.sub2apiUserId
-        && account.gatewayIdentity.data.email.trim().toLowerCase() === normalizedEmail);
-      if (authoritativeAccount) {
-        updateSource("operatorAccounts", { value: result, loading: false, error: "" });
-        setOperatorAccountPage(page);
-        return authoritativeAccount;
-      }
-      const pages = Math.max(1, Math.ceil(result.data.total / result.data.pageSize));
-      if (page >= pages) return null;
-    }
-  };
-
   const loadOperatorWorkspaces = async (generation: number, activeSession: AuthSession, page = operatorWorkspacePage) => {
     beginSource("operatorWorkspaces");
     try {
@@ -686,7 +640,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/admin/accounts") {
-      await loadOperatorAccounts(generation, activeSession);
+      await operatorAccountCapability.load();
       return;
     }
     if (routePath === "/admin/billing") {
@@ -887,84 +841,9 @@ export function useConsoleController() {
     }
   };
 
-  const changeOperatorAccountPage = async (page: number) => {
-    if (!session || page < 1) return;
-    await loadOperatorAccounts(requestGeneration.current, session, page);
-  };
-
   const changeOperatorWorkspacePage = async (page: number) => {
     if (!session || page < 1) return;
     await loadOperatorWorkspaces(requestGeneration.current, session, page);
-  };
-
-  const disableOperatorAccount = async (accountId: string) => {
-    if (!session || !window.confirm("确认停用该客户？账号会立即停用；历史账单、收据和审计记录会保留。")) return;
-    const requestStillCurrent = currentMutationRequest();
-    const idempotencyKey = operatorDisableIntents.current.get(accountId) || `account-disable:${accountId}:${crypto.randomUUID()}`;
-    operatorDisableIntents.current.set(accountId, idempotencyKey);
-    try {
-      await disableOperatorAccountCommand(accountId, "operator_requested", session.csrfToken, idempotencyKey);
-      if (!requestStillCurrent()) return;
-      operatorDisableIntents.current.delete(accountId);
-      flash("客户已停用");
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    }
-  };
-
-  const setOperatorWorkspacePurchaseEligibility = async (accountId: string, enabled: boolean) => {
-    const confirmation = enabled
-      ? "确认授予该账户新购 Workspace 的资格？"
-      : "确认撤销该账户新购 Workspace 的资格？已有 Workspace 不会受影响。";
-    if (!session || !window.confirm(confirmation)) return;
-    const requestStillCurrent = currentMutationRequest();
-    const current = operatorWorkspaceEligibilityIntents.current.get(accountId);
-    const intent = current?.enabled === enabled
-      ? current
-      : { enabled, idempotencyKey: `workspace-purchase-eligibility:${accountId}:${crypto.randomUUID()}` };
-    operatorWorkspaceEligibilityIntents.current.set(accountId, intent);
-    try {
-      await setOperatorWorkspacePurchaseEligibilityCommand(accountId, enabled, "operator_requested", session.csrfToken, intent.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      operatorWorkspaceEligibilityIntents.current.delete(accountId);
-      flash(enabled ? "已授予 Workspace 新购资格" : "已撤销 Workspace 新购资格");
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    }
-  };
-
-  const provisionAccount = async (input: ProvisionAccountRequest) => {
-    if (!session || commandBusy) return false;
-    const requestStillCurrent = currentMutationRequest();
-    if (!operatorProvisionIntent.current || JSON.stringify(operatorProvisionIntent.current.input) !== JSON.stringify(input)) {
-      operatorProvisionIntent.current = { input, idempotencyKey: `account-provision:${crypto.randomUUID()}` };
-    }
-    setCommandBusy(true);
-    try {
-      const result = await provisionOperatorAccount(operatorProvisionIntent.current.input, session.csrfToken, operatorProvisionIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return null;
-      setOperatorProvisionOperation(result);
-      const authoritativeAccount = await findOperatorAccountByEmail(input.email, result.accountId, requestStillCurrent);
-      if (!requestStillCurrent()) return null;
-      if (!authoritativeAccount) {
-        flash("开户命令已返回，但账户映射读回暂不可用，请重试", "danger");
-        return { operation: result, account: null as OperatorAccountDTO | null };
-      }
-      operatorProvisionIntent.current = null;
-      flash("用户已开通");
-      return { operation: result, account: authoritativeAccount };
-    } catch (error) {
-      if (!requestStillCurrent()) return null;
-      flash(mutationError(error), "danger");
-      return null;
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
   };
 
   const createAnnouncement = async (input: AnnouncementDraftRequest) => {
@@ -1033,7 +912,6 @@ export function useConsoleController() {
 
   const workspaceRows = sources.workspaces.value?.available ? sources.workspaces.value.data.items : [];
   const workspacePages = sources.workspaces.value?.available ? Math.ceil(sources.workspaces.value.data.total / sources.workspaces.value.data.pageSize) : 0;
-  const operatorAccountPages = sources.operatorAccounts.value?.available ? Math.ceil(sources.operatorAccounts.value.data.total / sources.operatorAccounts.value.data.pageSize) : 0;
   const operatorWorkspacePages = sources.operatorWorkspaces.value?.available ? Math.ceil(sources.operatorWorkspaces.value.data.total / sources.operatorWorkspaces.value.data.pageSize) : 0;
   const isAdminRoute = path === "/admin" || path.startsWith("/admin/");
   const isKnownRoute = isKnownConsoleRoute(path);
@@ -1080,7 +958,6 @@ export function useConsoleController() {
     workspacePages,
     changeWorkspacePage,
     workspaceLaunch,
-    commandBusy,
     workspaceDeleteBusy: workspaceDelete.busy,
     workspaceDeleteIssue: workspaceDelete.issue,
     deleteCurrentWorkspace: workspaceDelete.deleteCurrentWorkspace,
@@ -1098,9 +975,7 @@ export function useConsoleController() {
     gatewayUsage,
     balanceHistoryPage,
     changeBalancePage,
-    operatorAccountPage,
-    operatorAccountPages,
-    changeOperatorAccountPage,
+    operatorAccounts,
     operatorWorkspacePage,
     operatorWorkspacePages,
     changeOperatorWorkspacePage,
@@ -1108,17 +983,12 @@ export function useConsoleController() {
     setSelectedOperatorWorkspaceId,
     openOperatorWorkspace,
     workspaceRuntimeImageReplacement,
-    disableOperatorAccount,
-    setOperatorWorkspacePurchaseEligibility,
     walletAdjustmentOperation: walletAdjustment.operation,
     setWalletAdjustmentOperation: walletAdjustment.setOperation,
     submitWalletAdjustment: walletAdjustment.submit,
     refreshWalletOperation: walletAdjustment.refresh,
     recoverWalletOperation: walletAdjustment.recover,
     walletAdjustmentBusy: walletAdjustment.busy,
-    operatorProvisionOperation,
-    setOperatorProvisionOperation,
-    provisionAccount,
     createAnnouncement,
     publishAnnouncement,
     withdrawAnnouncement

@@ -37,6 +37,7 @@ export const localVerificationSteps = Object.freeze([
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
   { name: "Billing browser tests", command: "npm", args: ["run", "test:browser:billing"] },
   { name: "Gateway usage browser tests", command: "npm", args: ["run", "test:browser:gateway-usage"] },
+  { name: "Operator Account browser tests", command: "npm", args: ["run", "test:browser:operator-account"] },
   { name: "Workspace lifecycle browser tests", command: "npm", args: ["run", "test:browser:workspace-lifecycle"] },
   { name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
   { name: "TypeScript lint", command: "npm", args: ["run", "lint"] },
