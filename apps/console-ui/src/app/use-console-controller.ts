@@ -35,20 +35,18 @@ import type {
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
   ProvisionAccountRequest,
-  SourceEnvelope,
-  WorkspaceGatewayBudgetDTO,
-  WorkspaceGatewayBudgetUpdateRequest
+  SourceEnvelope
 } from "../api/dtos.ts";
 import {
   findWorkspaceInPages,
   getWorkspaceGatewayBudget,
   getWorkspaces,
-  getWorkspaceRuntimeStatus,
-  updateWorkspaceGatewayBudget
+  getWorkspaceRuntimeStatus
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController } from "./console-controller-types.ts";
+import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
@@ -57,13 +55,6 @@ import { useWalletAdjustmentController } from "./use-wallet-adjustment-controlle
 import { useSupportController } from "./use-support-controller.ts";
 
 const operatorPageSize = 20;
-
-type WorkspaceBudgetIntent = {
-  keyId: string;
-  signature: string;
-  input: WorkspaceGatewayBudgetUpdateRequest;
-  idempotencyKey: string;
-};
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
 
@@ -137,29 +128,6 @@ function mutationError(error: unknown) {
   return code ? friendlyError(code) : "结果待确认，请刷新操作状态，不要重复提交";
 }
 
-function workspaceBudgetRequestSignature(input: WorkspaceGatewayBudgetUpdateRequest) {
-  return JSON.stringify([
-    input.quotaUsdMicros ?? null,
-    input.rateLimit5hUsdMicros ?? null,
-    input.rateLimit1dUsdMicros ?? null,
-    input.rateLimit7dUsdMicros ?? null,
-    input.enabled ?? null,
-    input.resetQuota ?? null,
-    input.resetRateLimitUsage ?? null
-  ]);
-}
-
-function workspaceBudgetResultMatchesInput(
-  result: WorkspaceGatewayBudgetDTO,
-  input: WorkspaceGatewayBudgetUpdateRequest
-) {
-  return (input.quotaUsdMicros === undefined || result.quotaUsdMicros === String(input.quotaUsdMicros))
-    && (input.rateLimit5hUsdMicros === undefined || result.rateLimit5hUsdMicros === String(input.rateLimit5hUsdMicros))
-    && (input.rateLimit1dUsdMicros === undefined || result.rateLimit1dUsdMicros === String(input.rateLimit1dUsdMicros))
-    && (input.rateLimit7dUsdMicros === undefined || result.rateLimit7dUsdMicros === String(input.rateLimit7dUsdMicros))
-    && (input.enabled === undefined || result.enabled === input.enabled);
-}
-
 export function useConsoleController() {
   const { path, navigate } = useConsoleRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -181,7 +149,6 @@ export function useConsoleController() {
   const [selectedUsageKeyId, setSelectedUsageKeyId] = useState("");
   const [usagePeriod, setUsagePeriod] = useState<GatewayUsagePeriod>("month");
   const [usagePage, setUsagePage] = useState(1);
-  const [workspaceBudgetBusy, setWorkspaceBudgetBusy] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
@@ -203,8 +170,6 @@ export function useConsoleController() {
   const workspaceDetailRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
-  const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
-  const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
   const operatorDisableIntents = useRef(new Map<string, string>());
   const operatorWorkspaceEligibilityIntents = useRef(new Map<string, { enabled: boolean; idempotencyKey: string }>());
@@ -244,6 +209,7 @@ export function useConsoleController() {
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
+    workspaceBudgetCapability.reset();
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
     selectedUsageKeyIdRef.current = "";
@@ -262,10 +228,7 @@ export function useConsoleController() {
     selectedOperatorWorkspaceIdRef.current = "";
     setOperatorProvisionOperation(null);
     setCommandBusy(false);
-    setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
-    workspaceBudgetBusyClaim.current = null;
-    workspaceBudgetIntents.current.clear();
     workspaceDetailRequestGeneration.current += 1;
     operatorProvisionIntent.current = null;
     announcementCreateIntent.current = null;
@@ -375,6 +338,18 @@ export function useConsoleController() {
     mutationError
   });
   const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
+
+  const workspaceBudgetCapability = useWorkspaceBudgetController({
+    session,
+    workspace: activeWorkspace,
+    budget: sources.workspaceBudget.value,
+    activeWorkspaceId,
+    currentMutationRequest,
+    updateBudgetSource: (value) => updateSource("workspaceBudget", { value, loading: false, error: "" }),
+    flash,
+    mutationError
+  });
+  const workspaceBudget: WorkspaceBudgetController = workspaceBudgetCapability;
 
   const walletAdjustmentCapability = useWalletAdjustmentController({
     session,
@@ -841,83 +816,6 @@ export function useConsoleController() {
     await loadWorkspaces(generation, session, page, 10);
   };
 
-  const updateWorkspaceBudget = async (input: WorkspaceGatewayBudgetUpdateRequest) => {
-    const workspace = sources.workspaceDetail.value?.available ? sources.workspaceDetail.value.data : null;
-    const budget = sources.workspaceBudget.value?.available ? sources.workspaceBudget.value.data : null;
-    if (!session || !workspace || !budget || budget.workspaceId !== workspace.id) return false;
-    if (workspaceBudgetBusyClaim.current !== null) return false;
-    const requestStillCurrent = currentMutationRequest();
-    const workspaceDetailGeneration = workspaceDetailRequestGeneration.current;
-    const workspaceStillCurrent = () => workspaceDetailGeneration === workspaceDetailRequestGeneration.current
-      && workspaceIdFromPath(window.location.pathname) === workspace.id;
-    const signature = workspaceBudgetRequestSignature(input);
-    let intent = workspaceBudgetIntents.current.get(workspace.id);
-    if (intent && intent.keyId !== budget.keyId) {
-      workspaceBudgetIntents.current.delete(workspace.id);
-      intent = undefined;
-    }
-    if (intent && intent.signature !== signature) {
-      flash("上次模型预算更新结果待确认，请使用相同设置重试", "danger");
-      return false;
-    }
-    if (!intent) {
-      intent = {
-        keyId: budget.keyId,
-        signature,
-        input: { ...input },
-        idempotencyKey: `workspace-gateway-budget:${workspace.id}:${crypto.randomUUID()}`
-      };
-      workspaceBudgetIntents.current.set(workspace.id, intent);
-    }
-    const busyClaim = Symbol("workspace-budget");
-    workspaceBudgetBusyClaim.current = busyClaim;
-    setWorkspaceBudgetBusy(true);
-    try {
-      const result = await updateWorkspaceGatewayBudget(
-        workspace.id,
-        budget.keyId,
-        intent.input,
-        session.csrfToken,
-        intent.idempotencyKey
-      );
-      if (!requestStillCurrent()) return false;
-      if (!workspaceStillCurrent()) return false;
-      if (!result.available || result.data.workspaceId !== workspace.id || result.data.keyId !== budget.keyId) {
-        throw new Error("workspace_gateway_budget_identity_mismatch");
-      }
-      if (!workspaceBudgetResultMatchesInput(result.data, intent.input)) {
-        if (workspaceBudgetIntents.current.get(workspace.id) === intent) {
-          workspaceBudgetIntents.current.delete(workspace.id);
-        }
-        updateSource("workspaceBudget", { value: result, loading: false, error: "" });
-        flash("模型预算已变化，请按最新状态重新提交", "danger");
-        return false;
-      }
-      if (workspaceBudgetIntents.current.get(workspace.id) === intent) {
-        workspaceBudgetIntents.current.delete(workspace.id);
-      }
-      updateSource("workspaceBudget", { value: result, loading: false, error: "" });
-      flash("模型预算已更新");
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent()) return false;
-      if (!workspaceStillCurrent()) return false;
-      const status = error && typeof error === "object" && "status" in error
-        ? Number((error as { status?: number }).status)
-        : 0;
-      if (status > 0 && status < 500 && workspaceBudgetIntents.current.get(workspace.id) === intent) {
-        workspaceBudgetIntents.current.delete(workspace.id);
-      }
-      flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (workspaceBudgetBusyClaim.current === busyClaim && requestStillCurrent()) {
-        workspaceBudgetBusyClaim.current = null;
-        setWorkspaceBudgetBusy(false);
-      }
-    }
-  };
-
   const copyText = async (value: string | undefined, message: string) => {
     if (!value) return;
     try {
@@ -1228,8 +1126,8 @@ export function useConsoleController() {
     updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
     support,
     workspaceSecrets,
-    workspaceBudgetBusy,
-    updateWorkspaceBudget,
+    workspaceBudgetBusy: workspaceBudget.busy,
+    updateWorkspaceBudget: workspaceBudget.update,
     copyText,
     billingView,
     setBillingView,

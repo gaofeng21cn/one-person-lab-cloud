@@ -18,6 +18,7 @@ import {
   workspaceBudgetResultMatchesInput,
   type WorkspaceBudgetIntent
 } from "./workspace-budget-controller-model.ts";
+import type { WorkspaceBudgetController } from "./console-controller-types.ts";
 
 interface WorkspaceBudgetDependencies {
   session: AuthSession | null;
@@ -30,9 +31,7 @@ interface WorkspaceBudgetDependencies {
   mutationError: (error: unknown) => string;
 }
 
-export interface WorkspaceBudgetController {
-  busy: boolean;
-  update: (input: WorkspaceGatewayBudgetUpdateRequest) => Promise<boolean>;
+export interface WorkspaceBudgetCapability extends WorkspaceBudgetController {
   reset: () => void;
 }
 
@@ -45,7 +44,7 @@ export function useWorkspaceBudgetController({
   updateBudgetSource,
   flash,
   mutationError
-}: WorkspaceBudgetDependencies): WorkspaceBudgetController {
+}: WorkspaceBudgetDependencies): WorkspaceBudgetCapability {
   const [busy, setBusy] = useState(false);
   const requestGeneration = useRef(0);
   const intent = useRef<WorkspaceBudgetIntent | null>(null);
