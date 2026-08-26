@@ -19,7 +19,7 @@ import {
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { BillingController, GatewayUsageController, WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
+import type { BillingController, CustomerAnnouncementController, GatewayUsageController, WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -138,7 +138,8 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
   const wallet = sourceData(controller.sources.wallet.value);
   const usage = sourceData(controller.sources.accountUsage.value);
   const receipts = sourceData(controller.billing.receipts.value)?.receipts || [];
-  const announcements = sourceData(controller.sources.announcements.value)?.items || [];
+  const announcementController = controller.customerAnnouncements;
+  const announcements = sourceData(announcementController.announcements.value)?.items || [];
   const primaryWorkspace = workspaces?.items[0];
   const primaryPath = primaryWorkspace ? `/console/workspaces/${encodeURIComponent(primaryWorkspace.id)}` : "/console/workspaces/new";
   const workspacesUnavailable = controller.sources.workspaces.value?.status === "unavailable" || Boolean(controller.sources.workspaces.error);
@@ -204,14 +205,14 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <section className="panel overview-announcements">
           <div className="panel-title"><h2>公告</h2><Button onClick={() => controller.navigate("/console/announcements")} size="sm" variant="ghost">全部</Button></div>
           <SourceState
-            empty={controller.sources.announcements.value?.status === "empty"}
+            empty={announcementController.announcements.value?.status === "empty"}
             emptyTitle="暂无公告"
-            error={controller.sources.announcements.error}
-            loading={controller.sources.announcements.loading}
-            onRetry={() => void controller.refreshCurrentPage()}
-            source={controller.sources.announcements.value}
+            error={announcementController.announcements.error}
+            loading={announcementController.announcements.loading}
+            onRetry={() => void announcementController.refresh()}
+            source={announcementController.announcements.value}
           >
-            {() => <AnnouncementRows announcements={announcements} controller={controller} compact />}
+            {() => <AnnouncementRows announcements={announcements} controller={announcementController} compact />}
           </SourceState>
         </section>
       </div>
@@ -700,13 +701,14 @@ function ReceiptDetail({ controller, receipt }: { controller: BillingController;
   return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.closeReceipt} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => controller.selectedReceiptId && void controller.openReceipt(controller.selectedReceiptId)} source={controller.detail.value} unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>Receipt ID</dt><dd>{detail.receiptId}</dd></div><div><dt>类型</dt><dd>{receiptLabel(detail.type)}</dd></div><div><dt>状态</dt><dd>{statusLabel(detail.status)}</dd></div><div><dt>创建时间</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>Workspace ID</dt><dd>{detail.workspaceId || "-"}</dd></div><div><dt>总额</dt><dd>{formatUsdMicros(detail.totalUsdMicros ?? detail.chargeUsdMicros)}</dd></div>{detail.refundUsdMicros !== undefined ? <div><dt>退款额</dt><dd>{formatUsdMicros(detail.refundUsdMicros)}</dd></div> : null}<div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>价格版本</dt><dd>{detail.priceVersion || "-"}</dd></div><div><dt>计算组成金额</dt><dd>{components?.compute ? formatUsdMicros(components.compute.chargeUsdMicros) : "-"}</dd></div><div><dt>存储组成金额和容量</dt><dd>{components?.storage ? `${formatUsdMicros(components.storage.chargeUsdMicros)} · ${components.storage.sizeGb} GB` : "-"}</dd></div><div><dt>扣款引用</dt><dd>{detail.chargeReference || "-"}</dd></div></dl>}</SourceState></section>;
 }
 
-function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: ConsoleController }) {
-  return <div className={compact ? "compact-announcement-list" : "announcement-list"}>{announcements.map((announcement) => <article className="announcement-item" key={announcement.id}><header><div><h3>{announcement.title}</h3><Badge color={announcement.read ? "secondary" : "info"}>{announcement.read ? "已读" : "未读"}</Badge></div><span>{formatDate(announcement.publishedAt || announcement.startsAt || announcement.updatedAt, true)}</span></header><p>{announcement.body}</p>{announcement.read ? null : <Button busy={controller.announcementBusy === announcement.id} onClick={() => void controller.markRead(announcement.id)} size="sm" variant="outline">标记已读</Button>}</article>)}</div>;
+function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: CustomerAnnouncementController }) {
+  return <div className={compact ? "compact-announcement-list" : "announcement-list"}>{announcements.map((announcement) => <article className="announcement-item" key={announcement.id}><header><div><h3>{announcement.title}</h3><Badge color={announcement.read ? "secondary" : "info"}>{announcement.read ? "已读" : "未读"}</Badge></div><span>{formatDate(announcement.publishedAt || announcement.startsAt || announcement.updatedAt, true)}</span></header><p>{announcement.body}</p>{announcement.read ? null : <Button busy={controller.busyAnnouncementId === announcement.id} onClick={() => void controller.markRead(announcement.id)} size="sm" variant="outline">标记已读</Button>}</article>)}</div>;
 }
 
 function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
-  const announcements = sourceData(controller.sources.announcements.value)?.items || [];
-  return <section className="announcements-page" data-slide="C-ANN-01"><section className="panel"><div className="panel-title"><div><h2>公告列表</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div><SourceState empty={controller.sources.announcements.value?.status === "empty"} emptyTitle="暂无公告" error={controller.sources.announcements.error} loading={controller.sources.announcements.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.announcements.value} unavailableTitle="公告暂不可用">{() => <AnnouncementRows announcements={announcements} controller={controller} />}</SourceState></section></section>;
+  const announcementController = controller.customerAnnouncements;
+  const announcements = sourceData(announcementController.announcements.value)?.items || [];
+  return <section className="announcements-page" data-slide="C-ANN-01"><section className="panel"><div className="panel-title"><div><h2>公告列表</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div><Button onClick={() => void announcementController.refresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div><SourceState empty={announcementController.announcements.value?.status === "empty"} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">{() => <AnnouncementRows announcements={announcements} controller={announcementController} />}</SourceState></section></section>;
 }
 
 export function CustomerPages({ controller }: { controller: ConsoleController }) {
