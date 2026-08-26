@@ -468,7 +468,7 @@ function WalletOperationReadback({ controller }: { controller: ConsoleController
         <div><dt>上游 errorCode / requestId</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "暂不可用"}</dd></div>
         <div><dt>allowedActions</dt><dd>{operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无"}</dd></div>
       </dl>
-      {recoverable ? <div className="page-actions"><span>恢复时会要求 evidenceRef，并复用原 operation。</span><Button busy={controller.commandBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>恢复确认</Button></div> : null}
+      {recoverable ? <div className="page-actions"><span>恢复时会要求 evidenceRef，并复用原 operation。</span><Button busy={controller.walletAdjustmentBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>恢复确认</Button></div> : null}
     </section>
   );
 }
@@ -499,7 +499,7 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
     <Modal
       className="modal wallet-adjustment-modal"
       description={account ? `目标 Account ID：${account.accountId}` : undefined}
-      footer={<><Button disabled={controller.commandBusy} onClick={reset} variant="outline">关闭</Button>{controller.walletAdjustmentOperation ? null : <Button busy={controller.commandBusy} color="primary" disabled={!valid} form="wallet-adjustment-form" type="submit">确认操作</Button>}</>}
+      footer={<><Button disabled={controller.walletAdjustmentBusy} onClick={reset} variant="outline">关闭</Button>{controller.walletAdjustmentOperation ? null : <Button busy={controller.walletAdjustmentBusy} color="primary" disabled={!valid} form="wallet-adjustment-form" type="submit">确认操作</Button>}</>}
       onClose={reset}
       open={open}
       title="余额操作"
