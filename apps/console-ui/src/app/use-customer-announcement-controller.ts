@@ -63,7 +63,7 @@ export function useCustomerAnnouncementController({
   const queryGeneration = useRef(0);
   const mutationGeneration = useRef(0);
   const claim = useRef<symbol | null>(null);
-  const readIntent = useRef<AnnouncementReadIntent | null>(null);
+  const readIntents = useRef(new Map<string, AnnouncementReadIntent>());
   scopeRef.current = scope;
 
   const requestOwnsSession = useCallback((generation: number, userId: string, csrfToken: string) => {
@@ -93,7 +93,9 @@ export function useCustomerAnnouncementController({
     scopeGeneration.current += 1;
     queryGeneration.current += 1;
     mutationGeneration.current += 1;
-    readIntent.current = null;
+    readIntents.current.clear();
+    claim.current = null;
+    setBusyAnnouncementId("");
     setProjection({ scope: "", remote: emptyRemote() });
   }, []);
 
@@ -130,6 +132,12 @@ export function useCustomerAnnouncementController({
       if (result.available && (result.data.page !== 1 || result.data.pageSize !== pageSize)) {
         throw new Error("customer_announcement_page_mismatch");
       }
+      if (!result.available && expectedReadAnnouncementId !== undefined) {
+        setProjection((current) => current.scope === expectedScope
+          ? { scope: expectedScope, remote: { ...current.remote, loading: false } }
+          : current);
+        return { state: "failed" };
+      }
       if (result.available && expectedReadAnnouncementId !== undefined
         && !announcementReadbackMatches(result.data, expectedReadAnnouncementId)) {
         setProjection((current) => current.scope === expectedScope
@@ -141,6 +149,12 @@ export function useCustomerAnnouncementController({
       return { state: "committed" };
     } catch (error) {
       if (!requestOwnsScope(generation, boundary, expectedScope, userId, csrfToken)) return { state: "stale" };
+      if (expectedReadAnnouncementId !== undefined) {
+        setProjection((current) => current.scope === expectedScope
+          ? { scope: expectedScope, remote: { ...current.remote, loading: false } }
+          : current);
+        return { state: "failed" };
+      }
       setProjection({
         scope: expectedScope,
         remote: {
@@ -166,16 +180,39 @@ export function useCustomerAnnouncementController({
     setBusyAnnouncementId("");
   }, []);
 
+  const projectReceipt = useCallback((announcementId: string) => {
+    const currentScope = scopeRef.current;
+    if (!currentScope) return;
+    setProjection((current) => {
+      if (current.scope !== currentScope || !current.remote.value?.available) return current;
+      return {
+        scope: current.scope,
+        remote: {
+          ...current.remote,
+          value: {
+            ...current.remote.value,
+            data: {
+              ...current.remote.value.data,
+              items: current.remote.value.data.items.map((announcement) => announcement.id === announcementId
+                ? { ...announcement, read: true }
+                : announcement)
+            }
+          }
+        }
+      };
+    });
+  }, []);
+
   const markRead = useCallback(async (announcementId: string) => {
     const session = currentSession();
     if (!session || !scopeRef.current || claim.current !== null) return;
 
     const intent = resolveAnnouncementReadIntent(
-      readIntent.current,
+      readIntents.current.get(announcementId) ?? null,
       announcementId,
       () => `announcement-read:${announcementId}:${crypto.randomUUID()}`
     );
-    readIntent.current = intent;
+    readIntents.current.set(announcementId, intent);
     const owner = Symbol(`customer-announcement-read:${announcementId}`);
     const generation = mutationGeneration.current;
     const userId = session.user.id;
@@ -188,7 +225,8 @@ export function useCustomerAnnouncementController({
       if (!announcementReadReceiptMatches(command, announcementId)) {
         throw new Error("customer_announcement_read_identity_mismatch");
       }
-      if (readIntent.current === intent) readIntent.current = null;
+      if (readIntents.current.get(announcementId) === intent) readIntents.current.delete(announcementId);
+      projectReceipt(announcementId);
 
       const expectedScope = scopeRef.current;
       if (expectedScope) {
@@ -207,7 +245,7 @@ export function useCustomerAnnouncementController({
     } finally {
       releaseClaim(owner);
     }
-  }, [currentSession, flash, friendlyError, readScope, releaseClaim, requestOwnsSession]);
+  }, [currentSession, flash, friendlyError, projectReceipt, readScope, releaseClaim, requestOwnsSession]);
 
   const announcements = projection.scope === scope ? projection.remote : emptyRemote<SourceEnvelope<AnnouncementPageDTO>>();
   return {

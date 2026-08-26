@@ -49,15 +49,16 @@ Overview request cannot commit into the list scope and vice versa.
 
 `markRead` reuses the same idempotency key for the same unresolved announcement,
 validates that the Control Plane receipt names that announcement and contains a
-valid RFC3339 `readAt`, and refreshes only the currently active customer scope.
-If the refreshed projection still contains the target, it must report
-`read=true`. The command receipt remains the authoritative read fact when the
-target has concurrently left the active or bounded projection.
+valid RFC3339 `readAt`, clears only that announcement's intent, projects the
+target as read, and refreshes only the currently active customer scope. The
+command receipt is the authoritative durable read fact. GET failure preserves
+that fact; target absence is valid when it has left the active or bounded
+projection, while a visible `read=false` conflict cannot commit.
 
 Route changes invalidate query completions. Session replacement and reset
-invalidate both query and mutation completions and clear intents. An in-flight
-claim is released only by the request that owns it, so a stale completion
-cannot release a newer claim or commit state.
+invalidate both query and mutation completions, clear intents, and replace the
+claim namespace. An in-flight request can release only its own claim token, so
+a stale completion cannot release a newer claim or commit state.
 
 ## Invariants
 
@@ -66,7 +67,8 @@ cannot release a newer claim or commit state.
 - A query result commits only to the exact current route scope and Session.
 - A mark-read receipt must match the requested announcement and a valid time.
 - An unresolved same-announcement retry reuses its original idempotency key.
-- A visible target after refresh must be `read=true` before the intent clears.
+- A valid receipt completes the intent; GET cannot downgrade that durable fact.
+- A refreshed visible `read=false` target is a conflict and cannot commit.
 - Route, Session, reset, and unmount boundaries cannot restore stale state.
 - Customer and Operator announcement state, intents, claims, and reset remain
   independent.
@@ -87,6 +89,6 @@ cannot release a newer claim or commit state.
 - No backend, HTTP, DTO JSON, persistence, or schema change.
 - No merge with Operator Announcement Lifecycle.
 - No pagination UI, polling, notification center, or edit feature.
-- No generic route-source framework or compatibility fields.
+- No pre-response optimistic read, generic route-source framework, or
+  compatibility fields.
 - No deployment, PostgreSQL, Tencent TKE, or Instance receipt.
-
