@@ -9,7 +9,7 @@ import type {
 import type { CustomerAnnouncementController, RemoteState } from "./console-controller-types.ts";
 import {
   announcementReadReceiptMatches,
-  announcementReadbackMatches,
+  announcementReadbackPreservesReceipts,
   resolveAnnouncementReadIntent,
   type AnnouncementReadIntent
 } from "./customer-announcement-controller-model.ts";
@@ -64,6 +64,7 @@ export function useCustomerAnnouncementController({
   const mutationGeneration = useRef(0);
   const claim = useRef<symbol | null>(null);
   const readIntents = useRef(new Map<string, AnnouncementReadIntent>());
+  const confirmedReadAnnouncementIds = useRef(new Set<string>());
   scopeRef.current = scope;
 
   const requestOwnsSession = useCallback((generation: number, userId: string, csrfToken: string) => {
@@ -94,6 +95,7 @@ export function useCustomerAnnouncementController({
     queryGeneration.current += 1;
     mutationGeneration.current += 1;
     readIntents.current.clear();
+    confirmedReadAnnouncementIds.current.clear();
     claim.current = null;
     setBusyAnnouncementId("");
     setProjection({ scope: "", remote: emptyRemote() });
@@ -138,8 +140,10 @@ export function useCustomerAnnouncementController({
           : current);
         return { state: "failed" };
       }
-      if (result.available && expectedReadAnnouncementId !== undefined
-        && !announcementReadbackMatches(result.data, expectedReadAnnouncementId)) {
+      if (result.available && !announcementReadbackPreservesReceipts(
+        result.data,
+        confirmedReadAnnouncementIds.current
+      )) {
         setProjection((current) => current.scope === expectedScope
           ? { scope: expectedScope, remote: { ...current.remote, loading: false } }
           : current);
@@ -225,6 +229,7 @@ export function useCustomerAnnouncementController({
       if (!announcementReadReceiptMatches(command, announcementId)) {
         throw new Error("customer_announcement_read_identity_mismatch");
       }
+      confirmedReadAnnouncementIds.current.add(announcementId);
       if (readIntents.current.get(announcementId) === intent) readIntents.current.delete(announcementId);
       projectReceipt(announcementId);
 

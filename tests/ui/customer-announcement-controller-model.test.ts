@@ -9,6 +9,7 @@ import type {
 import {
   announcementReadReceiptMatches,
   announcementReadbackMatches,
+  announcementReadbackPreservesReceipts,
   resolveAnnouncementReadIntent,
   type AnnouncementReadIntent
 } from "../../apps/console-ui/src/app/customer-announcement-controller-model.ts";
@@ -80,4 +81,13 @@ test("readback accepts an absent target but rejects a visible unread target", ()
   assert.equal(announcementReadbackMatches(page([{ ...unread, read: true }]), unread.id), true);
   assert.equal(announcementReadbackMatches(page([unread]), unread.id), false);
   assert.equal(announcementReadbackMatches(page([{ ...unread, id: "announcement-beta" }]), unread.id), true);
+});
+
+test("readback preserves every receipt confirmed in the current Session", () => {
+  const alpha = { ...unread, read: true };
+  const beta = { ...unread, id: "announcement-beta", read: true };
+
+  assert.equal(announcementReadbackPreservesReceipts(page([alpha, beta]), [alpha.id, beta.id]), true);
+  assert.equal(announcementReadbackPreservesReceipts(page([alpha]), [alpha.id, beta.id]), true);
+  assert.equal(announcementReadbackPreservesReceipts(page([alpha, { ...beta, read: false }]), [alpha.id, beta.id]), false);
 });
