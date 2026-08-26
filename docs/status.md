@@ -215,12 +215,14 @@ is selected and configured by the medopl instance, not by the portable product.
 - Console Workspace Gateway Budget now has one `useWorkspaceBudgetController`
   owner for the Workspace/Key-scoped intent, stable request signature,
   independent busy claim, mutation response validation, and Sub2API owner
-  readback. It validates stable policy fields without treating live usage
-  counters as resource-lifecycle state. The broad root retains only source
-  composition and route loading. Typed monotonic leases serialize Renewal and
-  Budget owner readbacks against their corresponding route source reads in
-  both request orderings without coupling the two projections together or
-  invalidating the independent Runtime projection.
+  readback. It preserves unresolved intent across Workspace navigation and
+  validates stable policy fields without treating live usage counters as
+  resource-lifecycle state. The broad root retains only source composition and
+  route loading. Typed monotonic leases serialize Renewal and Budget owner
+  readbacks against their corresponding route source reads in both request
+  orderings without coupling the two projections together or invalidating the
+  independent Runtime projection. The ordinary local/PR gate runs the focused
+  Delete, Renewal, Budget navigation and stale-order browser regressions.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.
