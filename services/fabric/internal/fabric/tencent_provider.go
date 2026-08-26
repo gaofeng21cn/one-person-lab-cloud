@@ -389,6 +389,13 @@ func (p *TencentProvider) ValidateWorkspaceImageReference(value string) bool {
 	return p != nil && p.installationErr == nil && p.workspaceImage != "" && validWorkspaceRuntimeImageIdentity(value)
 }
 
+func (p *TencentProvider) WorkspaceImageReference() string {
+	if p == nil {
+		return ""
+	}
+	return p.workspaceImage
+}
+
 func boundedClaimReadbackWait(ctx context.Context, attempt int) error {
 	if attempt <= 0 {
 		return nil

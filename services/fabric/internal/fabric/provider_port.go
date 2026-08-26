@@ -144,8 +144,19 @@ type runtimeRepairProvider interface {
 	RepairWorkspaceRuntime(context.Context, WorkspaceRuntimeInput, ComputeAllocation, StorageVolume) (WorkspaceRuntime, error)
 }
 
+type runtimeImageReplacementProvider interface {
+	ReplaceWorkspaceRuntimeImage(context.Context, WorkspaceRuntimeImageReplacementInput) (WorkspaceRuntime, error)
+}
+
 type workspaceImagePolicy interface {
 	ValidateWorkspaceImageReference(string) bool
+}
+
+// workspaceImageReferenceReader exposes the exact immutable image admitted by
+// the provider installation. Replacement callers must never be able to select
+// a different repository or digest merely because it is syntactically valid.
+type workspaceImageReferenceReader interface {
+	WorkspaceImageReference() string
 }
 
 type monthlyPreflightProvider interface {

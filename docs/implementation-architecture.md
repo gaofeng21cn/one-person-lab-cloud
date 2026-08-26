@@ -466,6 +466,23 @@ the same Launch to Activation; it does not create a repair operation or another
 Launch path. The persisted decoder accepts the production-shaped failed fresh
 continuation while the Runtime read ceiling expands from three to six.
 
+For an already succeeded and running Workspace, Control Plane also exposes a
+separate administrator-only Runtime image replacement operation:
+`POST /api/operator/workspaces/{workspaceId}/runtime-image-replacements` creates
+an asynchronous operation and the matching `GET` route returns its persisted
+status. Control Plane resolves the successful Launch and live Runtime, accepts
+only the exact immutable digest in its protected `OPL_WORKSPACE_IMAGE`, and
+persists the request before dispatching a typed Fabric capability. Fabric
+rechecks the full account/Workspace/Compute/CBS/Attachment/Runtime owner chain,
+uses its Runtime operation CAS and provider-mutation journal, and performs a
+provider-specific image-only mutation. Tencent/TKE patches only the existing
+`workspace` container image on the existing Deployment, then reads the Runtime
+back through the normal status path. No Compute, CBS, Attachment, Secret,
+Launch, billing Receipt, Runtime service identity, or Workspace URL is
+recreated or rewritten. The Cloud source and portable image own this API and
+capability; `opl-instance-medopl` still owns the protected production
+environment, deployment authorization, TKE readback, rollback, and receipts.
+
 If an image-revision authorization is consumed with a durable failed claim, the
 same Resume route may continue only from the exact completed readback window.
 An undispatched revision retains the same replacement digest. When Tencent

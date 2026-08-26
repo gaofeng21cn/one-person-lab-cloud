@@ -3114,6 +3114,94 @@ func TestTencentRuntimeCreationIsDeterministicAndUsesActualReadinessAfterApply(t
 	}
 }
 
+func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
+	setProtectedResourceEnv(t)
+	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
+	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
+	t.Setenv("OPL_WORKSPACE_IMAGE", newImage)
+	provider := NewTencentProvider()
+	patchErr := errors.New("provider patch response lost")
+	var patchBody []byte
+	provider.kubectl = func(_ context.Context, args []string, stdin []byte) ([]byte, error) {
+		switch {
+		case slices.Equal(args, []string{"get", "deployment/opl-compute-alpha", "-o", "json"}):
+			return tencentRuntimeImageReplacementDeployment(oldImage), nil
+		case len(args) == 5 && slices.Equal(args[:4], []string{"patch", "deployment/opl-compute-alpha", "--type=strategic", "-p"}):
+			patchBody = []byte(args[4])
+			return nil, patchErr
+		default:
+			t.Fatalf("unexpected kubectl args=%#v", args)
+			return nil, nil
+		}
+	}
+	input := WorkspaceRuntimeImageReplacementInput{
+		LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha",
+		ComputeID: "compute-alpha", StorageID: "storage-alpha", AttachmentID: "attachment-alpha",
+		RuntimeID: "rt-alpha", RuntimeOperationID: "workspace-launch-alpha:workspace:runtime", RuntimeServiceName: "opl-compute-alpha",
+		PreviousImageDigest: oldImage, ReplacementImageDigest: newImage, IdempotencyKey: "replace-runtime-image",
+	}
+	if _, err := provider.ReplaceWorkspaceRuntimeImage(context.Background(), input); !errors.Is(err, patchErr) {
+		t.Fatalf("replacement error=%v, want patch error", err)
+	}
+	if patchBody == nil {
+		t.Fatal("replacement did not reach the deployment patch")
+	}
+	type imagePatch struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					Containers []struct {
+						Name  string `json:"name"`
+						Image string `json:"image"`
+					} `json:"containers"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
+	var patch imagePatch
+	decoder := json.NewDecoder(bytes.NewReader(patchBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&patch); err != nil || len(patch.Spec.Template.Spec.Containers) != 1 ||
+		patch.Spec.Template.Spec.Containers[0].Name != "workspace" || patch.Spec.Template.Spec.Containers[0].Image != newImage {
+		t.Fatalf("patch=%s err=%v", patchBody, err)
+	}
+}
+
+func TestTencentRuntimeImageReplacementRejectsOwnerMismatchBeforePatch(t *testing.T) {
+	setProtectedResourceEnv(t)
+	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
+	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
+	t.Setenv("OPL_WORKSPACE_IMAGE", newImage)
+	provider := NewTencentProvider()
+	patchCalls := 0
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		if args[0] == "patch" {
+			patchCalls++
+		}
+		if slices.Equal(args, []string{"get", "deployment/opl-compute-alpha", "-o", "json"}) {
+			return tencentRuntimeImageReplacementDeploymentWithWorkspace(oldImage, "ws-other"), nil
+		}
+		t.Fatalf("unexpected kubectl args=%#v", args)
+		return nil, nil
+	}
+	input := WorkspaceRuntimeImageReplacementInput{
+		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ComputeID: "compute-alpha", StorageID: "storage-alpha", AttachmentID: "attachment-alpha",
+		RuntimeID: "rt-alpha", RuntimeOperationID: "workspace-launch-alpha:workspace:runtime", RuntimeServiceName: "opl-compute-alpha",
+		PreviousImageDigest: oldImage, ReplacementImageDigest: newImage, IdempotencyKey: "replace-owner-mismatch",
+	}
+	if _, err := provider.ReplaceWorkspaceRuntimeImage(context.Background(), input); !errors.Is(err, ErrWorkspaceRuntimeImageReplacementConflict) || patchCalls != 0 {
+		t.Fatalf("owner mismatch err=%v patchCalls=%d", err, patchCalls)
+	}
+}
+
+func tencentRuntimeImageReplacementDeployment(image string) []byte {
+	return tencentRuntimeImageReplacementDeploymentWithWorkspace(image, "ws-alpha")
+}
+
+func tencentRuntimeImageReplacementDeploymentWithWorkspace(image, workspaceID string) []byte {
+	return []byte(fmt.Sprintf(`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":%q,"oplcloud.cn/compute-allocation-id":"compute-alpha","oplcloud.cn/storage-id":"storage-alpha","oplcloud.cn/attachment-id":"attachment-alpha","oplcloud.cn/resource-id":"rt-alpha","oplcloud.cn/runtime-operation-id":%q}},"spec":{"replicas":1,"template":{"metadata":{"annotations":{"example":"preserve"}},"spec":{"containers":[{"name":"workspace","image":%q,"imagePullPolicy":"IfNotPresent","env":[{"name":"KEEP","value":"true"}],"volumeMounts":[{"name":"workspace-data","mountPath":"/projects"}]}]}}}}`, workspaceID, k8sCostLabelValue("workspace-launch-alpha:workspace:runtime"), image))
+}
+
 func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testing.T) {
 	type fixture struct {
 		input   StorageAttachmentInput

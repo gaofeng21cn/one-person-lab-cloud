@@ -22,6 +22,102 @@ func (p *TencentProvider) CreateWorkspaceRuntime(ctx context.Context, input Work
 	return p.createWorkspaceRuntime(ctx, input, compute, volume, tencentWorkspaceRuntimeGatewayBinding{})
 }
 
+// ReplaceWorkspaceRuntimeImage changes only the workspace container image on
+// an existing Deployment. All resource identities are checked from the live
+// Deployment before the patch, and the resulting Runtime is read back through
+// the normal status path.
+func (p *TencentProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, input WorkspaceRuntimeImageReplacementInput) (WorkspaceRuntime, error) {
+	if err := p.validateInstallationConfig(); err != nil {
+		return WorkspaceRuntime{}, err
+	}
+	if input.WorkspaceID == "" || input.RuntimeID == "" || input.RuntimeOperationID == "" || input.RuntimeServiceName == "" ||
+		!p.ValidateWorkspaceImageReference(input.PreviousImageDigest) || !p.ValidateWorkspaceImageReference(input.ReplacementImageDigest) ||
+		input.PreviousImageDigest == input.ReplacementImageDigest {
+		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementInputInvalid
+	}
+	if input.ReplacementImageDigest != p.WorkspaceImageReference() {
+		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+	}
+	serviceName := input.RuntimeServiceName
+	raw, err := p.callKubectl(ctx, []string{"get", "deployment/" + serviceName, "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return WorkspaceRuntime{}, err
+	}
+	var deployment map[string]any
+	if err := json.Unmarshal(raw, &deployment); err != nil {
+		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+	}
+	labels, _ := nested(deployment, "metadata", "labels").(map[string]any)
+	for key, expected := range map[string]string{
+		"oplcloud.cn/account-id":            k8sCostLabelValue(input.AccountID),
+		"oplcloud.cn/workspace-id":          k8sCostLabelValue(input.WorkspaceID),
+		"oplcloud.cn/compute-allocation-id": k8sCostLabelValue(input.ComputeID),
+		"oplcloud.cn/storage-id":            k8sCostLabelValue(input.StorageID),
+		"oplcloud.cn/attachment-id":         k8sCostLabelValue(input.AttachmentID),
+		"oplcloud.cn/resource-id":           k8sCostLabelValue(input.RuntimeID),
+		"oplcloud.cn/runtime-operation-id":  k8sCostLabelValue(input.RuntimeOperationID),
+	} {
+		if stringValue(labels[key]) != expected {
+			return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+		}
+	}
+	currentImage := stringValue(firstContainerField(deployment, "image"))
+	if currentImage != input.PreviousImageDigest && currentImage != input.ReplacementImageDigest {
+		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+	}
+
+	attempt, err := beginProviderMutation(ctx, "tencent_workspace_runtime_image_replace", "workspace_runtime", serviceName, serviceName)
+	if err != nil {
+		return WorkspaceRuntime{}, err
+	}
+	if attempt != nil && !attempt.Fresh {
+		if currentImage == input.ReplacementImageDigest {
+			runtime, readErr := p.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+			if readErr != nil {
+				return runtime, readErr
+			}
+			if completeErr := attempt.complete(ctx, runtime.ProviderRequestID, runtime, nil); completeErr != nil {
+				return WorkspaceRuntime{}, completeErr
+			}
+			return runtime, nil
+		}
+		if attempt.operation.Status == "succeeded" {
+			return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+		}
+		claimed, claimErr := attempt.claimReplay(ctx)
+		if claimErr != nil {
+			return WorkspaceRuntime{}, claimErr
+		}
+		if !claimed {
+			return WorkspaceRuntime{}, ErrRuntimeOperationInProgress
+		}
+	}
+	if attempt != nil {
+		if err := attempt.markReplayDispatch(ctx); err != nil {
+			return WorkspaceRuntime{}, err
+		}
+	}
+	patch := mustJSON(map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+		"containers": []any{map[string]any{"name": "workspace", "image": input.ReplacementImageDigest}},
+	}}}})
+	if _, err := p.callKubectl(ctx, []string{"patch", "deployment/" + serviceName, "--type=strategic", "-p", string(patch)}, nil, protectedresource.Target{}); err != nil {
+		if attempt != nil {
+			_ = attempt.complete(ctx, "", WorkspaceRuntime{ID: input.RuntimeID, OperationID: input.RuntimeOperationID, WorkspaceID: input.WorkspaceID, ServiceName: serviceName, ImageID: currentImage}, err)
+		}
+		return WorkspaceRuntime{}, err
+	}
+	runtime, err := p.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+	if err == nil && (runtime.ID != input.RuntimeID || runtime.OperationID != input.RuntimeOperationID || runtime.ServiceName != serviceName || runtime.ImageID != input.ReplacementImageDigest) {
+		err = ErrWorkspaceRuntimeImageReplacementConflict
+	}
+	if attempt != nil {
+		if completeErr := attempt.complete(ctx, runtime.ProviderRequestID, runtime, err); completeErr != nil && err == nil {
+			err = completeErr
+		}
+	}
+	return runtime, err
+}
+
 type tencentWorkspaceRuntimeGatewayBinding struct {
 	WorkspaceAPIKeyID int64
 	SecretRef         string
