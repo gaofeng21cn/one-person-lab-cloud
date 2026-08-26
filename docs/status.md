@@ -185,12 +185,12 @@ is selected and configured by the medopl instance, not by the portable product.
   Focused model tests cover intent reuse, input/account conflict, and
   recovery-key derivation.
 - The remaining broad Console controller has been mapped by capability before
-  another extraction. Billing/Receipt, Gateway Usage, Operator Account, and
-  Announcement Lifecycle retain explicit candidate owners, lifecycle/failure
-  boundaries, root state and intent seams, readback proof, reset boundaries,
-  and real page consumers in `docs/implementation-architecture.md`. Session,
-  Router, global toast, shared reads, route orchestration, and aggregate reset
-  remain Composition Root responsibilities.
+  another extraction. Billing/Receipt, Operator Account, and Announcement
+  Lifecycle retain explicit candidate owners, lifecycle/failure boundaries,
+  root state and intent seams, readback proof, reset boundaries, and real page
+  consumers in `docs/implementation-architecture.md`. Session, Router, global
+  toast, shared reads, route orchestration, and aggregate reset remain
+  Composition Root responsibilities.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET
@@ -199,6 +199,14 @@ is selected and configured by the medopl instance, not by the portable product.
   payloads, response-loss retry behavior, and customer-visible text are
   unchanged. Focused model tests, source tests, browser acceptance, and logout
   safety evidence pass.
+- Console Gateway Usage now has one `useGatewayUsageController` owner for the
+  Key collection, selected Key, period/page, independent Usage and Summary
+  remote state, and query freshness. The Customer usage page consumes the
+  typed capability; the broad root retains only route, Session, error, and
+  reset composition. Key/period changes discard late responses, an
+  authoritative empty Key collection clears both projections, and Usage and
+  Summary failures remain independent. Focused browser regressions are part of
+  the ordinary local/PR gate.
 - Console Workspace Delete now has one `useWorkspaceDeleteController` owner for
   the stable delete intent, Delete-specific busy and issue state, Session and
   Workspace freshness, and final paged absence readback. A command response,
@@ -207,11 +215,12 @@ is selected and configured by the medopl instance, not by the portable product.
   the intent and navigates away. No refund or Wallet fact is inferred.
 - Console Workspace Renewal now has one `useWorkspaceRenewalController` owner
   for the per-Workspace intent, busy/issue state, response validation, and
-  authoritative list/detail readback. Success requires matching `autoRenew`,
-  `renewalStatus`, `paidThrough`, and `nextRenewalAt`; unknown results preserve
-  the original idempotency intent across Workspace navigation. Delete and
-  Renewal no longer share root mutation state and are cross-disabled only at
-  their real page consumer.
+  authoritative list/detail readback. The command scheduling response is
+  validated independently; readback success requires the authoritative
+  Workspace projection to match the requested `autoRenew` value. Unknown
+  results preserve the original idempotency intent across Workspace navigation.
+  Delete and Renewal no longer share root mutation state and are cross-disabled
+  only at their real page consumer.
 - Console Workspace Gateway Budget now has one `useWorkspaceBudgetController`
   owner for the Workspace/Key-scoped intent, stable request signature,
   independent busy claim, mutation response validation, and Sub2API owner

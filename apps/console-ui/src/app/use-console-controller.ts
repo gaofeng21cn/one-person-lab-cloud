@@ -10,9 +10,6 @@ import {
   getGatewayAccountUsageSummary,
   getGatewayBalanceHistory,
   getGatewayEndpoint,
-  getGatewayKeys,
-  getGatewayKeyUsage,
-  getGatewayKeyUsageSummary,
   getGatewayWallet,
   getOperatorAccountsPage,
   getOperatorAnnouncements,
@@ -31,7 +28,6 @@ import type {
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
   AuthSession,
-  GatewayUsagePeriod,
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
   ProvisionAccountRequest,
@@ -45,7 +41,8 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
@@ -70,9 +67,6 @@ function initialSources(): ConsoleSources {
     receipts: emptyRemote(),
     receiptDetail: emptyRemote(),
     announcements: emptyRemote(),
-    usageKeys: emptyRemote(),
-    usage: emptyRemote(),
-    usageSummary: emptyRemote(),
     endpoint: emptyRemote(),
     operatorOverview: emptyRemote(),
     operatorAccounts: emptyRemote(),
@@ -146,9 +140,6 @@ export function useConsoleController() {
   const [selectedOperatorWorkspaceId, setSelectedOperatorWorkspaceId] = useState("");
   const [billingView, setBillingView] = useState<BillingView>("terms");
   const [selectedReceiptId, setSelectedReceiptId] = useState("");
-  const [selectedUsageKeyId, setSelectedUsageKeyId] = useState("");
-  const [usagePeriod, setUsagePeriod] = useState<GatewayUsagePeriod>("month");
-  const [usagePage, setUsagePage] = useState(1);
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
@@ -165,8 +156,6 @@ export function useConsoleController() {
   const receiptCursorRef = useRef("");
   const receiptRequestGeneration = useRef(0);
   const receiptDetailRequestGeneration = useRef(0);
-  const selectedUsageKeyIdRef = useRef("");
-  const usageRequestGeneration = useRef(0);
   const workspaceDetailRequestGeneration = useRef(0);
   const workspaceRuntimeRequestGeneration = useRef(0);
   const workspaceBudgetRequestGeneration = useRef(0);
@@ -212,10 +201,7 @@ export function useConsoleController() {
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
     workspaceBudgetCapability.reset();
-    usageRequestGeneration.current += 1;
-    setSelectedUsageKeyId("");
-    selectedUsageKeyIdRef.current = "";
-    setUsagePage(1);
+    gatewayUsageCapability.reset();
     setBillingView("terms");
     clearReceiptDetail();
     setReceiptCursor("");
@@ -403,6 +389,14 @@ export function useConsoleController() {
   });
   const support: SupportController = supportCapability;
 
+  const gatewayUsageCapability = useGatewayUsageController({
+    active: path === "/console/api/usage",
+    currentSession: () => sessionRef.current,
+    friendlyError,
+    unavailableSource
+  });
+  const gatewayUsage: GatewayUsageController = gatewayUsageCapability;
+
   const loadWorkspaces = async (generation: number, activeSession: AuthSession, page = workspacePageNumber, pageSize = 10) => {
     beginSource("workspaces");
     try {
@@ -536,52 +530,6 @@ export function useConsoleController() {
     }
   };
 
-  const loadUsage = async (generation: number, activeSession: AuthSession, keyId: string, page = 1, period: GatewayUsagePeriod = usagePeriod) => {
-    if (!keyId) return;
-    const usageGeneration = ++usageRequestGeneration.current;
-    beginSource("usage");
-    beginSource("usageSummary");
-    const [usageResult, summaryResult] = await Promise.allSettled([
-      getGatewayKeyUsage(keyId, page, 20, period),
-      getGatewayKeyUsageSummary(keyId, period)
-    ]);
-    if (!isRequestCurrent(generation, activeSession.user.id)
-      || usageGeneration !== usageRequestGeneration.current
-      || selectedUsageKeyIdRef.current !== keyId) return;
-    if (usageResult.status === "fulfilled") {
-      updateSource("usage", { value: usageResult.value, loading: false, error: "" });
-      setUsagePage(page);
-    } else failSource("usage", usageResult.reason, unavailableSource("sub2api"));
-    if (summaryResult.status === "fulfilled") {
-      updateSource("usageSummary", { value: summaryResult.value, loading: false, error: "" });
-    } else failSource("usageSummary", summaryResult.reason, unavailableSource("sub2api"));
-  };
-
-  const loadUsageKeys = async (generation: number, activeSession: AuthSession) => {
-    beginSource("usageKeys");
-    try {
-      const keys = await getGatewayKeys({ page: 1, pageSize: 20 });
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      updateSource("usageKeys", { value: keys, loading: false, error: "" });
-      if (keys.available && keys.data.items.length === 0) {
-        usageRequestGeneration.current += 1;
-        selectedUsageKeyIdRef.current = "";
-        setSelectedUsageKeyId("");
-        setUsagePage(1);
-        updateSource("usage", { value: null, loading: false, error: "" });
-        updateSource("usageSummary", { value: null, loading: false, error: "" });
-        return;
-      }
-      if (!keys.available) return;
-      const keyId = keys.data.items.some((key) => key.id === selectedUsageKeyIdRef.current) ? selectedUsageKeyIdRef.current : keys.data.items[0].id;
-      selectedUsageKeyIdRef.current = keyId;
-      setSelectedUsageKeyId(keyId);
-      await loadUsage(generation, activeSession, keyId, 1, usagePeriod);
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("usageKeys", error, unavailableSource("sub2api"));
-    }
-  };
-
   const loadEndpoint = async (generation: number, activeSession: AuthSession) => {
     beginSource("endpoint");
     try {
@@ -706,7 +654,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/console/api/usage") {
-      await Promise.all([loadUsageKeys(generation, activeSession), loadEndpoint(generation, activeSession)]);
+      await Promise.all([gatewayUsageCapability.load(), loadEndpoint(generation, activeSession)]);
       return;
     }
     if (routePath === "/console/billing") {
@@ -935,24 +883,6 @@ export function useConsoleController() {
     } finally {
       if (requestStillCurrent()) setAnnouncementBusy("");
     }
-  };
-
-  const chooseUsageKey = async (keyId: string) => {
-    if (!session) return;
-    selectedUsageKeyIdRef.current = keyId;
-    setSelectedUsageKeyId(keyId);
-    await loadUsage(requestGeneration.current, session, keyId, 1, usagePeriod);
-  };
-
-  const chooseUsagePeriod = async (period: GatewayUsagePeriod) => {
-    if (!session || !selectedUsageKeyId) return;
-    setUsagePeriod(period);
-    await loadUsage(requestGeneration.current, session, selectedUsageKeyId, 1, period);
-  };
-
-  const changeUsagePage = async (page: number) => {
-    if (!session || !selectedUsageKeyId || page < 1) return;
-    await loadUsage(requestGeneration.current, session, selectedUsageKeyId, page, usagePeriod);
   };
 
   const changeBalancePage = async (page: number) => {
@@ -1191,12 +1121,7 @@ export function useConsoleController() {
     previousReceiptPage,
     markRead,
     announcementBusy,
-    selectedUsageKeyId,
-    usagePeriod,
-    usagePage,
-    chooseUsageKey,
-    chooseUsagePeriod,
-    changeUsagePage,
+    gatewayUsage,
     balanceHistoryPage,
     changeBalancePage,
     operatorAccountPage,
