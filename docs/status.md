@@ -194,6 +194,14 @@ is selected and configured by the medopl instance, not by the portable product.
   claim that those controllers already exist. Session, Router, global toast,
   shared reads, route orchestration, and aggregate reset remain Composition
   Root responsibilities.
+- Console Support Mapping now has one `useSupportController` owner for ticket
+  loading/error state, mapping intent and idempotency, busy state, local stale
+  response invalidation, typed POST identity validation, and authoritative GET
+  list readback. `ConsoleShell` consumes the narrow `SupportController`; root
+  reset explicitly invalidates the capability. Existing `/api/support/tickets`
+  payloads, response-loss retry behavior, and customer-visible text are
+  unchanged. Focused model tests, source tests, browser acceptance, and logout
+  safety evidence pass.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.

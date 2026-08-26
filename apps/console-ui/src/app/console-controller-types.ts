@@ -22,6 +22,8 @@ import type {
   PricingCatalogResponse,
   PricingPlan,
   SourceEnvelope,
+  CreateSupportTicketMappingRequest,
+  SupportTicketPageDTO,
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
@@ -114,6 +116,15 @@ export interface WorkspaceLaunchController {
   reviewWorkspaceLaunch: () => void;
   submitWorkspaceLaunch: () => Promise<void>;
   openLaunchedWorkspace: () => Promise<void>;
+}
+
+export interface SupportController {
+  tickets: SupportTicketPageDTO | null;
+  loading: boolean;
+  error: string;
+  busy: boolean;
+  load: () => Promise<SupportTicketPageDTO | null>;
+  createMapping: (input: Omit<CreateSupportTicketMappingRequest, "accountId">) => Promise<boolean>;
 }
 
 export interface WalletAdjustmentController {

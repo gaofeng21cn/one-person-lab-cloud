@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
-  createSupportTicketMapping,
   createOperatorAnnouncement,
   disableOperatorAccount as disableOperatorAccountCommand,
   getAnnouncements,
@@ -22,7 +21,6 @@ import {
   getOperatorReconciliation,
   getOperatorWorkspace,
   getOperatorWorkspaces,
-  getSupportTickets,
   markAnnouncementRead,
   provisionOperatorAccount,
   publishOperatorAnnouncement,
@@ -33,7 +31,6 @@ import type {
   AnnouncementDraftRequest,
   AnnouncementScheduleRequest,
   AuthSession,
-  CreateSupportTicketMappingRequest,
   GatewayUsagePeriod,
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
@@ -54,10 +51,11 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, WalletAdjustmentController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
+import { useSupportController } from "./use-support-controller.ts";
 
 const operatorPageSize = 20;
 
@@ -194,9 +192,6 @@ export function useConsoleController() {
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
-  const [supportTickets, setSupportTickets] = useState<Awaited<ReturnType<typeof getSupportTickets>> | null>(null);
-  const [supportLoading, setSupportLoading] = useState(false);
-  const [supportError, setSupportError] = useState("");
 
   const requestGeneration = useRef(0);
   const sessionGeneration = useRef(0);
@@ -220,7 +215,6 @@ export function useConsoleController() {
   const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
   const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
-  const supportCreateIntent = useRef<{ input: CreateSupportTicketMappingRequest; idempotencyKey: string } | null>(null);
   const operatorDisableIntents = useRef(new Map<string, string>());
   const operatorWorkspaceEligibilityIntents = useRef(new Map<string, { enabled: boolean; idempotencyKey: string }>());
   const announcementCreateIntent = useRef<{ input: AnnouncementDraftRequest; idempotencyKey: string } | null>(null);
@@ -252,6 +246,7 @@ export function useConsoleController() {
 
   const resetConsoleState = () => {
     workspaceSecretCapability.reset();
+    supportCapability.reset();
     setSources(initialSources());
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
@@ -274,9 +269,6 @@ export function useConsoleController() {
     setSelectedOperatorWorkspaceId("");
     selectedOperatorWorkspaceIdRef.current = "";
     setOperatorProvisionOperation(null);
-    setSupportTickets(null);
-    setSupportLoading(false);
-    setSupportError("");
     setCommandBusy(false);
     setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
@@ -286,7 +278,6 @@ export function useConsoleController() {
     workspaceBudgetIntents.current.clear();
     workspaceDetailRequestGeneration.current += 1;
     operatorProvisionIntent.current = null;
-    supportCreateIntent.current = null;
     announcementCreateIntent.current = null;
     operatorDisableIntents.current.clear();
     announcementPublishIntents.current.clear();
@@ -366,6 +357,15 @@ export function useConsoleController() {
     mutationError
   });
   const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
+
+  const supportCapability = useSupportController({
+    session,
+    currentMutationRequest,
+    flash,
+    friendlyError,
+    mutationError
+  });
+  const support: SupportController = supportCapability;
 
   const loadWorkspaces = async (generation: number, activeSession: AuthSession, page = workspacePageNumber, pageSize = 10) => {
     beginSource("workspaces");
@@ -1042,50 +1042,6 @@ export function useConsoleController() {
     }
   };
 
-  const loadSupportTickets = async () => {
-    if (!session) return;
-    const generation = requestGeneration.current;
-    const userId = session.user.id;
-    setSupportLoading(true);
-    setSupportError("");
-    try {
-      const result = await getSupportTickets();
-      if (!isRequestCurrent(generation, userId)) return;
-      setSupportTickets(result);
-    } catch (error) {
-      if (!isRequestCurrent(generation, userId)) return;
-      setSupportTickets(null);
-      setSupportError(friendlyError(error));
-    } finally {
-      if (isRequestCurrent(generation, userId)) setSupportLoading(false);
-    }
-  };
-
-  const createSupportMapping = async (input: Omit<CreateSupportTicketMappingRequest, "accountId">) => {
-    if (!session || commandBusy) return false;
-    const requestStillCurrent = currentMutationRequest();
-    const request: CreateSupportTicketMappingRequest = { ...input, accountId: session.user.accountId };
-    if (!supportCreateIntent.current || JSON.stringify(supportCreateIntent.current.input) !== JSON.stringify(request)) {
-      supportCreateIntent.current = { input: request, idempotencyKey: `support-map:${crypto.randomUUID()}` };
-    }
-    setCommandBusy(true);
-    try {
-      await createSupportTicketMapping(supportCreateIntent.current.input, session.csrfToken, supportCreateIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return false;
-      supportCreateIntent.current = null;
-      await loadSupportTickets();
-      if (!requestStillCurrent()) return false;
-      flash("外部工单映射已保存");
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent()) return false;
-      flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
-  };
-
   const selectReceipt = async (receiptId: string) => {
     if (!session) return;
     clearReceiptDetail();
@@ -1367,7 +1323,7 @@ export function useConsoleController() {
     globalSlide,
     setGlobalSlide: (slide: GlobalSlide) => {
       setGlobalSlide(slide);
-      if (slide === "support") void loadSupportTickets();
+      if (slide === "support") void support.load();
     },
     submitLogin,
     signOut,
@@ -1381,11 +1337,7 @@ export function useConsoleController() {
     workspaceDeleteIssue,
     deleteCurrentWorkspace,
     updateCurrentWorkspaceRenewal,
-    supportTickets,
-    supportLoading,
-    supportError,
-    loadSupportTickets,
-    createSupportMapping,
+    support,
     workspaceSecrets,
     workspaceBudgetBusy,
     updateWorkspaceBudget,

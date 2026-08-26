@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 
+import type { SupportController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { adminMenu, apiMenu, customerMenu } from "../console-model.ts";
 import { Button, Field, Tooltip } from "../components/ui/index.ts";
@@ -58,14 +59,14 @@ function NavigationLink({ controller, item }: { controller: ConsoleController; i
   );
 }
 
-function SupportSlide({ controller }: { controller: ConsoleController }) {
+function SupportSlide({ support }: { support: SupportController }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ externalSystem: "", externalTicketId: "", externalUrl: "", title: "", description: "", workspaceId: "", resourceIds: "", operationId: "" });
-  const tickets = controller.supportTickets?.tickets || [];
+  const tickets = support.tickets?.tickets || [];
   const updateForm = (field: keyof typeof form, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const ok = await controller.createSupportMapping({
+    const ok = await support.createMapping({
       externalTicketId: form.externalTicketId.trim(),
       title: form.title.trim(),
       ...(form.externalSystem.trim() ? { externalSystem: form.externalSystem.trim() } : {}),
@@ -97,12 +98,12 @@ function SupportSlide({ controller }: { controller: ConsoleController }) {
           <Field label="Workspace ID" onChange={(event) => updateForm("workspaceId", event.currentTarget.value)} value={form.workspaceId} />
           <Field label="资源 ID" multiline onChange={(event) => updateForm("resourceIds", event.currentTarget.value)} placeholder="多个 ID 用逗号或换行分隔" rows={2} value={form.resourceIds} />
           <Field label="operation ID" onChange={(event) => updateForm("operationId", event.currentTarget.value)} value={form.operationId} />
-          <Button busy={controller.commandBusy} color="primary" disabled={!form.externalTicketId.trim() || !form.title.trim()} type="submit">保存外部映射</Button>
+          <Button busy={support.busy} color="primary" disabled={!form.externalTicketId.trim() || !form.title.trim()} type="submit">保存外部映射</Button>
         </form>
       ) : null}
-      {controller.supportLoading ? <div className="source-loading"><span className="spinner" />正在读取外部工单映射</div> : null}
-      {controller.supportError ? <div className="inline-error"><span>{controller.supportError}</span><Button onClick={() => void controller.loadSupportTickets()} size="sm" variant="ghost">重试</Button></div> : null}
-      {!controller.supportLoading && !controller.supportError && tickets.length === 0 ? <div className="empty-copy"><p>暂无外部工单映射。</p></div> : null}
+      {support.loading ? <div className="source-loading"><span className="spinner" />正在读取外部工单映射</div> : null}
+      {support.error ? <div className="inline-error"><span>{support.error}</span><Button onClick={() => void support.load()} size="sm" variant="ghost">重试</Button></div> : null}
+      {!support.loading && !support.error && tickets.length === 0 ? <div className="empty-copy"><p>暂无外部工单映射。</p></div> : null}
       {tickets.length ? <div className="support-ticket-list">{tickets.map((ticket) => (
         <article className="support-ticket" key={ticket.id}>
           <header><div><strong>{ticket.title}</strong><span>{ticket.externalSystem} · {ticket.externalTicketId}</span></div><span>{ticket.status}</span></header>
@@ -239,7 +240,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
                 <div><dt>Session 到期</dt><dd>{controller.session?.expiresAt || "暂不可用"}</dd></div>
               </dl>
             ) : (
-              <SupportSlide controller={controller} />
+              <SupportSlide support={controller.support} />
             )}
           </div>
           <div className="account-band-action">
