@@ -193,7 +193,7 @@ form one complete slice.
 | Workspace Budget | `useWorkspaceBudgetController` owns per-Workspace/key intent, request signature, busy claim, local freshness, and typed owner readback | returned Workspace/key identity and stable requested policy fields match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | extracted; configuration conflict is not a Workspace lifecycle transition |
 | Support Mapping | `useSupportController` owns ticket projection, loading/error, create intent, busy, and post-write reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | extracted independent slice |
 | Billing / Receipt | billing view, cursor and cursor stack, selected Receipt, list/detail generations | selected Receipt ID matches the Ledger detail response | Customer billing page and overview receipt links | Ledger | keep as a query controller unless a mutation lifecycle is introduced |
-| Gateway Usage | selected Key, period/page state, Key/usage generations and summary/detail readback | the selected Key, period and page identify the returned usage projection | Customer usage page | Sub2API/Gateway | separate query lifecycle from Billing despite both being read-only |
+| Gateway Usage | `useGatewayUsageController` owns Key collection, selected Key, period/page, independent usage/summary state, and Key/usage generations | only the current Session, route, Key, period and request generation may commit; an empty authoritative Key collection clears both projections | Customer usage page | Sub2API/Gateway | extracted; query freshness and partial failure remain separate from Billing/Receipt |
 | Operator Account | account pagination, provision intent/operation, disable and purchase-eligibility intents, account readback | account command result is reconciled into the operator account projection | Admin accounts page | Control Plane Account/Access | one Account lifecycle controller may contain these related operations |
 | Wallet Adjustment / Recovery | `useWalletAdjustmentController` owns wallet intent, operation projection, recovery intent, busy, and operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | extracted; money and recovery remain separate from Account lifecycle |
 | Announcement Lifecycle | create/publish/withdraw intents, per-announcement busy, operator announcement reload | `draft -> published -> withdrawn` transition is confirmed by the announcement projection | Admin announcement page | Control Plane operator/content | separate state-machine slice |
@@ -233,9 +233,10 @@ remains in the broad root.
 Workspace lifecycle browser mutations now have three separate owners.
 `useWorkspaceDeleteController` alone retains the stable delete intent and
 accepts success only after the Control Plane list confirms final absence.
-`useWorkspaceRenewalController` validates the renewal response and then
-requires the authoritative Workspace projection to match `autoRenew`,
-`renewalStatus`, `paidThrough`, and `nextRenewalAt`.
+`useWorkspaceRenewalController` validates the typed renewal command response
+and then requires the authoritative Workspace projection to match the requested
+`autoRenew` value. Command scheduling status and lifecycle projection status
+remain separate facts.
 `useWorkspaceBudgetController` remains outside the resource lifecycle and
 scopes its intent and readback to the exact Workspace Gateway Key. The three
 controllers have independent busy, freshness, failure, and reset state; the
@@ -243,6 +244,17 @@ Workspace detail page only cross-disables Delete and Renewal while either
 conflicting command is active. Navigation invalidates active requests and busy
 claims without deleting unresolved per-Workspace intents; Session replacement
 is the boundary that clears all three controllers.
+
+Gateway Usage now has one `useGatewayUsageController` query owner for the Key
+collection, selected Key, period/page, independent Usage and Summary remote
+state, and both freshness generations. The Customer usage page consumes the
+typed controller, while the root only composes route loading, Session lookup,
+error presentation, and aggregate reset. Key, period, route, Session, and reset
+changes invalidate older completions; an authoritative empty Key collection
+clears the selected Key and both projections. Usage and Summary may fail
+independently without hiding a successful sibling result. Billing/Receipt
+remains separate because its cursor/detail identity and Ledger failure model do
+not share these invariants.
 
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires

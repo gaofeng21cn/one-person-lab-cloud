@@ -19,7 +19,7 @@ import {
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
+import type { GatewayUsageController, WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -655,22 +655,25 @@ function RequestRows({ items, onCopyRequestId }: { items: GatewayUsageItem[]; on
   </>;
 }
 
-function UsagePage({ controller }: { controller: ConsoleController }) {
-  const keys = sourceData(controller.sources.usageKeys.value)?.items || [];
+function UsagePage({ controller: usage, onCopyRequestId }: {
+  controller: GatewayUsageController;
+  onCopyRequestId: (requestId: string) => void;
+}) {
+  const keys = sourceData(usage.keys.value)?.items || [];
   return <section className="panel" data-slide="C-API-02"><div className="panel-title"><h2>使用记录</h2><span>请求级事实来自 API 服务</span></div><div className="gateway-usage-toolbar">
-    <Select block label="API Key" onChange={(value) => void controller.chooseUsageKey(value)} options={keys.map((key) => ({ label: `${key.name} · ${key.id}`, value: key.id }))} placeholder="选择 API Key" value={controller.selectedUsageKeyId} />
-    <SegmentedControl ariaLabel="统计周期" block onChange={(value) => void controller.chooseUsagePeriod(value as GatewayUsagePeriod)} options={[{ value: "today", label: "今日" }, { value: "week", label: "本周" }, { value: "month", label: "本月" }]} value={controller.usagePeriod} />
+    <Select block label="API Key" onChange={(value) => void usage.selectKey(value)} options={keys.map((key) => ({ label: `${key.name} · ${key.id}`, value: key.id }))} placeholder="选择 API Key" value={usage.selectedKeyId} />
+    <SegmentedControl ariaLabel="统计周期" block onChange={(value) => void usage.selectPeriod(value as GatewayUsagePeriod)} options={[{ value: "today", label: "今日" }, { value: "week", label: "本周" }, { value: "month", label: "本月" }]} value={usage.period} />
   </div>
-    <SourceState empty={controller.sources.usageKeys.value?.status === "empty"} emptyTitle="暂无 API Key" error={controller.sources.usageKeys.error} loading={controller.sources.usageKeys.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.usageKeys.value} unavailableTitle="API Key 暂不可用">{() => <>
-      <SourceState error={controller.sources.usageSummary.error} loading={controller.sources.usageSummary.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.usageSummary.value} unavailableTitle="使用汇总暂不可用">{(summary) => <dl className="usage-summary-strip"><div><dt>汇总请求次数</dt><dd>{formatCount(summary.totalRequests)}</dd></div><div><dt>汇总总 Token</dt><dd>{formatCount(summary.totalTokens)}</dd></div><div><dt>汇总实际金额</dt><dd>{formatUsdMicros(summary.totalActualCostUsdMicros)}</dd></div></dl>}</SourceState>
-      <SourceState empty={controller.sources.usage.value?.status === "empty"} emptyTitle="暂无请求记录" error={controller.sources.usage.error} loading={controller.sources.usage.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.usage.value} unavailableTitle="使用记录暂不可用">{(data) => <><RequestRows items={data.items} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} /><Pagination current={data.page} label="请求记录分页" onChange={(page) => void controller.changeUsagePage(page)} pages={data.pages} /></>}</SourceState>
+    <SourceState empty={usage.keys.value?.status === "empty"} emptyTitle="暂无 API Key" error={usage.keys.error} loading={usage.keys.loading} onRetry={() => void usage.refresh()} source={usage.keys.value} unavailableTitle="API Key 暂不可用">{() => <>
+      <SourceState error={usage.summary.error} loading={usage.summary.loading} onRetry={() => void usage.refresh()} source={usage.summary.value} unavailableTitle="使用汇总暂不可用">{(summary) => <dl className="usage-summary-strip"><div><dt>汇总请求次数</dt><dd>{formatCount(summary.totalRequests)}</dd></div><div><dt>汇总总 Token</dt><dd>{formatCount(summary.totalTokens)}</dd></div><div><dt>汇总实际金额</dt><dd>{formatUsdMicros(summary.totalActualCostUsdMicros)}</dd></div></dl>}</SourceState>
+      <SourceState empty={usage.usage.value?.status === "empty"} emptyTitle="暂无请求记录" error={usage.usage.error} loading={usage.usage.loading} onRetry={() => void usage.refresh()} source={usage.usage.value} unavailableTitle="使用记录暂不可用">{(data) => <><RequestRows items={data.items} onCopyRequestId={onCopyRequestId} /><Pagination current={data.page} label="请求记录分页" onChange={(page) => void usage.changePage(page)} pages={data.pages} /></>}</SourceState>
     </>}</SourceState>
   </section>;
 }
 
 function ApiPage({ controller }: { controller: ConsoleController }) {
   const page = apiPage(controller.path);
-  return <section className="gateway-page api-page"><ApiTabs controller={controller} />{page === "overview" ? <ApiOverview controller={controller} /> : page === "usage" ? <UsagePage controller={controller} /> : <KeysPanel csrfToken={controller.session?.csrfToken || ""} />}</section>;
+  return <section className="gateway-page api-page"><ApiTabs controller={controller} />{page === "overview" ? <ApiOverview controller={controller} /> : page === "usage" ? <UsagePage controller={controller.gatewayUsage} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} /> : <KeysPanel csrfToken={controller.session?.csrfToken || ""} />}</section>;
 }
 
 function BillingPage({ controller }: { controller: ConsoleController }) {

@@ -9,6 +9,7 @@ import type {
   GatewayKeyPageDTO,
   GatewayKeySecretDTO,
   GatewayKeyUsagePageDTO,
+  GatewayUsagePeriod,
   GatewayUsageSummaryDTO,
   GatewayWallet,
   OperatorAccountPageDTO,
@@ -58,9 +59,6 @@ export interface ConsoleSources {
   receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
   receiptDetail: RemoteState<SourceEnvelope<BillingReceipt>>;
   announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
-  usageKeys: RemoteState<SourceEnvelope<GatewayKeyPageDTO>>;
-  usage: RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>;
-  usageSummary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
   operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
   operatorAccounts: RemoteState<SourceEnvelope<OperatorAccountPageDTO>>;
@@ -158,4 +156,17 @@ export interface WalletAdjustmentController {
   refresh: () => Promise<void>;
   recover: () => Promise<void>;
   reset: () => void;
+}
+
+export interface GatewayUsageController {
+  keys: RemoteState<SourceEnvelope<GatewayKeyPageDTO>>;
+  usage: RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>;
+  summary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
+  selectedKeyId: string;
+  period: GatewayUsagePeriod;
+  page: number;
+  refresh: () => Promise<void>;
+  selectKey: (keyId: string) => Promise<void>;
+  selectPeriod: (period: GatewayUsagePeriod) => Promise<void>;
+  changePage: (page: number) => Promise<void>;
 }
