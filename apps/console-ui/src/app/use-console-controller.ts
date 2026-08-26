@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
   createOperatorAnnouncement,
-  createWalletAdjustment,
   disableOperatorAccount as disableOperatorAccountCommand,
   getAnnouncements,
   getBillingReceipt,
@@ -22,11 +21,9 @@ import {
   getOperatorReconciliation,
   getOperatorWorkspace,
   getOperatorWorkspaces,
-  getWalletAdjustment,
   markAnnouncementRead,
   provisionOperatorAccount,
   publishOperatorAnnouncement,
-  recoverWalletAdjustment,
   setOperatorWorkspacePurchaseEligibility as setOperatorWorkspacePurchaseEligibilityCommand,
   withdrawOperatorAnnouncement
 } from "../api/console-read-api.ts";
@@ -39,8 +36,6 @@ import type {
   OperatorAccountCommandDTO,
   ProvisionAccountRequest,
   SourceEnvelope,
-  WalletAdjustmentRecoveryRequest,
-  WalletAdjustmentRequest,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest
 } from "../api/dtos.ts";
@@ -56,9 +51,10 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
+import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
 import { useSupportController } from "./use-support-controller.ts";
 
 const operatorPageSize = 20;
@@ -170,11 +166,6 @@ function workspaceBudgetResultMatchesInput(
     && (input.enabled === undefined || result.enabled === input.enabled);
 }
 
-function walletRecoveryIdempotencyKey(operationId: string) {
-  const suffix = /^wallet-adjustment-([0-9a-f]{18})$/.exec(operationId)?.[1] || "";
-  return suffix ? `wallet-recovery-${suffix.slice(0, 16)}` : "";
-}
-
 export function useConsoleController() {
   const { path, navigate } = useConsoleRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -200,7 +191,6 @@ export function useConsoleController() {
   const [workspaceBudgetBusy, setWorkspaceBudgetBusy] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
-  const [walletAdjustmentOperation, setWalletAdjustmentOperation] = useState<Awaited<ReturnType<typeof getWalletAdjustment>> | null>(null);
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
 
   const requestGeneration = useRef(0);
@@ -224,8 +214,6 @@ export function useConsoleController() {
   const workspaceRenewalIntents = useRef(new Map<string, WorkspaceRenewalIntent>());
   const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
   const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
-  const walletAdjustmentIntent = useRef<{ accountId: string; input: WalletAdjustmentRequest; idempotencyKey: string } | null>(null);
-  const walletAdjustmentRecoveryIntent = useRef<{ operationId: string; input: WalletAdjustmentRecoveryRequest; idempotencyKey: string } | null>(null);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
   const operatorDisableIntents = useRef(new Map<string, string>());
   const operatorWorkspaceEligibilityIntents = useRef(new Map<string, { enabled: boolean; idempotencyKey: string }>());
@@ -262,6 +250,7 @@ export function useConsoleController() {
     setSources(initialSources());
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
+    walletAdjustmentCapability.reset();
     setWorkspaceDeleteIssue("");
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
@@ -279,7 +268,6 @@ export function useConsoleController() {
     setOperatorWorkspacePage(1);
     setSelectedOperatorWorkspaceId("");
     selectedOperatorWorkspaceIdRef.current = "";
-    setWalletAdjustmentOperation(null);
     setOperatorProvisionOperation(null);
     setCommandBusy(false);
     setWorkspaceBudgetBusy(false);
@@ -289,8 +277,6 @@ export function useConsoleController() {
     workspaceBudgetBusyClaim.current = null;
     workspaceBudgetIntents.current.clear();
     workspaceDetailRequestGeneration.current += 1;
-    walletAdjustmentIntent.current = null;
-    walletAdjustmentRecoveryIntent.current = null;
     operatorProvisionIntent.current = null;
     announcementCreateIntent.current = null;
     operatorDisableIntents.current.clear();
@@ -358,6 +344,19 @@ export function useConsoleController() {
     friendlyError
   });
   const workspaceLaunch: WorkspaceLaunchController = workspaceLaunchCapability;
+
+  const walletAdjustmentCapability = useWalletAdjustmentController({
+    session,
+    currentMutationRequest,
+    refreshAccounts: async () => {
+      if (!session) return;
+      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
+    },
+    flash,
+    friendlyError,
+    mutationError
+  });
+  const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
 
   const supportCapability = useSupportController({
     session,
@@ -1192,84 +1191,6 @@ export function useConsoleController() {
     }
   };
 
-  const submitWalletAdjustment = async (accountId: string, input: WalletAdjustmentRequest) => {
-    if (!session || commandBusy || input.confirmationAccountId !== accountId || !input.amountUsd || !input.reason.trim()) return;
-    if (!window.confirm("请再次确认这笔余额操作：提交后会写入客户账户并保留操作记录。")) return;
-    const requestStillCurrent = currentMutationRequest();
-    if (!walletAdjustmentIntent.current || walletAdjustmentIntent.current.accountId !== accountId || JSON.stringify(walletAdjustmentIntent.current.input) !== JSON.stringify(input)) {
-      walletAdjustmentIntent.current = { accountId, input, idempotencyKey: `wallet-adjustment:${crypto.randomUUID()}` };
-    }
-    setCommandBusy(true);
-    try {
-      const result = await createWalletAdjustment(accountId, walletAdjustmentIntent.current.input, session.csrfToken, walletAdjustmentIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return null;
-      setWalletAdjustmentOperation(result);
-      if (result.status === "manual_review") flash("结果待确认，已进入人工复核", "danger");
-      else {
-        walletAdjustmentIntent.current = null;
-        flash("余额操作已提交");
-      }
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-      if (!requestStillCurrent()) return null;
-      return result;
-    } catch (error) {
-      if (!requestStillCurrent()) return null;
-      flash(mutationError(error), "danger");
-      return null;
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
-  };
-
-  const refreshWalletOperation = async () => {
-    if (!session || !walletAdjustmentOperation?.operationId) return;
-    const requestStillCurrent = currentMutationRequest();
-    try {
-      const result = await getWalletAdjustment(walletAdjustmentOperation.operationId);
-      if (!requestStillCurrent()) return;
-      setWalletAdjustmentOperation(result);
-      if (result.status === "succeeded") walletAdjustmentIntent.current = null;
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(friendlyError(error), "danger");
-    }
-  };
-
-  const recoverWalletOperation = async () => {
-    const operation = walletAdjustmentOperation;
-    if (!session || !operation || operation.status !== "manual_review" || !operation.allowedActions?.includes("recover_wallet_adjustment")) return;
-    const requestStillCurrent = currentMutationRequest();
-    if (!walletAdjustmentRecoveryIntent.current || walletAdjustmentRecoveryIntent.current.operationId !== operation.operationId) {
-      const evidenceRef = (window.prompt("请输入 case-YYYYMMDD-xxx 证据引用") || "").trim();
-      if (!evidenceRef) return;
-      walletAdjustmentRecoveryIntent.current = {
-        operationId: operation.operationId,
-        input: { accountId: operation.accountId, evidenceRef },
-        idempotencyKey: walletRecoveryIdempotencyKey(operation.operationId)
-      };
-    }
-    setCommandBusy(true);
-    try {
-      const result = await recoverWalletAdjustment(operation.operationId, walletAdjustmentRecoveryIntent.current.input, session.csrfToken, walletAdjustmentRecoveryIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      setWalletAdjustmentOperation(result);
-      if (result.status === "succeeded") {
-        walletAdjustmentRecoveryIntent.current = null;
-        walletAdjustmentIntent.current = null;
-        flash("余额操作已确认");
-      } else flash("恢复结果仍待人工确认", "danger");
-      await loadOperatorAccounts(requestGeneration.current, session, operatorAccountPage);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
-  };
-
   const provisionAccount = async (input: ProvisionAccountRequest) => {
     if (!session || commandBusy) return false;
     const requestStillCurrent = currentMutationRequest();
@@ -1452,11 +1373,12 @@ export function useConsoleController() {
     openOperatorWorkspace,
     disableOperatorAccount,
     setOperatorWorkspacePurchaseEligibility,
-    walletAdjustmentOperation,
-    setWalletAdjustmentOperation,
-    submitWalletAdjustment,
-    refreshWalletOperation,
-    recoverWalletOperation,
+    walletAdjustmentOperation: walletAdjustment.operation,
+    setWalletAdjustmentOperation: walletAdjustment.setOperation,
+    submitWalletAdjustment: walletAdjustment.submit,
+    refreshWalletOperation: walletAdjustment.refresh,
+    recoverWalletOperation: walletAdjustment.recover,
+    walletAdjustmentBusy: walletAdjustment.busy,
     operatorProvisionOperation,
     setOperatorProvisionOperation,
     provisionAccount,

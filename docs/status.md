@@ -174,6 +174,16 @@ is selected and configured by the medopl instance, not by the portable product.
   projection and busy state. Mismatched credential/Key identities fail closed,
   while valid API payloads, request order, Secret lifetime, copy behavior, and
   customer-visible text remain unchanged.
+- Console operator Wallet Adjustment now has one
+  `useWalletAdjustmentController` owner for the durable adjustment operation,
+  response-loss idempotency intent, manual-review recovery, operation readback,
+  account projection refresh, and Wallet-specific busy/reset state. `AdminPages`
+  consumes that typed capability; the broad Console controller retains only
+  composition and shared operator account loading. Wallet balance, Receipt,
+  audit, and Sub2API facts remain owned by their services, and the exact
+  operation/recovery API identities and customer-visible behavior are unchanged.
+  Focused model tests cover intent reuse, input/account conflict, and
+  recovery-key derivation.
 - The remaining broad Console controller has been mapped by capability before
   another extraction. Workspace Delete, Workspace Renewal, Workspace Budget,
   Support Mapping, Billing/Receipt, Gateway Usage, Operator Account, Wallet

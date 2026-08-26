@@ -31,7 +31,8 @@ import type {
   WorkspaceLaunchResponse,
   WorkspacePricePreview,
   WorkspaceListData,
-  WorkspaceRuntimeDTO
+  WorkspaceRuntimeDTO,
+  WalletAdjustmentRequest
 } from "../api/dtos.ts";
 
 export interface RemoteState<T> {
@@ -124,4 +125,14 @@ export interface SupportController {
   busy: boolean;
   load: () => Promise<SupportTicketPageDTO | null>;
   createMapping: (input: Omit<CreateSupportTicketMappingRequest, "accountId">) => Promise<boolean>;
+}
+
+export interface WalletAdjustmentController {
+  operation: WalletAdjustmentOperationDTO | null;
+  busy: boolean;
+  setOperation: (operation: WalletAdjustmentOperationDTO | null) => void;
+  submit: (accountId: string, input: WalletAdjustmentRequest) => Promise<WalletAdjustmentOperationDTO | null>;
+  refresh: () => Promise<void>;
+  recover: () => Promise<void>;
+  reset: () => void;
 }
