@@ -37,15 +37,12 @@ export function workspaceRenewalResponseMatches(
 export function workspaceRenewalReadbackMatches(
   readback: SourceEnvelope<WorkspaceDTO | null>,
   workspaceId: string,
-  response: WorkspaceRenewalResponse
+  autoRenew: boolean
 ): boolean {
   return readback.available
     && readback.data !== null
     && readback.data.id === workspaceId
-    && readback.data.autoRenew === response.autoRenew
-    && readback.data.renewalStatus === response.renewalStatus
-    && readback.data.paidThrough === response.paidThrough
-    && readback.data.nextRenewalAt === response.nextRenewalAt;
+    && readback.data.autoRenew === autoRenew;
 }
 
 export interface WorkspaceRenewalErrorShape {

@@ -10,12 +10,19 @@ import {
   type WorkspaceRenewalIntent
 } from "../../apps/console-ui/src/app/workspace-renewal-controller-model.ts";
 
-const response: WorkspaceRenewalResponse = {
+const enableResponse: WorkspaceRenewalResponse = {
   autoRenew: true,
   effectiveAfter: "2026-08-26T00:00:00Z",
   nextRenewalAt: "2026-09-26T00:00:00Z",
   paidThrough: "2026-09-26T00:00:00Z",
-  renewalStatus: "active"
+  renewalStatus: "scheduled"
+};
+
+const disableResponse: WorkspaceRenewalResponse = {
+  ...enableResponse,
+  autoRenew: false,
+  effectiveAfter: enableResponse.paidThrough,
+  renewalStatus: "cancelled"
 };
 
 const workspace: WorkspaceDTO = {
@@ -26,9 +33,9 @@ const workspace: WorkspaceDTO = {
   createdAt: "2026-07-26T00:00:00Z",
   updatedAt: "2026-08-26T00:00:00Z",
   autoRenew: true,
-  paidThrough: response.paidThrough,
-  nextRenewalAt: response.nextRenewalAt,
-  renewalStatus: response.renewalStatus
+  paidThrough: enableResponse.paidThrough,
+  nextRenewalAt: enableResponse.nextRenewalAt,
+  renewalStatus: "active"
 };
 
 const readback: SourceEnvelope<WorkspaceDTO | null> = {
@@ -37,6 +44,14 @@ const readback: SourceEnvelope<WorkspaceDTO | null> = {
   available: true,
   fetchedAt: "2026-08-26T00:00:01Z",
   data: workspace
+};
+
+const unavailableReadback: SourceEnvelope<WorkspaceDTO | null> = {
+  source: "control-plane",
+  status: "unavailable",
+  available: false,
+  fetchedAt: "2026-08-26T00:00:01Z",
+  reasonCode: "control_plane_unavailable"
 };
 
 test("Workspace renewal intent reuses the key for the same Workspace and setting", () => {
@@ -74,18 +89,56 @@ test("Workspace renewal intent changes when the Workspace or setting changes", (
 });
 
 test("Workspace renewal response requires the requested setting and complete dates", () => {
-  assert.equal(workspaceRenewalResponseMatches(response, true), true);
-  assert.equal(workspaceRenewalResponseMatches({ ...response, autoRenew: false }, true), false);
-  assert.equal(workspaceRenewalResponseMatches({ ...response, renewalStatus: " " }, true), false);
-  assert.equal(workspaceRenewalResponseMatches({ ...response, paidThrough: "not-a-date" }, true), false);
+  assert.equal(workspaceRenewalResponseMatches(enableResponse, true), true);
+  assert.equal(workspaceRenewalResponseMatches(disableResponse, false), true);
+  assert.equal(workspaceRenewalResponseMatches({ ...enableResponse, autoRenew: false }, true), false);
+  assert.equal(workspaceRenewalResponseMatches({ ...enableResponse, renewalStatus: " " }, true), false);
+  assert.equal(workspaceRenewalResponseMatches({ ...enableResponse, paidThrough: "not-a-date" }, true), false);
 });
 
-test("Workspace renewal requires an identity-matched authoritative readback", () => {
-  assert.equal(workspaceRenewalReadbackMatches(readback, "workspace-alpha", response), true);
-  assert.equal(workspaceRenewalReadbackMatches({ ...readback, data: null }, "workspace-alpha", response), false);
-  assert.equal(workspaceRenewalReadbackMatches({ ...readback, data: { ...workspace, id: "workspace-beta" } }, "workspace-alpha", response), false);
-  assert.equal(workspaceRenewalReadbackMatches({ ...readback, data: { ...workspace, renewalStatus: "scheduled" } }, "workspace-alpha", response), false);
-  assert.equal(workspaceRenewalReadbackMatches({ ...readback, data: { ...workspace, paidThrough: "2026-10-26T00:00:00Z" } }, "workspace-alpha", response), false);
+test("Workspace renewal requires the persisted intent from the identity-matched authoritative readback", () => {
+  assert.equal(workspaceRenewalReadbackMatches(readback, "workspace-alpha", true), true);
+  assert.equal(
+    workspaceRenewalReadbackMatches(
+      { ...readback, data: { ...workspace, autoRenew: false } },
+      "workspace-alpha",
+      false
+    ),
+    true
+  );
+  assert.equal(
+    workspaceRenewalReadbackMatches(
+      {
+        ...readback,
+        data: {
+          ...workspace,
+          paidThrough: "2026-10-26T00:00:00Z",
+          nextRenewalAt: "2026-10-19T00:00:00Z"
+        }
+      },
+      "workspace-alpha",
+      true
+    ),
+    true
+  );
+  assert.equal(workspaceRenewalReadbackMatches(unavailableReadback, "workspace-alpha", true), false);
+  assert.equal(workspaceRenewalReadbackMatches({ ...readback, data: null }, "workspace-alpha", true), false);
+  assert.equal(
+    workspaceRenewalReadbackMatches(
+      { ...readback, data: { ...workspace, id: "workspace-beta" } },
+      "workspace-alpha",
+      true
+    ),
+    false
+  );
+  assert.equal(
+    workspaceRenewalReadbackMatches(
+      { ...readback, data: { ...workspace, autoRenew: false } },
+      "workspace-alpha",
+      true
+    ),
+    false
+  );
 });
 
 test("Workspace renewal keeps intent for unknown or server failures", () => {

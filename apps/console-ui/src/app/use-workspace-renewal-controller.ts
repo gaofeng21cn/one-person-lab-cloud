@@ -145,7 +145,7 @@ export function useWorkspaceRenewalController({
 
       const readback = await findWorkspaceInPages(workspaceId);
       if (!requestIsCurrent(generation, requestStillCurrent, projectionLease, userId, csrfToken, workspaceId)) return false;
-      if (!workspaceRenewalReadbackMatches(readback, workspaceId, response)) {
+      if (!workspaceRenewalReadbackMatches(readback, workspaceId, currentIntent.autoRenew)) {
         throw new Error("workspace_renewal_readback_mismatch");
       }
       if (!projectionLease.commit()) return false;

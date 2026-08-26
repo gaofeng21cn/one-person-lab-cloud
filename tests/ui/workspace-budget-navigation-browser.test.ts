@@ -101,10 +101,18 @@ test("Workspace Budget keeps its intent across navigation and scopes busy to the
     assert.equal(await retryReset.isDisabled(), false);
     await retryReset.click();
     await retryObserved.promise;
+    await page.getByText("模型预算已更新", { exact: true }).waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+        .find((candidate) => candidate.textContent?.trim() === "重置总额度用量");
+      return button?.disabled === false && !button.hasAttribute("aria-busy");
+    });
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-gateway-budget:ws-1:/);
     assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
+    assert.equal(await retryReset.isDisabled(), false);
+    assert.equal(await retryReset.getAttribute("aria-busy"), null);
   } finally {
     releaseFirst.resolve();
     await browser.close();

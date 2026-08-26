@@ -73,10 +73,10 @@ test("Workspace Renewal keeps its intent across navigation and scopes busy to th
 
     const response: WorkspaceRenewalResponse = {
       autoRenew: true,
-      effectiveAfter: "2026-08-26T00:00:00Z",
-      nextRenewalAt: "2026-09-26T00:00:00Z",
-      paidThrough: "2026-09-26T00:00:00Z",
-      renewalStatus: "active"
+      effectiveAfter: "2026-08-01T00:00:00Z",
+      nextRenewalAt: "2026-08-01T00:00:00Z",
+      paidThrough: "2026-08-01T00:00:00Z",
+      renewalStatus: "scheduled"
     };
     const firstRequest = deferred<Route>();
     const retryObserved = deferred<void>();
@@ -90,6 +90,9 @@ test("Workspace Renewal keeps its intent across navigation and scopes busy to th
       if (idempotencyKeys.length === 1) {
         firstRequest.resolve(route);
         await releaseFirst.promise;
+      }
+      if (idempotencyKeys.length === 2) {
+        workspaces[0] = { ...workspaces[0], autoRenew: true, renewalStatus: "active" };
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
       if (idempotencyKeys.length === 2) retryObserved.resolve();
@@ -115,10 +118,15 @@ test("Workspace Renewal keeps its intent across navigation and scopes busy to th
     assert.equal(await retryToggle.isDisabled(), false);
     await retryToggle.click();
     await retryObserved.promise;
+    await page.getByRole("status").getByText("自动续费已开启", { exact: true }).waitFor({ state: "visible" });
+    const completedToggle = page.getByRole("checkbox", { name: "已开启", exact: true });
+    await completedToggle.waitFor({ state: "visible" });
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-renewal:ws-1:/);
     assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
+    assert.equal(await completedToggle.isChecked(), true);
+    assert.equal(await completedToggle.isDisabled(), false);
   } finally {
     releaseFirst.resolve();
     await browser.close();

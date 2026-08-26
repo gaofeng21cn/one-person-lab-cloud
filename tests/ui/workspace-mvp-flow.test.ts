@@ -104,6 +104,8 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
       if (firstAttempt) {
         holdDelete?.();
         await deleteReleased;
+      } else {
+        demo.state.workspaces = demo.state.workspaces.filter((workspace) => workspace.id !== "ws-1");
       }
       await route.fulfill({
         status: 200,
@@ -159,10 +161,13 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     assert.equal(await retryDelete.isDisabled(), false);
     await retryDelete.click();
     await retryObserved;
+    await page.waitForURL(/\/console\/workspaces$/);
+    await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-delete:/);
     assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
+    assert.equal(await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).count(), 0);
   } finally {
     releaseDelete?.();
     await browser.close();
