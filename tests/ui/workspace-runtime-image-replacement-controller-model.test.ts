@@ -4,8 +4,16 @@ import test from "node:test";
 import {
   isTerminalWorkspaceRuntimeImageReplacement,
   resolveWorkspaceRuntimeImageReplacementIntent,
+  workspaceRuntimeImageReplacementIdempotencyKey,
   workspaceRuntimeImageReplacementReadbackMatches
 } from "../../apps/console-ui/src/app/workspace-runtime-image-replacement-controller-model.ts";
+
+test("Workspace image replacement creates a valid bounded mutation key", () => {
+  const key = workspaceRuntimeImageReplacementIdempotencyKey(() => "01234567-89ab-cdef-0123-456789abcdef");
+  assert.equal(key, "wri-01234567-89ab-cdef-0123-456789abcdef");
+  assert.ok(key.length <= 48);
+  assert.match(key, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+});
 
 test("Workspace image replacement reuses an exact idempotent intent", () => {
   const first = resolveWorkspaceRuntimeImageReplacementIntent(null, "ws-alpha", "registry/workspace@sha256:abc", "promote", () => "key-1");
