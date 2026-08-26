@@ -700,6 +700,31 @@ export interface OperatorWorkspacePageDTO {
   pageSize: number;
 }
 
+export interface OperatorWorkspaceRuntimeImagePolicyDTO {
+  image: string;
+  digest: string;
+  source: "OPL_WORKSPACE_IMAGE";
+}
+
+export interface OperatorWorkspaceRuntimeImagePreviewDTO {
+  workspaceId: string;
+  workspaceStatus: string;
+  runtimeId: string;
+  runtimeStatus: string;
+  currentImageDigest: string;
+  targetImageDigest: string;
+  canReplace: boolean;
+}
+
+export interface WorkspaceRuntimeImageReplacementDTO extends OperationStatusDTO {
+  workspaceId: string;
+  runtimeId: string;
+  previousImageDigest: string;
+  replacementImageDigest: string;
+  reason: string;
+  runtime?: WorkspaceRuntimeDTO;
+}
+
 export interface WalletAdjustmentRequest {
   kind: "recharge" | "debit" | "business_refund";
   amountUsd: string;

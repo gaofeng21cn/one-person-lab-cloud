@@ -27,6 +27,16 @@ type workspaceRuntimeImageReplacementRequest struct {
 	Reason                 string `json:"reason"`
 }
 
+type workspaceRuntimeImageReplacementPreview struct {
+	WorkspaceID        string `json:"workspaceId"`
+	WorkspaceStatus    string `json:"workspaceStatus"`
+	RuntimeID          string `json:"runtimeId"`
+	RuntimeStatus      string `json:"runtimeStatus"`
+	CurrentImageDigest string `json:"currentImageDigest"`
+	TargetImageDigest  string `json:"targetImageDigest"`
+	CanReplace         bool   `json:"canReplace"`
+}
+
 type workspaceRuntimeImageReplacementOperation struct {
 	RequestHash string                                        `json:"requestHash"`
 	Reason      string                                        `json:"reason"`
@@ -37,12 +47,66 @@ type workspaceRuntimeImageReplacementOperation struct {
 }
 
 func registerWorkspaceRuntimeImageReplacementRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		image := currentWorkspaceImageDigest()
+		if image == "" {
+			writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
+			return
+		}
+		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", map[string]any{
+			"image":  image,
+			"digest": deployedImageDigest(image),
+			"source": "OPL_WORKSPACE_IMAGE",
+		})
+	}))
+	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		app.previewWorkspaceRuntimeImageReplacement(w, r, service)
+	}))
 	mux.HandleFunc("POST /api/operator/workspaces/{workspaceId}/runtime-image-replacements", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.createWorkspaceRuntimeImageReplacement(w, r, service)
 	}))
 	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/{operationId}", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.getWorkspaceRuntimeImageReplacement(w, r)
 	}))
+}
+
+func (app *controlPlaneServer) previewWorkspaceRuntimeImageReplacement(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	workspaceID := strings.TrimSpace(r.PathValue("workspaceId"))
+	workspace, found, err := app.tables.GetWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "workspace_not_found")
+		return
+	}
+	launch, err := successfulWorkspaceLaunchForReplacement(r.Context(), app.tables, workspaceID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	workspaceStatus := firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))
+	if !workspaceLaunchStableProjectionMatches(launch, workspace) || workspaceStatus != "running" {
+		writeError(w, http.StatusConflict, errWorkspaceRuntimeImageReplacementConflict.Error())
+		return
+	}
+	runtime, err := service.WorkspaceRuntimeStatus(r.Context(), workspaceID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "workspace_runtime_readback_unavailable")
+		return
+	}
+	target := currentWorkspaceImageDigest()
+	if target == "" {
+		writeError(w, http.StatusServiceUnavailable, "workspace_image_not_current_protected_release")
+		return
+	}
+	preview := workspaceRuntimeImageReplacementPreview{
+		WorkspaceID: workspaceID, WorkspaceStatus: workspaceStatus, RuntimeID: runtime.ID,
+		RuntimeStatus: runtime.Status, CurrentImageDigest: runtime.ImageID, TargetImageDigest: target,
+		CanReplace: runtime.ID != "" && runtime.WorkspaceID == workspaceID && runtime.Status == "running" && runtime.Ready && runtime.ImageID != "" && runtime.ImageID != target,
+	}
+	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", preview)
 }
 
 func (app *controlPlaneServer) createWorkspaceRuntimeImageReplacement(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {

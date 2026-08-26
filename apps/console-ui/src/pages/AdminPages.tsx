@@ -60,6 +60,7 @@ function statusLabel(status?: string) {
     published: "已发布",
     queued: "等待处理",
     scheduled: "已排期",
+    started: "已提交",
     succeeded: "已完成",
     withdrawn: "已撤下"
   } as Record<string, string>)[status || ""] || (status || "暂不可用");
@@ -672,12 +673,48 @@ function ResourceDetail({ controller }: { controller: ConsoleController }) {
             <div><dt>Ledger Receipt</dt><dd><SourceValue source={detail.receipt}>{(data) => data.receiptId}</SourceValue></dd></div>
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
+          <WorkspaceRuntimeImageUpgrade controller={controller} />
           {detail.resources.length ? <>
             <div className="table-wrap operator-resource-detail-table"><table><thead><tr><th>owner Account</th><th>owner User</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
             <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
           </> : <div className="empty-panel">暂无资源</div>}
         </>}
       </SourceState>
+    </section>
+  );
+}
+
+function WorkspaceRuntimeImageUpgrade({ controller }: { controller: ConsoleController }) {
+  const previewSource = controller.sources.operatorWorkspaceImagePreview.value;
+  const policySource = controller.sources.operatorWorkspaceImagePolicy.value;
+  const preview = sourceData(previewSource);
+  const policy = sourceData(policySource);
+  const operation = controller.workspaceRuntimeImageReplacement.operation;
+  const replacement = controller.workspaceRuntimeImageReplacement;
+  const canReplace = Boolean(preview?.canReplace && preview.targetImageDigest && preview.runtimeId);
+  return (
+    <section className="operator-runtime-image-upgrade" aria-label="Workspace WebUI 镜像升级">
+      <header>
+        <div><h3>Workspace WebUI 镜像</h3><p>受保护发布物只能通过 Control Plane replacement operation 更新。</p></div>
+        <Button
+          busy={replacement.busy}
+          disabled={!canReplace}
+          onClick={() => void replacement.replaceWorkspaceRuntimeImage()}
+          size="sm"
+          variant="outline"
+        ><RefreshCw aria-hidden size={15} />升级到受保护版本</Button>
+      </header>
+      <dl className="operator-runtime-image-facts">
+        <div><dt>当前运行镜像</dt><dd>{preview ? <code>{preview.currentImageDigest}</code> : "暂不可用"}</dd></div>
+        <div><dt>目标受保护镜像</dt><dd>{preview ? <code>{preview.targetImageDigest}</code> : policy ? <code>{policy.image}</code> : "暂不可用"}</dd></div>
+        <div><dt>Runtime 状态</dt><dd>{preview ? `${statusLabel(preview.runtimeStatus)} · ${preview.runtimeId}` : "暂不可用"}</dd></div>
+        <div><dt>目标来源</dt><dd>{policy ? `${policy.source} · ${policy.digest}` : "暂不可用"}</dd></div>
+      </dl>
+      {operation ? <div className={`inline-notice ${operation.status === "failed" ? "inline-notice--danger" : ""}`}>
+        <span>升级 operation：{operation.operationId} · {statusLabel(operation.status)}{operation.errorCode ? ` · ${operation.errorCode}` : ""}</span>
+        {operation.status !== "succeeded" && operation.status !== "failed" ? <Button busy={replacement.busy} onClick={() => void replacement.refreshWorkspaceRuntimeImageReplacement()} size="sm" variant="ghost"><RefreshCw aria-hidden size={14} />刷新状态</Button> : null}
+      </div> : null}
+      {replacement.issue === "timeout" ? <div className="inline-notice inline-notice--danger"><span>升级仍在处理中，尚未达到轮询确认期限。</span><Button onClick={() => void replacement.refreshWorkspaceRuntimeImageReplacement()} size="sm" variant="ghost">读取状态</Button></div> : null}
     </section>
   );
 }

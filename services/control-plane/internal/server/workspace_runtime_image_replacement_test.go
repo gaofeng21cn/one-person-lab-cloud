@@ -156,3 +156,32 @@ func TestWorkspaceRuntimeImageReplacementRoutePersistsAndReplaysExactOperation(t
 		t.Fatalf("changed replay status=%d body=%s", changed.Code, changed.Body.String())
 	}
 }
+
+func TestWorkspaceRuntimeImageReplacementReadRoutesExposeOnlyProtectedTargetAndPreview(t *testing.T) {
+	const workspaceID = "ws-alpha"
+	const oldImage = "registry.example/workspace@sha256:" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const newImage = "registry.example/workspace@sha256:" + "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	t.Setenv("OPL_WORKSPACE_IMAGE", newImage)
+	t.Setenv("OPL_WORKSPACE_RUNTIME_IMAGE_REPLACEMENT_WORKER_ENABLED", "0")
+	store := newMemoryTableStore()
+	fabric := &runtimeImageReplacementRouteFabric{fakeFabricClient: fakeFabricClient{runtimeStatus: clients.WorkspaceRuntime{
+		ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: workspaceID,
+		URL: "https://workspace.medopl.com/w/ws-alpha/", Status: "running", ServiceName: "runtime-unit", ImageID: oldImage, Ready: true,
+	}}}
+	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, fabric), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedCanonicalRuntimeAccessWorkspaceForTest(t, store, "usr-alpha")
+	operator := reservedOperatorSessionForTest(t, server)
+
+	policy := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspace-runtime-image-policy", "")
+	if policy.Code != http.StatusOK || !strings.Contains(policy.Body.String(), `"image":"`+newImage+`"`) || !strings.Contains(policy.Body.String(), `"digest":"sha256:`) {
+		t.Fatalf("policy status=%d body=%s", policy.Code, policy.Body.String())
+	}
+	preview := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/"+workspaceID+"/runtime-image-replacements/preview", "")
+	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"currentImageDigest":"`+oldImage+`"`) || !strings.Contains(preview.Body.String(), `"targetImageDigest":"`+newImage+`"`) || !strings.Contains(preview.Body.String(), `"canReplace":true`) {
+		t.Fatalf("preview status=%d body=%s", preview.Code, preview.Body.String())
+	}
+}
