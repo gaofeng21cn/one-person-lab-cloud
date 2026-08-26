@@ -154,6 +154,15 @@ is selected and configured by the medopl instance, not by the portable product.
   serialization boundaries. Existing schema-v3 JSON, HTTP payloads, database
   schema, request hashes, idempotency keys, CAS/Workspace projection, and
   external side-effect order are unchanged.
+- Console Workspace Launch now has one `useWorkspaceLaunchController` owner for
+  browser form and confirmation state, pricing catalog and previews,
+  idempotency intent, interrupted-operation recovery, bounded polling,
+  authoritative Workspace readback, and Launch-specific busy state. The broad
+  Console controller retains Session, Router, toast, wallet/Workspace reads,
+  and route orchestration, and composes the Launch owner through narrow request
+  guards. Launch views consume `WorkspaceLaunchController` instead of the broad
+  controller; existing Control Plane APIs and DTOs, `30 x 10s` polling,
+  customer-visible behavior, navigation, and request order are unchanged.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.

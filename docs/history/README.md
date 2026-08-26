@@ -32,6 +32,10 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-26-control-plane-reconciler-typed-boundary.md):
   the completed Stage, Launch status, and Stage observation state migration and
   strict schema-v3 codec boundary retained as provenance.
+- [Console Workspace Launch Controller design, 2026-08-26](./2026-08-26-console-workspace-launch-controller-design.md)
+  and [implementation plan](./2026-08-26-console-workspace-launch-controller.md):
+  the completed browser Launch lifecycle Owner and narrow view-consumer
+  migration retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.

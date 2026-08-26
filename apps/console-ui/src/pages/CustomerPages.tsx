@@ -19,6 +19,7 @@ import {
 import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import type { WorkspaceLaunchController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -228,7 +229,9 @@ function WorkspaceListPage({ controller }: { controller: ConsoleController }) {
   return (
     <section className="workspace-list-page" data-slide="C-WS-01">
       <div className="page-toolbar"><p>Workspace 总数：{controller.sources.workspaces.value?.available ? formatCount(controller.sources.workspaces.value.data.total) : "暂不可用"}</p><Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void controller.refreshCurrentPage() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建 Workspace"}</Button></div>
-      {controller.launchOperation && !["succeeded", "failed", "refunded"].includes(controller.launchOperation.status) ? <LaunchOperation controller={controller} compact /> : null}
+      {controller.workspaceLaunch.launchOperation && !["succeeded", "failed", "refunded"].includes(controller.workspaceLaunch.launchOperation.status) ? (
+        <LaunchOperation controller={controller.workspaceLaunch} compact onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />
+      ) : null}
       <section className="panel workspace-list-panel">
         <div className="workspace-list-head"><span>Workspace</span><span>套餐</span><span>生命周期状态</span><span>已付至</span><span /></div>
         <SourceState
@@ -255,7 +258,7 @@ function WorkspaceListPage({ controller }: { controller: ConsoleController }) {
   );
 }
 
-function PlanOption({ controller, plan }: { controller: ConsoleController; plan: PricingPlan }) {
+function PlanOption({ controller, plan }: { controller: WorkspaceLaunchController; plan: PricingPlan }) {
   const preview = controller.previews[plan.id];
   const selected = controller.launchPlan === plan.id && plan.available;
   const unavailablePrice = plan.available ? "报价读取中" : "暂不可用";
@@ -292,14 +295,13 @@ function WorkspaceOrderSummary({
   mode = "quote"
 }: {
   action?: ReactNode;
-  controller: ConsoleController;
+  controller: WorkspaceLaunchController;
   mode?: "quote" | "operation";
 }) {
   const operation = mode === "operation" ? controller.launchOperation : null;
   const planId = operation?.packageId || controller.selectedPlan?.id;
-  const plan = planId ? controller.sources.catalog.value?.packages.find((item) => item.id === planId) : null;
+  const plan = planId ? controller.catalog.value?.packages.find((item) => item.id === planId) : null;
   const preview = planId ? controller.previews[planId] : undefined;
-  const wallet = sourceData(controller.sources.wallet.value);
   const total = operation?.totalChargeUsdMicros ?? preview?.totalChargeUsdMicros;
   const billingCycle = preview?.billingUnit === "calendar_month" ? "按自然月计费" : "暂不可用";
 
@@ -317,7 +319,7 @@ function WorkspaceOrderSummary({
             </dl>
           </section>
           <dl className="workspace-order-summary__facts">
-            <div><dt>可用余额</dt><dd>{wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"}</dd></div>
+            <div><dt>可用余额</dt><dd>{controller.walletUsdMicros ? formatUsdMicros(controller.walletUsdMicros) : "暂不可用"}</dd></div>
             <div><dt>计费周期</dt><dd>{billingCycle}</dd></div>
             <div><dt>续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
           </dl>
@@ -336,15 +338,23 @@ function WorkspaceOrderSummary({
   );
 }
 
-function WorkspaceLaunchPage({ controller }: { controller: ConsoleController }) {
-  const catalog = controller.sources.catalog.value;
+function WorkspaceLaunchPage({
+  controller,
+  onBack,
+  onRefresh
+}: {
+  controller: WorkspaceLaunchController;
+  onBack: () => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const catalog = controller.catalog.value;
   if (controller.launchOperation && !["failed", "refunded"].includes(controller.launchOperation.status)) {
-    return <section className="workspace-launch-page" data-slide="C-WS-04"><Button className="workspace-launch-back" onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button><LaunchOperation controller={controller} /></section>;
+    return <section className="workspace-launch-page" data-slide="C-WS-04"><Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
   }
 
   return (
     <section className="workspace-launch-page" data-slide={controller.launchStep === "confirm" ? "C-WS-03" : "C-WS-02"}>
-      <Button className="workspace-launch-back" onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button>
+      <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button>
       <WorkspaceLaunchSteps current={controller.launchStep} />
       {controller.launchStep === "configure" ? (
         <form className="workspace-launch-layout" onSubmit={(event) => { event.preventDefault(); controller.reviewWorkspaceLaunch(); }}>
@@ -352,8 +362,8 @@ function WorkspaceLaunchPage({ controller }: { controller: ConsoleController }) 
             <header><h2>新建 Workspace</h2></header>
             <Field label="Workspace 名称" maxLength={80} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：产品研发" required value={controller.launchName} />
             <fieldset><legend>选择套餐</legend>
-              {controller.sources.catalog.loading && !catalog ? <div className="source-loading"><span className="spinner" />正在读取计划与价格</div> : null}
-              {controller.sources.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />计划与价格暂不可用<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="ghost">重试</Button></div> : null}
+              {controller.catalog.loading && !catalog ? <div className="source-loading"><span className="spinner" />正在读取计划与价格</div> : null}
+              {controller.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />计划与价格暂不可用<Button onClick={() => void onRefresh()} size="sm" variant="ghost">重试</Button></div> : null}
               {catalog ? <RadioGroup<PlanId> aria-label="Workspace 套餐" className="workspace-plan-list" direction="col" name="workspace-plan" onChange={controller.setLaunchPlan} value={controller.launchPlan}>{catalog.packages.filter((plan) => plan.available && (plan.id === "basic" || plan.id === "pro")).map((plan) => <PlanOption controller={controller} key={plan.id} plan={plan} />)}</RadioGroup> : null}
             </fieldset>
             {!controller.customerOwned ? <div className="launch-confirm-check"><Checkbox checked={controller.launchAutoRenew} label="自动续费" onChange={controller.setLaunchAutoRenew} /></div> : null}
@@ -368,7 +378,7 @@ function WorkspaceLaunchPage({ controller }: { controller: ConsoleController }) 
   );
 }
 
-function WorkspaceLaunchConfirm({ controller }: { controller: ConsoleController }) {
+function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchController }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -392,14 +402,24 @@ function WorkspaceLaunchConfirm({ controller }: { controller: ConsoleController 
         <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setLaunchConfirmed(false); }} variant="outline">返回修改</Button></footer>
       </section>
       <WorkspaceOrderSummary
-        action={<Button busy={controller.commandBusy} color="primary" disabled={!controller.launchConfirmed || controller.balanceSufficient !== true} onClick={() => void controller.submitWorkspaceLaunch()}>确认预付并开通</Button>}
+        action={<Button busy={controller.busy} color="primary" disabled={!controller.launchConfirmed || controller.balanceSufficient !== true} onClick={() => void controller.submitWorkspaceLaunch()}>确认预付并开通</Button>}
         controller={controller}
       />
     </div>
   );
 }
 
-function LaunchOperation({ compact, controller }: { compact?: boolean; controller: ConsoleController }) {
+function LaunchOperation({
+  compact,
+  controller,
+  onBack,
+  onRefresh
+}: {
+  compact?: boolean;
+  controller: WorkspaceLaunchController;
+  onBack: () => void;
+  onRefresh: () => Promise<void>;
+}) {
   const operation = controller.launchOperation;
   if (!operation) return null;
   const currentPhase = launchPhaseLabel(operation.phase);
@@ -434,8 +454,8 @@ function LaunchOperation({ compact, controller }: { compact?: boolean; controlle
       {controller.launchPollIssue ? <p className="inline-error">结果待确认。请刷新同一 operation，禁止重复购买。</p> : null}
       <div className="launch-operation-actions">
         {operation.status === "succeeded" && operation.workspaceId ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>读取 Workspace</Button> : null}
-        <Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
-        {["failed", "refunded"].includes(operation.status) ? <Button onClick={() => controller.navigate("/console/workspaces")} variant="outline">返回列表</Button> : null}
+        <Button onClick={() => void onRefresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
+        {["failed", "refunded"].includes(operation.status) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
       </div>
     </section>
   );
@@ -681,7 +701,7 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
 export function CustomerPages({ controller }: { controller: ConsoleController }) {
   if (controller.path === "/console" || controller.path === "/console/overview") return <OverviewPage controller={controller} />;
   if (workspacePage(controller.path) === "list") return <WorkspaceListPage controller={controller} />;
-  if (workspacePage(controller.path) === "new") return <WorkspaceLaunchPage controller={controller} />;
+  if (workspacePage(controller.path) === "new") return <WorkspaceLaunchPage controller={controller.workspaceLaunch} onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />;
   if (workspacePage(controller.path) === "detail") return <WorkspaceDetailPage controller={controller} />;
   if (controller.path.startsWith("/console/api")) return <ApiPage controller={controller} />;
   if (controller.path === "/console/billing") return <BillingPage controller={controller} />;
