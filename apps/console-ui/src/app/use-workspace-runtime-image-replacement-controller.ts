@@ -15,6 +15,7 @@ import type { WorkspaceRuntimeImageReplacementController, WorkspaceRuntimeImageR
 import {
   isTerminalWorkspaceRuntimeImageReplacement,
   resolveWorkspaceRuntimeImageReplacementIntent,
+  workspaceRuntimeImageReplacementIdempotencyKey,
   workspaceRuntimeImageReplacementReadbackMatches,
   type WorkspaceRuntimeImageReplacementIntent
 } from "./workspace-runtime-image-replacement-controller-model.ts";
@@ -119,7 +120,13 @@ export function useWorkspaceRuntimeImageReplacementController({
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     const generation = ++requestGeneration.current;
-    const resolved = resolveWorkspaceRuntimeImageReplacementIntent(intent.current, workspaceId, target.targetImageDigest, reason, () => `workspace-runtime-image-replacement:${workspaceId}:${crypto.randomUUID()}`);
+    const resolved = resolveWorkspaceRuntimeImageReplacementIntent(
+      intent.current,
+      workspaceId,
+      target.targetImageDigest,
+      reason,
+      () => workspaceRuntimeImageReplacementIdempotencyKey(() => crypto.randomUUID())
+    );
     intent.current = resolved;
     setBusy(true);
     setIssue("");
