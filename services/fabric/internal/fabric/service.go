@@ -59,7 +59,8 @@ type Service struct {
 	resourceOperations               ResourceOperationStore
 	runtimeOperationQueries          RuntimeOperationQueryStore
 	computeClaims                    ComputeClaimStore
-	workspaceLaunchStages            WorkspaceLaunchStageStore
+	workspaceLaunchPreflights        WorkspaceLaunchPreflightStore
+	launchStages                     *launchStageEngine
 	providerMutations                ProviderMutationStore
 	runtimeOperations                RuntimeOperationStore
 	machineOwnership                 MachineOwnershipStore
@@ -83,14 +84,14 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 	}
 	ports := operationStoreCapabilityPorts{store: operations}
 	computes, volumes, attachments, _ := replayResourceState(context.Background(), ports)
-	return &Service{
+	service := &Service{
 		providerDescriptor: provider, computeProvider: provider, storageProvider: provider, attachmentProvider: provider,
 		secretProvider: provider, runtimeProvider: provider, workspaceImagePolicy: provider, workspaceLaunchPlans: provider,
 		monthlyPreflightProvider: provider, providerReadiness: provider, optionalProviders: optionalProviderPortsFrom(provider),
 		computes: computes, volumes: volumes, attachments: attachments,
 		destroying: map[string]bool{}, reconciling: map[string]bool{},
 		operationJournal: ports, operationHistory: ports, resourceOperations: ports, runtimeOperationQueries: ports,
-		computeClaims: ports, workspaceLaunchStages: ports, providerMutations: providerMutationStorePort(operations),
+		computeClaims: ports, workspaceLaunchPreflights: ports, providerMutations: providerMutationStorePort(operations),
 		runtimeOperations: runtimeOperationPort(operations), machineOwnership: operations, computePool: operations, jobStore: operations, resourceLocks: operations,
 		now:                           func() time.Time { return time.Now().UTC() },
 		readinessTTL:                  readinessSuccessTTL,
@@ -98,6 +99,17 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 		computeAllocationPollInterval: computeAllocationPollInterval, computeAllocationPollWindow: computeAllocationPollWindow,
 		computeAllocationAttemptTimeout: computeAllocationAttemptTimeout, computeAllocationFinalizeTimeout: computeAllocationFinalizeTimeout,
 	}
+	service.launchStages = newLaunchStageEngine(
+		ports,
+		service.optionalProviders.workspaceLaunch,
+		service.providerDescriptor,
+		service.workspaceImagePolicy,
+		service.optionalProviders.workspaceLaunchRuntimeImageRevision,
+		service.providerMutations,
+		service.machineOwnership,
+		func() time.Time { return service.now() },
+	)
+	return service
 }
 
 func (s *Service) Catalog(_ context.Context) Catalog {

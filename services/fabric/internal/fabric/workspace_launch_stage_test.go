@@ -266,7 +266,7 @@ func TestWorkspaceLaunchPreflightPersistsCanonicalProviderPlanAcrossProfileDrift
 
 	input.SpecDigest = strings.Repeat("0", 64)
 	input.Binding.RequestHash = workspaceLaunchStageRequestHash(input, launchHash)
-	if err := service.validateWorkspaceLaunchStageInput(context.Background(), input); !errors.Is(err, ErrLaunchStageBindingConflict) {
+	if err := service.launchStages.validateWorkspaceLaunchStageInput(context.Background(), input); !errors.Is(err, ErrLaunchStageBindingConflict) {
 		t.Fatalf("spec digest drift error=%v", err)
 	}
 }
@@ -447,7 +447,7 @@ func TestWorkspaceLaunchStageRejectsRequestHashAndResourceDrift(t *testing.T) {
 	for _, stage := range stages {
 		t.Run(stage.stage, func(t *testing.T) {
 			input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, stage.stage, stage.action, stage.resources)
-			if err := service.validateWorkspaceLaunchStageInput(context.Background(), input); err != nil {
+			if err := service.launchStages.validateWorkspaceLaunchStageInput(context.Background(), input); err != nil {
 				t.Fatalf("canonical input rejected: %v", err)
 			}
 			driftedHash := input
@@ -512,19 +512,19 @@ func TestWorkspaceLaunchExpectedBindingRequiresExactAuthoritativeRecordForFiveSt
 			input.Binding.IdempotencyKey = input.Binding.FabricOperationID
 			input.Binding.ExpectedResourceBinding = previousInput.Binding.FabricOperationID
 			input.Binding.RequestHash = workspaceLaunchStageRequestHash(input, launchHash)
-			if err := service.validateWorkspaceLaunchStageInput(context.Background(), input); err != nil {
+			if err := service.launchStages.validateWorkspaceLaunchStageInput(context.Background(), input); err != nil {
 				t.Fatalf("exact expected binding rejected: %v", err)
 			}
 
 			driftedBinding := input
 			driftedBinding.Binding.ExpectedResourceBinding = "launch-alpha:" + test.stage + "-other"
-			if err := service.validateWorkspaceLaunchStageInput(context.Background(), driftedBinding); !errors.Is(err, ErrLaunchStageBindingConflict) {
+			if err := service.launchStages.validateWorkspaceLaunchStageInput(context.Background(), driftedBinding); !errors.Is(err, ErrLaunchStageBindingConflict) {
 				t.Fatalf("expected binding drift error=%v", err)
 			}
 			driftedResource := input
 			test.drift(&driftedResource.Resources)
 			driftedResource.Binding.RequestHash = workspaceLaunchStageRequestHash(driftedResource, launchHash)
-			if err := service.validateWorkspaceLaunchStageInput(context.Background(), driftedResource); !errors.Is(err, ErrLaunchStageBindingConflict) {
+			if err := service.launchStages.validateWorkspaceLaunchStageInput(context.Background(), driftedResource); !errors.Is(err, ErrLaunchStageBindingConflict) {
 				t.Fatalf("expected resource identity drift error=%v", err)
 			}
 		})

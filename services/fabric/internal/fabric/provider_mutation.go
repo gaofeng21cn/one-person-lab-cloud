@@ -90,6 +90,26 @@ func (s *Service) providerReadContext(ctx context.Context, operation FabricOpera
 }
 
 func (s *Service) providerOperationContext(ctx context.Context, operation FabricOperation, readOnly bool) context.Context {
+	return withProviderOperationJournal(
+		ctx,
+		operation,
+		readOnly,
+		s.providerMutations,
+		s.machineOwnership,
+		s.providerDescriptor.Descriptor().Name,
+		s.now,
+	)
+}
+
+func withProviderOperationJournal(
+	ctx context.Context,
+	operation FabricOperation,
+	readOnly bool,
+	operations ProviderMutationStore,
+	machineOwnership MachineOwnershipStore,
+	provider string,
+	now func() time.Time,
+) context.Context {
 	binding, ok := decodeLaunchStageBinding(operation)
 	if !ok {
 		binding, ok = directStorageProviderMutationBinding(operation)
@@ -98,7 +118,7 @@ func (s *Service) providerOperationContext(ctx context.Context, operation Fabric
 		}
 	}
 	return context.WithValue(ctx, providerMutationJournalContextKey{}, &providerMutationJournal{
-		operations: s.providerMutations, machineOwnership: s.machineOwnership, parent: binding, parentOperation: operation, provider: s.providerDescriptor.Descriptor().Name, now: s.now, readOnly: readOnly,
+		operations: operations, machineOwnership: machineOwnership, parent: binding, parentOperation: operation, provider: provider, now: now, readOnly: readOnly,
 	})
 }
 

@@ -126,6 +126,15 @@ is selected and configured by the medopl instance, not by the portable product.
   composition. Local-Docker and Tencent/TKE remain complete adapters behind one
   composition contract; no adapter object, public contract, or provider behavior
   changed.
+- Fabric Workspace Launch Stage operation transitions now have one internal
+  `launchStageEngine` owner. The Engine alone receives the Stage mutation Store,
+  Launch Provider, runtime-image revision capability, provider-mutation journal,
+  Machine Ownership port, and clock. `Service` retains Preflight admission
+  persistence and thin Ensure/Read/request facades; Stage claim, replay,
+  Provider mutation/readback, diagnostic persistence, failure, and CAS
+  convergence no longer execute on the broad Service receiver. Existing
+  Local-Docker and Tencent/TKE behavior, HTTP contracts, payloads, and database
+  schema are unchanged.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.
