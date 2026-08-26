@@ -23,11 +23,9 @@ import {
   getOperatorReconciliation,
   getOperatorWorkspace,
   getOperatorWorkspaces,
-  getPricingCatalog,
   getSupportTickets,
   getWalletAdjustment,
   markAnnouncementRead,
-  previewPricing,
   provisionOperatorAccount,
   publishOperatorAnnouncement,
   recoverWalletAdjustment,
@@ -43,40 +41,31 @@ import type {
   GatewayUsagePeriod,
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
-  PlanId,
   ProvisionAccountRequest,
   SourceEnvelope,
   WalletAdjustmentRecoveryRequest,
   WalletAdjustmentRequest,
   WorkspaceGatewayBudgetDTO,
-  WorkspaceGatewayBudgetUpdateRequest,
-  WorkspaceLaunchRequest,
-  WorkspacePricePreview
+  WorkspaceGatewayBudgetUpdateRequest
 } from "../api/dtos.ts";
 import {
   deleteWorkspace as deleteWorkspaceCommand,
   findWorkspaceInPages,
-  getWorkspaceLaunch,
-  getWorkspaceLaunches,
   getWorkspaceGatewayBudget,
   getWorkspaces,
   getWorkspaceRuntimeStatus,
-  isTerminalWorkspaceLaunch,
-  launchWorkspace,
   revealWorkspaceCredentials,
   rotateWorkspaceCredentials,
   updateWorkspaceGatewayBudget,
   updateWorkspaceRenewal,
-  workspaceDeleteIdempotencyKey,
-  workspaceLaunchIdempotencyKey
+  workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
-import { defaultAuthenticatedRoute, hasSufficientWorkspaceLaunchBalance, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
+import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSecrets, ConsoleSources, GlobalSlide, RemoteState, WorkspaceLaunchStep } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSecrets, ConsoleSources, GlobalSlide, RemoteState } from "./console-controller-types.ts";
+import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 
 const secretLifetimeMs = 60_000;
-const workspaceLaunchPollIntervalMs = 10_000;
-const workspaceLaunchPollAttempts = 30;
 const operatorPageSize = 20;
 
 type WorkspaceBudgetIntent = {
@@ -105,7 +94,6 @@ function initialSources(): ConsoleSources {
     receipts: emptyRemote(),
     receiptDetail: emptyRemote(),
     announcements: emptyRemote(),
-    catalog: emptyRemote(),
     usageKeys: emptyRemote(),
     usage: emptyRemote(),
     usageSummary: emptyRemote(),
@@ -164,10 +152,6 @@ function mutationError(error: unknown) {
   return code ? friendlyError(code) : "结果待确认，请刷新操作状态，不要重复提交";
 }
 
-function sameLaunchRequest(left: WorkspaceLaunchRequest, right: WorkspaceLaunchRequest) {
-  return left.name === right.name && left.packageId === right.packageId && left.autoRenew === right.autoRenew;
-}
-
 function workspaceBudgetRequestSignature(input: WorkspaceGatewayBudgetUpdateRequest) {
   return JSON.stringify([
     input.quotaUsdMicros ?? null,
@@ -217,14 +201,6 @@ export function useConsoleController() {
   const [selectedUsageKeyId, setSelectedUsageKeyId] = useState("");
   const [usagePeriod, setUsagePeriod] = useState<GatewayUsagePeriod>("month");
   const [usagePage, setUsagePage] = useState(1);
-  const [launchName, setLaunchName] = useState("");
-  const [launchPlan, setLaunchPlan] = useState<PlanId>("basic");
-  const [launchAutoRenew, setLaunchAutoRenew] = useState(false);
-  const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
-  const [launchConfirmed, setLaunchConfirmed] = useState(false);
-  const [previews, setPreviews] = useState<Partial<Record<PlanId, WorkspacePricePreview>>>({});
-  const [launchOperation, setLaunchOperation] = useState<Awaited<ReturnType<typeof getWorkspaceLaunch>> | null>(null);
-  const [launchPollIssue, setLaunchPollIssue] = useState<"" | "error" | "timeout" | "readback">("");
   const [workspaceDeleteIssue, setWorkspaceDeleteIssue] = useState<"" | "unavailable" | "unconfirmed">("");
   const [secrets, setSecrets] = useState<ConsoleSecrets>({ apiKey: null, workspace: null });
   const [workspaceSecretBusy, setWorkspaceSecretBusy] = useState(false);
@@ -257,7 +233,6 @@ export function useConsoleController() {
   const selectedOperatorWorkspaceIdRef = useRef("");
   const secretTimer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
-  const workspaceLaunchIntent = useRef<{ input: WorkspaceLaunchRequest; idempotencyKey: string } | null>(null);
   const workspaceDeleteIntent = useRef<{ workspaceId: string; idempotencyKey: string } | null>(null);
   const runtimeRotationIntent = useRef<{ workspaceId: string; idempotencyKey: string } | null>(null);
   const workspaceRenewalIntents = useRef(new Map<string, WorkspaceRenewalIntent>());
@@ -312,15 +287,8 @@ export function useConsoleController() {
     clearSecrets();
     setSources(initialSources());
     setGlobalSlide("");
-    setLaunchOperation(null);
-    setLaunchPollIssue("");
+    workspaceLaunch.reset();
     setWorkspaceDeleteIssue("");
-    setLaunchStep("configure");
-    setLaunchConfirmed(false);
-    setLaunchName("");
-    setLaunchPlan("basic");
-    setLaunchAutoRenew(false);
-    setPreviews({});
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
     selectedUsageKeyIdRef.current = "";
@@ -345,7 +313,6 @@ export function useConsoleController() {
     setCommandBusy(false);
     setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
-    workspaceLaunchIntent.current = null;
     workspaceDeleteIntent.current = null;
     runtimeRotationIntent.current = null;
     workspaceRenewalIntents.current.clear();
@@ -388,6 +355,17 @@ export function useConsoleController() {
     const userId = sessionRef.current?.user.id;
     return () => generation === sessionGeneration.current && userId === sessionRef.current?.user.id;
   };
+
+  const workspaceLaunch = useWorkspaceLaunchController({
+    session,
+    wallet: sources.wallet,
+    isRequestCurrent,
+    currentMutationRequest,
+    currentRequestGeneration: () => requestGeneration.current,
+    navigate,
+    flash,
+    friendlyError
+  });
 
   const loadWorkspaces = async (generation: number, activeSession: AuthSession, page = workspacePageNumber, pageSize = 10) => {
     beginSource("workspaces");
@@ -457,33 +435,6 @@ export function useConsoleController() {
       if (isRequestCurrent(generation, activeSession.user.id)) updateSource("announcements", { value: result, loading: false, error: "" });
     } catch (error) {
       if (isRequestCurrent(generation, activeSession.user.id)) failSource("announcements", error, unavailableSource("control-plane"));
-    }
-  };
-
-  const loadCatalog = async (generation: number, activeSession: AuthSession) => {
-    beginSource("catalog");
-    setPreviews({});
-    try {
-      const catalog = await getPricingCatalog();
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      updateSource("catalog", { value: catalog, loading: false, error: "" });
-      if (catalog.resourceBillingMode === "none") setLaunchAutoRenew(false);
-      if (!catalog.packages.some((plan) => plan.id === launchPlan && plan.available)) {
-        const firstAvailablePlan = catalog.packages.find((plan) => plan.available);
-        if (firstAvailablePlan) setLaunchPlan(firstAvailablePlan.id);
-      }
-      const entries = await Promise.all(catalog.packages.filter((plan) => plan.available).map(async (plan) => {
-        const preview = await previewPricing({ resourceType: "workspace", packageId: plan.id }, activeSession.csrfToken);
-        return [plan.id, preview] as const;
-      }));
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const next: Partial<Record<PlanId, WorkspacePricePreview>> = {};
-      for (const [planId, preview] of entries) {
-        if (typeof preview.totalChargeUsdMicros === "number") next[planId] = preview as WorkspacePricePreview;
-      }
-      setPreviews(next);
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("catalog", error, null);
     }
   };
 
@@ -588,78 +539,6 @@ export function useConsoleController() {
     }
   };
 
-  const recoverWorkspaceLaunch = async (generation: number, activeSession: AuthSession) => {
-    setLaunchPollIssue("");
-    try {
-      const launches = await getWorkspaceLaunches();
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const pending = launches.filter((operation) => !isTerminalWorkspaceLaunch(operation.status));
-      if (pending.length === 0) {
-        setLaunchOperation(null);
-        return;
-      }
-      if (pending.length !== 1) {
-        setLaunchPollIssue("error");
-        return;
-      }
-      setLaunchOperation(pending[0]);
-      if (pending[0].status !== "manual_review") void pollWorkspaceLaunch(pending[0].operationId, generation, activeSession);
-    } catch {
-      if (isRequestCurrent(generation, activeSession.user.id)) setLaunchPollIssue("error");
-    }
-  };
-
-  const confirmWorkspaceLaunchReadback = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
-    try {
-      const detail = await findWorkspaceInPages(workspaceId);
-      if (!isRequestCurrent(generation, activeSession.user.id)) return false;
-      if (!detail.available || detail.data === null) {
-        setLaunchPollIssue("readback");
-        flash("开通操作已完成，但 Workspace 权威回读尚未确认", "danger");
-        return false;
-      }
-      setLaunchPollIssue("");
-      flash("Workspace 已开通");
-      navigate(`/console/workspaces/${encodeURIComponent(workspaceId)}`);
-      return true;
-    } catch {
-      if (isRequestCurrent(generation, activeSession.user.id)) {
-        setLaunchPollIssue("readback");
-        flash("开通操作已完成，但 Workspace 权威回读尚未确认", "danger");
-      }
-      return false;
-    }
-  };
-
-  const pollWorkspaceLaunch = async (operationId: string, generation: number, activeSession: AuthSession) => {
-    setLaunchPollIssue("");
-    for (let attempt = 0; attempt < workspaceLaunchPollAttempts; attempt += 1) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, workspaceLaunchPollIntervalMs));
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      try {
-        const operation = await getWorkspaceLaunch(operationId);
-        if (!isRequestCurrent(generation, activeSession.user.id)) return;
-        setLaunchOperation(operation);
-        if (operation.status === "manual_review") return;
-        if (isTerminalWorkspaceLaunch(operation.status)) {
-          if (operation.status === "succeeded" && operation.workspaceId) {
-            await confirmWorkspaceLaunchReadback(operation.workspaceId, generation, activeSession);
-          } else if (operation.status === "refunded") {
-            flash("Workspace 未完成，已退款", "danger");
-          }
-          return;
-        }
-      } catch (error) {
-        if (isRequestCurrent(generation, activeSession.user.id)) {
-          setLaunchPollIssue("error");
-          flash(friendlyError(error), "danger");
-        }
-        return;
-      }
-    }
-    if (isRequestCurrent(generation, activeSession.user.id)) setLaunchPollIssue("timeout");
-  };
-
   const loadOperatorOverview = async (generation: number, activeSession: AuthSession) => {
     beginSource("operatorOverview");
     try {
@@ -758,11 +637,11 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/console/workspaces") {
-      await Promise.all([loadWorkspaces(generation, activeSession, workspacePageNumber, 10), recoverWorkspaceLaunch(generation, activeSession)]);
+      await Promise.all([loadWorkspaces(generation, activeSession, workspacePageNumber, 10), workspaceLaunch.recover(generation, activeSession)]);
       return;
     }
     if (routePath === "/console/workspaces/new") {
-      await Promise.all([loadWallet(generation, activeSession), loadCatalog(generation, activeSession), recoverWorkspaceLaunch(generation, activeSession)]);
+      await Promise.all([loadWallet(generation, activeSession), workspaceLaunch.loadCatalog(generation, activeSession), workspaceLaunch.recover(generation, activeSession)]);
       return;
     }
     if (workspacePage(routePath) === "detail") {
@@ -935,52 +814,6 @@ export function useConsoleController() {
     const generation = requestGeneration.current;
     clearSecrets();
     await loadWorkspaces(generation, session, page, 10);
-  };
-
-  const reviewWorkspaceLaunch = () => {
-    if (!launchName.trim() || !selectedPlan || selectedPrice === null || balanceSufficient !== true) return;
-    setLaunchConfirmed(false);
-    setLaunchStep("confirm");
-  };
-
-  const submitWorkspaceLaunch = async () => {
-    if (!session || commandBusy || launchStep !== "confirm" || !launchConfirmed || !selectedPlan || selectedPrice === null || balanceSufficient !== true || !launchName.trim()) return;
-    const requestStillCurrent = currentMutationRequest();
-    const input: WorkspaceLaunchRequest = { name: launchName.trim(), packageId: selectedPlan.id, autoRenew: customerOwned ? false : launchAutoRenew };
-    if (workspaceLaunchIntent.current && !sameLaunchRequest(workspaceLaunchIntent.current.input, input)) {
-      flash("上次 Workspace 开通结果待确认，请按原配置重试", "danger");
-      return;
-    }
-    if (!workspaceLaunchIntent.current) {
-      workspaceLaunchIntent.current = { input, idempotencyKey: workspaceLaunchIdempotencyKey() };
-    }
-    setCommandBusy(true);
-    try {
-      const operation = await launchWorkspace(input, session.csrfToken, workspaceLaunchIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      workspaceLaunchIntent.current = null;
-      setLaunchOperation(operation);
-      if (operation.status === "succeeded" && operation.workspaceId) {
-        await confirmWorkspaceLaunchReadback(operation.workspaceId, requestGeneration.current, session);
-      } else if (operation.status === "refunded") {
-        flash("Workspace 未完成，已退款", "danger");
-      } else if (!isTerminalWorkspaceLaunch(operation.status) && operation.status !== "manual_review") {
-        void pollWorkspaceLaunch(operation.operationId, requestGeneration.current, session);
-      }
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      const payload = error && typeof error === "object" && "payload" in error ? (error as { payload?: unknown }).payload : null;
-      const unknown = Boolean(payload && typeof payload === "object" && (payload as { status?: string }).status === "unknown");
-      if (!unknown) workspaceLaunchIntent.current = null;
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
-  };
-
-  const openLaunchedWorkspace = async () => {
-    if (!session || !launchOperation?.workspaceId) return;
-    await confirmWorkspaceLaunchReadback(launchOperation.workspaceId, requestGeneration.current, session);
   };
 
   const confirmWorkspaceDeleteReadback = async (workspaceId: string, requestStillCurrent: () => boolean) => {
@@ -1640,13 +1473,6 @@ export function useConsoleController() {
     }
   };
 
-  const selectedPlan = sources.catalog.value?.packages.find((plan) => plan.id === launchPlan && plan.available) || null;
-  const customerOwned = sources.catalog.value?.resourceBillingMode === "none";
-  const selectedPrice = selectedPlan ? (customerOwned ? 0 : previews[selectedPlan.id]?.totalChargeUsdMicros ?? null) : null;
-  const wallet = sources.wallet.value?.available ? sources.wallet.value.data : null;
-  const balanceSufficient = customerOwned ? true : wallet && selectedPrice !== null
-    ? hasSufficientWorkspaceLaunchBalance(wallet.usdMicros, selectedPrice)
-    : wallet ? false : null;
   const workspaceRows = sources.workspaces.value?.available ? sources.workspaces.value.data.items : [];
   const workspacePages = sources.workspaces.value?.available ? Math.ceil(sources.workspaces.value.data.total / sources.workspaces.value.data.pageSize) : 0;
   const operatorAccountPages = sources.operatorAccounts.value?.available ? Math.ceil(sources.operatorAccounts.value.data.total / sources.operatorAccounts.value.data.pageSize) : 0;
@@ -1695,26 +1521,7 @@ export function useConsoleController() {
     workspacePageNumber,
     workspacePages,
     changeWorkspacePage,
-    launchName,
-    setLaunchName,
-    launchPlan,
-    setLaunchPlan,
-    launchAutoRenew,
-    setLaunchAutoRenew,
-    launchStep,
-    setLaunchStep,
-    launchConfirmed,
-    setLaunchConfirmed,
-    previews,
-    selectedPlan,
-    selectedPrice,
-    balanceSufficient,
-    customerOwned,
-    launchOperation,
-    launchPollIssue,
-    openLaunchedWorkspace,
-    reviewWorkspaceLaunch,
-    submitWorkspaceLaunch,
+    workspaceLaunch,
     commandBusy,
     workspaceDeleteIssue,
     deleteCurrentWorkspace,

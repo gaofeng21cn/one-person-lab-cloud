@@ -18,13 +18,16 @@ import type {
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
+  PlanId,
   PricingCatalogResponse,
+  PricingPlan,
   SourceEnvelope,
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceLaunchResponse,
+  WorkspacePricePreview,
   WorkspaceListData,
   WorkspaceRuntimeDTO
 } from "../api/dtos.ts";
@@ -46,7 +49,6 @@ export interface ConsoleSources {
   receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
   receiptDetail: RemoteState<SourceEnvelope<BillingReceipt>>;
   announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
-  catalog: RemoteState<PricingCatalogResponse>;
   usageKeys: RemoteState<SourceEnvelope<GatewayKeyPageDTO>>;
   usage: RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>;
   usageSummary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
@@ -76,6 +78,31 @@ export interface ConsoleTransientState {
   authError: string;
   toast: { text: string; tone: "good" | "danger" };
   globalSlide: GlobalSlide;
-  launchOperation: WorkspaceLaunchResponse | null;
   walletAdjustmentOperation: WalletAdjustmentOperationDTO | null;
+}
+
+export interface WorkspaceLaunchController {
+  catalog: RemoteState<PricingCatalogResponse>;
+  previews: Partial<Record<PlanId, WorkspacePricePreview>>;
+  launchName: string;
+  setLaunchName: (value: string) => void;
+  launchPlan: PlanId;
+  setLaunchPlan: (value: PlanId) => void;
+  launchAutoRenew: boolean;
+  setLaunchAutoRenew: (value: boolean) => void;
+  launchStep: WorkspaceLaunchStep;
+  setLaunchStep: (value: WorkspaceLaunchStep) => void;
+  launchConfirmed: boolean;
+  setLaunchConfirmed: (value: boolean) => void;
+  selectedPlan: PricingPlan | null;
+  selectedPrice: number | null;
+  walletUsdMicros: string | null;
+  balanceSufficient: boolean | null;
+  customerOwned: boolean;
+  launchOperation: WorkspaceLaunchResponse | null;
+  launchPollIssue: "" | "error" | "timeout" | "readback";
+  busy: boolean;
+  reviewWorkspaceLaunch: () => void;
+  submitWorkspaceLaunch: () => Promise<void>;
+  openLaunchedWorkspace: () => Promise<void>;
 }

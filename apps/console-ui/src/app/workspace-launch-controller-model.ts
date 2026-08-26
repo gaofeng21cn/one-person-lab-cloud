@@ -6,12 +6,12 @@ import type {
 import { isTerminalWorkspaceLaunch } from "../api/workspaces-api.ts";
 
 export interface WorkspaceLaunchIntent {
-  readonly input: WorkspaceLaunchRequest;
+  readonly input: Readonly<WorkspaceLaunchRequest>;
   readonly idempotencyKey: string;
 }
 
 export type WorkspaceLaunchIntentResolution =
-  | { kind: "ready"; intent: WorkspaceLaunchIntent; reused: boolean }
+  | { kind: "ready"; intent: WorkspaceLaunchIntent }
   | { kind: "conflict" };
 
 export type WorkspaceLaunchRecovery =
@@ -32,13 +32,12 @@ export function resolveWorkspaceLaunchIntent(
 ): WorkspaceLaunchIntentResolution {
   if (current) {
     return sameWorkspaceLaunchInput(current.input, input)
-      ? { kind: "ready", intent: current, reused: true }
+      ? { kind: "ready", intent: current }
       : { kind: "conflict" };
   }
   return {
     kind: "ready",
-    intent: { input: { ...input }, idempotencyKey: createIdempotencyKey() },
-    reused: false
+    intent: { input: { ...input }, idempotencyKey: createIdempotencyKey() }
   };
 }
 

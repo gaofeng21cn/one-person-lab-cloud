@@ -52,7 +52,6 @@ test("identical Workspace launch input reuses the existing intent key", () => {
 
   assert.equal(created.kind, "ready");
   if (created.kind !== "ready") return;
-  assert.equal(created.reused, false);
   const intent: WorkspaceLaunchIntent = created.intent;
 
   const result = resolveWorkspaceLaunchIntent(intent, { ...basicRequest }, () => {
@@ -62,24 +61,30 @@ test("identical Workspace launch input reuses the existing intent key", () => {
 
   assert.equal(result.kind, "ready");
   if (result.kind !== "ready") return;
-  assert.equal(result.reused, true);
+  assert.equal(result.intent, intent);
   assert.equal(result.intent.idempotencyKey, "workspace-launch:existing");
   assert.equal(keysCreated, 1);
 });
 
-test("different Workspace launch input conflicts without creating a key", () => {
+test("different Workspace launch input fields conflict without creating a key", () => {
   const intent: WorkspaceLaunchIntent = {
     input: basicRequest,
     idempotencyKey: "workspace-launch:existing"
   };
   let keysCreated = 0;
 
-  const result = resolveWorkspaceLaunchIntent(intent, { ...basicRequest, packageId: "pro" }, () => {
-    keysCreated += 1;
-    return "workspace-launch:new";
-  });
-
-  assert.equal(result.kind, "conflict");
+  const conflicts: WorkspaceLaunchRequest[] = [
+    { ...basicRequest, name: "Beta" },
+    { ...basicRequest, packageId: "pro" },
+    { ...basicRequest, autoRenew: false }
+  ];
+  for (const input of conflicts) {
+    const result = resolveWorkspaceLaunchIntent(intent, input, () => {
+      keysCreated += 1;
+      return "workspace-launch:new";
+    });
+    assert.equal(result.kind, "conflict");
+  }
   assert.equal(keysCreated, 0);
 });
 
@@ -111,9 +116,11 @@ test("Workspace launch polling stops for manual review and terminal operations",
 });
 
 test("resource billing mode none disables Workspace auto-renew", () => {
+  const original = { ...basicRequest };
   assert.deepEqual(workspaceLaunchSubmission(basicRequest, "none"), {
     ...basicRequest,
     autoRenew: false
   });
   assert.deepEqual(workspaceLaunchSubmission(basicRequest, "enabled"), basicRequest);
+  assert.deepEqual(basicRequest, original);
 });
