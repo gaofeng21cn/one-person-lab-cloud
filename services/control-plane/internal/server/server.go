@@ -58,6 +58,9 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	if workspaceLaunchWorkerEnabled() {
 		app.startWorkspaceLaunchWorker(context.Background(), service, workspaceLaunchWorkerInterval())
 	}
+	if workspaceRuntimeImageReplacementWorkerEnabled() {
+		app.startWorkspaceRuntimeImageReplacementWorker(context.Background(), service, workspaceLaunchWorkerInterval())
+	}
 	if providerReconcileWorkerEnabled() {
 		app.startProviderReconcileWorker(context.Background(), service, providerReconcileInterval())
 	}

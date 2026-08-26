@@ -337,6 +337,36 @@ type WorkspaceRuntimeInput struct {
 	OperationID                string                               `json:"-"`
 }
 
+// WorkspaceRuntimeImageReplacementInput is intentionally scoped to one
+// existing Runtime. It carries the owner-chain identities so a provider
+// cannot turn this capability into an arbitrary Deployment patch.
+type WorkspaceRuntimeImageReplacementInput struct {
+	LaunchOperationID      string `json:"launchOperationId"`
+	AccountID              string `json:"accountId"`
+	WorkspaceID            string `json:"workspaceId"`
+	ComputeID              string `json:"computeId"`
+	StorageID              string `json:"storageId"`
+	AttachmentID           string `json:"attachmentId"`
+	RuntimeID              string `json:"runtimeId"`
+	RuntimeOperationID     string `json:"runtimeOperationId"`
+	RuntimeServiceName     string `json:"runtimeServiceName"`
+	PreviousImageDigest    string `json:"previousImageDigest"`
+	ReplacementImageDigest string `json:"replacementImageDigest"`
+	IdempotencyKey         string `json:"-"`
+	OperationID            string `json:"-"`
+}
+
+type WorkspaceRuntimeImageReplacementResult struct {
+	SchemaVersion          int              `json:"schemaVersion"`
+	OperationID            string           `json:"operationId"`
+	WorkspaceID            string           `json:"workspaceId"`
+	RuntimeID              string           `json:"runtimeId"`
+	PreviousImageDigest    string           `json:"previousImageDigest"`
+	ReplacementImageDigest string           `json:"replacementImageDigest"`
+	Status                 string           `json:"status"`
+	Runtime                WorkspaceRuntime `json:"runtime"`
+}
+
 type WorkspaceRuntime struct {
 	ID                string            `json:"id"`
 	OperationID       string            `json:"operationId,omitempty"`

@@ -3313,6 +3313,96 @@ func TestCreateWorkspaceRuntimeDoesNotReapplyFailedOperation(t *testing.T) {
 	}
 }
 
+type runtimeImageReplacementTestProvider struct {
+	testProvider
+	status           WorkspaceRuntime
+	replacement      WorkspaceRuntime
+	replacementCalls atomic.Int32
+	parentBinding    WorkspaceLaunchStageBinding
+}
+
+func (p *runtimeImageReplacementTestProvider) WorkspaceRuntimeStatus(_ context.Context, _ string) (WorkspaceRuntime, error) {
+	return p.status, nil
+}
+
+func (p *runtimeImageReplacementTestProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, input WorkspaceRuntimeImageReplacementInput) (WorkspaceRuntime, error) {
+	p.replacementCalls.Add(1)
+	if journal := providerMutationJournalFromContext(ctx); journal != nil {
+		p.parentBinding = journal.parent
+	}
+	result := p.replacement
+	result.WorkspaceID = input.WorkspaceID
+	result.ID = input.RuntimeID
+	result.OperationID = input.RuntimeOperationID
+	result.ServiceName = input.RuntimeServiceName
+	result.ImageID = input.ReplacementImageDigest
+	result.Status = "running"
+	result.Ready = true
+	return result, nil
+}
+
+func runtimeImageReplacementTestInput(key string) WorkspaceRuntimeImageReplacementInput {
+	return WorkspaceRuntimeImageReplacementInput{
+		LaunchOperationID: "workspace-launch-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha",
+		ComputeID: "compute-alpha", StorageID: "storage-alpha", AttachmentID: "attachment-alpha",
+		RuntimeID: "runtime-alpha", RuntimeOperationID: "workspace-launch-alpha:runtime", RuntimeServiceName: "opl-compute-alpha",
+		PreviousImageDigest: testWorkspaceRuntimeImageID(), ReplacementImageDigest: workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64),
+		IdempotencyKey: key,
+	}
+}
+
+func TestReplaceWorkspaceRuntimeImagePreservesOwnerChainAndReplays(t *testing.T) {
+	input := runtimeImageReplacementTestInput("runtime-image-replacement-once")
+	provider := &runtimeImageReplacementTestProvider{
+		status:      WorkspaceRuntime{ID: input.RuntimeID, OperationID: input.RuntimeOperationID, WorkspaceID: input.WorkspaceID, ServiceName: input.RuntimeServiceName, ImageID: input.PreviousImageDigest, Status: "running", Ready: true},
+		replacement: WorkspaceRuntime{ProviderRequestID: providerRequestID("runtime-image-replacement", input.IdempotencyKey)},
+	}
+	store := NewMemoryOperationStore()
+	service := runtimeTestService(provider, store)
+
+	first, err := service.ReplaceWorkspaceRuntimeImage(context.Background(), input)
+	if err != nil || first.Status != "succeeded" || first.Runtime.ImageID != input.ReplacementImageDigest {
+		t.Fatalf("first replacement=%#v err=%v", first, err)
+	}
+	if provider.replacementCalls.Load() != 1 {
+		t.Fatalf("replacement calls=%d, want 1", provider.replacementCalls.Load())
+	}
+	if provider.parentBinding.LaunchOperationID != input.LaunchOperationID || provider.parentBinding.WorkspaceID != input.WorkspaceID ||
+		provider.parentBinding.Stage != "runtime" || provider.parentBinding.Action != "ensure_runtime" {
+		t.Fatalf("provider parent binding=%#v, want launch=%q runtime owner chain", provider.parentBinding, input.LaunchOperationID)
+	}
+
+	provider.status = first.Runtime
+	replayed, err := service.ReplaceWorkspaceRuntimeImage(context.Background(), input)
+	if err != nil || replayed.Status != "succeeded" || replayed.Runtime.ImageID != input.ReplacementImageDigest || provider.replacementCalls.Load() != 1 {
+		t.Fatalf("replacement replay=%#v err=%v calls=%d", replayed, err, provider.replacementCalls.Load())
+	}
+
+	changed := input
+	changed.ReplacementImageDigest = workspaceImageRepository + "@sha256:" + strings.Repeat("c", 64)
+	if _, err := service.ReplaceWorkspaceRuntimeImage(context.Background(), changed); !errors.Is(err, ErrRuntimeIdempotencyConflict) {
+		t.Fatalf("changed replacement error=%v, want ErrRuntimeIdempotencyConflict", err)
+	}
+	unauthorized := changed
+	unauthorized.IdempotencyKey = "runtime-image-replacement-untrusted-digest"
+	if _, err := service.ReplaceWorkspaceRuntimeImage(context.Background(), unauthorized); !errors.Is(err, ErrWorkspaceRuntimeImageReplacementConflict) || provider.replacementCalls.Load() != 1 {
+		t.Fatalf("untrusted replacement error=%v calls=%d", err, provider.replacementCalls.Load())
+	}
+}
+
+func TestReplaceWorkspaceRuntimeImageRejectsPersistedResourceOwnerMismatch(t *testing.T) {
+	input := runtimeImageReplacementTestInput("runtime-image-replacement-owner-mismatch")
+	provider := &runtimeImageReplacementTestProvider{
+		status: WorkspaceRuntime{ID: input.RuntimeID, OperationID: input.RuntimeOperationID, WorkspaceID: input.WorkspaceID, ServiceName: input.RuntimeServiceName, ImageID: input.PreviousImageDigest, Status: "running", Ready: true},
+	}
+	store := NewMemoryOperationStore()
+	service := runtimeTestService(provider, store)
+	service.volumes[input.StorageID] = StorageVolume{ID: input.StorageID, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Provider: "different-provider", Status: "ready"}
+	if _, err := service.ReplaceWorkspaceRuntimeImage(context.Background(), input); !errors.Is(err, ErrWorkspaceRuntimeImageReplacementConflict) || provider.replacementCalls.Load() != 0 {
+		t.Fatalf("owner mismatch error=%v replacement calls=%d", err, provider.replacementCalls.Load())
+	}
+}
+
 func runtimeTestService(provider Provider, store OperationStore) *Service {
 	service := NewServiceWithOperationStore(provider, store)
 	service.computes["compute-alpha"] = ComputeAllocation{ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running", ServiceName: "opl-compute-alpha"}
@@ -3477,6 +3567,10 @@ func (testProvider) ValidateComputeAllocation(allocation ComputeAllocation, prep
 
 func (testProvider) ValidateWorkspaceImageReference(value string) bool {
 	return validWorkspaceRuntimeImageIdentity(value)
+}
+
+func (testProvider) WorkspaceImageReference() string {
+	return workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
 }
 
 func (testProvider) ReadComputeProviderFacts(_ context.Context, allocation ComputeAllocation) (ProviderResourceFacts, error) {

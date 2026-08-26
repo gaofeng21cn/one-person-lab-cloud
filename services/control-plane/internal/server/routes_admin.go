@@ -27,6 +27,7 @@ const (
 )
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+	registerWorkspaceRuntimeImageReplacementRoutes(mux, app, service)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		capabilities := r.Header.Values(productionAcceptanceBCapability)
 		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {

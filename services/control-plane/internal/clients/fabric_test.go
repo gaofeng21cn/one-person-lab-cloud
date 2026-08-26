@@ -103,6 +103,38 @@ func TestFabricHTTPClientUsesCapabilityForRuntimeCredentialReveal(t *testing.T) 
 	}
 }
 
+func TestFabricHTTPClientUsesCapabilityForWorkspaceRuntimeImageReplacement(t *testing.T) {
+	const capabilityKey = "test-capability-key"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/fabric/workspace-runtimes/ws-alpha/image-replacements" || r.Header.Get("Idempotency-Key") != "replacement-once" || r.Header.Get(FabricCapabilityHeader) == "" {
+			t.Fatalf("unexpected replacement request: %s %s key=%q capability=%q", r.Method, r.URL.Path, r.Header.Get("Idempotency-Key"), r.Header.Get(FabricCapabilityHeader))
+		}
+		var input WorkspaceRuntimeImageReplacementInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			t.Fatal(err)
+		}
+		if input.LaunchOperationID != "launch-alpha" || input.AccountID != "acct-alpha" || input.WorkspaceID != "ws-alpha" || input.RuntimeID != "runtime-alpha" {
+			t.Fatalf("replacement input=%#v", input)
+		}
+		_ = json.NewEncoder(w).Encode(WorkspaceRuntimeImageReplacementResult{SchemaVersion: 1, OperationID: "replacement-once", WorkspaceID: "ws-alpha", RuntimeID: "runtime-alpha", Status: "succeeded"})
+	}))
+	defer upstream.Close()
+
+	client, ok := NewFabricHTTPClientWithCapability(upstream.URL, "internal-secret", capabilityKey, upstream.Client()).(FabricWorkspaceRuntimeImageReplacementClient)
+	if !ok {
+		t.Fatal("Fabric HTTP client must implement runtime image replacement")
+	}
+	input := WorkspaceRuntimeImageReplacementInput{
+		LaunchOperationID: "launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", RuntimeID: "runtime-alpha",
+		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "opl-compute-alpha",
+		PreviousImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("a", 64), ReplacementImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("b", 64),
+	}
+	result, err := client.ReplaceWorkspaceRuntimeImage(context.Background(), input, "replacement-once")
+	if err != nil || result.Status != "succeeded" || result.OperationID != "replacement-once" {
+		t.Fatalf("replacement result=%#v err=%v", result, err)
+	}
+}
+
 func TestFabricHTTPClientWritesWorkspaceScopedGatewaySecret(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/fabric/gateway-secrets" || r.Header.Get("Idempotency-Key") != "workspace-once:gateway-secret" || r.Header.Get("Authorization") != "Bearer internal-secret" {
