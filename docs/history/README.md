@@ -40,6 +40,10 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-26-console-workspace-secret-controller.md):
   the completed ephemeral Workspace access-secret lifecycle Owner, reset
   boundary, and narrow view-consumer migration retained as provenance.
+- [Console Customer Announcement Read design, 2026-08-27](./2026-08-27-console-customer-announcement-read-design.md)
+  and [implementation plan](./2026-08-27-console-customer-announcement-read.md):
+  the completed customer published-projection, read-receipt, query-scope, and
+  Session/reset ownership migration retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.
