@@ -5,8 +5,6 @@ import {
   createOperatorAnnouncement,
   disableOperatorAccount as disableOperatorAccountCommand,
   getAnnouncements,
-  getBillingReceipt,
-  getBillingReceipts,
   getGatewayAccountUsageSummary,
   getGatewayBalanceHistory,
   getGatewayEndpoint,
@@ -41,7 +39,8 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import { useBillingController } from "./use-billing-controller.ts";
 import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
@@ -64,8 +63,6 @@ function initialSources(): ConsoleSources {
     wallet: emptyRemote(),
     accountUsage: emptyRemote(),
     balanceHistory: emptyRemote(),
-    receipts: emptyRemote(),
-    receiptDetail: emptyRemote(),
     announcements: emptyRemote(),
     endpoint: emptyRemote(),
     operatorOverview: emptyRemote(),
@@ -133,13 +130,9 @@ export function useConsoleController() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspacePageNumber, setWorkspacePageNumber] = useState(1);
   const [balanceHistoryPage, setBalanceHistoryPage] = useState(1);
-  const [receiptCursor, setReceiptCursor] = useState("");
-  const [receiptCursorStack, setReceiptCursorStack] = useState<string[]>([]);
   const [operatorAccountPage, setOperatorAccountPage] = useState(1);
   const [operatorWorkspacePage, setOperatorWorkspacePage] = useState(1);
   const [selectedOperatorWorkspaceId, setSelectedOperatorWorkspaceId] = useState("");
-  const [billingView, setBillingView] = useState<BillingView>("terms");
-  const [selectedReceiptId, setSelectedReceiptId] = useState("");
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
@@ -152,10 +145,6 @@ export function useConsoleController() {
   const logoutInFlight = useRef(false);
   const logoutState = useRef<"idle" | "pending" | "unconfirmed">("idle");
   const sessionRef = useRef<AuthSession | null>(null);
-  const selectedReceiptIdRef = useRef("");
-  const receiptCursorRef = useRef("");
-  const receiptRequestGeneration = useRef(0);
-  const receiptDetailRequestGeneration = useRef(0);
   const workspaceDetailRequestGeneration = useRef(0);
   const workspaceRuntimeRequestGeneration = useRef(0);
   const workspaceBudgetRequestGeneration = useRef(0);
@@ -184,13 +173,6 @@ export function useConsoleController() {
     toastTimer.current = window.setTimeout(() => setToast({ text: "", tone: "good" }), 3200);
   };
 
-  const clearReceiptDetail = () => {
-    receiptDetailRequestGeneration.current += 1;
-    selectedReceiptIdRef.current = "";
-    setSelectedReceiptId("");
-    updateSource("receiptDetail", { value: null, loading: false, error: "" });
-  };
-
   const resetConsoleState = () => {
     workspaceSecretCapability.reset();
     supportCapability.reset();
@@ -202,12 +184,7 @@ export function useConsoleController() {
     workspaceRenewalCapability.reset();
     workspaceBudgetCapability.reset();
     gatewayUsageCapability.reset();
-    setBillingView("terms");
-    clearReceiptDetail();
-    setReceiptCursor("");
-    receiptCursorRef.current = "";
-    setReceiptCursorStack([]);
-    receiptRequestGeneration.current += 1;
+    billingCapability.reset();
     setWorkspacePageNumber(1);
     setBalanceHistoryPage(1);
     setOperatorAccountPage(1);
@@ -389,6 +366,16 @@ export function useConsoleController() {
   });
   const support: SupportController = supportCapability;
 
+  const billingCapability = useBillingController({
+    route: path === "/console" || path === "/console/overview"
+      ? "overview"
+      : path === "/console/billing" ? "billing" : "",
+    currentSession: () => sessionRef.current,
+    friendlyError,
+    unavailableSource
+  });
+  const billing: BillingController = billingCapability;
+
   const gatewayUsageCapability = useGatewayUsageController({
     active: path === "/console/api/usage",
     currentSession: () => sessionRef.current,
@@ -439,22 +426,6 @@ export function useConsoleController() {
       if (result.available) setBalanceHistoryPage(result.data.page);
     } catch (error) {
       if (isRequestCurrent(generation, activeSession.user.id)) failSource("balanceHistory", error, unavailableSource("sub2api"));
-    }
-  };
-
-  const loadReceipts = async (generation: number, activeSession: AuthSession, limit = 20, cursor = receiptCursorRef.current) => {
-    const receiptGeneration = ++receiptRequestGeneration.current;
-    clearReceiptDetail();
-    beginSource("receipts");
-    try {
-      const result = await getBillingReceipts(cursor, limit);
-      if (isRequestCurrent(generation, activeSession.user.id) && receiptGeneration === receiptRequestGeneration.current && cursor === receiptCursorRef.current) {
-        updateSource("receipts", { value: result, loading: false, error: "" });
-      }
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id) && receiptGeneration === receiptRequestGeneration.current && cursor === receiptCursorRef.current) {
-        failSource("receipts", error, unavailableSource("ledger"));
-      }
     }
   };
 
@@ -631,10 +602,7 @@ export function useConsoleController() {
 
   const loadRoute = async (generation: number, activeSession: AuthSession, routePath: string) => {
     if (routePath === "/console" || routePath === "/console/overview") {
-      receiptCursorRef.current = "";
-      setReceiptCursor("");
-      setReceiptCursorStack([]);
-      await Promise.all([loadWorkspaces(generation, activeSession, 1, 1), loadWallet(generation, activeSession), loadAccountUsage(generation, activeSession), loadReceipts(generation, activeSession, 3, ""), loadAnnouncements(generation, activeSession, 3)]);
+      await Promise.all([loadWorkspaces(generation, activeSession, 1, 1), loadWallet(generation, activeSession), loadAccountUsage(generation, activeSession), billingCapability.loadOverview(), loadAnnouncements(generation, activeSession, 3)]);
       return;
     }
     if (routePath === "/console/workspaces") {
@@ -658,7 +626,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/console/billing") {
-      await Promise.all([loadWorkspaces(generation, activeSession, 1, 10), loadReceipts(generation, activeSession, 20, receiptCursorRef.current)]);
+      await Promise.all([loadWorkspaces(generation, activeSession, 1, 10), billingCapability.loadBilling()]);
       return;
     }
     if (routePath === "/console/announcements") {
@@ -822,50 +790,6 @@ export function useConsoleController() {
     } catch {
       flash("复制失败，请重试", "danger");
     }
-  };
-
-  const selectReceipt = async (receiptId: string) => {
-    if (!session) return;
-    clearReceiptDetail();
-    const detailGeneration = ++receiptDetailRequestGeneration.current;
-    const generation = requestGeneration.current;
-    const userId = session.user.id;
-    selectedReceiptIdRef.current = receiptId;
-    setSelectedReceiptId(receiptId);
-    beginSource("receiptDetail");
-    try {
-      const result = await getBillingReceipt(receiptId);
-      if (!isRequestCurrent(generation, userId)
-        || detailGeneration !== receiptDetailRequestGeneration.current
-        || selectedReceiptIdRef.current !== receiptId) return;
-      if (result.available && result.data.receiptId !== receiptId) throw new Error("billing_receipt_identity_mismatch");
-      updateSource("receiptDetail", { value: result, loading: false, error: "" });
-    } catch (error) {
-      if (isRequestCurrent(generation, userId)
-        && detailGeneration === receiptDetailRequestGeneration.current
-        && selectedReceiptIdRef.current === receiptId) {
-        failSource("receiptDetail", error, unavailableSource("ledger"));
-      }
-    }
-  };
-
-  const nextReceiptPage = async () => {
-    const page = sources.receipts.value?.available ? sources.receipts.value.data : null;
-    if (!session || !page?.hasMore || !page.nextCursor) return;
-    const nextCursor = page.nextCursor;
-    setReceiptCursorStack((current) => [...current, receiptCursorRef.current]);
-    receiptCursorRef.current = nextCursor;
-    setReceiptCursor(nextCursor);
-    await loadReceipts(requestGeneration.current, session, 20, nextCursor);
-  };
-
-  const previousReceiptPage = async () => {
-    if (!session || receiptCursorStack.length === 0) return;
-    const previousCursor = receiptCursorStack[receiptCursorStack.length - 1] || "";
-    setReceiptCursorStack((current) => current.slice(0, -1));
-    receiptCursorRef.current = previousCursor;
-    setReceiptCursor(previousCursor);
-    await loadReceipts(requestGeneration.current, session, 20, previousCursor);
   };
 
   const markRead = async (announcementId: string) => {
@@ -1109,16 +1033,7 @@ export function useConsoleController() {
     workspaceBudgetBusy: workspaceBudget.busy,
     updateWorkspaceBudget: workspaceBudget.update,
     copyText,
-    billingView,
-    setBillingView,
-    selectedReceiptId,
-    setSelectedReceiptId,
-    clearReceiptDetail,
-    selectReceipt,
-    receiptCursor,
-    receiptCursorStack,
-    nextReceiptPage,
-    previousReceiptPage,
+    billing,
     markRead,
     announcementBusy,
     gatewayUsage,

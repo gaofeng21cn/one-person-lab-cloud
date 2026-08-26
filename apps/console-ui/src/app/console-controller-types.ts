@@ -56,8 +56,6 @@ export interface ConsoleSources {
   wallet: RemoteState<SourceEnvelope<GatewayWallet>>;
   accountUsage: RemoteState<SourceEnvelope<GatewayAccountUsageSummaryDTO>>;
   balanceHistory: RemoteState<SourceEnvelope<GatewayBalanceHistoryPageDTO>>;
-  receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
-  receiptDetail: RemoteState<SourceEnvelope<BillingReceipt>>;
   announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
   operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
@@ -169,4 +167,20 @@ export interface GatewayUsageController {
   selectKey: (keyId: string) => Promise<void>;
   selectPeriod: (period: GatewayUsagePeriod) => Promise<void>;
   changePage: (page: number) => Promise<void>;
+}
+
+export interface BillingController {
+  view: BillingView;
+  setView: (view: BillingView) => void;
+  receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
+  detail: RemoteState<SourceEnvelope<BillingReceipt>>;
+  selectedReceiptId: string;
+  pageNumber: number;
+  canNext: boolean;
+  canPrevious: boolean;
+  refresh: () => Promise<void>;
+  openReceipt: (receiptId: string) => Promise<void>;
+  closeReceipt: () => void;
+  nextPage: () => Promise<void>;
+  previousPage: () => Promise<void>;
 }

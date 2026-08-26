@@ -192,7 +192,7 @@ form one complete slice.
 | Workspace Renewal | `useWorkspaceRenewalController` owns per-Workspace intent, busy/issue, response validation, local freshness, and list/detail readback | returned renewal fields and authoritative Workspace projection match the requested setting | Customer Workspace detail | Control Plane Workspace lifecycle | extracted; account period and eligibility semantics do not share Delete state |
 | Workspace Budget | `useWorkspaceBudgetController` owns per-Workspace/key intent, request signature, busy claim, local freshness, and typed owner readback | returned Workspace/key identity and stable requested policy fields match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | extracted; configuration conflict is not a Workspace lifecycle transition |
 | Support Mapping | `useSupportController` owns ticket projection, loading/error, create intent, busy, and post-write reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | extracted independent slice |
-| Billing / Receipt | billing view, cursor and cursor stack, selected Receipt, list/detail generations | selected Receipt ID matches the Ledger detail response | Customer billing page and overview receipt links | Ledger | keep as a query controller unless a mutation lifecycle is introduced |
+| Billing / Receipt | `useBillingController` owns billing view, Receipt list/detail remote state, selected Receipt ID, opaque cursor stack, independent list/detail freshness, and route/session/reset | only the current Session, route, request generation, and selected Receipt may commit; overview requests 3 Receipts and Billing requests 20 | Customer billing page and overview receipt links | Ledger | extracted query slice; Workspace terms remain in the Workspace projection |
 | Gateway Usage | `useGatewayUsageController` owns Key collection, selected Key, period/page, independent usage/summary state, and Key/usage generations | only the current Session, route, Key, period and request generation may commit; an empty authoritative Key collection clears both projections | Customer usage page | Sub2API/Gateway | extracted; query freshness and partial failure remain separate from Billing/Receipt |
 | Operator Account | account pagination, provision intent/operation, disable and purchase-eligibility intents, account readback | account command result is reconciled into the operator account projection | Admin accounts page | Control Plane Account/Access | one Account lifecycle controller may contain these related operations |
 | Wallet Adjustment / Recovery | `useWalletAdjustmentController` owns wallet intent, operation projection, recovery intent, busy, and operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | extracted; money and recovery remain separate from Account lifecycle |
@@ -255,6 +255,16 @@ clears the selected Key and both projections. Usage and Summary may fail
 independently without hiding a successful sibling result. Billing/Receipt
 remains separate because its cursor/detail identity and Ledger failure model do
 not share these invariants.
+
+Billing/Receipt now has one typed `useBillingController` query owner for the
+billing view, Receipt list/detail remote state, selected Receipt ID, opaque
+cursor stack, independent list/detail freshness, and route/session/reset. The
+Overview route requests the latest 3 Receipts without adopting Billing cursor
+state, while the Billing route requests 20 and owns cursor navigation and
+Receipt detail selection. Ledger remains the Receipt authority. Workspace terms
+continue to come from the Workspace projection and do not enter the Billing
+controller. The root only composes the typed controller with Session, Router,
+error presentation, and aggregate route/reset orchestration.
 
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires

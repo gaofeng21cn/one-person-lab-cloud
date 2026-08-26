@@ -23,6 +23,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   for (const expected of [
     "product boundary",
     "Node source tests",
+    "Billing browser tests",
     "Gateway usage browser tests",
     "Workspace lifecycle browser tests",
     "TypeScript typecheck",
