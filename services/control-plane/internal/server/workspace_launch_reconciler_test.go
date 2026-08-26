@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/domain"
 )
@@ -127,25 +128,26 @@ func (a *workspaceLaunchUnitAdapter) ReadStage(_ context.Context, operation work
 		}
 		a.mu.Lock()
 	}
-	if results := a.readResultsByStage[operation.Stage]; len(results) > 0 {
+	stage := string(operation.Stage)
+	if results := a.readResultsByStage[stage]; len(results) > 0 {
 		result := results[0]
-		a.readResultsByStage[operation.Stage] = results[1:]
+		a.readResultsByStage[stage] = results[1:]
 		a.mu.Unlock()
 		return result.observation, result.err
 	}
-	if err := a.readErrors[operation.Stage]; err != nil {
+	if err := a.readErrors[stage]; err != nil {
 		a.mu.Unlock()
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err
 	}
-	if observation, ok := a.stageObservations[operation.Stage]; ok {
+	if observation, ok := a.stageObservations[stage]; ok {
 		a.mu.Unlock()
 		return observation, nil
 	}
-	if a.unknownStages[operation.Stage] {
+	if a.unknownStages[stage] {
 		a.mu.Unlock()
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	}
-	if a.readyStages[operation.Stage] {
+	if a.readyStages[stage] {
 		a.mu.Unlock()
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts(operation.Stage)}, nil
 	}
@@ -165,14 +167,15 @@ func (a *workspaceLaunchUnitAdapter) CanMutateStage(workspaceLaunchReconcileOper
 }
 
 func (a *workspaceLaunchUnitAdapter) CanReplayStage(operation workspaceLaunchReconcileOperation) bool {
-	return a.replayableStages[operation.Stage] && !a.mutationBlocked
+	return a.replayableStages[string(operation.Stage)] && !a.mutationBlocked
 }
 
 func (a *workspaceLaunchUnitAdapter) MutateStage(_ context.Context, operation workspaceLaunchReconcileOperation, idempotencyKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.panicBeforeMutations[operation.Stage] > 0 {
-		a.panicBeforeMutations[operation.Stage]--
+	stage := string(operation.Stage)
+	if a.panicBeforeMutations[stage] > 0 {
+		a.panicBeforeMutations[stage]--
 		panic("simulated process crash before transport send")
 	}
 	a.mutations++
@@ -188,33 +191,33 @@ func (a *workspaceLaunchUnitAdapter) MutateStage(_ context.Context, operation wo
 	if a.mutationsByStage == nil {
 		a.mutationsByStage = map[string]int{}
 	}
-	a.mutationsByStage[operation.Stage]++
-	if err := a.mutationErrors[operation.Stage]; err != nil {
+	a.mutationsByStage[stage]++
+	if err := a.mutationErrors[stage]; err != nil {
 		return err
 	}
-	a.readyStages[operation.Stage] = true
+	a.readyStages[stage] = true
 	return nil
 }
 
-func workspaceLaunchReadyFacts(stage string) map[string]any {
+func workspaceLaunchReadyFacts(stage contracts.Stage) map[string]any {
 	switch stage {
-	case "key":
+	case contracts.StageKey:
 		return map[string]any{"workspaceApiKeyId": int64(9), "workspaceKeyGroupId": int64(7), "workspaceKeyStatus": workspaceKeyCodexGroupBound, "workspaceKeyFingerprint": "sha256:" + strings.Repeat("a", 64)}
-	case "debit":
+	case contracts.StageDebit:
 		return map[string]any{"chargeAttempted": true, "chargeConfirmation": map[string]any{"status": "used"}, "preChargeBalanceUsdMicros": int64(100), "postChargeBalanceUsdMicros": int64(50), "postChargeBalanceKnown": true}
-	case "ensure_compute_allocation":
+	case contracts.StageCompute:
 		return map[string]any{"computeAllocationId": "ca-unit", "computeBindingRef": "workspace-launch-unit:ensure_compute_allocation"}
-	case "storage":
+	case contracts.StageStorage:
 		return map[string]any{"storageId": "vol-unit", "storageBindingRef": "workspace-launch-unit:storage"}
-	case "attachment":
+	case contracts.StageAttachment:
 		return map[string]any{"attachmentId": "att-unit", "attachmentBindingRef": "workspace-launch-unit:attachment"}
-	case "secret":
+	case contracts.StageSecret:
 		return map[string]any{"gatewaySecretRef": "secret-unit", "gatewaySecretVersion": "v1", "secretBindingRef": "workspace-launch-unit:secret", "workspaceKeyStatus": "configured"}
-	case "runtime":
+	case contracts.StageRuntime:
 		return map[string]any{"runtimeId": "rt-unit", "runtimeReady": true, "runtimeServiceName": "runtime-unit", "runtimeBindingRef": "workspace-launch-unit:runtime", "url": "https://workspace.example/unit"}
-	case "activation":
+	case contracts.StageActivation:
 		return map[string]any{"activationOperationId": "workspace-launch-unit:activation", "workspaceActivatedAt": "2026-08-15T00:00:00Z"}
-	case "receipt":
+	case contracts.StageReceipt:
 		return map[string]any{"receiptId": "receipt-unit", "receiptOperationId": "workspace-launch-unit:purchase-receipt"}
 	default:
 		return nil
@@ -304,7 +307,7 @@ func workspaceLaunchManualReviewRow(t *testing.T) map[string]any {
 	return row
 }
 
-func workspaceLaunchReservedStageManualReviewRow(t *testing.T, stage string) map[string]any {
+func workspaceLaunchReservedStageManualReviewRow(t *testing.T, stage contracts.Stage) map[string]any {
 	t.Helper()
 	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
 	if err != nil {
@@ -339,7 +342,7 @@ func workspaceLaunchReservedStageAuthorization(t *testing.T, row map[string]any,
 	}
 }
 
-func workspaceLaunchUnknownStageManualReviewRow(t *testing.T, stage string) map[string]any {
+func workspaceLaunchUnknownStageManualReviewRow(t *testing.T, stage contracts.Stage) map[string]any {
 	t.Helper()
 	row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
@@ -687,27 +690,27 @@ func workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t *testing.T) m
 
 func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage+"/absent replays one logical claim", func(t *testing.T) {
+		t.Run(string(stage)+"/absent replays one logical claim", func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
-			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+stage)
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+string(stage))
 			store := &workspaceLaunchUnitStore{row: row}
-			adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{stage: true}}
+			adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(stage): true}}
 			got, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
 			if err != nil {
 				t.Fatal(err)
 			}
 			attempt := got.Attempts[stage]
 			if attempt.Attempted != 1 || attempt.Max != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
-				adapter.mutationsByStage[stage] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey ||
+				adapter.mutationsByStage[string(stage)] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey ||
 				got.IdempotentReplayClaims[stage].AuthorizationID != authorization.AuthorizationID {
 				t.Fatalf("stage replay changed budget or identity: operation=%s attempt=%#v claims=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), attempt, got.IdempotentReplayClaims, adapter.mutationsByStage, err)
 			}
 		})
 
-		t.Run(stage+"/ready converges read only", func(t *testing.T) {
+		t.Run(string(stage)+"/ready converges read only", func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
-			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-ready-"+stage)
-			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{stage: true}, replayableStages: map[string]bool{stage: true}}
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-ready-"+string(stage))
+			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(stage): true}, replayableStages: map[string]bool{string(stage): true}}
 			got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
 			if err != nil || got.Attempts[stage].Confirmed != 1 || adapter.mutations != 0 {
 				t.Fatalf("ready stage did not converge read-only: operation=%s mutations=%d err=%v", workspaceLaunchReconcileResultSummary(got), adapter.mutations, err)
@@ -800,7 +803,7 @@ func TestWorkspaceLaunchRuntimeImageRevisionAcceptsInitialUnknownWithConfiguredR
 	attempt := operation.Attempts["runtime"]
 	attempt.PendingReadbacks = 0
 	operation.Attempts["runtime"] = attempt
-	operation.FreshContinuationAuthorizations = map[string]workspaceLaunchFreshContinuationAuthorization{}
+	operation.FreshContinuationAuthorizations = map[contracts.Stage]workspaceLaunchFreshContinuationAuthorization{}
 	operation.ContinuationReadClaims = map[string]workspaceLaunchContinuationReadClaim{}
 	row, err = workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
@@ -836,7 +839,7 @@ func TestWorkspaceLaunchRuntimeImageRevisionReauthorizesMatchingFailedReplay(t *
 	attempt := operation.Attempts["runtime"]
 	attempt.PendingReadbacks = 0
 	operation.Attempts["runtime"] = attempt
-	operation.FreshContinuationAuthorizations = map[string]workspaceLaunchFreshContinuationAuthorization{}
+	operation.FreshContinuationAuthorizations = map[contracts.Stage]workspaceLaunchFreshContinuationAuthorization{}
 	operation.ContinuationReadClaims = map[string]workspaceLaunchContinuationReadClaim{}
 	previous := workspaceLaunchResumeAuthorization{
 		AuthorizationID: "resume-runtime-failed-original", LaunchVersion: 100, AuthorizedStage: "runtime", AuthorizedBy: "usr-admin",
@@ -1129,7 +1132,7 @@ func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *tes
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := operation
-			candidate.IdempotentReplayClaims = map[string]workspaceLaunchIdempotentReplayClaim{
+			candidate.IdempotentReplayClaims = map[contracts.Stage]workspaceLaunchIdempotentReplayClaim{
 				"runtime": operation.IdempotentReplayClaims["runtime"],
 			}
 			prior := *operation.ResumeAuthorization
@@ -1144,13 +1147,13 @@ func TestWorkspaceLaunchRuntimeImageRevisionRejectsMismatchedFailedReplay(t *tes
 }
 
 func TestWorkspaceLaunchRuntimeImageRevisionRequiresExactImageOnlyClassification(t *testing.T) {
-	for _, state := range []string{workspaceLaunchStageReady, workspaceLaunchStagePending, workspaceLaunchStageAbsent, workspaceLaunchStageUnknown} {
-		t.Run(state, func(t *testing.T) {
+	for _, state := range []contracts.StageState{workspaceLaunchStageReady, workspaceLaunchStagePending, workspaceLaunchStageAbsent, workspaceLaunchStageUnknown} {
+		t.Run(string(state), func(t *testing.T) {
 			row := workspaceLaunchRuntimeImageRevisionManualReviewRow(t)
 			before := stringValue(row["result"])
 			store := &workspaceLaunchUnitStore{row: row}
 			adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{"runtime": {State: state}}, replayableStages: map[string]bool{"runtime": true}}
-			authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-revision-"+state)
+			authorization := workspaceLaunchRuntimeImageRevisionAuthorization(t, row, "resume-runtime-image-revision-"+string(state))
 
 			_, err := NewWorkspaceLaunchReconciler(store, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
 			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 1 || adapter.mutations != 0 || stringValue(store.row["result"]) != before {
@@ -1698,7 +1701,7 @@ func TestWorkspaceLaunchUnknownComputeResumeAcceptsPersistedHistoricalReadbackCo
 				t.Fatal(err)
 			}
 			pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
-			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{operation.Stage: {pending, pending}}}
+			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(operation.Stage): {pending, pending}}}
 			authorization := workspaceLaunchUnknownComputeContinuationAuthorization(t, row, "resume-compute-readbacks-"+strconv.Itoa(pendingReadbacks))
 			got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}, adapter).Resume(context.Background(), operation.ID, authorization)
 			gotAttempt := got.Attempts[operation.Stage]
@@ -1961,7 +1964,7 @@ func TestWorkspaceLaunchUnknownRuntimeRecoveryRefusesUnconfirmedAuthority(t *tes
 func TestWorkspaceLaunchUnknownRuntimeRecoveryIsBillingAndStageScoped(t *testing.T) {
 	tests := []struct {
 		name      string
-		stage     string
+		stage     contracts.Stage
 		configure func(*workspaceLaunchReconcileOperation)
 	}{
 		{name: "non Runtime stage", stage: "debit"},
@@ -1983,7 +1986,7 @@ func TestWorkspaceLaunchUnknownRuntimeRecoveryIsBillingAndStageScoped(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{tc.stage: true}}
+			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(tc.stage): true}}
 			authorization := workspaceLaunchUnknownRuntimeReadAuthorization(t, row, "resume-unknown-scope-"+strings.ReplaceAll(tc.name, " ", "-"))
 			_, err = NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), operation.ID, authorization)
 			if !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.reads != 0 || adapter.mutations != 0 {
@@ -1999,16 +2002,16 @@ func TestWorkspaceLaunchReservedStageReplayRefusesUncertainAuthority(t *testing.
 			name    string
 			adapter *workspaceLaunchUnitAdapter
 		}{
-			{name: "unknown", adapter: &workspaceLaunchUnitAdapter{unknownStages: map[string]bool{stage: true}}},
-			{name: "read error", adapter: &workspaceLaunchUnitAdapter{readErrors: map[string]error{stage: errors.New("read failed")}}},
-			{name: "conflicting ready facts", adapter: &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{stage: {State: workspaceLaunchStageReady, Facts: map[string]any{}}}}},
+			{name: "unknown", adapter: &workspaceLaunchUnitAdapter{unknownStages: map[string]bool{string(stage): true}}},
+			{name: "read error", adapter: &workspaceLaunchUnitAdapter{readErrors: map[string]error{string(stage): errors.New("read failed")}}},
+			{name: "conflicting ready facts", adapter: &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{string(stage): {State: workspaceLaunchStageReady, Facts: map[string]any{}}}}},
 		} {
-			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+			t.Run(string(stage)+"/"+tc.name, func(t *testing.T) {
 				row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 				persistedBefore := stringValue(row["result"])
 				store := &workspaceLaunchUnitStore{row: row}
-				tc.adapter.replayableStages = map[string]bool{stage: true}
-				authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+stage+"-"+strings.ReplaceAll(tc.name, " ", "-"))
+				tc.adapter.replayableStages = map[string]bool{string(stage): true}
+				authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+string(stage)+"-"+strings.ReplaceAll(tc.name, " ", "-"))
 				_, err := NewWorkspaceLaunchReconciler(store, tc.adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
 				if !errors.Is(err, errWorkspaceLaunchGrantConflict) || tc.adapter.reads != 1 || tc.adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
 					t.Fatalf("uncertain authority changed %s: reads=%d mutations=%d err=%v", stage, tc.adapter.reads, tc.adapter.mutations, err)
@@ -2065,7 +2068,7 @@ func TestWorkspaceLaunchReservedStageReplayRefusesStateAndAuthorizationDrift(t *
 func TestWorkspaceLaunchReadOnlyContinuationRequiresReservedTypedPending(t *testing.T) {
 	cases := []struct {
 		name        string
-		observation string
+		observation contracts.StageState
 		mutate      func(*workspaceLaunchStageAttempt)
 	}{
 		{name: "absent observation", observation: workspaceLaunchStageAbsent},
@@ -2109,7 +2112,7 @@ func TestWorkspaceLaunchReadOnlyContinuationRequiresReservedTypedPending(t *test
 
 func TestWorkspaceLaunchReadOnlyContinuationExtendsPersistedTypedPending(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 			operation, err := decodeWorkspaceLaunchReconcileOperation(row)
 			if err != nil {
@@ -2120,10 +2123,10 @@ func TestWorkspaceLaunchReadOnlyContinuationExtendsPersistedTypedPending(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-read-only-pending-"+stage)
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-read-only-pending-"+string(stage))
 			authorization.IdempotentReplayBudget = 0
 			pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
-			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: {pending, pending}}}
+			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(stage): {pending, pending}}}
 
 			got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), operation.ID, authorization)
 			attempt := got.Attempts[stage]
@@ -2137,7 +2140,7 @@ func TestWorkspaceLaunchReadOnlyContinuationExtendsPersistedTypedPending(t *test
 
 func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
 			if err != nil {
 				t.Fatal(err)
@@ -2149,7 +2152,7 @@ func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *t
 			}
 			absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
 			pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
-			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: {absent, pending}}}
+			adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(stage): {absent, pending}}}
 			store := &workspaceLaunchUnitStore{row: row}
 
 			got, err := NewWorkspaceLaunchReconciler(store, adapter).Reconcile(context.Background(), operation.ID)
@@ -2158,7 +2161,7 @@ func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *t
 			expectedReplayBudget := workspaceLaunchFreshContinuationReplayBudget(stage)
 			if err != nil || got.Status != "pending" || got.Stage != stage || attempt.Attempted != 1 || attempt.Confirmed != 0 ||
 				attempt.Unknown != 0 || attempt.Max != 1 || attempt.Status != "reserved" || attempt.PendingReadbacks != 1 ||
-				attempt.MaxPendingReadbacks != 1+expectedReadBudget || adapter.reads != 2 || adapter.mutationsByStage[stage] != 1 ||
+				attempt.MaxPendingReadbacks != 1+expectedReadBudget || adapter.reads != 2 || adapter.mutationsByStage[string(stage)] != 1 ||
 				(stage == "ensure_compute_allocation") != (attempt.PendingDeadlineAt != "") ||
 				got.ResumeAuthorization != nil {
 				t.Fatalf("fresh typed pending did not persist system-only continuation: operation=%s reads=%d mutations=%#v resume=%#v err=%v",
@@ -2177,7 +2180,7 @@ func TestWorkspaceLaunchFreshTypedPendingCreatesReadOnlySystemAuthorization(t *t
 	}
 }
 
-func workspaceLaunchFreshTypedPendingForTest(t *testing.T, stage string) (*workspaceLaunchUnitStore, *workspaceLaunchUnitAdapter, workspaceLaunchReconcileOperation) {
+func workspaceLaunchFreshTypedPendingForTest(t *testing.T, stage contracts.Stage) (*workspaceLaunchUnitStore, *workspaceLaunchUnitAdapter, workspaceLaunchReconcileOperation) {
 	t.Helper()
 	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
 	if err != nil {
@@ -2190,7 +2193,7 @@ func workspaceLaunchFreshTypedPendingForTest(t *testing.T, stage string) (*works
 	}
 	absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
 	pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
-	adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: {absent, pending}}}
+	adapter := &workspaceLaunchUnitAdapter{readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(stage): {absent, pending}}}
 	store := &workspaceLaunchUnitStore{row: row}
 	got, err := NewWorkspaceLaunchReconciler(store, adapter).Reconcile(context.Background(), operation.ID)
 	if err != nil || got.Status != "pending" || got.Stage != stage {
@@ -2203,15 +2206,15 @@ func TestWorkspaceLaunchFreshTypedPendingReadTransitionMatrix(t *testing.T) {
 	readError := errors.New("owner read error")
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		nextStage := workspaceLaunchReconcileStages[stageIndex+1]
-		readyStatus := "pending"
-		if nextStage == "succeeded" {
-			readyStatus = "succeeded"
+		readyStatus := contracts.StatusPending
+		if nextStage == contracts.StageSucceeded {
+			readyStatus = contracts.StatusSucceeded
 		}
 		for _, tc := range []struct {
 			name        string
 			result      workspaceLaunchUnitReadResult
-			wantStatus  string
-			wantStage   string
+			wantStatus  contracts.LaunchStatus
+			wantStage   contracts.Stage
 			wantClaim   string
 			wantUnknown int
 		}{
@@ -2220,16 +2223,16 @@ func TestWorkspaceLaunchFreshTypedPendingReadTransitionMatrix(t *testing.T) {
 			{name: "unknown", result: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}}, wantStatus: "manual_review", wantStage: stage, wantClaim: "failed", wantUnknown: 1},
 			{name: "read error", result: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err: readError}, wantStatus: "manual_review", wantStage: stage, wantClaim: "failed", wantUnknown: 1},
 		} {
-			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+			t.Run(string(stage)+"/"+tc.name, func(t *testing.T) {
 				store, adapter, seeded := workspaceLaunchFreshTypedPendingForTest(t, stage)
-				adapter.readResultsByStage[stage] = []workspaceLaunchUnitReadResult{tc.result}
+				adapter.readResultsByStage[string(stage)] = []workspaceLaunchUnitReadResult{tc.result}
 				got, err := NewWorkspaceLaunchReconciler(store, adapter).Reconcile(context.Background(), seeded.ID)
 				attempt := got.Attempts[stage]
 				authorization := got.FreshContinuationAuthorizations[stage]
 				claim := got.ContinuationReadClaims[workspaceLaunchFreshContinuationClaimKey(authorization.AuthorizationID, 2)]
 				if err != nil || got.Status != tc.wantStatus || got.Stage != tc.wantStage || attempt.Attempted != 1 || attempt.Max != 1 ||
 					attempt.PendingReadbacks != 2 || attempt.MaxPendingReadbacks != 1+workspaceLaunchFreshContinuationReadBudget(stage) || attempt.Unknown != tc.wantUnknown ||
-					claim.Status != tc.wantClaim || adapter.reads != 3 || adapter.mutationsByStage[stage] != 1 || got.ResumeAuthorization != nil {
+					claim.Status != tc.wantClaim || adapter.reads != 3 || adapter.mutationsByStage[string(stage)] != 1 || got.ResumeAuthorization != nil {
 					t.Fatalf("fresh continuation transition mismatch: operation=%s authorization=%#v claim=%#v reads=%d mutations=%#v err=%v",
 						workspaceLaunchReconcileResultSummary(got), authorization, claim, adapter.reads, adapter.mutationsByStage, err)
 				}
@@ -2301,7 +2304,7 @@ func TestWorkspaceLaunchFreshComputePendingDeadlineFailsClosedWithoutOwnerCall(t
 	reconciler.now = func() time.Time { return startedAt.Add(workspaceLaunchComputePendingWindow) }
 	got, err := reconciler.Reconcile(context.Background(), operation.ID)
 	if err != nil || got.Status != "manual_review" || got.Stage != "ensure_compute_allocation" || got.Attempts[got.Stage].Unknown != 1 ||
-		got.Observations[got.Stage].State != workspaceLaunchStageUnknown || adapter.reads != readsBefore || adapter.mutationsByStage[got.Stage] != 1 {
+		got.Observations[got.Stage].State != workspaceLaunchStageUnknown || adapter.reads != readsBefore || adapter.mutationsByStage[string(got.Stage)] != 1 {
 		t.Fatalf("compute deadline did not fail closed before another owner call: operation=%s reads=%d/%d mutations=%#v err=%v",
 			workspaceLaunchReconcileResultSummary(got), adapter.reads, readsBefore, adapter.mutationsByStage, err)
 	}
@@ -2522,11 +2525,11 @@ func TestWorkspaceLaunchReservedStageReplayCannotBeAuthorizedTwice(t *testing.T)
 
 func TestWorkspaceLaunchReservedStageReplayCASAllowsOneWriter(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
-			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+stage+"-concurrent")
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+string(stage)+"-concurrent")
 			store := &workspaceLaunchUnitStore{row: row}
-			adapter := &workspaceLaunchUnitAdapter{barrier: make(chan struct{}), replayableStages: map[string]bool{stage: true}}
+			adapter := &workspaceLaunchUnitAdapter{barrier: make(chan struct{}), replayableStages: map[string]bool{string(stage): true}}
 			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
 			start := make(chan struct{})
 			results := make(chan error, 2)
@@ -2549,8 +2552,8 @@ func TestWorkspaceLaunchReservedStageReplayCASAllowsOneWriter(t *testing.T) {
 					t.Fatalf("unexpected concurrent recovery error: %v", err)
 				}
 			}
-			if successes != 1 || conflicts != 1 || adapter.mutationsByStage[stage] != 1 {
-				t.Fatalf("successes=%d conflicts=%d %s mutations=%d", successes, conflicts, stage, adapter.mutationsByStage[stage])
+			if successes != 1 || conflicts != 1 || adapter.mutationsByStage[string(stage)] != 1 {
+				t.Fatalf("successes=%d conflicts=%d %s mutations=%d", successes, conflicts, stage, adapter.mutationsByStage[string(stage)])
 			}
 		})
 	}
@@ -2558,12 +2561,12 @@ func TestWorkspaceLaunchReservedStageReplayCASAllowsOneWriter(t *testing.T) {
 
 func TestWorkspaceLaunchReservedStageReplaySurvivesCrashBeforeTransportSend(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(stage, func(t *testing.T) {
+		t.Run(string(stage), func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 			store := &workspaceLaunchUnitStore{row: row}
 			adapter := &workspaceLaunchUnitAdapter{
-				replayableStages:     map[string]bool{stage: true},
-				panicBeforeMutations: map[string]int{stage: 1},
+				replayableStages:     map[string]bool{string(stage): true},
+				panicBeforeMutations: map[string]int{string(stage): 1},
 			}
 			startedAt := time.Date(2026, 8, 15, 2, 0, 0, 0, time.UTC)
 			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
@@ -2574,7 +2577,7 @@ func TestWorkspaceLaunchReservedStageReplaySurvivesCrashBeforeTransportSend(t *t
 						t.Fatal("expected simulated process crash")
 					}
 				}()
-				_, _ = reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-crash-"+stage))
+				_, _ = reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-crash-"+string(stage)))
 			}()
 
 			claimed, err := decodeWorkspaceLaunchReconcileOperation(store.row)
@@ -2587,7 +2590,7 @@ func TestWorkspaceLaunchReservedStageReplaySurvivesCrashBeforeTransportSend(t *t
 			restarted.now = func() time.Time { return startedAt.Add(workspaceLaunchIdempotentReplayLease + time.Second) }
 			got, err := restarted.Reconcile(context.Background(), claimed.ID)
 			if err != nil || got.Attempts[stage].Attempted != 1 || got.Attempts[stage].Max != 1 || got.Attempts[stage].Confirmed != 1 ||
-				got.IdempotentReplayClaims[stage].Status != "succeeded" || adapter.mutationsByStage[stage] != 1 || adapter.mutationIdempotencyKey != claimed.Attempts[stage].IdempotencyKey {
+				got.IdempotentReplayClaims[stage].Status != "succeeded" || adapter.mutationsByStage[string(stage)] != 1 || adapter.mutationIdempotencyKey != claimed.Attempts[stage].IdempotencyKey {
 				t.Fatalf("restart did not recover exact replay: operation=%s claim=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), got.IdempotentReplayClaims[stage], adapter.mutationsByStage, err)
 			}
 		})
@@ -2598,16 +2601,16 @@ func TestWorkspaceLaunchReservedStageReplayPostReadMatrix(t *testing.T) {
 	mutationErr := errors.New("transport response lost")
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		nextStage := workspaceLaunchReconcileStages[stageIndex+1]
-		readyStatus := "pending"
-		if nextStage == "succeeded" {
-			readyStatus = "succeeded"
+		readyStatus := contracts.StatusPending
+		if nextStage == contracts.StageSucceeded {
+			readyStatus = contracts.StatusSucceeded
 		}
 		cases := []struct {
 			name              string
 			mutationErr       error
 			postRead          workspaceLaunchUnitReadResult
-			wantStatus        string
-			wantStage         string
+			wantStatus        contracts.LaunchStatus
+			wantStage         contracts.Stage
 			wantClaim         string
 			wantUnknown       int
 			wantReturnedError bool
@@ -2622,17 +2625,17 @@ func TestWorkspaceLaunchReservedStageReplayPostReadMatrix(t *testing.T) {
 			{name: "error read error", mutationErr: mutationErr, postRead: workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err: errors.New("owner read failed")}, wantStatus: "manual_review", wantStage: stage, wantClaim: "failed", wantUnknown: 1, wantReturnedError: true},
 		}
 		for _, tc := range cases {
-			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+			t.Run(string(stage)+"/"+tc.name, func(t *testing.T) {
 				row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 				absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
 				adapter := &workspaceLaunchUnitAdapter{
-					replayableStages: map[string]bool{stage: true}, mutationErrors: map[string]error{stage: tc.mutationErr},
-					readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: {absent, absent, absent, tc.postRead}},
+					replayableStages: map[string]bool{string(stage): true}, mutationErrors: map[string]error{string(stage): tc.mutationErr},
+					readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(stage): {absent, absent, absent, tc.postRead}},
 				}
-				got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-post-read-"+stage+"-"+strings.ReplaceAll(tc.name, " ", "-")))
+				got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: row}, adapter).Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-post-read-"+string(stage)+"-"+strings.ReplaceAll(tc.name, " ", "-")))
 				attempt := got.Attempts[stage]
 				if (err != nil) != tc.wantReturnedError || got.Status != tc.wantStatus || got.Stage != tc.wantStage || got.IdempotentReplayClaims[stage].Status != tc.wantClaim ||
-					attempt.Attempted != 1 || attempt.Max != 1 || attempt.Unknown != tc.wantUnknown || adapter.mutationsByStage[stage] != 1 {
+					attempt.Attempted != 1 || attempt.Max != 1 || attempt.Unknown != tc.wantUnknown || adapter.mutationsByStage[string(stage)] != 1 {
 					t.Fatalf("post-read transition mismatch: operation=%s attempt=%#v claim=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), attempt, got.IdempotentReplayClaims[stage], adapter.mutationsByStage, err)
 				}
 			})
@@ -2643,35 +2646,35 @@ func TestWorkspaceLaunchReservedStageReplayPostReadMatrix(t *testing.T) {
 func TestWorkspaceLaunchPendingReadbackIsBoundedAndCanConvergeReadOnly(t *testing.T) {
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		nextStage := workspaceLaunchReconcileStages[stageIndex+1]
-		readyStatus := "pending"
-		if nextStage == "succeeded" {
-			readyStatus = "succeeded"
+		readyStatus := contracts.StatusPending
+		if nextStage == contracts.StageSucceeded {
+			readyStatus = contracts.StatusSucceeded
 		}
 		for _, tc := range []struct {
 			name       string
 			followups  []workspaceLaunchUnitReadResult
-			wantStatus string
-			wantStage  string
+			wantStatus contracts.LaunchStatus
+			wantStage  contracts.Stage
 		}{
 			{name: "pending then ready", followups: []workspaceLaunchUnitReadResult{{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}, {observation: workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts(stage)}}}, wantStatus: readyStatus, wantStage: nextStage},
 			{name: "permanent pending exhausts", followups: []workspaceLaunchUnitReadResult{{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}, {observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}}, wantStatus: "manual_review", wantStage: stage},
 		} {
-			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+			t.Run(string(stage)+"/"+tc.name, func(t *testing.T) {
 				row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 				absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
 				pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
 				adapter := &workspaceLaunchUnitAdapter{
-					replayableStages:   map[string]bool{stage: true},
-					readResultsByStage: map[string][]workspaceLaunchUnitReadResult{stage: append([]workspaceLaunchUnitReadResult{absent, absent, absent, pending}, tc.followups...)},
+					replayableStages:   map[string]bool{string(stage): true},
+					readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(stage): append([]workspaceLaunchUnitReadResult{absent, absent, absent, pending}, tc.followups...)},
 				}
 				store := &workspaceLaunchUnitStore{row: row}
 				reconciler := NewWorkspaceLaunchReconciler(&workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: store}, adapter)
-				got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-pending-"+stage+"-"+strings.ReplaceAll(tc.name, " ", "-")))
+				got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-pending-"+string(stage)+"-"+strings.ReplaceAll(tc.name, " ", "-")))
 				for err == nil && got.Status == "pending" && got.Stage == stage && got.Attempts[stage].PendingReadbacks < got.Attempts[stage].MaxPendingReadbacks {
 					got, err = reconciler.Reconcile(context.Background(), got.ID)
 				}
 				attempt := got.Attempts[stage]
-				if err != nil || got.Status != tc.wantStatus || got.Stage != tc.wantStage || adapter.mutationsByStage[stage] != 1 ||
+				if err != nil || got.Status != tc.wantStatus || got.Stage != tc.wantStage || adapter.mutationsByStage[string(stage)] != 1 ||
 					attempt.PendingReadbacks > attempt.MaxPendingReadbacks {
 					t.Fatalf("bounded pending mismatch: operation=%s attempt=%#v mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), attempt, adapter.mutationsByStage, err)
 				}
@@ -2747,12 +2750,12 @@ func TestWorkspaceLaunchLegacyV3MissingReadBudgetDefaultsToSafeStop(t *testing.T
 
 func TestWorkspaceLaunchRecoveryAtEveryStageContinuesOriginalOperationToSucceeded(t *testing.T) {
 	for _, failedStage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(failedStage, func(t *testing.T) {
+		t.Run(string(failedStage), func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, failedStage)
 			store := &workspaceLaunchUnitStore{row: row}
-			adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{failedStage: true}}
+			adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(failedStage): true}}
 			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
-			got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-terminal-"+failedStage))
+			got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-terminal-"+string(failedStage)))
 			for err == nil && got.Status == "pending" {
 				got, err = reconciler.Reconcile(context.Background(), got.ID)
 			}
@@ -2760,8 +2763,8 @@ func TestWorkspaceLaunchRecoveryAtEveryStageContinuesOriginalOperationToSucceede
 				t.Fatalf("recovery did not reach terminal: operation=%s mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), adapter.mutationsByStage, err)
 			}
 			for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-				if adapter.mutationsByStage[stage] > 1 {
-					t.Fatalf("stage %s mutated %d times after %s recovery", stage, adapter.mutationsByStage[stage], failedStage)
+				if adapter.mutationsByStage[string(stage)] > 1 {
+					t.Fatalf("stage %s mutated %d times after %s recovery", stage, adapter.mutationsByStage[string(stage)], failedStage)
 				}
 			}
 		})
@@ -2806,7 +2809,7 @@ func TestWorkspaceLaunchReceiptOnlyReplayReachesTerminalWithoutRepeatingPriorSta
 		t.Fatalf("receipt-only recovery mismatch: operation=%s mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), adapter.mutationsByStage, err)
 	}
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-2] {
-		if adapter.mutationsByStage[stage] != 0 {
+		if adapter.mutationsByStage[string(stage)] != 0 {
 			t.Fatalf("receipt recovery repeated %s mutation", stage)
 		}
 	}
@@ -3188,7 +3191,7 @@ func TestWorkspaceLaunchFabricBindingDriftBecomesUnknown(t *testing.T) {
 	}
 	operation.Stage = "storage"
 	input := clients.WorkspaceLaunchStageInput{Binding: clients.WorkspaceLaunchStageBinding{SchemaVersion: 1, LaunchOperationID: operation.ID, Stage: "storage"}}
-	result := clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: workspaceLaunchStageReady, Binding: input.Binding, Resources: clients.WorkspaceLaunchResources{StorageID: "storage-unit", StorageBindingRef: "binding-a"}}
+	result := clients.WorkspaceLaunchStageResult{SchemaVersion: 1, State: string(workspaceLaunchStageReady), Binding: input.Binding, Resources: clients.WorkspaceLaunchResources{StorageID: "storage-unit", StorageBindingRef: "binding-a"}}
 	result.Binding.RequestHash = "drifted"
 	observation, err := workspaceLaunchFabricObservation(operation, input, result)
 	if err != nil || observation.State != workspaceLaunchStageUnknown {
@@ -3203,10 +3206,10 @@ func TestWorkspaceLaunchFabricComputeOwnershipPendingRemainsTyped(t *testing.T) 
 	}
 	operation.Stage = "ensure_compute_allocation"
 	input := clients.WorkspaceLaunchStageInput{Binding: clients.WorkspaceLaunchStageBinding{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, LaunchOperationID: operation.ID, Stage: operation.Stage,
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, LaunchOperationID: operation.ID, Stage: string(operation.Stage),
 	}}
 	result := clients.WorkspaceLaunchStageResult{
-		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStagePending, Reason: "ownership_pending", Binding: input.Binding,
+		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStagePending), Reason: "ownership_pending", Binding: input.Binding,
 	}
 	observation, err := workspaceLaunchFabricObservation(operation, input, result)
 	if err != nil || observation.State != workspaceLaunchStageOwnershipPending {
@@ -3238,7 +3241,9 @@ func TestWorkspaceLaunchFiveFabricStageCallersUseCanonicalHashPayload(t *testing
 	operation.raw["runtimeBindingRef"] = json.RawMessage(`"binding-runtime"`)
 
 	stages := []struct {
-		stage, action, expectedBinding string
+		stage           contracts.Stage
+		action          string
+		expectedBinding string
 	}{
 		{"ensure_compute_allocation", "ensure_compute_allocation", "binding-compute"},
 		{"storage", "ensure_storage", "binding-storage"},
@@ -3247,7 +3252,7 @@ func TestWorkspaceLaunchFiveFabricStageCallersUseCanonicalHashPayload(t *testing
 		{"runtime", "ensure_runtime", "binding-runtime"},
 	}
 	for _, stage := range stages {
-		t.Run(stage.stage, func(t *testing.T) {
+		t.Run(string(stage.stage), func(t *testing.T) {
 			current := operation
 			current.Stage = stage.stage
 			input, err := (&controlPlaneWorkspaceLaunchStageAdapter{}).workspaceLaunchFabricStageInput(context.Background(), current, false)
@@ -3256,9 +3261,9 @@ func TestWorkspaceLaunchFiveFabricStageCallersUseCanonicalHashPayload(t *testing
 			}
 			launchRequestHash := current.stringFact("requestHash")
 			if input.ProviderProfileRef != current.stringFact("providerProfileRef") || input.PreflightBindingRef != current.stringFact("preflightBindingRef") || input.SpecDigest != current.stringFact("specDigest") ||
-				input.Binding.FabricOperationID != current.ID+":"+stage.stage || input.Binding.LaunchOperationID != current.ID ||
+				input.Binding.FabricOperationID != current.ID+":"+string(stage.stage) || input.Binding.LaunchOperationID != current.ID ||
 				input.Binding.AccountID != current.stringFact("accountId") || input.Binding.WorkspaceID != current.stringFact("workspaceId") ||
-				input.Binding.Stage != stage.stage || input.Binding.Action != stage.action || input.Binding.IdempotencyKey != workspaceLaunchStageIdempotencyKey(current, 1) ||
+				input.Binding.Stage != string(stage.stage) || input.Binding.Action != stage.action || input.Binding.IdempotencyKey != workspaceLaunchStageIdempotencyKey(current, 1) ||
 				input.Binding.RequestHash != workspaceLaunchFabricRequestHash(input, launchRequestHash) || input.Binding.ExpectedResourceBinding != stage.expectedBinding {
 				t.Fatalf("incomplete explicit Fabric stage input=%#v", input)
 			}
@@ -3390,7 +3395,7 @@ func TestWorkspaceLaunchFabricReadyWithoutRequiredFactsBecomesUnknown(t *testing
 	input := clients.WorkspaceLaunchStageInput{Binding: clients.WorkspaceLaunchStageBinding{SchemaVersion: 1, LaunchOperationID: operation.ID, Stage: "storage"}}
 	result := clients.WorkspaceLaunchStageResult{
 		SchemaVersion: 1,
-		State:         workspaceLaunchStageReady,
+		State:         string(workspaceLaunchStageReady),
 		Binding:       input.Binding,
 		Resources:     clients.WorkspaceLaunchResources{StorageID: "storage-unit"},
 	}

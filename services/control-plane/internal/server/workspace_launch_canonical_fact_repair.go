@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -134,7 +135,7 @@ func validateWorkspaceLaunchCanonicalFactRepairCAS(update workspaceLaunchCanonic
 		return errWorkspaceLaunchCASConflict
 	}
 	desired, err := decodeWorkspaceLaunchReconcileOperation(update.DesiredOperation)
-	if err != nil || desired.ID != classification.OperationID || desired.Version != classification.Version+1 || desired.Stage != classification.Stage || desired.Status != classification.Status {
+	if err != nil || desired.ID != classification.OperationID || desired.Version != classification.Version+1 || string(desired.Stage) != classification.Stage || string(desired.Status) != classification.Status {
 		return errWorkspaceLaunchCASConflict
 	}
 	var currentRaw, desiredRaw map[string]json.RawMessage
@@ -177,7 +178,7 @@ func workspaceLaunchCanonicalFactRepairAuditMatches(existing, desired map[string
 
 func workspaceLaunchCanonicalFactRepairReplayMatches(operation workspaceLaunchReconcileOperation, existing, requestAudit map[string]any, launchVersion int, previewDigest, key, reason string) bool {
 	specDigest := operation.stringFact("specDigest")
-	if operation.ID == "" || operation.Version != launchVersion+1 || operation.Stage != "debit" || operation.Status != "manual_review" ||
+	if operation.ID == "" || operation.Version != launchVersion+1 || operation.Stage != contracts.StageDebit || operation.Status != contracts.StatusManualReview ||
 		!workspaceProviderSpecDigestPattern.MatchString(specDigest) || key == "" || reason == "" || !workspaceLaunchRepairDigestPattern.MatchString(previewDigest) {
 		return false
 	}
@@ -261,7 +262,7 @@ func buildWorkspaceLaunchCanonicalFactRepairPreview(row map[string]any, specDige
 	desired := cloneMap(row)
 	desired["result"] = string(encoded)
 	operation, err := decodeWorkspaceLaunchReconcileOperation(desired)
-	if err != nil || operation.Version != classification.Version+1 || operation.Stage != classification.Stage || operation.Status != classification.Status || operation.stringFact("specDigest") != specDigest {
+	if err != nil || operation.Version != classification.Version+1 || string(operation.Stage) != classification.Stage || string(operation.Status) != classification.Status || operation.stringFact("specDigest") != specDigest {
 		return workspaceLaunchCanonicalFactRepairPreview{}, errWorkspaceLaunchCanonicalFactRepairNotEligible
 	}
 	changed := workspaceLaunchCanonicalFactRepairChangedFields(currentRaw, desiredRaw)

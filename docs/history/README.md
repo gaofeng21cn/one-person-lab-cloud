@@ -28,6 +28,10 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-26-fabric-runtime-read-engine.md): the
   completed non-secret Runtime status read Owner boundary and migration
   sequence retained as provenance.
+- [Control Plane Workspace Launch Reconciler typed boundary design, 2026-08-26](./2026-08-26-control-plane-reconciler-typed-boundary-design.md)
+  and [implementation plan](./2026-08-26-control-plane-reconciler-typed-boundary.md):
+  the completed Stage, Launch status, and Stage observation state migration and
+  strict schema-v3 codec boundary retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.

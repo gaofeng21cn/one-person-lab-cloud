@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/ent/account"
 	"opl-cloud/services/control-plane/ent/adminauditevent"
@@ -884,7 +885,8 @@ func (s *postgresEntStateStore) PersistWorkspaceLaunchReconcile(ctx context.Cont
 	if update.WorkspaceReceiptProjection != nil {
 		projection := update.WorkspaceReceiptProjection
 		if projection.AccountID != desired.stringFact("accountId") || projection.OwnerUserID != desired.stringFact("ownerUserId") ||
-			projection.WorkspaceID != desired.stringFact("workspaceId") || projection.ReceiptID != desired.stringFact("receiptId") || desired.Stage != "succeeded" || desired.Status != "succeeded" {
+			projection.WorkspaceID != desired.stringFact("workspaceId") || projection.ReceiptID != desired.stringFact("receiptId") ||
+			desired.Stage != contracts.StageSucceeded || desired.Status != contracts.StatusSucceeded {
 			return errWorkspaceLaunchCASConflict
 		}
 		workspaceEntity, workspaceErr := client.Workspace.Query().Where(workspace.IDEQ(projection.WorkspaceID), lockRowForUpdate).Only(ctx)

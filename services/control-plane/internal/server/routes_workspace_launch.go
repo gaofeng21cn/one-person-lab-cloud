@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -75,7 +76,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 				writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
 				return
 			}
-			if (persisted.Status == "pending" && persisted.Stage == "key") || (app.deployment.customerOwned() && persisted.Status == "manual_review" && (persisted.Stage == "key" || persisted.Stage == "secret") && persisted.Observations[persisted.Stage].State == workspaceLaunchStageUnknown) {
+			if (persisted.Status == contracts.StatusPending && persisted.Stage == contracts.StageKey) || (app.deployment.customerOwned() && persisted.Status == contracts.StatusManualReview && (persisted.Stage == contracts.StageKey || persisted.Stage == contracts.StageSecret) && persisted.Observations[persisted.Stage].State == workspaceLaunchStageUnknown) {
 				credentialUser, sub2APIUserID, credential, credentialOK := app.gatewayUserContext(w, r)
 				if !credentialOK {
 					return
@@ -235,7 +236,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			writeError(w, http.StatusInternalServerError, "state_read_failed")
 			return
 		}
-		if workspaceLaunchWorkerEnabled() && created.Status == "pending" {
+		if workspaceLaunchWorkerEnabled() && created.Status == contracts.StatusPending {
 			go func() {
 				unlock := app.lockResource("workspace-launch", accountID)
 				defer unlock()
@@ -313,8 +314,8 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			return
 		}
 		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
-		recoverableManualReview := operation.Status == "manual_review" && (operation.Stage == "key" || operation.Stage == "storage" || operation.Stage == "attachment" || operation.Stage == "secret" || operation.Stage == "runtime" || operation.Stage == "activation") && operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown
-		recoverablePendingStage := operation.Status == "pending" && (operation.Stage == "key" || operation.Stage == "storage" || operation.Stage == "attachment" || operation.Stage == "secret" || operation.Stage == "runtime")
+		recoverableManualReview := operation.Status == contracts.StatusManualReview && (operation.Stage == contracts.StageKey || operation.Stage == contracts.StageStorage || operation.Stage == contracts.StageAttachment || operation.Stage == contracts.StageSecret || operation.Stage == contracts.StageRuntime || operation.Stage == contracts.StageActivation) && operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown
+		recoverablePendingStage := operation.Status == contracts.StatusPending && (operation.Stage == contracts.StageKey || operation.Stage == contracts.StageStorage || operation.Stage == contracts.StageAttachment || operation.Stage == contracts.StageSecret || operation.Stage == contracts.StageRuntime)
 		if err != nil || !recoverableManualReview && !recoverablePendingStage {
 			writeError(w, http.StatusConflict, "workspace_launch_not_recoverable")
 			return

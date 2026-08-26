@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -206,8 +207,8 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchDebit(ctx c
 }
 
 func workspaceLaunchDebitReadbackCanConverge(operation workspaceLaunchReconcileOperation) bool {
-	attempt, ok := operation.Attempts["debit"]
-	return ok && operation.Stage == "debit" && attempt.Attempted == 1 && attempt.Confirmed == 0 && attempt.Unknown == 0 &&
+	attempt, ok := operation.Attempts[contracts.StageDebit]
+	return ok && operation.Stage == contracts.StageDebit && attempt.Attempted == 1 && attempt.Confirmed == 0 && attempt.Unknown == 0 &&
 		attempt.Max == 1 && attempt.Status == "reserved" && attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1)
 }
 

@@ -7,33 +7,34 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 var errWorkspaceLaunchRepairNotEligible = errors.New("workspace_launch_repair_not_eligible")
 
-var workspaceLaunchRuntimeRepairStableFacts = map[string]map[string]struct{}{
-	"key": {
+var workspaceLaunchRuntimeRepairStableFacts = map[contracts.Stage]map[string]struct{}{
+	contracts.StageKey: {
 		"workspaceApiKeyId": {}, "workspaceKeyGroupId": {}, "workspaceKeyFingerprint": {},
 	},
-	"debit": {
+	contracts.StageDebit: {
 		"chargeAttempted": {}, "chargeConfirmation": {}, "preChargeBalanceUsdMicros": {},
 		"postChargeBalanceUsdMicros": {}, "postChargeBalanceKnown": {},
 	},
-	"ensure_compute_allocation": {"computeAllocationId": {}, "computeBindingRef": {}},
-	"storage":                   {"storageId": {}, "storageBindingRef": {}},
-	"attachment":                {"attachmentId": {}, "attachmentBindingRef": {}},
-	"secret": {
+	contracts.StageCompute:    {"computeAllocationId": {}, "computeBindingRef": {}},
+	contracts.StageStorage:    {"storageId": {}, "storageBindingRef": {}},
+	contracts.StageAttachment: {"attachmentId": {}, "attachmentBindingRef": {}},
+	contracts.StageSecret: {
 		"gatewaySecretRef": {}, "gatewaySecretVersion": {}, "secretBindingRef": {}, "workspaceKeyStatus": {},
 	},
 }
 
 func workspaceLaunchRuntimeRepairEligible(operation workspaceLaunchReconcileOperation) bool {
-	if operation.Status != "manual_review" || operation.Stage != "runtime" || !operation.boolFact("resourceBillingEnabled") {
+	if operation.Status != contracts.StatusManualReview || operation.Stage != contracts.StageRuntime || !operation.boolFact("resourceBillingEnabled") {
 		return false
 	}
-	for _, stage := range []string{"key", "debit", "ensure_compute_allocation", "storage", "attachment", "secret"} {
+	for _, stage := range []contracts.Stage{contracts.StageKey, contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret} {
 		attempt, observation := operation.Attempts[stage], operation.Observations[stage]
 		if attempt.Max != 1 || attempt.Attempted != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
 			attempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operationWithStage(operation, stage), 1) || observation.State != workspaceLaunchStageReady {
@@ -53,13 +54,13 @@ func workspaceLaunchRuntimeRepairEligible(operation workspaceLaunchReconcileOper
 			}
 		}
 	}
-	runtimeAttempt, runtimeObservation := operation.Attempts["runtime"], operation.Observations["runtime"]
+	runtimeAttempt, runtimeObservation := operation.Attempts[contracts.StageRuntime], operation.Observations[contracts.StageRuntime]
 	if runtimeAttempt.Max != 1 || runtimeAttempt.Attempted != 1 || runtimeAttempt.Confirmed != 0 || runtimeAttempt.Unknown != 1 ||
-		runtimeAttempt.Status != "unknown" || runtimeAttempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operationWithStage(operation, "runtime"), 1) ||
+		runtimeAttempt.Status != "unknown" || runtimeAttempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operationWithStage(operation, contracts.StageRuntime), 1) ||
 		runtimeObservation.State != workspaceLaunchStageUnknown {
 		return false
 	}
-	for _, stage := range []string{"activation", "receipt"} {
+	for _, stage := range []contracts.Stage{contracts.StageActivation, contracts.StageReceipt} {
 		attempt := operation.Attempts[stage]
 		if attempt.Attempted != 0 || attempt.Confirmed != 0 || attempt.Unknown != 0 || attempt.Status != "" {
 			return false
@@ -68,7 +69,7 @@ func workspaceLaunchRuntimeRepairEligible(operation workspaceLaunchReconcileOper
 			return false
 		}
 	}
-	if continuation, exists := operation.FreshContinuationAuthorizations["runtime"]; exists && continuation.Status != "failed" {
+	if continuation, exists := operation.FreshContinuationAuthorizations[contracts.StageRuntime]; exists && continuation.Status != "failed" {
 		return false
 	}
 	return true
@@ -97,7 +98,7 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 	}
 	if operation.RuntimeRepair != nil && operation.RuntimeRepair.AuthorizationID == authorizationID && operation.RuntimeRepair.AuthorizedBy == strings.TrimSpace(authorizedBy) &&
 		operation.RuntimeRepair.LaunchVersion == launchVersion && operation.RuntimeRepair.Reason == reason && operation.RuntimeRepair.ImageDigest == imageDigest {
-		if operation.Status == "pending" && (operation.Stage == "activation" || operation.Stage == "receipt") {
+		if operation.Status == contracts.StatusPending && (operation.Stage == contracts.StageActivation || operation.Stage == contracts.StageReceipt) {
 			return reconcileWorkspaceLaunchRuntimeRepairTail(ctx, app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0), operation)
 		}
 		return operation, nil
@@ -111,7 +112,7 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 		AccountID: operation.stringFact("accountId"), WorkspaceID: operation.stringFact("workspaceId"),
 		ComputeID: operation.stringFact("computeAllocationId"), VolumeID: operation.stringFact("storageId"),
 		AttachmentID: operation.stringFact("attachmentId"), AttachmentOperationID: operation.stringFact("attachmentBindingRef"),
-		RuntimeOperationID: repairOperationID + ":create", PreviousRuntimeOperationID: operation.Attempts["runtime"].IdempotencyKey,
+		RuntimeOperationID: repairOperationID + ":create", PreviousRuntimeOperationID: operation.Attempts[contracts.StageRuntime].IdempotencyKey,
 		ImageID: imageDigest, GatewaySecretRef: operation.stringFact("gatewaySecretRef"),
 	}
 	runtime, err := service.RepairWorkspaceRuntime(ctx, input, repairOperationID)
@@ -130,7 +131,7 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 	resources.RuntimeCredentialVersion = firstNonEmpty(runtime.Access.CredentialVersion, operation.stringFact("credentialVersion"))
 	resources.RuntimeCredentialSecretRef = firstNonEmpty(runtime.Access.SecretRef, operation.stringFact("credentialSecretRef"))
 	resources.RuntimeBindingRef = runtime.OperationID
-	facts, err := workspaceLaunchFabricStageFacts("runtime", resources, operation)
+	facts, err := workspaceLaunchFabricStageFacts(contracts.StageRuntime, resources, operation)
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
@@ -138,20 +139,20 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
-	attempt := operation.Attempts["runtime"]
+	attempt := operation.Attempts[contracts.StageRuntime]
 	attempt.Confirmed, attempt.Unknown, attempt.Status = 1, 0, "confirmed"
-	operation.Attempts["runtime"] = attempt
-	operation.Observations["runtime"] = reduced
-	if continuation, exists := operation.FreshContinuationAuthorizations["runtime"]; exists {
+	operation.Attempts[contracts.StageRuntime] = attempt
+	operation.Observations[contracts.StageRuntime] = reduced
+	if continuation, exists := operation.FreshContinuationAuthorizations[contracts.StageRuntime]; exists {
 		continuation.Status = "consumed"
 		continuation.ConsumedAt = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).clockNow().Format(time.RFC3339Nano)
-		operation.FreshContinuationAuthorizations["runtime"] = continuation
+		operation.FreshContinuationAuthorizations[contracts.StageRuntime] = continuation
 	}
 	operation.RuntimeRepair = &workspaceLaunchRuntimeRepair{
 		AuthorizationID: authorizationID, LaunchVersion: launchVersion, AuthorizedBy: strings.TrimSpace(authorizedBy),
 		AuthorizedAt: time.Now().UTC().Format(time.RFC3339Nano), Reason: reason, ImageDigest: imageDigest,
 	}
-	operation.Stage, operation.Status = "activation", "pending"
+	operation.Stage, operation.Status = contracts.StageActivation, contracts.StatusPending
 	operation.ResumeAuthorization = nil
 	operation.ResumeAuthorizationConsumedAt = ""
 	reconciler := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0)
@@ -163,8 +164,8 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 }
 
 func reconcileWorkspaceLaunchRuntimeRepairTail(ctx context.Context, reconciler *WorkspaceLaunchReconciler, operation workspaceLaunchReconcileOperation) (workspaceLaunchReconcileOperation, error) {
-	for _, stage := range []string{"activation", "receipt"} {
-		if operation.Status != "pending" || operation.Stage != stage {
+	for _, stage := range []contracts.Stage{contracts.StageActivation, contracts.StageReceipt} {
+		if operation.Status != contracts.StatusPending || operation.Stage != stage {
 			break
 		}
 		var err error

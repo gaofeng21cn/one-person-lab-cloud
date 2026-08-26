@@ -113,7 +113,7 @@ func (f *workspaceLaunchMonthlyPreflightFabric) EnsureWorkspaceLaunchStage(ctx c
 	}
 	f.runtimeEnsureCalls++
 	f.runtimeReadyResult = result
-	result.State, result.Reason = workspaceLaunchStagePending, "provider_provisioning"
+	result.State, result.Reason = string(workspaceLaunchStagePending), "provider_provisioning"
 	return result, nil
 }
 
@@ -125,14 +125,14 @@ func (f *workspaceLaunchMonthlyPreflightFabric) ReadWorkspaceLaunchStage(ctx con
 		}
 		return clients.WorkspaceLaunchStageResult{
 			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion,
-			State:         workspaceLaunchStageAbsent, Reason: "no_stage_record", Binding: input.Binding, Resources: input.Resources,
+			State:         string(workspaceLaunchStageAbsent), Reason: "no_stage_record", Binding: input.Binding, Resources: input.Resources,
 		}, nil
 	}
 	f.runtimeReadCalls++
 	if f.runtimeEnsureCalls == 0 {
 		*f.events = append(*f.events, "fabric.read.runtime.absent")
 		return clients.WorkspaceLaunchStageResult{
-			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: workspaceLaunchStageAbsent, Reason: "no_stage_record",
+			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageAbsent), Reason: "no_stage_record",
 			Binding: input.Binding, Resources: input.Resources,
 		}, nil
 	}
@@ -142,7 +142,7 @@ func (f *workspaceLaunchMonthlyPreflightFabric) ReadWorkspaceLaunchStage(ctx con
 	}
 	*f.events = append(*f.events, "fabric.read.runtime.pending")
 	result := f.runtimeReadyResult
-	result.State, result.Reason = workspaceLaunchStagePending, "provider_provisioning"
+	result.State, result.Reason = string(workspaceLaunchStagePending), "provider_provisioning"
 	return result, nil
 }
 

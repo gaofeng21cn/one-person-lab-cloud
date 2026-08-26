@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -247,7 +248,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			return
 		}
 		authorization := workspaceLaunchResumeAuthorization{
-			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: authorizedStage,
+			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: contracts.Stage(authorizedStage),
 			AuthorizedBy: app.sessionUserID(r), Reason: reason, MutationBudget: int(mutationBudget),
 			IdempotentReplayBudget: int(idempotentReplayBudget), AuthoritativeReadBudget: int(authoritativeReadBudget),
 			ReplacementWorkspaceImageDigest: replacementWorkspaceImageDigest,

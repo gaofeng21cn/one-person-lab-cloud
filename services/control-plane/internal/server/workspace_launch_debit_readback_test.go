@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -89,7 +90,7 @@ func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
 	tests := []struct {
 		name      string
 		configure func(*workspaceLaunchDebitReadbackStub)
-		wantState string
+		wantState contracts.StageState
 		wantErr   bool
 		wantFacts bool
 	}{

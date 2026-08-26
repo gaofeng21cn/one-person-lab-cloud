@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain"
 )
@@ -349,7 +350,7 @@ func (app *controlPlaneServer) currentWorkspaceGatewaySecretRef(ctx context.Cont
 	}
 	for _, row := range rows {
 		operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-		if decodeErr == nil && operation.Status == "succeeded" && operation.int64Fact("workspaceApiKeyId") == keyID && operation.stringFact("gatewaySecretRef") != "" {
+		if decodeErr == nil && operation.Status == contracts.StatusSucceeded && operation.int64Fact("workspaceApiKeyId") == keyID && operation.stringFact("gatewaySecretRef") != "" {
 			return operation.stringFact("gatewaySecretRef"), nil
 		}
 	}
