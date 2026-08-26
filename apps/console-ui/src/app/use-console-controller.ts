@@ -2,13 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
-  createOperatorAnnouncement,
   getAnnouncements,
   getGatewayAccountUsageSummary,
   getGatewayBalanceHistory,
   getGatewayEndpoint,
   getGatewayWallet,
-  getOperatorAnnouncements,
   getOperatorHealth,
   getOperatorOverview,
   getOperatorReconciliation,
@@ -16,13 +14,9 @@ import {
   getOperatorWorkspaceRuntimeImagePolicy,
   getOperatorWorkspaceRuntimeImageReplacementPreview,
   getOperatorWorkspaces,
-  markAnnouncementRead,
-  publishOperatorAnnouncement,
-  withdrawOperatorAnnouncement
+  markAnnouncementRead
 } from "../api/console-read-api.ts";
 import type {
-  AnnouncementDraftRequest,
-  AnnouncementScheduleRequest,
   AuthSession,
   SourceEnvelope
 } from "../api/dtos.ts";
@@ -34,10 +28,11 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, OperatorAccountController, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, OperatorAccountController, OperatorAnnouncementController, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import { useBillingController } from "./use-billing-controller.ts";
 import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
 import { useOperatorAccountController } from "./use-operator-account-controller.ts";
+import { useOperatorAnnouncementController } from "./use-operator-announcement-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
@@ -68,8 +63,7 @@ function initialSources(): ConsoleSources {
     operatorWorkspaceImagePolicy: emptyRemote(),
     operatorWorkspaceImagePreview: emptyRemote(),
     operatorReconciliation: emptyRemote(),
-    operatorHealth: emptyRemote(),
-    operatorAnnouncements: emptyRemote()
+    operatorHealth: emptyRemote()
   };
 }
 
@@ -145,9 +139,6 @@ export function useConsoleController() {
   const workspaceBudgetRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
-  const announcementCreateIntent = useRef<{ input: AnnouncementDraftRequest; idempotencyKey: string } | null>(null);
-  const announcementPublishIntents = useRef(new Map<string, { input: AnnouncementScheduleRequest; idempotencyKey: string }>());
-  const announcementWithdrawIntents = useRef(new Map<string, string>());
 
   const updateSource = <K extends keyof ConsoleSources>(key: K, patch: Partial<RemoteState<ConsoleSources[K]["value"]>>) => {
     setSources((current) => ({ ...current, [key]: { ...current[key], ...patch } } as ConsoleSources));
@@ -179,6 +170,7 @@ export function useConsoleController() {
     gatewayUsageCapability.reset();
     billingCapability.reset();
     operatorAccountCapability.reset();
+    operatorAnnouncementCapability.reset();
     setWorkspacePageNumber(1);
     setBalanceHistoryPage(1);
     setOperatorWorkspacePage(1);
@@ -188,9 +180,6 @@ export function useConsoleController() {
     workspaceDetailRequestGeneration.current += 1;
     workspaceRuntimeRequestGeneration.current += 1;
     workspaceBudgetRequestGeneration.current += 1;
-    announcementCreateIntent.current = null;
-    announcementPublishIntents.current.clear();
-    announcementWithdrawIntents.current.clear();
   };
 
   const invalidateLoginAttempt = () => {
@@ -342,6 +331,16 @@ export function useConsoleController() {
     unavailableSource
   });
   const operatorAccounts: OperatorAccountController = operatorAccountCapability;
+
+  const operatorAnnouncementCapability = useOperatorAnnouncementController({
+    active: path === "/admin" || path === "/admin/overview" || path === "/admin/announcements",
+    currentSession: () => sessionRef.current,
+    flash,
+    friendlyError,
+    mutationError,
+    unavailableSource
+  });
+  const operatorAnnouncements: OperatorAnnouncementController = operatorAnnouncementCapability;
 
   const walletAdjustmentCapability = useWalletAdjustmentController({
     session,
@@ -592,16 +591,6 @@ export function useConsoleController() {
     }
   };
 
-  const loadOperatorAnnouncements = async (generation: number, activeSession: AuthSession) => {
-    beginSource("operatorAnnouncements");
-    try {
-      const result = await getOperatorAnnouncements();
-      if (isRequestCurrent(generation, activeSession.user.id)) updateSource("operatorAnnouncements", { value: result, loading: false, error: "" });
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("operatorAnnouncements", error, unavailableSource("control-plane"));
-    }
-  };
-
   const loadRoute = async (generation: number, activeSession: AuthSession, routePath: string) => {
     if (routePath === "/console" || routePath === "/console/overview") {
       await Promise.all([loadWorkspaces(generation, activeSession, 1, 1), loadWallet(generation, activeSession), loadAccountUsage(generation, activeSession), billingCapability.loadOverview(), loadAnnouncements(generation, activeSession, 3)]);
@@ -636,7 +625,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/admin" || routePath === "/admin/overview") {
-      await Promise.all([loadOperatorOverview(generation, activeSession), loadOperatorAnnouncements(generation, activeSession)]);
+      await Promise.all([loadOperatorOverview(generation, activeSession), operatorAnnouncementCapability.load()]);
       return;
     }
     if (routePath === "/admin/accounts") {
@@ -655,7 +644,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/admin/announcements") {
-      await loadOperatorAnnouncements(generation, activeSession);
+      await operatorAnnouncementCapability.load();
       return;
     }
     if (routePath === "/admin/system") await loadOperatorHealth(generation, activeSession);
@@ -846,70 +835,6 @@ export function useConsoleController() {
     await loadOperatorWorkspaces(requestGeneration.current, session, page);
   };
 
-  const createAnnouncement = async (input: AnnouncementDraftRequest) => {
-    if (!session) return false;
-    const requestStillCurrent = currentMutationRequest();
-    if (!announcementCreateIntent.current || JSON.stringify(announcementCreateIntent.current.input) !== JSON.stringify(input)) {
-      announcementCreateIntent.current = { input, idempotencyKey: `announcement-create:${crypto.randomUUID()}` };
-    }
-    try {
-      await createOperatorAnnouncement(announcementCreateIntent.current.input, session.csrfToken, announcementCreateIntent.current.idempotencyKey);
-      if (!requestStillCurrent()) return false;
-      announcementCreateIntent.current = null;
-      flash("公告草稿已创建");
-      await loadOperatorAnnouncements(requestGeneration.current, session);
-      if (!requestStillCurrent()) return false;
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent()) return false;
-      flash(mutationError(error), "danger");
-      return false;
-    }
-  };
-
-  const publishAnnouncement = async (announcementId: string) => {
-    if (!session || !window.confirm("确认发布公告？")) return;
-    const requestStillCurrent = currentMutationRequest();
-    const announcement = sources.operatorAnnouncements.value?.available
-      ? sources.operatorAnnouncements.value.data.items.find((item) => item.id === announcementId)
-      : null;
-    if (!announcement) return;
-    let intent = announcementPublishIntents.current.get(announcementId);
-    if (!intent) {
-      intent = { input: { startsAt: announcement.startsAt || new Date().toISOString(), endsAt: announcement.endsAt || "" }, idempotencyKey: `announcement-publish:${announcementId}:${crypto.randomUUID()}` };
-      announcementPublishIntents.current.set(announcementId, intent);
-    }
-    try {
-      await publishOperatorAnnouncement(announcementId, intent.input, session.csrfToken, intent.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      announcementPublishIntents.current.delete(announcementId);
-      flash("公告已发布");
-      await loadOperatorAnnouncements(requestGeneration.current, session);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    }
-  };
-
-  const withdrawAnnouncement = async (announcementId: string) => {
-    if (!session || !window.confirm("确认撤下公告？")) return;
-    const requestStillCurrent = currentMutationRequest();
-    const idempotencyKey = announcementWithdrawIntents.current.get(announcementId) || `announcement-withdraw:${announcementId}:${crypto.randomUUID()}`;
-    announcementWithdrawIntents.current.set(announcementId, idempotencyKey);
-    try {
-      await withdrawOperatorAnnouncement(announcementId, session.csrfToken, idempotencyKey);
-      if (!requestStillCurrent()) return;
-      announcementWithdrawIntents.current.delete(announcementId);
-      flash("公告已撤下");
-      await loadOperatorAnnouncements(requestGeneration.current, session);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(mutationError(error), "danger");
-    }
-  };
-
   const workspaceRows = sources.workspaces.value?.available ? sources.workspaces.value.data.items : [];
   const workspacePages = sources.workspaces.value?.available ? Math.ceil(sources.workspaces.value.data.total / sources.workspaces.value.data.pageSize) : 0;
   const operatorWorkspacePages = sources.operatorWorkspaces.value?.available ? Math.ceil(sources.operatorWorkspaces.value.data.total / sources.operatorWorkspaces.value.data.pageSize) : 0;
@@ -979,6 +904,7 @@ export function useConsoleController() {
     operatorWorkspacePage,
     operatorWorkspacePages,
     changeOperatorWorkspacePage,
+    operatorAnnouncements,
     selectedOperatorWorkspaceId,
     setSelectedOperatorWorkspaceId,
     openOperatorWorkspace,
@@ -988,10 +914,7 @@ export function useConsoleController() {
     submitWalletAdjustment: walletAdjustment.submit,
     refreshWalletOperation: walletAdjustment.refresh,
     recoverWalletOperation: walletAdjustment.recover,
-    walletAdjustmentBusy: walletAdjustment.busy,
-    createAnnouncement,
-    publishAnnouncement,
-    withdrawAnnouncement
+    walletAdjustmentBusy: walletAdjustment.busy
   };
 }
 

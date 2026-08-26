@@ -1,4 +1,5 @@
 import type {
+  AnnouncementDraftRequest,
   AnnouncementPageDTO,
   AuthSession,
   BillingReceipt,
@@ -71,7 +72,6 @@ export interface ConsoleSources {
   operatorWorkspaceImagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
   operatorReconciliation: RemoteState<SourceEnvelope<OperatorReconciliationPageDTO>>;
   operatorHealth: RemoteState<SourceEnvelope<OperatorHealthDTO>>;
-  operatorAnnouncements: RemoteState<SourceEnvelope<OperatorAnnouncementPageDTO>>;
 }
 
 export type AuthStatus = "public" | "checking" | "ready" | "error" | "logout_pending" | "logout_unconfirmed";
@@ -218,4 +218,14 @@ export interface OperatorAccountController {
   } | null>;
   disable: (accountId: string) => Promise<void>;
   setWorkspacePurchaseEligibility: (accountId: string, enabled: boolean) => Promise<void>;
+}
+
+export interface OperatorAnnouncementController {
+  announcements: RemoteState<SourceEnvelope<OperatorAnnouncementPageDTO>>;
+  createBusy: boolean;
+  busyAnnouncementIds: string[];
+  refresh: () => Promise<void>;
+  create: (input: AnnouncementDraftRequest) => Promise<boolean>;
+  publish: (announcementId: string) => Promise<void>;
+  withdraw: (announcementId: string) => Promise<void>;
 }

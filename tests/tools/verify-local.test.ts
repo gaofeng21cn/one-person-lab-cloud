@@ -26,6 +26,7 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
     "Billing browser tests",
     "Gateway usage browser tests",
     "Operator Account browser tests",
+    "Operator Announcement browser tests",
     "Workspace lifecycle browser tests",
     "TypeScript typecheck",
     "TypeScript lint",
