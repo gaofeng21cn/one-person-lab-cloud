@@ -24,6 +24,10 @@ type RuntimeOperationQueryStore interface {
 	WorkspaceRuntimeIdentityCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
 }
 
+type WorkspaceRuntimeReadStore interface {
+	WorkspaceRuntimeIdentityCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
+}
+
 type ComputeClaimStore interface {
 	OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error)
 	ComputeClaimTerminalOperation(ctx context.Context, approvalID, idempotencyKey string) (FabricOperation, bool, error)
@@ -124,6 +128,7 @@ var _ OperationJournalStore = operationStoreCapabilityPorts{}
 var _ OperationHistoryStore = operationStoreCapabilityPorts{}
 var _ ResourceOperationStore = operationStoreCapabilityPorts{}
 var _ RuntimeOperationQueryStore = operationStoreCapabilityPorts{}
+var _ WorkspaceRuntimeReadStore = operationStoreCapabilityPorts{}
 var _ ComputeClaimStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchPreflightStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchStageStore = operationStoreCapabilityPorts{}

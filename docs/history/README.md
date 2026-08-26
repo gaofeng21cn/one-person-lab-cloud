@@ -24,6 +24,10 @@ Current truth starts from [the docs index](../README.md),
 - [Fabric Launch Stage Engine design, 2026-08-26](./2026-08-26-fabric-launch-stage-engine-design.md)
   and [implementation plan](./2026-08-26-fabric-launch-stage-engine.md): the
   completed Owner boundary and migration sequence retained as provenance.
+- [Fabric Runtime Resource Read Engine design, 2026-08-26](./2026-08-26-fabric-runtime-read-engine-design.md)
+  and [implementation plan](./2026-08-26-fabric-runtime-read-engine.md): the
+  completed non-secret Runtime status read Owner boundary and migration
+  sequence retained as provenance.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.

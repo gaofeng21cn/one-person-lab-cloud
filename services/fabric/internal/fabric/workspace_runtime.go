@@ -110,7 +110,7 @@ func (s *Service) CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 			if err := validateRuntimeInput(input, compute, volume, attachment, action == "update_workspace_runtime", s.workspaceImagePolicy.ValidateWorkspaceImageReference); err != nil {
 				return WorkspaceRuntime{}, ErrRuntimeOperationFailed
 			}
-			readback, readErr := s.runtimeProvider.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+			readback, readErr := s.runtimeRead.providerStatus(ctx, input.WorkspaceID)
 			readback.Access.Password = ""
 			if readErr != nil || !runtimeReadbackMatches(readback, input) {
 				return WorkspaceRuntime{}, ErrRuntimeOperationFailed
@@ -230,7 +230,7 @@ func (s *Service) RepairWorkspaceRuntime(ctx context.Context, input WorkspaceRun
 				return nil
 			}
 			if stored.Status == "failed" {
-				readback, readErr := s.runtimeProvider.WorkspaceRuntimeStatus(lockCtx, input.WorkspaceID)
+				readback, readErr := s.runtimeRead.providerStatus(lockCtx, input.WorkspaceID)
 				readback.Access.Password = ""
 				if readErr != nil || !readback.Ready || !runtimeReadbackMatches(readback, input) {
 					return ErrRuntimeOperationFailed
@@ -379,69 +379,8 @@ func (s *Service) saveRuntimeOperation(ctx context.Context, operation FabricOper
 	return s.runtimeOperations.SaveRuntime(ctx, operation)
 }
 
-func (s *Service) workspaceRuntimeStatus(ctx context.Context, workspaceID string) (WorkspaceRuntime, FabricOperation, error) {
-	runtime, err := s.runtimeProvider.WorkspaceRuntimeStatus(ctx, workspaceID)
-	if err != nil {
-		return runtime, FabricOperation{}, err
-	}
-	if runtime.Status != "running" && runtime.Status != "unready" {
-		return runtime, FabricOperation{}, nil
-	}
-	matches, err := s.runtimeOperationQueries.WorkspaceRuntimeIdentityCandidates(ctx, workspaceID)
-	if err != nil {
-		return runtime, FabricOperation{}, err
-	}
-	var created WorkspaceRuntime
-	if runtime.WorkspaceID != workspaceID || len(matches) != 1 || matches[0].ID == "" || matches[0].CreatedAt.IsZero() || !decodeOperationResource(matches[0], &created) ||
-		created.WorkspaceID != workspaceID || strings.TrimSpace(created.ID) == "" || strings.TrimSpace(created.OperationID) == "" ||
-		runtime.ID != "" && runtime.ID != created.ID || runtime.OperationID != "" && runtime.OperationID != created.OperationID {
-		return runtime, FabricOperation{}, ErrLaunchStageBindingConflict
-	}
-	runtime.ID, runtime.OperationID = created.ID, created.OperationID
-	return runtime, matches[0], nil
-}
-
 func (s *Service) WorkspaceRuntimeStatus(ctx context.Context, workspaceID string) (WorkspaceRuntime, error) {
-	runtime, _, err := s.workspaceRuntimeStatus(ctx, workspaceID)
-	runtime.Access.Password = ""
-	return runtime, err
-}
-
-func workspaceRuntimeOwnerObservation(workspaceID string, runtime WorkspaceRuntime, err error) WorkspaceRuntimeObservation {
-	observation := WorkspaceRuntimeObservation{SchemaVersion: WorkspaceOwnerObservationSchemaVersion, State: WorkspaceOwnerObservationError, WorkspaceID: workspaceID}
-	runtime.Access.Password = ""
-	switch {
-	case strings.TrimSpace(workspaceID) == "":
-		return observation
-	case errors.Is(err, ErrWorkspaceLaunchResourceAbsent):
-		observation.State = WorkspaceOwnerObservationAbsent
-		return observation
-	case errors.Is(err, ErrLaunchStageBindingConflict):
-		observation.State = WorkspaceOwnerObservationConflict
-		return observation
-	case err != nil:
-		return observation
-	case runtime.WorkspaceID != workspaceID || strings.TrimSpace(runtime.ID) == "":
-		observation.State = WorkspaceOwnerObservationConflict
-		return observation
-	}
-	switch runtime.Status {
-	case "running":
-		if runtime.Ready {
-			observation.State = WorkspaceOwnerObservationReady
-		} else {
-			observation.State = WorkspaceOwnerObservationPending
-		}
-	case "unready", "pending", "provisioning", "creating", "destroying":
-		if runtime.Ready {
-			return observation
-		}
-		observation.State = WorkspaceOwnerObservationPending
-	default:
-		return observation
-	}
-	observation.Runtime = &runtime
-	return observation
+	return s.runtimeRead.Status(ctx, workspaceID)
 }
 
 func workspaceRuntimeGatewaySecretOwnerObservation(workspaceID string, binding WorkspaceRuntimeGatewaySecretBinding, err error) WorkspaceRuntimeGatewaySecretObservation {
@@ -471,8 +410,7 @@ func workspaceRuntimeGatewaySecretOwnerObservation(workspaceID string, binding W
 }
 
 func (s *Service) ObserveWorkspaceRuntime(ctx context.Context, workspaceID string) WorkspaceRuntimeObservation {
-	runtime, err := s.WorkspaceRuntimeStatus(ctx, workspaceID)
-	return workspaceRuntimeOwnerObservation(workspaceID, runtime, err)
+	return s.runtimeRead.Observe(ctx, workspaceID)
 }
 
 func (s *Service) ObserveWorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID string) WorkspaceRuntimeGatewaySecretObservation {
@@ -547,7 +485,7 @@ func validWorkspaceRuntimeDeleteObservation(observation WorkspaceRuntimeDeleteOb
 
 func (s *Service) WorkspaceRuntimeCredentials(ctx context.Context, accountID, workspaceID string) (WorkspaceRuntime, error) {
 	accountID = strings.TrimSpace(accountID)
-	runtime, owner, err := s.workspaceRuntimeStatus(ctx, workspaceID)
+	runtime, owner, err := s.runtimeRead.readStatusWithOwner(ctx, workspaceID)
 	if err != nil {
 		return runtime, err
 	}
