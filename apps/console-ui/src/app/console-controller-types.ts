@@ -28,6 +28,7 @@ import type {
   WorkspaceCredentialAccess,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
+  WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceLaunchResponse,
   WorkspacePricePreview,
   WorkspaceListData,
@@ -39,6 +40,11 @@ export interface RemoteState<T> {
   value: T | null;
   loading: boolean;
   error: string;
+}
+
+export interface WorkspaceSourceProjectionLease {
+  isCurrent: () => boolean;
+  commit: () => boolean;
 }
 
 export interface ConsoleSources {
@@ -116,6 +122,23 @@ export interface WorkspaceLaunchController {
   reviewWorkspaceLaunch: () => void;
   submitWorkspaceLaunch: () => Promise<void>;
   openLaunchedWorkspace: () => Promise<void>;
+}
+
+export interface WorkspaceDeleteController {
+  busy: boolean;
+  issue: "" | "unavailable" | "unconfirmed";
+  deleteCurrentWorkspace: () => Promise<void>;
+}
+
+export interface WorkspaceRenewalController {
+  busy: boolean;
+  issue: "" | "unconfirmed";
+  updateCurrentWorkspaceRenewal: (autoRenew: boolean) => Promise<boolean>;
+}
+
+export interface WorkspaceBudgetController {
+  busy: boolean;
+  update: (input: WorkspaceGatewayBudgetUpdateRequest) => Promise<boolean>;
 }
 
 export interface SupportController {

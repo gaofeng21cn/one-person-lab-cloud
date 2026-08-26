@@ -92,8 +92,12 @@ Run the checks affected by your change before pushing. The repository-wide
 baseline is:
 
 ```bash
+npx playwright install chromium
 npm run verify:local
 ```
+
+The Chromium install is a one-time local prerequisite for the Workspace
+lifecycle browser regressions included in the baseline gate.
 
 For persistence, capacity, local-Docker, or cross-service behavior changes, run
 `npm run verify:local:full`. It starts an ephemeral PostgreSQL 16 container and

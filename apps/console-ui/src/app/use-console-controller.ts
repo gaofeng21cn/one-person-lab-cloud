@@ -35,41 +35,26 @@ import type {
   OperatorAccountDTO,
   OperatorAccountCommandDTO,
   ProvisionAccountRequest,
-  SourceEnvelope,
-  WorkspaceGatewayBudgetDTO,
-  WorkspaceGatewayBudgetUpdateRequest
+  SourceEnvelope
 } from "../api/dtos.ts";
 import {
-  deleteWorkspace as deleteWorkspaceCommand,
   findWorkspaceInPages,
   getWorkspaceGatewayBudget,
   getWorkspaces,
-  getWorkspaceRuntimeStatus,
-  updateWorkspaceGatewayBudget,
-  updateWorkspaceRenewal,
-  workspaceDeleteIdempotencyKey
+  getWorkspaceRuntimeStatus
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceLaunchController, WorkspaceSecretController } from "./console-controller-types.ts";
+import type { AuthStatus, BillingView, ConsoleSources, GlobalSlide, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
+import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
+import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
 import { useSupportController } from "./use-support-controller.ts";
 
 const operatorPageSize = 20;
-
-type WorkspaceBudgetIntent = {
-  keyId: string;
-  signature: string;
-  input: WorkspaceGatewayBudgetUpdateRequest;
-  idempotencyKey: string;
-};
-
-type WorkspaceRenewalIntent = {
-  autoRenew: boolean;
-  idempotencyKey: string;
-};
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
 
@@ -143,29 +128,6 @@ function mutationError(error: unknown) {
   return code ? friendlyError(code) : "结果待确认，请刷新操作状态，不要重复提交";
 }
 
-function workspaceBudgetRequestSignature(input: WorkspaceGatewayBudgetUpdateRequest) {
-  return JSON.stringify([
-    input.quotaUsdMicros ?? null,
-    input.rateLimit5hUsdMicros ?? null,
-    input.rateLimit1dUsdMicros ?? null,
-    input.rateLimit7dUsdMicros ?? null,
-    input.enabled ?? null,
-    input.resetQuota ?? null,
-    input.resetRateLimitUsage ?? null
-  ]);
-}
-
-function workspaceBudgetResultMatchesInput(
-  result: WorkspaceGatewayBudgetDTO,
-  input: WorkspaceGatewayBudgetUpdateRequest
-) {
-  return (input.quotaUsdMicros === undefined || result.quotaUsdMicros === String(input.quotaUsdMicros))
-    && (input.rateLimit5hUsdMicros === undefined || result.rateLimit5hUsdMicros === String(input.rateLimit5hUsdMicros))
-    && (input.rateLimit1dUsdMicros === undefined || result.rateLimit1dUsdMicros === String(input.rateLimit1dUsdMicros))
-    && (input.rateLimit7dUsdMicros === undefined || result.rateLimit7dUsdMicros === String(input.rateLimit7dUsdMicros))
-    && (input.enabled === undefined || result.enabled === input.enabled);
-}
-
 export function useConsoleController() {
   const { path, navigate } = useConsoleRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -187,8 +149,6 @@ export function useConsoleController() {
   const [selectedUsageKeyId, setSelectedUsageKeyId] = useState("");
   const [usagePeriod, setUsagePeriod] = useState<GatewayUsagePeriod>("month");
   const [usagePage, setUsagePage] = useState(1);
-  const [workspaceDeleteIssue, setWorkspaceDeleteIssue] = useState<"" | "unavailable" | "unconfirmed">("");
-  const [workspaceBudgetBusy, setWorkspaceBudgetBusy] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
   const [announcementBusy, setAnnouncementBusy] = useState("");
   const [operatorProvisionOperation, setOperatorProvisionOperation] = useState<OperatorAccountCommandDTO | null>(null);
@@ -208,12 +168,10 @@ export function useConsoleController() {
   const selectedUsageKeyIdRef = useRef("");
   const usageRequestGeneration = useRef(0);
   const workspaceDetailRequestGeneration = useRef(0);
+  const workspaceRuntimeRequestGeneration = useRef(0);
+  const workspaceBudgetRequestGeneration = useRef(0);
   const selectedOperatorWorkspaceIdRef = useRef("");
   const toastTimer = useRef<number | undefined>(undefined);
-  const workspaceDeleteIntent = useRef<{ workspaceId: string; idempotencyKey: string } | null>(null);
-  const workspaceRenewalIntents = useRef(new Map<string, WorkspaceRenewalIntent>());
-  const workspaceBudgetIntents = useRef(new Map<string, WorkspaceBudgetIntent>());
-  const workspaceBudgetBusyClaim = useRef<symbol | null>(null);
   const operatorProvisionIntent = useRef<{ input: ProvisionAccountRequest; idempotencyKey: string } | null>(null);
   const operatorDisableIntents = useRef(new Map<string, string>());
   const operatorWorkspaceEligibilityIntents = useRef(new Map<string, { enabled: boolean; idempotencyKey: string }>());
@@ -251,7 +209,9 @@ export function useConsoleController() {
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
     walletAdjustmentCapability.reset();
-    setWorkspaceDeleteIssue("");
+    workspaceDeleteCapability.reset();
+    workspaceRenewalCapability.reset();
+    workspaceBudgetCapability.reset();
     usageRequestGeneration.current += 1;
     setSelectedUsageKeyId("");
     selectedUsageKeyIdRef.current = "";
@@ -270,13 +230,10 @@ export function useConsoleController() {
     selectedOperatorWorkspaceIdRef.current = "";
     setOperatorProvisionOperation(null);
     setCommandBusy(false);
-    setWorkspaceBudgetBusy(false);
     setAnnouncementBusy("");
-    workspaceDeleteIntent.current = null;
-    workspaceRenewalIntents.current.clear();
-    workspaceBudgetBusyClaim.current = null;
-    workspaceBudgetIntents.current.clear();
     workspaceDetailRequestGeneration.current += 1;
+    workspaceRuntimeRequestGeneration.current += 1;
+    workspaceBudgetRequestGeneration.current += 1;
     operatorProvisionIntent.current = null;
     announcementCreateIntent.current = null;
     operatorDisableIntents.current.clear();
@@ -309,6 +266,30 @@ export function useConsoleController() {
     const generation = sessionGeneration.current;
     const userId = sessionRef.current?.user.id;
     return () => generation === sessionGeneration.current && userId === sessionRef.current?.user.id;
+  };
+
+  const workspaceDetailProjectionLease = (): WorkspaceSourceProjectionLease => {
+    const generation = workspaceDetailRequestGeneration.current;
+    return {
+      isCurrent: () => generation === workspaceDetailRequestGeneration.current,
+      commit: () => {
+        if (generation !== workspaceDetailRequestGeneration.current) return false;
+        workspaceDetailRequestGeneration.current += 1;
+        return true;
+      }
+    };
+  };
+
+  const workspaceBudgetProjectionLease = (): WorkspaceSourceProjectionLease => {
+    const generation = workspaceBudgetRequestGeneration.current;
+    return {
+      isCurrent: () => generation === workspaceBudgetRequestGeneration.current,
+      commit: () => {
+        if (generation !== workspaceBudgetRequestGeneration.current) return false;
+        workspaceBudgetRequestGeneration.current += 1;
+        return true;
+      }
+    };
   };
 
   const activeWorkspaceId = workspaceIdFromPath(path);
@@ -344,6 +325,61 @@ export function useConsoleController() {
     friendlyError
   });
   const workspaceLaunch: WorkspaceLaunchController = workspaceLaunchCapability;
+
+  const workspaceDeleteCapability = useWorkspaceDeleteController({
+    session,
+    workspace: activeWorkspace,
+    activeWorkspaceId,
+    currentMutationRequest,
+    navigate,
+    flash,
+    friendlyError
+  });
+  const workspaceDelete: WorkspaceDeleteController = workspaceDeleteCapability;
+
+  const workspaceRenewalCapability = useWorkspaceRenewalController({
+    session,
+    workspace: activeWorkspace,
+    activeWorkspaceId,
+    currentMutationRequest,
+    workspaceDetailProjectionLease,
+    onWorkspaceReadback: (readback) => {
+      if (!readback.available || !readback.data) return;
+      const workspace = readback.data;
+      setSources((current) => {
+        const currentList = current.workspaces.value;
+        const workspaces = currentList?.available
+          ? {
+              ...current.workspaces,
+              value: {
+                ...currentList,
+                data: {
+                  ...currentList.data,
+                  items: currentList.data.items.map((item) => item.id === workspace.id ? workspace : item)
+                }
+              }
+            }
+          : current.workspaces;
+        return { ...current, workspaces, workspaceDetail: { value: readback, loading: false, error: "" } };
+      });
+    },
+    flash,
+    mutationError
+  });
+  const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
+
+  const workspaceBudgetCapability = useWorkspaceBudgetController({
+    session,
+    workspace: activeWorkspace,
+    budget: sources.workspaceBudget.value,
+    activeWorkspaceId,
+    currentMutationRequest,
+    workspaceBudgetProjectionLease,
+    updateBudgetSource: (value) => updateSource("workspaceBudget", { value, loading: false, error: "" }),
+    flash,
+    mutationError
+  });
+  const workspaceBudget: WorkspaceBudgetController = workspaceBudgetCapability;
 
   const walletAdjustmentCapability = useWalletAdjustmentController({
     session,
@@ -438,49 +474,66 @@ export function useConsoleController() {
     }
   };
 
+  const loadWorkspaceRuntime = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
+    const runtimeGeneration = ++workspaceRuntimeRequestGeneration.current;
+    const readStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
+      && runtimeGeneration === workspaceRuntimeRequestGeneration.current
+      && workspaceIdFromPath(window.location.pathname) === workspaceId;
+    updateSource("runtime", { value: null, loading: true, error: "" });
+    try {
+      const result = await getWorkspaceRuntimeStatus(workspaceId);
+      if (readStillCurrent()) updateSource("runtime", { value: result, loading: false, error: "" });
+    } catch (error) {
+      if (readStillCurrent()) failSource("runtime", error, unavailableSource("fabric"));
+    }
+  };
+
   const loadWorkspaceDetail = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
     const workspaceDetailGeneration = ++workspaceDetailRequestGeneration.current;
-    const readStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
-      && workspaceDetailGeneration === workspaceDetailRequestGeneration.current
+    const workspaceBudgetGeneration = ++workspaceBudgetRequestGeneration.current;
+    const routeStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
       && workspaceIdFromPath(window.location.pathname) === workspaceId;
+    const detailReadStillCurrent = () => routeStillCurrent()
+      && workspaceDetailGeneration === workspaceDetailRequestGeneration.current;
+    const budgetReadStillCurrent = () => routeStillCurrent()
+      && workspaceBudgetGeneration === workspaceBudgetRequestGeneration.current;
     beginSource("workspaceDetail");
-    updateSource("runtime", { value: null, loading: false, error: "" });
     updateSource("workspaceBudget", { value: null, loading: false, error: "" });
-    let workspaceKeyId = "";
+    const detailRequest = findWorkspaceInPages(workspaceId);
+    const runtimeRead = loadWorkspaceRuntime(generation, activeSession, workspaceId);
     try {
-      const detail = await findWorkspaceInPages(workspaceId);
-      if (!readStillCurrent()) return;
-      updateSource("workspaceDetail", { value: detail, loading: false, error: "" });
-      if (!detail.available || detail.data === null) {
-        updateSource("runtime", { value: unavailableSource("fabric"), loading: false, error: "" });
-        updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+      let workspaceKeyId = "";
+      try {
+        const detail = await detailRequest;
+        if (!routeStillCurrent()) return;
+        if (detailReadStillCurrent()) {
+          updateSource("workspaceDetail", { value: detail, loading: false, error: "" });
+        }
+        if (!detail.available || detail.data === null) {
+          if (detailReadStillCurrent() && budgetReadStillCurrent()) {
+            updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+          }
+          return;
+        }
+        workspaceKeyId = detail.data.workspaceApiKeyId || "";
+      } catch (error) {
+        if (!detailReadStillCurrent()) return;
+        failSource("workspaceDetail", error, unavailableSource("control-plane"));
+        if (budgetReadStillCurrent()) {
+          updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
+        }
         return;
       }
-      const renewalIntent = workspaceRenewalIntents.current.get(workspaceId);
-      if (renewalIntent?.autoRenew === detail.data.autoRenew) {
-        workspaceRenewalIntents.current.delete(workspaceId);
+      beginSource("workspaceBudget");
+      try {
+        const result = await getWorkspaceGatewayBudget(workspaceId, workspaceKeyId);
+        if (budgetReadStillCurrent()) updateSource("workspaceBudget", { value: result, loading: false, error: "" });
+      } catch (error) {
+        if (budgetReadStillCurrent()) failSource("workspaceBudget", error, unavailableSource("sub2api"));
       }
-      workspaceKeyId = detail.data.workspaceApiKeyId || "";
-    } catch (error) {
-      if (!readStillCurrent()) return;
-      failSource("workspaceDetail", error, unavailableSource("control-plane"));
-      updateSource("runtime", { value: unavailableSource("fabric"), loading: false, error: "" });
-      updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
-      return;
+    } finally {
+      await runtimeRead;
     }
-    beginSource("runtime");
-    beginSource("workspaceBudget");
-    const [runtimeResult, budgetResult] = await Promise.allSettled([
-      getWorkspaceRuntimeStatus(workspaceId),
-      getWorkspaceGatewayBudget(workspaceId, workspaceKeyId)
-    ]);
-    if (!readStillCurrent()) return;
-    if (runtimeResult.status === "fulfilled") {
-      updateSource("runtime", { value: runtimeResult.value, loading: false, error: "" });
-    } else failSource("runtime", runtimeResult.reason, unavailableSource("fabric"));
-    if (budgetResult.status === "fulfilled") {
-      updateSource("workspaceBudget", { value: budgetResult.value, loading: false, error: "" });
-    } else failSource("workspaceBudget", budgetResult.reason, unavailableSource("sub2api"));
   };
 
   const loadUsage = async (generation: number, activeSession: AuthSession, keyId: string, page = 1, period: GatewayUsagePeriod = usagePeriod) => {
@@ -691,7 +744,6 @@ export function useConsoleController() {
     if (path !== "/login") invalidateLoginAttempt();
     const generation = ++requestGeneration.current;
     workspaceSecretCapability.clear();
-    setWorkspaceDeleteIssue("");
     setSidebarOpen(false);
     setGlobalSlide("");
     if (logoutState.current !== "idle") return;
@@ -812,224 +864,6 @@ export function useConsoleController() {
     if (!session || page < 1) return;
     const generation = requestGeneration.current;
     await loadWorkspaces(generation, session, page, 10);
-  };
-
-  const confirmWorkspaceDeleteReadback = async (workspaceId: string, requestStillCurrent: () => boolean) => {
-    try {
-      const readback = await findWorkspaceInPages(workspaceId);
-      if (!requestStillCurrent()) return false;
-      if (!readback.available || readback.data !== null) {
-        setWorkspaceDeleteIssue("unconfirmed");
-        flash("删除结果尚未获得权威回读确认", "danger");
-        return false;
-      }
-      workspaceDeleteIntent.current = null;
-      setWorkspaceDeleteIssue("");
-      flash("Workspace 已删除");
-      navigate("/console/workspaces");
-      return true;
-    } catch {
-      if (requestStillCurrent()) {
-        setWorkspaceDeleteIssue("unconfirmed");
-        flash("删除结果尚未获得权威回读确认", "danger");
-      }
-      return false;
-    }
-  };
-
-  const deleteCurrentWorkspace = async () => {
-    if (!session || commandBusy) return;
-    const detailSource = sources.workspaceDetail.value;
-    const workspace = detailSource?.available ? detailSource.data : null;
-    if (!workspace || !window.confirm(`确认删除 Workspace “${workspace.name || workspace.id}”？`)) return;
-    const mutationStillCurrent = currentMutationRequest();
-    const requestStillCurrent = () => mutationStillCurrent()
-      && workspaceIdFromPath(window.location.pathname) === workspace.id;
-    if (!workspaceDeleteIntent.current || workspaceDeleteIntent.current.workspaceId !== workspace.id) {
-      workspaceDeleteIntent.current = {
-        workspaceId: workspace.id,
-        idempotencyKey: workspaceDeleteIdempotencyKey(workspace.id)
-      };
-    }
-    setCommandBusy(true);
-    setWorkspaceDeleteIssue("");
-    try {
-      const result = await deleteWorkspaceCommand(
-        workspace.id,
-        session.csrfToken,
-        workspaceDeleteIntent.current.idempotencyKey
-      );
-      if (!requestStillCurrent()) return;
-      if (!result.available) {
-        workspaceDeleteIntent.current = null;
-        setWorkspaceDeleteIssue("unavailable");
-        flash("Workspace 删除暂不可用", "danger");
-        return;
-      }
-      await confirmWorkspaceDeleteReadback(workspace.id, requestStillCurrent);
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      if (apiErrorCode(error) === "workspace_not_found") {
-        await confirmWorkspaceDeleteReadback(workspace.id, requestStillCurrent);
-        return;
-      }
-      const status = error && typeof error === "object" && "status" in error
-        ? Number((error as { status?: number }).status)
-        : 0;
-      if (status > 0 && status < 500) workspaceDeleteIntent.current = null;
-      setWorkspaceDeleteIssue("unconfirmed");
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (mutationStillCurrent()) setCommandBusy(false);
-    }
-  };
-
-  const updateCurrentWorkspaceRenewal = async (autoRenew: boolean) => {
-    const detailSource = sources.workspaceDetail.value;
-    const workspace = detailSource?.available ? detailSource.data : null;
-    if (!session || !workspace || commandBusy || workspace.renewalStatus !== "active") return false;
-    const requestStillCurrent = currentMutationRequest();
-    const workspaceDetailGeneration = workspaceDetailRequestGeneration.current;
-    const workspaceStillCurrent = () => workspaceDetailGeneration === workspaceDetailRequestGeneration.current
-      && workspaceIdFromPath(window.location.pathname) === workspace.id;
-    let intent = workspaceRenewalIntents.current.get(workspace.id);
-    if (intent && intent.autoRenew !== autoRenew) {
-      flash("上次自动续费更新结果待确认，请按原设置重试", "danger");
-      return false;
-    }
-    if (!intent) {
-      intent = {
-        autoRenew,
-        idempotencyKey: `workspace-renewal:${workspace.id}:${crypto.randomUUID()}`
-      };
-      workspaceRenewalIntents.current.set(workspace.id, intent);
-    }
-    setCommandBusy(true);
-    try {
-      const response = await updateWorkspaceRenewal(workspace.id, { autoRenew }, session.csrfToken, intent.idempotencyKey);
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      if (response.autoRenew !== autoRenew || !response.renewalStatus.trim()
-        || [response.effectiveAfter, response.nextRenewalAt, response.paidThrough].some((value) => Number.isNaN(Date.parse(value)))) {
-        throw new Error("workspace_renewal_response_mismatch");
-      }
-      const readback = await findWorkspaceInPages(workspace.id);
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      if (!readback.available || !readback.data || readback.data.id !== workspace.id
-        || readback.data.autoRenew !== response.autoRenew || readback.data.paidThrough !== response.paidThrough
-        || readback.data.nextRenewalAt !== response.nextRenewalAt) {
-        throw new Error("workspace_renewal_readback_mismatch");
-      }
-      workspaceRenewalIntents.current.delete(workspace.id);
-      setSources((current) => {
-        const currentList = current.workspaces.value;
-        const workspaces = currentList?.available
-          ? {
-              ...current.workspaces,
-              value: {
-                ...currentList,
-                data: {
-                  ...currentList.data,
-                  items: currentList.data.items.map((item) => item.id === workspace.id ? readback.data : item)
-                }
-              }
-            }
-          : current.workspaces;
-        return {
-          ...current,
-          workspaces,
-          workspaceDetail: { value: readback, loading: false, error: "" }
-        };
-      });
-      flash(autoRenew ? "自动续费已开启" : "自动续费已关闭");
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent() || !workspaceStillCurrent()) return false;
-      const status = error && typeof error === "object" && "status" in error
-        ? Number((error as { status?: number }).status)
-        : 0;
-      if (status > 0 && status < 500) workspaceRenewalIntents.current.delete(workspace.id);
-      flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (requestStillCurrent()) setCommandBusy(false);
-    }
-  };
-
-  const updateWorkspaceBudget = async (input: WorkspaceGatewayBudgetUpdateRequest) => {
-    const workspace = sources.workspaceDetail.value?.available ? sources.workspaceDetail.value.data : null;
-    const budget = sources.workspaceBudget.value?.available ? sources.workspaceBudget.value.data : null;
-    if (!session || !workspace || !budget || budget.workspaceId !== workspace.id) return false;
-    if (workspaceBudgetBusyClaim.current !== null) return false;
-    const requestStillCurrent = currentMutationRequest();
-    const workspaceDetailGeneration = workspaceDetailRequestGeneration.current;
-    const workspaceStillCurrent = () => workspaceDetailGeneration === workspaceDetailRequestGeneration.current
-      && workspaceIdFromPath(window.location.pathname) === workspace.id;
-    const signature = workspaceBudgetRequestSignature(input);
-    let intent = workspaceBudgetIntents.current.get(workspace.id);
-    if (intent && intent.keyId !== budget.keyId) {
-      workspaceBudgetIntents.current.delete(workspace.id);
-      intent = undefined;
-    }
-    if (intent && intent.signature !== signature) {
-      flash("上次模型预算更新结果待确认，请使用相同设置重试", "danger");
-      return false;
-    }
-    if (!intent) {
-      intent = {
-        keyId: budget.keyId,
-        signature,
-        input: { ...input },
-        idempotencyKey: `workspace-gateway-budget:${workspace.id}:${crypto.randomUUID()}`
-      };
-      workspaceBudgetIntents.current.set(workspace.id, intent);
-    }
-    const busyClaim = Symbol("workspace-budget");
-    workspaceBudgetBusyClaim.current = busyClaim;
-    setWorkspaceBudgetBusy(true);
-    try {
-      const result = await updateWorkspaceGatewayBudget(
-        workspace.id,
-        budget.keyId,
-        intent.input,
-        session.csrfToken,
-        intent.idempotencyKey
-      );
-      if (!requestStillCurrent()) return false;
-      if (!workspaceStillCurrent()) return false;
-      if (!result.available || result.data.workspaceId !== workspace.id || result.data.keyId !== budget.keyId) {
-        throw new Error("workspace_gateway_budget_identity_mismatch");
-      }
-      if (!workspaceBudgetResultMatchesInput(result.data, intent.input)) {
-        if (workspaceBudgetIntents.current.get(workspace.id) === intent) {
-          workspaceBudgetIntents.current.delete(workspace.id);
-        }
-        updateSource("workspaceBudget", { value: result, loading: false, error: "" });
-        flash("模型预算已变化，请按最新状态重新提交", "danger");
-        return false;
-      }
-      if (workspaceBudgetIntents.current.get(workspace.id) === intent) {
-        workspaceBudgetIntents.current.delete(workspace.id);
-      }
-      updateSource("workspaceBudget", { value: result, loading: false, error: "" });
-      flash("模型预算已更新");
-      return true;
-    } catch (error) {
-      if (!requestStillCurrent()) return false;
-      if (!workspaceStillCurrent()) return false;
-      const status = error && typeof error === "object" && "status" in error
-        ? Number((error as { status?: number }).status)
-        : 0;
-      if (status > 0 && status < 500 && workspaceBudgetIntents.current.get(workspace.id) === intent) {
-        workspaceBudgetIntents.current.delete(workspace.id);
-      }
-      flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (workspaceBudgetBusyClaim.current === busyClaim && requestStillCurrent()) {
-        workspaceBudgetBusyClaim.current = null;
-        setWorkspaceBudgetBusy(false);
-      }
-    }
   };
 
   const copyText = async (value: string | undefined, message: string) => {
@@ -1334,13 +1168,16 @@ export function useConsoleController() {
     changeWorkspacePage,
     workspaceLaunch,
     commandBusy,
-    workspaceDeleteIssue,
-    deleteCurrentWorkspace,
-    updateCurrentWorkspaceRenewal,
+    workspaceDeleteBusy: workspaceDelete.busy,
+    workspaceDeleteIssue: workspaceDelete.issue,
+    deleteCurrentWorkspace: workspaceDelete.deleteCurrentWorkspace,
+    workspaceRenewalBusy: workspaceRenewal.busy,
+    workspaceRenewalIssue: workspaceRenewal.issue,
+    updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
     support,
     workspaceSecrets,
-    workspaceBudgetBusy,
-    updateWorkspaceBudget,
+    workspaceBudgetBusy: workspaceBudget.busy,
+    updateWorkspaceBudget: workspaceBudget.update,
     copyText,
     billingView,
     setBillingView,

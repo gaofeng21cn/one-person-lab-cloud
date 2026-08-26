@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import { chromium } from "playwright";
 
 import * as workspaceApi from "../../apps/console-ui/src/api/workspaces-api.ts";
+import type { WorkspaceDeleteResponse } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
@@ -63,7 +64,7 @@ test("Workspace delete does not relabel an owner not-found response as route una
   );
 });
 
-test("Workspace delete releases command busy after a route change without applying the late result", async () => {
+test("Workspace delete scopes busy and reuses its intent after a late response", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   let releaseDelete: (() => void) | undefined;
@@ -82,21 +83,36 @@ test("Workspace delete releases command busy after a route change without applyi
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
 
-    let holdDelete: ((route: import("playwright").Route) => void) | undefined;
-    const deleteHeld = new Promise<import("playwright").Route>((resolve) => { holdDelete = resolve; });
+    const deleteResponse: WorkspaceDeleteResponse = {
+      workspaceId: "ws-1",
+      status: "deleted",
+      operationId: "delete-ws-1"
+    };
+    const idempotencyKeys: string[] = [];
+    let holdDelete: (() => void) | undefined;
+    let observeRetry: (() => void) | undefined;
+    const deleteHeld = new Promise<void>((resolve) => { holdDelete = resolve; });
+    const retryObserved = new Promise<void>((resolve) => { observeRetry = resolve; });
     const deleteReleased = new Promise<void>((resolve) => { releaseDelete = resolve; });
     await page.route("**/api/workspaces/ws-1", async (route) => {
       if (route.request().method() !== "DELETE") {
         await route.continue();
         return;
       }
-      holdDelete?.(route);
-      await deleteReleased;
+      idempotencyKeys.push(route.request().headers()["idempotency-key"] || "");
+      const firstAttempt = idempotencyKeys.length === 1;
+      if (firstAttempt) {
+        holdDelete?.();
+        await deleteReleased;
+      } else {
+        demo.state.workspaces = demo.state.workspaces.filter((workspace) => workspace.id !== "ws-1");
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ workspaceId: "ws-1", status: "deleted", operationId: "delete-ws-1" })
+        body: JSON.stringify(deleteResponse)
       });
+      if (!firstAttempt) observeRetry?.();
     });
 
     page.once("dialog", (dialog) => { void dialog.accept(); });
@@ -112,22 +128,46 @@ test("Workspace delete releases command busy after a route change without applyi
     await page.getByRole("heading", { name: "Second Workspace", exact: true }).waitFor({ state: "visible" });
 
     const secondDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
-    assert.equal(await secondDelete.getAttribute("aria-busy"), "true");
-    assert.equal(await secondDelete.isDisabled(), true);
+    assert.equal(await secondDelete.getAttribute("aria-busy"), null);
+    assert.equal(await secondDelete.isDisabled(), false);
     const readsBeforeRelease = workspaceListReads;
 
-    releaseDelete?.();
-    await page.waitForFunction(() => {
-      const button = [...document.querySelectorAll("button")]
-        .find((candidate) => candidate.textContent?.includes("删除 Workspace"));
-      return Boolean(button && !button.hasAttribute("disabled") && button.getAttribute("aria-busy") !== "true");
+    const lateDeleteResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "DELETE" && new URL(response.url()).pathname === "/api/workspaces/ws-1";
     });
+    releaseDelete?.();
+    await lateDeleteResponse;
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
 
     assert.equal(await secondDelete.isDisabled(), false);
     assert.equal(workspaceListReads, readsBeforeRelease);
     assert.match(page.url(), /\/console\/workspaces\/ws-2$/);
+    assert.equal(await page.locator(".toast").count(), 0);
     assert.equal(await page.getByText("Workspace 已删除", { exact: true }).count(), 0);
     assert.equal(await page.getByText("删除结果尚未获得权威回读确认", { exact: true }).count(), 0);
+
+    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.waitForURL(/\/console\/workspaces$/);
+    await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).click();
+    await page.waitForURL(/\/console\/workspaces\/ws-1$/);
+    await page.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
+
+    page.once("dialog", (dialog) => { void dialog.accept(); });
+    const retryDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
+    assert.equal(await retryDelete.getAttribute("aria-busy"), null);
+    assert.equal(await retryDelete.isDisabled(), false);
+    await retryDelete.click();
+    await retryObserved;
+    await page.waitForURL(/\/console\/workspaces$/);
+    await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
+
+    assert.equal(idempotencyKeys.length, 2);
+    assert.match(idempotencyKeys[0], /^workspace-delete:/);
+    assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
+    assert.equal(await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).count(), 0);
   } finally {
     releaseDelete?.();
     await browser.close();
