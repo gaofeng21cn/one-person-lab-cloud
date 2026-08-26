@@ -188,14 +188,14 @@ form one complete slice.
 
 | Capability | Current root facts | Completion proof | Real consumers | Domain authority | Extraction decision |
 | --- | --- | --- | --- | --- | --- |
-| Workspace Delete | delete intent, shared command busy, delete issue, paged Workspace absence readback | authoritative Workspace list confirms `absent`; no refund or wallet mutation is inferred by the browser | Customer Workspace detail | Control Plane Workspace lifecycle | separate slice; resource absence has a different failure model from renewal |
-| Workspace Renewal | per-Workspace intent, shared command busy, detail generation, response and list/detail readback | returned renewal fields and authoritative Workspace projection match the requested setting | Customer Workspace detail | Control Plane Workspace lifecycle | separate slice; account period and eligibility semantics must not share Delete state |
-| Workspace Budget | per-Workspace/key intent, request signature, busy claim, detail generation, typed result matching | returned Workspace/key identity and all requested limits match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | separate slice; configuration conflict is not a Workspace lifecycle transition |
-| Support Mapping | ticket projection, loading/error state, create intent, command busy, post-write ticket reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | independent low-risk slice |
+| Workspace Delete | `useWorkspaceDeleteController` owns delete intent, busy, issue, local freshness, and paged absence readback | authoritative Workspace list confirms `absent`; no refund or wallet mutation is inferred by the browser | Customer Workspace detail | Control Plane Workspace lifecycle | extracted; resource absence remains separate from renewal |
+| Workspace Renewal | `useWorkspaceRenewalController` owns per-Workspace intent, busy/issue, response validation, local freshness, and list/detail readback | returned renewal fields and authoritative Workspace projection match the requested setting | Customer Workspace detail | Control Plane Workspace lifecycle | extracted; account period and eligibility semantics do not share Delete state |
+| Workspace Budget | `useWorkspaceBudgetController` owns per-Workspace/key intent, request signature, busy claim, local freshness, and typed owner readback | returned Workspace/key identity and stable requested policy fields match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | extracted; configuration conflict is not a Workspace lifecycle transition |
+| Support Mapping | `useSupportController` owns ticket projection, loading/error, create intent, busy, and post-write reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | extracted independent slice |
 | Billing / Receipt | billing view, cursor and cursor stack, selected Receipt, list/detail generations | selected Receipt ID matches the Ledger detail response | Customer billing page and overview receipt links | Ledger | keep as a query controller unless a mutation lifecycle is introduced |
 | Gateway Usage | selected Key, period/page state, Key/usage generations and summary/detail readback | the selected Key, period and page identify the returned usage projection | Customer usage page | Sub2API/Gateway | separate query lifecycle from Billing despite both being read-only |
 | Operator Account | account pagination, provision intent/operation, disable and purchase-eligibility intents, account readback | account command result is reconciled into the operator account projection | Admin accounts page | Control Plane Account/Access | one Account lifecycle controller may contain these related operations |
-| Wallet Adjustment / Recovery | wallet intent, operation projection, recovery intent, shared command busy, operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | never merge with ordinary Account lifecycle; money and recovery are a separate failure model |
+| Wallet Adjustment / Recovery | `useWalletAdjustmentController` owns wallet intent, operation projection, recovery intent, busy, and operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | extracted; money and recovery remain separate from Account lifecycle |
 | Announcement Lifecycle | create/publish/withdraw intents, per-announcement busy, operator announcement reload | `draft -> published -> withdrawn` transition is confirmed by the announcement projection | Admin announcement page | Control Plane operator/content | separate state-machine slice |
 
 The root remains the Composition Root: Session, Router, global toast,
@@ -205,13 +205,14 @@ dependencies and owns its own command intent, busy semantics, local freshness,
 authoritative readback, and reset. It must not receive the complete root
 controller, root setters, or another capability's internal state.
 
-This map makes the current coupling explicit. In particular, `commandBusy` is
-currently shared by unrelated writes, while `findWorkspaceInPages`,
-`workspaceDetailRequestGeneration`, and `resetConsoleState` cross several
-capabilities. These are migration seams, not shared domain facts. The next
-slice is selected only after its real page consumers are switched and the
-corresponding root state, intent, timer/generation, readback, and command are
-removed. Session is not extracted until every child reset contract is explicit.
+This map makes the current coupling explicit. `commandBusy` now remains only
+with operator Account provisioning; Workspace Delete and Renewal no longer
+share it. `findWorkspaceInPages` is a thin API adapter used independently by
+the owning Workspace controllers, while aggregate route loading and
+`resetConsoleState` remain Composition Root seams. The next slice is selected
+only after its real page consumers are switched and the corresponding root
+state, intent, timer/generation, readback, reset and command are removed.
+Session is not extracted until every child reset contract is explicit.
 
 Support Mapping is the first post-inventory slice. Its
 `useSupportController` owns ticket loading/error state, the mapping intent and
@@ -220,6 +221,18 @@ identity validation, and the GET list readback. `ConsoleShell` consumes only
 the typed `SupportController`; the root supplies Session, mutation freshness,
 toast/error rendering, and reset composition. No support state or command
 remains in the broad root.
+
+Workspace lifecycle browser mutations now have three separate owners.
+`useWorkspaceDeleteController` alone retains the stable delete intent and
+accepts success only after the Control Plane list confirms final absence.
+`useWorkspaceRenewalController` validates the renewal response and then
+requires the authoritative Workspace projection to match `autoRenew`,
+`renewalStatus`, `paidThrough`, and `nextRenewalAt`.
+`useWorkspaceBudgetController` remains outside the resource lifecycle and
+scopes its intent and readback to the exact Workspace Gateway Key. The three
+controllers have independent busy, freshness, failure, and reset state; the
+Workspace detail page only cross-disables Delete and Renewal while either
+conflicting command is active.
 
 `code-complete` means the local contracts, code, PostgreSQL, browser, and
 structure gates pass on one revision. `pilot-ready` additionally requires

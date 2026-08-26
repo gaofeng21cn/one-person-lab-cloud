@@ -185,15 +185,12 @@ is selected and configured by the medopl instance, not by the portable product.
   Focused model tests cover intent reuse, input/account conflict, and
   recovery-key derivation.
 - The remaining broad Console controller has been mapped by capability before
-  another extraction. Workspace Delete, Workspace Renewal, Workspace Budget,
-  Support Mapping, Billing/Receipt, Gateway Usage, Operator Account, Wallet
-  Adjustment/Recovery, and Announcement Lifecycle now have explicit candidate
-  owners, lifecycle/failure boundaries, root state and intent seams, readback
-  proof, reset boundaries, and real page consumers in
-  `docs/implementation-architecture.md`. This is an inventory fact, not a
-  claim that those controllers already exist. Session, Router, global toast,
-  shared reads, route orchestration, and aggregate reset remain Composition
-  Root responsibilities.
+  another extraction. Billing/Receipt, Gateway Usage, Operator Account, and
+  Announcement Lifecycle retain explicit candidate owners, lifecycle/failure
+  boundaries, root state and intent seams, readback proof, reset boundaries,
+  and real page consumers in `docs/implementation-architecture.md`. Session,
+  Router, global toast, shared reads, route orchestration, and aggregate reset
+  remain Composition Root responsibilities.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET
@@ -202,6 +199,24 @@ is selected and configured by the medopl instance, not by the portable product.
   payloads, response-loss retry behavior, and customer-visible text are
   unchanged. Focused model tests, source tests, browser acceptance, and logout
   safety evidence pass.
+- Console Workspace Delete now has one `useWorkspaceDeleteController` owner for
+  the stable delete intent, Delete-specific busy and issue state, Session and
+  Workspace freshness, and final paged absence readback. A command response,
+  `workspace_not_found`, or local navigation never proves success by itself;
+  only an available Control Plane projection with no matching Workspace clears
+  the intent and navigates away. No refund or Wallet fact is inferred.
+- Console Workspace Renewal now has one `useWorkspaceRenewalController` owner
+  for the per-Workspace intent, busy/issue state, response validation, and
+  authoritative list/detail readback. Success requires matching `autoRenew`,
+  `renewalStatus`, `paidThrough`, and `nextRenewalAt`; unknown results preserve
+  the original idempotency intent. Delete and Renewal no longer share root
+  mutation state and are cross-disabled only at their real page consumer.
+- Console Workspace Gateway Budget now has one `useWorkspaceBudgetController`
+  owner for the Workspace/Key-scoped intent, stable request signature,
+  independent busy claim, mutation response validation, and Sub2API owner
+  readback. It validates stable policy fields without treating live usage
+  counters as resource-lifecycle state. The broad root retains only source
+  composition and route loading.
 - Portable Compose separates Ledger, Fabric, and Control Plane credentials,
   databases, and service tokens. The Local-Docker override grants Docker Engine
   access to Fabric only and requires an immutable Workspace image.
