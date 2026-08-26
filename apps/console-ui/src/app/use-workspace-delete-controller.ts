@@ -14,6 +14,7 @@ import {
   type WorkspaceDeleteIntent,
   type WorkspaceDeleteIssue
 } from "./workspace-delete-controller-model.ts";
+import type { WorkspaceDeleteController } from "./console-controller-types.ts";
 
 interface WorkspaceDeleteDependencies {
   session: AuthSession | null;
@@ -25,10 +26,7 @@ interface WorkspaceDeleteDependencies {
   friendlyError: (error: unknown) => string;
 }
 
-export interface WorkspaceDeleteCapability {
-  busy: boolean;
-  issue: WorkspaceDeleteIssue;
-  deleteCurrentWorkspace: () => Promise<void>;
+export interface WorkspaceDeleteCapability extends WorkspaceDeleteController {
   reset: () => void;
 }
 

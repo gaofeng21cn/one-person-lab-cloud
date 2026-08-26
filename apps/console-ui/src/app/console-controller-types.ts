@@ -118,6 +118,12 @@ export interface WorkspaceLaunchController {
   openLaunchedWorkspace: () => Promise<void>;
 }
 
+export interface WorkspaceDeleteController {
+  busy: boolean;
+  issue: "" | "unavailable" | "unconfirmed";
+  deleteCurrentWorkspace: () => Promise<void>;
+}
+
 export interface SupportController {
   tickets: SupportTicketPageDTO | null;
   loading: boolean;
