@@ -342,6 +342,38 @@ func workspaceRuntimeRepairBindingFromOperation(operation FabricOperation, runti
 	}, nil
 }
 
+func workspaceRuntimeImageReplacementProviderMutation(child FabricOperation, binding providerMutationBinding, operationsByOperationID map[string][]FabricOperation) bool {
+	parents := operationsByOperationID[binding.Parent.FabricOperationID]
+	if len(parents) != 1 {
+		return false
+	}
+	replacement := parents[0]
+	if replacement.Action != workspaceRuntimeImageReplacementAction || replacement.ResourceKind != "workspace_runtime" ||
+		replacement.ResourceID != replacement.WorkspaceID || replacement.OperationID != replacement.IdempotencyKey ||
+		replacement.AccountID == "" || replacement.WorkspaceID == "" ||
+		(replacement.Status != "started" && replacement.Status != "succeeded") ||
+		binding.Parent.LaunchOperationID == "" || binding.Parent.AccountID != replacement.AccountID ||
+		binding.Parent.WorkspaceID != replacement.WorkspaceID || binding.Parent.Stage != "runtime" ||
+		binding.Parent.Action != "ensure_runtime" || binding.Parent.IdempotencyKey != replacement.IdempotencyKey ||
+		binding.Parent.RequestHash != replacement.RequestHash || binding.ResourceKind != "workspace_runtime" || child.Status != "succeeded" {
+		return false
+	}
+	rawInput, ok := replacement.RedactedProviderPayload["replacement"]
+	if !ok {
+		return false
+	}
+	var input WorkspaceRuntimeImageReplacementInput
+	var runtime WorkspaceRuntime
+	if !decodeStrictJSON(mustJSON(rawInput), &input) || !decodeOperationResource(child, &runtime) {
+		return false
+	}
+	return replacement.RequestHash == hashInput(input) && input.LaunchOperationID == binding.Parent.LaunchOperationID && input.AccountID == replacement.AccountID &&
+		input.WorkspaceID == replacement.WorkspaceID && input.RuntimeServiceName == binding.Parent.ExpectedResourceBinding &&
+		input.RuntimeServiceName == binding.ResourceID && input.RuntimeServiceName == binding.ExpectedResourceBinding &&
+		runtime.ID == input.RuntimeID && runtime.OperationID == input.RuntimeOperationID && runtime.WorkspaceID == input.WorkspaceID &&
+		runtime.ServiceName == input.RuntimeServiceName && runtime.ImageID == input.ReplacementImageDigest
+}
+
 func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperation, workspaceID string) ([]FabricOperation, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -353,6 +385,7 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 		return []FabricOperation{repair}, nil
 	}
 	byID := make(map[string]FabricOperation, len(operations))
+	operationsByOperationID := make(map[string][]FabricOperation, len(operations))
 	parents := map[string]canonicalWorkspaceRuntimeParent{}
 	children := make([]FabricOperation, 0, 2)
 	matches := make([]FabricOperation, 0, 2)
@@ -369,6 +402,9 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 		byID[operation.ID] = operation
 		if operation.WorkspaceID != workspaceID {
 			continue
+		}
+		if operation.OperationID != "" {
+			operationsByOperationID[operation.OperationID] = append(operationsByOperationID[operation.OperationID], operation)
 		}
 		if operation.Action == "create_workspace_runtime" && operation.ResourceKind == "workspace_runtime" && operation.Status == "succeeded" && operation.ResourceID == workspaceID {
 			matches = append(matches, operation)
@@ -407,13 +443,22 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 	childCounts := map[string]int{}
 	for _, child := range children {
 		binding, ok := decodeProviderMutationBinding(child)
-		if !ok || binding.ResourceKind != "workspace_runtime" || binding.Parent.Stage != "runtime" || binding.Parent.Action != "ensure_runtime" ||
+		if !ok {
+			return nil, ErrLaunchStageBindingConflict
+		}
+		parent, ok := parents[binding.Parent.FabricOperationID]
+		if !ok {
+			if workspaceRuntimeImageReplacementProviderMutation(child, binding, operationsByOperationID) {
+				continue
+			}
+			return nil, ErrLaunchStageBindingConflict
+		}
+		if binding.ResourceKind != "workspace_runtime" || binding.Parent.Stage != "runtime" || binding.Parent.Action != "ensure_runtime" ||
 			binding.Parent.WorkspaceID != workspaceID || child.Status != "succeeded" ||
 			binding.FabricOperationID != providerMutationOperationID(binding.Parent, binding.Action, binding.ResourceKind, binding.ResourceID, binding.ExpectedResourceBinding) {
 			return nil, ErrLaunchStageBindingConflict
 		}
-		parent, ok := parents[binding.Parent.FabricOperationID]
-		if !ok || parent.binding != binding.Parent || child.Provider == "" || child.Provider != parent.operation.Provider {
+		if parent.binding != binding.Parent || child.Provider == "" || child.Provider != parent.operation.Provider {
 			return nil, ErrLaunchStageBindingConflict
 		}
 		var runtime WorkspaceRuntime
