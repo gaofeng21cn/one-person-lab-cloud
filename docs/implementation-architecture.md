@@ -199,30 +199,37 @@ form one complete slice.
 | Operator Announcement Lifecycle | `useOperatorAnnouncementController` owns the operator projection, normalized create intent, per-announcement publish/withdraw intents, busy claims, local freshness, authoritative readback, and reset | typed command identity, target status and schedule must match; `draft/scheduled -> scheduled|published -> withdrawn` completes only after the operator projection matches | Admin overview and announcement routes | Control Plane operator/content | extracted state-machine slice; customer published-list/read receipts remain separate |
 | Customer Announcement Read | `useCustomerAnnouncementController` owns the active published projection, Overview/list query scope, per-announcement unresolved read intents, one in-flight claim, Session-confirmed receipt IDs, local freshness, receipt projection, and reset | page 1 and page size must match the active `overview:3` or `list:20` scope; the receipt must name the requested announcement and contain a valid RFC3339 `readAt`; no current or later GET may commit a visible `read=false` for a Session-confirmed receipt | Customer overview and announcements pages | Control Plane announcement content and per-user read-receipt authority | extracted; a valid receipt completes the write while GET only synchronizes the current bounded projection |
 | Operator Resource Read | `useOperatorResourceReadController` owns the `/admin/resources` list, Workspace detail, Runtime image policy, and replacement preview projections, fixed page size, selected Workspace identity, local route/Session/request freshness, independent failure settlement, and reset | list page/pageSize, detail/preview Workspace identity, route/Session/request scope, and source identity must match before commit; detail and preview failures never replace their sibling projection | Admin resources page and Runtime Image Replacement refresh ports | Control Plane, Fabric, Ledger, and Sub2API remain authorities for their projected facts; Console owns only the browser read projection | extracted; no new backend authority or mutation path |
+| Gateway Account Read | `useGatewayAccountReadController` owns Wallet, monthly account Usage, fixed 20-item Balance History, endpoint, committed history page, and per-projection Session/route/request freshness | each response must match its Sub2API source, current route plan, Session, request generation, and requested page; failures settle independently and cannot advance the committed page | Customer overview, Workspace Launch, API overview, and Keys endpoint projection | Sub2API/Gateway | extracted; Gateway Usage, Key mutation, and Workspace Budget remain separate capabilities |
+| Customer Workspace Read | `useCustomerWorkspaceReadController` owns Overview/list/detail/Billing-terms Workspace projections, committed page, active Workspace identity, local freshness, and the detail projection lease | list page/pageSize or detail Workspace identity, Control Plane source, Session, route, and request generation must match; Renewal readback may commit only through the current lease | Customer overview, Workspace list/detail, Billing terms, Renewal readback, Secret access, Delete, and Budget coordination | Control Plane Workspace projection and lifecycle | extracted query slice; Launch/Delete/Renewal commands retain their operation-specific readback invariants |
+| Fabric Runtime Read | `useFabricRuntimeReadController` owns the current customer Workspace Runtime projection and its Session/route/request freshness | an available response must originate from Fabric and name the active Workspace; Runtime failure or stale completion cannot replace Workspace detail or Budget | Customer Workspace detail and Secret composite refresh | Fabric Runtime | extracted; Runtime mutation and Operator Runtime Image Replacement remain separate capabilities |
 
-The root remains the Composition Root: Session, Router, global toast,
-session-wide freshness guards, shared read sources, route loading order, and
-aggregate reset orchestration. A child controller receives narrow typed
-dependencies and owns its own command intent, busy semantics, local freshness,
-authoritative readback, and reset. It must not receive the complete root
-controller, root setters, or another capability's internal state.
+The root remains the Composition Root: Session and Auth, Router, global toast
+and shell state, cross-owner route loading, aggregate reset orchestration,
+Workspace Gateway Budget dependency ordering, and the single-request Operator
+Overview, Reconciliation, and Health projections. A child controller receives
+narrow typed dependencies and owns its own command intent, busy semantics,
+local freshness, authoritative readback, and reset. It must not receive the
+complete root controller, root setters, or another capability's internal state.
 
-The Composition Root owns independent monotonic read generations for Runtime
-and monotonic projection leases for `workspaceDetail` and `workspaceBudget`.
-Renewal and Budget controllers may commit their typed
-owner readback only while the corresponding lease is current; a successful
-commit invalidates older route reads, while a newer route read invalidates an
-older mutation completion. Separate leases keep the two source lifecycles from
-cancelling each other, and neither lease can cancel a Runtime read.
+Customer Workspace Read owns the monotonic `workspaceDetail` projection lease;
+the Composition Root retains only the independent `workspaceBudget` lease and
+the ordering that waits for an accepted Workspace detail before reading the
+Workspace Key budget. Renewal and Budget may commit their typed owner readback
+only while their corresponding lease is current. Fabric Runtime Read starts in
+parallel with Workspace detail and owns a separate freshness scope, so neither
+projection can block, cancel, or overwrite the other.
 
 This map makes the current coupling explicit. `commandBusy` now remains only
 with operator Account provisioning; Workspace Delete and Renewal no longer
 share it. `findWorkspaceInPages` is a thin API adapter used independently by
-the owning Workspace controllers, while aggregate route loading and
-`resetConsoleState` remain Composition Root seams. The next slice is selected
-only after its real page consumers are switched and the corresponding root
-state, intent, timer/generation, readback, reset and command are removed.
-Session is not extracted until every child reset contract is explicit.
+the owning Workspace controllers, while cross-owner route loading and
+`resetConsoleState` remain Composition Root responsibilities. The Console
+stop-audit confirms every remaining root field and loader is composition, a
+narrow owner port, or a single-request projection without an independent
+lifecycle, so this Console decomposition round is closed. Another slice is
+justified only by an observed selection, pagination, timer, stale-write, or
+independent failure model; Session is not extracted until every child reset
+contract is explicit.
 
 Operator Announcement Lifecycle is owned by
 `useOperatorAnnouncementController`. Create, publish, and withdraw retain their

@@ -17,11 +17,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
+import type { GatewayAccountReadController } from "../../app/console-controller-types.ts";
 import { unavailableSource } from "../../app/use-console-controller.ts";
 import {
   createGatewayKey,
   deleteGatewayKey,
-  getGatewayEndpoint,
   getGatewayGroups,
   getGatewayKey,
   getGatewayKeys,
@@ -30,7 +30,6 @@ import {
 } from "../../api/console-read-api.ts";
 import type {
   CreateGatewayKeyRequest,
-  GatewayEndpointDTO,
   GatewayGroupDTO,
   GatewayGroupPageDTO,
   GatewayKeyListQuery,
@@ -46,6 +45,8 @@ import { Alert, Badge, Button, Field, Modal, Select, Tooltip } from "../ui/index
 
 export interface KeysPanelProps {
   csrfToken: string;
+  endpoint: GatewayAccountReadController["endpoint"];
+  refreshEndpoint: () => Promise<void>;
 }
 
 type Dialog = "" | "key" | "delete" | "use";
@@ -179,10 +180,9 @@ function groupMetadataLabel(group: GatewayGroupDTO) {
   return `${group.platform} · ${group.rateMultiplier}x · ${status}`;
 }
 
-export function KeysPanel({ csrfToken }: KeysPanelProps) {
+export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint }: KeysPanelProps) {
   const [source, setSource] = useState<SourceEnvelope<GatewayKeyPageDTO> | null>(null);
   const [groupsSource, setGroupsSource] = useState<SourceEnvelope<GatewayGroupPageDTO> | null>(null);
-  const [endpointSource, setEndpointSource] = useState<SourceEnvelope<GatewayEndpointDTO> | null>(null);
   const [query, setQuery] = useState<KeyQuery>(initialQuery);
   const [loading, setLoading] = useState(false);
   const [referenceLoading, setReferenceLoading] = useState(false);
@@ -206,6 +206,7 @@ export function KeysPanel({ csrfToken }: KeysPanelProps) {
   csrfRef.current = csrfToken;
 
   const groups = useMemo(() => groupsSource?.available ? groupsSource.data.items : [], [groupsSource]);
+  const endpointSource = endpointState.value;
   const endpoint = endpointSource?.available ? endpointSource.data.baseUrl : "";
   const pages = source?.available ? source.data.pages : 0;
 
@@ -251,26 +252,24 @@ export function KeysPanel({ csrfToken }: KeysPanelProps) {
     const session = sessionGeneration.current;
     setReferenceLoading(true);
     setReferenceError("");
-    const [groupResult, endpointResult] = await Promise.allSettled([getGatewayGroups(), getGatewayEndpoint()]);
+    const [groupResult] = await Promise.allSettled([getGatewayGroups()]);
     if (!requestIsCurrent(session, token)) return;
     setGroupsSource(groupResult.status === "fulfilled" ? groupResult.value : unavailableSource("sub2api"));
-    setEndpointSource(endpointResult.status === "fulfilled" ? endpointResult.value : unavailableSource("sub2api"));
-    if (groupResult.status === "rejected" || endpointResult.status === "rejected") {
+    if (groupResult.status === "rejected") {
       setReferenceError("部分 API 配置暂不可用，可刷新后重试");
     }
     setReferenceLoading(false);
   }, [requestIsCurrent]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadReferenceData(), loadKeys(query)]);
-  }, [loadKeys, loadReferenceData, query]);
+    await Promise.all([loadReferenceData(), loadKeys(query), refreshEndpoint()]);
+  }, [loadKeys, loadReferenceData, query, refreshEndpoint]);
 
   useEffect(() => {
     sessionGeneration.current += 1;
     listGeneration.current += 1;
     setSource(null);
     setGroupsSource(null);
-    setEndpointSource(null);
     setQuery(initialQuery);
     setLoading(false);
     setReferenceLoading(false);

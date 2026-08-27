@@ -218,13 +218,21 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     assert.ok(currentPassword && !currentPassword.includes("••"));
     assert.notEqual(currentPassword, lateResponse.access.password);
 
-    const rotationReadback = page.waitForRequest((request) => {
+    const rotationDetailReadback = page.waitForRequest((request) => {
       const url = new URL(request.url());
       return url.pathname === "/api/workspaces" && url.searchParams.get("pageSize") === "50";
     });
+    const rotationRuntimeReadback = page.waitForRequest((request) => {
+      return request.method() === "GET"
+        && new URL(request.url()).pathname === "/api/workspaces/ws-1/runtime-status";
+    });
+    const rotationBudgetReadback = page.waitForRequest((request) => {
+      return request.method() === "GET"
+        && new URL(request.url()).pathname === "/api/workspaces/ws-1/gateway-budget";
+    });
     await page.getByRole("button", { name: "轮换密码", exact: true }).click();
     await page.getByText("Workspace 凭证已轮换", { exact: true }).waitFor({ state: "visible" });
-    await rotationReadback;
+    await Promise.all([rotationDetailReadback, rotationRuntimeReadback, rotationBudgetReadback]);
     await page.waitForFunction((previousPassword) => {
       const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
       const row = rows.find((candidate) => candidate.textContent?.includes("密码"));

@@ -56,17 +56,35 @@ export interface WorkspaceSourceProjectionLease {
 }
 
 export interface ConsoleSources {
-  workspaces: RemoteState<SourceEnvelope<WorkspaceListData>>;
-  workspaceDetail: RemoteState<SourceEnvelope<WorkspaceDTO | null>>;
-  runtime: RemoteState<SourceEnvelope<WorkspaceRuntimeDTO>>;
   workspaceBudget: RemoteState<SourceEnvelope<WorkspaceGatewayBudgetDTO>>;
+  operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
+  operatorReconciliation: RemoteState<SourceEnvelope<OperatorReconciliationPageDTO>>;
+  operatorHealth: RemoteState<SourceEnvelope<OperatorHealthDTO>>;
+}
+
+export interface GatewayAccountReadController {
   wallet: RemoteState<SourceEnvelope<GatewayWallet>>;
   accountUsage: RemoteState<SourceEnvelope<GatewayAccountUsageSummaryDTO>>;
   balanceHistory: RemoteState<SourceEnvelope<GatewayBalanceHistoryPageDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
-  operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
-  operatorReconciliation: RemoteState<SourceEnvelope<OperatorReconciliationPageDTO>>;
-  operatorHealth: RemoteState<SourceEnvelope<OperatorHealthDTO>>;
+  balanceHistoryPage: number;
+  refresh: () => Promise<void>;
+  changeBalancePage: (page: number) => Promise<void>;
+}
+
+export interface CustomerWorkspaceReadController {
+  workspaces: RemoteState<SourceEnvelope<WorkspaceListData>>;
+  detail: RemoteState<SourceEnvelope<WorkspaceDTO | null>>;
+  page: number;
+  pages: number;
+  activeWorkspace: WorkspaceDTO | null;
+  refresh: () => Promise<SourceEnvelope<WorkspaceDTO | null> | null>;
+  changePage: (page: number) => Promise<void>;
+}
+
+export interface FabricRuntimeReadController {
+  runtime: RemoteState<SourceEnvelope<WorkspaceRuntimeDTO>>;
+  refresh: () => Promise<void>;
 }
 
 export interface OperatorResourceReadController {
