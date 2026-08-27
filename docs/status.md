@@ -216,8 +216,22 @@ is selected and configured by the medopl instance, not by the portable product.
   projection mismatches fail closed; response-loss retries retain the original
   key until readback succeeds. Focused model and browser tests cover stale list
   completion, route exit/re-entry claims, response loss, readback mismatch, and
-  Session reset. Customer announcement loading and read receipts remain a
-  separate lifecycle in the Composition Root.
+  Session reset. Customer announcement reads remain an independent lifecycle.
+- Console Customer Announcement Read now has one
+  `useCustomerAnnouncementController` owner for the active published
+  projection, Overview/list query scopes, per-announcement unresolved read
+  intents, the in-flight claim and busy projection, Session-confirmed receipt
+  IDs, route/Session/query freshness, typed receipt validation and projection,
+  current-scope refresh, and reset. Customer overview and announcements pages
+  consume the typed capability. Overview remains limited to 3 items and the
+  list to 20. A valid
+  Control Plane receipt completes the durable read fact; refresh failure cannot
+  downgrade it, target absence is valid in a bounded active projection, and a
+  visible `read=false` conflict cannot commit. Focused model and browser tests
+  cover cross-scope late GET rejection, current-scope mutation refresh,
+  response-loss key reuse across announcements, receipt/readback conflicts,
+  route exit/re-entry, and Session reset with a stale completion. Control Plane
+  remains the owner of published content and durable per-user read receipts.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET

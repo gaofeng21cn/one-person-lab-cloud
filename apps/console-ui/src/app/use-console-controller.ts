@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
-  getAnnouncements,
   getGatewayAccountUsageSummary,
   getGatewayBalanceHistory,
   getGatewayEndpoint,
@@ -13,8 +12,7 @@ import {
   getOperatorWorkspace,
   getOperatorWorkspaceRuntimeImagePolicy,
   getOperatorWorkspaceRuntimeImageReplacementPreview,
-  getOperatorWorkspaces,
-  markAnnouncementRead
+  getOperatorWorkspaces
 } from "../api/console-read-api.ts";
 import type {
   AuthSession,
@@ -28,8 +26,9 @@ import {
 } from "../api/workspaces-api.ts";
 import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
 import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
-import type { AuthStatus, BillingController, ConsoleSources, GatewayUsageController, GlobalSlide, OperatorAccountController, OperatorAnnouncementController, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
+import type { AuthStatus, BillingController, ConsoleSources, CustomerAnnouncementController, GatewayUsageController, GlobalSlide, OperatorAccountController, OperatorAnnouncementController, RemoteState, SupportController, WalletAdjustmentController, WorkspaceBudgetController, WorkspaceDeleteController, WorkspaceLaunchController, WorkspaceRenewalController, WorkspaceRuntimeImageReplacementController, WorkspaceSecretController, WorkspaceSourceProjectionLease } from "./console-controller-types.ts";
 import { useBillingController } from "./use-billing-controller.ts";
+import { useCustomerAnnouncementController } from "./use-customer-announcement-controller.ts";
 import { useGatewayUsageController } from "./use-gateway-usage-controller.ts";
 import { useOperatorAccountController } from "./use-operator-account-controller.ts";
 import { useOperatorAnnouncementController } from "./use-operator-announcement-controller.ts";
@@ -55,7 +54,6 @@ function initialSources(): ConsoleSources {
     wallet: emptyRemote(),
     accountUsage: emptyRemote(),
     balanceHistory: emptyRemote(),
-    announcements: emptyRemote(),
     endpoint: emptyRemote(),
     operatorOverview: emptyRemote(),
     operatorWorkspaces: emptyRemote(),
@@ -124,7 +122,6 @@ export function useConsoleController() {
   const [balanceHistoryPage, setBalanceHistoryPage] = useState(1);
   const [operatorWorkspacePage, setOperatorWorkspacePage] = useState(1);
   const [selectedOperatorWorkspaceId, setSelectedOperatorWorkspaceId] = useState("");
-  const [announcementBusy, setAnnouncementBusy] = useState("");
 
   const requestGeneration = useRef(0);
   const sessionGeneration = useRef(0);
@@ -171,12 +168,12 @@ export function useConsoleController() {
     billingCapability.reset();
     operatorAccountCapability.reset();
     operatorAnnouncementCapability.reset();
+    customerAnnouncementCapability.reset();
     setWorkspacePageNumber(1);
     setBalanceHistoryPage(1);
     setOperatorWorkspacePage(1);
     setSelectedOperatorWorkspaceId("");
     selectedOperatorWorkspaceIdRef.current = "";
-    setAnnouncementBusy("");
     workspaceDetailRequestGeneration.current += 1;
     workspaceRuntimeRequestGeneration.current += 1;
     workspaceBudgetRequestGeneration.current += 1;
@@ -332,6 +329,17 @@ export function useConsoleController() {
   });
   const operatorAccounts: OperatorAccountController = operatorAccountCapability;
 
+  const customerAnnouncementCapability = useCustomerAnnouncementController({
+    scope: path === "/console" || path === "/console/overview"
+      ? "overview"
+      : path === "/console/announcements" ? "list" : "",
+    currentSession: () => sessionRef.current,
+    flash,
+    friendlyError,
+    unavailableSource
+  });
+  const customerAnnouncements: CustomerAnnouncementController = customerAnnouncementCapability;
+
   const operatorAnnouncementCapability = useOperatorAnnouncementController({
     active: path === "/admin" || path === "/admin/overview" || path === "/admin/announcements",
     currentSession: () => sessionRef.current,
@@ -439,16 +447,6 @@ export function useConsoleController() {
       if (result.available) setBalanceHistoryPage(result.data.page);
     } catch (error) {
       if (isRequestCurrent(generation, activeSession.user.id)) failSource("balanceHistory", error, unavailableSource("sub2api"));
-    }
-  };
-
-  const loadAnnouncements = async (generation: number, activeSession: AuthSession, pageSize = 20) => {
-    beginSource("announcements");
-    try {
-      const result = await getAnnouncements(1, pageSize);
-      if (isRequestCurrent(generation, activeSession.user.id)) updateSource("announcements", { value: result, loading: false, error: "" });
-    } catch (error) {
-      if (isRequestCurrent(generation, activeSession.user.id)) failSource("announcements", error, unavailableSource("control-plane"));
     }
   };
 
@@ -593,7 +591,7 @@ export function useConsoleController() {
 
   const loadRoute = async (generation: number, activeSession: AuthSession, routePath: string) => {
     if (routePath === "/console" || routePath === "/console/overview") {
-      await Promise.all([loadWorkspaces(generation, activeSession, 1, 1), loadWallet(generation, activeSession), loadAccountUsage(generation, activeSession), billingCapability.loadOverview(), loadAnnouncements(generation, activeSession, 3)]);
+      await Promise.all([loadWorkspaces(generation, activeSession, 1, 1), loadWallet(generation, activeSession), loadAccountUsage(generation, activeSession), billingCapability.loadOverview(), customerAnnouncementCapability.load()]);
       return;
     }
     if (routePath === "/console/workspaces") {
@@ -621,7 +619,7 @@ export function useConsoleController() {
       return;
     }
     if (routePath === "/console/announcements") {
-      await loadAnnouncements(generation, activeSession);
+      await customerAnnouncementCapability.load();
       return;
     }
     if (routePath === "/admin" || routePath === "/admin/overview") {
@@ -786,23 +784,6 @@ export function useConsoleController() {
     }
   };
 
-  const markRead = async (announcementId: string) => {
-    if (!session || announcementBusy) return;
-    const requestStillCurrent = currentMutationRequest();
-    setAnnouncementBusy(announcementId);
-    try {
-      await markAnnouncementRead(announcementId, session.csrfToken, `announcement-read:${crypto.randomUUID()}`);
-      if (!requestStillCurrent()) return;
-      await loadAnnouncements(requestGeneration.current, session, path === "/console/overview" ? 3 : 20);
-      if (!requestStillCurrent()) return;
-    } catch (error) {
-      if (!requestStillCurrent()) return;
-      flash(friendlyError(error), "danger");
-    } finally {
-      if (requestStillCurrent()) setAnnouncementBusy("");
-    }
-  };
-
   const changeBalancePage = async (page: number) => {
     if (!session || page < 1) return;
     await loadBalanceHistory(requestGeneration.current, session, page);
@@ -895,8 +876,7 @@ export function useConsoleController() {
     updateWorkspaceBudget: workspaceBudget.update,
     copyText,
     billing,
-    markRead,
-    announcementBusy,
+    customerAnnouncements,
     gatewayUsage,
     balanceHistoryPage,
     changeBalancePage,

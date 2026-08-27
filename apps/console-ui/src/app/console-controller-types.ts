@@ -63,7 +63,6 @@ export interface ConsoleSources {
   wallet: RemoteState<SourceEnvelope<GatewayWallet>>;
   accountUsage: RemoteState<SourceEnvelope<GatewayAccountUsageSummaryDTO>>;
   balanceHistory: RemoteState<SourceEnvelope<GatewayBalanceHistoryPageDTO>>;
-  announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
   operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
   operatorWorkspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
@@ -228,4 +227,11 @@ export interface OperatorAnnouncementController {
   create: (input: AnnouncementDraftRequest) => Promise<boolean>;
   publish: (announcementId: string) => Promise<void>;
   withdraw: (announcementId: string) => Promise<void>;
+}
+
+export interface CustomerAnnouncementController {
+  announcements: RemoteState<SourceEnvelope<AnnouncementPageDTO>>;
+  busyAnnouncementId: string;
+  refresh: () => Promise<void>;
+  markRead: (announcementId: string) => Promise<void>;
 }
