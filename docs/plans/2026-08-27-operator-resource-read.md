@@ -205,4 +205,3 @@ git commit -m "refactor(console): extract operator resource read lifecycle"
 ```
 
 Expected: one integrated commit with no unrelated files and a clean worktree.
-
