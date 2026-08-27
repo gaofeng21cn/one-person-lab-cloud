@@ -6,6 +6,7 @@ ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src/services/fabric
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
+COPY packages/contracts/go /src/packages/contracts/go
 COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/fabric ./
