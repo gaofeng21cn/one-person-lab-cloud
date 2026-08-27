@@ -426,6 +426,13 @@ export function useOperatorResourceReadController({
     await loadDetail(workspaceId);
   }, [currentSession, loadDetail, syncSessionBoundary]);
 
+  const refreshPolicy = useCallback(async () => {
+    const session = currentSession();
+    if (!session || !activeRef.current) return;
+    syncSessionBoundary(session);
+    await loadPolicy();
+  }, [currentSession, loadPolicy, syncSessionBoundary]);
+
   const refreshPreview = useCallback(async (workspaceId: string) => {
     const session = currentSession();
     if (!session || !activeRef.current || selectedWorkspaceIdRef.current !== workspaceId) return;
@@ -454,6 +461,7 @@ export function useOperatorResourceReadController({
     selectWorkspace,
     refresh,
     refreshWorkspace,
+    refreshPolicy,
     refreshPreview,
     reset
   };

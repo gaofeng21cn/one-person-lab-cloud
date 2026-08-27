@@ -2,6 +2,8 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, join } from "node:path";
 
+import { decodeWorkspaceImageReleaseCatalog } from "../../../packages/contracts/workspace-image-release.ts";
+
 const PROVIDERS = {
   TENCENT_TKE: "tencent-tke"
 };
@@ -9,6 +11,7 @@ const PROVIDERS = {
 const REQUIRED_COMMON_ENV = [
   "OPL_RUNTIME_PROVIDER",
   "OPL_WORKSPACE_IMAGE",
+  "OPL_WORKSPACE_IMAGE_RELEASES_JSON",
   "OPL_WORKSPACE_DOMAIN",
   "OPL_AIONUI_ADMIN_PASSWORD_SEED",
   "DATABASE_URL"
@@ -71,6 +74,11 @@ function looksLikeRegistryImage({ image, registry }) {
 
 function looksLikeProductionDomain(domain) {
   return Boolean(domain && domain.includes(".") && !domain.includes("localhost") && !domain.startsWith("127."));
+}
+
+function hasValidWorkspaceImageReleases(env) {
+  const catalog = decodeWorkspaceImageReleaseCatalog(env.OPL_WORKSPACE_IMAGE_RELEASES_JSON || "", env.OPL_WORKSPACE_IMAGE || "");
+  return Boolean(catalog && catalog.releases.every((release) => looksLikeRegistryImage({ image: release.image, registry: env.TENCENT_TCR_REGISTRY })));
 }
 
 function matchesOplAppContract(env) {
@@ -138,6 +146,7 @@ export async function productionReadiness({ env = process.env, commandExists = (
         looksLikeRegistryImage({ image: env.OPL_WORKSPACE_IMAGE, registry: env.TENCENT_TCR_REGISTRY }),
       "OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE must use configured TCR repository@sha256 references"
     ),
+    check("workspace_image_releases", hasValidWorkspaceImageReleases(env), "Workspace image releases must be unique immutable TCR references and include OPL_WORKSPACE_IMAGE"),
     check("opl_app_contract", matchesOplAppContract(env), "one-person-lab-app must persist /data plus /projects"),
     check("aionui_admin_password_seed", hasAionUiAdminPasswordSeed(env), "AionUI WebUI login must use a strong per-Workspace password seed"),
     check("workspace_domain", looksLikeProductionDomain(env.OPL_WORKSPACE_DOMAIN), "OPL_WORKSPACE_DOMAIN must be a production wildcard domain"),

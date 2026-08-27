@@ -1017,7 +1017,8 @@ func (f unavailableProCatalogFabricClient) Catalog(_ context.Context) (clients.F
 
 type providerProfileCatalogFabricClient struct {
 	fakeFabricClient
-	packages []clients.FabricWorkspacePackage
+	packages        []clients.FabricWorkspacePackage
+	preflightInputs []clients.WorkspaceLaunchPreflightInput
 }
 
 type providerProfileSub2APIClient struct{ *testSub2APIClient }
@@ -1038,6 +1039,7 @@ func (f *providerProfileCatalogFabricClient) Catalog(_ context.Context) (clients
 }
 
 func (f *providerProfileCatalogFabricClient) PreflightWorkspaceLaunch(_ context.Context, input clients.WorkspaceLaunchPreflightInput) (clients.WorkspaceLaunchPreflight, error) {
+	f.preflightInputs = append(f.preflightInputs, input)
 	return clients.WorkspaceLaunchPreflight{
 		SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, Available: true, Reason: "none",
 		LaunchOperationID: input.LaunchOperationID, RequestHash: input.RequestHash,

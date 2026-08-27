@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,6 +93,7 @@ type TencentProvider struct {
 	storageDiskType string
 	profileErr      error
 	workspaceImage  string
+	workspaceImages contracts.WorkspaceImageReleaseCatalog
 	workspaceDomain string
 	namespace       string
 	provisionerPath string
@@ -195,16 +197,21 @@ func NewTencentProvider() *TencentProvider {
 	raw := []byte(strings.TrimSpace(os.Getenv(tencentProviderProfileEnv)))
 	profile, plans, profileErr := decodeTencentProviderProfile(raw)
 	workspaceImage := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_IMAGE"))
+	workspaceImages, workspaceImagesErr := contracts.DecodeWorkspaceImageReleaseCatalog(os.Getenv(contracts.WorkspaceImageReleasesEnv), workspaceImage)
 	workspaceDomain := normalizeWorkspaceDomain(os.Getenv("OPL_WORKSPACE_DOMAIN"))
 	namespaceValue := strings.TrimSpace(os.Getenv("OPL_K8S_NAMESPACE"))
 	provisionerPath := strings.TrimSpace(os.Getenv("OPL_TENCENT_PROVISIONER_BIN"))
+	installationErr := tencentInstallationConfigError(workspaceDomain, workspaceImage, namespaceValue, provisionerPath)
+	if workspaceImagesErr != nil {
+		installationErr = workspaceImagesErr
+	}
 	provider := &TencentProvider{
 		convergenceWait: boundedClaimReadbackWait,
 		profile:         profile, plans: plans, region: strings.TrimSpace(os.Getenv(tencentProviderRegionEnv)),
 		storageDiskType: strings.TrimSpace(os.Getenv("TENCENT_CBS_DISK_TYPE")), profileErr: profileErr,
-		workspaceImage: workspaceImage, workspaceDomain: workspaceDomain, namespace: namespaceValue,
+		workspaceImage: workspaceImage, workspaceImages: workspaceImages, workspaceDomain: workspaceDomain, namespace: namespaceValue,
 		provisionerPath: provisionerPath,
-		installationErr: tencentInstallationConfigError(workspaceDomain, workspaceImage, namespaceValue, provisionerPath),
+		installationErr: installationErr,
 	}
 	provider.provision = func(ctx context.Context, request provisionerRequest) (provisionerResponse, error) {
 		if err := provider.validateInstallationConfig(); err != nil {
@@ -386,7 +393,7 @@ func validateTencentComputeAllocationIdentity(allocation ComputeAllocation, prep
 }
 
 func (p *TencentProvider) ValidateWorkspaceImageReference(value string) bool {
-	return p != nil && p.installationErr == nil && p.workspaceImage != "" && validWorkspaceRuntimeImageIdentity(value)
+	return p != nil && p.installationErr == nil && validWorkspaceRuntimeImageIdentity(value) && p.workspaceImages.ContainsImage(value)
 }
 
 func (p *TencentProvider) WorkspaceImageReference() string {

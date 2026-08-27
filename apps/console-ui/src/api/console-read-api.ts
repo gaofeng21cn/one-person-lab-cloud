@@ -228,6 +228,19 @@ export function getOperatorWorkspaceRuntimeImagePolicy(signal?: AbortSignal): Pr
   return sourceGet<OperatorWorkspaceRuntimeImagePolicyDTO>("/api/operator/workspace-runtime-image-policy", signal);
 }
 
+export function activateOperatorWorkspaceImageRelease(
+  releaseVersion: string,
+  expectedRevision: number,
+  reason: string,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<OperatorWorkspaceRuntimeImagePolicyDTO> {
+  return postJson<unknown>(
+    "/api/operator/workspace-image-release-activations",
+    { releaseVersion, expectedRevision, reason }, csrfToken, idempotencyKey
+  ).then(decodeDto<OperatorWorkspaceRuntimeImagePolicyDTO>);
+}
+
 export function getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId: string, signal?: AbortSignal): Promise<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>> {
   return sourceGet<OperatorWorkspaceRuntimeImagePreviewDTO>(`/api/operator/workspaces/${encodeURIComponent(workspaceId)}/runtime-image-replacements/preview`, signal);
 }

@@ -186,9 +186,22 @@ export function operatorResourceSourceMatchesScope(input: OperatorResourceScoped
       const { source } = input;
       if (source.available === false) return true;
       if (source.available !== true || !isRecord(source.data)) return false;
-      return source.data.source === "OPL_WORKSPACE_IMAGE"
-        && typeof source.data.image === "string"
-        && typeof source.data.digest === "string";
+      const releaseIsValid = (release: unknown) => isRecord(release)
+        && typeof release.version === "string"
+        && typeof release.image === "string"
+        && typeof release.digest === "string";
+      return source.data.source === "control-plane-workspace-image-release-policy"
+        && source.data.schemaVersion === 1
+        && Number.isInteger(source.data.revision)
+        && source.data.revision >= 1
+        && releaseIsValid(source.data.active)
+        && releaseIsValid(source.data.installedDefault)
+        && Array.isArray(source.data.releases)
+        && source.data.releases.length > 0
+        && source.data.releases.every(releaseIsValid)
+        && source.data.releases.some((release) => isRecord(release)
+          && release.version === source.data.active.version
+          && release.image === source.data.active.image);
     }
     case "imagePreview": {
       const { scope, source } = input;

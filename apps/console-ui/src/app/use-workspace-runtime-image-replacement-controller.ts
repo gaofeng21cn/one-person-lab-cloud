@@ -114,8 +114,8 @@ export function useWorkspaceRuntimeImageReplacementController({
   const replaceWorkspaceRuntimeImage = useCallback(async (): Promise<boolean> => {
     const target = preview?.available ? preview.data : null;
     if (!session || !workspaceId || busy || !target?.canReplace || !target.targetImageDigest || !target.runtimeId) return false;
-    const reason = "promote the protected Workspace image release";
-    if (!window.confirm(`确认将 Workspace ${workspaceId} 升级到受保护镜像？升级会重建 Runtime Pod，但保留 Compute、CBS、Attachment 和 Workspace URL。`)) return false;
+    const reason = "apply the active protected Workspace image release";
+    if (!window.confirm(`确认将 Workspace ${workspaceId} 更新或回滚到当前默认版本？操作会重建 Runtime Pod，但保留 Compute、CBS、Attachment 和 Workspace URL。`)) return false;
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
@@ -143,12 +143,12 @@ export function useWorkspaceRuntimeImageReplacementController({
       }
       if (!isTerminalWorkspaceRuntimeImageReplacement(result.status)) {
         setIssue("timeout");
-        flash("升级操作仍在处理中，请稍后刷新状态", "danger");
+        flash("镜像切换仍在处理中，请稍后刷新状态", "danger");
         return false;
       }
       if (result.status !== "succeeded") {
         setIssue("unconfirmed");
-        flash(result.errorCode || "Workspace 镜像升级失败", "danger");
+        flash(result.errorCode || "Workspace 镜像切换失败", "danger");
         return false;
       }
       const readback = await getOperatorWorkspaceRuntimeImageReplacementPreview(workspaceId);
@@ -156,7 +156,7 @@ export function useWorkspaceRuntimeImageReplacementController({
         || !readback.available
         || !workspaceRuntimeImageReplacementReadbackMatches(readback.data, workspaceId, target.runtimeId, resolved.replacementImageDigest)) {
         setIssue("unconfirmed");
-        flash("升级已返回成功，但 Runtime 权威读回未确认", "danger");
+        flash("镜像切换已返回成功，但 Runtime 权威读回未确认", "danger");
         return false;
       }
       intent.current = null;
@@ -164,7 +164,7 @@ export function useWorkspaceRuntimeImageReplacementController({
       await refreshWorkspace(workspaceId);
       await refreshPreview(workspaceId);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return false;
-      flash("Workspace WebUI 镜像已升级");
+      flash("Workspace WebUI 镜像已更新 / 回滚");
       return true;
     } catch (error) {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {

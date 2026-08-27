@@ -100,6 +100,7 @@ export interface OperatorResourceReadController {
   selectWorkspace: (workspaceId: string) => Promise<void>;
   refresh: () => Promise<void>;
   refreshWorkspace: (workspaceId: string) => Promise<void>;
+  refreshPolicy: () => Promise<void>;
   refreshPreview: (workspaceId: string) => Promise<void>;
   reset: () => void;
 }
@@ -171,6 +172,13 @@ export interface WorkspaceRuntimeImageReplacementController {
   issue: WorkspaceRuntimeImageReplacementIssue;
   replaceWorkspaceRuntimeImage: () => Promise<boolean>;
   refreshWorkspaceRuntimeImageReplacement: () => Promise<void>;
+}
+
+export interface WorkspaceImageReleaseController {
+  selectedVersion: string;
+  busy: boolean;
+  selectVersion: (version: string) => void;
+  activateSelectedRelease: () => Promise<boolean>;
 }
 
 export interface WorkspaceRenewalController {

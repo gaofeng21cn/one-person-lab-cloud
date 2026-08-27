@@ -57,17 +57,18 @@ is selected and configured by the medopl instance, not by the portable product.
   remain unchanged. Focused route and Tencent vertical tests cover the
   production-shaped `3 -> 6` readback window, typed proof journal, zero-write
   rejection matrices, delayed READY convergence, and no second apply.
-- An administrator-only Runtime image replacement API now upgrades an existing
-  succeeded Workspace without relaunching it. Control Plane persists an
-  idempotent operation after resolving the successful Launch and live Runtime,
-  binds the requested digest to the protected immutable `OPL_WORKSPACE_IMAGE`,
-  and dispatches a typed Fabric capability. Fabric and the Tencent adapter
-  recheck the complete owner chain, journal/CAS the provider mutation, patch
-  only the existing `workspace` container image, and read the Runtime back.
-  The Launch, URL, Compute, CBS, Attachment, Secret, billing Receipt, and
-  Runtime identity remain unchanged. Focused Control Plane, Fabric, HTTP, and
-  Tencent tests pass; no production Instance deployment or acceptance receipt
-  has been executed for this capability.
+- Workspace image release management now separates two administrator commands.
+  A CAS- and audit-backed active release selects the immutable catalog member
+  copied into every new Launch; an existing-Workspace replacement operation
+  applies that same active release without relaunching. Console exposes both
+  commands in the Workspace resource detail. Fabric and the Tencent adapter
+  independently enforce the protected catalog, recheck the complete owner
+  chain, journal/CAS the provider mutation, patch only the existing `workspace`
+  container image, and read the Runtime back. The Launch, URL, Compute, CBS,
+  Attachment, Secret, billing Receipt, and Runtime identity remain unchanged.
+  Shared contract, Control Plane, Fabric, source-model, production-contract,
+  and browser tests pass; no protected production deployment or acceptance
+  receipt has yet proved this capability.
 - Tencent prepaid preflight requires Candidate-bound schema-v3 evidence that
   the live Fabric identity has the active system policy
   `QcloudCVMFinanceAccess`. Both compute and storage checks re-read the current

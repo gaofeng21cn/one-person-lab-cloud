@@ -152,13 +152,6 @@ type workspaceImagePolicy interface {
 	ValidateWorkspaceImageReference(string) bool
 }
 
-// workspaceImageReferenceReader exposes the exact immutable image admitted by
-// the provider installation. Replacement callers must never be able to select
-// a different repository or digest merely because it is syntactically valid.
-type workspaceImageReferenceReader interface {
-	WorkspaceImageReference() string
-}
-
 type monthlyPreflightProvider interface {
 	MonthlyPreflight(context.Context, MonthlyPreflightInput) (MonthlyPreflight, error)
 }

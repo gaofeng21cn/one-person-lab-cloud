@@ -5,6 +5,11 @@ import { validateProductionManifest } from "../../services/control-plane/ops/pro
 
 const cloudImage = `registry.example.com/opl/opl-cloud@sha256:${"a".repeat(64)}`;
 const workspaceImage = `registry.example.com/opl/one-person-lab-app@sha256:${"b".repeat(64)}`;
+const rollbackWorkspaceImage = `registry.example.com/opl/one-person-lab-app@sha256:${"c".repeat(64)}`;
+const workspaceImageReleases = JSON.stringify({ schemaVersion: 1, releases: [
+  { version: "26.8.26", image: workspaceImage },
+  { version: "26.8.4", image: rollbackWorkspaceImage }
+] });
 const dedicatedNodePoolEnv = {
   OPL_SYSTEM_COMPUTE_NODE_POOL_ID: { value: "np-system" },
   OPL_SYSTEM_COMPUTE_MACHINE_ID: { value: "machine-system" },
@@ -26,6 +31,7 @@ test("production manifest requires deployment secret refs for every launch varia
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
       OPL_CLOUD_IMAGE: { value: cloudImage },
       OPL_WORKSPACE_IMAGE: { value: workspaceImage },
+      OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: workspaceImageReleases },
       OPL_K8S_NAMESPACE: { value: "opl-cloud" },
       OPL_INGRESS_CLASS: { value: "qcloud" },
       OPL_IMAGE_PULL_SECRET_NAME: { value: "tcr-pull-secret" },
@@ -52,6 +58,7 @@ test("production manifest requires deployment secret refs for every launch varia
     "verification_mutation_authority:true",
     "system_compute_identity:true",
     "registry_images:true",
+    "workspace_image_releases:true",
     "workspace_domain:true"
   ]);
 });
@@ -67,6 +74,7 @@ test("production manifest validates Tencent TKE fields only", () => {
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
       OPL_CLOUD_IMAGE: { value: cloudImage },
       OPL_WORKSPACE_IMAGE: { value: workspaceImage },
+      OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: workspaceImageReleases },
       OPL_K8S_NAMESPACE: { value: "opl-cloud" },
       OPL_INGRESS_CLASS: { value: "qcloud" },
       OPL_IMAGE_PULL_SECRET_NAME: { value: "tcr-pull-secret" },
@@ -93,6 +101,7 @@ test("production manifest validates Tencent TKE fields only", () => {
     "verification_mutation_authority:true",
     "system_compute_identity:true",
     "registry_images:true",
+    "workspace_image_releases:true",
     "workspace_domain:true"
   ]);
 });
@@ -177,6 +186,23 @@ test("production manifest rejects empty container image tags", () => {
 
   assert.equal(report.ok, false);
   assert.ok(report.failedChecks.includes("registry_images"));
+});
+
+test("production manifest rejects a Workspace release catalog outside TCR or missing the installed image", () => {
+  for (const releases of [
+    JSON.stringify({ schemaVersion: 1, releases: [{ version: "outside", image: `other.example.com/opl/workspace@sha256:${"d".repeat(64)}` }, { version: "installed", image: workspaceImage }] }),
+    JSON.stringify({ schemaVersion: 1, releases: [{ version: "rollback", image: rollbackWorkspaceImage }] })
+  ]) {
+    const report = validateProductionManifest({
+      env: {
+        OPL_RUNTIME_PROVIDER: { value: "tencent-tke" },
+        OPL_WORKSPACE_IMAGE: { value: workspaceImage },
+        OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: releases },
+        TENCENT_TCR_REGISTRY: { value: "registry.example.com" }
+      }
+    });
+    assert.ok(report.failedChecks.includes("workspace_image_releases"));
+  }
 });
 
 test("production manifest rejects latest and every tag-only production image", () => {

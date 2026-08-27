@@ -707,10 +707,22 @@ export interface OperatorWorkspacePageDTO {
   pageSize: number;
 }
 
-export interface OperatorWorkspaceRuntimeImagePolicyDTO {
+export interface WorkspaceImageReleaseDTO {
+  version: string;
   image: string;
   digest: string;
-  source: "OPL_WORKSPACE_IMAGE";
+}
+
+export interface OperatorWorkspaceRuntimeImagePolicyDTO {
+  schemaVersion: 1;
+  revision: number;
+  active: WorkspaceImageReleaseDTO;
+  installedDefault: WorkspaceImageReleaseDTO;
+  releases: WorkspaceImageReleaseDTO[];
+  source: "control-plane-workspace-image-release-policy";
+  updatedAt?: string;
+  updatedBy?: string;
+  reason?: string;
 }
 
 export interface OperatorWorkspaceRuntimeImagePreviewDTO {

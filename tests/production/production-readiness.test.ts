@@ -8,11 +8,17 @@ import { productionReadiness } from "../../services/fabric/ops/production-readin
 
 const cloudImage = `registry.example.com/opl/opl-cloud@sha256:${"a".repeat(64)}`;
 const workspaceImage = `registry.example.com/opl/one-person-lab-app@sha256:${"b".repeat(64)}`;
+const rollbackWorkspaceImage = `registry.example.com/opl/one-person-lab-app@sha256:${"c".repeat(64)}`;
+const workspaceImageReleases = JSON.stringify({ schemaVersion: 1, releases: [
+  { version: "26.8.26", image: workspaceImage },
+  { version: "26.8.4", image: rollbackWorkspaceImage }
+] });
 
 const tkeProductionEnv = {
   OPL_RUNTIME_PROVIDER: "tencent-tke",
   OPL_CLOUD_IMAGE: cloudImage,
   OPL_WORKSPACE_IMAGE: workspaceImage,
+  OPL_WORKSPACE_IMAGE_RELEASES_JSON: workspaceImageReleases,
   OPL_AIONUI_ADMIN_PASSWORD_SEED: "workspace-secret-2026-very-long",
   OPL_WORKSPACE_DATA_DIR: "/data",
   OPL_WORKSPACE_PROJECTS_DIR: "/projects",
@@ -52,6 +58,7 @@ test("productionReadiness passes only when the TKE production runtime, images, p
   assert.deepEqual(report.checks.map((check) => `${check.id}:${check.ok}`), [
     "runtime_provider:true",
     "registry_images:true",
+    "workspace_image_releases:true",
     "opl_app_contract:true",
     "aionui_admin_password_seed:true",
     "workspace_domain:true",
@@ -105,6 +112,20 @@ test("productionReadiness rejects empty container image tags", async () => {
 
   assert.equal(report.ready, false);
   assert.ok(report.failedChecks.includes("registry_images"));
+});
+
+test("productionReadiness rejects mutable or incomplete Workspace release catalogs", async () => {
+  for (const releases of [
+    JSON.stringify({ schemaVersion: 1, releases: [{ version: "latest", image: "registry.example.com/opl/one-person-lab-app:latest" }] }),
+    JSON.stringify({ schemaVersion: 1, releases: [{ version: "rollback", image: rollbackWorkspaceImage }] })
+  ]) {
+    const report = await productionReadiness({
+      env: { ...tkeProductionEnv, OPL_WORKSPACE_IMAGE_RELEASES_JSON: releases },
+      commandExists: (command) => command === "kubectl" || command === "/usr/local/bin/opl-tencent-provisioner"
+    });
+    assert.equal(report.ready, false);
+    assert.ok(report.failedChecks.includes("workspace_image_releases"));
+  }
 });
 
 test("productionReadiness rejects latest and every tag-only production image", async () => {

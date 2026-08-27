@@ -1095,6 +1095,31 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	return nil
 }
 
+func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if audit := findRecord(s.auditEvents, stringValue(mutation.AuditEvent["id"])); audit != nil {
+		return workspaceImageReleaseReplay(audit, mutation)
+	}
+	current := mutation.Base
+	createdAt := ""
+	if row := findRecord(s.runtimeOps, workspaceImageReleasePolicyID); row != nil {
+		var err error
+		current, err = decodeWorkspaceImageReleasePolicyRow(row)
+		if err != nil {
+			return workspaceImageReleasePolicy{}, err
+		}
+		createdAt = stringValue(row["createdAt"])
+	}
+	desired, err := prepareWorkspaceImageReleaseMutation(current, mutation, time.Now().UTC())
+	if err != nil {
+		return workspaceImageReleasePolicy{}, err
+	}
+	s.runtimeOps = upsertProjectionByID(s.runtimeOps, workspaceImageReleasePolicyRow(desired, createdAt))
+	s.auditEvents = upsertProjectionByID(s.auditEvents, workspaceImageReleaseAudit(mutation, current, desired))
+	return desired, nil
+}
+
 func (s *memoryTableStore) ReserveProductionE2EAttempt(_ context.Context, claim productionE2EAttemptClaim) (map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

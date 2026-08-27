@@ -864,12 +864,13 @@ func TestTencentWorkspaceLaunchComputeReplayReusesOwnershipCoreWithoutRepeatedMu
 	setProtectedResourceEnv(t)
 	setTencentProviderProfileEnv(t)
 	t.Setenv("OPL_BASIC_COMPUTE_NODE_POOL_MAX_REPLICAS", "20")
+	image := "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:" + strings.Repeat("c", 64)
+	setWorkspaceImageReleaseCatalogForTest(t, image, image)
 	provider := NewTencentProvider()
 	provider.convergenceWait = func(context.Context, int) error { return nil }
 	store := NewMemoryOperationStore()
 	service := NewServiceWithOperationStore(provider, store)
 
-	image := "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:" + strings.Repeat("c", 64)
 	launchHash := strings.Repeat("d", 64)
 	preflightInput := WorkspaceLaunchPreflightInput{
 		SchemaVersion: 1, LaunchOperationID: "launch-workspace-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha",

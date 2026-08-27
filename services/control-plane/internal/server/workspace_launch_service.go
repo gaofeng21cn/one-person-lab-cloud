@@ -109,9 +109,14 @@ func (app *controlPlaneServer) resumeWorkspaceLaunch(ctx context.Context, servic
 	}
 	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists &&
 		(operation.Status != contracts.StatusManualReview || operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "tencent-tke" ||
-			authorization.ReplacementWorkspaceImageDigest == operation.stringFact("workspaceImageDigest") ||
-			authorization.ReplacementWorkspaceImageDigest != currentWorkspaceImageDigest()) {
+			authorization.ReplacementWorkspaceImageDigest == operation.stringFact("workspaceImageDigest")) {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+	if authorization.ReplacementWorkspaceImageDigest != "" && !authorizationExists {
+		policy, catalog, _, policyErr := app.currentWorkspaceImageReleasePolicy(ctx)
+		if policyErr != nil || authorization.ReplacementWorkspaceImageDigest != policy.ActiveImage || !catalog.ContainsImage(authorization.ReplacementWorkspaceImageDigest) {
+			return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+		}
 	}
 	if authorization.AuthorizedAt == "" {
 		authorization.AuthorizedAt = time.Now().UTC().Format(time.RFC3339)

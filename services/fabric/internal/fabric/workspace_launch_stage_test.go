@@ -4,11 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
+
+func setWorkspaceImageReleaseCatalogForTest(t *testing.T, installedImage string, images ...string) {
+	t.Helper()
+	releases := make([]contracts.WorkspaceImageRelease, 0, len(images))
+	for index, image := range images {
+		releases = append(releases, contracts.WorkspaceImageRelease{Version: fmt.Sprintf("release-%d", index+1), Image: image})
+	}
+	raw, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: releases})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPL_WORKSPACE_IMAGE", installedImage)
+	t.Setenv(contracts.WorkspaceImageReleasesEnv, string(raw))
+}
 
 type workspaceLaunchStageHashGoldenVector struct {
 	Stage   string `json:"stage"`
@@ -410,6 +427,7 @@ func TestWorkspaceLaunchStageRequestHashMatchesOwnerGoldenVectors(t *testing.T) 
 func TestWorkspaceLaunchRuntimeImageRevisionMatchesOwnerContract(t *testing.T) {
 	contract := workspaceLaunchBindingContractForTest(t).RuntimeImageRevisionProof
 	proof := contract.GoldenVector
+	setWorkspaceImageReleaseCatalogForTest(t, proof.PreviousImageDigest, proof.PreviousImageDigest, proof.ReplacementImageDigest)
 	input := WorkspaceLaunchStageInput{
 		Binding: WorkspaceLaunchStageBinding{
 			SchemaVersion: 1, LaunchOperationID: proof.LaunchOperationID, AccountID: "acct-alpha", WorkspaceID: proof.WorkspaceID,

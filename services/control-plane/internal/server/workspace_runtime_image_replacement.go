@@ -48,16 +48,10 @@ type workspaceRuntimeImageReplacementOperation struct {
 
 func registerWorkspaceRuntimeImageReplacementRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	mux.HandleFunc("GET /api/operator/workspace-runtime-image-policy", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
-		image := currentWorkspaceImageDigest()
-		if image == "" {
-			writeSourceEnvelope(w, http.StatusServiceUnavailable, "control-plane", "unavailable", nil)
-			return
-		}
-		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", map[string]any{
-			"image":  image,
-			"digest": deployedImageDigest(image),
-			"source": "OPL_WORKSPACE_IMAGE",
-		})
+		app.getWorkspaceImageReleasePolicy(w, r)
+	}))
+	mux.HandleFunc("POST /api/operator/workspace-image-release-activations", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		app.activateWorkspaceImageRelease(w, r)
 	}))
 	mux.HandleFunc("GET /api/operator/workspaces/{workspaceId}/runtime-image-replacements/preview", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		app.previewWorkspaceRuntimeImageReplacement(w, r, service)
@@ -96,11 +90,12 @@ func (app *controlPlaneServer) previewWorkspaceRuntimeImageReplacement(w http.Re
 		writeError(w, http.StatusBadGateway, "workspace_runtime_readback_unavailable")
 		return
 	}
-	target := currentWorkspaceImageDigest()
-	if target == "" {
+	policy, _, _, err := app.currentWorkspaceImageReleasePolicy(r.Context())
+	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "workspace_image_not_current_protected_release")
 		return
 	}
+	target := policy.ActiveImage
 	preview := workspaceRuntimeImageReplacementPreview{
 		WorkspaceID: workspaceID, WorkspaceStatus: workspaceStatus, RuntimeID: runtime.ID,
 		RuntimeStatus: runtime.Status, CurrentImageDigest: runtime.ImageID, TargetImageDigest: target,
@@ -179,8 +174,8 @@ func (app *controlPlaneServer) createWorkspaceRuntimeImageReplacement(w http.Res
 		writeError(w, http.StatusConflict, errWorkspaceRuntimeImageReplacementConflict.Error())
 		return
 	}
-	protectedImage := currentWorkspaceImageDigest()
-	if protectedImage == "" || request.ReplacementImageDigest != protectedImage {
+	policy, catalog, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
+	if policyErr != nil || request.ReplacementImageDigest != policy.ActiveImage || !catalog.ContainsImage(request.ReplacementImageDigest) {
 		writeError(w, http.StatusConflict, "workspace_image_not_current_protected_release")
 		return
 	}

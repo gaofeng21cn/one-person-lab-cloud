@@ -3118,7 +3118,7 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 	setProtectedResourceEnv(t)
 	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
 	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
-	t.Setenv("OPL_WORKSPACE_IMAGE", newImage)
+	setWorkspaceImageReleaseCatalogForTest(t, newImage, oldImage, newImage)
 	provider := NewTencentProvider()
 	patchErr := errors.New("provider patch response lost")
 	var patchBody []byte
@@ -3171,7 +3171,7 @@ func TestTencentRuntimeImageReplacementRejectsOwnerMismatchBeforePatch(t *testin
 	setProtectedResourceEnv(t)
 	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
 	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
-	t.Setenv("OPL_WORKSPACE_IMAGE", newImage)
+	setWorkspaceImageReleaseCatalogForTest(t, newImage, oldImage, newImage)
 	provider := NewTencentProvider()
 	patchCalls := 0
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {

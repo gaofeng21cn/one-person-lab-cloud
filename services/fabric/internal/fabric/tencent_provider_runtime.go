@@ -35,7 +35,7 @@ func (p *TencentProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, inpu
 		input.PreviousImageDigest == input.ReplacementImageDigest {
 		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementInputInvalid
 	}
-	if input.ReplacementImageDigest != p.WorkspaceImageReference() {
+	if !p.ValidateWorkspaceImageReference(input.ReplacementImageDigest) {
 		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
 	}
 	serviceName := input.RuntimeServiceName
