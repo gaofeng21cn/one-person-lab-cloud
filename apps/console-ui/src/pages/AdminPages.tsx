@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import type { OperatorAnnouncementController } from "../app/console-controller-types.ts";
+import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -652,13 +652,14 @@ function OperatorResourceMobileCard({ resource }: { resource: OperatorResourceDT
   );
 }
 
-function ResourceDetail({ controller }: { controller: ConsoleController }) {
-  const selected = controller.selectedOperatorWorkspaceId;
+function ResourceDetail({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+  const selected = controller.selectedWorkspaceId;
   if (!selected) return <section className="panel" data-slide="A-RES-02"><div className="panel-title"><div><h2>资源详情</h2></div></div><div className="empty-panel">请选择 Workspace 查看资源详情。</div></section>;
   return (
     <section className="panel" data-slide="A-RES-02">
       <div className="panel-title"><div><h2>资源详情</h2></div><span>{selected}</span></div>
-      <SourceState error={controller.sources.operatorWorkspaceDetail.error} loading={controller.sources.operatorWorkspaceDetail.loading} onRetry={() => void controller.openOperatorWorkspace(selected)} source={controller.sources.operatorWorkspaceDetail.value} unavailableTitle="资源详情暂不可用">
+      <WorkspaceRuntimeImageUpgrade controller={controller} replacement={replacement} />
+      <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
             <div><dt>owner Account</dt><dd><SourceValue source={detail.ownerAccount}>{(data) => data.id}</SourceValue></dd></div>
@@ -667,7 +668,6 @@ function ResourceDetail({ controller }: { controller: ConsoleController }) {
             <div><dt>Ledger Receipt</dt><dd><SourceValue source={detail.receipt}>{(data) => data.receiptId}</SourceValue></dd></div>
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
-          <WorkspaceRuntimeImageUpgrade controller={controller} />
           {detail.resources.length ? <>
             <div className="table-wrap operator-resource-detail-table"><table><thead><tr><th>owner Account</th><th>owner User</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
             <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
@@ -678,13 +678,12 @@ function ResourceDetail({ controller }: { controller: ConsoleController }) {
   );
 }
 
-function WorkspaceRuntimeImageUpgrade({ controller }: { controller: ConsoleController }) {
-  const previewSource = controller.sources.operatorWorkspaceImagePreview.value;
-  const policySource = controller.sources.operatorWorkspaceImagePolicy.value;
+function WorkspaceRuntimeImageUpgrade({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+  const previewSource = controller.imagePreview.value;
+  const policySource = controller.imagePolicy.value;
   const preview = sourceData(previewSource);
   const policy = sourceData(policySource);
-  const operation = controller.workspaceRuntimeImageReplacement.operation;
-  const replacement = controller.workspaceRuntimeImageReplacement;
+  const operation = replacement.operation;
   const canReplace = Boolean(preview?.canReplace && preview.targetImageDigest && preview.runtimeId);
   return (
     <section className="operator-runtime-image-upgrade" aria-label="Workspace WebUI 镜像升级">
@@ -713,7 +712,7 @@ function WorkspaceRuntimeImageUpgrade({ controller }: { controller: ConsoleContr
   );
 }
 
-function OperatorWorkspaceMobileCard({ controller, item }: { controller: ConsoleController; item: OperatorWorkspaceDTO }) {
+function OperatorWorkspaceMobileCard({ controller, item }: { controller: OperatorResourceReadController; item: OperatorWorkspaceDTO }) {
   const workspace = sourceData(item.workspace);
   const id = workspace?.id || "";
   return (
@@ -735,31 +734,31 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Console
       </dl>
       <div className="operator-card-actions">
         {workspace?.url ? <a className="operator-object-link" href={workspace.url} rel="noreferrer" target="_blank">打开 Workspace<ExternalLink aria-hidden size={14} /></a> : <span className="account-read-only">URL 暂不可用</span>}
-        <Button disabled={!id} onClick={() => id && void controller.openOperatorWorkspace(id)} size="sm" variant="outline">查看资源</Button>
+        <Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button>
       </div>
     </article>
   );
 }
 
-function ResourcesPage({ controller }: { controller: ConsoleController }) {
-  const workspaces = sourceData(controller.sources.operatorWorkspaces.value)?.items || [];
+function ResourcesPage({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+  const workspaces = sourceData(controller.workspaces.value)?.items || [];
   return (
     <section className="admin-dashboard" data-slide="A-RES-01 A-RES-02">
       <section className="panel">
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
-        <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.sources.operatorWorkspaces.error} loading={controller.sources.operatorWorkspaces.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.operatorWorkspaces.value} unavailableTitle="Workspace 资源暂不可用">
+        <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
             <div className="table-wrap operator-workspace-table"><table><thead><tr><th>Workspace</th><th>owner Account</th><th>owner User</th><th>套餐 / 月度总价</th><th>创建时间</th><th>paidThrough</th><th>续费状态</th><th>生命周期状态</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
-              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.state || "暂不可用"}</SourceValue></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.openOperatorWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.state || "暂不可用"}</SourceValue></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}
         </SourceState>
-        <Pagination current={controller.operatorWorkspacePage} label="Workspace 分页" onChange={(page) => void controller.changeOperatorWorkspacePage(page)} pages={controller.operatorWorkspacePages} />
+        <Pagination current={controller.page} label="Workspace 分页" onChange={(page) => void controller.changePage(page)} pages={controller.pages} />
       </section>
-      <ResourceDetail controller={controller} />
+      <ResourceDetail controller={controller} replacement={replacement} />
     </section>
   );
 }
@@ -824,7 +823,7 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
 export function AdminPages({ controller }: { controller: ConsoleController }) {
   if (controller.path === "/admin/accounts") return <AccountsPage controller={controller} />;
   if (controller.path === "/admin/billing") return <ReconciliationPage controller={controller} />;
-  if (controller.path === "/admin/resources") return <ResourcesPage controller={controller} />;
+  if (controller.path === "/admin/resources") return <ResourcesPage controller={controller.operatorResourceRead} replacement={controller.workspaceRuntimeImageReplacement} />;
   if (controller.path === "/admin/system") return <SystemPage controller={controller} />;
   return <OverviewPage controller={controller} />;
 }

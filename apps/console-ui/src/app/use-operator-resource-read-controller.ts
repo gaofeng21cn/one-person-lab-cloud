@@ -14,7 +14,7 @@ import type {
   OperatorWorkspaceRuntimeImagePreviewDTO,
   SourceEnvelope
 } from "../api/dtos.ts";
-import type { RemoteState } from "./console-controller-types.ts";
+import type { OperatorResourceReadController, RemoteState } from "./console-controller-types.ts";
 import {
   applyOperatorResourceCompletion,
   createOperatorResourceDetailScope,
@@ -44,22 +44,7 @@ interface OperatorResourceReadDependencies {
   unavailableSource: <T>(source: string) => SourceEnvelope<T>;
 }
 
-export interface OperatorResourceReadCapability {
-  workspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
-  detail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
-  imagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
-  imagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
-  page: number;
-  pages: number;
-  selectedWorkspaceId: string;
-  load: () => Promise<void>;
-  changePage: (page: number) => Promise<void>;
-  selectWorkspace: (workspaceId: string) => Promise<void>;
-  refresh: () => Promise<void>;
-  refreshWorkspace: (workspaceId: string) => Promise<void>;
-  refreshPreview: (workspaceId: string) => Promise<void>;
-  reset: () => void;
-}
+export type OperatorResourceReadCapability = OperatorResourceReadController;
 
 type ProjectionKind = "workspaces" | "detail" | "imagePolicy" | "imagePreview";
 

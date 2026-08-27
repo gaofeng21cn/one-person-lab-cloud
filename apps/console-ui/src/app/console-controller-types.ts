@@ -65,12 +65,25 @@ export interface ConsoleSources {
   balanceHistory: RemoteState<SourceEnvelope<GatewayBalanceHistoryPageDTO>>;
   endpoint: RemoteState<SourceEnvelope<GatewayEndpointDTO>>;
   operatorOverview: RemoteState<SourceEnvelope<OperatorOverviewDTO>>;
-  operatorWorkspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
-  operatorWorkspaceDetail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
-  operatorWorkspaceImagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
-  operatorWorkspaceImagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
   operatorReconciliation: RemoteState<SourceEnvelope<OperatorReconciliationPageDTO>>;
   operatorHealth: RemoteState<SourceEnvelope<OperatorHealthDTO>>;
+}
+
+export interface OperatorResourceReadController {
+  workspaces: RemoteState<SourceEnvelope<OperatorWorkspacePageDTO>>;
+  detail: RemoteState<SourceEnvelope<OperatorWorkspaceDTO>>;
+  imagePolicy: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>>;
+  imagePreview: RemoteState<SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>>;
+  page: number;
+  pages: number;
+  selectedWorkspaceId: string;
+  load: () => Promise<void>;
+  changePage: (page: number) => Promise<void>;
+  selectWorkspace: (workspaceId: string) => Promise<void>;
+  refresh: () => Promise<void>;
+  refreshWorkspace: (workspaceId: string) => Promise<void>;
+  refreshPreview: (workspaceId: string) => Promise<void>;
+  reset: () => void;
 }
 
 export type AuthStatus = "public" | "checking" | "ready" | "error" | "logout_pending" | "logout_unconfirmed";
