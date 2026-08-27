@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -44,7 +45,7 @@ func TestWorkspaceRuntimeImageReplacementTerminalConflictDoesNotRemainStarted(t 
 	fabric := &runtimeImageReplacementRouteFabric{
 		fakeFabricClient: fakeFabricClient{runtimeStatus: clients.WorkspaceRuntime{
 			ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: workspaceID,
-			URL: "https://workspace.medopl.cn/w/ws-alpha/", Status: "running", ServiceName: "runtime-unit", ImageID: oldImage, Ready: true,
+			URL: "https://workspace.medopl.cn/w/ws-alpha/", Status: "unready", ServiceName: "runtime-unit", ImageID: oldImage, Ready: false,
 		}},
 		replacementErr: &clients.FabricHTTPError{StatusCode: http.StatusConflict, Body: `{"error":"workspace_runtime_image_replacement_conflict"}`},
 	}
@@ -84,6 +85,10 @@ type runtimeImageReplacementRouteResponse struct {
 	Runtime             clients.WorkspaceRuntime `json:"runtime"`
 }
 
+type runtimeImageReplacementPreviewEnvelope struct {
+	Data contracts.WorkspaceRuntimeImageReplacementPreview `json:"data"`
+}
+
 func TestWorkspaceRuntimeImageReplacementRoutePersistsAndReplaysExactOperation(t *testing.T) {
 	const workspaceID = "ws-alpha"
 	const oldImage = "registry.example/workspace@sha256:" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -97,7 +102,7 @@ func TestWorkspaceRuntimeImageReplacementRoutePersistsAndReplaysExactOperation(t
 	fabric := &runtimeImageReplacementRouteFabric{
 		fakeFabricClient: fakeFabricClient{runtimeStatus: clients.WorkspaceRuntime{
 			ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: workspaceID,
-			URL: "https://workspace.medopl.cn/w/ws-alpha/", Status: "running", ServiceName: "runtime-unit", ImageID: oldImage, Ready: true,
+			URL: "https://workspace.medopl.cn/w/ws-alpha/", Status: "unready", ServiceName: "runtime-unit", ImageID: oldImage, Ready: false,
 		}},
 		replacementRuntime: clients.WorkspaceRuntime{
 			ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: workspaceID,
@@ -167,7 +172,7 @@ func TestWorkspaceRuntimeImageReplacementReadRoutesExposeOnlyProtectedTargetAndP
 	store := newMemoryTableStore()
 	fabric := &runtimeImageReplacementRouteFabric{fakeFabricClient: fakeFabricClient{runtimeStatus: clients.WorkspaceRuntime{
 		ID: "rt-unit", OperationID: "workspace-launch-unit:runtime", WorkspaceID: workspaceID,
-		URL: "https://workspace.medopl.com/w/ws-alpha/", Status: "running", ServiceName: "runtime-unit", ImageID: oldImage, Ready: true,
+		URL: "https://workspace.medopl.com/w/ws-alpha/", Status: "unready", ServiceName: "runtime-unit", ImageID: oldImage, Ready: false,
 	}}}
 	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, fabric), store)
 	if err != nil {
@@ -181,7 +186,25 @@ func TestWorkspaceRuntimeImageReplacementReadRoutesExposeOnlyProtectedTargetAndP
 		t.Fatalf("policy status=%d body=%s", policy.Code, policy.Body.String())
 	}
 	preview := requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/"+workspaceID+"/runtime-image-replacements/preview", "")
-	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"currentImageDigest":"`+oldImage+`"`) || !strings.Contains(preview.Body.String(), `"targetImageDigest":"`+newImage+`"`) || !strings.Contains(preview.Body.String(), `"canReplace":true`) {
-		t.Fatalf("preview status=%d body=%s", preview.Code, preview.Body.String())
+	var envelope runtimeImageReplacementPreviewEnvelope
+	if preview.Code != http.StatusOK || json.NewDecoder(preview.Body).Decode(&envelope) != nil ||
+		envelope.Data.CurrentImageDigest != oldImage || envelope.Data.TargetImageDigest != newImage ||
+		envelope.Data.RuntimeStatus != "unready" || !envelope.Data.CanReplace {
+		t.Fatalf("unready preview status=%d response=%#v", preview.Code, envelope)
+	}
+
+	fabric.fakeFabricClient.runtimeStatus.WorkspaceID = "ws-other"
+	preview = requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/"+workspaceID+"/runtime-image-replacements/preview", "")
+	envelope = runtimeImageReplacementPreviewEnvelope{}
+	if preview.Code != http.StatusOK || json.NewDecoder(preview.Body).Decode(&envelope) != nil || envelope.Data.CanReplace {
+		t.Fatalf("owner mismatch preview status=%d response=%#v", preview.Code, envelope)
+	}
+
+	fabric.fakeFabricClient.runtimeStatus.WorkspaceID = workspaceID
+	fabric.fakeFabricClient.runtimeStatus.ImageID = newImage
+	preview = requestWithSession(t, server, operator, http.MethodGet, "/api/operator/workspaces/"+workspaceID+"/runtime-image-replacements/preview", "")
+	envelope = runtimeImageReplacementPreviewEnvelope{}
+	if preview.Code != http.StatusOK || json.NewDecoder(preview.Body).Decode(&envelope) != nil || envelope.Data.CanReplace {
+		t.Fatalf("same image preview status=%d response=%#v", preview.Code, envelope)
 	}
 }

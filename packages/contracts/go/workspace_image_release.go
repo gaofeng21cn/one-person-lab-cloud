@@ -31,6 +31,16 @@ type WorkspaceImageReleaseActivationRequest struct {
 	Reason           string `json:"reason"`
 }
 
+type WorkspaceRuntimeImageReplacementPreview struct {
+	WorkspaceID        string `json:"workspaceId"`
+	WorkspaceStatus    string `json:"workspaceStatus"`
+	RuntimeID          string `json:"runtimeId"`
+	RuntimeStatus      string `json:"runtimeStatus"`
+	CurrentImageDigest string `json:"currentImageDigest"`
+	TargetImageDigest  string `json:"targetImageDigest"`
+	CanReplace         bool   `json:"canReplace"`
+}
+
 func ValidWorkspaceImageReference(value string) bool {
 	value = strings.TrimSpace(value)
 	repository, digest, ok := strings.Cut(value, "@")
