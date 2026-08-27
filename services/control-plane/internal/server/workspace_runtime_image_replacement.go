@@ -27,16 +27,6 @@ type workspaceRuntimeImageReplacementRequest struct {
 	Reason                 string `json:"reason"`
 }
 
-type workspaceRuntimeImageReplacementPreview struct {
-	WorkspaceID        string `json:"workspaceId"`
-	WorkspaceStatus    string `json:"workspaceStatus"`
-	RuntimeID          string `json:"runtimeId"`
-	RuntimeStatus      string `json:"runtimeStatus"`
-	CurrentImageDigest string `json:"currentImageDigest"`
-	TargetImageDigest  string `json:"targetImageDigest"`
-	CanReplace         bool   `json:"canReplace"`
-}
-
 type workspaceRuntimeImageReplacementOperation struct {
 	RequestHash string                                        `json:"requestHash"`
 	Reason      string                                        `json:"reason"`
@@ -96,10 +86,11 @@ func (app *controlPlaneServer) previewWorkspaceRuntimeImageReplacement(w http.Re
 		return
 	}
 	target := policy.ActiveImage
-	preview := workspaceRuntimeImageReplacementPreview{
+	replaceableRuntimeStatus := runtime.Status == "running" || runtime.Status == "unready"
+	preview := contracts.WorkspaceRuntimeImageReplacementPreview{
 		WorkspaceID: workspaceID, WorkspaceStatus: workspaceStatus, RuntimeID: runtime.ID,
 		RuntimeStatus: runtime.Status, CurrentImageDigest: runtime.ImageID, TargetImageDigest: target,
-		CanReplace: runtime.ID != "" && runtime.WorkspaceID == workspaceID && runtime.Status == "running" && runtime.Ready && runtime.ImageID != "" && runtime.ImageID != target,
+		CanReplace: runtime.ID != "" && runtime.WorkspaceID == workspaceID && replaceableRuntimeStatus && runtime.ImageID != "" && runtime.ImageID != target,
 	}
 	writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", preview)
 }

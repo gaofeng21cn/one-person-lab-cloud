@@ -502,7 +502,8 @@ an expected revision, idempotency key, reason, and audit identity. A new Launch
 copies the active image into its immutable launch descriptor; changing the
 policy does not rewrite existing Launches or Runtimes.
 
-For an already succeeded and running Workspace, Control Plane exposes a
+For an already succeeded and running Workspace whose Runtime still exists,
+including an unready Runtime that needs image recovery, Control Plane exposes a
 separate administrator-only Runtime image replacement operation:
 `POST /api/operator/workspaces/{workspaceId}/runtime-image-replacements` creates
 an asynchronous operation and the matching `GET` route returns its persisted
