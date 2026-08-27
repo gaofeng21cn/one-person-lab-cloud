@@ -23,3 +23,16 @@ test("OPL Cloud product image contains all three control-service binaries", asyn
     assert.ok(dockerignore.includes(ignored), `.dockerignore missing ${ignored}`);
   }
 });
+
+test("Fabric image build includes its local Go contract replacement before dependency download", async () => {
+  const dockerfile = await readFile("Dockerfile", "utf8");
+  const fabricStage = dockerfile.slice(0, dockerfile.indexOf(" AS control-plane-build"));
+  const contractsCopy = "COPY packages/contracts/go /src/packages/contracts/go";
+  const dependencyDownload = 'RUN GOPROXY="$GOPROXY" go mod download';
+
+  assert.ok(fabricStage.includes(contractsCopy), "fabric-build stage is missing shared Go contracts");
+  assert.ok(
+    fabricStage.indexOf(contractsCopy) < fabricStage.indexOf(dependencyDownload),
+    "fabric-build must copy local Go contracts before downloading modules"
+  );
+});
