@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"testing"
@@ -86,6 +87,71 @@ func TestMemoryWorkspaceRuntimeIdentityCandidatesSupportCanonicalLaunchGraph(t *
 	}}})
 	if err != nil || len(batch.Items) != 1 || !batch.Items[0].Available || batch.Items[0].Facts.ProviderID != status.ServiceName || batch.Items[0].Facts.Status != status.Status {
 		t.Fatalf("canonical runtime provider facts=%#v err=%v", batch, err)
+	}
+}
+
+func TestMemoryWorkspaceRuntimeIdentityCandidatesIgnoreImageReplacementMutationChild(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 27, 7, 0, 0, 0, time.UTC)
+	store := NewMemoryOperationStore()
+	parent, runtimeChild, expected := canonicalRuntimeOperationGraph(t, "workspace-alpha", "image-replacement", now)
+	input := WorkspaceRuntimeImageReplacementInput{
+		LaunchOperationID: "launch-image-replacement", AccountID: parent.AccountID, WorkspaceID: expected.WorkspaceID,
+		RuntimeID: expected.ID, RuntimeOperationID: expected.OperationID, RuntimeServiceName: expected.ServiceName,
+		PreviousImageDigest:    "local/one-person-lab-webui@sha256:" + strings.Repeat("a", 64),
+		ReplacementImageDigest: "local/one-person-lab-webui@sha256:" + strings.Repeat("b", 64),
+		IdempotencyKey:         "replace-runtime-image",
+	}
+
+	replacementParent := newOperation(workspaceRuntimeImageReplacementAction, "workspace_runtime", expected.WorkspaceID, parent.AccountID,
+		expected.WorkspaceID, input.IdempotencyKey, hashInput(input), now.Add(2*time.Second))
+	replacementParent.ID = "fop_runtime_image_replacement_claim_test"
+	replacementParent.OperationID = replacementParent.IdempotencyKey
+	replacementParent.Status = "started"
+	replacementParent.CreatedAt = now.Add(2 * time.Second)
+	replacementParent.RedactedProviderPayload = maps.Clone(runtimeChild.RedactedProviderPayload)
+	delete(replacementParent.RedactedProviderPayload, providerMutationBindingPayloadKey)
+	replacementParent.RedactedProviderPayload["replacement"] = input
+
+	persisted := runtimeChild.RedactedProviderPayload[providerMutationBindingPayloadKey].(persistedProviderMutationBinding)
+	persisted.Binding.Parent.LaunchOperationID = input.LaunchOperationID
+	persisted.Binding.Parent.FabricOperationID = replacementParent.OperationID
+	persisted.Binding.Parent.IdempotencyKey = replacementParent.IdempotencyKey
+	persisted.Binding.Parent.RequestHash = replacementParent.RequestHash
+	persisted.Binding.Parent.ExpectedResourceBinding = input.RuntimeServiceName
+	persisted.Binding.Action = "tencent_workspace_runtime_image_replace"
+	persisted.Binding.ResourceID = expected.ServiceName
+	persisted.Binding.ExpectedResourceBinding = expected.ServiceName
+	persisted.Binding.FabricOperationID = providerMutationOperationID(persisted.Binding.Parent, persisted.Binding.Action,
+		persisted.Binding.ResourceKind, persisted.Binding.ResourceID, persisted.Binding.ExpectedResourceBinding)
+	persisted.Digest = hashInput(persisted.Binding)
+	replacementChild := runtimeChild
+	replacementChild.ID = persisted.Binding.FabricOperationID
+	replacementChild.OperationID = persisted.Binding.FabricOperationID
+	replacementChild.Action = persisted.Binding.Action
+	replacementChild.ResourceID = persisted.Binding.ResourceID
+	replacementChild.IdempotencyKey = persisted.Binding.FabricOperationID
+	replacementChild.RequestHash = hashInput(persisted.Binding)
+	replacementChild.CreatedAt = now.Add(3 * time.Second)
+	replacementChild.FinishedAt = now.Add(3 * time.Second)
+	replacementChild.RedactedProviderPayload = maps.Clone(runtimeChild.RedactedProviderPayload)
+	replacementChild.RedactedProviderPayload[providerMutationBindingPayloadKey] = persisted
+	replaced := expected
+	replaced.ImageID = input.ReplacementImageDigest
+	fillOperationResource(&replacementChild, replaced)
+
+	for _, operation := range []FabricOperation{parent, runtimeChild, replacementParent, replacementChild} {
+		if err := store.Append(ctx, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	candidates, err := store.WorkspaceRuntimeIdentityCandidates(ctx, expected.WorkspaceID)
+	if err != nil || len(candidates) != 1 || candidates[0].ID != runtimeChild.ID {
+		t.Fatalf("post-replacement candidates=%#v err=%v", candidates, err)
+	}
+	status, err := runtimeTestService(liveRuntimeWithoutIDProvider{}, store).WorkspaceRuntimeStatus(ctx, expected.WorkspaceID)
+	if err != nil || status.ID != expected.ID || status.OperationID != expected.OperationID || !status.Ready {
+		t.Fatalf("post-replacement runtime status=%#v err=%v", status, err)
 	}
 }
 
