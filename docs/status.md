@@ -232,6 +232,19 @@ is selected and configured by the medopl instance, not by the portable product.
   response-loss key reuse across announcements, receipt/readback conflicts,
   route exit/re-entry, and Session reset with a stale completion. Control Plane
   remains the owner of published content and durable per-user read receipts.
+- Console Operator Resource Read now has one
+  `useOperatorResourceReadController` owner for the `/admin/resources` list,
+  Workspace detail, Runtime image policy, and replacement preview projections,
+  fixed 20-item pagination, selected Workspace identity, local route/Session/
+  request freshness, independent failure settlement, and reset. `AdminPages`
+  consumes the narrow typed capability; Runtime Image Replacement receives
+  only `refreshWorkspace` and `refreshPreview` ports. The broad root no longer
+  owns resource state, selection, page state, loaders, or resource generations.
+  Existing Control Plane/Fabric/Ledger/Sub2API DTOs and mutation polling and
+  readback remain unchanged. Focused model and browser tests cover late page
+  and Workspace responses, partial detail/preview failure, route/Session reset,
+  and selected-Workspace replacement refresh. PostgreSQL and Tencent TKE
+  validation are not required for this Console-only read lifecycle change.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET
