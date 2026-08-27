@@ -20,7 +20,6 @@ import {
   createOperatorResourceReadState,
   createOperatorResourcePolicyScope,
   invalidateOperatorResourceReadEpoch,
-  operatorResourceProjectionStatus,
   operatorResourceScopeIsCurrent,
   operatorResourceScopeKey,
   operatorResourceSourceMatchesScope,
@@ -115,6 +114,10 @@ function page(pageNumber: number, pageSize = OPERATOR_RESOURCE_PAGE_SIZE): Opera
   return { items: [detail], total: 1, page: pageNumber, pageSize };
 }
 
+function emptyPage(pageNumber: number): OperatorWorkspacePageDTO {
+  return { items: [], total: 0, page: pageNumber, pageSize: OPERATOR_RESOURCE_PAGE_SIZE };
+}
+
 function epoch(sessionGeneration = 4, routeGeneration = 9): OperatorResourceReadEpoch {
   return { sessionGeneration, routeGeneration };
 }
@@ -123,22 +126,22 @@ test("operator resource list scope fixes pageSize and accepts only matching page
   const scope = createOperatorResourceListScope({ ...epoch(), requestGeneration: 2, page: 3 });
 
   assert.equal(scope.pageSize, OPERATOR_RESOURCE_PAGE_SIZE);
-  assert.equal(operatorResourceSourceMatchesScope(scope, source(page(3))), true);
-  assert.equal(operatorResourceSourceMatchesScope(scope, source(page(2))), false);
-  assert.equal(operatorResourceSourceMatchesScope(scope, source(page(3, 10))), false);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "workspaces", scope, source: source(page(3)) }), true);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "workspaces", scope, source: source(page(2)) }), false);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "workspaces", scope, source: source(page(3, 10)) }), false);
 });
 
 test("detail and preview scopes reject a response for another Workspace", () => {
   const detailScope = createOperatorResourceDetailScope({ ...epoch(), requestGeneration: 3, workspaceId: workspace.id });
   const previewScope = createOperatorResourcePreviewScope({ ...epoch(), requestGeneration: 4, workspaceId: workspace.id });
 
-  assert.equal(operatorResourceSourceMatchesScope(detailScope, source(detail)), true);
-  assert.equal(operatorResourceSourceMatchesScope(detailScope, source({
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "detail", scope: detailScope, source: source(detail) }), true);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "detail", scope: detailScope, source: source({
     ...detail,
     workspace: source({ ...workspace, id: "workspace-beta" })
-  })), false);
-  assert.equal(operatorResourceSourceMatchesScope(previewScope, source(preview)), true);
-  assert.equal(operatorResourceSourceMatchesScope(previewScope, source({ ...preview, workspaceId: "workspace-beta" })), false);
+  }) }), false);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "imagePreview", scope: previewScope, source: source(preview) }), true);
+  assert.equal(operatorResourceSourceMatchesScope({ kind: "imagePreview", scope: previewScope, source: source({ ...preview, workspaceId: "workspace-beta" }) }), false);
 });
 
 test("each projection has an independent scope key", () => {
@@ -170,6 +173,39 @@ test("late completion is rejected after a Session or route generation changes", 
   })), false);
 });
 
+test("scope-source validation rejects wrong kinds without throwing", () => {
+  const detailScope = createOperatorResourceDetailScope({ ...epoch(), requestGeneration: 1, workspaceId: workspace.id });
+  const previewScope = createOperatorResourcePreviewScope({ ...epoch(), requestGeneration: 1, workspaceId: workspace.id });
+  const listScope = createOperatorResourceListScope({ ...epoch(), requestGeneration: 1, page: 1 });
+  const policyScope = createOperatorResourcePolicyScope({ ...epoch(), requestGeneration: 1 });
+
+  const wrongDetailSource = {
+    kind: "detail",
+    scope: detailScope,
+    source: source(preview)
+  } as unknown as Parameters<typeof operatorResourceSourceMatchesScope>[0];
+  const wrongPolicySource = {
+    kind: "imagePolicy",
+    scope: policyScope,
+    source: source(page(1))
+  } as unknown as Parameters<typeof operatorResourceSourceMatchesScope>[0];
+  const wrongPreviewScope = {
+    kind: "imagePreview",
+    scope: previewScope,
+    source: source(page(1))
+  } as unknown as Parameters<typeof operatorResourceSourceMatchesScope>[0];
+  const wrongListScope = {
+    kind: "workspaces",
+    scope: listScope,
+    source: source(policy)
+  } as unknown as Parameters<typeof operatorResourceSourceMatchesScope>[0];
+
+  for (const input of [wrongDetailSource, wrongPolicySource, wrongPreviewScope, wrongListScope]) {
+    assert.doesNotThrow(() => operatorResourceSourceMatchesScope(input));
+    assert.equal(operatorResourceSourceMatchesScope(input), false);
+  }
+});
+
 test("reset invalidates every old scope without changing the source contract", () => {
   const before = epoch(11, 17);
   const oldScope = createOperatorResourceListScope({ ...before, requestGeneration: 1, page: 1 });
@@ -182,13 +218,43 @@ test("reset invalidates every old scope without changing the source contract", (
 });
 
 test("empty is a successful empty source and remains distinct from unavailable", () => {
-  const empty = source(page(1, OPERATOR_RESOURCE_PAGE_SIZE), "empty");
+  const empty = source(emptyPage(1), "empty");
   const missing = unavailable<OperatorWorkspacePageDTO>();
 
-  assert.equal(operatorResourceProjectionStatus(empty), "empty");
-  assert.equal(operatorResourceProjectionStatus(missing), "unavailable");
+  assert.equal(empty.status, "empty");
+  assert.equal(missing.status, "unavailable");
   assert.equal(empty.available, true);
   assert.equal(missing.available, false);
+});
+
+test("successful list completion commits authoritative data and stops loading", () => {
+  const state = createOperatorResourceReadState();
+  const scope = createOperatorResourceListScope({ ...epoch(), requestGeneration: 1, page: 1 });
+  const result = applyOperatorResourceCompletion(state, {
+    kind: "workspaces",
+    activeScope: scope,
+    responseScope: scope,
+    source: source(emptyPage(1), "empty")
+  });
+
+  assert.ok(result);
+  assert.deepEqual(result.workspaces.value, source(emptyPage(1), "empty"));
+  assert.equal(result.workspaces.loading, false);
+});
+
+test("successful image policy completion commits policy and stops loading", () => {
+  const state = createOperatorResourceReadState();
+  const scope = createOperatorResourcePolicyScope({ ...epoch(), requestGeneration: 1 });
+  const result = applyOperatorResourceCompletion(state, {
+    kind: "imagePolicy",
+    activeScope: scope,
+    responseScope: scope,
+    source: source(policy)
+  });
+
+  assert.ok(result);
+  assert.deepEqual(result.imagePolicy.value, source(policy));
+  assert.equal(result.imagePolicy.loading, false);
 });
 
 test("partial failure settles one projection without clearing a successful sibling", () => {

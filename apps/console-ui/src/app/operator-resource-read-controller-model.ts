@@ -104,42 +104,71 @@ export function invalidateOperatorResourceReadEpoch(
   };
 }
 
-type OperatorResourceSource =
-  | SourceEnvelope<OperatorWorkspacePageDTO>
-  | SourceEnvelope<OperatorWorkspaceDTO>
-  | SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>
-  | SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>;
+export type OperatorResourceScopedSource =
+  | {
+    readonly kind: "workspaces";
+    readonly scope: OperatorResourceListScope;
+    readonly source: SourceEnvelope<OperatorWorkspacePageDTO>;
+  }
+  | {
+    readonly kind: "detail";
+    readonly scope: OperatorResourceDetailScope;
+    readonly source: SourceEnvelope<OperatorWorkspaceDTO>;
+  }
+  | {
+    readonly kind: "imagePolicy";
+    readonly scope: OperatorResourcePolicyScope;
+    readonly source: SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO>;
+  }
+  | {
+    readonly kind: "imagePreview";
+    readonly scope: OperatorResourcePreviewScope;
+    readonly source: SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>;
+  };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 /**
  * A transport-unavailable source is still the result of its current request;
  * identity checks apply to data-bearing responses only.
  */
-export function operatorResourceSourceMatchesScope(
-  scope: OperatorResourceScope,
-  source: OperatorResourceSource
-): boolean {
-  if (scope.kind === "workspaces") {
-    const page = source as SourceEnvelope<OperatorWorkspacePageDTO>;
-    return !page.available || (page.data.page === scope.page && page.data.pageSize === scope.pageSize);
+export function operatorResourceSourceMatchesScope(input: OperatorResourceScopedSource): boolean {
+  if (!isRecord(input.scope) || input.scope.kind !== input.kind || !isRecord(input.source)) return false;
+
+  switch (input.kind) {
+    case "workspaces": {
+      const { scope, source } = input;
+      if (source.available === false) return true;
+      if (source.available !== true || !isRecord(source.data)) return false;
+      return source.data.page === scope.page && source.data.pageSize === scope.pageSize;
+    }
+    case "detail": {
+      const { scope, source } = input;
+      if (source.available === false) return true;
+      if (source.available !== true || !isRecord(source.data) || !("workspace" in source.data)) return false;
+      const workspace = source.data.workspace;
+      if (!isRecord(workspace) || !("available" in workspace)) return false;
+      if (workspace.available === false) return true;
+      if (workspace.available !== true || !("data" in workspace) || !isRecord(workspace.data)) return false;
+      return workspace.data.id === scope.workspaceId;
+    }
+    case "imagePolicy": {
+      const { source } = input;
+      if (source.available === false) return true;
+      if (source.available !== true || !isRecord(source.data)) return false;
+      return source.data.source === "OPL_WORKSPACE_IMAGE"
+        && typeof source.data.image === "string"
+        && typeof source.data.digest === "string";
+    }
+    case "imagePreview": {
+      const { scope, source } = input;
+      if (source.available === false) return true;
+      if (source.available !== true || !isRecord(source.data)) return false;
+      return source.data.workspaceId === scope.workspaceId;
+    }
   }
-
-  if (scope.kind === "detail") {
-    const detail = source as SourceEnvelope<OperatorWorkspaceDTO>;
-    return !detail.available
-      || !detail.data.workspace.available
-      || detail.data.workspace.data.id === scope.workspaceId;
-  }
-
-  if (scope.kind === "imagePreview") {
-    const preview = source as SourceEnvelope<OperatorWorkspaceRuntimeImagePreviewDTO>;
-    return !preview.available || preview.data.workspaceId === scope.workspaceId;
-  }
-
-  return scope.kind === "imagePolicy";
-}
-
-export function operatorResourceProjectionStatus(source: OperatorResourceSource) {
-  return source.status;
 }
 
 export interface OperatorResourceReadState {
@@ -194,12 +223,41 @@ export type OperatorResourceCompletion =
     readonly error?: string;
   };
 
+function completionSourceMatchesScope(completion: OperatorResourceCompletion): boolean {
+  switch (completion.kind) {
+    case "workspaces":
+      return operatorResourceSourceMatchesScope({
+        kind: "workspaces",
+        scope: completion.activeScope,
+        source: completion.source
+      });
+    case "detail":
+      return operatorResourceSourceMatchesScope({
+        kind: "detail",
+        scope: completion.activeScope,
+        source: completion.source
+      });
+    case "imagePolicy":
+      return operatorResourceSourceMatchesScope({
+        kind: "imagePolicy",
+        scope: completion.activeScope,
+        source: completion.source
+      });
+    case "imagePreview":
+      return operatorResourceSourceMatchesScope({
+        kind: "imagePreview",
+        scope: completion.activeScope,
+        source: completion.source
+      });
+  }
+}
+
 export function applyOperatorResourceCompletion(
   state: OperatorResourceReadState,
   completion: OperatorResourceCompletion
 ): OperatorResourceReadState | null {
   if (!operatorResourceScopeIsCurrent(completion.activeScope, completion.responseScope)
-    || !operatorResourceSourceMatchesScope(completion.activeScope, completion.source)) return null;
+    || !completionSourceMatchesScope(completion)) return null;
 
   switch (completion.kind) {
     case "workspaces":
