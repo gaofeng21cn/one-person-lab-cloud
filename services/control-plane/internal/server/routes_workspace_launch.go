@@ -155,7 +155,12 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		}
 		quote = customerPricingPreviewDTO(quote)
 		quote = app.applyResourceBillingQuote(quote)
-		descriptor, err := newWorkspaceLaunchDescriptor(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key)
+		imagePolicy, _, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
+		if policyErr != nil {
+			writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
+			return
+		}
+		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, imagePolicy.ActiveImage)
 		if err != nil {
 			writeError(w, http.StatusConflict, "workspace_image_digest_invalid")
 			return

@@ -10,6 +10,7 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.127
 	golang.org/x/sys v0.45.0
 	k8s.io/apimachinery v0.31.4
+	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0
 )
 
@@ -22,6 +23,8 @@ require (
 )
 
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
+
+replace opl-cloud/packages/contracts/go => ../../packages/contracts/go
 
 require (
 	ariga.io/atlas v0.19.1-0.20240203083654-5948b60a8e43 // indirect

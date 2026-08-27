@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
+import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -652,13 +652,13 @@ function OperatorResourceMobileCard({ resource }: { resource: OperatorResourceDT
   );
 }
 
-function ResourceDetail({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+function ResourceDetail({ controller, release, replacement }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController }) {
   const selected = controller.selectedWorkspaceId;
   if (!selected) return <section className="panel" data-slide="A-RES-02"><div className="panel-title"><div><h2>资源详情</h2></div></div><div className="empty-panel">请选择 Workspace 查看资源详情。</div></section>;
   return (
     <section className="panel" data-slide="A-RES-02">
       <div className="panel-title"><div><h2>资源详情</h2></div><span>{selected}</span></div>
-      <WorkspaceRuntimeImageUpgrade controller={controller} replacement={replacement} />
+      <WorkspaceRuntimeImageRelease controller={controller} release={release} replacement={replacement} />
       <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
@@ -678,33 +678,41 @@ function ResourceDetail({ controller, replacement }: { controller: OperatorResou
   );
 }
 
-function WorkspaceRuntimeImageUpgrade({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+function WorkspaceRuntimeImageRelease({ controller, release, replacement }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController }) {
   const previewSource = controller.imagePreview.value;
   const policySource = controller.imagePolicy.value;
   const preview = sourceData(previewSource);
   const policy = sourceData(policySource);
   const operation = replacement.operation;
-  const canReplace = Boolean(preview?.canReplace && preview.targetImageDigest && preview.runtimeId);
+  const selected = policy?.releases.find((item) => item.version === release.selectedVersion) || null;
+  const selectedIsActive = Boolean(selected && selected.version === policy?.active.version);
+  const canActivate = Boolean(selected && policy && !selectedIsActive);
+  const canReplace = Boolean(selectedIsActive && preview?.canReplace && preview.targetImageDigest === selected?.image && preview.runtimeId);
   return (
-    <section className="operator-runtime-image-upgrade" aria-label="Workspace WebUI 镜像升级">
+    <section className="operator-runtime-image-upgrade" aria-label="Workspace WebUI 镜像版本">
       <header>
-        <div><h3>Workspace WebUI 镜像</h3><p>受保护发布物只能通过 Control Plane replacement operation 更新。</p></div>
-        <Button
-          busy={replacement.busy}
-          disabled={!canReplace}
-          onClick={() => void replacement.replaceWorkspaceRuntimeImage()}
-          size="sm"
-          variant="outline"
-        ><RefreshCw aria-hidden size={15} />升级到受保护版本</Button>
+        <div><h3>Workspace WebUI 镜像</h3><p>受保护版本</p></div>
+        <div className="operator-card-actions">
+          <Button busy={release.busy} disabled={!canActivate} onClick={() => void release.activateSelectedRelease()} size="sm" variant="outline"><ShieldCheck aria-hidden size={15} />设为新开通默认版本</Button>
+          <Button busy={replacement.busy} disabled={!canReplace} onClick={() => void replacement.replaceWorkspaceRuntimeImage()} size="sm" variant="outline"><RefreshCw aria-hidden size={15} />更新 / 回滚当前 Workspace</Button>
+        </div>
       </header>
+      <Select
+        block
+        label="目标版本"
+        onChange={release.selectVersion}
+        options={(policy?.releases || []).map((item) => ({ value: item.version, label: item.version }))}
+        value={release.selectedVersion}
+      />
       <dl className="operator-runtime-image-facts">
         <div><dt>当前运行镜像</dt><dd>{preview ? <code>{preview.currentImageDigest}</code> : "暂不可用"}</dd></div>
-        <div><dt>目标受保护镜像</dt><dd>{preview ? <code>{preview.targetImageDigest}</code> : policy ? <code>{policy.image}</code> : "暂不可用"}</dd></div>
+        <div><dt>新开通默认版本</dt><dd>{policy ? `${policy.active.version} · ${policy.active.digest}` : "暂不可用"}</dd></div>
+        <div><dt>目标受保护镜像</dt><dd>{selected ? <code>{selected.image}</code> : "暂不可用"}</dd></div>
         <div><dt>Runtime 状态</dt><dd>{preview ? `${statusLabel(preview.runtimeStatus)} · ${preview.runtimeId}` : "暂不可用"}</dd></div>
-        <div><dt>目标来源</dt><dd>{policy ? `${policy.source} · ${policy.digest}` : "暂不可用"}</dd></div>
+        <div><dt>安装默认版本</dt><dd>{policy ? policy.installedDefault.version : "暂不可用"}</dd></div>
       </dl>
       {operation ? <div className={`inline-notice ${operation.status === "failed" ? "inline-notice--danger" : ""}`}>
-        <span>升级 operation：{operation.operationId} · {statusLabel(operation.status)}{operation.errorCode ? ` · ${operation.errorCode}` : ""}</span>
+        <span>镜像切换 operation：{operation.operationId} · {statusLabel(operation.status)}{operation.errorCode ? ` · ${operation.errorCode}` : ""}</span>
         {operation.status !== "succeeded" && operation.status !== "failed" ? <Button busy={replacement.busy} onClick={() => void replacement.refreshWorkspaceRuntimeImageReplacement()} size="sm" variant="ghost"><RefreshCw aria-hidden size={14} />刷新状态</Button> : null}
       </div> : null}
       {replacement.issue === "timeout" ? <div className="inline-notice inline-notice--danger"><span>升级仍在处理中，尚未达到轮询确认期限。</span><Button onClick={() => void replacement.refreshWorkspaceRuntimeImageReplacement()} size="sm" variant="ghost">读取状态</Button></div> : null}
@@ -740,7 +748,7 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
   );
 }
 
-function ResourcesPage({ controller, replacement }: { controller: OperatorResourceReadController; replacement: WorkspaceRuntimeImageReplacementController }) {
+function ResourcesPage({ controller, release, replacement }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController }) {
   const workspaces = sourceData(controller.workspaces.value)?.items || [];
   return (
     <section className="admin-dashboard" data-slide="A-RES-01 A-RES-02">
@@ -758,7 +766,7 @@ function ResourcesPage({ controller, replacement }: { controller: OperatorResour
         </SourceState>
         <Pagination current={controller.page} label="Workspace 分页" onChange={(page) => void controller.changePage(page)} pages={controller.pages} />
       </section>
-      <ResourceDetail controller={controller} replacement={replacement} />
+      <ResourceDetail controller={controller} release={release} replacement={replacement} />
     </section>
   );
 }
@@ -823,7 +831,7 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
 export function AdminPages({ controller }: { controller: ConsoleController }) {
   if (controller.path === "/admin/accounts") return <AccountsPage controller={controller} />;
   if (controller.path === "/admin/billing") return <ReconciliationPage controller={controller} />;
-  if (controller.path === "/admin/resources") return <ResourcesPage controller={controller.operatorResourceRead} replacement={controller.workspaceRuntimeImageReplacement} />;
+  if (controller.path === "/admin/resources") return <ResourcesPage controller={controller.operatorResourceRead} release={controller.workspaceImageRelease} replacement={controller.workspaceRuntimeImageReplacement} />;
   if (controller.path === "/admin/system") return <SystemPage controller={controller} />;
   return <OverviewPage controller={controller} />;
 }

@@ -614,6 +614,10 @@ func TestTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T) {
 }
 
 func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, completedGenericReplay bool) {
+	installedImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
+	replacementImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("e", 64)
+	nextImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("2", 64)
+	setWorkspaceImageReleaseCatalogForTest(t, installedImage, installedImage, replacementImage, nextImage)
 	service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
 	now := time.Date(2026, 8, 24, 5, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
@@ -701,7 +705,6 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 		seedSucceededGenericProviderReplayEpoch(t, store, childID)
 	}
 
-	replacementImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("e", 64)
 	revisionInput := input
 	revisionInput.RuntimeImageRevision = &WorkspaceLaunchRuntimeImageRevision{
 		SchemaVersion: 1, LaunchOperationID: input.Binding.LaunchOperationID, WorkspaceID: input.Binding.WorkspaceID,
@@ -775,7 +778,6 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 			continued, err, child, childErr, epoch, fixture.applyCalls)
 	}
 
-	nextImage := "registry.example/opl/workspace@sha256:" + strings.Repeat("2", 64)
 	supersedingInput := input
 	supersedingInput.RuntimeImageRevision = &WorkspaceLaunchRuntimeImageRevision{
 		SchemaVersion: 1, LaunchOperationID: input.Binding.LaunchOperationID, WorkspaceID: input.Binding.WorkspaceID,

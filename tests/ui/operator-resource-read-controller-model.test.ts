@@ -108,9 +108,15 @@ const preview: OperatorWorkspaceRuntimeImagePreviewDTO = {
 };
 
 const policy: OperatorWorkspaceRuntimeImagePolicyDTO = {
-  image: "ghcr.io/opl/workspace:latest",
-  digest: "sha256:target",
-  source: "OPL_WORKSPACE_IMAGE"
+  schemaVersion: 1,
+  revision: 1,
+  active: { version: "26.8.26", image: "ghcr.io/opl/workspace@sha256:target", digest: "sha256:target" },
+  installedDefault: { version: "26.8.26", image: "ghcr.io/opl/workspace@sha256:target", digest: "sha256:target" },
+  releases: [
+    { version: "26.8.26", image: "ghcr.io/opl/workspace@sha256:target", digest: "sha256:target" },
+    { version: "26.8.4", image: "ghcr.io/opl/workspace@sha256:rollback", digest: "sha256:rollback" }
+  ],
+  source: "control-plane-workspace-image-release-policy"
 };
 
 function page(pageNumber: number, pageSize = OPERATOR_RESOURCE_PAGE_SIZE): OperatorWorkspacePageDTO {

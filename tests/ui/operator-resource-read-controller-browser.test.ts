@@ -22,6 +22,9 @@ import {
 const fetchedAt = "2026-08-27T00:00:00Z";
 const pageSize = 20;
 const targetDigest = `sha256:${"b".repeat(64)}`;
+const targetImage = `ghcr.io/gaofeng21cn/one-person-lab-webui@${targetDigest}`;
+const rollbackDigest = `sha256:${"a".repeat(64)}`;
+const rollbackImage = `ghcr.io/gaofeng21cn/one-person-lab-webui@${rollbackDigest}`;
 
 function deferred() {
   let resolve!: () => void;
@@ -145,12 +148,25 @@ function workspacePage(
   return source({ items, total, page, pageSize }, "control-plane+fabric+sub2api");
 }
 
-function policy(): SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO> {
-  return source({
-    image: "ghcr.io/opl/workspace:protected",
-    digest: targetDigest,
-    source: "OPL_WORKSPACE_IMAGE"
-  });
+function policyData(activeVersion = "26.8.26", revision = 1): OperatorWorkspaceRuntimeImagePolicyDTO {
+  const releases = [
+    { version: "26.8.26", image: targetImage, digest: targetDigest },
+    { version: "26.8.4", image: rollbackImage, digest: rollbackDigest }
+  ];
+  const active = releases.find((release) => release.version === activeVersion);
+  if (!active) throw new Error(`unknown fixture release: ${activeVersion}`);
+  return {
+    schemaVersion: 1,
+    revision,
+    active,
+    installedDefault: releases[0],
+    releases,
+    source: "control-plane-workspace-image-release-policy"
+  };
+}
+
+function policy(activeVersion = "26.8.26", revision = 1): SourceEnvelope<OperatorWorkspaceRuntimeImagePolicyDTO> {
+  return source(policyData(activeVersion, revision));
 }
 
 function imageDigest(workspaceId: string, version: string): string {
@@ -168,7 +184,7 @@ function preview(
     runtimeId: `runtime-${workspaceId}`,
     runtimeStatus: "ready",
     currentImageDigest: imageDigest(workspaceId, version),
-    targetImageDigest: targetDigest,
+    targetImageDigest: targetImage,
     canReplace: true,
     ...overrides
   };
@@ -521,7 +537,7 @@ test("Runtime Image Replacement refreshes only the selected Workspace detail and
     workspaceId: "workspace-beta",
     runtimeId: "runtime-workspace-beta",
     previousImageDigest: imageDigest("workspace-beta", "before"),
-    replacementImageDigest: targetDigest,
+    replacementImageDigest: targetImage,
     reason: "promote the protected Workspace image release",
     createdAt: fetchedAt,
     updatedAt: fetchedAt
@@ -567,7 +583,7 @@ test("Runtime Image Replacement refreshes only the selected Workspace detail and
         const readback = betaPreviewReads === 1
           ? preview(workspaceId, "before")
           : preview(workspaceId, "after", {
-            currentImageDigest: targetDigest,
+            currentImageDigest: targetImage,
             canReplace: false
           });
         await fulfill(route, source(readback, "control-plane+fabric"));
@@ -584,10 +600,10 @@ test("Runtime Image Replacement refreshes only the selected Workspace detail and
     await page.getByText("receipt-workspace-beta-before", { exact: true }).first().waitFor({ state: "visible" });
     await page.getByText(imageDigest("workspace-beta", "before"), { exact: true }).waitFor({ state: "visible" });
 
-    await page.getByRole("button", { name: "升级到受保护版本", exact: true }).click();
-    await page.getByText("Workspace WebUI 镜像已升级", { exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "更新 / 回滚当前 Workspace", exact: true }).click();
+    await page.getByText("Workspace WebUI 镜像已更新 / 回滚", { exact: true }).waitFor({ state: "visible" });
     await page.getByText("receipt-workspace-beta-after", { exact: true }).first().waitFor({ state: "visible" });
-    await page.getByText(targetDigest, { exact: true }).first().waitFor({ state: "visible" });
+    await page.getByText(targetImage, { exact: true }).first().waitFor({ state: "visible" });
 
     assert.deepEqual({
       listReads,
@@ -606,6 +622,97 @@ test("Runtime Image Replacement refreshes only the selected Workspace detail and
       betaPreviewReads: 3,
       replacementWrites: 1
     });
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Admin activates an approved rollback for new launches and applies it to an existing Workspace", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const value = operatorWorkspace("workspace-rollback", "Rollback", "before");
+  let activeVersion = "26.8.26";
+  let policyRevision = 1;
+  let currentImage = imageDigest("workspace-rollback", "before");
+  let activationRequest: Record<string, unknown> | null = null;
+  let replacementRequest: Record<string, unknown> | null = null;
+  let activationWrites = 0;
+  let replacementWrites = 0;
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on("dialog", (dialog) => void dialog.accept());
+    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([value], 1)));
+    await page.route("**/api/operator/workspace-image-release-activations", async (route) => {
+      activationWrites += 1;
+      activationRequest = route.request().postDataJSON() as Record<string, unknown>;
+      assert.match(route.request().headers()["idempotency-key"] || "", /^wira-/);
+      activeVersion = String(activationRequest.releaseVersion || "");
+      policyRevision += 1;
+      await fulfill(route, policyData(activeVersion, policyRevision));
+    });
+    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy(activeVersion, policyRevision)));
+    await page.route("**/api/operator/workspaces/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      const isPreview = pathname.endsWith("/runtime-image-replacements/preview");
+      const isReplacement = pathname.endsWith("/runtime-image-replacements") && route.request().method() === "POST";
+      if (isReplacement) {
+        replacementWrites += 1;
+        replacementRequest = route.request().postDataJSON() as Record<string, unknown>;
+        assert.match(route.request().headers()["idempotency-key"] || "", /^wri-/);
+        const previousImage = currentImage;
+        currentImage = String(replacementRequest.replacementImageDigest || "");
+        await fulfill(route, {
+          operationId: "replace-workspace-rollback",
+          status: "succeeded",
+          phase: "completed",
+          workspaceId: "workspace-rollback",
+          runtimeId: "runtime-workspace-rollback",
+          previousImageDigest: previousImage,
+          replacementImageDigest: currentImage,
+          reason: String(replacementRequest.reason || ""),
+          createdAt: fetchedAt,
+          updatedAt: fetchedAt
+        } satisfies WorkspaceRuntimeImageReplacementDTO);
+        return;
+      }
+      if (isPreview) {
+        const activeImage = policyData(activeVersion, policyRevision).active.image;
+        await fulfill(route, source(preview("workspace-rollback", "before", {
+          currentImageDigest: currentImage,
+          targetImageDigest: activeImage,
+          canReplace: currentImage !== activeImage
+        }), "control-plane+fabric"));
+        return;
+      }
+      await fulfill(route, source(value, "control-plane+fabric+ledger"));
+    });
+
+    await login(page, demo.origin);
+    await openResources(page, demo.origin);
+    await workspaceRow(page, "workspace-rollback").waitFor({ state: "visible" });
+    await selectWorkspace(page, "workspace-rollback");
+    await page.locator(".operator-runtime-image-upgrade .console-select").getByRole("button").click();
+    await page.getByRole("option", { name: "26.8.4", exact: true }).click();
+    await page.getByRole("button", { name: "设为新开通默认版本", exact: true }).click();
+    await page.getByText("新开通 Workspace 默认版本已切换为 26.8.4", { exact: true }).waitFor({ state: "visible" });
+
+    assert.deepEqual(activationRequest, {
+      releaseVersion: "26.8.4",
+      expectedRevision: 1,
+      reason: "activate approved Workspace image release for new launches"
+    });
+    await page.getByRole("button", { name: "更新 / 回滚当前 Workspace", exact: true }).click();
+    await page.getByText("Workspace WebUI 镜像已更新 / 回滚", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText(rollbackImage, { exact: true }).first().waitFor({ state: "visible" });
+
+    assert.deepEqual(replacementRequest, {
+      replacementImageDigest: rollbackImage,
+      reason: "apply the active protected Workspace image release"
+    });
+    assert.equal(activationWrites, 1);
+    assert.equal(replacementWrites, 1);
+    assert.equal(currentImage, rollbackImage);
   } finally {
     await browser.close();
     await demo.close();

@@ -1,3 +1,5 @@
+import { decodeWorkspaceImageReleaseCatalog } from "../../../packages/contracts/workspace-image-release.ts";
+
 const PROVIDERS = {
   TENCENT_TKE: "tencent-tke"
 };
@@ -6,7 +8,8 @@ const REQUIRED_COMMON_ENV = [
   "DATABASE_URL",
   "OPL_INTERNAL_SERVICE_TOKEN",
   "OPL_WORKSPACE_DOMAIN",
-  "OPL_WORKSPACE_IMAGE"
+  "OPL_WORKSPACE_IMAGE",
+  "OPL_WORKSPACE_IMAGE_RELEASES_JSON"
 ];
 
 const REQUIRED_TKE_ENV = [
@@ -87,6 +90,14 @@ function looksLikeRegistryImage({ image, registry }) {
 
 function looksLikeProductionDomain(domain) {
   return Boolean(domain && domain.includes(".") && !domain.includes("localhost") && !domain.startsWith("127."));
+}
+
+function hasValidWorkspaceImageReleases(values) {
+  const catalog = decodeWorkspaceImageReleaseCatalog(
+    String(values.OPL_WORKSPACE_IMAGE_RELEASES_JSON || ""),
+    String(values.OPL_WORKSPACE_IMAGE || "")
+  );
+  return Boolean(catalog && catalog.releases.every((release) => looksLikeRegistryImage({ image: release.image, registry: values.TENCENT_TCR_REGISTRY })));
 }
 
 function hasDedicatedNodePoolIdentity(values) {
@@ -176,6 +187,7 @@ export function validateProductionManifest({ env = {} } = {}) {
         looksLikeRegistryImage({ image: values.OPL_WORKSPACE_IMAGE, registry: values.TENCENT_TCR_REGISTRY }),
       "OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE must use TCR repository@sha256 references"
     ),
+    check("workspace_image_releases", hasValidWorkspaceImageReleases(values), "Workspace image releases must be unique immutable TCR references and include OPL_WORKSPACE_IMAGE"),
     check("workspace_domain", looksLikeProductionDomain(values.OPL_WORKSPACE_DOMAIN), "OPL_WORKSPACE_DOMAIN must be a production wildcard domain")
   ];
   const failedChecks = checks.filter((item) => !item.ok).map((item) => item.id);

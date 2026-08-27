@@ -90,16 +90,6 @@ func (s *Service) ReplaceWorkspaceRuntimeImage(ctx context.Context, input Worksp
 			}
 			return ErrRuntimeOperationFailed
 		}
-		imageReader, imageReaderOK := s.providerDescriptor.(workspaceImageReferenceReader)
-		protectedImage := ""
-		if imageReaderOK {
-			protectedImage = strings.TrimSpace(imageReader.WorkspaceImageReference())
-		}
-		if protectedImage == "" || input.ReplacementImageDigest != protectedImage {
-			_ = s.saveWorkspaceRuntimeImageReplacementOperation(lockCtx, stored, input, WorkspaceRuntime{WorkspaceID: input.WorkspaceID}, "failed", ErrWorkspaceRuntimeImageReplacementConflict)
-			return ErrWorkspaceRuntimeImageReplacementConflict
-		}
-
 		current, err := s.runtimeRead.providerStatus(lockCtx, input.WorkspaceID)
 		current.Access.Password = ""
 		if err != nil {

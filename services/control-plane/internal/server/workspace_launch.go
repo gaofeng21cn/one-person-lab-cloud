@@ -38,9 +38,12 @@ type workspaceLaunchDescriptor struct {
 }
 
 func newWorkspaceLaunchDescriptor(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key string) (workspaceLaunchDescriptor, error) {
+	return newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, key, currentWorkspaceImageDigest())
+}
+
+func newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key, imageDigest string) (workspaceLaunchDescriptor, error) {
 	operationID := workspaceLaunchOperationID(accountID, key)
 	workspaceID := "ws-" + stableID("workspace-launch-v2", accountID, operationID)[:18]
-	imageDigest := currentWorkspaceImageDigest()
 	if operationID == "" || imageDigest == "" {
 		return workspaceLaunchDescriptor{}, errInvalidWorkspaceLaunchOperation
 	}
