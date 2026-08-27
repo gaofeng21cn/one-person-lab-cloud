@@ -168,23 +168,25 @@ is selected and configured by the medopl instance, not by the portable product.
 - Console Workspace Launch now has one `useWorkspaceLaunchController` owner for
   browser form and confirmation state, pricing catalog and previews,
   idempotency intent, interrupted-operation recovery, bounded polling,
-  authoritative Workspace readback, and Launch-specific busy state. The broad
-  Console controller retains Session, Router, toast, wallet/Workspace reads,
-  and route orchestration, and composes the Launch owner through narrow request
-  guards. Launch views consume `WorkspaceLaunchController` instead of the broad
-  controller; existing Control Plane APIs and DTOs, `30 x 10s` polling,
-  customer-visible behavior, navigation, and request order are unchanged.
+  authoritative Workspace readback, and Launch-specific busy state. Gateway
+  Account Read supplies the Wallet projection, while the broad Console
+  controller retains Session, Router, toast, and cross-owner route
+  orchestration. Launch views consume `WorkspaceLaunchController` instead of
+  the broad controller; existing Control Plane APIs and DTOs, `30 x 10s`
+  polling, customer-visible behavior, navigation, and request order are
+  unchanged.
 - Console Workspace access Secrets now have one
   `useWorkspaceSecretController` owner for the mutually exclusive Runtime
   credential and Workspace Gateway Key projections, the `60,000ms` timer,
   request invalidation, independent busy facts, and Runtime rotation intent.
-  Session, Router, Workspace sources, authoritative detail refresh, and toast
-  remain in the root and enter through narrow dependencies; the access view
-  consumes `WorkspaceSecretController`. Route, Session, Workspace, logout,
-  reset, and unmount changes invalidate pending completions and clear the
-  projection and busy state. Mismatched credential/Key identities fail closed,
-  while valid API payloads, request order, Secret lifetime, copy behavior, and
-  customer-visible text remain unchanged.
+  Session, Router, toast, and cross-owner access refresh orchestration remain
+  in the root and enter through narrow dependencies. Customer Workspace Read
+  owns authoritative detail refresh, Fabric Runtime Read owns Runtime status,
+  and the access view consumes `WorkspaceSecretController`. Route, Session,
+  Workspace, logout, reset, and unmount changes invalidate pending completions
+  and clear the projection and busy state. Mismatched credential/Key identities
+  fail closed, while valid API payloads, request order, Secret lifetime, copy
+  behavior, and customer-visible text remain unchanged.
 - Console operator Wallet Adjustment now has one
   `useWalletAdjustmentController` owner for the durable adjustment operation,
   response-loss idempotency intent, manual-review recovery, operation readback,
@@ -245,6 +247,36 @@ is selected and configured by the medopl instance, not by the portable product.
   and Workspace responses, partial detail/preview failure, route/Session reset,
   and selected-Workspace replacement refresh. PostgreSQL and Tencent TKE
   validation are not required for this Console-only read lifecycle change.
+- Console Gateway Account Read now has one
+  `useGatewayAccountReadController` owner for the Sub2API Wallet, account Usage,
+  fixed 20-item Balance History, and endpoint projections. Its exact route
+  plans, per-projection request generations, Session/route freshness,
+  independent settlement, pagination, and reset prevent one projection or a
+  late response from overwriting another. Overview, Workspace Launch, API
+  overview, and `KeysPanel` consume the typed capability; Gateway Usage remains
+  an independent controller, and the Usage route no longer requests endpoint
+  data. `KeysPanel` no longer owns a duplicate endpoint request or state.
+- Console Customer Workspace Read now has one
+  `useCustomerWorkspaceReadController` owner for the Control Plane Workspace
+  list/detail projections, committed page, active Workspace identity,
+  Session/route/request freshness, and the typed detail projection lease used
+  by Renewal. Overview reads one item, list and terms routes read 10 items, and
+  detail routes validate the requested Workspace identity. Customer pages,
+  Renewal, Secret access, Delete, and Workspace Budget coordination consume
+  narrow projections or ports instead of root-owned Workspace state.
+- Console Fabric Runtime Read now has one `useFabricRuntimeReadController`
+  owner for the non-secret Fabric Runtime projection on an active Workspace
+  detail route. It validates the Fabric source and Workspace identity and owns
+  Session/route/request invalidation, independent failure settlement, refresh,
+  and reset. Runtime starts concurrently with Workspace detail and neither
+  projection blocks or invalidates the other; Secret rotation still asks root
+  composition to refresh detail, Runtime, and Budget through their existing
+  owners. Twenty-two focused model and 14 browser tests cover the three new
+  boundaries, including late same-route and cross-route responses, Session
+  replacement, pagination, Renewal ordering, independent detail/Runtime
+  failure, Secret rotation's detail/Runtime/Budget refresh, and the real page
+  consumers. PostgreSQL, Tencent TKE, and an Instance receipt are not required
+  for this Console-only behavior-preserving refactor.
 - Console Support Mapping now has one `useSupportController` owner for ticket
   loading/error state, mapping intent and idempotency, busy state, local stale
   response invalidation, typed POST identity validation, and authoritative GET
