@@ -23,6 +23,9 @@ import {
   operatorResourceScopeIsCurrent,
   operatorResourceScopeKey,
   operatorResourceSourceMatchesScope,
+  isValidOperatorResourcePage,
+  settleOperatorResourcePage,
+  type OperatorResourcePageProjection,
   type OperatorResourceReadEpoch,
   type OperatorResourceScope
 } from "../../apps/console-ui/src/app/operator-resource-read-controller-model.ts";
@@ -296,4 +299,24 @@ test("stale completion cannot mutate any projection", () => {
   });
 
   assert.equal(result, null);
+});
+
+test("failed page read keeps public page and refresh request on the last committed page", () => {
+  const projection: OperatorResourcePageProjection = { page: 2, requestPage: 2 };
+  const failed = settleOperatorResourcePage(projection, 3, unavailable<OperatorWorkspacePageDTO>());
+
+  assert.deepEqual(failed, { page: 2, requestPage: 2 });
+  assert.deepEqual(
+    settleOperatorResourcePage(failed, failed.requestPage, source(page(failed.requestPage))),
+    { page: 2, requestPage: 2 }
+  );
+});
+
+test("operator resource page navigation accepts only positive integers", () => {
+  assert.equal(isValidOperatorResourcePage(1), true);
+  assert.equal(isValidOperatorResourcePage(2.5), false);
+  assert.equal(isValidOperatorResourcePage(Number.NaN), false);
+  assert.equal(isValidOperatorResourcePage(Number.POSITIVE_INFINITY), false);
+  assert.equal(isValidOperatorResourcePage(0), false);
+  assert.equal(isValidOperatorResourcePage(-1), false);
 });

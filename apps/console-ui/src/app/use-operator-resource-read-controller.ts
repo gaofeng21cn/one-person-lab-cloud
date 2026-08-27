@@ -22,9 +22,11 @@ import {
   createOperatorResourcePolicyScope,
   createOperatorResourcePreviewScope,
   createOperatorResourceReadState,
+  isValidOperatorResourcePage,
   operatorResourceScopeIsCurrent,
   operatorResourceSourceMatchesScope,
   OPERATOR_RESOURCE_PAGE_SIZE,
+  settleOperatorResourcePage,
   type OperatorResourceCompletion,
   type OperatorResourceDetailScope,
   type OperatorResourceListScope,
@@ -128,6 +130,7 @@ export function useOperatorResourceReadController({
 
   const activeRef = useRef(active);
   const pageRef = useRef(1);
+  const listRequestedPageRef = useRef(1);
   const selectedWorkspaceIdRef = useRef("");
   const sessionIdentityRef = useRef("");
   const sessionGeneration = useRef(0);
@@ -145,6 +148,7 @@ export function useOperatorResourceReadController({
 
   const clearProjection = useCallback(() => {
     pageRef.current = 1;
+    listRequestedPageRef.current = 1;
     selectedWorkspaceIdRef.current = "";
     setPage(1);
     setSelectedWorkspaceId("");
@@ -194,7 +198,7 @@ export function useOperatorResourceReadController({
         policy: policyGeneration.current,
         preview: previewGeneration.current
       },
-      pageRef.current,
+      listRequestedPageRef.current,
       selectedWorkspaceIdRef.current
     );
     return current !== null && operatorResourceScopeIsCurrent(scope, current);
@@ -322,6 +326,10 @@ export function useOperatorResourceReadController({
   }, [beginProjection, commitProjection, currentSession, friendlyError, requestOwnsScope, sourceMatchesScope, unavailableSource]);
 
   const loadList = useCallback(async (requestedPage: number) => {
+    if (!isValidOperatorResourcePage(requestedPage)) return;
+    const session = currentSession();
+    if (!session || !activeRef.current) return;
+    listRequestedPageRef.current = requestedPage;
     const scope = createOperatorResourceListScope({
       ...currentEpoch(),
       requestGeneration: ++listGeneration.current,
@@ -333,11 +341,18 @@ export function useOperatorResourceReadController({
       () => getOperatorWorkspaces(requestedPage, OPERATOR_RESOURCE_PAGE_SIZE),
       "control-plane+fabric+sub2api"
     );
-    if (result?.available) {
-      pageRef.current = result.data.page;
-      setPage(result.data.page);
+    if (!requestOwnsScope(scope, session.user.id, session.csrfToken)) return;
+    const next = settleOperatorResourcePage(
+      { page: pageRef.current, requestPage: listRequestedPageRef.current },
+      requestedPage,
+      result || unavailableSource<OperatorWorkspacePageDTO>("control-plane+fabric+sub2api")
+    );
+    listRequestedPageRef.current = next.requestPage;
+    if (next.page !== pageRef.current) {
+      pageRef.current = next.page;
+      setPage(next.page);
     }
-  }, [currentEpoch, settle]);
+  }, [currentEpoch, currentSession, requestOwnsScope, settle, unavailableSource]);
 
   const loadPolicy = useCallback(async () => {
     const scope = createOperatorResourcePolicyScope({
@@ -394,9 +409,8 @@ export function useOperatorResourceReadController({
 
   const changePage = useCallback(async (nextPage: number) => {
     const session = currentSession();
-    if (!session || !activeRef.current || nextPage < 1) return;
+    if (!session || !activeRef.current || !isValidOperatorResourcePage(nextPage)) return;
     syncSessionBoundary(session);
-    pageRef.current = nextPage;
     await loadList(nextPage);
   }, [currentSession, loadList, syncSessionBoundary]);
 
