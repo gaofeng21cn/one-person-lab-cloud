@@ -470,6 +470,17 @@ If an exhausted Runtime read budget was owned by a failed fresh typed-pending
 continuation, the READY transition also marks that continuation consumed so its
 persisted state remains coherent.
 
+The Workspace Launch worker also presents `manual_review` rows to a distinct
+Reconciler auto-recovery entry point. That entry point is limited to
+`providerProfileRef=tencent-tke`, Runtime, the original unknown `Max=1`
+attempt, no active Resume authorization, no Runtime repair, and no active fresh
+continuation. It performs one fresh Fabric read on each worker pass. Exact
+`ready` facts generate a deterministic `control-plane-system` `0/0/3`
+authorization and atomically confirm Runtime on the original Launch CAS;
+concurrent CAS losers accept only the readback of the already-confirmed Runtime.
+Every non-ready state is read-only and leaves the row unchanged. This path does
+not inherit operator replay or image-revision authority.
+
 For the Tencent/TKE adapter, the same operator Resume request may also carry a
 replacement Workspace image digest when the exact original Runtime exists and
 its only drift is the old admitted image. Control Plane accepts the field only
