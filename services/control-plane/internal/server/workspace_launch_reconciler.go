@@ -26,6 +26,8 @@ const workspaceLaunchFreshContinuationAdditionalReadBudget = 2
 const workspaceLaunchFreshContinuationReadClaimLease = 30 * time.Second
 const workspaceLaunchComputePendingWindow = 10 * time.Minute
 const workspaceLaunchComputeFreshContinuationAdditionalReadBudget = int(workspaceLaunchComputePendingWindow / defaultWorkspaceLaunchInterval)
+const workspaceLaunchAutomaticRuntimeReadyAuthorizedBy = "control-plane-system"
+const workspaceLaunchAutomaticRuntimeReadyReason = "system confirmed the authoritative ready runtime readback on the original launch"
 
 const (
 	workspaceLaunchStageAbsent                      = contracts.StageStateAbsent
@@ -1147,6 +1149,86 @@ func workspaceLaunchStageIdempotencyKey(operation workspaceLaunchReconcileOperat
 		return operation.ID + ":purchase-receipt"
 	}
 	return operation.ID + ":" + string(operation.Stage) + ":attempt:" + strconv.Itoa(attempt)
+}
+
+func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context, operationID string) (workspaceLaunchReconcileOperation, error) {
+	if r == nil || r.store == nil || r.adapter == nil {
+		return workspaceLaunchReconcileOperation{}, errors.New("WorkspaceLaunchReconciler dependencies are required")
+	}
+	row, found, err := r.store.GetRuntimeOperation(ctx, operationID)
+	if err != nil {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+	if !found {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchCASConflict
+	}
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+	authorization, attempt, eligible := workspaceLaunchAutomaticRuntimeReadyAuthorization(operation, r.clockNow())
+	if !eligible {
+		return operation, nil
+	}
+
+	observation, readErr := r.readStage(ctx, operation)
+	if readErr != nil {
+		return operation, readErr
+	}
+	if observation.State != workspaceLaunchStageReady {
+		return operation, nil
+	}
+	recovered, err := r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
+	if err == nil {
+		slog.InfoContext(ctx, "workspace launch automatic recovery",
+			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), "system_ready_recovery", false, "success", string(observation.State), "none", "none", 0)...)
+		return recovered, nil
+	}
+	if !errors.Is(err, errWorkspaceLaunchCASConflict) {
+		return workspaceLaunchReconcileOperation{}, err
+	}
+
+	latestRow, latestFound, latestErr := r.store.GetRuntimeOperation(ctx, operationID)
+	if latestErr != nil {
+		return workspaceLaunchReconcileOperation{}, latestErr
+	}
+	if !latestFound {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchCASConflict
+	}
+	latest, decodeErr := decodeWorkspaceLaunchReconcileOperation(latestRow)
+	if decodeErr != nil {
+		return workspaceLaunchReconcileOperation{}, decodeErr
+	}
+	latestAttempt, attemptFound := latest.Attempts[contracts.StageRuntime]
+	if attemptFound && latestAttempt.Confirmed == 1 && latestAttempt.Unknown == 0 && latestAttempt.Status == "confirmed" &&
+		(latest.Stage != contracts.StageRuntime || latest.Status == contracts.StatusSucceeded) {
+		return latest, nil
+	}
+	return workspaceLaunchReconcileOperation{}, err
+}
+
+func workspaceLaunchAutomaticRuntimeReadyAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool) {
+	attempt, found := operation.Attempts[contracts.StageRuntime]
+	if !found || operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "tencent-tke" ||
+		operation.RuntimeRepair != nil || operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
+	}
+	if continuation, exists := operation.FreshContinuationAuthorizations[contracts.StageRuntime]; exists && continuation.Status != "failed" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
+	}
+	seed := strings.Join([]string{
+		"workspace-launch-runtime-ready-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
+		operation.stringFact("workspaceId"), strconv.Itoa(operation.Version), string(operation.Stage), attempt.IdempotencyKey,
+	}, "\x00")
+	digest := sha256.Sum256([]byte(seed))
+	authorization := workspaceLaunchResumeAuthorization{
+		AuthorizationID: fmt.Sprintf("system-runtime-ready-v1-%x", digest[:12]), LaunchVersion: operation.Version,
+		AuthorizedStage: operation.Stage, AuthorizedBy: workspaceLaunchAutomaticRuntimeReadyAuthorizedBy,
+		AuthorizedAt: now.UTC().Format(time.RFC3339), Reason: workspaceLaunchAutomaticRuntimeReadyReason,
+		MutationBudget: 0, IdempotentReplayBudget: 0, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+	}
+	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) &&
+		workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization)
 }
 
 func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID string, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {

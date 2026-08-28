@@ -399,6 +399,17 @@ zero-mutation, one-replay authorization advances only after authoritative
 `pending`, `unknown`, read failure, identity drift, or any ineligible attempt
 leaves the operation unchanged in `manual_review`.
 
+The Control Plane worker may issue that zero-mutation, zero-replay Runtime
+authorization without an operator only for a Tencent/TKE Launch whose exact
+original attempt is `unknown/manual_review`, has no active Resume or Runtime
+repair authorization, and returns a fresh identity-valid `ready` readback.
+The deterministic single-use authorization is persisted as
+`authorizedBy=control-plane-system` in the same original Launch CAS that
+advances the cursor. `pending`, `absent`, `unknown`, read failure, invalid facts,
+another provider, or any authorization conflict remains unchanged; this system
+path cannot replay Fabric, revise an image, debit, purchase, or create another
+Launch.
+
 For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
 only by its immutable old Workspace image continues through that same Resume
 route and Reconciler. The administrator supplies the replacement digest, while

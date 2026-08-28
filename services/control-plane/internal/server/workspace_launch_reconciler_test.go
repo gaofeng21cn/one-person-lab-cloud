@@ -688,6 +688,21 @@ func workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t *testing.T) m
 	return row
 }
 
+func workspaceLaunchAutomaticRuntimeReadyOperation(t *testing.T) workspaceLaunchReconcileOperation {
+	t.Helper()
+	row := workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := json.Marshal("tencent-tke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.raw["providerProfileRef"] = provider
+	return operation
+}
+
 func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		t.Run(string(stage)+"/absent replays one logical claim", func(t *testing.T) {
@@ -737,6 +752,135 @@ func TestWorkspaceLaunchUnknownRuntimeRecoveryConvergesReadyReadOnly(t *testing.
 	replayed, err := reconciler.Resume(context.Background(), got.ID, authorization)
 	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
 		t.Fatalf("consumed Runtime recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v", workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryConvergesRuntimeReadyReadOnly(t *testing.T) {
+	operation := workspaceLaunchAutomaticRuntimeReadyOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(contracts.StageRuntime): true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 28, 8, 0, 0, 0, time.UTC) }
+
+	got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	authorization := got.ResumeAuthorization
+	fresh := got.FreshContinuationAuthorizations[contracts.StageRuntime]
+	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageActivation ||
+		got.Version != operation.Version+1 || got.Attempts[contracts.StageRuntime].Confirmed != 1 ||
+		got.Attempts[contracts.StageRuntime].Unknown != 0 || got.Attempts[contracts.StageRuntime].Status != "confirmed" ||
+		authorization == nil || !strings.HasPrefix(authorization.AuthorizationID, "system-runtime-ready-v1-") ||
+		authorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || authorization.Reason != workspaceLaunchAutomaticRuntimeReadyReason ||
+		authorization.MutationBudget != 0 || authorization.IdempotentReplayBudget != 0 || authorization.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
+		got.ResumeAuthorizationConsumedAt == "" || fresh.Status != "consumed" || adapter.reads != 1 || adapter.mutations != 0 {
+		t.Fatalf("automatic Runtime-ready recovery escaped the original read-only operation: operation=%s authorization=%#v fresh=%#v reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), authorization, fresh, adapter.reads, adapter.mutations, err)
+	}
+
+	readsBefore, persistedBefore := adapter.reads, stringValue(store.row["result"])
+	replayed, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("automatic Runtime-ready recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryCASAllowsOneReadyTransition(t *testing.T) {
+	operation := workspaceLaunchAutomaticRuntimeReadyOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	barrier := make(chan struct{})
+	adapter := &workspaceLaunchUnitAdapter{
+		readyStages: map[string]bool{string(contracts.StageRuntime): true},
+		barrier:     barrier,
+	}
+	now := time.Date(2026, 8, 28, 8, 30, 0, 0, time.UTC)
+	type result struct {
+		operation workspaceLaunchReconcileOperation
+		err       error
+	}
+	results := make(chan result, 2)
+	for range 2 {
+		go func() {
+			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+			reconciler.now = func() time.Time { return now }
+			got, recoveryErr := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+			results <- result{operation: got, err: recoveryErr}
+		}()
+	}
+	first, second := <-results, <-results
+	for index, outcome := range []result{first, second} {
+		if outcome.err != nil || outcome.operation.Status != contracts.StatusPending || outcome.operation.Stage != contracts.StageActivation ||
+			outcome.operation.Version != operation.Version+1 || outcome.operation.Attempts[contracts.StageRuntime].Confirmed != 1 {
+			t.Fatalf("concurrent recovery %d did not read the CAS winner: operation=%s err=%v", index, workspaceLaunchReconcileResultSummary(outcome.operation), outcome.err)
+		}
+	}
+	if adapter.reads != 2 || adapter.mutations != 0 {
+		t.Fatalf("concurrent recovery crossed the read-only boundary: reads=%d mutations=%d", adapter.reads, adapter.mutations)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || got.Version != operation.Version+1 || got.ResumeAuthorization == nil ||
+		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("concurrent recovery did not persist one system authorization: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutRuntimeReady(t *testing.T) {
+	readFailure := errors.New("runtime owner read unavailable")
+	tests := []struct {
+		name      string
+		configure func(*workspaceLaunchReconcileOperation, *workspaceLaunchUnitAdapter)
+		wantReads int
+		wantError error
+	}{
+		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+			provider, err := json.Marshal("profile-unit")
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation.raw["providerProfileRef"] = provider
+		}},
+		{name: "authoritative pending", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.stageObservations = map[string]workspaceLaunchStageObservation{string(contracts.StageRuntime): {State: workspaceLaunchStagePending}}
+		}},
+		{name: "authoritative absent", wantReads: 1},
+		{name: "authoritative unknown", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.unknownStages = map[string]bool{string(contracts.StageRuntime): true}
+		}},
+		{name: "owner read error", wantReads: 1, wantError: readFailure, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.readErrors = map[string]error{string(contracts.StageRuntime): readFailure}
+		}},
+		{name: "ready facts invalid", wantReads: 1, wantError: errWorkspaceLaunchGrantConflict, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.stageObservations = map[string]workspaceLaunchStageObservation{string(contracts.StageRuntime): {State: workspaceLaunchStageReady}}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := workspaceLaunchAutomaticRuntimeReadyOperation(t)
+			adapter := &workspaceLaunchUnitAdapter{}
+			if test.configure != nil {
+				test.configure(&operation, adapter)
+			}
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persistedBefore := stringValue(row["result"])
+			store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+			got, recoveryErr := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
+			if !errors.Is(recoveryErr, test.wantError) || got.ID != operation.ID && recoveryErr == nil || adapter.reads != test.wantReads || adapter.mutations != 0 ||
+				stringValue(store.row["result"]) != persistedBefore {
+				t.Fatalf("ineligible automatic recovery changed state: operation=%s reads=%d/%d mutations=%d err=%v want=%v",
+					workspaceLaunchReconcileResultSummary(got), adapter.reads, test.wantReads, adapter.mutations, recoveryErr, test.wantError)
+			}
+		})
 	}
 }
 

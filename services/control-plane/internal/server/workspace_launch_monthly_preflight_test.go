@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -59,6 +60,7 @@ type workspaceLaunchMonthlyPreflightFabric struct {
 	runtimeReadyResult clients.WorkspaceLaunchStageResult
 	stageResults       map[string]clients.WorkspaceLaunchStageResult
 	receiptLedger      *workspaceLaunchMonthlyPreflightLedger
+	providerProfileRef string
 }
 
 func (f *workspaceLaunchMonthlyPreflightFabric) Catalog(ctx context.Context) (clients.FabricCatalog, error) {
@@ -77,7 +79,7 @@ func (f *workspaceLaunchMonthlyPreflightFabric) PreflightWorkspaceLaunch(_ conte
 		Reason:             "none",
 		LaunchOperationID:  input.LaunchOperationID,
 		RequestHash:        input.RequestHash,
-		ProviderProfileRef: "provider-profile",
+		ProviderProfileRef: firstNonEmpty(f.providerProfileRef, "provider-profile"),
 		BindingRef:         "workspace-binding-" + stableID(input.LaunchOperationID)[:12],
 		SpecDigest:         strings.Repeat("a", 64),
 	}, nil
@@ -747,5 +749,83 @@ func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *
 	}
 	if position != len(wantOrder) {
 		t.Fatalf("runtime owner read/mutate order mismatch: want=%#v events=%#v", wantOrder, *events)
+	}
+}
+
+func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t *testing.T) {
+	t.Setenv(controlledBasicPilotEnabledEnv, "1")
+	t.Setenv(controlledBasicPilotAccountsEnv, "acct-alpha")
+	t.Setenv("OPL_TENCENT_ZONE", "ap-guangzhou-1")
+	t.Setenv("OPL_WORKSPACE_LAUNCH_WORKER_ENABLED", "0")
+
+	server, store, client, fabric, _ := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
+	fabric.providerProfileRef = "tencent-tke"
+	fabric.runtimePending = true
+	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
+	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
+		`{"name":"Automatic runtime recovery","packageId":"basic","autoRenew":false}`,
+		"automatic-runtime-recovery")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "automatic-runtime-recovery"); err != nil {
+		t.Fatalf("continue launch: %v", err)
+	}
+	handler := server.(*controlPlaneHTTPHandler)
+	var reviewed workspaceLaunchReconcileOperation
+	for range len(workspaceLaunchReconcileStages) + workspaceLaunchAuthoritativeReadBudget {
+		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+			t.Fatalf("run launch to Runtime manual review: %v", err)
+		}
+		rows, err := store.ListRuntimeOperations(context.Background())
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("read launch operations=%#v err=%v", rows, err)
+		}
+		reviewed, err = decodeWorkspaceLaunchReconcileOperation(rows[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reviewed.Status == contracts.StatusManualReview && reviewed.Stage == contracts.StageRuntime {
+			break
+		}
+	}
+	if reviewed.Status != contracts.StatusManualReview || reviewed.Stage != contracts.StageRuntime ||
+		reviewed.Attempts[contracts.StageRuntime].Status != "unknown" || fabric.runtimeEnsureCalls != 1 {
+		t.Fatalf("launch did not reach bounded Runtime manual review: operation=%s attempt=%#v ensure=%d reads=%d",
+			workspaceLaunchReconcileResultSummary(reviewed), reviewed.Attempts[contracts.StageRuntime], fabric.runtimeEnsureCalls, fabric.runtimeReadCalls)
+	}
+
+	fabric.runtimeReady = true
+	if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+		t.Fatalf("auto recover ready Runtime: %v", err)
+	}
+	rows, err := store.ListRuntimeOperations(context.Background())
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("read recovered launch operations=%#v err=%v", rows, err)
+	}
+	recovered, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
+	if err != nil || recovered.Status != contracts.StatusPending || recovered.Stage != contracts.StageActivation ||
+		recovered.ID != reviewed.ID || recovered.stringFact("workspaceId") != reviewed.stringFact("workspaceId") ||
+		recovered.ResumeAuthorization == nil || recovered.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy ||
+		recovered.ResumeAuthorization.MutationBudget != 0 || recovered.ResumeAuthorization.IdempotentReplayBudget != 0 ||
+		recovered.ResumeAuthorizationConsumedAt == "" || fabric.runtimeEnsureCalls != 1 {
+		t.Fatalf("Worker did not recover the original Runtime read-only: operation=%s authorization=%#v ensure=%d reads=%d err=%v",
+			workspaceLaunchReconcileResultSummary(recovered), recovered.ResumeAuthorization, fabric.runtimeEnsureCalls, fabric.runtimeReadCalls, err)
+	}
+
+	for range 2 {
+		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
+			t.Fatalf("complete recovered launch: %v", err)
+		}
+	}
+	rows, err = store.ListRuntimeOperations(context.Background())
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("read terminal launch operations=%#v err=%v", rows, err)
+	}
+	terminal, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
+	if err != nil || terminal.Status != contracts.StatusSucceeded || terminal.Stage != contracts.StageSucceeded || terminal.ID != reviewed.ID ||
+		len(client.charges) != 1 || len(client.keys) != 1 || fabric.runtimeEnsureCalls != 1 || fabric.receiptLedger.writes != 1 || len(fabric.receiptLedger.receipts) != 1 {
+		t.Fatalf("automatic recovery did not preserve one original purchase: operation=%s charges=%#v keys=%#v runtimeEnsure=%d receiptWrites=%d receipts=%d err=%v",
+			workspaceLaunchReconcileResultSummary(terminal), client.charges, client.keys, fabric.runtimeEnsureCalls, fabric.receiptLedger.writes, len(fabric.receiptLedger.receipts), err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/domain"
 )
 
@@ -325,6 +326,44 @@ func TestPostgresWorkspaceLaunchUnknownRuntimeRecoveryPersistsReadyReadOnly(t *t
 		adapter.reads != 1 || adapter.mutations != 0 {
 		t.Fatalf("PostgreSQL Runtime recovery did not persist: operation=%s version=%d reads=%d mutations=%d err=%v",
 			workspaceLaunchReconcileResultSummary(got), got.Version, adapter.reads, adapter.mutations, err)
+	}
+}
+
+func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsRuntimeReadyReadOnly(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	accountID, ownerID := "acct-unit", "usr-unit"
+	account, owner := provisionedAccountRowsFor(accountID, ownerID, "runtime-auto-recovery-pg@example.com", 13)
+	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+
+	operation := workspaceLaunchAutomaticRuntimeReadyOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(contracts.StageRuntime): true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC) }
+	got, err := reconciler.AutoRecoverManualReview(ctx, operation.ID)
+	if err != nil || got.Stage != contracts.StageActivation || got.Status != contracts.StatusPending || got.Version != operation.Version+1 ||
+		got.Attempts[contracts.StageRuntime].Confirmed != 1 || got.ResumeAuthorization == nil ||
+		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" ||
+		adapter.reads != 1 || adapter.mutations != 0 {
+		t.Fatalf("PostgreSQL automatic Runtime recovery did not persist: operation=%s reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
+	}
+
+	persisted, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	restarted, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != contracts.StageActivation ||
+		restarted.ResumeAuthorization == nil || restarted.ResumeAuthorization.AuthorizationID != got.ResumeAuthorization.AuthorizationID ||
+		restarted.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || restarted.ResumeAuthorizationConsumedAt == "" {
+		t.Fatalf("PostgreSQL automatic Runtime recovery restart readback failed: found=%v operation=%s errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(restarted), err, decodeErr)
 	}
 }
 

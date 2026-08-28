@@ -32,6 +32,9 @@ is selected and configured by the medopl instance, not by the portable product.
 - Workspace Launch persists one Control Plane operation and coordinates Key,
   debit, Fabric resource stages, activation, and one purchase Receipt. Unknown
   external results enter manual review and resume through the same operation.
+  The Worker now rechecks only the exact Tencent/TKE Runtime-ready manual-review
+  class through a system-owned zero-mutation, zero-replay authorization; all
+  non-ready or conflicting observations remain unchanged.
   An unknown Storage attempt is classified from its exact Fabric binding;
   ready advances read-only, pending remains bounded and read-only, and only
   authoritative absence permits one replay with the original idempotency key.
