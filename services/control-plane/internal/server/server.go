@@ -32,7 +32,7 @@ func (h *controlPlaneHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	if retiredConsoleAPI(r.Method, r.URL.Path) {
+	if !isWorkspaceRequest(r) && retiredConsoleAPI(r.Method, r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}

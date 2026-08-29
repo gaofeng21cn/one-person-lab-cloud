@@ -1648,13 +1648,13 @@ func TestUnknownAPIRequiresWorkspaceRoutingContext(t *testing.T) {
 	}
 }
 
-func TestRetiredConsoleRoutesDoNotEnterWorkspaceProxy(t *testing.T) {
+func TestRetiredConsoleRoutesRemainConsoleScoped(t *testing.T) {
 	cases := []struct {
 		method string
 		path   string
 	}{
 		{http.MethodGet, "/api/overview"},
-		{http.MethodPost, "/api/projects"},
+		{http.MethodGet, "/api/projects/project-alpha"},
 		{http.MethodGet, "/api/workspaces/ws-alpha/backups"},
 		{http.MethodGet, "/api/gateway/keys/legacy/revoke"},
 		{http.MethodPost, "/api/workspaces"},
@@ -1667,14 +1667,27 @@ func TestRetiredConsoleRoutesDoNotEnterWorkspaceProxy(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			})}
 			req := httptest.NewRequest(tc.method, tc.path, nil)
-			req.Host = "workspace.medopl.cn"
-			req.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: "ws-alpha"})
+			req.Host = "cloud.medopl.cn"
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			if rec.Code != http.StatusNotFound || called {
 				t.Fatalf("retired route status=%d called=%v body=%s", rec.Code, called, rec.Body.String())
 			}
 		})
+	}
+
+	workspaceCalled := false
+	workspaceHandler := &controlPlaneHTTPHandler{next: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		workspaceCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})}
+	workspaceReq := httptest.NewRequest(http.MethodGet, "/api/projects/project-alpha", nil)
+	workspaceReq.Host = "workspace.medopl.cn"
+	workspaceReq.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: "ws-alpha"})
+	workspaceRec := httptest.NewRecorder()
+	workspaceHandler.ServeHTTP(workspaceRec, workspaceReq)
+	if workspaceRec.Code != http.StatusNoContent || !workspaceCalled {
+		t.Fatalf("Workspace Project route status=%d called=%v", workspaceRec.Code, workspaceCalled)
 	}
 
 	called := false
