@@ -31,6 +31,14 @@ func (s *Service) ReadWorkspaceLaunchStage(ctx context.Context, input clients.Wo
 	return client.ReadWorkspaceLaunchStage(ctx, input)
 }
 
+func (s *Service) ObserveWorkspaceLaunchStage(ctx context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceLaunchStageObserver)
+	if !ok {
+		return clients.WorkspaceLaunchStageResult{}, errors.New("fabric_workspace_launch_stage_observation_unavailable")
+	}
+	return client.ObserveWorkspaceLaunchStage(ctx, input)
+}
+
 func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
 	client, ok := s.fabric.(clients.FabricWorkspaceLaunchClient)
 	if !ok {

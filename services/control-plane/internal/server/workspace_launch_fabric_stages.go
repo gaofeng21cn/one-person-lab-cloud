@@ -33,6 +33,18 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchFabricStage
 	return workspaceLaunchFabricObservation(operation, input, result)
 }
 
+func (a *controlPlaneWorkspaceLaunchStageAdapter) observeWorkspaceLaunchFabricStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
+	input, err := a.workspaceLaunchFabricStageInput(ctx, operation, false)
+	if err != nil {
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err
+	}
+	result, err := a.service.ObserveWorkspaceLaunchStage(ctx, input)
+	if err != nil {
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err
+	}
+	return workspaceLaunchFabricObservation(operation, input, result)
+}
+
 func (a *controlPlaneWorkspaceLaunchStageAdapter) mutateWorkspaceLaunchFabricStage(ctx context.Context, operation workspaceLaunchReconcileOperation, idempotencyKey string) error {
 	if idempotencyKey != workspaceLaunchStageIdempotencyKey(operation, 1) {
 		return errInvalidWorkspaceLaunchOperation

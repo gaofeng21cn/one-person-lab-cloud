@@ -141,12 +141,43 @@ func TestWorkspaceLaunchStageReadContextRejectsProviderMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider.mutateOnRead = true
+	if _, err := service.ObserveWorkspaceLaunchStage(context.Background(), input); err == nil || err.Error() != "provider_mutation_forbidden_in_read" {
+		t.Fatalf("provider observation mutation error=%v", err)
+	}
 	if _, err := service.ReadWorkspaceLaunchStage(context.Background(), input); err == nil || err.Error() != "provider_mutation_forbidden_in_read" {
 		t.Fatalf("provider read mutation error=%v", err)
 	}
 	after, err := store.List(context.Background())
 	if err != nil || len(after) != len(before) {
 		t.Fatalf("provider read changed operations before=%d after=%d err=%v", len(before), len(after), err)
+	}
+}
+
+func TestWorkspaceLaunchStageObservationReturnsReadyWithoutPersistingReadback(t *testing.T) {
+	service, store, provider, preflight, image, launchHash := workspaceLaunchStageFixture(t)
+	stage := string(contracts.StageCompute)
+	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, stage, stage, WorkspaceLaunchResources{})
+	operation, _, err := newWorkspaceLaunchStageOperation(input, "tencent-tke", time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Append(context.Background(), operation); err != nil {
+		t.Fatal(err)
+	}
+	resources := input.Resources
+	resources.ComputeAllocationID = "ca-authoritative"
+	resources.ComputeBindingRef = input.Binding.FabricOperationID
+	provider.ensureResult = &WorkspaceLaunchProviderResult{Resources: resources}
+	before, err := store.Get(context.Background(), input.Binding.FabricOperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.ObserveWorkspaceLaunchStage(context.Background(), input)
+	after, afterErr := store.Get(context.Background(), input.Binding.FabricOperationID)
+	if err != nil || afterErr != nil || result.State != string(contracts.StageStateReady) || result.Resources.ComputeAllocationID != "ca-authoritative" ||
+		string(mustJSON(after)) != string(mustJSON(before)) || provider.readCalls != 1 {
+		t.Fatalf("observation=%#v err=%v afterErr=%v reads=%d", result, err, afterErr, provider.readCalls)
 	}
 }
 

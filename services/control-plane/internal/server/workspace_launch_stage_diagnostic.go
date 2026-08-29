@@ -43,10 +43,14 @@ type workspaceLaunchStageDiagnostic struct {
 	MutationBudget          int                                   `json:"mutationBudget"`
 }
 
+type workspaceLaunchStageObserver interface {
+	ObserveStage(context.Context, workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error)
+}
+
 func observeWorkspaceLaunchStage(
 	ctx context.Context,
 	store workspaceLaunchReconcileStore,
-	adapter workspaceLaunchStageAdapter,
+	adapter workspaceLaunchStageObserver,
 	operationID string,
 ) (workspaceLaunchStageDiagnostic, bool, error) {
 	if store == nil || adapter == nil || strings.TrimSpace(operationID) == "" {
@@ -78,7 +82,7 @@ func observeWorkspaceLaunchStage(
 		AuthoritativeRead: true, MutationBudget: 0,
 	}
 	startedAt := time.Now()
-	observation, readErr := adapter.ReadStage(ctx, operation)
+	observation, readErr := adapter.ObserveStage(ctx, operation)
 	outcome, errorCode := "success", "none"
 	if readErr != nil {
 		outcome, errorCode = "error", workspaceLaunchStageReadErrorCode(readErr)

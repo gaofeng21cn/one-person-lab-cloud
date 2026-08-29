@@ -218,7 +218,7 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 		if existingRecord, matches := workspaceLaunchStageOperationMatches(existing, input, providerName); !matches {
 			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
 		} else {
-			observed, readErr := e.readWorkspaceLaunchStage(ctx, input, existing, existingRecord)
+			observed, readErr := e.readWorkspaceLaunchStage(ctx, input, existing, existingRecord, true)
 			if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
 				return observed, readErr
 			}
@@ -233,14 +233,14 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
 	}
 	if stored.Status == "succeeded" {
-		observed, readErr := e.readWorkspaceLaunchStage(ctx, input, stored, record)
+		observed, readErr := e.readWorkspaceLaunchStage(ctx, input, stored, record, true)
 		if readErr != nil || input.Binding.Stage != "ensure_compute_allocation" ||
 			observed.State != "pending" || observed.Reason != "ownership_pending" {
 			return observed, readErr
 		}
 	}
 	if !claimed {
-		observed, readErr := e.readWorkspaceLaunchStage(ctx, input, stored, record)
+		observed, readErr := e.readWorkspaceLaunchStage(ctx, input, stored, record, true)
 		if readErr != nil || !workspaceLaunchStageMayContinueEnsure(input, observed) {
 			return observed, readErr
 		}
@@ -306,6 +306,14 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 }
 
 func (e *launchStageEngine) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
+	return e.observeWorkspaceLaunchStage(ctx, input, true)
+}
+
+func (e *launchStageEngine) ObserveWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
+	return e.observeWorkspaceLaunchStage(ctx, input, false)
+}
+
+func (e *launchStageEngine) observeWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput, persistReadback bool) (WorkspaceLaunchStageResult, error) {
 	if err := e.validateWorkspaceLaunchStageInput(ctx, input); err != nil {
 		return WorkspaceLaunchStageResult{}, err
 	}
@@ -320,10 +328,10 @@ func (e *launchStageEngine) ReadWorkspaceLaunchStage(ctx context.Context, input 
 	if !ok {
 		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
 	}
-	return e.readWorkspaceLaunchStage(ctx, input, operation, record)
+	return e.readWorkspaceLaunchStage(ctx, input, operation, record, persistReadback)
 }
 
-func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput, operation FabricOperation, record workspaceLaunchStageRecord) (WorkspaceLaunchStageResult, error) {
+func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput, operation FabricOperation, record workspaceLaunchStageRecord, persistReadback bool) (WorkspaceLaunchStageResult, error) {
 	if e.provider == nil {
 		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
 	}
@@ -337,7 +345,7 @@ func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input 
 		return WorkspaceLaunchStageResult{}, diagnosticErr
 	}
 	providerResult.Diagnostic = diagnostic
-	if err != nil && providerResult.Diagnostic != nil {
+	if persistReadback && err != nil && providerResult.Diagnostic != nil {
 		operation, diagnosticErr = e.persistWorkspaceLaunchStageDiagnostic(ctx, operation, providerResult.Diagnostic)
 		if diagnosticErr != nil {
 			return WorkspaceLaunchStageResult{}, diagnosticErr
@@ -374,12 +382,14 @@ func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input 
 		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
 	}
 	if operation.Status != "succeeded" {
-		if err := e.persistWorkspaceLaunchStageResult(ctx, input, operation, record, providerResult); err != nil {
-			return WorkspaceLaunchStageResult{}, err
+		if persistReadback {
+			if err := e.persistWorkspaceLaunchStageResult(ctx, input, operation, record, providerResult); err != nil {
+				return WorkspaceLaunchStageResult{}, err
+			}
 		}
 	} else if !workspaceLaunchResourcesContain(providerResult.Resources, record.Resources) || !workspaceLaunchResourcesContain(record.Resources, providerResult.Resources) {
 		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
-	} else if providerResult.Diagnostic != nil {
+	} else if persistReadback && providerResult.Diagnostic != nil {
 		if _, err := e.persistWorkspaceLaunchStageDiagnostic(ctx, operation, providerResult.Diagnostic); err != nil {
 			return WorkspaceLaunchStageResult{}, err
 		}

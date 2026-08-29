@@ -40,6 +40,15 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) ReadStage(ctx context.Context,
 	}
 }
 
+func (a *controlPlaneWorkspaceLaunchStageAdapter) ObserveStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
+	switch operation.Stage {
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
+		return a.observeWorkspaceLaunchFabricStage(ctx, operation)
+	default:
+		return a.ReadStage(ctx, operation)
+	}
+}
+
 func (a *controlPlaneWorkspaceLaunchStageAdapter) CanMutateStage(operation workspaceLaunchReconcileOperation) bool {
 	if a == nil || a.app == nil || a.service == nil {
 		return false

@@ -31,9 +31,10 @@ type workspaceLaunchComputeResumeFabric struct {
 
 type workspaceLaunchStorageResumeFabric struct {
 	fakeFabricClient
-	reads   int
-	ensures int
-	ready   bool
+	reads    int
+	observes int
+	ensures  int
+	ready    bool
 }
 
 type workspaceLaunchRuntimeImageRevisionResumeFabric struct {
@@ -83,6 +84,15 @@ func (*workspaceLaunchStorageResumeFabric) PreflightWorkspaceLaunch(context.Cont
 
 func (f *workspaceLaunchStorageResumeFabric) ReadWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
 	f.reads++
+	return f.workspaceLaunchStageResult(input)
+}
+
+func (f *workspaceLaunchStorageResumeFabric) ObserveWorkspaceLaunchStage(_ context.Context, input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
+	f.observes++
+	return f.workspaceLaunchStageResult(input)
+}
+
+func (f *workspaceLaunchStorageResumeFabric) workspaceLaunchStageResult(input clients.WorkspaceLaunchStageInput) (clients.WorkspaceLaunchStageResult, error) {
 	if !f.ready {
 		return clients.WorkspaceLaunchStageResult{
 			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, State: string(workspaceLaunchStageAbsent), Reason: "failed_no_resource",
