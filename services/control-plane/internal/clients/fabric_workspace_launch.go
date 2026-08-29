@@ -17,6 +17,10 @@ type FabricWorkspaceLaunchPreflightReader interface {
 	ReadWorkspaceLaunchPreflight(context.Context, WorkspaceLaunchPreflightReadInput) (WorkspaceLaunchPreflightBinding, error)
 }
 
+type FabricWorkspaceLaunchStageObserver interface {
+	ObserveWorkspaceLaunchStage(context.Context, WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error)
+}
+
 type WorkspaceLaunchPreflightInput struct {
 	SchemaVersion        int    `json:"schemaVersion"`
 	LaunchOperationID    string `json:"launchOperationId"`
@@ -161,6 +165,12 @@ func (c *fabricHTTPClient) ReadWorkspaceLaunchPreflight(ctx context.Context, inp
 func (c *fabricHTTPClient) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
 	var result WorkspaceLaunchStageResult
 	err := c.post(ctx, "/fabric/workspace-launches/stages/read", input, "", &result)
+	return result, err
+}
+
+func (c *fabricHTTPClient) ObserveWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
+	var result WorkspaceLaunchStageResult
+	err := c.post(ctx, "/fabric/workspace-launches/stages/observe", input, "", &result)
 	return result, err
 }
 

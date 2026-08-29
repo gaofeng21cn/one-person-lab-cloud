@@ -140,8 +140,8 @@ func TestWorkspaceLaunchStageDiagnosticRouteRequiresCapability(t *testing.T) {
 	addAuth(unauthorized, operator)
 	unauthorizedResponse := httptest.NewRecorder()
 	server.ServeHTTP(unauthorizedResponse, unauthorized)
-	if unauthorizedResponse.Code != http.StatusUnauthorized || fabric.reads != 0 {
-		t.Fatalf("unauthorized status=%d reads=%d", unauthorizedResponse.Code, fabric.reads)
+	if unauthorizedResponse.Code != http.StatusUnauthorized || fabric.observes != 0 {
+		t.Fatalf("unauthorized status=%d observations=%d", unauthorizedResponse.Code, fabric.observes)
 	}
 
 	authorized := httptest.NewRequest(http.MethodGet, path, nil)
@@ -149,10 +149,10 @@ func TestWorkspaceLaunchStageDiagnosticRouteRequiresCapability(t *testing.T) {
 	authorized.Header.Set(productionAcceptanceBCapability, "stage-diagnostic-capability")
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, authorized)
-	if response.Code != http.StatusOK || fabric.reads != 1 || fabric.ensures != 0 || response.Header().Get("Cache-Control") != "no-store" ||
+	if response.Code != http.StatusOK || fabric.observes != 1 || fabric.reads != 0 || fabric.ensures != 0 || response.Header().Get("Cache-Control") != "no-store" ||
 		strings.Contains(response.Body.String(), operation.ID) || !strings.Contains(response.Body.String(), `"state":"absent"`) ||
 		!strings.Contains(response.Body.String(), `"mutationBudget":0`) {
-		t.Fatalf("status=%d body=%s reads=%d ensures=%d", response.Code, response.Body.String(), fabric.reads, fabric.ensures)
+		t.Fatalf("status=%d body=%s observations=%d reads=%d ensures=%d", response.Code, response.Body.String(), fabric.observes, fabric.reads, fabric.ensures)
 	}
 }
 

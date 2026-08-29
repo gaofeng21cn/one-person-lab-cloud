@@ -162,6 +162,10 @@ func (a *workspaceLaunchUnitAdapter) ReadStage(_ context.Context, operation work
 	return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
 }
 
+func (a *workspaceLaunchUnitAdapter) ObserveStage(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
+	return a.ReadStage(ctx, operation)
+}
+
 func (a *workspaceLaunchUnitAdapter) CanMutateStage(workspaceLaunchReconcileOperation) bool {
 	return !a.mutationBlocked
 }

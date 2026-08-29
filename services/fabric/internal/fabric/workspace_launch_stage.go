@@ -718,3 +718,7 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input Workspac
 func (s *Service) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
 	return s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
 }
+
+func (s *Service) ObserveWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
+	return s.launchStages.ObserveWorkspaceLaunchStage(ctx, input)
+}

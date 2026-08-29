@@ -35,7 +35,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			return
 		}
 		operationID := strings.TrimSpace(r.PathValue("operationId"))
-		adapter := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).adapter
+		adapter := &controlPlaneWorkspaceLaunchStageAdapter{app: app, service: service}
 		diagnostic, found, err := observeWorkspaceLaunchStage(r.Context(), app.tables, adapter, operationID)
 		w.Header().Set("Cache-Control", "no-store")
 		if !found {
