@@ -920,7 +920,7 @@ func (app *controlPlaneServer) operatorWorkspaceDetail(ctx context.Context, serv
 func (app *controlPlaneServer) loadOperatorWorkspaceFacts(ctx context.Context, service *controlplane.Service, workspaces []map[string]any) (operatorWorkspaceFacts, error) {
 	var facts operatorWorkspaceFacts
 	seenRecords := map[string]bool{}
-	appendRecord := func(kind, id string, load func(context.Context, string) (map[string]any, bool, error), target *[]map[string]any) error {
+	appendRecord := func(kind, id string, load func(context.Context, string) (map[string]any, bool, error), target *[]map[string]any, fallback map[string]any) error {
 		if id == "" || seenRecords[kind+":"+id] {
 			return nil
 		}
@@ -931,23 +931,30 @@ func (app *controlPlaneServer) loadOperatorWorkspaceFacts(ctx context.Context, s
 		}
 		if ok {
 			*target = append(*target, row)
+		} else if fallback != nil {
+			*target = append(*target, fallback)
 		}
 		return nil
 	}
 	for _, workspace := range workspaces {
+		workspaceID := stringValue(workspace["id"])
 		for _, item := range []struct {
-			kind   string
-			id     string
-			load   func(context.Context, string) (map[string]any, bool, error)
-			target *[]map[string]any
+			kind     string
+			id       string
+			load     func(context.Context, string) (map[string]any, bool, error)
+			target   *[]map[string]any
+			fallback map[string]any
 		}{
-			{"account", firstNonEmpty(stringValue(workspace["ownerAccountId"]), stringValue(workspace["accountId"])), app.tables.GetAccount, &facts.accounts},
-			{"user", stringValue(workspace["ownerUserId"]), app.tables.GetUser, &facts.users},
-			{"compute", firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])), app.tables.GetCompute, &facts.computes},
-			{"storage", stringValue(workspace["storageId"]), app.tables.GetStorage, &facts.storages},
-			{"attachment", firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])), app.tables.GetAttachment, &facts.attachments},
+			{"account", firstNonEmpty(stringValue(workspace["ownerAccountId"]), stringValue(workspace["accountId"])), app.tables.GetAccount, &facts.accounts, nil},
+			{"user", stringValue(workspace["ownerUserId"]), app.tables.GetUser, &facts.users, nil},
+			{"compute", firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])), app.tables.GetCompute, &facts.computes, map[string]any{"workspaceId": workspaceID}},
+			{"storage", stringValue(workspace["storageId"]), app.tables.GetStorage, &facts.storages, map[string]any{"workspaceId": workspaceID}},
+			{"attachment", firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])), app.tables.GetAttachment, &facts.attachments, map[string]any{"workspaceId": workspaceID}},
 		} {
-			if err := appendRecord(item.kind, item.id, item.load, item.target); err != nil {
+			if item.fallback != nil {
+				item.fallback["id"] = item.id
+			}
+			if err := appendRecord(item.kind, item.id, item.load, item.target, item.fallback); err != nil {
 				return facts, err
 			}
 		}
