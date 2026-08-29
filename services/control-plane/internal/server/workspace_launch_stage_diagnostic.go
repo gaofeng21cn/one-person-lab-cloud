@@ -41,6 +41,8 @@ type workspaceLaunchStageDiagnostic struct {
 	Attempt                 workspaceLaunchStageDiagnosticAttempt `json:"attempt"`
 	AuthoritativeRead       bool                                  `json:"authoritativeRead"`
 	MutationBudget          int                                   `json:"mutationBudget"`
+	AutoRecoveryEligible    bool                                  `json:"autoRecoveryEligible"`
+	AutoRecoveryBlockReason string                                `json:"autoRecoveryBlockReason"`
 }
 
 type workspaceLaunchStageObserver interface {
@@ -70,8 +72,9 @@ func observeWorkspaceLaunchStage(
 		return workspaceLaunchStageDiagnostic{}, true, errWorkspaceLaunchGrantConflict
 	}
 	digest := sha256.Sum256([]byte(operation.ID))
+	_, _, autoRecoveryEligible, autoRecoveryBlockReason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, time.Now().UTC())
 	diagnostic := workspaceLaunchStageDiagnostic{
-		SchemaVersion: 2, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
+		SchemaVersion: 3, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
 		OperationVersion: operation.Version, OperationStatus: string(operation.Status), Stage: string(operation.Stage),
 		State: string(workspaceLaunchStageUnknown), ErrorCode: "none", Owner: workspaceLaunchStageOwner(operation.Stage),
 		BlockReason: "stage_observation_unknown",
@@ -80,6 +83,7 @@ func observeWorkspaceLaunchStage(
 			Max: attempt.Max, Status: attempt.Status,
 		},
 		AuthoritativeRead: true, MutationBudget: 0,
+		AutoRecoveryEligible: autoRecoveryEligible, AutoRecoveryBlockReason: autoRecoveryBlockReason,
 	}
 	startedAt := time.Now()
 	observation, readErr := adapter.ObserveStage(ctx, operation)
