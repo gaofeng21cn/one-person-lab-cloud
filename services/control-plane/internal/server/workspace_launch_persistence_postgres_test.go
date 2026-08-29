@@ -367,6 +367,50 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsRuntimeReadyRead
 	}
 }
 
+func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsComputeOwnershipContinuation(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	accountID, ownerID := "acct-unit", "usr-unit"
+	account, owner := provisionedAccountRowsFor(accountID, ownerID, "compute-ownership-auto-recovery-pg@example.com", 14)
+	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+
+	operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+		t.Fatal(err)
+	}
+
+	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageCompute): {ownership, ownership, ownership}},
+		replayableStages:   map[string]bool{string(contracts.StageCompute): true},
+	}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 4, 30, 0, 0, time.UTC) }
+	got, err := reconciler.AutoRecoverManualReview(ctx, operation.ID)
+	if err != nil || got.Stage != contracts.StageStorage || got.Status != contracts.StatusPending ||
+		got.Attempts[contracts.StageCompute].Confirmed != 1 || got.ResumeAuthorization == nil ||
+		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticComputeOwnershipAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" ||
+		adapter.reads != 4 || adapter.mutationsByStage[string(contracts.StageCompute)] != 1 {
+		t.Fatalf("PostgreSQL automatic Compute ownership recovery did not persist: operation=%s reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	persisted, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	restarted, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	claim := restarted.IdempotentReplayClaims[contracts.StageCompute]
+	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != contracts.StageStorage ||
+		restarted.ResumeAuthorization == nil || restarted.ResumeAuthorization.AuthorizationID != got.ResumeAuthorization.AuthorizationID ||
+		restarted.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticComputeOwnershipAuthorizedBy || restarted.ResumeAuthorizationConsumedAt == "" ||
+		claim.AuthorizationID != restarted.ResumeAuthorization.AuthorizationID || claim.Status != "succeeded" {
+		t.Fatalf("PostgreSQL automatic Compute ownership recovery restart readback failed: found=%v operation=%s claim=%#v errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(restarted), claim, err, decodeErr)
+	}
+}
+
 func TestPostgresWorkspaceLaunchUnknownRuntimeReplaySurvivesReconcilerRestart(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)

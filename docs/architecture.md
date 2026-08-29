@@ -410,6 +410,15 @@ another provider, or any authorization conflict remains unchanged; this system
 path cannot replay Fabric, revise an image, debit, purchase, or create another
 Launch.
 
+The same worker may issue a distinct one-replay system authorization for an
+exact Tencent/TKE Compute attempt already parked as `unknown/manual_review`.
+It first requires an authoritative `ownership_pending` read proving that the
+original Machine is Ready and safely recoverable. The Reconciler then uses the
+original Fabric operation and idempotency key to claim CVM/Node ownership; it
+cannot scale the NodePool or create another Compute. Provider provisioning,
+absence, unknown, conflict, read failure, an earlier replay, or an active
+authorization leaves the operation unchanged in `manual_review`.
+
 For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
 only by its immutable old Workspace image continues through that same Resume
 route and Reconciler. The administrator supplies the replacement digest, while
@@ -455,8 +464,9 @@ continuation cannot issue a second NodePool scale. `ready` advances the same
 Launch; unknown, conflict, error, or exact budget/deadline exhaustion enters
 `unknown/manual_review` without another unproven external mutation.
 
-An administrator may resume only the historical compute operation already
-parked by the former untyped provider-pending result. The existing Resume route
+For historical compute operations outside that exact system-owned policy, an
+administrator may resume only the operation already parked by the former
+untyped provider-pending result. The existing Resume route
 first performs authoritative readback and admits only
 `provider_provisioning` or `ownership_pending`; it then restores the original
 attempt to the bounded compute continuation above. `ready`, `absent`,
