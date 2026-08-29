@@ -104,6 +104,7 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 			result.ErrorCode = "provider_fact_identity_mismatch"
 			return result
 		}
+		compute = s.computeProviderFactInput(ctx, compute)
 		facts, err = provider.ReadComputeProviderFacts(ctx, compute)
 	case "storage":
 		if storage.ID == "" || storage.AccountID != input.AccountID || storage.WorkspaceID != input.WorkspaceID {
@@ -133,4 +134,20 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 	facts.LastReadAt = s.now().Format(time.RFC3339Nano)
 	result.Available, result.Facts = true, facts
 	return result
+}
+
+func (s *Service) computeProviderFactInput(ctx context.Context, compute ComputeAllocation) ComputeAllocation {
+	if compute.Provider != "tencent-tke" || len(compute.CostTags) != 0 {
+		return compute
+	}
+	ownership, err := s.machineOwnership.MachineOwnership(ctx, compute.ID)
+	instanceID := firstNonEmpty(compute.InstanceID, compute.CVMInstanceID)
+	if err != nil || ownership.Status != "active" || ownership.ID == "" || ownership.ClaimedAt.IsZero() ||
+		ownership.ResourceID != compute.ID || ownership.AccountID != compute.AccountID || ownership.WorkspaceID != compute.WorkspaceID ||
+		ownership.PackageID != compute.PackageID || ownership.NodePoolID != compute.NodePoolID || ownership.MachineID != compute.MachineName ||
+		ownership.InstanceID != instanceID || ownership.NodeName != compute.NodeName {
+		return compute
+	}
+	compute.CostTags = oplCostTags(compute.AccountID, compute.WorkspaceID, compute.ID, ownership.ID)
+	return compute
 }

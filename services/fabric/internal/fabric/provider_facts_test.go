@@ -26,6 +26,22 @@ func (p *providerFactsSpy) ReadComputeProviderFacts(context.Context, ComputeAllo
 
 type providerWithoutFacts struct{ Provider }
 
+type computeOwnershipTagProviderFactsSpy struct {
+	testProvider
+	inputs chan ComputeAllocation
+}
+
+func (p *computeOwnershipTagProviderFactsSpy) Descriptor() ProviderDescriptor {
+	descriptor := p.testProvider.Descriptor()
+	descriptor.Name = "tencent-tke"
+	return descriptor
+}
+
+func (p *computeOwnershipTagProviderFactsSpy) ReadComputeProviderFacts(_ context.Context, input ComputeAllocation) (ProviderResourceFacts, error) {
+	p.inputs <- input
+	return ProviderResourceFacts{Status: "running"}, nil
+}
+
 func TestProviderFactsBatchDelegatesMappingAndPreservesWireShape(t *testing.T) {
 	now := time.Date(2026, 8, 12, 4, 5, 6, 7, time.UTC)
 	provider := &providerFactsSpy{computeFacts: ProviderResourceFacts{
@@ -93,6 +109,61 @@ func TestProviderFactsBatchFailsClosedBeforeAdapterRead(t *testing.T) {
 		if listErr != nil || len(operations) != 0 {
 			t.Fatalf("failed provider facts read mutated operation store: operations=%#v err=%v", operations, listErr)
 		}
+	}
+}
+
+func TestProviderFactsBatchRecoversMissingTencentComputeTagsFromExactActiveOwnership(t *testing.T) {
+	now := time.Date(2026, 8, 29, 10, 30, 0, 0, time.UTC)
+	provider := &computeOwnershipTagProviderFactsSpy{inputs: make(chan ComputeAllocation, 1)}
+	service := NewService(provider)
+	compute := ComputeAllocation{
+		ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", PackageID: "basic",
+		Provider: "tencent-tke", PoolID: "pool-basic", NodePoolID: "node-pool-basic", MachineName: "machine-alpha",
+		InstanceID: "ins-alpha", CVMInstanceID: "ins-alpha", NodeName: "node-alpha",
+	}
+	service.computes[compute.ID] = compute
+	ownership := MachineOwnership{
+		ID: "owner-alpha", ResourceID: compute.ID, AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
+		PackageID: compute.PackageID, NodePoolID: compute.NodePoolID, MachineID: compute.MachineName,
+		InstanceID: compute.InstanceID, NodeName: compute.NodeName, Status: "claimed", ClaimedAt: now,
+	}
+	if _, claimed, err := service.machineOwnership.ClaimMachine(context.Background(), ownership); err != nil || !claimed {
+		t.Fatalf("claim ownership: claimed=%v err=%v", claimed, err)
+	}
+	ownership.Status = "active"
+	if err := service.machineOwnership.SaveMachineOwnership(context.Background(), ownership); err != nil {
+		t.Fatal(err)
+	}
+
+	batch, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: []ProviderFactInput{{
+		AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID, ResourceType: "compute", ResourceID: compute.ID,
+	}}})
+	var observed ComputeAllocation
+	select {
+	case observed = <-provider.inputs:
+	default:
+		t.Fatal("provider facts did not read Compute")
+	}
+	if err != nil || len(batch.Items) != 1 || !batch.Items[0].Available ||
+		!reflect.DeepEqual(observed.CostTags, oplCostTags(compute.AccountID, compute.WorkspaceID, compute.ID, ownership.ID)) {
+		t.Fatalf("batch=%#v err=%v tags=%#v", batch, err, observed.CostTags)
+	}
+	partial := compute
+	partial.CostTags = map[string]string{"opl_account_id": compute.AccountID}
+	if projected := service.computeProviderFactInput(context.Background(), partial); !reflect.DeepEqual(projected.CostTags, partial.CostTags) {
+		t.Fatalf("provider facts replaced partial tags: %#v", projected.CostTags)
+	}
+	drifted := compute
+	drifted.MachineName = "machine-other"
+	if projected := service.computeProviderFactInput(context.Background(), drifted); projected.CostTags != nil {
+		t.Fatalf("provider facts reconstructed tags across ownership drift: %#v", projected.CostTags)
+	}
+	if service.computes[compute.ID].CostTags != nil {
+		t.Fatalf("provider facts persisted reconstructed tags: %#v", service.computes[compute.ID].CostTags)
+	}
+	operations, listErr := service.ListOperations(context.Background())
+	if listErr != nil || len(operations) != 0 {
+		t.Fatalf("provider facts mutated operation store: operations=%#v err=%v", operations, listErr)
 	}
 }
 
