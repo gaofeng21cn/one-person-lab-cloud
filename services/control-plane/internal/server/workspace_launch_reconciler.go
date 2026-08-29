@@ -30,6 +30,8 @@ const workspaceLaunchAutomaticFabricReadyAuthorizedBy = "control-plane-system"
 const workspaceLaunchAutomaticFabricReadyReason = "system confirmed the authoritative ready Fabric readback on the original launch"
 const workspaceLaunchAutomaticComputeOwnershipAuthorizedBy = "control-plane-system"
 const workspaceLaunchAutomaticComputeOwnershipReason = "system confirmed authoritative recoverable compute ownership on the original launch"
+const workspaceLaunchAutomaticStorageAbsenceAuthorizedBy = "control-plane-system"
+const workspaceLaunchAutomaticStorageAbsenceReason = "system confirmed authoritative storage absence permits original-key replay on the original launch"
 
 const (
 	workspaceLaunchStageAbsent                      = contracts.StageStateAbsent
@@ -1170,7 +1172,8 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	}
 	readyAuthorization, readyAttempt, readyEligible := workspaceLaunchAutomaticFabricReadyAuthorization(operation, r.clockNow())
 	computeAuthorization, computeAttempt, computeEligible, _ := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
-	if !readyEligible && !computeEligible {
+	storageAuthorization, storageAttempt, storageEligible, _ := workspaceLaunchAutomaticStorageAbsenceAuthorization(operation, r.clockNow())
+	if !readyEligible && !computeEligible && !storageEligible {
 		return operation, nil
 	}
 
@@ -1186,6 +1189,9 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	case observation.State == workspaceLaunchStageOwnershipPending && computeEligible:
 		action, mutation = "system_compute_ownership_recovery", true
 		recovered, err = r.continueUnknownComputeStage(ctx, operation, computeAttempt, computeAuthorization, observation)
+	case observation.State == workspaceLaunchStageAbsent && storageEligible:
+		action, mutation = "system_storage_absence_recovery", true
+		recovered, err = r.continueUnknownStorageStage(ctx, operation, storageAttempt, storageAuthorization, observation)
 	default:
 		return operation, nil
 	}
@@ -1309,6 +1315,43 @@ func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLa
 	}
 	if !workspaceLaunchUnknownComputeContinuationEligible(operation, attempt, authorization) {
 		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_eligibility_invariant_invalid"
+	}
+	return authorization, attempt, true, "none"
+}
+
+func workspaceLaunchAutomaticStorageAbsenceAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool, string) {
+	attempt, found := operation.Attempts[contracts.StageStorage]
+	if !found {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "storage_attempt_missing"
+	}
+	if operation.Stage != contracts.StageStorage {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "stage_not_storage"
+	}
+	if operation.stringFact("providerProfileRef") != "tencent-tke" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "provider_outside_policy"
+	}
+	if operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "active_resume_authorization"
+	}
+	if continuation, exists := operation.FreshContinuationAuthorizations[contracts.StageStorage]; exists && continuation.Status != "failed" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "storage_fresh_continuation_exists"
+	}
+	seed := strings.Join([]string{
+		"workspace-launch-storage-absence-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
+		operation.stringFact("workspaceId"), strconv.Itoa(operation.Version), string(operation.Stage), attempt.IdempotencyKey,
+	}, "\x00")
+	digest := sha256.Sum256([]byte(seed))
+	authorization := workspaceLaunchResumeAuthorization{
+		AuthorizationID: fmt.Sprintf("system-storage-absence-v1-%x", digest[:12]), LaunchVersion: operation.Version,
+		AuthorizedStage: operation.Stage, AuthorizedBy: workspaceLaunchAutomaticStorageAbsenceAuthorizedBy,
+		AuthorizedAt: now.UTC().Format(time.RFC3339), Reason: workspaceLaunchAutomaticStorageAbsenceReason,
+		MutationBudget: 0, IdempotentReplayBudget: 1, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+	}
+	if !validWorkspaceLaunchResumeAuthorization(authorization) {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "system_authorization_invalid"
+	}
+	if !workspaceLaunchUnknownStorageRecoveryEligible(operation, attempt, authorization) {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "storage_eligibility_invariant_invalid"
 	}
 	return authorization, attempt, true, "none"
 }
@@ -1605,6 +1648,16 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownStorageStage(
 	if readErr != nil {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
+	return r.continueUnknownStorageStage(ctx, operation, attempt, authorization, observation)
+}
+
+func (r *WorkspaceLaunchReconciler) continueUnknownStorageStage(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+	observation workspaceLaunchStageObservation,
+) (workspaceLaunchReconcileOperation, error) {
 	switch observation.State {
 	case workspaceLaunchStageReady:
 		reduced, err := reduceWorkspaceLaunchStageObservation(&operation, observation)

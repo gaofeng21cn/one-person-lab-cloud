@@ -412,6 +412,55 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsComputeOwnership
 	}
 }
 
+func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsStorageAbsenceReplay(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+	accountID, ownerID := "acct-unit", "usr-unit"
+	account, owner := provisionedAccountRowsFor(accountID, ownerID, "storage-absence-auto-recovery-pg@example.com", 15)
+	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+
+	operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: accountID, DesiredOperation: row}); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(contracts.StageStorage): true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 7, 0, 0, 0, time.UTC) }
+	got, err := reconciler.AutoRecoverManualReview(ctx, operation.ID)
+	attempt := got.Attempts[contracts.StageStorage]
+	claim := got.IdempotentReplayClaims[contracts.StageStorage]
+	if err != nil || got.Stage != contracts.StageAttachment || got.Status != contracts.StatusPending ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.IdempotencyKey != operation.Attempts[contracts.StageStorage].IdempotencyKey ||
+		got.ResumeAuthorization == nil || got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticStorageAbsenceAuthorizedBy ||
+		got.ResumeAuthorizationConsumedAt == "" || claim.Status != "succeeded" ||
+		adapter.reads != 4 || adapter.mutationsByStage[string(contracts.StageStorage)] != 1 {
+		t.Fatalf("PostgreSQL automatic Storage absence recovery did not persist: operation=%s claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+
+	persisted, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+	restarted, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	restartedClaim := restarted.IdempotentReplayClaims[contracts.StageStorage]
+	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != contracts.StageAttachment ||
+		restarted.ResumeAuthorization == nil || restarted.ResumeAuthorization.AuthorizationID != got.ResumeAuthorization.AuthorizationID ||
+		restarted.ResumeAuthorizationConsumedAt == "" || restartedClaim != claim {
+		t.Fatalf("PostgreSQL automatic Storage absence recovery restart readback failed: found=%v operation=%s claim=%#v errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(restarted), restartedClaim, err, decodeErr)
+	}
+
+	readsBefore, mutationsBefore := adapter.reads, adapter.mutations
+	replayed, err := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(ctx, operation.ID)
+	if err != nil || replayed.Version != restarted.Version || adapter.reads != readsBefore || adapter.mutations != mutationsBefore {
+		t.Fatalf("PostgreSQL restart repeated automatic Storage recovery: operation=%s reads=%d/%d mutations=%d/%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
+	}
+}
+
 func TestPostgresWorkspaceLaunchUnknownRuntimeReplaySurvivesReconcilerRestart(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)

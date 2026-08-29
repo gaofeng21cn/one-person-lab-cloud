@@ -96,7 +96,7 @@ func TestWorkspaceLaunchStageDiagnosticReadsWithoutPersisting(t *testing.T) {
 		diagnostic.Stage != "runtime" || diagnostic.State != string(workspaceLaunchStagePending) || diagnostic.ErrorCode != "none" ||
 		diagnostic.Owner != "fabric.tencent_tke" || diagnostic.BlockReason != "runtime_deployment_not_ready" || !diagnostic.Retryable ||
 		diagnostic.ObservedAt != "2026-08-24T10:48:02Z" || len(diagnostic.Checks) != 1 || diagnostic.Checks[0].Name != "deployment_ready" ||
-		!diagnostic.AuthoritativeRead || diagnostic.MutationBudget != 0 || diagnostic.AutoRecoveryEligible || diagnostic.AutoRecoveryBlockReason != "stage_not_compute" ||
+		!diagnostic.AuthoritativeRead || diagnostic.MutationBudget != 0 || diagnostic.AutoRecoveryEligible || diagnostic.AutoRecoveryBlockReason != "stage_provider_pending" ||
 		diagnostic.Attempt.Attempted != 1 ||
 		diagnostic.Attempt.Confirmed != 0 || diagnostic.Attempt.Unknown != 1 || adapter.reads != 1 || adapter.mutations != 0 ||
 		stringValue(after["result"]) != before {
@@ -120,6 +120,25 @@ func TestWorkspaceLaunchStageDiagnosticExposesComputeAutoRecoveryEligibilityRead
 	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
 	if err != nil || !found || diagnostic.SchemaVersion != 3 || !diagnostic.AutoRecoveryEligible ||
 		diagnostic.AutoRecoveryBlockReason != "none" || diagnostic.State != string(workspaceLaunchStageOwnershipPending) ||
+		diagnostic.MutationBudget != 0 || adapter.reads != 1 || adapter.mutations != 0 || stringValue(after["result"]) != before {
+		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchStageDiagnosticExposesStorageAbsenceAutoRecoveryEligibilityReadOnly(t *testing.T) {
+	operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchUnitStore{row: row}
+	adapter := &workspaceLaunchUnitAdapter{}
+	before := stringValue(row["result"])
+
+	diagnostic, found, err := observeWorkspaceLaunchStage(context.Background(), store, adapter, operation.ID)
+	after, _, _ := store.GetRuntimeOperation(context.Background(), operation.ID)
+	if err != nil || !found || diagnostic.SchemaVersion != 3 || !diagnostic.AutoRecoveryEligible ||
+		diagnostic.AutoRecoveryBlockReason != "none" || diagnostic.State != string(workspaceLaunchStageAbsent) ||
 		diagnostic.MutationBudget != 0 || adapter.reads != 1 || adapter.mutations != 0 || stringValue(after["result"]) != before {
 		t.Fatalf("diagnostic=%#v found=%v reads=%d mutations=%d err=%v", diagnostic, found, adapter.reads, adapter.mutations, err)
 	}

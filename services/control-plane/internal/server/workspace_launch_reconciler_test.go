@@ -768,6 +768,21 @@ func workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperati
 	return validated
 }
 
+func workspaceLaunchAutomaticStorageAbsenceOperation(t *testing.T) workspaceLaunchReconcileOperation {
+	t.Helper()
+	row := workspaceLaunchUnknownStorageManualReviewRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := json.Marshal("tencent-tke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.raw["providerProfileRef"] = provider
+	return operation
+}
+
 func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligibility(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -961,6 +976,96 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryClaimsComputeOwnershipWithOrigin
 	}
 }
 
+func TestWorkspaceLaunchManualReviewAutoRecoveryReplaysAbsentStorageWithOriginalKey(t *testing.T) {
+	operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(contracts.StageStorage): true}}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 6, 30, 0, 0, time.UTC) }
+	wantKey := operation.Attempts[contracts.StageStorage].IdempotencyKey
+
+	got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	attempt := got.Attempts[contracts.StageStorage]
+	claim := got.IdempotentReplayClaims[contracts.StageStorage]
+	authorization := got.ResumeAuthorization
+	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageAttachment ||
+		attempt.Attempted != 1 || attempt.Max != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != wantKey || adapter.mutationsByStage[string(contracts.StageStorage)] != 1 ||
+		adapter.mutationOperationID != operation.ID || adapter.mutationIdempotencyKey != wantKey || adapter.reads != 4 ||
+		authorization == nil || !strings.HasPrefix(authorization.AuthorizationID, "system-storage-absence-v1-") ||
+		authorization.AuthorizedBy != workspaceLaunchAutomaticStorageAbsenceAuthorizedBy || authorization.Reason != workspaceLaunchAutomaticStorageAbsenceReason ||
+		authorization.MutationBudget != 0 || authorization.IdempotentReplayBudget != 1 || authorization.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
+		got.ResumeAuthorizationConsumedAt == "" || claim.AuthorizationID != authorization.AuthorizationID || claim.IdempotencyKey != wantKey || claim.Status != "succeeded" {
+		t.Fatalf("automatic Storage absence recovery changed the original attempt: operation=%s attempt=%#v authorization=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, authorization, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+	for _, stage := range []contracts.Stage{contracts.StageCompute, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime} {
+		if adapter.mutationsByStage[string(stage)] != 0 {
+			t.Fatalf("automatic Storage recovery mutated stage %s: mutations=%#v", stage, adapter.mutationsByStage)
+		}
+	}
+
+	readsBefore, mutationsBefore, persistedBefore := adapter.reads, adapter.mutations, stringValue(store.row["result"])
+	replayed, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != mutationsBefore ||
+		stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("automatic Storage recovery repeated work: operation=%s reads=%d/%d mutations=%d/%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryLeavesUnprovenStorageUntouched(t *testing.T) {
+	readFailure := errors.New("storage owner read unavailable")
+	tests := []struct {
+		name      string
+		configure func(*workspaceLaunchReconcileOperation, *workspaceLaunchUnitAdapter)
+		wantReads int
+		wantError error
+	}{
+		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+			provider, err := json.Marshal("profile-unit")
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation.raw["providerProfileRef"] = provider
+		}},
+		{name: "provider pending", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.stageObservations = map[string]workspaceLaunchStageObservation{string(contracts.StageStorage): {State: workspaceLaunchStagePending}}
+		}},
+		{name: "authoritative unknown", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.unknownStages = map[string]bool{string(contracts.StageStorage): true}
+		}},
+		{name: "owner read error", wantReads: 1, wantError: readFailure, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.readErrors = map[string]error{string(contracts.StageStorage): readFailure}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
+			adapter := &workspaceLaunchUnitAdapter{}
+			if test.configure != nil {
+				test.configure(&operation, adapter)
+			}
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persistedBefore := stringValue(row["result"])
+			store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+			got, recoveryErr := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
+			if !errors.Is(recoveryErr, test.wantError) || got.ID != operation.ID && recoveryErr == nil || adapter.reads != test.wantReads ||
+				adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+				t.Fatalf("unproven automatic Storage recovery changed state: operation=%s reads=%d/%d mutations=%d err=%v want=%v",
+					workspaceLaunchReconcileResultSummary(got), adapter.reads, test.wantReads, adapter.mutations, recoveryErr, test.wantError)
+			}
+		})
+	}
+}
+
 func TestWorkspaceLaunchManualReviewAutoRecoveryReplacesFailedFreshComputeContinuation(t *testing.T) {
 	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
 	row, err := workspaceLaunchReconcileOperationRow(operation)
@@ -1116,6 +1221,48 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryCASAllowsOneReadyTransition(t *t
 	if err != nil || !found || decodeErr != nil || got.Version != operation.Version+1 || got.ResumeAuthorization == nil ||
 		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" {
 		t.Fatalf("concurrent recovery did not persist one system authorization: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryCASDispatchesStorageReplayOnce(t *testing.T) {
+	operation := workspaceLaunchAutomaticStorageAbsenceOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	adapter := &workspaceLaunchUnitAdapter{
+		replayableStages: map[string]bool{string(contracts.StageStorage): true},
+		barrier:          make(chan struct{}),
+	}
+	type result struct {
+		operation workspaceLaunchReconcileOperation
+		err       error
+	}
+	results := make(chan result, 2)
+	for range 2 {
+		go func() {
+			got, recoveryErr := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
+			results <- result{operation: got, err: recoveryErr}
+		}()
+	}
+	first, second := <-results, <-results
+	for index, outcome := range []result{first, second} {
+		if outcome.err != nil && !errors.Is(outcome.err, errWorkspaceLaunchCASConflict) {
+			t.Fatalf("concurrent Storage recovery %d returned an unexpected error: %v", index, outcome.err)
+		}
+	}
+	if adapter.mutationsByStage[string(contracts.StageStorage)] != 1 {
+		t.Fatalf("concurrent Storage recovery dispatched more than one original-key replay: mutations=%#v", adapter.mutationsByStage)
+	}
+	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
+	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
+	claim := got.IdempotentReplayClaims[contracts.StageStorage]
+	if err != nil || !found || decodeErr != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageAttachment ||
+		got.Attempts[contracts.StageStorage].Confirmed != 1 || claim.Status != "succeeded" ||
+		claim.IdempotencyKey != operation.Attempts[contracts.StageStorage].IdempotencyKey {
+		t.Fatalf("concurrent Storage recovery did not persist one replay: found=%v operation=%s claim=%#v errors=%v/%v",
+			found, workspaceLaunchReconcileResultSummary(got), claim, err, decodeErr)
 	}
 }
 
