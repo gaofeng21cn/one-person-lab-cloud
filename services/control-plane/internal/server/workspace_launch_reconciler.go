@@ -26,8 +26,8 @@ const workspaceLaunchFreshContinuationAdditionalReadBudget = 2
 const workspaceLaunchFreshContinuationReadClaimLease = 30 * time.Second
 const workspaceLaunchComputePendingWindow = 10 * time.Minute
 const workspaceLaunchComputeFreshContinuationAdditionalReadBudget = int(workspaceLaunchComputePendingWindow / defaultWorkspaceLaunchInterval)
-const workspaceLaunchAutomaticRuntimeReadyAuthorizedBy = "control-plane-system"
-const workspaceLaunchAutomaticRuntimeReadyReason = "system confirmed the authoritative ready runtime readback on the original launch"
+const workspaceLaunchAutomaticFabricReadyAuthorizedBy = "control-plane-system"
+const workspaceLaunchAutomaticFabricReadyReason = "system confirmed the authoritative ready Fabric readback on the original launch"
 const workspaceLaunchAutomaticComputeOwnershipAuthorizedBy = "control-plane-system"
 const workspaceLaunchAutomaticComputeOwnershipReason = "system confirmed authoritative recoverable compute ownership on the original launch"
 
@@ -1168,13 +1168,9 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
-	authorization, attempt, eligible := workspaceLaunchAutomaticRuntimeReadyAuthorization(operation, r.clockNow())
-	computeOwnershipRecovery := false
-	if !eligible {
-		authorization, attempt, eligible, _ = workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
-		computeOwnershipRecovery = eligible
-	}
-	if !eligible {
+	readyAuthorization, readyAttempt, readyEligible := workspaceLaunchAutomaticFabricReadyAuthorization(operation, r.clockNow())
+	computeAuthorization, computeAttempt, computeEligible, _ := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
+	if !readyEligible && !computeEligible {
 		return operation, nil
 	}
 
@@ -1183,22 +1179,17 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 		return operation, readErr
 	}
 	var recovered workspaceLaunchReconcileOperation
-	if computeOwnershipRecovery {
-		if observation.State != workspaceLaunchStageOwnershipPending {
-			return operation, nil
-		}
-		recovered, err = r.continueUnknownComputeStage(ctx, operation, attempt, authorization, observation)
-	} else {
-		if observation.State != workspaceLaunchStageReady {
-			return operation, nil
-		}
-		recovered, err = r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
+	action, mutation := "system_ready_recovery", false
+	switch {
+	case observation.State == workspaceLaunchStageReady && readyEligible:
+		recovered, err = r.convergeReadyRecovery(ctx, operation, readyAttempt, readyAuthorization, observation)
+	case observation.State == workspaceLaunchStageOwnershipPending && computeEligible:
+		action, mutation = "system_compute_ownership_recovery", true
+		recovered, err = r.continueUnknownComputeStage(ctx, operation, computeAttempt, computeAuthorization, observation)
+	default:
+		return operation, nil
 	}
 	if err == nil {
-		action, mutation := "system_ready_recovery", false
-		if computeOwnershipRecovery {
-			action, mutation = "system_compute_ownership_recovery", true
-		}
 		slog.InfoContext(ctx, "workspace launch automatic recovery",
 			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), action, mutation, "success", string(observation.State), "none", "none", 0)...)
 		return recovered, nil
@@ -1226,28 +1217,37 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	return workspaceLaunchReconcileOperation{}, err
 }
 
-func workspaceLaunchAutomaticRuntimeReadyAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool) {
-	attempt, found := operation.Attempts[contracts.StageRuntime]
-	if !found || operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "tencent-tke" ||
-		operation.RuntimeRepair != nil || operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
+func workspaceLaunchAutomaticFabricReadyAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool) {
+	attempt, found := operation.Attempts[operation.Stage]
+	if !found || operation.stringFact("providerProfileRef") != "tencent-tke" ||
+		operation.Stage == contracts.StageRuntime && operation.RuntimeRepair != nil ||
+		operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
 		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
 	}
-	if continuation, exists := operation.FreshContinuationAuthorizations[contracts.StageRuntime]; exists && continuation.Status != "failed" {
+	switch operation.Stage {
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime:
+	default:
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
+	}
+	if continuation, exists := operation.FreshContinuationAuthorizations[operation.Stage]; exists && continuation.Status != "failed" {
 		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
 	}
 	seed := strings.Join([]string{
-		"workspace-launch-runtime-ready-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
+		"workspace-launch-fabric-ready-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
 		operation.stringFact("workspaceId"), strconv.Itoa(operation.Version), string(operation.Stage), attempt.IdempotencyKey,
 	}, "\x00")
 	digest := sha256.Sum256([]byte(seed))
 	authorization := workspaceLaunchResumeAuthorization{
-		AuthorizationID: fmt.Sprintf("system-runtime-ready-v1-%x", digest[:12]), LaunchVersion: operation.Version,
-		AuthorizedStage: operation.Stage, AuthorizedBy: workspaceLaunchAutomaticRuntimeReadyAuthorizedBy,
-		AuthorizedAt: now.UTC().Format(time.RFC3339), Reason: workspaceLaunchAutomaticRuntimeReadyReason,
+		AuthorizationID: fmt.Sprintf("system-fabric-ready-v1-%x", digest[:12]), LaunchVersion: operation.Version,
+		AuthorizedStage: operation.Stage, AuthorizedBy: workspaceLaunchAutomaticFabricReadyAuthorizedBy,
+		AuthorizedAt: now.UTC().Format(time.RFC3339), Reason: workspaceLaunchAutomaticFabricReadyReason,
 		MutationBudget: 0, IdempotentReplayBudget: 0, AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
 	}
-	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) &&
-		workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization)
+	eligible := operation.Status == contracts.StatusManualReview && operation.boolFact("resourceBillingEnabled") &&
+		operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown && attempt.Max == 1 && attempt.Attempted == attempt.Max &&
+		attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" &&
+		attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1)
+	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) && eligible
 }
 
 func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool, string) {
@@ -1304,7 +1304,7 @@ func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLa
 	if attempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operation, 1) {
 		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_idempotency_key_conflict"
 	}
-	if _, hasFreshContinuation := operation.FreshContinuationAuthorizations[contracts.StageCompute]; hasFreshContinuation {
+	if continuation, hasFreshContinuation := operation.FreshContinuationAuthorizations[contracts.StageCompute]; hasFreshContinuation && continuation.Status != "failed" {
 		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_fresh_continuation_exists"
 	}
 	if !workspaceLaunchUnknownComputeContinuationEligible(operation, attempt, authorization) {
@@ -1500,7 +1500,8 @@ func workspaceLaunchRuntimeImageRevisionContinuationAuthorized(operation workspa
 }
 
 func workspaceLaunchUnknownComputeContinuationEligible(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, authorization workspaceLaunchResumeAuthorization) bool {
-	_, hasFreshContinuation := operation.FreshContinuationAuthorizations[operation.Stage]
+	continuation, hasFreshContinuation := operation.FreshContinuationAuthorizations[operation.Stage]
+	freshContinuationAvailable := !hasFreshContinuation || continuation.Status == "failed"
 	_, hasReplayClaim := operation.IdempotentReplayClaims[operation.Stage]
 	replayAvailable := !hasReplayClaim && !operation.idempotentReplayAuthorizationUsed(operation.Stage) ||
 		workspaceLaunchFailedComputeReplayReauthorizationEligible(operation)
@@ -1509,7 +1510,7 @@ func workspaceLaunchUnknownComputeContinuationEligible(operation workspaceLaunch
 		authorization.AuthoritativeReadBudget == workspaceLaunchRemainingComputeReadBudget(attempt) && authorization.ReadbacksAtAuthorization == 0 &&
 		operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown && attempt.Max == 1 && attempt.Attempted == attempt.Max &&
 		attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" &&
-		attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1) && !hasFreshContinuation && replayAvailable
+		attempt.IdempotencyKey == workspaceLaunchStageIdempotencyKey(operation, 1) && freshContinuationAvailable && replayAvailable
 }
 
 func workspaceLaunchFailedComputeReplayReauthorizationEligible(operation workspaceLaunchReconcileOperation) bool {
@@ -1543,6 +1544,17 @@ func (r *WorkspaceLaunchReconciler) continueUnknownComputeStage(
 	authorization workspaceLaunchResumeAuthorization,
 	observation workspaceLaunchStageObservation,
 ) (workspaceLaunchReconcileOperation, error) {
+	if continuation, exists := operation.FreshContinuationAuthorizations[operation.Stage]; exists {
+		if continuation.Status != "failed" {
+			return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+		}
+		delete(operation.FreshContinuationAuthorizations, operation.Stage)
+		for claimID, claim := range operation.ContinuationReadClaims {
+			if claim.AuthorizationID == continuation.AuthorizationID {
+				delete(operation.ContinuationReadClaims, claimID)
+			}
+		}
+	}
 	if workspaceLaunchFailedComputeReplayReauthorizationEligible(operation) {
 		delete(operation.IdempotentReplayClaims, operation.Stage)
 	}

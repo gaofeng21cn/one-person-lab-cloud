@@ -471,19 +471,22 @@ continuation, the READY transition also marks that continuation consumed so its
 persisted state remains coherent.
 
 The Workspace Launch worker also presents `manual_review` rows to a distinct
-Reconciler auto-recovery entry point. For `providerProfileRef=tencent-tke`, it
-admits two exact original `unknown`, `Max=1` attempt shapes. Runtime requires a
-fresh `ready` read and generates a deterministic `control-plane-system`
-`0/0/3` authorization that atomically confirms the stage. Compute requires a
-fresh `ownership_pending` read and generates a distinct deterministic
-zero-mutation, one-replay authorization. That continuation preserves the
-original Fabric operation and idempotency key, so Tencent discovers the Ready
-Machine before claiming CVM/Node ownership and cannot scale the NodePool again.
-Provider provisioning, absent, unknown, conflict, read failure, active Resume,
-an earlier Compute replay, Runtime repair, or an active fresh continuation
-leaves the row unchanged. The Runtime path does not inherit replay or image
-revision authority, and the Compute path cannot authorize another business
-attempt.
+Reconciler auto-recovery entry point. For `providerProfileRef=tencent-tke`, a
+fresh `ready` read on the exact original `unknown`, `Max=1` Compute, Storage,
+Attachment, Secret, or Runtime attempt generates a deterministic
+`control-plane-system` `0/0/3` authorization that atomically confirms the
+stage. Compute additionally accepts a fresh `ownership_pending` read and
+generates a distinct deterministic zero-mutation, one-replay authorization.
+That continuation preserves the original Fabric operation and idempotency key,
+so Tencent discovers the Ready Machine before claiming CVM/Node ownership and
+cannot scale the NodePool again. A failed typed Compute continuation is
+replaceable only when it has no replay claim and no earlier replay
+authorization; its terminal read claims are removed before the new
+authorization is persisted. Provider provisioning, absent, unknown, conflict,
+read failure, active Resume, an earlier Compute replay, Runtime repair, or an
+active fresh continuation leaves the row unchanged. The ready path does not
+inherit replay or image revision authority, and the Compute path cannot
+authorize another business attempt.
 
 The capability-protected, read-only stage observation returns schema v3 with
 the same Compute auto-recovery eligibility decision and one safe block-reason
@@ -591,16 +594,17 @@ claim and therefore does not call `ScaleNodePool` again. Ready consumes the
 authorization and advances; unknown/conflict/error or exact budget/deadline
 exhaustion records `unknown/manual_review`.
 
-For the already parked historical compute operation, the worker-owned path
-accepts only first-time `ownership_pending` and persists its deterministic
-authorization before the same-key continuation. The existing operator Resume
-route remains available for `provider_provisioning` and for one terminal failed
-replay replacement. Both paths preserve `Attempted=1`, `Max=1`, the original
-binding, and the original idempotency key. Ready, absent, unknown, conflict, and
-read failure are rejected without changing the operation. The previous
-authorization is retained in history; another replacement is refused. This
-does not add a generic compute-unknown recovery route. A schema-v3 row without
-the required authorization and claim maps remains explicitly zero-budget.
+For an already parked historical compute operation, the worker-owned path
+accepts `ready` read-only or `ownership_pending` through the same-key
+continuation and persists its deterministic authorization first. A failed
+fresh continuation with no replay evidence can be replaced by that worker
+path; the existing operator Resume route remains available for
+`provider_provisioning` and one terminal failed replay replacement. Both paths
+preserve `Attempted=1`, `Max=1`, the original binding, and the original
+idempotency key. Absent, unknown, conflict, and read failure do not change the
+operation. This does not add a generic compute-unknown mutation route. A
+schema-v3 row without the required authorization and claim maps remains
+explicitly zero-budget.
 
 Fabric's child transport claim is a local replay epoch, not Control Plane
 operator authorization and not a second business attempt budget. It binds the

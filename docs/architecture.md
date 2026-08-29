@@ -399,10 +399,11 @@ zero-mutation, one-replay authorization advances only after authoritative
 `pending`, `unknown`, read failure, identity drift, or any ineligible attempt
 leaves the operation unchanged in `manual_review`.
 
-The Control Plane worker may issue that zero-mutation, zero-replay Runtime
-authorization without an operator only for a Tencent/TKE Launch whose exact
-original attempt is `unknown/manual_review`, has no active Resume or Runtime
-repair authorization, and returns a fresh identity-valid `ready` readback.
+The Control Plane worker may issue a zero-mutation, zero-replay authorization
+without an operator for a Tencent/TKE Compute, Storage, Attachment, Secret, or
+Runtime stage whose exact original attempt is `unknown/manual_review`, has no
+active Resume authorization, and returns a fresh identity-valid `ready`
+readback. Runtime additionally rejects an active repair authorization.
 The deterministic single-use authorization is persisted as
 `authorizedBy=control-plane-system` in the same original Launch CAS that
 advances the cursor. `pending`, `absent`, `unknown`, read failure, invalid facts,
@@ -417,7 +418,10 @@ original Machine is Ready and safely recoverable. The Reconciler then uses the
 original Fabric operation and idempotency key to claim CVM/Node ownership; it
 cannot scale the NodePool or create another Compute. Provider provisioning,
 absence, unknown, conflict, read failure, an earlier replay, or an active
-authorization leaves the operation unchanged in `manual_review`.
+authorization leaves the operation unchanged in `manual_review`. A terminal
+failed typed continuation may be replaced only when its replay claim and every
+earlier replay authorization are absent; its own completed read claims are
+retired before the new authorization is persisted.
 
 For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
 only by its immutable old Workspace image continues through that same Resume

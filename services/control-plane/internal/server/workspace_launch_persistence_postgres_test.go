@@ -351,7 +351,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsRuntimeReadyRead
 	got, err := reconciler.AutoRecoverManualReview(ctx, operation.ID)
 	if err != nil || got.Stage != contracts.StageActivation || got.Status != contracts.StatusPending || got.Version != operation.Version+1 ||
 		got.Attempts[contracts.StageRuntime].Confirmed != 1 || got.ResumeAuthorization == nil ||
-		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" ||
+		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" ||
 		adapter.reads != 1 || adapter.mutations != 0 {
 		t.Fatalf("PostgreSQL automatic Runtime recovery did not persist: operation=%s reads=%d mutations=%d err=%v",
 			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
@@ -361,7 +361,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsRuntimeReadyRead
 	restarted, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
 	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != contracts.StageActivation ||
 		restarted.ResumeAuthorization == nil || restarted.ResumeAuthorization.AuthorizationID != got.ResumeAuthorization.AuthorizationID ||
-		restarted.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || restarted.ResumeAuthorizationConsumedAt == "" {
+		restarted.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy || restarted.ResumeAuthorizationConsumedAt == "" {
 		t.Fatalf("PostgreSQL automatic Runtime recovery restart readback failed: found=%v operation=%s errors=%v/%v",
 			found, workspaceLaunchReconcileResultSummary(restarted), err, decodeErr)
 	}
@@ -374,7 +374,7 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsComputeOwnership
 	account, owner := provisionedAccountRowsFor(accountID, ownerID, "compute-ownership-auto-recovery-pg@example.com", 14)
 	mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
 
-	operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
 	row, err := workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +405,8 @@ func TestPostgresWorkspaceLaunchManualReviewAutoRecoveryPersistsComputeOwnership
 	if err != nil || !found || decodeErr != nil || restarted.Version != got.Version || restarted.Stage != contracts.StageStorage ||
 		restarted.ResumeAuthorization == nil || restarted.ResumeAuthorization.AuthorizationID != got.ResumeAuthorization.AuthorizationID ||
 		restarted.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticComputeOwnershipAuthorizedBy || restarted.ResumeAuthorizationConsumedAt == "" ||
-		claim.AuthorizationID != restarted.ResumeAuthorization.AuthorizationID || claim.Status != "succeeded" {
+		claim.AuthorizationID != restarted.ResumeAuthorization.AuthorizationID || claim.Status != "succeeded" ||
+		len(restarted.FreshContinuationAuthorizations) != 0 || len(restarted.ContinuationReadClaims) != 0 {
 		t.Fatalf("PostgreSQL automatic Compute ownership recovery restart readback failed: found=%v operation=%s claim=%#v errors=%v/%v",
 			found, workspaceLaunchReconcileResultSummary(restarted), claim, err, decodeErr)
 	}

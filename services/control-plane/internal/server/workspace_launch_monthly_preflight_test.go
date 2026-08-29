@@ -806,7 +806,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	recovered, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
 	if err != nil || recovered.Status != contracts.StatusPending || recovered.Stage != contracts.StageActivation ||
 		recovered.ID != reviewed.ID || recovered.stringFact("workspaceId") != reviewed.stringFact("workspaceId") ||
-		recovered.ResumeAuthorization == nil || recovered.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy ||
+		recovered.ResumeAuthorization == nil || recovered.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy ||
 		recovered.ResumeAuthorization.MutationBudget != 0 || recovered.ResumeAuthorization.IdempotentReplayBudget != 0 ||
 		recovered.ResumeAuthorizationConsumedAt == "" || fabric.runtimeEnsureCalls != 1 {
 		t.Fatalf("Worker did not recover the original Runtime read-only: operation=%s authorization=%#v ensure=%d reads=%d err=%v",
