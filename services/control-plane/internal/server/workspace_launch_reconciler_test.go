@@ -707,6 +707,21 @@ func workspaceLaunchAutomaticRuntimeReadyOperation(t *testing.T) workspaceLaunch
 	return operation
 }
 
+func workspaceLaunchAutomaticComputeOwnershipOperation(t *testing.T) workspaceLaunchReconcileOperation {
+	t.Helper()
+	row := workspaceLaunchUnknownStageManualReviewRow(t, "ensure_compute_allocation")
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := json.Marshal("tencent-tke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.raw["providerProfileRef"] = provider
+	return operation
+}
+
 func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		t.Run(string(stage)+"/absent replays one logical claim", func(t *testing.T) {
@@ -789,6 +804,131 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryConvergesRuntimeReadyReadOnly(t 
 	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
 		t.Fatalf("automatic Runtime-ready recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v",
 			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryClaimsComputeOwnershipWithOriginalKey(t *testing.T) {
+	operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageCompute): {ownership, ownership, ownership}},
+		replayableStages:   map[string]bool{string(contracts.StageCompute): true},
+	}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 4, 0, 0, 0, time.UTC) }
+	wantReadBudget := workspaceLaunchRemainingComputeReadBudget(operation.Attempts[contracts.StageCompute])
+
+	got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	attempt := got.Attempts[contracts.StageCompute]
+	claim := got.IdempotentReplayClaims[contracts.StageCompute]
+	authorization := got.ResumeAuthorization
+	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageStorage ||
+		attempt.Attempted != 1 || attempt.Max != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operationWithStage(got, contracts.StageCompute), 1) ||
+		authorization == nil || !strings.HasPrefix(authorization.AuthorizationID, "system-compute-ownership-v1-") ||
+		authorization.AuthorizedBy != workspaceLaunchAutomaticComputeOwnershipAuthorizedBy || authorization.Reason != workspaceLaunchAutomaticComputeOwnershipReason ||
+		authorization.MutationBudget != 0 || authorization.IdempotentReplayBudget != 1 || authorization.AuthoritativeReadBudget != wantReadBudget ||
+		got.ResumeAuthorizationConsumedAt == "" || claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" ||
+		adapter.reads != 4 || adapter.mutationsByStage[string(contracts.StageCompute)] != 1 || adapter.mutationOperationID != operation.ID ||
+		adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
+		t.Fatalf("automatic Compute ownership recovery changed the original attempt: operation=%s attempt=%#v authorization=%#v claim=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, authorization, claim, adapter.reads, adapter.mutationsByStage, err)
+	}
+	for _, stage := range []contracts.Stage{contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime, contracts.StageActivation, contracts.StageReceipt} {
+		if adapter.mutationsByStage[string(stage)] != 0 {
+			t.Fatalf("automatic Compute recovery started downstream stage %s: mutations=%#v", stage, adapter.mutationsByStage)
+		}
+	}
+
+	readsBefore, mutationsBefore, persistedBefore := adapter.reads, adapter.mutations, stringValue(store.row["result"])
+	replayed, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != mutationsBefore ||
+		stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("automatic Compute recovery repeated work: operation=%s reads=%d/%d mutations=%d/%d err=%v",
+			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutComputeOwnershipPending(t *testing.T) {
+	readFailure := errors.New("compute owner read unavailable")
+	tests := []struct {
+		name      string
+		configure func(*workspaceLaunchReconcileOperation, *workspaceLaunchUnitAdapter)
+		wantReads int
+		wantError error
+	}{
+		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+			provider, err := json.Marshal("profile-unit")
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation.raw["providerProfileRef"] = provider
+		}},
+		{name: "provider still provisioning", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.stageObservations = map[string]workspaceLaunchStageObservation{string(contracts.StageCompute): {State: workspaceLaunchStagePending}}
+		}},
+		{name: "authoritative absent", wantReads: 1},
+		{name: "authoritative unknown", wantReads: 1, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.unknownStages = map[string]bool{string(contracts.StageCompute): true}
+		}},
+		{name: "owner read error", wantReads: 1, wantError: readFailure, configure: func(_ *workspaceLaunchReconcileOperation, adapter *workspaceLaunchUnitAdapter) {
+			adapter.readErrors = map[string]error{string(contracts.StageCompute): readFailure}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+			adapter := &workspaceLaunchUnitAdapter{}
+			if test.configure != nil {
+				test.configure(&operation, adapter)
+			}
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persistedBefore := stringValue(row["result"])
+			store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+			got, recoveryErr := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
+			if !errors.Is(recoveryErr, test.wantError) || got.ID != operation.ID && recoveryErr == nil || adapter.reads != test.wantReads || adapter.mutations != 0 ||
+				stringValue(store.row["result"]) != persistedBefore {
+				t.Fatalf("ineligible automatic Compute recovery changed state: operation=%s reads=%d/%d mutations=%d err=%v want=%v",
+					workspaceLaunchReconcileResultSummary(got), adapter.reads, test.wantReads, adapter.mutations, recoveryErr, test.wantError)
+			}
+		})
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryDoesNotReplaceFailedComputeReplay(t *testing.T) {
+	row := workspaceLaunchUnknownComputeAfterFailedReplayRow(t)
+	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := json.Marshal("tencent-tke")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.raw["providerProfileRef"] = provider
+	row, err = workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{
+		string(contracts.StageCompute): {State: workspaceLaunchStageOwnershipPending},
+	}}
+	persistedBefore := stringValue(row["result"])
+
+	got, err := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
+	if err != nil || got.Version != operation.Version || adapter.reads != 0 || adapter.mutations != 0 ||
+		stringValue(store.row["result"]) != persistedBefore {
+		t.Fatalf("automatic Compute recovery replaced a failed replay: operation=%s reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
 	}
 }
 

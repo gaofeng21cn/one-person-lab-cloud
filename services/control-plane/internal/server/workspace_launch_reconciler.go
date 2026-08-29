@@ -28,6 +28,8 @@ const workspaceLaunchComputePendingWindow = 10 * time.Minute
 const workspaceLaunchComputeFreshContinuationAdditionalReadBudget = int(workspaceLaunchComputePendingWindow / defaultWorkspaceLaunchInterval)
 const workspaceLaunchAutomaticRuntimeReadyAuthorizedBy = "control-plane-system"
 const workspaceLaunchAutomaticRuntimeReadyReason = "system confirmed the authoritative ready runtime readback on the original launch"
+const workspaceLaunchAutomaticComputeOwnershipAuthorizedBy = "control-plane-system"
+const workspaceLaunchAutomaticComputeOwnershipReason = "system confirmed authoritative recoverable compute ownership on the original launch"
 
 const (
 	workspaceLaunchStageAbsent                      = contracts.StageStateAbsent
@@ -1167,6 +1169,11 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	authorization, attempt, eligible := workspaceLaunchAutomaticRuntimeReadyAuthorization(operation, r.clockNow())
+	computeOwnershipRecovery := false
+	if !eligible {
+		authorization, attempt, eligible = workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
+		computeOwnershipRecovery = eligible
+	}
 	if !eligible {
 		return operation, nil
 	}
@@ -1175,13 +1182,25 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	if readErr != nil {
 		return operation, readErr
 	}
-	if observation.State != workspaceLaunchStageReady {
-		return operation, nil
+	var recovered workspaceLaunchReconcileOperation
+	if computeOwnershipRecovery {
+		if observation.State != workspaceLaunchStageOwnershipPending {
+			return operation, nil
+		}
+		recovered, err = r.continueUnknownComputeStage(ctx, operation, attempt, authorization, observation)
+	} else {
+		if observation.State != workspaceLaunchStageReady {
+			return operation, nil
+		}
+		recovered, err = r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
 	}
-	recovered, err := r.convergeReadyRecovery(ctx, operation, attempt, authorization, observation)
 	if err == nil {
+		action, mutation := "system_ready_recovery", false
+		if computeOwnershipRecovery {
+			action, mutation = "system_compute_ownership_recovery", true
+		}
 		slog.InfoContext(ctx, "workspace launch automatic recovery",
-			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), "system_ready_recovery", false, "success", string(observation.State), "none", "none", 0)...)
+			workspaceLaunchLogAttrs(operation.ID, string(operation.Stage), action, mutation, "success", string(observation.State), "none", "none", 0)...)
 		return recovered, nil
 	}
 	if !errors.Is(err, errWorkspaceLaunchCASConflict) {
@@ -1199,9 +1218,9 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	if decodeErr != nil {
 		return workspaceLaunchReconcileOperation{}, decodeErr
 	}
-	latestAttempt, attemptFound := latest.Attempts[contracts.StageRuntime]
+	latestAttempt, attemptFound := latest.Attempts[operation.Stage]
 	if attemptFound && latestAttempt.Confirmed == 1 && latestAttempt.Unknown == 0 && latestAttempt.Status == "confirmed" &&
-		(latest.Stage != contracts.StageRuntime || latest.Status == contracts.StatusSucceeded) {
+		(latest.Stage != operation.Stage || latest.Status == contracts.StatusSucceeded) {
 		return latest, nil
 	}
 	return workspaceLaunchReconcileOperation{}, err
@@ -1229,6 +1248,30 @@ func workspaceLaunchAutomaticRuntimeReadyAuthorization(operation workspaceLaunch
 	}
 	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) &&
 		workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization)
+}
+
+func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool) {
+	attempt, found := operation.Attempts[contracts.StageCompute]
+	_, hasReplayClaim := operation.IdempotentReplayClaims[contracts.StageCompute]
+	if !found || operation.Stage != contracts.StageCompute || operation.stringFact("providerProfileRef") != "tencent-tke" ||
+		operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" || hasReplayClaim ||
+		operation.idempotentReplayAuthorizationUsed(contracts.StageCompute) {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
+	}
+	seed := strings.Join([]string{
+		"workspace-launch-compute-ownership-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
+		operation.stringFact("workspaceId"), strconv.Itoa(operation.Version), string(operation.Stage), attempt.IdempotencyKey,
+	}, "\x00")
+	digest := sha256.Sum256([]byte(seed))
+	authorization := workspaceLaunchResumeAuthorization{
+		AuthorizationID: fmt.Sprintf("system-compute-ownership-v1-%x", digest[:12]), LaunchVersion: operation.Version,
+		AuthorizedStage: operation.Stage, AuthorizedBy: workspaceLaunchAutomaticComputeOwnershipAuthorizedBy,
+		AuthorizedAt: now.UTC().Format(time.RFC3339), Reason: workspaceLaunchAutomaticComputeOwnershipReason,
+		MutationBudget: 0, IdempotentReplayBudget: 1,
+		AuthoritativeReadBudget: workspaceLaunchRemainingComputeReadBudget(attempt),
+	}
+	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) &&
+		workspaceLaunchUnknownComputeContinuationEligible(operation, attempt, authorization)
 }
 
 func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID string, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {
@@ -1451,6 +1494,16 @@ func (r *WorkspaceLaunchReconciler) recoverUnknownComputeStage(
 	if readErr != nil || observation.State != workspaceLaunchStagePending && observation.State != workspaceLaunchStageOwnershipPending {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
 	}
+	return r.continueUnknownComputeStage(ctx, operation, attempt, authorization, observation)
+}
+
+func (r *WorkspaceLaunchReconciler) continueUnknownComputeStage(
+	ctx context.Context,
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchResumeAuthorization,
+	observation workspaceLaunchStageObservation,
+) (workspaceLaunchReconcileOperation, error) {
 	if workspaceLaunchFailedComputeReplayReauthorizationEligible(operation) {
 		delete(operation.IdempotentReplayClaims, operation.Stage)
 	}

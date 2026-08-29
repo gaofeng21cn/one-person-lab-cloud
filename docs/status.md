@@ -32,9 +32,10 @@ is selected and configured by the medopl instance, not by the portable product.
 - Workspace Launch persists one Control Plane operation and coordinates Key,
   debit, Fabric resource stages, activation, and one purchase Receipt. Unknown
   external results enter manual review and resume through the same operation.
-  The Worker now rechecks only the exact Tencent/TKE Runtime-ready manual-review
-  class through a system-owned zero-mutation, zero-replay authorization; all
-  non-ready or conflicting observations remain unchanged.
+  The Worker rechecks only exact Tencent/TKE manual-review classes: Runtime
+  `ready` advances through a zero-replay authorization, while Compute
+  `ownership_pending` uses one original-key continuation to claim the already
+  Ready Machine without another scale. Other states remain unchanged.
   An unknown Storage attempt is classified from its exact Fabric binding;
   ready advances read-only, pending remains bounded and read-only, and only
   authoritative absence permits one replay with the original idempotency key.
@@ -81,9 +82,10 @@ is selected and configured by the medopl instance, not by the portable product.
   persisted ten-minute window. A Ready Machine with recoverable ownership
   becomes compute-only `ownership_pending`; one durable same-key continuation
   discovers that Machine and claims CVM/Node ownership without a second
-  NodePool scale. The existing administrator Resume route can return only the
-  historical matching compute-unknown operation to this same Reconciler after
-  authoritative `provider_provisioning` or `ownership_pending` readback. One
+  NodePool scale. The worker now restores the first exact historical
+  compute-unknown operation automatically only after authoritative
+  `ownership_pending`; the administrator Resume route remains for
+  `provider_provisioning` and one failed continuation replacement. One
   terminal failed compatibility replay can be replaced exactly once by a new
   single-use administrator authorization without changing the original stage,
   attempt, Fabric operation, resource binding, or idempotency key. Local Fabric,

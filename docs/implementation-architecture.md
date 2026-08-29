@@ -471,15 +471,19 @@ continuation, the READY transition also marks that continuation consumed so its
 persisted state remains coherent.
 
 The Workspace Launch worker also presents `manual_review` rows to a distinct
-Reconciler auto-recovery entry point. That entry point is limited to
-`providerProfileRef=tencent-tke`, Runtime, the original unknown `Max=1`
-attempt, no active Resume authorization, no Runtime repair, and no active fresh
-continuation. It performs one fresh Fabric read on each worker pass. Exact
-`ready` facts generate a deterministic `control-plane-system` `0/0/3`
-authorization and atomically confirm Runtime on the original Launch CAS;
-concurrent CAS losers accept only the readback of the already-confirmed Runtime.
-Every non-ready state is read-only and leaves the row unchanged. This path does
-not inherit operator replay or image-revision authority.
+Reconciler auto-recovery entry point. For `providerProfileRef=tencent-tke`, it
+admits two exact original `unknown`, `Max=1` attempt shapes. Runtime requires a
+fresh `ready` read and generates a deterministic `control-plane-system`
+`0/0/3` authorization that atomically confirms the stage. Compute requires a
+fresh `ownership_pending` read and generates a distinct deterministic
+zero-mutation, one-replay authorization. That continuation preserves the
+original Fabric operation and idempotency key, so Tencent discovers the Ready
+Machine before claiming CVM/Node ownership and cannot scale the NodePool again.
+Provider provisioning, absent, unknown, conflict, read failure, active Resume,
+an earlier Compute replay, Runtime repair, or an active fresh continuation
+leaves the row unchanged. The Runtime path does not inherit replay or image
+revision authority, and the Compute path cannot authorize another business
+attempt.
 
 For the Tencent/TKE adapter, the same operator Resume request may also carry a
 replacement Workspace image digest when the exact original Runtime exists and
@@ -582,19 +586,16 @@ claim and therefore does not call `ScaleNodePool` again. Ready consumes the
 authorization and advances; unknown/conflict/error or exact budget/deadline
 exhaustion records `unknown/manual_review`.
 
-For the already parked historical compute operation, the existing operator
-Resume route accepts a sixty-read, zero-mutation, one-replay authorization only
-after an authoritative read returns `provider_provisioning` or
-`ownership_pending`. It preserves `Attempted=1`, `Max=1`, the original binding,
-and the original idempotency key. Ready, absent, unknown, conflict, and read
-failure are rejected without changing the operation. This narrow compatibility
-may replace one terminal failed replay claim once, using a new single-use
-administrator authorization, only when the failed claim and consumed
-authorization match that exact stage and idempotency identity and no earlier
-replacement exists. The previous authorization is retained in history; another
-replacement is refused. This does not add a generic compute-unknown recovery
-route. A schema-v3 row without the new authorization and claim maps remains
-explicitly zero-budget.
+For the already parked historical compute operation, the worker-owned path
+accepts only first-time `ownership_pending` and persists its deterministic
+authorization before the same-key continuation. The existing operator Resume
+route remains available for `provider_provisioning` and for one terminal failed
+replay replacement. Both paths preserve `Attempted=1`, `Max=1`, the original
+binding, and the original idempotency key. Ready, absent, unknown, conflict, and
+read failure are rejected without changing the operation. The previous
+authorization is retained in history; another replacement is refused. This
+does not add a generic compute-unknown recovery route. A schema-v3 row without
+the required authorization and claim maps remains explicitly zero-budget.
 
 Fabric's child transport claim is a local replay epoch, not Control Plane
 operator authorization and not a second business attempt budget. It binds the
