@@ -694,7 +694,15 @@ func workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t *testing.T) m
 
 func workspaceLaunchAutomaticRuntimeReadyOperation(t *testing.T) workspaceLaunchReconcileOperation {
 	t.Helper()
-	row := workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t)
+	return workspaceLaunchAutomaticFabricReadyOperation(t, contracts.StageRuntime)
+}
+
+func workspaceLaunchAutomaticFabricReadyOperation(t *testing.T, stage contracts.Stage) workspaceLaunchReconcileOperation {
+	t.Helper()
+	row := workspaceLaunchUnknownStageManualReviewRow(t, stage)
+	if stage == contracts.StageRuntime {
+		row = workspaceLaunchUnknownRuntimeWithFailedFreshContinuationRow(t)
+	}
 	operation, err := decodeWorkspaceLaunchReconcileOperation(row)
 	if err != nil {
 		t.Fatal(err)
@@ -722,6 +730,44 @@ func workspaceLaunchAutomaticComputeOwnershipOperation(t *testing.T) workspaceLa
 	return operation
 }
 
+func workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t *testing.T) workspaceLaunchReconcileOperation {
+	t.Helper()
+	operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+	attempt := operation.Attempts[contracts.StageCompute]
+	attempt.PendingReadbacks = workspaceLaunchAuthoritativeReadBudget
+	attempt.MaxPendingReadbacks = 1 + workspaceLaunchFreshContinuationReadBudget(contracts.StageCompute)
+	attempt.PendingDeadlineAt = "2026-08-29T04:00:00Z"
+	operation.Attempts[contracts.StageCompute] = attempt
+	operationVersion := operation.Version - 1
+	authorizationID := workspaceLaunchFreshContinuationAuthorizationID(operation, attempt, operationVersion)
+	operation.FreshContinuationAuthorizations[contracts.StageCompute] = workspaceLaunchFreshContinuationAuthorization{
+		SchemaVersion: workspaceLaunchFreshContinuationSchemaVersion, AuthorizationID: authorizationID,
+		AuthorizationClass: workspaceLaunchFreshContinuationAuthorizationClass,
+		AccountID:          operation.stringFact("accountId"), OperationID: operation.ID, WorkspaceID: operation.stringFact("workspaceId"),
+		Stage: contracts.StageCompute, IdempotencyKey: attempt.IdempotencyKey, Attempt: 1, OperationVersion: operationVersion,
+		IdempotentReplayBudget:  workspaceLaunchFreshContinuationReplayBudget(contracts.StageCompute),
+		AuthoritativeReadBudget: workspaceLaunchFreshContinuationReadBudget(contracts.StageCompute), ReadbacksAtAuthorization: 1,
+		Status: "failed", ConsumedAt: "2026-08-29T04:00:00Z",
+	}
+	for readback := 2; readback <= attempt.PendingReadbacks; readback++ {
+		claimID := workspaceLaunchFreshContinuationClaimKey(authorizationID, readback)
+		operation.ContinuationReadClaims[claimID] = workspaceLaunchContinuationReadClaim{
+			SchemaVersion: workspaceLaunchFreshContinuationSchemaVersion, AuthorizationID: authorizationID,
+			Stage: contracts.StageCompute, IdempotencyKey: attempt.IdempotencyKey, Readback: readback,
+			Status: "pending", CompletedAt: "2026-08-29T04:00:00Z",
+		}
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := decodeWorkspaceLaunchReconcileOperation(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return validated
+}
+
 func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligibility(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -732,8 +778,8 @@ func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligib
 		{name: "persisted observation", want: "persisted_observation_not_unknown", mutate: func(operation *workspaceLaunchReconcileOperation) {
 			operation.Observations[contracts.StageCompute] = workspaceLaunchStageObservation{State: workspaceLaunchStagePending}
 		}},
-		{name: "retained fresh continuation", want: "compute_fresh_continuation_exists", mutate: func(operation *workspaceLaunchReconcileOperation) {
-			operation.FreshContinuationAuthorizations[contracts.StageCompute] = workspaceLaunchFreshContinuationAuthorization{Status: "failed"}
+		{name: "active fresh continuation", want: "compute_fresh_continuation_exists", mutate: func(operation *workspaceLaunchReconcileOperation) {
+			operation.FreshContinuationAuthorizations[contracts.StageCompute] = workspaceLaunchFreshContinuationAuthorization{Status: "active"}
 		}},
 		{name: "resource billing disabled", want: "resource_billing_disabled", mutate: func(operation *workspaceLaunchReconcileOperation) {
 			value, err := json.Marshal(false)
@@ -754,6 +800,11 @@ func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligib
 				t.Fatalf("eligible=%v reason=%q want=%q", eligible, reason, test.want)
 			}
 		})
+	}
+	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
+	_, _, eligible, reason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, time.Date(2026, 8, 29, 5, 0, 0, 0, time.UTC))
+	if !eligible || reason != "none" {
+		t.Fatalf("failed fresh continuation remained blocked: eligible=%v reason=%q", eligible, reason)
 	}
 }
 
@@ -809,36 +860,57 @@ func TestWorkspaceLaunchUnknownRuntimeRecoveryConvergesReadyReadOnly(t *testing.
 	}
 }
 
-func TestWorkspaceLaunchManualReviewAutoRecoveryConvergesRuntimeReadyReadOnly(t *testing.T) {
-	operation := workspaceLaunchAutomaticRuntimeReadyOperation(t)
-	row, err := workspaceLaunchReconcileOperationRow(operation)
-	if err != nil {
-		t.Fatal(err)
+func TestWorkspaceLaunchManualReviewAutoRecoveryConvergesFabricReadyReadOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		stage contracts.Stage
+		next  contracts.Stage
+		setup func(*testing.T) workspaceLaunchReconcileOperation
+	}{
+		{name: "compute", stage: contracts.StageCompute, next: contracts.StageStorage},
+		{name: "compute after failed continuation", stage: contracts.StageCompute, next: contracts.StageStorage, setup: workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation},
+		{name: "storage", stage: contracts.StageStorage, next: contracts.StageAttachment},
+		{name: "attachment", stage: contracts.StageAttachment, next: contracts.StageSecret},
+		{name: "secret", stage: contracts.StageSecret, next: contracts.StageRuntime},
+		{name: "runtime after failed continuation", stage: contracts.StageRuntime, next: contracts.StageActivation},
 	}
-	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
-	adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(contracts.StageRuntime): true}}
-	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
-	reconciler.now = func() time.Time { return time.Date(2026, 8, 28, 8, 0, 0, 0, time.UTC) }
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := workspaceLaunchAutomaticFabricReadyOperation(t, test.stage)
+			if test.setup != nil {
+				operation = test.setup(t)
+			}
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(test.stage): true}}
+			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+			reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC) }
 
-	got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
-	authorization := got.ResumeAuthorization
-	fresh := got.FreshContinuationAuthorizations[contracts.StageRuntime]
-	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageActivation ||
-		got.Version != operation.Version+1 || got.Attempts[contracts.StageRuntime].Confirmed != 1 ||
-		got.Attempts[contracts.StageRuntime].Unknown != 0 || got.Attempts[contracts.StageRuntime].Status != "confirmed" ||
-		authorization == nil || !strings.HasPrefix(authorization.AuthorizationID, "system-runtime-ready-v1-") ||
-		authorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || authorization.Reason != workspaceLaunchAutomaticRuntimeReadyReason ||
-		authorization.MutationBudget != 0 || authorization.IdempotentReplayBudget != 0 || authorization.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
-		got.ResumeAuthorizationConsumedAt == "" || fresh.Status != "consumed" || adapter.reads != 1 || adapter.mutations != 0 {
-		t.Fatalf("automatic Runtime-ready recovery escaped the original read-only operation: operation=%s authorization=%#v fresh=%#v reads=%d mutations=%d err=%v",
-			workspaceLaunchReconcileResultSummary(got), authorization, fresh, adapter.reads, adapter.mutations, err)
-	}
+			got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+			authorization := got.ResumeAuthorization
+			if err != nil || got.Status != contracts.StatusPending || got.Stage != test.next || got.Version != operation.Version+1 ||
+				got.Attempts[test.stage].Confirmed != 1 || got.Attempts[test.stage].Unknown != 0 || got.Attempts[test.stage].Status != "confirmed" ||
+				authorization == nil || !strings.HasPrefix(authorization.AuthorizationID, "system-fabric-ready-v1-") ||
+				authorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy || authorization.Reason != workspaceLaunchAutomaticFabricReadyReason ||
+				authorization.MutationBudget != 0 || authorization.IdempotentReplayBudget != 0 || authorization.AuthoritativeReadBudget != workspaceLaunchAuthoritativeReadBudget ||
+				got.ResumeAuthorizationConsumedAt == "" || adapter.reads != 1 || adapter.mutations != 0 {
+				t.Fatalf("automatic Fabric-ready recovery escaped the original read-only operation: operation=%s authorization=%#v reads=%d mutations=%d err=%v",
+					workspaceLaunchReconcileResultSummary(got), authorization, adapter.reads, adapter.mutations, err)
+			}
+			if _, existed := operation.FreshContinuationAuthorizations[test.stage]; existed && got.FreshContinuationAuthorizations[test.stage].Status != "consumed" {
+				t.Fatalf("failed fresh continuation was not consumed: %#v", got.FreshContinuationAuthorizations[test.stage])
+			}
 
-	readsBefore, persistedBefore := adapter.reads, stringValue(store.row["result"])
-	replayed, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
-	if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
-		t.Fatalf("automatic Runtime-ready recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v",
-			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+			readsBefore, persistedBefore := adapter.reads, stringValue(store.row["result"])
+			replayed, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+			if err != nil || replayed.Version != got.Version || adapter.reads != readsBefore || adapter.mutations != 0 || stringValue(store.row["result"]) != persistedBefore {
+				t.Fatalf("automatic Fabric-ready recovery repeated work: operation=%s reads=%d/%d mutations=%d err=%v",
+					workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, err)
+			}
+		})
 	}
 }
 
@@ -886,6 +958,42 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryClaimsComputeOwnershipWithOrigin
 		stringValue(store.row["result"]) != persistedBefore {
 		t.Fatalf("automatic Compute recovery repeated work: operation=%s reads=%d/%d mutations=%d/%d err=%v",
 			workspaceLaunchReconcileResultSummary(replayed), adapter.reads, readsBefore, adapter.mutations, mutationsBefore, err)
+	}
+}
+
+func TestWorkspaceLaunchManualReviewAutoRecoveryReplacesFailedFreshComputeContinuation(t *testing.T) {
+	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	ownership := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageOwnershipPending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageCompute): {ownership, ownership, ownership}},
+		replayableStages:   map[string]bool{string(contracts.StageCompute): true},
+	}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	reconciler.now = func() time.Time { return time.Date(2026, 8, 29, 5, 0, 0, 0, time.UTC) }
+	wantKey := operation.Attempts[contracts.StageCompute].IdempotencyKey
+
+	got, err := reconciler.AutoRecoverManualReview(context.Background(), operation.ID)
+	attempt := got.Attempts[contracts.StageCompute]
+	claim := got.IdempotentReplayClaims[contracts.StageCompute]
+	authorization := got.ResumeAuthorization
+	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageStorage ||
+		attempt.Attempted != 1 || attempt.Max != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
+		attempt.IdempotencyKey != wantKey || adapter.mutationsByStage[string(contracts.StageCompute)] != 1 ||
+		adapter.mutationOperationID != operation.ID || adapter.mutationIdempotencyKey != wantKey ||
+		authorization == nil || claim.AuthorizationID != authorization.AuthorizationID || claim.Status != "succeeded" {
+		t.Fatalf("failed fresh Compute continuation did not converge through the original operation: operation=%s attempt=%#v claim=%#v mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), attempt, claim, adapter.mutationsByStage, err)
+	}
+	if _, retained := got.FreshContinuationAuthorizations[contracts.StageCompute]; retained {
+		t.Fatalf("terminal fresh Compute continuation still blocks the replacement: %#v", got.FreshContinuationAuthorizations)
+	}
+	if len(got.ContinuationReadClaims) != 0 {
+		t.Fatalf("terminal fresh Compute read claims were retained: %#v", got.ContinuationReadClaims)
 	}
 }
 
@@ -960,7 +1068,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryDoesNotReplaceFailedComputeRepla
 	persistedBefore := stringValue(row["result"])
 
 	got, err := NewWorkspaceLaunchReconciler(store, adapter).AutoRecoverManualReview(context.Background(), operation.ID)
-	if err != nil || got.Version != operation.Version || adapter.reads != 0 || adapter.mutations != 0 ||
+	if err != nil || got.Version != operation.Version || adapter.reads != 1 || adapter.mutations != 0 ||
 		stringValue(store.row["result"]) != persistedBefore {
 		t.Fatalf("automatic Compute recovery replaced a failed replay: operation=%s reads=%d mutations=%d err=%v",
 			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
@@ -1006,7 +1114,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryCASAllowsOneReadyTransition(t *t
 	persisted, found, err := store.GetRuntimeOperation(context.Background(), operation.ID)
 	got, decodeErr := decodeWorkspaceLaunchReconcileOperation(persisted)
 	if err != nil || !found || decodeErr != nil || got.Version != operation.Version+1 || got.ResumeAuthorization == nil ||
-		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticRuntimeReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" {
+		got.ResumeAuthorization.AuthorizedBy != workspaceLaunchAutomaticFabricReadyAuthorizedBy || got.ResumeAuthorizationConsumedAt == "" {
 		t.Fatalf("concurrent recovery did not persist one system authorization: found=%v operation=%s errors=%v/%v", found, workspaceLaunchReconcileResultSummary(got), err, decodeErr)
 	}
 }

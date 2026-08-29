@@ -32,8 +32,9 @@ is selected and configured by the medopl instance, not by the portable product.
 - Workspace Launch persists one Control Plane operation and coordinates Key,
   debit, Fabric resource stages, activation, and one purchase Receipt. Unknown
   external results enter manual review and resume through the same operation.
-  The Worker rechecks only exact Tencent/TKE manual-review classes: Runtime
-  `ready` advances through a zero-replay authorization, while Compute
+  The Worker rechecks only exact Tencent/TKE manual-review classes: an
+  identity-valid `ready` read advances Compute, Storage, Attachment, Secret, or
+  Runtime through a zero-replay authorization, while Compute
   `ownership_pending` uses one original-key continuation to claim the already
   Ready Machine without another scale. Other states remain unchanged.
   The zero-mutation stage observation also reports the exact safe eligibility
@@ -85,9 +86,10 @@ is selected and configured by the medopl instance, not by the portable product.
   becomes compute-only `ownership_pending`; one durable same-key continuation
   discovers that Machine and claims CVM/Node ownership without a second
   NodePool scale. The worker now restores the first exact historical
-  compute-unknown operation automatically only after authoritative
-  `ownership_pending`; the administrator Resume route remains for
-  `provider_provisioning` and one failed continuation replacement. One
+  compute-unknown operation automatically after authoritative `ready` or
+  `ownership_pending`; a terminal failed typed continuation is replaceable
+  only when it has no replay evidence. The administrator Resume route remains
+  for `provider_provisioning` and one failed replay replacement. One
   terminal failed compatibility replay can be replaced exactly once by a new
   single-use administrator authorization without changing the original stage,
   attempt, Fabric operation, resource binding, or idempotency key. Local Fabric,

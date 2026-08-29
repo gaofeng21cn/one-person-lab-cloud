@@ -105,7 +105,7 @@ func TestWorkspaceLaunchStageDiagnosticReadsWithoutPersisting(t *testing.T) {
 }
 
 func TestWorkspaceLaunchStageDiagnosticExposesComputeAutoRecoveryEligibilityReadOnly(t *testing.T) {
-	operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+	operation := workspaceLaunchAutomaticComputeOwnershipAfterFailedFreshContinuationOperation(t)
 	row, err := workspaceLaunchReconcileOperationRow(operation)
 	if err != nil {
 		t.Fatal(err)
