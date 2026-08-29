@@ -722,6 +722,41 @@ func workspaceLaunchAutomaticComputeOwnershipOperation(t *testing.T) workspaceLa
 	return operation
 }
 
+func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligibility(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*workspaceLaunchReconcileOperation)
+		want   string
+	}{
+		{name: "eligible", want: "none"},
+		{name: "persisted observation", want: "persisted_observation_not_unknown", mutate: func(operation *workspaceLaunchReconcileOperation) {
+			operation.Observations[contracts.StageCompute] = workspaceLaunchStageObservation{State: workspaceLaunchStagePending}
+		}},
+		{name: "retained fresh continuation", want: "compute_fresh_continuation_exists", mutate: func(operation *workspaceLaunchReconcileOperation) {
+			operation.FreshContinuationAuthorizations[contracts.StageCompute] = workspaceLaunchFreshContinuationAuthorization{Status: "failed"}
+		}},
+		{name: "resource billing disabled", want: "resource_billing_disabled", mutate: func(operation *workspaceLaunchReconcileOperation) {
+			value, err := json.Marshal(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation.raw["resourceBillingEnabled"] = value
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := workspaceLaunchAutomaticComputeOwnershipOperation(t)
+			if test.mutate != nil {
+				test.mutate(&operation)
+			}
+			_, _, eligible, reason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, time.Date(2026, 8, 29, 5, 0, 0, 0, time.UTC))
+			if eligible != (test.want == "none") || reason != test.want {
+				t.Fatalf("eligible=%v reason=%q want=%q", eligible, reason, test.want)
+			}
+		})
+	}
+}
+
 func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 		t.Run(string(stage)+"/absent replays one logical claim", func(t *testing.T) {

@@ -485,6 +485,11 @@ leaves the row unchanged. The Runtime path does not inherit replay or image
 revision authority, and the Compute path cannot authorize another business
 attempt.
 
+The capability-protected, read-only stage observation returns schema v3 with
+the same Compute auto-recovery eligibility decision and one safe block-reason
+enum. It performs no persistence or provider/Kubernetes mutation and exposes no
+operation, provider, or customer identity.
+
 For the Tencent/TKE adapter, the same operator Resume request may also carry a
 replacement Workspace image digest when the exact original Runtime exists and
 its only drift is the old admitted image. Control Plane accepts the field only

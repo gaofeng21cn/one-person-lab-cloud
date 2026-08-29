@@ -1171,7 +1171,7 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	authorization, attempt, eligible := workspaceLaunchAutomaticRuntimeReadyAuthorization(operation, r.clockNow())
 	computeOwnershipRecovery := false
 	if !eligible {
-		authorization, attempt, eligible = workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
+		authorization, attempt, eligible, _ = workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
 		computeOwnershipRecovery = eligible
 	}
 	if !eligible {
@@ -1250,13 +1250,26 @@ func workspaceLaunchAutomaticRuntimeReadyAuthorization(operation workspaceLaunch
 		workspaceLaunchUnknownRuntimeReadEligible(operation, attempt, authorization)
 }
 
-func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool) {
+func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLaunchReconcileOperation, now time.Time) (workspaceLaunchResumeAuthorization, workspaceLaunchStageAttempt, bool, string) {
 	attempt, found := operation.Attempts[contracts.StageCompute]
+	if !found {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "compute_attempt_missing"
+	}
+	if operation.Stage != contracts.StageCompute {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "stage_not_compute"
+	}
+	if operation.stringFact("providerProfileRef") != "tencent-tke" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "provider_outside_policy"
+	}
+	if operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "active_resume_authorization"
+	}
 	_, hasReplayClaim := operation.IdempotentReplayClaims[contracts.StageCompute]
-	if !found || operation.Stage != contracts.StageCompute || operation.stringFact("providerProfileRef") != "tencent-tke" ||
-		operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" || hasReplayClaim ||
-		operation.idempotentReplayAuthorizationUsed(contracts.StageCompute) {
-		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false
+	if hasReplayClaim {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "compute_replay_claim_exists"
+	}
+	if operation.idempotentReplayAuthorizationUsed(contracts.StageCompute) {
+		return workspaceLaunchResumeAuthorization{}, workspaceLaunchStageAttempt{}, false, "compute_replay_authorization_used"
 	}
 	seed := strings.Join([]string{
 		"workspace-launch-compute-ownership-auto-recovery:v1", operation.ID, operation.stringFact("accountId"),
@@ -1270,8 +1283,34 @@ func workspaceLaunchAutomaticComputeOwnershipAuthorization(operation workspaceLa
 		MutationBudget: 0, IdempotentReplayBudget: 1,
 		AuthoritativeReadBudget: workspaceLaunchRemainingComputeReadBudget(attempt),
 	}
-	return authorization, attempt, validWorkspaceLaunchResumeAuthorization(authorization) &&
-		workspaceLaunchUnknownComputeContinuationEligible(operation, attempt, authorization)
+	if authorization.AuthoritativeReadBudget <= 0 {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_read_budget_exhausted"
+	}
+	if !validWorkspaceLaunchResumeAuthorization(authorization) {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "system_authorization_invalid"
+	}
+	if operation.Status != contracts.StatusManualReview {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "operation_not_manual_review"
+	}
+	if !operation.boolFact("resourceBillingEnabled") {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "resource_billing_disabled"
+	}
+	if operation.Observations[contracts.StageCompute].State != workspaceLaunchStageUnknown {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "persisted_observation_not_unknown"
+	}
+	if attempt.Max != 1 || attempt.Attempted != attempt.Max || attempt.Confirmed != 0 || attempt.Unknown != 1 || attempt.Status != "unknown" {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_attempt_shape_invalid"
+	}
+	if attempt.IdempotencyKey != workspaceLaunchStageIdempotencyKey(operation, 1) {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_idempotency_key_conflict"
+	}
+	if _, hasFreshContinuation := operation.FreshContinuationAuthorizations[contracts.StageCompute]; hasFreshContinuation {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_fresh_continuation_exists"
+	}
+	if !workspaceLaunchUnknownComputeContinuationEligible(operation, attempt, authorization) {
+		return workspaceLaunchResumeAuthorization{}, attempt, false, "compute_eligibility_invariant_invalid"
+	}
+	return authorization, attempt, true, "none"
 }
 
 func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID string, authorization workspaceLaunchResumeAuthorization) (workspaceLaunchReconcileOperation, error) {

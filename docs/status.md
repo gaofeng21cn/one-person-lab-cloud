@@ -36,6 +36,8 @@ is selected and configured by the medopl instance, not by the portable product.
   `ready` advances through a zero-replay authorization, while Compute
   `ownership_pending` uses one original-key continuation to claim the already
   Ready Machine without another scale. Other states remain unchanged.
+  The zero-mutation stage observation also reports the exact safe eligibility
+  blocker used by that system-owned Compute path.
   An unknown Storage attempt is classified from its exact Fabric binding;
   ready advances read-only, pending remains bounded and read-only, and only
   authoritative absence permits one replay with the original idempotency key.
