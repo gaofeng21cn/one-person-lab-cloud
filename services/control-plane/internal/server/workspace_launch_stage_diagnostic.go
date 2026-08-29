@@ -72,7 +72,6 @@ func observeWorkspaceLaunchStage(
 		return workspaceLaunchStageDiagnostic{}, true, errWorkspaceLaunchGrantConflict
 	}
 	digest := sha256.Sum256([]byte(operation.ID))
-	_, _, autoRecoveryEligible, autoRecoveryBlockReason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, time.Now().UTC())
 	diagnostic := workspaceLaunchStageDiagnostic{
 		SchemaVersion: 3, OperationIdentityDigest: fmt.Sprintf("sha256:%x", digest),
 		OperationVersion: operation.Version, OperationStatus: string(operation.Status), Stage: string(operation.Stage),
@@ -83,7 +82,7 @@ func observeWorkspaceLaunchStage(
 			Max: attempt.Max, Status: attempt.Status,
 		},
 		AuthoritativeRead: true, MutationBudget: 0,
-		AutoRecoveryEligible: autoRecoveryEligible, AutoRecoveryBlockReason: autoRecoveryBlockReason,
+		AutoRecoveryEligible: false, AutoRecoveryBlockReason: "stage_observation_not_recoverable",
 	}
 	startedAt := time.Now()
 	observation, readErr := adapter.ObserveStage(ctx, operation)
@@ -136,7 +135,31 @@ func observeWorkspaceLaunchStage(
 			diagnostic.ErrorCode = "stage_observation_unknown"
 		}
 	}
+	diagnostic.AutoRecoveryEligible, diagnostic.AutoRecoveryBlockReason = workspaceLaunchAutomaticRecoveryEligibility(operation, observation, time.Now().UTC())
 	return diagnostic, true, nil
+}
+
+func workspaceLaunchAutomaticRecoveryEligibility(operation workspaceLaunchReconcileOperation, observation workspaceLaunchStageObservation, now time.Time) (bool, string) {
+	switch observation.State {
+	case workspaceLaunchStageReady:
+		_, _, eligible := workspaceLaunchAutomaticFabricReadyAuthorization(operation, now)
+		if eligible {
+			return true, "none"
+		}
+		return false, "fabric_ready_ineligible"
+	case workspaceLaunchStageOwnershipPending:
+		_, _, eligible, reason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, now)
+		return eligible, reason
+	case workspaceLaunchStageAbsent:
+		_, _, eligible, reason := workspaceLaunchAutomaticStorageAbsenceAuthorization(operation, now)
+		return eligible, reason
+	case workspaceLaunchStagePending:
+		return false, "stage_provider_pending"
+	case workspaceLaunchStageUnknown:
+		return false, "stage_observation_unknown"
+	default:
+		return false, "stage_observation_not_recoverable"
+	}
 }
 
 func workspaceLaunchStageOwner(stage contracts.Stage) string {

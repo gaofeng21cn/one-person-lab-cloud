@@ -435,8 +435,10 @@ compute ownership continuation. Budget exhaustion records
 authorization and cannot read or mutate until explicitly reviewed.
 
 A resource-billed Storage attempt already parked as `unknown/manual_review`
-resumes only through the existing operator Resume route and the same Launch
-Reconciler. The authorization is bound to the original `Max=1` attempt,
+continues through the same Launch Reconciler. For the first replay, the worker
+may create the deterministic system authorization after a fresh Tencent/TKE
+`absent` read; the existing operator Resume route retains the same bounded
+capability. The authorization is bound to the original `Max=1` attempt,
 idempotency key, and Fabric operation with zero mutation budget, one replay
 budget, and a finite typed read budget. Fabric reads before any Ensure call:
 `ready` advances read-only, `pending` consumes only bounded reads, and `absent`
@@ -477,19 +479,22 @@ Attachment, Secret, or Runtime attempt generates a deterministic
 `control-plane-system` `0/0/3` authorization that atomically confirms the
 stage. Compute additionally accepts a fresh `ownership_pending` read and
 generates a distinct deterministic zero-mutation, one-replay authorization.
+Storage additionally accepts a fresh authoritative `absent` read, when no
+earlier replay or active authorization exists, and generates its distinct
+deterministic zero-mutation, one-replay authorization.
 That continuation preserves the original Fabric operation and idempotency key,
 so Tencent discovers the Ready Machine before claiming CVM/Node ownership and
 cannot scale the NodePool again. A failed typed Compute continuation is
 replaceable only when it has no replay claim and no earlier replay
 authorization; its terminal read claims are removed before the new
-authorization is persisted. Provider provisioning, absent, unknown, conflict,
-read failure, active Resume, an earlier Compute replay, Runtime repair, or an
-active fresh continuation leaves the row unchanged. The ready path does not
-inherit replay or image revision authority, and the Compute path cannot
-authorize another business attempt.
+authorization is persisted. Provider provisioning, unknown, conflict, read
+failure, active Resume, an ineligible absence, an earlier stage replay, Runtime
+repair, or an active fresh continuation leaves the row unchanged. The ready
+path does not inherit replay or image revision authority, and neither replay
+path can authorize another business attempt.
 
 The capability-protected, read-only stage observation returns schema v3 with
-the same Compute auto-recovery eligibility decision and one safe block-reason
+the same auto-recovery eligibility decision and one safe block-reason
 enum. It performs no persistence or provider/Kubernetes mutation and exposes no
 operation, provider, or customer identity.
 

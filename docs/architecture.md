@@ -374,9 +374,12 @@ Launch, or call a provider directly. The exact public binding shape is admitted
 only with a real caller, source implementation in both owners, and focused
 tests; this architecture does not freeze a speculative universal JSON contract.
 For a resource-billed Launch whose original Storage attempt is already
-`unknown/manual_review`, an operator may authorize recovery of that exact
-stage through the same Reconciler. Fabric first reads the immutable original
-binding: `ready` confirms the attempt without mutation, `pending` remains
+`unknown/manual_review`, the worker may authorize the first recovery of that
+exact stage through the same Reconciler when the Tencent/TKE binding is intact,
+there is no active authorization or prior replay, and a fresh read proves
+authoritative `absent`. The operator route retains the same rule for explicit
+recovery. Fabric first reads the immutable original binding: `ready` confirms
+the attempt without mutation, `pending` remains
 read-only, and only authoritative `absent` may reuse the original idempotency
 key once. Unknown, conflict, read failure, identity drift, or another unproven
 result leaves the same Launch fail-closed without creating another volume.
@@ -422,6 +425,15 @@ authorization leaves the operation unchanged in `manual_review`. A terminal
 failed typed continuation may be replaced only when its replay claim and every
 earlier replay authorization are absent; its own completed read claims are
 retired before the new authorization is persisted.
+
+For an exact Tencent/TKE Storage attempt parked as `unknown/manual_review`
+before any earlier replay, the worker may issue a distinct deterministic
+one-replay authorization only after a fresh authoritative `absent` read. The
+same Reconciler and Fabric journal then read again and reuse the original
+Storage idempotency key; CAS and the single-use provider child claim admit one
+dispatch. `ready` still takes the zero-replay path, while `pending`, `unknown`,
+read failure, identity conflict, active authorization, or prior replay remains
+unchanged.
 
 For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
 only by its immutable old Workspace image continues through that same Resume
