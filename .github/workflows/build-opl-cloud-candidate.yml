@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       product_sha:
-        description: Exact 40-character Product commit already merged into Cloud main.
+        description: Exact 40-character Product commit at the admitted branch head.
         required: true
         type: string
 
@@ -17,7 +17,12 @@ concurrency:
 
 jobs:
   candidate:
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    if: >-
+      ${{
+        github.ref == 'refs/heads/codex/operator-launch-resource-readback-branch-candidate' &&
+        github.actor == 'RenDeHuang' &&
+        github.triggering_actor == 'RenDeHuang'
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -26,6 +31,7 @@ jobs:
     env:
       PRODUCT_REPOSITORY: ${{ github.repository }}
       PRODUCT_SHA: ${{ inputs.product_sha }}
+      PRODUCT_BRANCH: codex/operator-launch-resource-readback-branch-candidate
       IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
 
     steps:
@@ -48,9 +54,13 @@ jobs:
             echo "Candidate checkout must be clean before source validation." >&2
             exit 1
           fi
-          git fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" main:refs/remotes/candidate-source/main
-          if ! git merge-base --is-ancestor "$PRODUCT_SHA" refs/remotes/candidate-source/main; then
-            echo "Product SHA is not merged into canonical main." >&2
+          if [ "$GITHUB_REF" != "refs/heads/$PRODUCT_BRANCH" ] || [ "$GITHUB_SHA" != "$PRODUCT_SHA" ]; then
+            echo "Product SHA must be the exact workflow branch head." >&2
+            exit 1
+          fi
+          git fetch --no-tags "https://github.com/$PRODUCT_REPOSITORY.git" "refs/heads/$PRODUCT_BRANCH:refs/remotes/candidate-source/branch"
+          if [ "$(git rev-parse refs/remotes/candidate-source/branch)" != "$PRODUCT_SHA" ]; then
+            echo "Product SHA is not the current admitted branch head." >&2
             exit 1
           fi
           product_tree="$(git rev-parse "$PRODUCT_SHA^{tree}")"
