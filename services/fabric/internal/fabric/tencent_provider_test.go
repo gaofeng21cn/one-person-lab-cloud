@@ -2499,8 +2499,9 @@ func TestWorkspaceManifestIsolatesTenantRuntime(t *testing.T) {
 	}
 	if nested(podSpec, "securityContext", "runAsNonRoot") != true || number(nested(podSpec, "securityContext", "runAsUser")) != 10001 ||
 		number(nested(podSpec, "securityContext", "runAsGroup")) != 10001 || number(nested(podSpec, "securityContext", "fsGroup")) != 10001 ||
+		nested(podSpec, "securityContext", "fsGroupChangePolicy") != tencentWorkspaceFSGroupPolicy ||
 		nested(podSpec, "securityContext", "seccompProfile", "type") != "RuntimeDefault" {
-		t.Fatalf("workspace pod must use the RuntimeDefault seccomp profile: %#v", podSpec["securityContext"])
+		t.Fatalf("workspace pod must preserve private persisted modes and use the RuntimeDefault seccomp profile: %#v", podSpec["securityContext"])
 	}
 	tolerations := podSpec["tolerations"].([]any)
 	if len(tolerations) != 1 {
@@ -2848,7 +2849,7 @@ func TestWorkspaceRuntimeIsolationRequiresCompleteCurrentReplicaSet(t *testing.T
 		return map[string]any{
 			"automountServiceAccountToken": false,
 			"dnsPolicy":                    "ClusterFirst",
-			"securityContext":              map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
+			"securityContext":              map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
 			"containers": []any{map[string]any{
 				"name": "workspace", "image": image,
 				"securityContext": map[string]any{"allowPrivilegeEscalation": false, "capabilities": map[string]any{"drop": []any{"ALL"}}},
@@ -2901,6 +2902,11 @@ func TestWorkspaceRuntimeIsolationRequiresCompleteCurrentReplicaSet(t *testing.T
 				t.Fatalf("%s must exactly equal desired replicas", field)
 			}
 		})
+	}
+	legacyPolicy := deployment("workspace-image:new")
+	delete(nested(legacyPolicy, "spec", "template", "spec", "securityContext").(map[string]any), "fsGroupChangePolicy")
+	if workspaceRuntimeIsolationReady(legacyPolicy, []any{pod("workspace-new", "workspace-image:new", true)}) {
+		t.Fatal("Workspace runtime without the private-mode-preserving fsGroup policy must remain unready")
 	}
 }
 
@@ -3341,7 +3347,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 			},
 		},
 		"spec": map[string]any{"replicas": 1, "selector": map[string]any{"matchLabels": runtimeSelector}, "template": map[string]any{"metadata": map[string]any{"labels": runtimeSelector, "annotations": map[string]any{"opl.medopl.cn/credential-revision": "revision-alpha"}}, "spec": map[string]any{
-			"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
+			"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
 			"containers": []any{map[string]any{"name": "workspace", "image": workspaceImage, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "capabilities": map[string]any{"drop": []any{"ALL"}}}, "volumeMounts": workspaceDataMounts()}},
 			"volumes":    []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": "opl-storage-alpha-data"}}},
 		}}},
@@ -3372,7 +3378,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 			"app.kubernetes.io/name": "opl-compute-allocation", "app.kubernetes.io/instance": "opl-compute-alpha", "oplcloud.cn/compute-allocation-id": "compute-alpha", "oplcloud.cn/workspace-id": "ws-alpha",
 		}},
 		"spec": map[string]any{
-			"nodeName": "10.0.0.8", "automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
+			"nodeName": "10.0.0.8", "automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}},
 			"containers": []any{map[string]any{"name": "workspace", "image": workspaceImage, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "capabilities": map[string]any{"drop": []any{"ALL"}}}, "volumeMounts": workspaceDataMounts()}},
 			"volumes":    []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": "opl-storage-alpha-data"}}},
 		},
