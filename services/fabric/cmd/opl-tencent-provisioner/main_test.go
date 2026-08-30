@@ -1593,11 +1593,13 @@ func TestNewTencentSDKClientBuildsNativeTkeClient(t *testing.T) {
 
 func TestBuildCreateNativeNodePoolRequestUsesCurrentPackageShape(t *testing.T) {
 	env := map[string]string{
-		"TENCENT_DEPLOY_CLUSTER_ID":       "cls-123",
-		"TENCENT_CVM_SUBNET_ID":           "subnet-123",
-		"TENCENT_CVM_SECURITY_GROUP_IDS":  "sg-123",
-		"TENCENT_CVM_SYSTEM_DISK_TYPE":    "CLOUD_BSSD",
-		"TENCENT_CVM_SYSTEM_DISK_SIZE_GB": "50",
+		"TENCENT_DEPLOY_CLUSTER_ID":          "cls-123",
+		"TENCENT_CVM_SUBNET_ID":              "subnet-123",
+		"TENCENT_CVM_SECURITY_GROUP_IDS":     "sg-123",
+		"TENCENT_CVM_SYSTEM_DISK_TYPE":       "CLOUD_BSSD",
+		"TENCENT_CVM_SYSTEM_DISK_SIZE_GB":    "50",
+		workspaceNodeImageGCHighThresholdEnv: "70",
+		workspaceNodeImageGCLowThresholdEnv:  "60",
 	}
 	request := Request{
 		PackageId: "basic",
@@ -1655,6 +1657,9 @@ func TestBuildCreateNativeNodePoolRequestUsesCurrentPackageShape(t *testing.T) {
 	}
 	if len(createRequest.Native.SecurityGroupIds) != 1 || *createRequest.Native.SecurityGroupIds[0] != "sg-123" {
 		t.Fatalf("unexpected security groups: %#v", createRequest.Native.SecurityGroupIds)
+	}
+	if !workspaceNodeImageGCMatches(createRequest.Native.KubeletArgs, 70, 60) {
+		t.Fatalf("new Workspace node pool must configure image GC thresholds: %#v", createRequest.Native.KubeletArgs)
 	}
 	labels := map[string]string{}
 	for _, label := range createRequest.Labels {
@@ -1764,6 +1769,7 @@ type fakeNativeTkeAPI struct {
 	clusterNativeSubnetID         string
 	nativeCPU                     uint64
 	nativeMemoryGB                uint64
+	kubeletArgs                   []string
 	omitNativeCPU                 bool
 	zeroNativeMemory              bool
 	systemMachineName             string
@@ -2619,6 +2625,8 @@ func bootstrapEnv() map[string]string {
 	env["TENCENT_CVM_SUBNET_ID"] = "subnet-workspace"
 	env["TENCENT_CVM_SYSTEM_DISK_TYPE"] = "CLOUD_BSSD"
 	env["TENCENT_CVM_SYSTEM_DISK_SIZE_GB"] = "50"
+	env[workspaceNodeImageGCHighThresholdEnv] = "70"
+	env[workspaceNodeImageGCLowThresholdEnv] = "60"
 	env["OPL_TENCENT_ZONE"] = "na-siliconvalley-1"
 	env["TENCENT_CVM_SECURITY_GROUP_IDS"] = "sg-workspace"
 	env["OPL_BASIC_COMPUTE_NODE_POOL_MAX_REPLICAS"] = "50"
@@ -2772,6 +2780,93 @@ func legacyBootstrapNodePool(nodePoolID, poolID, packageID, instanceType string,
 	pool := bootstrapNodePool(nodePoolID, poolID, packageID, instanceType, maxReplicas)
 	pool.Taints = []*tke2022.Taint{{Key: common.StringPtr("oplcloud.cn/workspace-id"), Value: common.StringPtr("unallocated"), Effect: common.StringPtr("NoSchedule")}}
 	return pool
+}
+
+func workspaceNodeImageGCEnv() map[string]string {
+	env := bootstrapEnv()
+	env["RUN_TENCENT_NODE_POOL_IMAGE_GC_RECONCILE"] = "1"
+	env["RUN_TENCENT_NODE_POOL_IMAGE_GC_CONFIRMATION"] = nodePoolImageGCMutationConfirmation
+	return env
+}
+
+func TestWorkspaceNodeImageGCThresholdsFailClosed(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		high string
+		low  string
+	}{
+		{name: "missing high", low: "60"},
+		{name: "missing low", high: "70"},
+		{name: "equal", high: "70", low: "70"},
+		{name: "high above one hundred", high: "101", low: "60"},
+		{name: "low below one", high: "70", low: "0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			env := workspaceNodeImageGCEnv()
+			env[workspaceNodeImageGCHighThresholdEnv] = test.high
+			env[workspaceNodeImageGCLowThresholdEnv] = test.low
+			response := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc", DryRun: true}, env, newBootstrapTencentSDKClient(&fakeNativeTkeAPI{nodePools: bootstrapInventory("np-system", "np-basic", "np-pro")}))
+			if response.Ok || response.ErrorCode != "workspace_node_image_gc_configuration_invalid" || response.MutationCount != 0 {
+				t.Fatalf("invalid thresholds accepted: %#v", response)
+			}
+		})
+	}
+}
+
+func TestReconcileWorkspaceNodePoolImageGCDryRunPreservesOtherArgsAndSystemPool(t *testing.T) {
+	pools := bootstrapInventory("np-system", "np-basic", "np-pro")
+	pools[0].Native.KubeletArgs = stringsToPtrs([]string{"system-reserved=cpu=500m"})
+	pools[1].Native.KubeletArgs = stringsToPtrs([]string{"serialize-image-pulls=false", "--image-gc-high-threshold=85", "image-gc-low-threshold=80"})
+	pools[2].Native.KubeletArgs = stringsToPtrs([]string{"image-gc-high-threshold=70", "image-gc-low-threshold=60"})
+	tkeAPI := &fakeNativeTkeAPI{nodePools: pools}
+
+	response := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc", DryRun: true}, workspaceNodeImageGCEnv(), newBootstrapTencentSDKClient(tkeAPI))
+
+	if !response.Ok || response.Status != "reconciliation_required" || response.MutationCount != 0 || len(response.NodePoolImageGC) != 2 {
+		t.Fatalf("dry-run response=%#v", response)
+	}
+	if response.NodePoolImageGC[0].NodePoolID != "np-basic" || response.NodePoolImageGC[0].Status != "reconciliation_required" ||
+		len(response.NodePoolImageGC[0].KubeletArgsAfter) != 3 || response.NodePoolImageGC[0].KubeletArgsAfter[0] != "serialize-image-pulls=false" ||
+		response.NodePoolImageGC[1].NodePoolID != "np-pro" || response.NodePoolImageGC[1].Status != "registered" {
+		t.Fatalf("dry-run package results=%#v", response.NodePoolImageGC)
+	}
+	if len(tkeAPI.modifyNodePoolRequests) != 0 || !workspaceNodeImageGCMatches(pools[2].Native.KubeletArgs, 70, 60) || stringValue(pools[0].Native.KubeletArgs[0]) != "system-reserved=cpu=500m" {
+		t.Fatalf("dry-run mutated a NodePool: requests=%#v pools=%#v", tkeAPI.modifyNodePoolRequests, pools)
+	}
+}
+
+func TestReconcileWorkspaceNodePoolImageGCUpdatesDriftOnceAndReadsBack(t *testing.T) {
+	pools := bootstrapInventory("np-system", "np-basic", "np-pro")
+	pools[1].Native.KubeletArgs = stringsToPtrs([]string{"serialize-image-pulls=false", "image-gc-high-threshold=85", "image-gc-low-threshold=80"})
+	pools[2].Native.KubeletArgs = stringsToPtrs([]string{"image-gc-high-threshold=70", "image-gc-low-threshold=60"})
+	tkeAPI := &fakeNativeTkeAPI{nodePools: pools}
+	client := newBootstrapTencentSDKClient(tkeAPI)
+
+	first := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc"}, workspaceNodeImageGCEnv(), client)
+	if !first.Ok || first.Status != "reconciled" || first.MutationCount != 1 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("first reconciliation=%#v requests=%#v", first, tkeAPI.modifyNodePoolRequests)
+	}
+	request := tkeAPI.modifyNodePoolRequests[0]
+	if stringValue(request.NodePoolId) != "np-basic" || request.Native == nil || stringValue(request.Native.UpdateMachineManagement) != "enable" ||
+		request.Native.UpdateExistedNode == nil || !*request.Native.UpdateExistedNode || !workspaceNodeImageGCMatches(request.Native.KubeletArgs, 70, 60) {
+		t.Fatalf("unsafe reconciliation request=%#v", request)
+	}
+	second := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc"}, workspaceNodeImageGCEnv(), client)
+	if !second.Ok || second.Status != "registered" || second.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("idempotent readback=%#v requests=%#v", second, tkeAPI.modifyNodePoolRequests)
+	}
+}
+
+func TestReconcileWorkspaceNodePoolImageGCRequiresExactAuthority(t *testing.T) {
+	tkeAPI := &fakeNativeTkeAPI{nodePools: bootstrapInventory("np-system", "np-basic", "np-pro")}
+	env := workspaceNodeImageGCEnv()
+	delete(env, "RUN_TENCENT_NODE_POOL_IMAGE_GC_CONFIRMATION")
+
+	response := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc"}, env, newBootstrapTencentSDKClient(tkeAPI))
+
+	if response.Ok || response.ErrorCode != "node_pool_image_gc_confirmation_required" || response.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 0 {
+		t.Fatalf("unconfirmed reconciliation=%#v requests=%#v", response, tkeAPI.modifyNodePoolRequests)
+	}
 }
 
 func TestMigrateWorkspaceNodePoolTaintsIsOneWayAndExcludesSystem(t *testing.T) {
@@ -4781,7 +4876,7 @@ func (api *fakeNativeTkeAPI) CreateNodePool(request *tke2022.CreateNodePoolReque
 			Scaling: request.Native.Scaling, SubnetIds: request.Native.SubnetIds, InstanceTypes: request.Native.InstanceTypes,
 			Replicas: common.Int64Ptr(0), ReadyReplicas: common.Int64Ptr(0), EnableAutoscaling: request.Native.EnableAutoscaling,
 			AutoRepair: request.Native.AutoRepair, MachineType: request.Native.MachineType, InstanceChargeType: request.Native.InstanceChargeType,
-			InstanceChargePrepaid: request.Native.InstanceChargePrepaid,
+			InstanceChargePrepaid: request.Native.InstanceChargePrepaid, KubeletArgs: request.Native.KubeletArgs,
 		},
 	})
 	api.replicas = 0
@@ -4949,7 +5044,7 @@ func fakeNativeNodePoolInfo(api *fakeNativeTkeAPI) *tke2022.NativeNodePoolInfo {
 		Scaling: scaling, SubnetIds: stringsToPtrs(subnetIds), InstanceTypes: stringsToPtrs(instanceTypes), Replicas: replicas, ReadyReplicas: readyReplicas,
 		EnableAutoscaling: common.BoolPtr(api.enableAutoscaling), AutoRepair: common.BoolPtr(api.autoRepair),
 		MachineType: common.StringPtr(firstNonEmpty(api.machineType, "NativeCVM")), InstanceChargeType: common.StringPtr(firstNonEmpty(api.instanceChargeType, "PREPAID")),
-		InstanceChargePrepaid: prepaid,
+		InstanceChargePrepaid: prepaid, KubeletArgs: stringsToPtrs(api.kubeletArgs),
 	}
 }
 
@@ -5533,6 +5628,13 @@ func (api *fakeNativeTkeAPI) ModifyNodePool(request *tke2022.ModifyNodePoolReque
 	}
 	if request.Native != nil && request.Native.AutoRepair != nil {
 		api.autoRepair = *request.Native.AutoRepair
+	}
+	if request.NodePoolId != nil && request.Native != nil && request.Native.KubeletArgs != nil {
+		for _, pool := range api.nodePools {
+			if pool != nil && pool.Native != nil && stringValue(pool.NodePoolId) == stringValue(request.NodePoolId) {
+				pool.Native.KubeletArgs = request.Native.KubeletArgs
+			}
+		}
 	}
 	if request.NodePoolId != nil && request.Taints != nil {
 		for _, pool := range api.nodePools {
