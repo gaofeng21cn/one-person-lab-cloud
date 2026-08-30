@@ -42,6 +42,7 @@ var errTKEInstanceNotFound = errors.New("TKE instance not found")
 const tkeListPageLimit int64 = 100
 const nodePoolBootstrapMutationConfirmation = "CREATE_MISSING_WORKSPACE_NODEPOOLS"
 const nodePoolTaintMigrationMutationConfirmation = "MIGRATE_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS"
+const nodePoolImageGCMutationConfirmation = "RECONCILE_WORKSPACE_NODEPOOL_IMAGE_GC"
 const nodePoolTaintMigrationBindingDigestEnv = "OPL_TAINT_MIGRATION_MUTATION_BINDING_DIGEST"
 const nodePoolTaintMigrationOperationID = "op_normal_workspace_node_pool_taint_migration_v1"
 const nodePoolTaintMigrationRecordID = "fop_normal_workspace_node_pool_taint_migration_v1"
@@ -53,6 +54,8 @@ const protectedCheckNotApplicable = "not_applicable"
 
 const predebitIAMProofMode = "production_runner_deployment_attestation"
 const tencentProviderProfileEnv = "OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON"
+const workspaceNodeImageGCHighThresholdEnv = "OPL_WORKSPACE_NODE_IMAGE_GC_HIGH_THRESHOLD_PERCENT"
+const workspaceNodeImageGCLowThresholdEnv = "OPL_WORKSPACE_NODE_IMAGE_GC_LOW_THRESHOLD_PERCENT"
 
 type tencentSKUProfile struct {
 	ID        string `json:"id"`
@@ -224,6 +227,7 @@ type Response struct {
 	Zones                    []string                  `json:"zones,omitempty"`
 	PreflightStages          []PreflightStage          `json:"preflightStages,omitempty"`
 	NodePools                []NodePoolBootstrapResult `json:"nodePools,omitempty"`
+	NodePoolImageGC          []NodePoolImageGCResult   `json:"nodePoolImageGc,omitempty"`
 	SKUPackages              []WorkspaceSKUPackage     `json:"skuPackages,omitempty"`
 	PrepaidQuotaRemaining    uint64                    `json:"prepaidQuotaRemaining,omitempty"`
 	Subnets                  []WorkspaceSubnetFact     `json:"subnets,omitempty"`
@@ -328,6 +332,17 @@ type NodePoolTaintFact struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`
 	Effect string `json:"effect"`
+}
+
+type NodePoolImageGCResult struct {
+	PackageID            string   `json:"packageId"`
+	NodePoolID           string   `json:"nodePoolId"`
+	Status               string   `json:"status"`
+	HighThresholdPercent int      `json:"highThresholdPercent"`
+	LowThresholdPercent  int      `json:"lowThresholdPercent"`
+	UpdateExistingNodes  bool     `json:"updateExistingNodes"`
+	KubeletArgsBefore    []string `json:"kubeletArgsBefore"`
+	KubeletArgsAfter     []string `json:"kubeletArgsAfter"`
 }
 
 type PreflightStage struct {
@@ -4535,6 +4550,10 @@ func buildCreateNativeNodePoolRequest(request Request, env map[string]string) (*
 	if err != nil || systemDiskSize <= 0 {
 		return nil, &Response{Ok: false, ErrorCode: "system_disk_configuration_invalid", Message: "TENCENT_CVM_SYSTEM_DISK_SIZE_GB must be an explicitly configured positive integer.", Retryable: false}
 	}
+	highThreshold, lowThreshold, gcFailure := workspaceNodeImageGCThresholds(env)
+	if gcFailure != nil {
+		return nil, gcFailure
+	}
 	createRequest := tke2022.NewCreateNodePoolRequest()
 	createRequest.ClusterId = common.StringPtr(env["TENCENT_DEPLOY_CLUSTER_ID"])
 	createRequest.Name = common.StringPtr(nodePoolName)
@@ -4571,8 +4590,82 @@ func buildCreateNativeNodePoolRequest(request Request, env map[string]string) (*
 		MachineType:       common.StringPtr("NativeCVM"),
 		AutomationService: common.BoolPtr(true),
 		RuntimeRootDir:    common.StringPtr("/var/lib/containerd"),
+		KubeletArgs: stringsToPtrs([]string{
+			fmt.Sprintf("image-gc-high-threshold=%d", highThreshold),
+			fmt.Sprintf("image-gc-low-threshold=%d", lowThreshold),
+		}),
 	}
 	return createRequest, nil
+}
+
+func workspaceNodeImageGCThresholds(env map[string]string) (int, int, *Response) {
+	high, highErr := strconv.Atoi(strings.TrimSpace(env[workspaceNodeImageGCHighThresholdEnv]))
+	low, lowErr := strconv.Atoi(strings.TrimSpace(env[workspaceNodeImageGCLowThresholdEnv]))
+	if highErr != nil || lowErr != nil || high < 1 || high > 100 || low < 1 || low >= high {
+		return 0, 0, &Response{
+			Ok: false, ErrorCode: "workspace_node_image_gc_configuration_invalid",
+			Message: "Workspace node image GC thresholds must be integers with 1 <= low < high <= 100.", Retryable: false,
+		}
+	}
+	return high, low, nil
+}
+
+func kubeletArgName(value string) string {
+	value = strings.TrimLeft(strings.TrimSpace(value), "-")
+	name, _, _ := strings.Cut(value, "=")
+	return strings.TrimSpace(name)
+}
+
+func kubeletArgsValues(values []*string) ([]string, bool) {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == nil || strings.TrimSpace(*value) == "" || kubeletArgName(*value) == "" {
+			return nil, false
+		}
+		result = append(result, strings.TrimSpace(*value))
+	}
+	return result, true
+}
+
+func desiredWorkspaceNodeImageGCKubeletArgs(values []*string, high, low int) ([]string, bool) {
+	current, ok := kubeletArgsValues(values)
+	if !ok {
+		return nil, false
+	}
+	result := make([]string, 0, len(current)+2)
+	for _, value := range current {
+		switch kubeletArgName(value) {
+		case "image-gc-high-threshold", "image-gc-low-threshold":
+			continue
+		default:
+			result = append(result, value)
+		}
+	}
+	return append(result,
+		fmt.Sprintf("image-gc-high-threshold=%d", high),
+		fmt.Sprintf("image-gc-low-threshold=%d", low),
+	), true
+}
+
+func workspaceNodeImageGCMatches(values []*string, high, low int) bool {
+	highValue, lowValue, highCount, lowCount := "", "", 0, 0
+	for _, value := range values {
+		if value == nil {
+			return false
+		}
+		name := kubeletArgName(*value)
+		_, configured, hasValue := strings.Cut(strings.TrimLeft(strings.TrimSpace(*value), "-"), "=")
+		switch name {
+		case "image-gc-high-threshold":
+			highValue, highCount = configured, highCount+1
+		case "image-gc-low-threshold":
+			lowValue, lowCount = configured, lowCount+1
+		}
+		if (name == "image-gc-high-threshold" || name == "image-gc-low-threshold") && !hasValue {
+			return false
+		}
+	}
+	return highCount == 1 && lowCount == 1 && highValue == strconv.Itoa(high) && lowValue == strconv.Itoa(low)
 }
 
 type bootstrapPackageSpec struct {
@@ -5031,6 +5124,101 @@ func (client *tencentSDKClient) MigrateWorkspaceNodePoolTaints(request Request, 
 		results[index].TaintsAfter = nodePoolTaintFacts(readback)
 	}
 	base.Status, base.NodePools = "migrated", results
+	return base
+}
+
+func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Request, env map[string]string) Response {
+	high, low, failure := workspaceNodeImageGCThresholds(env)
+	if failure != nil {
+		return *failure
+	}
+	specs, failure := bootstrapPackageSpecs(env)
+	if failure != nil {
+		return *failure
+	}
+	if failure = validateBootstrapSystemConfig(env, specs); failure != nil {
+		return *failure
+	}
+	pools, err := client.bootstrapNodePoolInventory()
+	if err != nil {
+		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_image_gc_inventory_unavailable", Message: "Tencent NodePool inventory is unavailable.", MutationCount: 0, Retryable: false}
+	}
+	matches, failure := bootstrapInventoryMatches(pools, env, specs)
+	if failure != nil {
+		failure.Status = "conflict"
+		failure.MutationCount = 0
+		failure.NodePoolInventory = bootstrapNodePoolIDs(pools)
+		return *failure
+	}
+	protectedSystem, err := client.verifyBootstrapSystemIdentity(pools, env)
+	if err != nil {
+		return Response{Ok: false, Status: "conflict", ErrorCode: "protected_system_identity_mismatch", Message: "Protected system identity is unavailable or inconsistent.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+	}
+
+	results := make([]NodePoolImageGCResult, 0, len(specs))
+	required := 0
+	for _, spec := range specs {
+		pool := matches[spec.PackageID]
+		if pool == nil || pool.Native == nil {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_image_gc_inventory_conflict", Message: "Workspace NodePool does not expose native kubelet configuration.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		before, valid := kubeletArgsValues(pool.Native.KubeletArgs)
+		after, mergeable := desiredWorkspaceNodeImageGCKubeletArgs(pool.Native.KubeletArgs, high, low)
+		if !valid || !mergeable {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_image_gc_kubelet_args_invalid", Message: "Workspace NodePool kubelet arguments cannot be safely reconciled.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		status := "registered"
+		if !workspaceNodeImageGCMatches(pool.Native.KubeletArgs, high, low) {
+			status = "reconciliation_required"
+			required++
+		}
+		results = append(results, NodePoolImageGCResult{
+			PackageID: spec.PackageID, NodePoolID: stringValue(pool.NodePoolId), Status: status,
+			HighThresholdPercent: high, LowThresholdPercent: low, UpdateExistingNodes: status != "registered",
+			KubeletArgsBefore: before, KubeletArgsAfter: after,
+		})
+	}
+	base := Response{Ok: true, Status: "registered", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), NodePoolImageGC: results, MutationCount: 0}
+	if required == 0 {
+		return base
+	}
+	if request.DryRun {
+		base.Status = "reconciliation_required"
+		return base
+	}
+	for index := range results {
+		if results[index].Status != "reconciliation_required" {
+			continue
+		}
+		modifyRequest := tke2022.NewModifyNodePoolRequest()
+		modifyRequest.ClusterId = common.StringPtr(client.clusterId)
+		modifyRequest.NodePoolId = common.StringPtr(results[index].NodePoolID)
+		modifyRequest.Native = &tke2022.UpdateNativeNodePoolParam{
+			KubeletArgs:             stringsToPtrs(results[index].KubeletArgsAfter),
+			UpdateExistedNode:       common.BoolPtr(true),
+			UpdateMachineManagement: common.StringPtr("enable"),
+		}
+		base.MutationCount++
+		modified, modifyErr := client.nativeTkeClient.ModifyNodePool(modifyRequest)
+		if modifyErr != nil || modified == nil || modified.Response == nil || strings.TrimSpace(stringValue(modified.Response.RequestId)) == "" {
+			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_result_unknown"
+			base.Message = "Tencent NodePool image GC reconciliation result is unknown; reconcile by GET only."
+			results[index].Status = "unknown"
+			base.NodePoolImageGC = results
+			return base
+		}
+		readback, _, readbackErr := client.describeNativeNodePool(results[index].NodePoolID)
+		if readbackErr != nil || readback.Native == nil || !workspaceNodeImageGCMatches(readback.Native.KubeletArgs, high, low) {
+			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_readback_unknown"
+			base.Message = "Tencent NodePool image GC reconciliation readback is unknown; reconcile by GET only."
+			results[index].Status = "unknown"
+			base.NodePoolImageGC = results
+			return base
+		}
+		results[index].Status = "reconciled"
+		results[index].KubeletArgsAfter, _ = kubeletArgsValues(readback.Native.KubeletArgs)
+	}
+	base.Status, base.NodePoolImageGC = "reconciled", results
 	return base
 }
 
@@ -5506,6 +5694,24 @@ func handleWithClient(request Request, env map[string]string, client TencentClie
 			return Response{Ok: false, ErrorCode: "tencent_live_not_implemented", Message: "Tencent live NodePool taint migration is not implemented in this build.", Retryable: false}
 		}
 		return migrator.MigrateWorkspaceNodePoolTaints(request, env)
+	}
+	if request.Action == "reconcile_workspace_node_pool_image_gc" {
+		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_IMAGE_GC_CONFIRMATION"]) != nodePoolImageGCMutationConfirmation {
+			return Response{Ok: false, ErrorCode: "node_pool_image_gc_confirmation_required", Message: "The exact Workspace NodePool image GC reconciliation confirmation is required.", Retryable: false}
+		}
+		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_CREATE_RELEASE_EXECUTION"]) != "1" {
+			return Response{Ok: false, ErrorCode: "live_mutation_flag_required", Message: "Set RUN_TENCENT_CREATE_RELEASE_EXECUTION=1 to run live Tencent resource mutations.", Retryable: false}
+		}
+		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_IMAGE_GC_RECONCILE"]) != "1" {
+			return Response{Ok: false, ErrorCode: "node_pool_image_gc_flag_required", Message: "Set RUN_TENCENT_NODE_POOL_IMAGE_GC_RECONCILE=1 only in the approved manual reconciliation workflow.", Retryable: false}
+		}
+		reconciler, ok := client.(interface {
+			ReconcileWorkspaceNodePoolImageGC(Request, map[string]string) Response
+		})
+		if !ok {
+			return Response{Ok: false, ErrorCode: "tencent_live_not_implemented", Message: "Tencent live Workspace NodePool image GC reconciliation is not implemented in this build.", Retryable: false}
+		}
+		return reconciler.ReconcileWorkspaceNodePoolImageGC(request, env)
 	}
 	if isLiveMutation(request) && strings.TrimSpace(env["RUN_TENCENT_CREATE_RELEASE_EXECUTION"]) != "1" {
 		return Response{
