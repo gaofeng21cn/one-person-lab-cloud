@@ -39,6 +39,7 @@ const (
 	tencentCBSFilesystem             = "ext4"
 	tencentCBSCSITopologyZoneKey     = "topology.com.tencent.cloud.csi.cbs/zone"
 	tencentWorkspaceRuntimeWebUIPort = 3000
+	tencentWorkspaceFSGroupPolicy    = "OnRootMismatch"
 )
 
 type tencentStoragePlan struct {
@@ -1243,7 +1244,7 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 		podAnnotations["opl.medopl.cn/gateway-key-id"] = strconv.FormatInt(gateway.WorkspaceAPIKeyID, 10)
 		podAnnotations["opl.medopl.cn/gateway-fingerprint"] = gateway.Fingerprint
 	}
-	deployment := map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"replicas": 1, "strategy": map[string]any{"type": "Recreate"}, "selector": map[string]any{"matchLabels": selectorLabels}, "template": map[string]any{"metadata": map[string]any{"labels": labels, "annotations": podAnnotations}, "spec": map[string]any{"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]any{"type": "RuntimeDefault"}}, "imagePullSecrets": []any{map[string]any{"name": os.Getenv("OPL_IMAGE_PULL_SECRET_NAME")}}, "nodeSelector": map[string]any{"kubernetes.io/hostname": compute.NodeName}, "tolerations": workspaceNodeTolerations(compute.PackageID), "containers": []any{workspaceContainer}, "volumes": []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": pvcName}}, secretVolume}}}}}
+	deployment := map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"replicas": 1, "strategy": map[string]any{"type": "Recreate"}, "selector": map[string]any{"matchLabels": selectorLabels}, "template": map[string]any{"metadata": map[string]any{"labels": labels, "annotations": podAnnotations}, "spec": map[string]any{"automountServiceAccountToken": false, "dnsPolicy": "ClusterFirst", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": tencentWorkspaceFSGroupPolicy, "seccompProfile": map[string]any{"type": "RuntimeDefault"}}, "imagePullSecrets": []any{map[string]any{"name": os.Getenv("OPL_IMAGE_PULL_SECRET_NAME")}}, "nodeSelector": map[string]any{"kubernetes.io/hostname": compute.NodeName}, "tolerations": workspaceNodeTolerations(compute.PackageID), "containers": []any{workspaceContainer}, "volumes": []any{map[string]any{"name": "workspace-data", "persistentVolumeClaim": map[string]any{"claimName": pvcName}}, secretVolume}}}}}
 	service := map[string]any{"apiVersion": "v1", "kind": "Service", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"type": "ClusterIP", "selector": selectorLabels, "ports": []any{map[string]any{"name": "http", "port": tencentWorkspaceRuntimeWebUIPort, "targetPort": "http"}}}}
 	networkPolicy := map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": map[string]any{"name": serviceName, "labels": labels, "annotations": tags}, "spec": map[string]any{"podSelector": map[string]any{"matchLabels": selectorLabels}, "policyTypes": []any{"Ingress", "Egress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"podSelector": map[string]any{"matchLabels": map[string]any{"app.kubernetes.io/name": "opl-cloud", "app.kubernetes.io/component": "control-plane"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": tencentWorkspaceRuntimeWebUIPort}}}}, "egress": workspaceEgressRules()}}
 	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{secret, deployment, service, networkPolicy}})
@@ -1834,6 +1835,7 @@ func workspaceRuntimeSpecImage(spec map[string]any) (string, bool) {
 	if len(spec) == 0 || len(initContainers) != 0 || len(ephemeralContainers) != 0 || spec["hostNetwork"] == true || stringValue(spec["dnsPolicy"]) != "ClusterFirst" || spec["automountServiceAccountToken"] != false ||
 		nested(spec, "securityContext", "runAsNonRoot") != true || number(nested(spec, "securityContext", "runAsUser")) != 10001 ||
 		number(nested(spec, "securityContext", "runAsGroup")) != 10001 || number(nested(spec, "securityContext", "fsGroup")) != 10001 ||
+		stringValue(nested(spec, "securityContext", "fsGroupChangePolicy")) != tencentWorkspaceFSGroupPolicy ||
 		stringValue(nested(spec, "securityContext", "seccompProfile", "type")) != "RuntimeDefault" {
 		return "", false
 	}
