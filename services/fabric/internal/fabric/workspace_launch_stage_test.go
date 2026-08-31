@@ -306,10 +306,12 @@ func TestWorkspaceLaunchPreflightPersistsCanonicalProviderPlanAcrossProfileDrift
 
 	provider.resolvedPlan = json.RawMessage(`{"compute":{"cpu":8,"memoryGb":16},"packageId":"basic","storage":{"sizeGb":100}}`)
 	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{})
-	current := workspaceLaunchStageRecord{SchemaVersion: workspaceLaunchStageRecordSchemaVersion, ProviderProfileRef: input.ProviderProfileRef, ProviderBindingRef: input.ProviderBindingRef, SpecDigest: input.SpecDigest}
-	request, requestErr := service.WorkspaceLaunchProviderRequest(context.Background(), input, current)
-	if requestErr != nil || string(request.ProviderPlan) != wantPlan {
-		t.Fatalf("stage plan=%s err=%v", request.ProviderPlan, requestErr)
+	provider.ensureResult = &WorkspaceLaunchProviderResult{Resources: WorkspaceLaunchResources{
+		ComputeAllocationID: workspaceLaunchComputeID(input.Binding), ComputeBindingRef: input.Binding.FabricOperationID,
+	}}
+	result, ensureErr := service.EnsureWorkspaceLaunchStage(context.Background(), input)
+	if ensureErr != nil || result.State != string(contracts.StageStateReady) || provider.ensureCalls != 1 || string(provider.requestPlan) != wantPlan {
+		t.Fatalf("stage result=%#v plan=%s ensures=%d err=%v", result, provider.requestPlan, provider.ensureCalls, ensureErr)
 	}
 
 	input.SpecDigest = strings.Repeat("0", 64)

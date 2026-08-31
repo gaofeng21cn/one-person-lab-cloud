@@ -44,6 +44,7 @@ type fabricOperationCursor struct {
 // unified in-memory and PostgreSQL backends. Application capabilities receive
 // the narrow ports derived from this backend in NewServiceWithOperationStore.
 type OperationStore interface {
+	RuntimeOperationStore
 	Append(ctx context.Context, operation FabricOperation) error
 	Get(ctx context.Context, id string) (FabricOperation, error)
 	OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error)
@@ -52,12 +53,10 @@ type OperationStore interface {
 	WorkspaceRuntimeIdentityCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
 	SaveJobHeartbeat(ctx context.Context, operation FabricOperation) (FabricOperation, error)
 	ComputeClaimTerminalOperation(ctx context.Context, approvalID, idempotencyKey string) (FabricOperation, bool, error)
-	ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
 	ClaimComputePoolRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
 	ComputePoolHead(ctx context.Context, poolKey string) (FabricOperation, bool, error)
 	TryClaimComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string, now, leaseExpiresAt time.Time) (FabricOperation, bool, error)
 	ReleaseComputePoolHead(ctx context.Context, operationID, poolKey, leaseOwner string) error
-	SaveRuntime(ctx context.Context, operation FabricOperation) error
 	SaveComputeClaimRecovery(ctx context.Context, current, next FabricOperation) error
 	List(ctx context.Context) ([]FabricOperation, error)
 	ListPage(ctx context.Context, cursor string, limit int) (FabricOperationPage, error)
@@ -65,13 +64,6 @@ type OperationStore interface {
 	SaveMachineOwnership(ctx context.Context, ownership MachineOwnership) error
 	MachineOwnership(ctx context.Context, resourceID string) (MachineOwnership, error)
 	WithPoolLock(ctx context.Context, poolKey string, fn func(context.Context) error) error
-}
-
-// runtimeReadbackConverger is deliberately optional.  It is a separate CAS
-// path so a provider readback can confirm an already attempted write without
-// weakening SaveRuntime's owner lease semantics or re-running an apply.
-type runtimeReadbackConverger interface {
-	ConvergeRuntimeReadback(ctx context.Context, expected, next FabricOperation) error
 }
 
 type MemoryOperationStore struct {

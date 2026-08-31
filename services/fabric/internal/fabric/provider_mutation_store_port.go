@@ -40,11 +40,7 @@ func (p operationStoreProviderMutationPort) SaveProviderMutationOutcome(ctx cont
 }
 
 func (p operationStoreProviderMutationPort) ConvergeProviderMutationReadback(ctx context.Context, expected, next FabricOperation) error {
-	converger, ok := p.store.(runtimeReadbackConverger)
-	if !ok {
-		return ErrRuntimeOperationNotCurrent
-	}
-	return converger.ConvergeRuntimeReadback(ctx, expected, next)
+	return p.store.ConvergeRuntimeReadback(ctx, expected, next)
 }
 
 func (p operationStoreProviderMutationPort) SaveProviderMutationReplayEpoch(ctx context.Context, expected, next FabricOperation) error {
