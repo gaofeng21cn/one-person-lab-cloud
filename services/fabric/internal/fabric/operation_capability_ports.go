@@ -109,11 +109,7 @@ func (p operationStoreCapabilityPorts) SaveStageOutcome(ctx context.Context, ope
 }
 
 func (p operationStoreCapabilityPorts) ConvergeStageReadback(ctx context.Context, expected, next FabricOperation) error {
-	converger, ok := p.store.(runtimeReadbackConverger)
-	if !ok {
-		return ErrRuntimeOperationNotCurrent
-	}
-	return converger.ConvergeRuntimeReadback(ctx, expected, next)
+	return p.store.ConvergeRuntimeReadback(ctx, expected, next)
 }
 
 func (p operationStoreCapabilityPorts) ConvergeStageDiagnostic(ctx context.Context, expected, next FabricOperation) error {

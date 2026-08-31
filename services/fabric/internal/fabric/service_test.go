@@ -1571,6 +1571,10 @@ type failFirstRuntimeSaveStore struct {
 	failed atomic.Bool
 }
 
+func (s *failFirstRuntimeSaveStore) ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
+	return s.OperationStore.ClaimRuntime(ctx, operation)
+}
+
 func (s *failFirstRuntimeSaveStore) SaveRuntime(ctx context.Context, operation FabricOperation) error {
 	if s.failed.CompareAndSwap(false, true) {
 		return errors.New("injected runtime save failure")
@@ -1579,11 +1583,7 @@ func (s *failFirstRuntimeSaveStore) SaveRuntime(ctx context.Context, operation F
 }
 
 func (s *failFirstRuntimeSaveStore) ConvergeRuntimeReadback(ctx context.Context, expected, next FabricOperation) error {
-	converger, ok := s.OperationStore.(runtimeReadbackConverger)
-	if !ok {
-		return ErrRuntimeOperationNotCurrent
-	}
-	return converger.ConvergeRuntimeReadback(ctx, expected, next)
+	return s.OperationStore.ConvergeRuntimeReadback(ctx, expected, next)
 }
 
 func (p *countingGatewayProvider) UpsertGatewaySecret(ctx context.Context, input GatewaySecretInput) (GatewaySecret, error) {
@@ -3567,10 +3567,6 @@ func (testProvider) ValidateComputeAllocation(allocation ComputeAllocation, prep
 
 func (testProvider) ValidateWorkspaceImageReference(value string) bool {
 	return validWorkspaceRuntimeImageIdentity(value)
-}
-
-func (testProvider) WorkspaceImageReference() string {
-	return workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
 }
 
 func (testProvider) ReadComputeProviderFacts(_ context.Context, allocation ComputeAllocation) (ProviderResourceFacts, error) {

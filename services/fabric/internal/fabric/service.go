@@ -93,7 +93,7 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 		destroying: map[string]bool{}, reconciling: map[string]bool{},
 		operationJournal: ports, operationHistory: ports, resourceOperations: ports, runtimeOperationQueries: ports,
 		computeClaims: ports, workspaceLaunchPreflights: ports, providerMutations: providerMutationStorePort(operations),
-		runtimeOperations: runtimeOperationPort(operations), machineOwnership: operations, computePool: operations, jobStore: operations, resourceLocks: operations,
+		runtimeOperations: operations, machineOwnership: operations, computePool: operations, jobStore: operations, resourceLocks: operations,
 		now:                           func() time.Time { return time.Now().UTC() },
 		readinessTTL:                  readinessSuccessTTL,
 		readinessTimeout:              readinessProviderTimeout,

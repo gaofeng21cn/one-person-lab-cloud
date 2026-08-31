@@ -61,6 +61,23 @@ jobs:
       - name: Check diff whitespace
         run: git diff --check
 
+  go_contracts:
+    name: go-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - *checkout
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.22.x"
+          cache: false
+
+      - name: Test Go contracts
+        working-directory: packages/contracts/go
+        run: go test -count=1 ./...
+
   postgres_ledger:
     name: postgres-ledger
     runs-on: ubuntu-latest
@@ -229,6 +246,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - node_console
+      - go_contracts
       - postgres_ledger
       - control_plane
       - fabric
@@ -238,16 +256,19 @@ jobs:
       - name: Require successful test jobs
         env:
           NODE_CONSOLE_RESULT: ${{ needs.node_console.result }}
+          GO_CONTRACTS_RESULT: ${{ needs.go_contracts.result }}
           POSTGRES_LEDGER_RESULT: ${{ needs.postgres_ledger.result }}
           CONTROL_PLANE_RESULT: ${{ needs.control_plane.result }}
           FABRIC_RESULT: ${{ needs.fabric.result }}
         run: |
           if [[ "$NODE_CONSOLE_RESULT" != "success" ||
+                "$GO_CONTRACTS_RESULT" != "success" ||
                 "$POSTGRES_LEDGER_RESULT" != "success" ||
                 "$CONTROL_PLANE_RESULT" != "success" ||
                 "$FABRIC_RESULT" != "success" ]]; then
-            printf 'node-console=%s\npostgres-ledger=%s\ncontrol-plane=%s\nfabric=%s\n' \
+            printf 'node-console=%s\ngo-contracts=%s\npostgres-ledger=%s\ncontrol-plane=%s\nfabric=%s\n' \
               "$NODE_CONSOLE_RESULT" \
+              "$GO_CONTRACTS_RESULT" \
               "$POSTGRES_LEDGER_RESULT" \
               "$CONTROL_PLANE_RESULT" \
               "$FABRIC_RESULT"

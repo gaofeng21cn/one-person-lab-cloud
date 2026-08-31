@@ -19,6 +19,7 @@ function composePostgresImage() {
 export const postgresImage = composePostgresImage();
 
 export const goModules = Object.freeze([
+  "packages/contracts/go",
   "services/control-plane",
   "services/fabric",
   "services/ledger",
@@ -26,6 +27,7 @@ export const goModules = Object.freeze([
 ]);
 
 export const databaseFreeGoTestSpecs = Object.freeze([
+  { cwd: "packages/contracts/go", packages: ["./..."] },
   { cwd: "services/control-plane", packages: ["./cmd/control-plane", "./internal/clients"] },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./internal/http", "./internal/protectedresource"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },

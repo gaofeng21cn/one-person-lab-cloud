@@ -585,10 +585,6 @@ func workspaceLaunchAttachmentID(binding WorkspaceLaunchStageBinding) string {
 	return "att_" + stableSuffix(binding.IdempotencyKey)[:18]
 }
 
-func (s *Service) WorkspaceLaunchProviderRequest(ctx context.Context, input WorkspaceLaunchStageInput, current workspaceLaunchStageRecord) (WorkspaceLaunchProviderRequest, error) {
-	return s.launchStages.WorkspaceLaunchProviderRequest(ctx, input, current)
-}
-
 func validWorkspaceLaunchProviderResult(input WorkspaceLaunchStageInput, result WorkspaceLaunchProviderResult) bool {
 	if !workspaceLaunchResourcesContain(result.Resources, input.Resources) || workspaceLaunchStageBindingRef(input.Binding.Stage, result.Resources) != input.Binding.FabricOperationID {
 		return false
