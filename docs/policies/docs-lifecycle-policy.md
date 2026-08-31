@@ -15,7 +15,7 @@ Classify each changed section as `current_truth`, `active_gap`,
   `docs/status.md`.
 - Move dated plans, design freezes, screenshots, execution logs, raw
   verification output and completed ledgers to `docs/history/**` or rely on Git
-  history when no no-resurrection record is needed.
+  history when no non-resurrection record is needed.
 - Delete stale or conflicting text after its successor and callers are proven.
 
 ## Downward Reconciliation

@@ -157,10 +157,10 @@ Customer-operated payment/top-up, shared multi-user Workspaces, HA, GPU, public
 Agent Service publication, and broader managed-resource orchestration remain
 later product layers rather than public-beta prerequisites.
 
-Tencent/TKE is a medopl instance provider choice and migration surface. Existing
-Tencent/TKE source and workflow evidence may remain current implementation
-facts until the instance cutover is complete, but they do not define generic
-Cloud identity, MVP acceptance, or the portable provider contract.
+Tencent/TKE is the medopl instance's current provider choice and production
+implementation surface. Its source, workflow, and Instance evidence do not
+define generic Cloud identity, MVP acceptance, or the portable provider
+contract.
 
 The portable product Release nevertheless contains and contract-tests both the
 Local-Docker and Tencent/TKE adapters. They consume the same Cloud image and

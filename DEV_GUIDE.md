@@ -56,11 +56,13 @@ PostgreSQL, Ledger, Fabric, and Control Plane:
 docker compose --env-file deploy/portable/opl-cloud.env.example config --quiet
 ```
 
-For an actual installation, use the three assets from one GitHub Release and
+For an actual installation, use only the assets from one GitHub Release and
 replace the template values as described in
-[installation.md](docs/installation.md). A healthy Compose stack proves only
-that the Cloud control services start; it does not by itself prove Workspace
-create, readback, access, and delete through the local Docker provider.
+[installation.md](docs/installation.md). The only public Release, `v0.1.7`, has
+five assets. The current source Candidate format has ten and must not be mixed
+with it. A healthy Compose stack proves only that the Cloud control services
+start; it does not by itself prove Workspace create, readback, access, and
+delete through the Local-Docker provider.
 
 ## Provider Adapters
 

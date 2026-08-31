@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/opl-cloud-logo.png" alt="OPL Cloud logo" width="132" />
+  <img src="assets/branding/opl-cloud-logo.png" alt="OPL Cloud 标志" width="132" />
 </p>
 
 <p align="center">
@@ -8,121 +8,111 @@
 
 <h1 align="center">OPL Cloud</h1>
 
-<p align="center"><strong>让 One Person Lab 的复杂工作在云端连续推进</strong></p>
-<p align="center">AI 接入 · 在线工作台 · Agent 服务 · 受控资源 · 证据连续性</p>
+<p align="center"><strong>让 One Person Lab 的复杂工作在云端持续推进</strong></p>
+<p align="center">AI 接入 · 在线工作空间 · 智能体服务 · 受控资源 · 连续证据</p>
 
 <!--
 Owner: `one-person-lab-cloud`
 Purpose: `public_cloud_entry`
 State: `active_public_entry`
-Machine boundary: 面向人的产品与架构入口。本仓同时持有 Cloud 实现，但文档、代码、测试或构建本身不证明已部署服务状态、账单真相、发布状态、领域结论或负责人验收。
+Machine boundary: 面向读者的产品与架构入口。本仓库同时持有 Cloud 实现，但文档、源码、测试或构建本身都不能证明部署状态、账单事实、发布状态、领域结论或负责人验收。
 -->
 
 <p align="center">
-  <img src="assets/branding/opl-cloud-overview-v2.png" alt="OPL Cloud 让工作从本机延伸到在线继续、私有数据、远端计算、共同审阅和服务交付" width="100%" />
+  <img src="assets/branding/opl-cloud-overview-v2.png" alt="OPL Cloud 将本地项目、在线延续、私有数据、远程计算、协作审阅和服务交付连接为一条工作链" width="100%" />
 </p>
 
 ## 为什么需要 OPL Cloud
 
-科研、基金、汇报、书籍和 Agent 开发很少在一次会话或一台机器上完成。工作可能从本机开始，随后需要私有数据、远端计算和人工审阅，最后还可能变成可供他人调用的服务。如果这些环节散落在彼此无关的工具中，项目状态、权限、成本和证据就会逐渐脱节。
+科研、基金申请、汇报、书籍和智能体开发，很少能在一次会话或一台设备上完成。工作往往从本机开始，随后需要私有数据、远程算力和人工审阅，最后还可能成为可供他人调用的服务。如果这些环节分散在互不相通的工具里，项目状态、权限、成本和证据很快就会彼此脱节。
 
-OPL Cloud 定义如何让这些需求留在同一条 OPL 工作链中：
+OPL Cloud 把这些环节留在同一条 OPL 工作链中：
 
-- 从本机 OPL App 项目自然延续到在线 OPL Workspace；
-- 在不转移 owner 权威的前提下，使用获准的模型、数据源、软件环境、存储和计算；
-- 把经过验证的精确 Agent Revision 发布为稳定 API、嵌入组件或托管界面；
-- 让批准、用量、来源、审阅和继续入口始终连接到原工作；
-- 把专业判断留给对应领域 Agent 和人类负责人。
+- 将本机 OPL App 项目延续到云端 OPL Workspace；
+- 在不转移原负责人权限的前提下，使用获准的模型、数据源、软件环境、存储和算力；
+- 将经过验证的精确智能体版本发布为 API、嵌入组件或托管界面；
+- 让审批、用量、来源、审阅和后续入口始终与原项目相连；
+- 把专业判断留给相应的领域智能体和人类负责人。
 
-OPL Cloud 是 OPL 稳定生态中正在落地的第四个产品层：`OPL Base` 提供 Framework Host，
-`OPL App` 提供本地工作台，`OPL Packages` 提供可安装能力，Cloud 再增加在线 Workspace、
-账号治理、托管资源、协作和 Agent 服务。Cloud 只消费这些 owner 的引用，不替代 Base、
-发布 Packages，也不创建第二个 Cordis Host。
+OPL Cloud 是 OPL 产品体系中的第四层。`OPL Base` 提供唯一的框架宿主，`OPL App` 提供本地工作台，`OPL Packages` 提供可安装能力，OPL Cloud 则补上在线工作空间、账户治理、托管资源、协作和智能体服务。OPL Cloud 只引用这些产品各自维护的权威信息，不替代 OPL Base，不代替各仓库发布软件包，也不创建第二个 Cordis 宿主。
 
 ## 产品模型
 
-| 用户需要 | 目标产品面 | 责任边界 |
+| 用户需求 | 产品模块 | 主要职责 |
 | --- | --- | --- |
-| AI 接入与用量 | **OPL Gateway** | 模型接入、路由、provider 策略和用量信号 |
-| 在线项目工作 | **OPL Workspace** | 每个账号零个或多个相互独立的在线工作台 |
-| Agent 对外使用 | **OPL Serve** | 精确 Service、不可变 Revision、Deployment、API、Embed 和 Hosted UI |
-| 账号治理 | **OPL Console** | 账号策略、批准、额度、账单和纳管资源策略 |
-| 数据、工具与计算 | **OPL Fabric** | Connect、Compute、Storage、Environments 和执行适配器 |
-| 证据连续性 | **OPL Ledger** | 回执、来源、审阅和继续引用 |
+| AI 接入与用量 | **OPL Gateway** | 模型接入、路由、服务商策略和用量信号 |
+| 在线项目工作 | **OPL Workspace** | 让每个账户拥有零个或多个相互独立的云端工作空间 |
+| 智能体对外服务 | **OPL Serve** | 管理精确服务、不可变版本、部署、API、嵌入组件和托管界面 |
+| 账户治理 | **OPL Console** | 管理账户策略、审批、额度、账单和受管资源策略 |
+| 数据、工具与算力 | **OPL Fabric** | 提供连接、计算、存储、运行环境和执行适配器 |
+| 证据连续性 | **OPL Ledger** | 保存回执、来源、审阅记录和继续工作的引用 |
 
-Package owner 持有稳定 identity、capabilities、entrypoints 与精确发布 revision；配置的
-原生 carrier 持有物理安装、更新、移除与 fresh installed/callable readback。OPL
-Framework 只聚合发现、carrier 委托、Package 状态与通用执行语义；OPL Runway 持有
-Invocation 与 Session 执行生命周期；领域 Agent 持有专业策略、质量结论、产物和交付
-权威。Cloud 各产品面只消费 owner 与 carrier 引用，不创建竞争真相。
+各软件包仓库维护自己的稳定身份、能力、入口和精确发布版本；配置好的原生载体负责实际安装、更新、移除以及最新的可调用状态。OPL Framework 只负责发现、载体委托、软件包状态汇总和通用执行语义；OPL Runway 负责调用与会话的执行生命周期；领域智能体继续负责专业策略、质量结论、产物和交付。OPL Cloud 使用这些权威信息，但不复制另一套事实。
 
-## MVP 聚焦
+## 当前聚焦
 
-第一期产品只做一条克制的纵向链路：极薄 Console 管理必要的 Workspace、余额与用量；
-通过 `Console -> Control Plane -> Workspace launcher/provider -> local Docker`
-真实创建和管理 OPL App/WebUI Workspace；通过 Sub2API 读取和结算 Gateway 权威账目，
-不建第二钱包。自助开户、充值/支付和精细 UI 均后置。
+第一阶段只打通一条克制而完整的纵向路径：用精简的 Console 管理必要的工作空间、余额和用量；通过
+`Console -> Control Plane -> 工作空间启动器/适配器 -> 本地 Docker`
+真实创建和管理 OPL App/WebUI 工作空间；通过 Sub2API 读取和结算 OPL Gateway 的权威账目，不另建钱包。面向公众的自助注册、支付充值和更细致的界面优化仍在后续计划中。
 
-仓内目前没有 `local-docker` Workspace provider。通用 Compose 资产只能启动 PostgreSQL
-和三个 Cloud control services，不能创建、读回或删除 OPL Workspace。当前实现事实以
-[状态](docs/status.md)为准，唯一 P0 gap 与优先级以[路线图](docs/roadmap.md)为准。
+当前源码已经包含适用于 Linux 主机的 `local-docker` 工作空间适配器。它要求工作空间存储位于启用项目配额的独立 ext4/XFS 挂载点上；主机条件不满足时会明确失败，不会假装配额已经生效。
 
-## 一条连续工作链
+源码能力、公开版本和具体实例是三个不同层次。唯一公开版本 `v0.1.7` 较早，只有基础编排文件、本地工作空间扩展、环境变量示例、发布清单和校验和这 5 个文件；它不包含当前源码中由 10 个文件组成的编排结构和完整工作空间安装路径。请从[当前状态](docs/status.md)了解已经验证的能力，从[安装说明](docs/installation.md)了解公开版本边界，从[路线图](docs/roadmap.md)了解仍未闭合的端到端结果。
+
+## 一条连续的工作链
 
 ```text
 本机 OPL App 项目
--> 进入在线 OPL Workspace
--> 使用获准的 Gateway / Fabric 能力
--> 结果与审阅回到工作台
--> Ledger refs 保留复查和继续线索
--> 通过 OPL Serve 发布精确 Agent Revision
+-> 需要时延续到在线 OPL Workspace
+-> 使用获准的 OPL Gateway 和 OPL Fabric 能力
+-> 将结果与审阅带回工作台
+-> 由 OPL Ledger 保留复查和继续工作的线索
+-> 服务成熟后，通过 OPL Serve 发布精确的智能体版本
 ```
 
-每个用户账号可以拥有零个或多个相互独立的 OPL Workspace。每个 Workspace 都有独立的稳定 identity、URL、runtime、资源绑定、账期、凭据和回执。OPL Cloud 在产品层不设置固定数量上限；每次创建仍受余额、provider 容量、额度与策略约束。一个账号也可以发布多个 Agent Service，因为 Service 是部署资源，不是 Workspace。
+每个账户可以拥有零个或多个相互独立的 OPL Workspace。每个工作空间都有自己的稳定身份、访问地址、运行环境、资源绑定、账期、凭据和回执。OPL Cloud 不在产品层设置固定数量上限，但每次创建仍要满足余额、服务商容量、额度和策略要求。一个账户也可以发布多个智能体服务，因为服务是一种独立的部署资源，并不等同于工作空间。
 
-## 当前仓库边界
+## 仓库边界
 
-`one-person-lab-cloud` 是 OPL Cloud 唯一产品与实现仓，持有公开愿景、目标架构、白皮书、路线图、Console、Control Plane、Fabric、Ledger、Workspace 交付、机器合同、通用安装资产、GHCR 镜像、GitHub Release 与可复用 provider adapter。`opl-cloud` 只作为 npm、镜像、二进制、服务、namespace、环境变量和 runner label 的短标识，不再代表第二个仓库。
+`one-person-lab-cloud` 是 OPL Cloud 唯一的产品与实现仓库，负责公开愿景、目标架构、白皮书、路线图、Console、Control Plane、Fabric、Ledger、工作空间交付、机器合同、通用安装资产、GHCR 镜像、GitHub Release 和可复用的服务商适配器。`opl-cloud` 只是 npm 包、镜像、二进制、服务、命名空间、环境变量和运行器标签中的短名称，不代表另一个仓库。
 
-`opl-instance-medopl` 是 `medopl` 实例的唯一 owner，持有域名、Tencent/TKE 选择、启用套餐与价格、production environment 与 Secrets、部署 workflow、镜像 pin、回滚和回执。它只消费不可变 Cloud 产品 SHA 与镜像 digest，不复制产品或 runtime 代码。设计存在、合同存在、生成物完成、测试通过或镜像发布，都不代表某个实例已经部署或 ready。
+`opl-instance-medopl` 是 `medopl` 实例的唯一负责人，管理域名、Tencent/TKE 选择、启用的 OPL Cloud 套餐、生产环境与密钥、部署流程、镜像固定、回滚和回执。面向客户的版本化价格仍由 OPL Cloud Control Plane 统一维护，实例不能自行改价。实例只使用不可变的 OPL Cloud 源码提交标识和镜像摘要，不复制产品源码或运行时代码。
 
-某项能力当前是否可用、运行是否健康、安全与账单是否成立、能否发布以及 owner 是否验收，必须读取对应实现、机器合同、运行输出和负责人回执。[路线图](docs/roadmap.md) 是 Cloud 剩余差距的唯一当前规划 owner，不是 readiness dashboard。
+设计、合同、生成物、测试通过或镜像发布，都不能单独证明某个实例已经部署并可用。能力、健康、安全、账单、发布和验收结论，必须分别读取相应的实现、机器合同、运行结果和负责人回执。[路线图](docs/roadmap.md)只负责记录尚未完成的 OPL Cloud 结果和下一步，不是运行状态看板。
 
 ## 从这里开始
 
-- [在线阅读 OPL Cloud 白皮书](https://gaofeng21cn.github.io/one-person-lab/latest/whitepapers/opl-cloud-whitepaper.html)
-- [文档索引与 owner 映射](docs/README.md)
-- [架构与权威边界](docs/architecture.md)
-- [当前实现能力](docs/status.md)
-- [安装独立 OPL Cloud 应用](docs/installation.md)
-- [当前路线图、差距和下一轮 Agent Prompt](docs/roadmap.md)
-- [Workspace 身份与外部 SaaS 边界](docs/workspace-identity-and-external-saas-boundary.md)
+- [阅读 OPL Cloud 白皮书](https://gaofeng21cn.github.io/one-person-lab/latest/whitepapers/opl-cloud-whitepaper.html)
+- [查看文档索引与权威归属](docs/README.md)
+- [了解架构和职责边界](docs/architecture.md)
+- [查看当前已经验证的能力](docs/status.md)
+- [了解公开版本与候选版本的安装边界](docs/installation.md)
+- [查看当前差距和下一步](docs/roadmap.md)
+- [了解 Workspace 身份与外部 SaaS 边界](docs/workspace-identity-and-external-saas-boundary.md)
 
 <details>
-  <summary><strong>开发者与运维细节</strong></summary>
+  <summary><strong>开发与运维</strong></summary>
 
 ### 仓库结构
 
 ```text
 one-person-lab-cloud/
   apps/                Console 用户界面
-  assets/              公开品牌与用户旅程资产
-  contracts/           白皮书 artifact Profile
-  deploy/              通用安装资产和可复用 adapter 模板
-  docs/                产品、实现架构、规划与 provenance 文档
+  assets/              公开品牌资源与用户路径图片
+  contracts/           白皮书产物配置
+  deploy/              通用安装资产和可复用适配器模板
+  docs/                产品、实现架构、规划和历史文档
   packages/contracts/  当前机器合同
-  scripts/             白皮书构建与发布请求 wrapper
-  services/            Control Plane、Fabric 与 Ledger
-  tools/               本地、产品发布和可复用验证工具
+  scripts/             白皮书构建和发布请求脚本
+  services/            Control Plane、Fabric 和 Ledger
+  tools/               本地验证、产品发布和通用验证工具
 ```
 
-技术文档统一从 [docs/README.md](docs/README.md) 进入。产品目标、当前实现、实例配置和外部 owner truth 必须保持可区分，不得建立第二个 Cloud writer。
+技术文档统一从[文档索引](docs/README.md)进入。产品目标、当前实现、实例配置和外部权威信息必须保持清晰分层，不能再建立第二套 Cloud 当前事实。
 
 ### 参与开发
 
-提交 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。`main` 由
-严格的 `validate` 汇总检查和已解决的 review 对话保护；生产与部署结论仍必须
-通过各自独立的授权与证据门禁。
+提交拉取请求前请阅读[贡献指南](CONTRIBUTING.md)。`main` 分支由严格的 `validate` 汇总检查和已解决的审阅对话保护；生产与部署结论仍需分别通过对应的授权和证据门槛。
 
 ### 最小检查
 
@@ -134,6 +124,6 @@ npm run build
 git diff --check
 ```
 
-白皮书构建只证明 artifact 渲染；发布还必须经过批准工作流和公开 exact-byte 回读，边界见 [白皮书交付证据](docs/delivery/whitepapers/README.md)。
+白皮书构建只能证明产物已经正确渲染。正式发布还必须经过批准的工作流，并对公开文件逐字节回读；具体边界见[白皮书交付证据](docs/delivery/whitepapers/README.md)。
 
 </details>

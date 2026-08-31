@@ -76,11 +76,16 @@ Gateway accounting through Sub2API without a second wallet. Self-service
 signup, payment/top-up, and detailed UI refinement are later work.
 
 The repository contains a `local-docker` Workspace provider for supported
-Linux hosts. Its portable Compose asset requires a dedicated Linux 5.14+
-ext4/XFS project-quota mount for Workspace storage and fails readiness on
-unsupported hosts rather than claiming unenforced quotas. See [current
-capability](docs/status.md) for implementation facts and the
-[roadmap](docs/roadmap.md) for remaining end-to-end gaps.
+Linux hosts. It requires Workspace storage on a dedicated ext4/XFS mount with
+project quota enabled and fails readiness when the host cannot enforce it.
+
+Source capability, a public Product Release, and a concrete Instance are three
+different evidence layers. The only public Product Release, `v0.1.7`, predates
+the current ten-asset Compose split and does not contain the current complete
+Workspace installation path. See [current capability](docs/status.md) for
+verified implementation and runtime facts, [installation](docs/installation.md)
+for the exact public-release boundary, and the [roadmap](docs/roadmap.md) for
+open end-to-end outcomes.
 
 ## One Continuous Work Chain
 
@@ -130,7 +135,7 @@ steps; it is not a readiness dashboard.
 - [Documentation and owner map](docs/README.md)
 - [Architecture and authority boundaries](docs/architecture.md)
 - [Current implementation capability](docs/status.md)
-- [Install a released OPL Cloud application](docs/installation.md)
+- [Public Release and Candidate installation boundaries](docs/installation.md)
 - [Current gaps and next steps](docs/roadmap.md)
 - [Workspace identity and external SaaS boundary](docs/workspace-identity-and-external-saas-boundary.md)
 
