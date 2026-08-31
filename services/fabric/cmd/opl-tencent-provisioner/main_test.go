@@ -2407,7 +2407,15 @@ func TestBootstrapComputeNodePoolsRejectsInventoryConflictsBeforeMutation(t *tes
 		inventory    []string
 		failureStage string
 	}{
-		{name: "duplicate Basic", pools: bootstrapInventory("np-system", "np-basic", "np-basic-copy"), inventory: []string{"np-basic", "np-basic-copy", "np-system"}, failureStage: "package_contract_mismatch"},
+		{name: "duplicate Basic", pools: bootstrapInventory("np-system", "np-basic", "np-basic-copy"), inventory: []string{"np-basic", "np-basic-copy", "np-system"}, failureStage: "package_pool_duplicate"},
+		{name: "legacy Basic taint", pools: []*tke2022.NodePool{
+			bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
+			legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50),
+		}, inventory: []string{"np-basic", "np-system"}, failureStage: "package_taint_mismatch"},
+		{name: "Basic max replicas mismatch", pools: []*tke2022.NodePool{
+			bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
+			bootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 49),
+		}, inventory: []string{"np-basic", "np-system"}, failureStage: "package_max_replicas_mismatch"},
 		{name: "Basic labels on system pool", pools: []*tke2022.NodePool{
 			bootstrapNodePool("np-system", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 20),
 		}, inventory: []string{"np-system"}, failureStage: "system_pool_package_conflict"},

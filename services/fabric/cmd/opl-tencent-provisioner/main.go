@@ -4851,6 +4851,57 @@ func bootstrapPackagePoolStatus(pool *tke2022.NodePool, spec bootstrapPackageSpe
 	return "registered"
 }
 
+func bootstrapPackagePoolFailureStage(pool *tke2022.NodePool, spec bootstrapPackageSpec) string {
+	if pool == nil || !isCVMNativeNodePool(pool) {
+		return "package_native_contract_mismatch"
+	}
+	lifeState := strings.ToLower(strings.TrimSpace(stringValue(pool.LifeState)))
+	if lifeState != "running" && lifeState != "creating" {
+		return "package_lifecycle_mismatch"
+	}
+	if spec.ExpectedNodePoolID != "" && stringValue(pool.NodePoolId) != spec.ExpectedNodePoolID {
+		return "package_node_pool_id_mismatch"
+	}
+	labels := nodePoolLabels(pool)
+	switch {
+	case stringValue(pool.Name) != spec.PoolID:
+		return "package_pool_name_mismatch"
+	case labels["oplcloud.cn/pool-id"] != spec.PoolID:
+		return "package_pool_label_mismatch"
+	case labels["oplcloud.cn/package-id"] != spec.PackageID:
+		return "package_id_label_mismatch"
+	case labels["oplcloud.cn/instance-type"] != spec.InstanceType:
+		return "package_instance_type_label_mismatch"
+	case labels["medopl.cn/workload"] != "workspace":
+		return "package_workload_label_mismatch"
+	}
+	native := pool.Native
+	switch {
+	case native == nil || native.Scaling == nil:
+		return "package_scaling_missing"
+	case native.Scaling.MinReplicas == nil || *native.Scaling.MinReplicas != 0:
+		return "package_min_replicas_mismatch"
+	case native.Scaling.MaxReplicas == nil || *native.Scaling.MaxReplicas <= 0 || (spec.MaxReplicas > 0 && *native.Scaling.MaxReplicas != spec.MaxReplicas):
+		return "package_max_replicas_mismatch"
+	case native.Replicas == nil || native.ReadyReplicas == nil || *native.Replicas != *native.ReadyReplicas:
+		return "package_replica_readiness_mismatch"
+	case native.EnableAutoscaling == nil || *native.EnableAutoscaling:
+		return "package_autoscaling_mismatch"
+	case native.AutoRepair == nil || *native.AutoRepair:
+		return "package_auto_repair_mismatch"
+	case len(native.InstanceTypes) != 1 || stringValue(native.InstanceTypes[0]) != spec.InstanceType:
+		return "package_instance_type_mismatch"
+	case len(native.SubnetIds) == 0:
+		return "package_subnet_missing"
+	case pool.DeletionProtection == nil || !*pool.DeletionProtection:
+		return "package_deletion_protection_mismatch"
+	case bootstrapPackageTaintState(pool, spec) != "target":
+		return "package_taint_mismatch"
+	default:
+		return "package_contract_mismatch"
+	}
+}
+
 func bootstrapPackageTaintState(pool *tke2022.NodePool, spec bootstrapPackageSpec) string {
 	if pool == nil || len(pool.Taints) != 1 || pool.Taints[0] == nil || stringValue(pool.Taints[0].Effect) != "NoSchedule" {
 		return "conflict"
@@ -4997,8 +5048,11 @@ func bootstrapInventoryMatchesByStatus(
 			if pool == systemPool || !poolTouchesBootstrapSpec(pool, spec) {
 				continue
 			}
-			if matches[spec.PackageID] != nil || status(pool, spec) == "" {
-				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated or does not match the fixed contract.", FailureStage: "package_contract_mismatch", Retryable: false}
+			if matches[spec.PackageID] != nil {
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated.", FailureStage: "package_pool_duplicate", Retryable: false}
+			}
+			if status(pool, spec) == "" {
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool does not match the fixed contract.", FailureStage: bootstrapPackagePoolFailureStage(pool, spec), Retryable: false}
 			}
 			matches[spec.PackageID] = pool
 		}
