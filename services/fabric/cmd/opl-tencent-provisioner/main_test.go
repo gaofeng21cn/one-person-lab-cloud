@@ -2402,28 +2402,29 @@ func TestBootstrapComputeNodePoolsIsIdempotentForCompliantPools(t *testing.T) {
 
 func TestBootstrapComputeNodePoolsRejectsInventoryConflictsBeforeMutation(t *testing.T) {
 	tests := []struct {
-		name      string
-		pools     []*tke2022.NodePool
-		inventory []string
+		name         string
+		pools        []*tke2022.NodePool
+		inventory    []string
+		failureStage string
 	}{
-		{name: "duplicate Basic", pools: bootstrapInventory("np-system", "np-basic", "np-basic-copy"), inventory: []string{"np-basic", "np-basic-copy", "np-system"}},
+		{name: "duplicate Basic", pools: bootstrapInventory("np-system", "np-basic", "np-basic-copy"), inventory: []string{"np-basic", "np-basic-copy", "np-system"}, failureStage: "package_contract_mismatch"},
 		{name: "Basic labels on system pool", pools: []*tke2022.NodePool{
 			bootstrapNodePool("np-system", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 20),
-		}, inventory: []string{"np-system"}},
+		}, inventory: []string{"np-system"}, failureStage: "system_pool_package_conflict"},
 		{name: "cross-labeled package pool", pools: []*tke2022.NodePool{
 			bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
 			bootstrapNodePool("np-cross", "pool-basic-2c4g", "pro", "SA5.2XLARGE16", 8),
-		}, inventory: []string{"np-cross", "np-system"}},
+		}, inventory: []string{"np-cross", "np-system"}, failureStage: "package_identity_ambiguous"},
 		{name: "unknown pool", pools: []*tke2022.NodePool{
 			bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
 			bootstrapNodePool("np-legacy", "legacy", "legacy", "S5.MEDIUM4", 20),
-		}, inventory: []string{"np-legacy", "np-system"}},
+		}, inventory: []string{"np-legacy", "np-system"}, failureStage: "package_identity_ambiguous"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			tkeAPI := &fakeNativeTkeAPI{nodePools: test.pools}
 			response := handleWithClient(Request{Action: "bootstrap_compute_node_pools"}, bootstrapEnv(), newWorkspaceSKUInventoryTencentSDKClient(tkeAPI))
-			if response.Ok || response.ErrorCode != "node_pool_bootstrap_inventory_conflict" || response.MutationCount != 0 {
+			if response.Ok || response.ErrorCode != "node_pool_bootstrap_inventory_conflict" || response.FailureStage != test.failureStage || response.MutationCount != 0 {
 				t.Fatalf("conflict response=%#v", response)
 			}
 			if len(tkeAPI.createNodePoolRequests) != 0 {
