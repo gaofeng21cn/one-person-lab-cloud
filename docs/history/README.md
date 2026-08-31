@@ -44,6 +44,22 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-27-console-customer-announcement-read.md):
   the completed customer published-projection, read-receipt, query-scope, and
   Session/reset ownership migration retained as provenance.
+- [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
+  [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
+  [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
+  portfolio decomposition retained as provenance; current state and acceptance
+  belong only to the roadmap.
+- [Workspace Launch canonical-fact repair design, 2026-08-22](./2026-08-22-workspace-launch-canonical-fact-repair-design.md)
+  and [implementation plan](./2026-08-22-workspace-launch-canonical-fact-repair.md):
+  the bounded historical `specDigest` repair path.
+- [Workspace Launch disposable-reset design, 2026-08-22](./2026-08-22-workspace-launch-disposable-reset-design.md)
+  and [implementation plan](./2026-08-22-workspace-launch-disposable-reset.md):
+  the read-only reset-preview and authorization-boundary design record.
+- [Workspace Launch operation-diagnostics design, 2026-08-22](./2026-08-22-workspace-launch-operation-diagnostics-design.md)
+  and [implementation plan](./2026-08-22-workspace-launch-operation-diagnostics.md):
+  the completed diagnostic projection and decision boundary.
+- [Operator Resource Read implementation plan, 2026-08-27](./2026-08-27-operator-resource-read.md):
+  the completed Console resource-read controller migration.
 
 Do not revive a historical term or owner path from this directory. Reintroduce
 useful lessons only through an explicit update to the current canonical owner.

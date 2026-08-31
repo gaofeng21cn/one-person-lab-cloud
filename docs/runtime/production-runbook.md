@@ -64,9 +64,7 @@ child digests, each installation asset SHA-256, and workflow provenance.
 `SHA256SUMS` covers every installation asset plus the manifest itself; it does
 not cover itself. The canonical Candidate manifest schema does not bind a
 selected Workspace image, Provider Profile, domain, or Instance fact. The
-bundle still contains the current environment template; removing its
-installation-specific defaults remains the
-`PB-N-DISTRIBUTION-RELEASE-01` roadmap gap.
+bundle includes the generic environment template from the same Product SHA.
 
 The local installation owner qualifies that Candidate on a supported clean Linux
 Docker host using an explicit Local-Docker Provider Profile and immutable

@@ -11,7 +11,7 @@ It follows the development framework from `one-person-lab`. The short
   Workspace state machines, purchase recovery, support, and product projections.
 - Fabric resource catalog, provider-neutral resource operations, attachments,
   runtime operations, provider evidence, and provider adapters, including the
-  default local-Docker and explicit Tencent/TKE paths. Historical migrations
+  explicitly selected Local-Docker and Tencent/TKE paths. Historical migrations
   and data preserve ContentTransfer and Snapshot/Restore custody.
 - Ledger receipts, reconciliation evidence, idempotency, retention, and
   caller-owned opaque provenance required by Core, including custody of

@@ -57,7 +57,7 @@ billing.
 
 Fabric exposes provider-neutral resource capabilities to callers. Provider-
 specific identifiers, retry rules, diagnostics, and mutation sequences stay
-inside adapters. The first production path may use `tencent-tke`, but Tencent
+inside adapters. The medopl production path uses `tencent-tke`, but Tencent
 Cloud is one adapter rather than the Fabric product definition. The portable
 `local-docker` adapter has a narrower host contract: Workspace storage is a
 Linux 5.14+ ext4/XFS project-quota mount, and Runtime cgroups must read back the

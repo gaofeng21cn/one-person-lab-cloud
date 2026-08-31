@@ -347,8 +347,8 @@ Speculative route and object entries remain outside the active contracts.
 ## Provider Port
 
 Fabric exposes one Go `Provider` port paid by both `local-docker` and
-`tencent-tke`. Process startup defaults to `local-docker` independently of
-`NODE_ENV`; only `OPL_FABRIC_PROVIDER=tencent-tke` selects the Tencent adapter.
+`tencent-tke`. Process startup requires an explicit `OPL_FABRIC_PROVIDER`;
+`local-docker` and `tencent-tke` are the only accepted current values.
 The Fabric CI job enables the real local Docker integration test, which verifies
 the provider writes and owner-authoritative readback rather than treating an
 interface or control-service health check as portability evidence.
@@ -370,6 +370,16 @@ empty catalog and a fail-closed launch error. Fabric never falls back to
 Provider plan and `specDigest`; replay, destroy and readback use that immutable
 binding or persisted resource facts, so later profile rotation cannot silently
 change an existing Workspace.
+
+The Tencent provisioner also owns Workspace NodePool image-garbage-collection
+settings. New native NodePools receive explicit high/low kubelet thresholds.
+For existing package NodePools, the read path inventories and validates the
+exact protected pool set, preserves unrelated kubelet arguments, and reports
+whether reconciliation is required. The mutation path requires its dedicated
+manual confirmation and live-mutation flags, updates existing nodes, and reads
+the NodePool configuration back. An unknown mutation or readback result remains
+unknown and is reconciled by read only. This is source capability in PR #502;
+no Instance receipt currently proves that the production NodePools were changed.
 
 The read-only `POST /fabric/provider-facts/batch` boundary delegates resource
 interpretation to the selected adapter. Control Plane Provider Acceptance uses
@@ -777,15 +787,12 @@ the fixed value through named constants. The ABI is not an environment override,
 an Instance-selectable option, an installation default, or a separate feature
 lane.
 
-The Instance currently injects the `.com` domain, but Cloud source still falls
-back to `workspace.medopl.cn` in Control Plane URL projection and Tencent
-catalog/runtime helpers. Fabric's Tencent catalog also exposes that fallback
-without consulting the active Provider Profile. Those are current
-instance-specific leaks, not target defaults: managed Tencent/TKE must require
-an explicit Workspace domain and fail closed when it is absent. The `.cn`
-Kubernetes label and annotation keys are persisted metadata identifiers rather
-than access domains; they require owner inventory and a bounded metadata
-namespace migration instead of a mechanical `.com` replacement.
+Cloud requires the Instance to supply `OPL_WORKSPACE_DOMAIN`; Control Plane and
+Tencent/TKE startup fail closed when it is absent. There is no access-domain
+fallback in current source. The `.cn` Kubernetes label and annotation keys are
+persisted metadata identifiers rather than access domains; they require owner
+inventory and a bounded metadata namespace migration instead of a mechanical
+`.com` replacement.
 
 `/w/<workspaceId>/` selects a Workspace from the URL. Root `/api/`, `/ws`, and
 other Workspace-host requests select it from the `opl_ws_active` cookie or a
@@ -848,9 +855,8 @@ bundle contains the installation assets, canonical
 source/image identity and each installation asset digest; `SHA256SUMS` covers
 the installation assets and manifest. The bundle validator recomputes every
 digest. Installation owners bind Workspace image, Provider Profile, domain, and
-deployment evidence in their qualification receipts. The bundle still carries
-the current `opl-cloud.env.example`; removing its installation defaults is the
-`PB-N-DISTRIBUTION-RELEASE-01` roadmap gap.
+deployment evidence in their qualification receipts. The bundle carries the
+generic `opl-cloud.env.example` from the same Product SHA.
 
 The formal Release workflow has two recoverable stages. `admission` downloads
 one exact Candidate plus Local qualification, Instance qualification decision,
