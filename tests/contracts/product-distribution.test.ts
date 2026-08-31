@@ -32,6 +32,17 @@ test("portable Compose isolates service credentials and databases", async () => 
   }
 });
 
+test("Cloud Candidate is limited to the temporary branch builder authority", async () => {
+  const workflow = YAML.parse(await readFile(".github/workflows/build-opl-cloud-candidate.yml", "utf8"));
+  const candidate = workflow.jobs.candidate;
+
+  assert.equal(
+    candidate.if,
+    "${{ github.repository == 'gaofeng21cn/one-person-lab-cloud' && github.ref == 'refs/heads/codex/branch-candidate-authority' && github.actor == 'RenDeHuang' && github.triggering_actor == 'RenDeHuang' }}"
+  );
+  assert.match(candidate.steps.map((step) => step.run || "").join("\n"), /git merge-base --is-ancestor "\$PRODUCT_SHA" refs\/remotes\/candidate-source\/main/);
+});
+
 test("Cloud Release promotes an admitted Candidate and isolates public mutation", async () => {
   const workflow = YAML.parse(await readFile(".github/workflows/release-opl-cloud-image.yml", "utf8"));
   const readbackWorkflow = YAML.parse(await readFile(".github/workflows/release-opl-cloud-public-readback.yml", "utf8"));
