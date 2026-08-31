@@ -4964,17 +4964,17 @@ func bootstrapInventoryMatchesByStatus(
 	for _, pool := range pools {
 		if stringValue(pool.NodePoolId) == systemPoolID {
 			if systemPool != nil {
-				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "System NodePool identity is duplicated.", Retryable: false}
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "System NodePool identity is duplicated.", FailureStage: "system_pool_duplicate", Retryable: false}
 			}
 			systemPool = pool
 		}
 	}
 	if systemPool == nil {
-		return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool was not found.", Retryable: false}
+		return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool was not found.", FailureStage: "system_pool_missing", Retryable: false}
 	}
 	for _, spec := range specs {
 		if poolTouchesBootstrapSpec(systemPool, spec) {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool conflicts with a customer package identity.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool conflicts with a customer package identity.", FailureStage: "system_pool_package_conflict", Retryable: false}
 		}
 	}
 	for _, pool := range pools {
@@ -4988,7 +4988,7 @@ func bootstrapInventoryMatchesByStatus(
 			}
 		}
 		if matchCount != 1 {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "NodePool inventory contains an unknown or ambiguous package identity.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "NodePool inventory contains an unknown or ambiguous package identity.", FailureStage: "package_identity_ambiguous", Retryable: false}
 		}
 	}
 	matches := map[string]*tke2022.NodePool{}
@@ -4998,7 +4998,7 @@ func bootstrapInventoryMatchesByStatus(
 				continue
 			}
 			if matches[spec.PackageID] != nil || status(pool, spec) == "" {
-				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated or does not match the fixed contract.", Retryable: false}
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated or does not match the fixed contract.", FailureStage: "package_contract_mismatch", Retryable: false}
 			}
 			matches[spec.PackageID] = pool
 		}
@@ -5007,7 +5007,7 @@ func bootstrapInventoryMatchesByStatus(
 	for packageID, pool := range matches {
 		nodePoolID := strings.TrimSpace(stringValue(pool.NodePoolId))
 		if priorPackageID := matchedNodePools[nodePoolID]; nodePoolID != "" && priorPackageID != "" && priorPackageID != packageID {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Provider Profile packages cannot share a NodePool.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Provider Profile packages cannot share a NodePool.", FailureStage: "package_node_pool_shared", Retryable: false}
 		}
 		matchedNodePools[nodePoolID] = packageID
 	}
