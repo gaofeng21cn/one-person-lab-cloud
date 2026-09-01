@@ -11,6 +11,7 @@ import {
   presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
+  presentWorkspaceLifecycle,
   presentWorkspaceQuote,
   presentWorkspaceRenewal,
   presentWorkspaceRuntime
@@ -292,6 +293,38 @@ test("Workspace renewal statuses have exact labels and an explicit unknown", () 
     kind: "unknown",
     label: "待确认",
     rawValue: "future_renewal"
+  });
+});
+
+test("Workspace lifecycle statuses use only exact current owner values", () => {
+  const cases = [
+    ["active", "已激活"],
+    ["creating", "开通中"],
+    ["expired", "已到期"],
+    ["failed", "已失败"],
+    ["pending", "待开通"],
+    ["running", "运行中"],
+    ["suspended", "已暂停"]
+  ] as const;
+
+  for (const [state, label] of cases) {
+    assert.deepEqual(presentWorkspaceLifecycle(state), {
+      known: true,
+      kind: state,
+      label
+    });
+  }
+
+  assert.deepEqual(presentWorkspaceLifecycle("active_future"), {
+    known: false,
+    kind: "unknown",
+    label: "待确认",
+    rawValue: "active_future"
+  });
+  assert.deepEqual(presentWorkspaceLifecycle(undefined), {
+    known: false,
+    kind: "unavailable",
+    label: "暂不可用"
   });
 });
 

@@ -224,6 +224,46 @@ export function presentWorkspaceRuntime(runtime: WorkspaceRuntimeDTO): Workspace
   }
 }
 
+type KnownWorkspaceLifecycle =
+  | "active"
+  | "creating"
+  | "expired"
+  | "failed"
+  | "pending"
+  | "running"
+  | "suspended";
+
+export type WorkspaceLifecyclePresentation =
+  | { known: true; kind: KnownWorkspaceLifecycle; label: string }
+  | { known: false; kind: "unknown"; label: "待确认"; rawValue: string }
+  | { known: false; kind: "unavailable"; label: "暂不可用" };
+
+export function presentWorkspaceLifecycle(
+  state: WorkspaceDTO["state"] | undefined
+): WorkspaceLifecyclePresentation {
+  switch (state) {
+    case "active":
+      return { known: true, kind: "active", label: "已激活" };
+    case "creating":
+      return { known: true, kind: "creating", label: "开通中" };
+    case "expired":
+      return { known: true, kind: "expired", label: "已到期" };
+    case "failed":
+      return { known: true, kind: "failed", label: "已失败" };
+    case "pending":
+      return { known: true, kind: "pending", label: "待开通" };
+    case "running":
+      return { known: true, kind: "running", label: "运行中" };
+    case "suspended":
+      return { known: true, kind: "suspended", label: "已暂停" };
+    case undefined:
+    case "":
+      return { known: false, kind: "unavailable", label: "暂不可用" };
+    default:
+      return { known: false, kind: "unknown", label: "待确认", rawValue: state };
+  }
+}
+
 type KnownWorkspaceRenewalStatus = "active" | "not_applicable" | "expired_unpaid" | "manual";
 
 export type WorkspaceRenewalPresentation =

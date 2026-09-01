@@ -60,7 +60,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/workspaces": {
     kind: "customer.workspaces",
     surface: "customer",
-    title: "Workspace",
+    title: "工作空间",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.workspaces"
@@ -68,7 +68,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/workspaces/new": {
     kind: "customer.workspace-new",
     surface: "customer",
-    title: "Workspace",
+    title: "工作空间",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.workspaces"
@@ -76,7 +76,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api": {
     kind: "customer.api.overview",
     surface: "customer",
-    title: "API 服务",
+    title: "API",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"
@@ -84,7 +84,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api/usage": {
     kind: "customer.api.usage",
     surface: "customer",
-    title: "API 服务",
+    title: "API",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"
@@ -92,7 +92,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api/keys": {
     kind: "customer.api.keys",
     surface: "customer",
-    title: "API 服务",
+    title: "API",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"
@@ -100,7 +100,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/billing": {
     kind: "customer.billing",
     surface: "customer",
-    title: "账单",
+    title: "费用",
     requiresSession: true,
     sensitive: false,
     navigationId: "customer.billing"
@@ -108,7 +108,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/announcements": {
     kind: "customer.announcements",
     surface: "customer",
-    title: "公告",
+    title: "消息",
     requiresSession: true,
     sensitive: false,
     navigationId: "customer.announcements"
@@ -183,7 +183,7 @@ type WorkspaceDetailRoute = {
   kind: "customer.workspace-detail";
   path: string;
   surface: "customer";
-  title: "Workspace";
+  title: "工作空间";
   requiresSession: true;
   sensitive: true;
   navigationId: "customer.workspaces";
@@ -230,7 +230,7 @@ export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
     kind: "customer.workspace-detail",
     path,
     surface: "customer",
-    title: "Workspace",
+    title: "工作空间",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.workspaces",

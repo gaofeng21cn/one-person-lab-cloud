@@ -17,16 +17,15 @@ type ApiMenuItem = {
 
 export const customerMenu = Object.freeze([
   { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
-  { id: "customer.workspaces", label: "Workspace", path: "/console/workspaces", icon: "Database" },
-  { id: "customer.api", label: "API 服务", path: "/console/api", icon: "Server" },
-  { id: "customer.billing", label: "账单", path: "/console/billing", icon: "ReceiptText" },
-  { id: "customer.announcements", label: "公告", path: "/console/announcements", icon: "Megaphone" }
+  { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
+  { id: "customer.api", label: "API", path: "/console/api", icon: "Server" },
+  { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }
 ] as const satisfies readonly ConsoleMenuItem[]);
 
 export const apiMenu = Object.freeze([
-  { kind: "customer.api.overview", label: "概览", path: "/console/api" },
-  { kind: "customer.api.usage", label: "使用记录", path: "/console/api/usage" },
-  { kind: "customer.api.keys", label: "API Key", path: "/console/api/keys" }
+  { kind: "customer.api.overview", label: "服务信息", path: "/console/api" },
+  { kind: "customer.api.usage", label: "用量", path: "/console/api/usage" },
+  { kind: "customer.api.keys", label: "密钥", path: "/console/api/keys" }
 ] as const satisfies readonly ApiMenuItem[]);
 
 export const adminMenu = Object.freeze([

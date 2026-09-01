@@ -23,13 +23,13 @@ const staticConsoleRoutes = [
   ["/403", "public.forbidden", "public", "无权访问", false, false, null],
   ["/console", "customer.overview", "customer", "概览", true, false, "customer.overview"],
   ["/console/overview", "customer.overview", "customer", "概览", true, false, "customer.overview"],
-  ["/console/workspaces", "customer.workspaces", "customer", "Workspace", true, true, "customer.workspaces"],
-  ["/console/workspaces/new", "customer.workspace-new", "customer", "Workspace", true, true, "customer.workspaces"],
-  ["/console/api", "customer.api.overview", "customer", "API 服务", true, true, "customer.api"],
-  ["/console/api/usage", "customer.api.usage", "customer", "API 服务", true, true, "customer.api"],
-  ["/console/api/keys", "customer.api.keys", "customer", "API 服务", true, true, "customer.api"],
-  ["/console/billing", "customer.billing", "customer", "账单", true, false, "customer.billing"],
-  ["/console/announcements", "customer.announcements", "customer", "公告", true, false, "customer.announcements"],
+  ["/console/workspaces", "customer.workspaces", "customer", "工作空间", true, true, "customer.workspaces"],
+  ["/console/workspaces/new", "customer.workspace-new", "customer", "工作空间", true, true, "customer.workspaces"],
+  ["/console/api", "customer.api.overview", "customer", "API", true, true, "customer.api"],
+  ["/console/api/usage", "customer.api.usage", "customer", "API", true, true, "customer.api"],
+  ["/console/api/keys", "customer.api.keys", "customer", "API", true, true, "customer.api"],
+  ["/console/billing", "customer.billing", "customer", "费用", true, false, "customer.billing"],
+  ["/console/announcements", "customer.announcements", "customer", "消息", true, false, "customer.announcements"],
   ["/admin", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
   ["/admin/overview", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
   ["/admin/accounts", "admin.accounts", "admin", "客户与计费账户", true, false, "admin.accounts"],
@@ -61,7 +61,7 @@ test("Console route owner parses one decoded Workspace detail segment", () => {
     kind: "customer.workspace-detail",
     path: "/console/workspaces/ws%20alpha",
     surface: "customer",
-    title: "Workspace",
+    title: "工作空间",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.workspaces",
@@ -116,6 +116,23 @@ test("Console navigation targets carry route-owner identities", () => {
   for (const item of apiMenu) {
     assert.equal(parseConsoleRoute(item.path)?.kind, item.kind, item.path);
   }
+});
+
+test("customer navigation has exactly four task destinations in order", () => {
+  assert.deepEqual(customerMenu, [
+    { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
+    { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
+    { id: "customer.api", label: "API", path: "/console/api", icon: "Server" },
+    { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }
+  ]);
+});
+
+test("API navigation has exactly three customer task pages in order", () => {
+  assert.deepEqual(apiMenu, [
+    { kind: "customer.api.overview", label: "服务信息", path: "/console/api" },
+    { kind: "customer.api.usage", label: "用量", path: "/console/api/usage" },
+    { kind: "customer.api.keys", label: "密钥", path: "/console/api/keys" }
+  ]);
 });
 
 test("Workspace status never invents a running state", () => {
