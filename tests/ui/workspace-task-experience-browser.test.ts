@@ -227,8 +227,6 @@ async function credentialIsRevealed(row: Locator) {
 
 async function assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(page: Page) {
   for (const value of [
-    "Runtime ready",
-    "Runtime URL",
     "Workspace Key",
     "operation ID",
     "errorCode",
@@ -237,6 +235,7 @@ async function assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(pa
   ]) {
     assert.equal(await visibleTextCount(page, value), 0, `${value} should not be visible by default`);
   }
+  assert.equal(await visibleTextCount(page, /Runtime/i), 0, "Runtime terms should not be visible by default");
   assert.equal(await visibleTextCount(page, /Secret/), 0, "Secret should not be visible by default");
   assert.equal(await visibleTextCount(page, /micros/i), 0, "micros should not be visible by default");
 }
@@ -709,10 +708,12 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     });
     assert.equal(await credentialIsRevealed(passwordRow), true);
     assert.equal(await credentialIsRevealed(keyRow), false);
+    const revealedPassword = await passwordRow.locator("code").textContent();
+    assert.equal(Boolean(revealedPassword), true, "revealed password must be present");
     await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
     await page.getByText("登录密码已复制", { exact: true }).waitFor({ state: "visible" });
     const copiedPassword = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copiedPassword.length > 0, true);
+    assert.equal(copiedPassword === revealedPassword, true, "clipboard must equal the revealed password");
 
     await keyRow.getByRole("button", { name: "显示", exact: true }).click();
     await page.waitForFunction(() => {
@@ -722,11 +723,14 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     });
     assert.equal(await credentialIsRevealed(passwordRow), false);
     assert.equal(await credentialIsRevealed(keyRow), true);
+    const revealedKey = await keyRow.locator("code").textContent();
+    assert.equal(Boolean(revealedKey), true, "revealed API key must be present");
+    assert.equal(revealedKey !== revealedPassword, true, "password and API key must differ");
     await keyRow.getByRole("button", { name: "复制", exact: true }).click();
     await page.getByText("API 密钥已复制", { exact: true }).waitFor({ state: "visible" });
     const copiedKey = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copiedKey.length > 0, true);
-    assert.equal(copiedKey !== copiedPassword, true);
+    assert.equal(copiedKey === revealedKey, true, "clipboard must equal the revealed API key");
+    assert.equal(copiedKey !== copiedPassword, true, "copied password and API key must differ");
 
     const openWorkspace = identity.getByRole("button", { name: "打开工作空间", exact: true });
     await openWorkspace.click();
@@ -752,6 +756,8 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     const technical = page.locator("details.workspace-technical-details");
     await technical.locator("summary").click();
     await technical.getByText("Workspace ID", { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText("Runtime ready", { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText("Runtime URL", { exact: true }).waitFor({ state: "visible" });
     await technical.getByText(expectedRuntimeUrl, { exact: true }).waitFor({ state: "visible" });
     await technical.getByText("manual", { exact: true }).waitFor({ state: "visible" });
     await technical.getByText("ready_pod_uses_retained_pvc", { exact: true }).waitFor({ state: "visible" });
