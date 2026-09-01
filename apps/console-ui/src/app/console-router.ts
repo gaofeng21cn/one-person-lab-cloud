@@ -191,6 +191,10 @@ type WorkspaceDetailRoute = {
 };
 
 export type ConsoleRoute = StaticConsoleRoute | WorkspaceDetailRoute;
+export type ConsoleRouteKind = ConsoleRoute["kind"];
+export type PublicConsoleRoute = Extract<ConsoleRoute, { surface: "public" }>;
+export type CustomerConsoleRoute = Extract<ConsoleRoute, { surface: "customer" }>;
+export type AdminConsoleRoute = Extract<ConsoleRoute, { surface: "admin" }>;
 
 function normalizePath(pathname: string) {
   const withoutTrailingSlash = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;

@@ -6,15 +6,14 @@ import {
   parseConsoleRoute
 } from "../../apps/console-ui/src/app/console-router.ts";
 import {
-  apiPage,
+  adminMenu,
+  apiMenu,
+  customerMenu,
   formatAvailableBalance,
   formatCount,
   formatUsdMicros,
   hasSufficientWorkspaceLaunchBalance,
-  needsSession,
   readinessRows,
-  workspaceIdFromPath,
-  workspacePage,
   workspaceStatusLabel
 } from "../../apps/console-ui/src/console-model.ts";
 
@@ -110,29 +109,13 @@ test("Console route owner rejects unknown or malformed paths without guessing", 
   assert.equal("workspaceId" in (parseConsoleRoute("/console/workspaces/new") ?? {}), false);
 });
 
-test("API routes select the current view", () => {
-  assert.equal(apiPage("/console/api"), "overview");
-  assert.equal(apiPage("/console/api/usage"), "usage");
-  assert.equal(apiPage("/console/api/keys"), "keys");
-});
-
-test("Workspace routes separate list, launch, and refreshable detail views", () => {
-  assert.equal(workspacePage("/console/workspaces"), "list");
-  assert.equal(workspacePage("/console/workspaces/"), "list");
-  assert.equal(workspacePage("/console/workspaces/new"), "new");
-  assert.equal(workspacePage("/console/workspaces/ws%20alpha"), "detail");
-  assert.equal(workspacePage("/console/workspaces/ws-alpha"), "detail");
-  assert.equal(workspaceIdFromPath("/console/workspaces/ws%20alpha"), "ws alpha");
-  assert.equal(workspaceIdFromPath("/console/workspaces/new"), "");
-  assert.equal(workspacePage("/console/workspaces/ws-alpha/extra"), null);
-  assert.equal(workspacePage("/console/workspace"), null);
-});
-
-test("public and login routes render without session recovery", () => {
-  assert.equal(needsSession("/"), false);
-  assert.equal(needsSession("/login"), false);
-  assert.equal(needsSession("/console/overview"), true);
-  assert.equal(needsSession("/admin"), true);
+test("Console navigation targets carry route-owner identities", () => {
+  for (const item of [...customerMenu, ...adminMenu]) {
+    assert.equal(parseConsoleRoute(item.path)?.navigationId, item.id, item.path);
+  }
+  for (const item of apiMenu) {
+    assert.equal(parseConsoleRoute(item.path)?.kind, item.kind, item.path);
+  }
 });
 
 test("Workspace status never invents a running state", () => {

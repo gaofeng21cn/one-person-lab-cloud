@@ -1,57 +1,45 @@
 import type { GatewayKeySecretDTO, GatewayWallet, ReadinessFact, WorkspaceRuntimeDTO } from "./api/dtos.ts";
+import type { ConsoleNavigationId, CustomerConsoleRoute } from "./app/console-router.ts";
+
+type ConsoleMenuItem = {
+  id: ConsoleNavigationId;
+  label: string;
+  path: string;
+  icon: string;
+};
+
+type CustomerApiRouteKind = Extract<CustomerConsoleRoute, { navigationId: "customer.api" }>["kind"];
+type ApiMenuItem = {
+  kind: CustomerApiRouteKind;
+  label: string;
+  path: string;
+};
 
 export const customerMenu = Object.freeze([
-  { id: "overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
-  { id: "workspace", label: "Workspace", path: "/console/workspaces", icon: "Database" },
-  { id: "api", label: "API 服务", path: "/console/api", icon: "Server" },
-  { id: "billing", label: "账单", path: "/console/billing", icon: "ReceiptText" },
-  { id: "announcements", label: "公告", path: "/console/announcements", icon: "Megaphone" }
-]);
+  { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
+  { id: "customer.workspaces", label: "Workspace", path: "/console/workspaces", icon: "Database" },
+  { id: "customer.api", label: "API 服务", path: "/console/api", icon: "Server" },
+  { id: "customer.billing", label: "账单", path: "/console/billing", icon: "ReceiptText" },
+  { id: "customer.announcements", label: "公告", path: "/console/announcements", icon: "Megaphone" }
+] as const satisfies readonly ConsoleMenuItem[]);
 
 export const apiMenu = Object.freeze([
-  { id: "overview", label: "概览", path: "/console/api" },
-  { id: "usage", label: "使用记录", path: "/console/api/usage" },
-  { id: "keys", label: "API Key", path: "/console/api/keys" }
-]);
+  { kind: "customer.api.overview", label: "概览", path: "/console/api" },
+  { kind: "customer.api.usage", label: "使用记录", path: "/console/api/usage" },
+  { kind: "customer.api.keys", label: "API Key", path: "/console/api/keys" }
+] as const satisfies readonly ApiMenuItem[]);
 
 export const adminMenu = Object.freeze([
-  { id: "overview", label: "运维概览", path: "/admin/overview", icon: "LayoutDashboard" },
-  { id: "accounts", label: "客户与计费账户", path: "/admin/accounts", icon: "UsersRound" },
-  { id: "billing", label: "计费复核", path: "/admin/billing", icon: "CircleDollarSign" },
-  { id: "resources", label: "资源状态", path: "/admin/resources", icon: "Database" },
-  { id: "system", label: "系统状态", path: "/admin/system", icon: "Activity" }
-]);
+  { id: "admin.overview", label: "运维概览", path: "/admin/overview", icon: "LayoutDashboard" },
+  { id: "admin.accounts", label: "客户与计费账户", path: "/admin/accounts", icon: "UsersRound" },
+  { id: "admin.billing", label: "计费复核", path: "/admin/billing", icon: "CircleDollarSign" },
+  { id: "admin.resources", label: "资源状态", path: "/admin/resources", icon: "Database" },
+  { id: "admin.system", label: "系统状态", path: "/admin/system", icon: "Activity" },
+  { id: "admin.announcements", label: "公告管理", path: "/admin/announcements", icon: "Megaphone" }
+] as const satisfies readonly ConsoleMenuItem[]);
 
 export function defaultAuthenticatedRoute(_isOperator = false): string {
   return "/console/overview";
-}
-
-export function apiPage(pathname = ""): "overview" | "usage" | "keys" {
-  if (pathname.endsWith("/usage")) return "usage";
-  if (pathname.endsWith("/keys")) return "keys";
-  return "overview";
-}
-
-export function workspacePage(pathname = ""): "list" | "new" | "detail" | null {
-  const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (normalized === "/console/workspaces") return "list";
-  if (normalized === "/console/workspaces/new") return "new";
-  return workspaceIdFromPath(normalized) ? "detail" : null;
-}
-
-export function workspaceIdFromPath(pathname = ""): string {
-  const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  const match = /^\/console\/workspaces\/([^/]+)$/.exec(normalized);
-  if (!match?.[1] || match[1] === "new") return "";
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return "";
-  }
-}
-
-export function needsSession(pathname = ""): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/console");
 }
 
 export function formatUsdMicros(value: unknown): string {

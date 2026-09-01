@@ -20,6 +20,7 @@ import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { BillingController, CustomerAnnouncementController, GatewayUsageController, WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
+import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -37,7 +38,13 @@ import type {
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Alert, Badge, Button, Checkbox, Field, SegmentedControl, Select } from "../components/ui/index.ts";
-import { apiMenu, apiPage, formatCount, formatDate, formatUsdMicros, workspacePage, workspaceStatusLabel } from "../console-model.ts";
+import { apiMenu, formatCount, formatDate, formatUsdMicros, workspaceStatusLabel } from "../console-model.ts";
+
+type CustomerApiRoute = Extract<CustomerConsoleRoute, { navigationId: "customer.api" }>;
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled customer Console route: ${JSON.stringify(value)}`);
+}
 
 const launchPhaseLabels = [
   ["validate", "校验报价与余额"],
@@ -602,8 +609,8 @@ function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) 
   );
 }
 
-function ApiTabs({ controller }: { controller: ConsoleController }) {
-  return <nav aria-label="API 服务导航" className="gateway-tabs">{apiMenu.map((item) => <PageLink className={controller.path === item.path ? "active" : ""} controller={controller} key={item.path} path={item.path}>{item.label}</PageLink>)}</nav>;
+function ApiTabs({ controller, route }: { controller: ConsoleController; route: CustomerApiRoute }) {
+  return <nav aria-label="API 服务导航" className="gateway-tabs">{apiMenu.map((item) => <PageLink className={route.kind === item.kind ? "active" : ""} controller={controller} key={item.path} path={item.path}>{item.label}</PageLink>)}</nav>;
 }
 
 function ApiOverview({ controller }: { controller: ConsoleController }) {
@@ -678,9 +685,22 @@ function UsagePage({ controller: usage, onCopyRequestId }: {
   </section>;
 }
 
-function ApiPage({ controller }: { controller: ConsoleController }) {
-  const page = apiPage(controller.path);
-  return <section className="gateway-page api-page"><ApiTabs controller={controller} />{page === "overview" ? <ApiOverview controller={controller} /> : page === "usage" ? <UsagePage controller={controller.gatewayUsage} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} /> : <KeysPanel csrfToken={controller.session?.csrfToken || ""} endpoint={controller.gatewayAccountRead.endpoint} refreshEndpoint={controller.gatewayAccountRead.refresh} />}</section>;
+function ApiPage({ controller, route }: { controller: ConsoleController; route: CustomerApiRoute }) {
+  let content: ReactNode;
+  switch (route.kind) {
+    case "customer.api.overview":
+      content = <ApiOverview controller={controller} />;
+      break;
+    case "customer.api.usage":
+      content = <UsagePage controller={controller.gatewayUsage} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} />;
+      break;
+    case "customer.api.keys":
+      content = <KeysPanel csrfToken={controller.session?.csrfToken || ""} endpoint={controller.gatewayAccountRead.endpoint} refreshEndpoint={controller.gatewayAccountRead.refresh} />;
+      break;
+    default:
+      return assertNever(route);
+  }
+  return <section className="gateway-page api-page"><ApiTabs controller={controller} route={route} />{content}</section>;
 }
 
 function BillingPage({ controller }: { controller: ConsoleController }) {
@@ -718,13 +738,25 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
   return <section className="announcements-page" data-slide="C-ANN-01"><section className="panel"><div className="panel-title"><div><h2>公告列表</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div><Button onClick={() => void announcementController.refresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div><SourceState empty={announcementController.announcements.value?.status === "empty"} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">{() => <AnnouncementRows announcements={announcements} controller={announcementController} />}</SourceState></section></section>;
 }
 
-export function CustomerPages({ controller }: { controller: ConsoleController }) {
-  if (controller.path === "/console" || controller.path === "/console/overview") return <OverviewPage controller={controller} />;
-  if (workspacePage(controller.path) === "list") return <WorkspaceListPage controller={controller} />;
-  if (workspacePage(controller.path) === "new") return <WorkspaceLaunchPage controller={controller.workspaceLaunch} onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />;
-  if (workspacePage(controller.path) === "detail") return <WorkspaceDetailPage controller={controller} />;
-  if (controller.path.startsWith("/console/api")) return <ApiPage controller={controller} />;
-  if (controller.path === "/console/billing") return <BillingPage controller={controller} />;
-  if (controller.path === "/console/announcements") return <AnnouncementsPage controller={controller} />;
-  return null;
+export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
+  switch (route.kind) {
+    case "customer.overview":
+      return <OverviewPage controller={controller} />;
+    case "customer.workspaces":
+      return <WorkspaceListPage controller={controller} />;
+    case "customer.workspace-new":
+      return <WorkspaceLaunchPage controller={controller.workspaceLaunch} onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />;
+    case "customer.workspace-detail":
+      return <WorkspaceDetailPage controller={controller} />;
+    case "customer.api.overview":
+    case "customer.api.usage":
+    case "customer.api.keys":
+      return <ApiPage controller={controller} route={route} />;
+    case "customer.billing":
+      return <BillingPage controller={controller} />;
+    case "customer.announcements":
+      return <AnnouncementsPage controller={controller} />;
+    default:
+      return assertNever(route);
+  }
 }

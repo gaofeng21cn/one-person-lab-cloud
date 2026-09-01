@@ -20,6 +20,7 @@ import {
 import { useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 
 import type { SupportController } from "../app/console-controller-types.ts";
+import type { ConsoleNavigationId, ConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import { adminMenu, apiMenu, customerMenu } from "../console-model.ts";
 import { Button, Field, Tooltip } from "../components/ui/index.ts";
@@ -35,18 +36,17 @@ const icons: Record<string, ComponentType<{ size?: number; "aria-hidden"?: boole
   UsersRound
 };
 
-function isActive(path: string, target: string) {
-  if (target === "/console/api") return path === target;
-  if (target === "/console/workspaces") return path === target || /^\/console\/workspaces\/[^/]+$/.test(path);
-  return path === target;
+function isNavigationActive(route: ConsoleRoute | null, navigationId: ConsoleNavigationId) {
+  return route?.navigationId === navigationId;
 }
 
 function NavigationLink({ controller, item }: { controller: ConsoleController; item: (typeof customerMenu)[number] | (typeof adminMenu)[number] }) {
   const Icon = icons[item.icon] || LayoutDashboard;
+  const active = isNavigationActive(controller.route, item.id);
   return (
     <a
-      aria-current={isActive(controller.path, item.path) ? "page" : undefined}
-      className={isActive(controller.path, item.path) ? "active" : ""}
+      aria-current={active ? "page" : undefined}
+      className={active ? "active" : ""}
       href={item.path}
       onClick={(event) => {
         event.preventDefault();
@@ -122,8 +122,10 @@ function SupportSlide({ support }: { support: SupportController }) {
 }
 
 export function ConsoleShell({ children, controller }: { children: ReactNode; controller: ConsoleController }) {
-  const adminSurface = controller.isAdminRoute;
-  const mobileItems = adminSurface ? adminMenu : customerMenu;
+  const adminSurface = controller.route?.surface === "admin";
+  const mobileItems = adminSurface
+    ? adminMenu.filter((item) => item.id !== "admin.announcements")
+    : customerMenu;
 
   return (
     <div className="app-shell">
@@ -141,17 +143,17 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
 
         <nav className="side-nav">
           {customerMenu.map((item) => <NavigationLink controller={controller} item={item} key={item.path} />)}
-          {controller.path.startsWith("/console/api") ? (
+          {controller.route?.navigationId === "customer.api" ? (
             <div className="side-subnav" aria-label="API 服务页面">
               {apiMenu.map((item) => (
                 <a
-                  aria-current={controller.path === item.path ? "page" : undefined}
-                  className={controller.path === item.path ? "active" : ""}
+                  aria-current={controller.route?.kind === item.kind ? "page" : undefined}
+                  className={controller.route?.kind === item.kind ? "active" : ""}
                   href={item.path}
                   key={item.path}
                   onClick={(event) => { event.preventDefault(); controller.navigate(item.path); }}
                 >
-                  {item.path.endsWith("/keys") ? <KeyRound aria-hidden size={14} /> : null}
+                  {item.kind === "customer.api.keys" ? <KeyRound aria-hidden size={14} /> : null}
                   <span>{item.label}</span>
                 </a>
               ))}
@@ -181,7 +183,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
       </aside>
 
       <div className="main-column">
-        <header className={`topbar ${controller.path === "/console/overview" ? "topbar-overview" : ""}`}>
+        <header className={`topbar ${controller.route?.kind === "customer.overview" ? "topbar-overview" : ""}`}>
           <div className="topbar-title">
             <button aria-label="打开导航" className="mobile-menu" onClick={() => controller.setSidebarOpen(true)}><Menu aria-hidden size={19} /></button>
             <div>
@@ -216,8 +218,9 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
       <nav aria-label="移动端导航" className={`mobile-bottom-nav ${adminSurface ? "admin-mobile-nav" : ""}`}>
         {mobileItems.map((item) => {
           const Icon = icons[item.icon] || LayoutDashboard;
+          const active = isNavigationActive(controller.route, item.id);
           return (
-            <a className={isActive(controller.path, item.path) ? "active" : ""} href={item.path} key={item.path} onClick={(event) => { event.preventDefault(); controller.navigate(item.path); }}>
+            <a aria-current={active ? "page" : undefined} className={active ? "active" : ""} href={item.path} key={item.path} onClick={(event) => { event.preventDefault(); controller.navigate(item.path); }}>
               <Icon aria-hidden size={18} />
               <span>{item.label}</span>
             </a>
