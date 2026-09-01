@@ -49,12 +49,13 @@ export function presentWorkspaceLaunch(
         canOpenWorkspace: false
       };
     case "succeeded":
+      if (!operation.workspaceId?.trim()) break;
       return {
         kind: "succeeded",
         title: "工作空间已可使用",
         summary: "工作空间已完成开通，可以继续查看并进入。",
         tone: "success",
-        canOpenWorkspace: operation.workspaceId !== undefined && operation.workspaceId !== ""
+        canOpenWorkspace: true
       };
     case "failed":
       return {
@@ -73,15 +74,16 @@ export function presentWorkspaceLaunch(
         canOpenWorkspace: false
       };
     default:
-      return {
-        kind: "unconfirmed",
-        title: "结果待确认",
-        summary: "当前开通结果尚未确认，请刷新状态，暂勿重复购买。",
-        tone: "warning",
-        canOpenWorkspace: false,
-        rawValue: operation.status
-      };
+      break;
   }
+  return {
+    kind: "unconfirmed",
+    title: "结果待确认",
+    summary: "当前开通结果尚未确认，请刷新状态，暂勿重复购买。",
+    tone: "warning",
+    canOpenWorkspace: false,
+    rawValue: operation.status
+  };
 }
 
 type KnownWorkspaceLaunchStage =

@@ -160,8 +160,17 @@ test("unknown Workspace launch status is explicitly unconfirmed and cannot open"
   });
 });
 
-test("a succeeded launch without a Workspace identity cannot open", () => {
-  assert.equal(presentWorkspaceLaunch(launch({ status: "succeeded" })).canOpenWorkspace, false);
+test("a succeeded launch without a valid Workspace identity is explicitly unconfirmed", () => {
+  for (const workspaceId of [undefined, "", "   "]) {
+    assert.deepEqual(presentWorkspaceLaunch(launch({ status: "succeeded", workspaceId })), {
+      kind: "unconfirmed",
+      title: "结果待确认",
+      summary: "当前开通结果尚未确认，请刷新状态，暂勿重复购买。",
+      tone: "warning",
+      canOpenWorkspace: false,
+      rawValue: "succeeded"
+    });
+  }
 });
 
 test("Workspace launch stages use only exact current stage values", () => {

@@ -253,6 +253,74 @@ test("customer completes one authoritative Workspace journey at desktop and mobi
 
 test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 
+test("succeeded launch without a Workspace identity keeps raw success behind technical details", { timeout: 30_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const malformedSuccess: WorkspaceLaunchResponse = {
+    operationId: "launch-missing-workspace-identity",
+    status: "succeeded",
+    phase: "succeeded",
+    accountId: "acct-1",
+    name: "Missing Identity Workspace",
+    packageId: "basic",
+    sizeGb: 10,
+    autoRenew: false,
+    priceVersion: "pilot-usd-2026-07-v1",
+    currency: "USD",
+    totalChargeUsdMicros: 52_580_000,
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:01:00Z"
+  };
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    let launchPostCount = 0;
+    let authoritativeReadCount = 0;
+    let launchIdempotencyKey = "";
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      launchPostCount += 1;
+      launchIdempotencyKey = route.request().headers()["idempotency-key"] || "";
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(malformedSuccess) });
+    });
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.searchParams.get("pageSize") === "50") authoritativeReadCount += 1;
+      await route.fallback();
+    });
+
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
+    await page.getByLabel("Workspace 名称").fill(malformedSuccess.name);
+    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
+    await page.getByRole("checkbox", {
+      name: "我确认一次性预付工作空间月度总额并开通",
+      exact: true
+    }).click();
+    await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
+
+    await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("heading", { name: "工作空间已可使用", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
+    assert.equal(await visibleTextCount(page, "succeeded"), 0);
+    assert.equal(authoritativeReadCount, 0);
+    assert.equal(launchPostCount, 1);
+    assert.notEqual(launchIdempotencyKey, "");
+
+    const technical = page.locator("details.launch-technical-details");
+    await technical.locator("summary").click();
+    await technical.getByText("succeeded", { exact: true }).first().waitFor({ state: "visible" });
+    await assertNoHorizontalOverflow(page);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
