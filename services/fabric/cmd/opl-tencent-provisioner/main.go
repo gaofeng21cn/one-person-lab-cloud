@@ -42,11 +42,18 @@ var errTKEInstanceNotFound = errors.New("TKE instance not found")
 const tkeListPageLimit int64 = 100
 const nodePoolBootstrapMutationConfirmation = "CREATE_MISSING_WORKSPACE_NODEPOOLS"
 const nodePoolTaintMigrationMutationConfirmation = "MIGRATE_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS"
+const nodePoolTaintMigrationRecoveryMutationConfirmation = "RECOVER_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS_AFTER_NO_EFFECT_READBACK"
 const nodePoolImageGCMutationConfirmation = "RECONCILE_WORKSPACE_NODEPOOL_IMAGE_GC"
 const nodePoolTaintMigrationBindingDigestEnv = "OPL_TAINT_MIGRATION_MUTATION_BINDING_DIGEST"
+const nodePoolTaintMigrationPriorBindingDigestEnv = "OPL_TAINT_MIGRATION_PRIOR_MUTATION_BINDING_DIGEST"
+const nodePoolTaintMigrationAction = "migrate_workspace_node_pool_taints"
 const nodePoolTaintMigrationOperationID = "op_normal_workspace_node_pool_taint_migration_v1"
 const nodePoolTaintMigrationRecordID = "fop_normal_workspace_node_pool_taint_migration_v1"
 const nodePoolTaintMigrationIdempotencyKey = "normal_workspace_node_pool_package_taints_v1"
+const nodePoolTaintMigrationRecoveryAction = "recover_workspace_node_pool_taint_migration"
+const nodePoolTaintMigrationRecoveryOperationID = "op_normal_workspace_node_pool_taint_migration_recovery_v1"
+const nodePoolTaintMigrationRecoveryRecordID = "fop_normal_workspace_node_pool_taint_migration_recovery_v1"
+const nodePoolTaintMigrationRecoveryIdempotencyKey = "normal_workspace_node_pool_package_taints_recovery_v1"
 const protectedCheckNotChecked = "not_checked"
 const protectedCheckPassed = "passed"
 const protectedCheckFailed = "failed"
@@ -393,17 +400,18 @@ type TencentClient interface {
 type unimplementedTencentClient struct{}
 
 type tencentSDKClient struct {
-	region                             string
-	clusterId                          string
-	nativeTkeClient                    tkeNativeAPI
-	nativeLegacyTkeClient              tkeLegacyAPI
-	nativeCvmClient                    cvmNativeAPI
-	nativeCbsClient                    cbsNativeAPI
-	nativeVpcClient                    vpcNativeAPI
-	nativeTagClient                    tagNativeAPI
-	convergenceContext                 context.Context
-	convergenceWait                    func(context.Context, int) error
-	claimNodePoolTaintMigrationAttempt func(context.Context, fabricstore.FabricOperation) (fabricstore.FabricOperation, bool, error)
+	region                              string
+	clusterId                           string
+	nativeTkeClient                     tkeNativeAPI
+	nativeLegacyTkeClient               tkeLegacyAPI
+	nativeCvmClient                     cvmNativeAPI
+	nativeCbsClient                     cbsNativeAPI
+	nativeVpcClient                     vpcNativeAPI
+	nativeTagClient                     tagNativeAPI
+	convergenceContext                  context.Context
+	convergenceWait                     func(context.Context, int) error
+	claimNodePoolTaintMigrationAttempt  func(context.Context, fabricstore.FabricOperation) (fabricstore.FabricOperation, bool, error)
+	lookupNodePoolTaintMigrationAttempt func(context.Context, string, string) (fabricstore.FabricOperation, bool, error)
 }
 
 type tagNativeAPI interface {
@@ -958,6 +966,13 @@ func newTencentSDKClient(env map[string]string) (*tencentSDKClient, *Response) {
 				return fabricstore.FabricOperation{}, false, err
 			}
 			return store.ClaimRuntime(ctx, operation)
+		},
+		lookupNodePoolTaintMigrationAttempt: func(ctx context.Context, action, idempotencyKey string) (fabricstore.FabricOperation, bool, error) {
+			store, err := fabricstore.NewPostgresOperationStore(strings.TrimSpace(env["DATABASE_URL"]))
+			if err != nil {
+				return fabricstore.FabricOperation{}, false, err
+			}
+			return store.OperationByActionIdempotency(ctx, action, idempotencyKey)
 		},
 	}, nil
 }
@@ -4975,7 +4990,7 @@ func nodePoolTaintMigrationAttempt(bindingDigest string, now time.Time) fabricst
 		ID:             nodePoolTaintMigrationRecordID,
 		OperationID:    nodePoolTaintMigrationOperationID,
 		CallerService:  "opl-tencent-provisioner",
-		Action:         "migrate_workspace_node_pool_taints",
+		Action:         nodePoolTaintMigrationAction,
 		ResourceKind:   "tke_node_pool_package_taints",
 		ResourceID:     "normal_workspace_basic_pro_node_pools",
 		Provider:       "tencent",
@@ -4992,12 +5007,55 @@ func nodePoolTaintMigrationAttempt(bindingDigest string, now time.Time) fabricst
 	}
 }
 
+func nodePoolTaintMigrationRecoveryAttempt(bindingDigest, priorBindingDigest string, now time.Time) fabricstore.FabricOperation {
+	attempt := nodePoolTaintMigrationAttempt(bindingDigest, now)
+	attempt.ID = nodePoolTaintMigrationRecoveryRecordID
+	attempt.OperationID = nodePoolTaintMigrationRecoveryOperationID
+	attempt.Action = nodePoolTaintMigrationRecoveryAction
+	attempt.IdempotencyKey = nodePoolTaintMigrationRecoveryIdempotencyKey
+	attempt.RedactedProviderPayload["recoveryOf"] = nodePoolTaintMigrationRecordID
+	attempt.RedactedProviderPayload["priorBindingDigest"] = priorBindingDigest
+	return attempt
+}
+
 func sameNodePoolTaintMigrationAttempt(existing, requested fabricstore.FabricOperation) bool {
 	return existing.ID == requested.ID && existing.OperationID == requested.OperationID &&
 		existing.CallerService == requested.CallerService && existing.Action == requested.Action &&
 		existing.ResourceKind == requested.ResourceKind && existing.ResourceID == requested.ResourceID &&
 		existing.AccountID == "" && existing.WorkspaceID == "" && existing.Provider == requested.Provider &&
 		existing.IdempotencyKey == requested.IdempotencyKey && existing.RequestHash == requested.RequestHash
+}
+
+func exactNodePoolTaintMigrationPayload(operation fabricstore.FabricOperation, recovery bool, priorBindingDigest string) bool {
+	payload := operation.RedactedProviderPayload
+	wantFields := 3
+	if recovery {
+		wantFields = 5
+	}
+	numberMatches := func(value any, want float64) bool {
+		switch typed := value.(type) {
+		case int:
+			return float64(typed) == want
+		case float64:
+			return typed == want
+		default:
+			return false
+		}
+	}
+	if len(payload) != wantFields || !numberMatches(payload["schemaVersion"], 1) ||
+		!numberMatches(payload["maxModifyCalls"], 2) || payload["updateExistedNode"] != true {
+		return false
+	}
+	if recovery {
+		return payload["recoveryOf"] == nodePoolTaintMigrationRecordID && payload["priorBindingDigest"] == priorBindingDigest
+	}
+	return true
+}
+
+func validPersistedNodePoolTaintMigrationAttempt(existing, expected fabricstore.FabricOperation, recovery bool, priorBindingDigest string) bool {
+	return sameNodePoolTaintMigrationAttempt(existing, expected) && exactNodePoolTaintMigrationPayload(existing, recovery, priorBindingDigest) &&
+		existing.Status == "started" && existing.ErrorCode == "" && !existing.Retryable && existing.ProviderRequestID == "" &&
+		!existing.StartedAt.IsZero() && existing.FinishedAt.IsZero() && !existing.CreatedAt.IsZero()
 }
 
 func bootstrapInventoryMatches(pools []*tke2022.NodePool, env map[string]string, specs []bootstrapPackageSpec) (map[string]*tke2022.NodePool, *Response) {
@@ -5136,11 +5194,38 @@ func (client *tencentSDKClient) MigrateWorkspaceNodePoolTaints(request Request, 
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_attempt_authority_unavailable", Message: "The persisted NodePool migration attempt authority is unavailable; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
 	attempt := nodePoolTaintMigrationAttempt(bindingDigest, time.Now().UTC())
+	recovery := request.Action == nodePoolTaintMigrationRecoveryAction
+	if recovery {
+		if migrationRequired != len(specs) {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_no_effect_readback_required", Message: "Recovery requires every package NodePool to remain on the exact legacy taint.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		if client.lookupNodePoolTaintMigrationAttempt == nil {
+			return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_recovery_prior_attempt_authority_unavailable", Message: "The prior migration attempt authority is unavailable; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		priorBindingDigest := strings.TrimSpace(env[nodePoolTaintMigrationPriorBindingDigestEnv])
+		decodedPriorBindingDigest, priorDigestErr := hex.DecodeString(priorBindingDigest)
+		if priorDigestErr != nil || len(decodedPriorBindingDigest) != sha256.Size || priorBindingDigest != strings.ToLower(priorBindingDigest) {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_binding_invalid", Message: "Recovery requires the exact prior attempt binding digest.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		prior, found, lookupErr := client.lookupNodePoolTaintMigrationAttempt(context.Background(), nodePoolTaintMigrationAction, nodePoolTaintMigrationIdempotencyKey)
+		if lookupErr != nil {
+			return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_recovery_prior_attempt_read_unknown", Message: "The prior migration attempt read is unknown; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		if !found {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_attempt_missing", Message: "Recovery requires the exact prior migration attempt.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		expectedPrior := nodePoolTaintMigrationAttempt(priorBindingDigest, prior.StartedAt)
+		if !validPersistedNodePoolTaintMigrationAttempt(prior, expectedPrior, false, "") {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_attempt_invalid", Message: "The prior migration attempt does not match the provided prior binding.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		attempt = nodePoolTaintMigrationRecoveryAttempt(bindingDigest, priorBindingDigest, time.Now().UTC())
+	}
 	storedAttempt, claimed, claimErr := client.claimNodePoolTaintMigrationAttempt(context.Background(), attempt)
 	if claimErr != nil {
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_attempt_reservation_unknown", Message: "The persisted NodePool migration attempt reservation is unknown; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
-	if !sameNodePoolTaintMigrationAttempt(storedAttempt, attempt) {
+	if !sameNodePoolTaintMigrationAttempt(storedAttempt, attempt) || recovery &&
+		!validPersistedNodePoolTaintMigrationAttempt(storedAttempt, attempt, true, strings.TrimSpace(env[nodePoolTaintMigrationPriorBindingDigestEnv])) {
 		return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_attempt_binding_conflict", Message: "The persisted NodePool migration attempt binding conflicts with the fresh mutation binding.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
 	if !claimed {
@@ -5731,8 +5816,12 @@ func handleWithClient(request Request, env map[string]string, client TencentClie
 		}
 		return client.BootstrapComputeNodePools(request, env)
 	}
-	if request.Action == "migrate_workspace_node_pool_taints" {
-		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"]) != nodePoolTaintMigrationMutationConfirmation {
+	if request.Action == nodePoolTaintMigrationAction || request.Action == nodePoolTaintMigrationRecoveryAction {
+		confirmation := nodePoolTaintMigrationMutationConfirmation
+		if request.Action == nodePoolTaintMigrationRecoveryAction {
+			confirmation = nodePoolTaintMigrationRecoveryMutationConfirmation
+		}
+		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"]) != confirmation {
 			return Response{Ok: false, ErrorCode: "node_pool_taint_migration_confirmation_required", Message: "The exact NodePool taint migration confirmation is required.", Retryable: false}
 		}
 		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_CREATE_RELEASE_EXECUTION"]) != "1" {
