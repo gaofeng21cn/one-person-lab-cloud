@@ -378,8 +378,14 @@ exact protected pool set, preserves unrelated kubelet arguments, and reports
 whether reconciliation is required. The mutation path requires its dedicated
 manual confirmation and live-mutation flags, updates existing nodes, and reads
 the NodePool configuration back. An unknown mutation or readback result remains
-unknown and is reconciled by read only. This is source capability in PR #502;
-no Instance receipt currently proves that the production NodePools were changed.
+unknown and is reconciled by read only. A retry is never inferred from elapsed
+time: after an owner-authoritative read proves that both package NodePools still
+have the exact legacy taint, an independently confirmed recovery action may
+claim one fixed recovery attempt independently bound to the exact original
+attempt digest and a fresh full NodePool/Node digest. That recovery attempt is
+also one-way and cannot be replayed after an unknown result. This is source
+capability in PR #502; no Instance receipt currently proves that the production
+NodePools were changed.
 
 The read-only `POST /fabric/provider-facts/batch` boundary delegates resource
 interpretation to the selected adapter. Control Plane Provider Acceptance uses
