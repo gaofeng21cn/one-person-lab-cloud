@@ -10,6 +10,11 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 
+async function openAdvancedSettings(page: import("playwright").Page) {
+  const details = page.locator("details.workspace-advanced-details");
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -82,6 +87,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+    await openAdvancedSettings(page);
 
     const deleteResponse: WorkspaceDeleteResponse = {
       workspaceId: "ws-1",
@@ -126,6 +132,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).click();
     await page.waitForURL(/\/console\/workspaces\/ws-2$/);
     await page.getByRole("heading", { name: "Second Workspace", exact: true }).waitFor({ state: "visible" });
+    await openAdvancedSettings(page);
 
     const secondDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
     assert.equal(await secondDelete.getAttribute("aria-busy"), null);
@@ -154,6 +161,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).click();
     await page.waitForURL(/\/console\/workspaces\/ws-1$/);
     await page.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
+    await openAdvancedSettings(page);
 
     page.once("dialog", (dialog) => { void dialog.accept(); });
     const retryDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });

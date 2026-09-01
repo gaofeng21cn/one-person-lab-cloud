@@ -30,12 +30,18 @@ async function login(page: Page, origin: string) {
   await page.waitForURL(/\/console\/overview$/);
 }
 
+async function openAdvancedSettings(page: Page) {
+  const details = page.locator("details.workspace-advanced-details");
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 async function openWorkspace(page: Page, name: string, workspaceId: string) {
   await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
   await page.waitForURL(/\/console\/workspaces$/);
   await page.locator(".workspace-list-row").filter({ hasText: name }).click();
   await page.waitForURL(new RegExp(`/console/workspaces/${workspaceId}$`));
   await page.getByRole("heading", { name, exact: true }).waitFor({ state: "visible" });
+  await openAdvancedSettings(page);
 }
 
 test("Workspace Budget keeps its intent across navigation and scopes busy to the active Workspace", { timeout: 60_000 }, async () => {
@@ -46,6 +52,7 @@ test("Workspace Budget keeps its intent across navigation and scopes busy to the
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
+    await openAdvancedSettings(page);
     await page.getByRole("button", { name: "重置总额度用量", exact: true }).waitFor({ state: "visible" });
 
     const response: WorkspaceGatewayBudgetDTO = {

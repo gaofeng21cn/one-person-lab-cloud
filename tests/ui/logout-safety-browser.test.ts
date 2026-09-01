@@ -21,23 +21,23 @@ test("Console hides secrets and rejects late account data while logout is unconf
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
 
-    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "密码" }).first();
+    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
     await passwordRow.locator("code").waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
-      const row = rows.find((candidate) => candidate.textContent?.includes("密码"));
+      const row = rows.find((candidate) => candidate.textContent?.includes("登录密码"));
       const value = row?.querySelector("code")?.textContent || "";
       return Boolean(value) && !value.includes("••");
     });
     const password = String(await passwordRow.locator("code").textContent());
     assert.ok(password && !password.includes("••"));
-    const workspaceKeyRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "Workspace Key" }).first();
+    const workspaceKeyRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "API 密钥" }).first();
     await workspaceKeyRow.getByRole("button", { name: "显示", exact: true }).click();
     await workspaceKeyRow.locator("code").waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
-      const row = rows.find((candidate) => candidate.textContent?.includes("Workspace Key"));
+      const row = rows.find((candidate) => candidate.textContent?.includes("API 密钥"));
       const value = row?.querySelector("code")?.textContent || "";
       return Boolean(value) && !value.includes("••");
     });
@@ -198,7 +198,7 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
       });
     });
 
-    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "密码" }).first();
+    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
     await revealHeld;
     await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
@@ -211,7 +211,7 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     await page.getByRole("link", { name: /Pilot Workspace/ }).first().click();
     await page.waitForURL(/\/console\/workspaces\/ws-1$/);
     await page.unroute("**/api/workspaces/ws-1/runtime-credentials/reveal");
-    const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "密码" }).first();
+    const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await currentPasswordRow.getByRole("button", { name: "显示", exact: true }).click();
     await currentPasswordRow.locator("code").waitFor({ state: "visible" });
     const currentPassword = String(await currentPasswordRow.locator("code").textContent());
@@ -235,7 +235,7 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     await Promise.all([rotationDetailReadback, rotationRuntimeReadback, rotationBudgetReadback]);
     await page.waitForFunction((previousPassword) => {
       const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
-      const row = rows.find((candidate) => candidate.textContent?.includes("密码"));
+      const row = rows.find((candidate) => candidate.textContent?.includes("登录密码"));
       const value = row?.querySelector("code")?.textContent || "";
       return Boolean(value) && !value.includes("••") && value !== previousPassword;
     }, currentPassword);

@@ -106,6 +106,11 @@ async function login(page: Page, origin: string) {
   await page.waitForURL(/\/console\/overview$/);
 }
 
+async function openWorkspaceDisclosure(page: Page, selector: string) {
+  const details = page.locator(selector);
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 test("Customer Workspace routes use their exact list and detail read identities", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -393,9 +398,11 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: initialWorkspace.name!, exact: true }).waitFor();
+    await openWorkspaceDisclosure(page, "details.workspace-technical-details");
+    await openWorkspaceDisclosure(page, "details.workspace-advanced-details");
     await page.getByRole("link", { name: initialRuntime.url!, exact: true }).waitFor();
     await page.locator(".workspace-budget-panel .data-list > div")
-      .filter({ hasText: "总额度已用（micros）" }).getByText(initialBudget.quotaUsedUsdMicros, { exact: true }).waitFor();
+      .filter({ hasText: "总额度已用" }).getByText("$0.10", { exact: true }).waitFor();
     assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 1, runtimeReads: 1, budgetReads: 1 });
 
     await page.getByRole("button", { name: "轮换密码", exact: true }).click();
@@ -403,9 +410,9 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
     await page.getByRole("heading", { name: refreshedWorkspace.name!, exact: true }).waitFor();
     await page.getByRole("link", { name: refreshedRuntime.url!, exact: true }).waitFor();
     await page.locator(".workspace-budget-panel .data-list > div")
-      .filter({ hasText: "总额度已用（micros）" }).getByText(refreshedBudget.quotaUsedUsdMicros, { exact: true }).waitFor();
+      .filter({ hasText: "总额度已用" }).getByText("$7.65", { exact: true }).waitFor();
     const passwordRow = page.locator(".workspace-access-panel .data-list > div")
-      .filter({ hasText: "密码" }).first();
+      .filter({ hasText: "登录密码" }).first();
     await passwordRow.locator("code").getByText(rotation.access.password, { exact: true }).waitFor();
 
     assert.equal(rotationWrites, 1);
@@ -450,6 +457,10 @@ test("Workspace detail failure settles before and independently from Runtime", {
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await runtimeHeld.promise;
     await page.getByText("Workspace 详情暂不可用", { exact: true }).waitFor();
+    const technical = page.locator("details.workspace-technical-details");
+    assert.equal(await technical.getByText("control_plane_unavailable", { exact: true }).isVisible(), false);
+    await technical.locator("summary").click();
+    await technical.getByText("control_plane_unavailable", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(budgetReads, 0);
     releaseRuntime.resolve();

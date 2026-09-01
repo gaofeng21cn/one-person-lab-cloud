@@ -127,6 +127,11 @@ async function navigate(page: Page, path: string) {
   }, path);
 }
 
+async function openDisclosure(page: Page, selector: string) {
+  const details = page.locator(selector);
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 test("Fabric Runtime Read rejects late Workspace and refresh responses and settles failure independently", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -189,6 +194,7 @@ test("Fabric Runtime Read rejects late Workspace and refresh responses and settl
 
     await navigate(page, `/console/workspaces/${beta.id}`);
     await page.getByRole("heading", { name: beta.name || "", exact: true }).waitFor({ state: "visible" });
+    await openDisclosure(page, "details.workspace-technical-details");
     await page.getByText(runtime(beta.id, "initial").url || "", { exact: true }).waitFor({ state: "visible" });
 
     releaseAlpha.resolve();
@@ -208,16 +214,19 @@ test("Fabric Runtime Read rejects late Workspace and refresh responses and settl
     assert.equal(await page.getByText(runtime(beta.id, "fresh-refresh").url || "", { exact: true }).count(), 1);
 
     await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
-    await page.getByText("Runtime 状态暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("入口暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("访问凭据暂不可用", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByRole("heading", { name: beta.name || "", exact: true }).count(), 1);
+    await openDisclosure(page, "details.workspace-advanced-details");
     const budgetPanel = page.locator(".workspace-budget-panel");
-    await budgetPanel.getByText(`Workspace Key · ${beta.workspaceApiKeyId}`, { exact: true }).waitFor({ state: "visible" });
     assert.equal(await budgetPanel.getByLabel("总额度（micros）").inputValue(), "12345678");
-    assert.equal(await budgetPanel.getByRole("checkbox", { name: "启用 Workspace Key", exact: true }).isChecked(), true);
-    assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: /^状态active$/ }).locator("dd").textContent(), "active");
-    assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: "总额度已用" }).locator("code").textContent(), "4321");
+    assert.equal(await budgetPanel.getByRole("checkbox", { name: "启用 API 密钥", exact: true }).isChecked(), true);
+    assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: /^状态已启用$/ }).locator("dd").textContent(), "已启用");
+    assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: "总额度已用" }).locator("dd").textContent(), "$0.00");
     assert.equal(await budgetPanel.getByText("模型预算暂不可用", { exact: true }).count(), 0);
     assert.equal(await budgetPanel.getByText("原因代码：sub2api_unavailable", { exact: true }).count(), 0);
+    await page.locator("details.workspace-technical-details").getByText(beta.workspaceApiKeyId || "", { exact: true }).first().waitFor({ state: "visible" });
+    await page.locator("details.workspace-technical-details").getByText("fabric_unavailable", { exact: true }).waitFor({ state: "visible" });
   } finally {
     releaseAlpha.resolve();
     releaseStaleBeta.resolve();
@@ -254,7 +263,7 @@ test("Fabric Runtime request starts before Customer Workspace detail completes",
     await detailHeld.promise;
     await runtimeStarted.promise;
     releaseDetail.resolve();
-    await page.getByText("Workspace URL", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
   } finally {
     releaseDetail.resolve();
     await browser.close();
@@ -304,6 +313,7 @@ test("leaving the Workspace detail route rejects an in-flight Runtime completion
     assert.equal(await page.getByText(runtime("ws-1", "route-exit-stale").url || "", { exact: true }).count(), 0);
     await page.locator(".workspace-access-panel").getByText("正在读取", { exact: true }).waitFor({ state: "visible" });
     releaseFreshRuntime.resolve();
+    await openDisclosure(page, "details.workspace-technical-details");
     await page.getByText(runtime("ws-1", "route-reentry-fresh").url || "", { exact: true }).waitFor({ state: "visible" });
     assert.equal(runtimeReads, 2);
   } finally {

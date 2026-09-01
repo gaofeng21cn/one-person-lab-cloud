@@ -23,9 +23,12 @@ import type { BillingController, CustomerAnnouncementController, GatewayUsageCon
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import {
+  presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
-  presentWorkspaceQuote
+  presentWorkspaceQuote,
+  presentWorkspaceRenewal,
+  presentWorkspaceRuntime
 } from "../app/workspace-experience-model.ts";
 import type {
   AnnouncementDTO,
@@ -43,7 +46,7 @@ import type {
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Alert, Badge, Button, Checkbox, Field, SegmentedControl, Select } from "../components/ui/index.ts";
-import { apiMenu, formatCount, formatDate, formatUsdMicros, workspaceStatusLabel } from "../console-model.ts";
+import { apiMenu, formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
 
 type CustomerApiRoute = Extract<CustomerConsoleRoute, { navigationId: "customer.api" }>;
 
@@ -550,44 +553,77 @@ function WorkspaceBudgetPanel({ controller }: { controller: ConsoleController })
     void controller.updateWorkspaceBudget(input);
   };
 
-  return <section className="panel workspace-budget-panel">
-    <div className="panel-title"><h2>模型预算</h2><span>{budget ? `Workspace Key · ${budget.keyId}` : "Workspace Key"}</span></div>
-    <SourceState error={controller.sources.workspaceBudget.error} loading={controller.sources.workspaceBudget.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.workspaceBudget.value} unavailableTitle="模型预算暂不可用">
-      {(liveBudget) => <div className="workspace-details key-form">
+  return <div className="workspace-budget-panel">
+    <div className="workspace-settings-heading"><h3>模型预算</h3><p>设置 API 密钥的消费上限。</p></div>
+    {budget ? <div className="workspace-details key-form">
         <div className="key-form-grid">
           {workspaceBudgetLimitFields.map(({ field, label }) => <Field description="0 表示不限额" disabled={controller.workspaceBudgetBusy} error={errors[field]} inputMode="numeric" key={field} label={label} min="0" onChange={(event) => updateLimit(field, event.currentTarget.value)} required step="1" type="number" value={form[field]} />)}
         </div>
-        <Checkbox checked={form.enabled} disabled={controller.workspaceBudgetBusy} label="启用 Workspace Key" onChange={(enabled) => setForm((current) => ({ ...current, enabled }))} />
+        <Checkbox checked={form.enabled} disabled={controller.workspaceBudgetBusy} label="启用 API 密钥" onChange={(enabled) => setForm((current) => ({ ...current, enabled }))} />
         <dl className="data-list">
-          <div><dt>状态</dt><dd>{liveBudget.status}</dd></div>
-          <div><dt>总额度已用（micros）</dt><dd><code>{liveBudget.quotaUsedUsdMicros}</code></dd></div>
-          <div><dt>5 小时已用（micros）</dt><dd><code>{liveBudget.usage5hUsdMicros}</code></dd></div>
-          <div><dt>1 天已用（micros）</dt><dd><code>{liveBudget.usage1dUsdMicros}</code></dd></div>
-          <div><dt>7 天已用（micros）</dt><dd><code>{liveBudget.usage7dUsdMicros}</code></dd></div>
-          <div><dt>更新时间</dt><dd>{liveBudget.updatedAt ? formatDate(liveBudget.updatedAt, true) : "-"}</dd></div>
+          <div><dt>状态</dt><dd>{presentWorkspaceBudget(budget.status).label}</dd></div>
+          <div><dt>总额度已用</dt><dd>{formatUsdMicros(budget.quotaUsedUsdMicros)}</dd></div>
+          <div><dt>5 小时已用</dt><dd>{formatUsdMicros(budget.usage5hUsdMicros)}</dd></div>
+          <div><dt>1 天已用</dt><dd>{formatUsdMicros(budget.usage1dUsdMicros)}</dd></div>
+          <div><dt>7 天已用</dt><dd>{formatUsdMicros(budget.usage7dUsdMicros)}</dd></div>
+          <div><dt>更新时间</dt><dd>{budget.updatedAt ? formatDate(budget.updatedAt, true) : "-"}</dd></div>
         </dl>
         <div className="workspace-actions">
           <Button busy={controller.workspaceBudgetBusy} color="primary" onClick={save}>保存预算</Button>
           <Button busy={controller.workspaceBudgetBusy} onClick={() => void controller.updateWorkspaceBudget({ resetQuota: true })} variant="outline">重置总额度用量</Button>
           <Button busy={controller.workspaceBudgetBusy} onClick={() => void controller.updateWorkspaceBudget({ resetRateLimitUsage: true })} variant="outline">重置滚动窗口用量</Button>
         </div>
-      </div>}
-    </SourceState>
-  </section>;
+      </div> : controller.sources.workspaceBudget.loading && !controller.sources.workspaceBudget.value ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : controller.sources.workspaceBudget.value?.available === false ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="模型预算暂不可用" description="暂时无法确认预算设置，请稍后刷新。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /> : controller.sources.workspaceBudget.error ? <Alert color="danger" title="模型预算暂不可用" description="暂时无法确认预算设置，请稍后刷新。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /> : <div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div>}
+  </div>;
 }
 
 function WorkspaceAccessRows({ controller, runtime }: {
   controller: WorkspaceSecretController;
   runtime: WorkspaceRuntimeDTO;
 }) {
-  const mount = runtime.checks.find((check) => check.name === "ready_pod_uses_retained_pvc");
-  const service = runtime.checks.find((check) => check.name !== "ready_pod_uses_retained_pvc" && check.name.includes("ready"));
-  const canOpen = runtime.status === "running" && runtime.ready && Boolean(runtime.url);
-  return <dl className="data-list"><div><dt>Runtime ready</dt><dd>{runtime.ready ? "是" : "否"}</dd></div><div><dt>挂载检查</dt><dd>{mount ? (mount.ok ? "通过" : "未通过") : "-"}</dd></div><div><dt>服务健康</dt><dd>{service ? (service.ok ? "通过" : "未通过") : runtime.ready ? "通过" : "-"}</dd></div><div><dt>Workspace URL</dt><dd>{runtime.url ? <a href={runtime.url} rel="noreferrer" target="_blank">{runtime.url}<ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div><div><dt>用户名</dt><dd>{runtime.access?.username || controller.credential?.username || "-"}</dd></div>
-    <SecretRow busy={controller.workspaceBusy} label="密码" onCopy={() => void controller.copyWorkspacePassword()} onHide={controller.clear} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.credential)} value={controller.credential?.password} />
-    <SecretRow busy={controller.gatewayKeyBusy} label="Workspace Key" onCopy={() => void controller.copyWorkspaceKey()} onHide={controller.clear} onReveal={() => void controller.revealWorkspaceKey()} revealed={Boolean(controller.gatewayKey)} value={controller.gatewayKey?.value} />
-    <div><dt>操作</dt><dd className="workspace-actions"><Button busy={controller.workspaceBusy} onClick={() => void controller.rotateWorkspacePassword()} variant="outline">轮换密码</Button><Button color="primary" disabled={!canOpen} onClick={() => runtime.url && window.open(runtime.url, "_blank", "noopener,noreferrer")}>打开 WebUI<ExternalLink aria-hidden size={16} /></Button></dd></div>
+  return <dl className="data-list"><div><dt>登录账号</dt><dd>{runtime.access?.username || controller.credential?.username || "-"}</dd></div>
+    <SecretRow busy={controller.workspaceBusy} label="登录密码" onCopy={() => void controller.copyWorkspacePassword()} onHide={controller.clear} onReveal={() => void controller.revealWorkspacePassword()} revealed={Boolean(controller.credential)} value={controller.credential?.password} />
+    <SecretRow busy={controller.gatewayKeyBusy} label="API 密钥" onCopy={() => void controller.copyWorkspaceKey()} onHide={controller.clear} onReveal={() => void controller.revealWorkspaceKey()} revealed={Boolean(controller.gatewayKey)} value={controller.gatewayKey?.value} />
+    <div><dt>密码管理</dt><dd className="workspace-actions"><Button busy={controller.workspaceBusy} onClick={() => void controller.rotateWorkspacePassword()} variant="outline">轮换密码</Button></dd></div>
   </dl>;
+}
+
+function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
+  controller: ConsoleController;
+  detail: WorkspaceDTO;
+  runtime: WorkspaceRuntimeDTO | null;
+}) {
+  const runtimeSource = controller.fabricRuntimeRead.runtime.value;
+  const budgetSource = controller.sources.workspaceBudget.value;
+  const budget = sourceData(budgetSource);
+  return <details className="workspace-technical-details">
+    <summary>技术详情</summary>
+    <div className="workspace-technical-details__body">
+      <dl className="data-list">
+        <div><dt>Workspace ID</dt><dd><code>{detail.id}</code></dd></div>
+        <div><dt>priceVersion</dt><dd><code>{detail.priceVersion || "-"}</code></dd></div>
+        <div><dt>lifecycle status</dt><dd><code>{detail.state}</code></dd></div>
+        <div><dt>renewal status</dt><dd><code>{detail.renewalStatus || "-"}</code></dd></div>
+        <div><dt>runtime status</dt><dd><code>{runtime?.status || "-"}</code></dd></div>
+        <div><dt>Runtime ready</dt><dd><code>{runtime ? String(runtime.ready) : "-"}</code></dd></div>
+        <div><dt>Runtime ID</dt><dd><code>{runtime?.runtimeId || "-"}</code></dd></div>
+        <div><dt>Runtime URL</dt><dd>{runtime?.url ? <a href={runtime.url} rel="noreferrer" target="_blank"><code>{runtime.url}</code><ExternalLink aria-hidden size={14} /></a> : "-"}</dd></div>
+        <div><dt>serviceName</dt><dd><code>{runtime?.serviceName || "-"}</code></dd></div>
+        <div><dt>Workspace Key ID</dt><dd><code>{budget?.keyId || detail.workspaceApiKeyId || "-"}</code></dd></div>
+        <div><dt>budget status</dt><dd><code>{budget?.status || "-"}</code></dd></div>
+        <div><dt>quotaUsdMicros</dt><dd><code>{budget?.quotaUsdMicros || "-"}</code></dd></div>
+        <div><dt>quotaUsedUsdMicros</dt><dd><code>{budget?.quotaUsedUsdMicros || "-"}</code></dd></div>
+        <div><dt>runtime source reason</dt><dd><code>{runtimeSource?.available === false ? runtimeSource.reasonCode : controller.fabricRuntimeRead.runtime.error || "-"}</code></dd></div>
+        <div><dt>budget source reason</dt><dd><code>{budgetSource?.available === false ? budgetSource.reasonCode : controller.sources.workspaceBudget.error || "-"}</code></dd></div>
+        <div><dt>delete reason</dt><dd><code>{controller.workspaceDeleteIssue === "unavailable" ? "workspace_delete_unavailable" : controller.workspaceDeleteIssue || "-"}</code></dd></div>
+        <div><dt>renewal issue</dt><dd><code>{controller.workspaceRenewalIssue || "-"}</code></dd></div>
+      </dl>
+      <div className="workspace-runtime-checks">
+        <h3>Runtime checks</h3>
+        {runtime?.checks.length ? <ul>{runtime.checks.map((check) => <li key={check.name}><code>{check.name}</code><span>{check.ok ? "true" : "false"}</span></li>)}</ul> : <p>暂无检查记录</p>}
+      </div>
+    </div>
+  </details>;
 }
 
 function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) {
@@ -595,25 +631,34 @@ function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) 
   const runtimeRead = controller.fabricRuntimeRead;
   const workspaceSource = workspaceRead.detail.value;
   const runtime = sourceData(runtimeRead.runtime.value);
+  if (workspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
+  if (workspaceSource?.available === false) return <section className="workspace-detail-page">
+    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button>
+    <Alert color="warning" indicator={<AlertCircle size={18} />} title="Workspace 详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
+    <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary>技术详情</summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace source reason</dt><dd><code>{workspaceSource.reasonCode}</code></dd></div></dl></div></details></section>
+  </section>;
+  if (workspaceRead.detail.error && !workspaceSource) return <section className="workspace-detail-page"><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button><Alert color="danger" title="Workspace 详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /><section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary>技术详情</summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace read error</dt><dd><code>{workspaceRead.detail.error}</code></dd></div></dl></div></details></section></section>;
+  if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
   if (workspaceSource?.available && workspaceSource.data === null) return <section className="workspace-detail-page"><div className="empty-panel"><AlertCircle /><h2>Workspace 不存在</h2><p>该 Workspace 不存在或当前账号无权访问。</p><Button onClick={() => controller.navigate("/console/workspaces")} variant="outline">返回列表</Button></div></section>;
+  const detail = workspaceSource.data;
+  const runtimePresentation = runtime ? presentWorkspaceRuntime(runtime) : null;
+  const renewalPresentation = presentWorkspaceRenewal(detail.renewalStatus);
+  const runtimeUnavailable = runtimeRead.runtime.value?.available === false;
+  const runtimeLabel = runtimePresentation?.label || (runtimeUnavailable ? "入口暂不可用" : "正在确认");
+  const runtimeDescription = runtimePresentation?.description || (runtimeUnavailable ? "暂时无法确认工作空间入口，请稍后刷新。" : "正在确认工作空间是否可用。");
+  const runtimeUrl = runtimePresentation?.canOpen ? runtimePresentation.url : null;
   return (
     <section className="workspace-detail-page" data-slide="C-WS-05">
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button>
-      <SourceState error={workspaceRead.detail.error} loading={workspaceRead.detail.loading} onRetry={() => void controller.refreshCurrentPage()} source={workspaceSource} unavailableTitle="Workspace 详情暂不可用">
-        {(detail) => detail ? <>
-          <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || detail.id}</h2><span>{detail.id}</span></div><div className="workspace-actions"><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button><Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除 Workspace</Button></div></div><dl className="data-list"><div><dt>生命周期状态</dt><dd>{workspaceLifecycleLabel(detail.state)}</dd></div><div><dt>运行状态</dt><dd>{runtime ? workspaceStatusLabel(runtime) : "-"}</dd></div></dl></section>
-          {controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="Workspace 删除暂不可用" description="原因代码：workspace_delete_unavailable" /> : null}
-          {controller.workspaceDeleteIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="删除结果待确认" description="Workspace 权威列表尚未确认该 Workspace 已删除。" /> : null}
-          {controller.workspaceRenewalIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="续费结果待确认" description="Workspace 权威投影尚未确认自动续费设置。" /> : null}
-          <section className="panel workspace-access-panel"><div className="panel-title"><h2>访问与凭据</h2><span>Secret 60 秒后自动隐藏</span></div>
-            <SourceState error={runtimeRead.runtime.error} loading={runtimeRead.runtime.loading} onRetry={() => void controller.refreshCurrentPage()} source={runtimeRead.runtime.value} unavailableTitle="Runtime 状态暂不可用">
-              {(runtimeData) => <WorkspaceAccessRows controller={controller.workspaceSecrets} runtime={runtimeData} />}
-            </SourceState>
-          </section>
-          <WorkspaceBudgetPanel controller={controller} />
-          <section className="panel workspace-facts-panel"><div className="panel-title"><h2>套餐与条款</h2></div><dl className="data-list"><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>CPU / 内存规格</dt><dd>-</dd></div><div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div><div><dt>Workspace 月度总价</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>价格版本</dt><dd>{detail.priceVersion || "-"}</dd></div><div><dt>创建时间</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>权益期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>续费状态</dt><dd>{detail.renewalStatus || "-"}</dd></div><div><dt>自动续费</dt><dd>{detail.renewalStatus !== "not_applicable" && detail.renewalStatus === "active" ? <Checkbox checked={detail.autoRenew === true} disabled={controller.workspaceRenewalBusy || controller.workspaceDeleteBusy} label={detail.autoRenew ? "已开启" : "已关闭"} onChange={() => void controller.updateCurrentWorkspaceRenewal(!detail.autoRenew)} /> : detail.renewalStatus === "not_applicable" ? "不适用" : detail.renewalStatus === "expired_unpaid" ? "已关闭" : "-"}</dd></div></dl></section>
-        </> : null}
-      </SourceState>
+      <div className="workspace-detail-content">
+        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || detail.id}</h2><div className={`workspace-availability workspace-availability--${runtimePresentation?.kind || "pending"}`}><strong>{runtimeLabel}</strong><span>{runtimeDescription}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!runtimeUrl} onClick={() => runtimeUrl && window.open(runtimeUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>实际月费</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <section className="panel workspace-access-panel"><div className="panel-title"><h2>访问凭据</h2><span>敏感信息将在 60 秒后自动隐藏</span></div>
+          {runtime ? <WorkspaceAccessRows controller={controller.workspaceSecrets} runtime={runtime} /> : runtimeRead.runtime.loading && !runtimeRead.runtime.value ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : <Alert color="warning" indicator={<AlertCircle size={18} />} title="访问凭据暂不可用" description="暂时无法确认登录信息，请稍后刷新。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />}
+        </section>
+        <section className="panel workspace-plan-panel"><div className="panel-title"><h2>套餐与权益</h2></div>{controller.workspaceRenewalIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="续费结果待确认" description="工作空间的续费设置尚未获得确认，请稍后刷新。" /> : null}<dl className="data-list"><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>每月费用</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div><div><dt>权益状态</dt><dd>{renewalPresentation.label}</dd></div><div><dt>自动续费</dt><dd>{renewalPresentation.kind === "active" ? <Checkbox checked={detail.autoRenew === true} disabled={controller.workspaceRenewalBusy || controller.workspaceDeleteBusy} label={detail.autoRenew ? "已开启" : "已关闭"} onChange={() => void controller.updateCurrentWorkspaceRenewal(!detail.autoRenew)} /> : renewalPresentation.kind === "not_applicable" ? "不适用" : renewalPresentation.kind === "expired_unpaid" ? "已关闭" : renewalPresentation.kind === "manual" ? "手动续费" : "待确认"}</dd></div><div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div></dl></section>
+        <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary>高级设置</summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><div className="workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>删除后将无法继续访问该工作空间。</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="Workspace 删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}{controller.workspaceDeleteIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="删除结果待确认" description="工作空间列表尚未确认删除结果。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除 Workspace</Button></div></div></details></section>
+        <section className="panel workspace-technical-panel"><WorkspaceTechnicalDetails controller={controller} detail={detail} runtime={runtime} /></section>
+      </div>
     </section>
   );
 }

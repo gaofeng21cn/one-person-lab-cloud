@@ -2569,6 +2569,289 @@ tbody tr:last-child td {
   }
 }
 
+/* Workspace detail task hierarchy. */
+.workspace-detail-content {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.workspace-detail-content > .panel {
+  overflow: hidden;
+}
+
+.workspace-identity-panel {
+  padding: 22px;
+}
+
+.workspace-identity-panel .workspace-heading > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.workspace-identity-panel .workspace-heading h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-availability {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.workspace-availability strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workspace-availability--ready strong {
+  color: #18705a;
+}
+
+.workspace-availability--destroyed strong,
+.workspace-availability--not_found strong {
+  color: var(--red);
+}
+
+.workspace-availability span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workspace-entry-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.workspace-primary-facts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 22px -22px -22px;
+  border-top: 1px solid var(--line);
+  background: var(--line);
+}
+
+.workspace-primary-facts > div {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  align-content: center;
+  gap: 5px;
+  background: var(--surface);
+  padding: 14px 22px;
+}
+
+.workspace-primary-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-primary-facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
+.workspace-access-panel .data-list code,
+.workspace-access-panel .data-list dd {
+  overflow-wrap: anywhere;
+}
+
+.workspace-access-panel .credential-actions {
+  display: flex;
+  min-width: 0;
+  min-height: 64px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 0;
+  margin: 0;
+  padding: 10px 0;
+}
+
+.workspace-settings-panel summary,
+.workspace-technical-panel summary {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.workspace-settings-panel details[open] > summary,
+.workspace-technical-panel details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.workspace-budget-panel,
+.workspace-delete-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px 18px;
+}
+
+.workspace-delete-panel {
+  border-top: 1px solid var(--line);
+  justify-items: start;
+}
+
+.workspace-settings-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-settings-heading h3,
+.workspace-settings-heading p,
+.workspace-runtime-checks h3,
+.workspace-runtime-checks p {
+  margin: 0;
+}
+
+.workspace-settings-heading h3,
+.workspace-runtime-checks h3 {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workspace-settings-heading p,
+.workspace-runtime-checks p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workspace-budget-panel .workspace-details {
+  padding: 0;
+}
+
+.workspace-technical-details__body {
+  display: grid;
+}
+
+.workspace-technical-details .data-list dd,
+.workspace-technical-details .data-list code,
+.workspace-technical-details .data-list a {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.workspace-technical-details .data-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--action);
+}
+
+.workspace-runtime-checks {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 18px;
+}
+
+.workspace-runtime-checks ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspace-runtime-checks li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.workspace-runtime-checks code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+}
+
+@media (max-width: 620px) {
+  .workspace-identity-panel {
+    padding: 18px 16px;
+  }
+
+  .workspace-entry-actions,
+  .workspace-entry-actions .ui-button {
+    width: 100%;
+  }
+
+  .workspace-entry-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-entry-actions .ui-button,
+  .workspace-settings-panel summary,
+  .workspace-technical-panel summary {
+    min-height: 44px;
+  }
+
+  .workspace-primary-facts {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 18px -16px -18px;
+  }
+
+  .workspace-primary-facts > div {
+    min-height: 62px;
+    padding: 12px 16px;
+  }
+
+  .workspace-access-panel .panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .workspace-access-panel .panel-title > span {
+    max-width: 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .workspace-access-panel .data-list > div,
+  .workspace-plan-panel .data-list > div,
+  .workspace-technical-details .data-list > div {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    gap: 6px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .workspace-access-panel .credential-actions {
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .workspace-budget-panel,
+  .workspace-delete-panel {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+
 /* Apps SDK usage toolbar layout. */
 .gateway-usage-toolbar {
   display: grid;

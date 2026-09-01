@@ -169,6 +169,15 @@ async function assertNoHorizontalOverflow(page: Page) {
   );
 }
 
+async function visibleTextCount(page: Page, value: string | RegExp) {
+  const matches = page.getByRole("main").getByText(value, { exact: typeof value === "string" });
+  let visible = 0;
+  for (let index = 0; index < await matches.count(); index += 1) {
+    if (await matches.nth(index).isVisible()) visible += 1;
+  }
+  return visible;
+}
+
 async function assertTechnicalEvidenceClosed(page: Page) {
   for (const value of [
     "operation ID",
@@ -196,6 +205,66 @@ async function assertTechnicalEvidenceOpen(page: Page) {
     await page.getByText(value, { exact: true }).waitFor({ state: "visible" });
   }
 }
+
+test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
+
+test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    await page.route("**/api/workspaces/ws-1/runtime-status", async (route) => {
+      const unavailableRuntime: SourceEnvelope<never> = {
+        source: "fabric",
+        status: "unavailable",
+        available: false,
+        fetchedAt: "2026-09-01T00:00:00Z",
+        reasonCode: "fabric_runtime_temporarily_unavailable"
+      };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(unavailableRuntime) });
+    });
+    let deleteWrites = 0;
+    await page.route("**/api/workspaces/ws-1", async (route) => {
+      if (route.request().method() !== "DELETE") {
+        await route.fallback();
+        return;
+      }
+      deleteWrites += 1;
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "method_not_allowed" })
+      });
+    });
+
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+    await page.getByText("入口暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("访问凭据暂不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).isDisabled(), true);
+    assert.equal(await visibleTextCount(page, "fabric_runtime_temporarily_unavailable"), 0);
+
+    const advanced = page.locator("details.workspace-advanced-details");
+    await advanced.locator("summary").click();
+    page.once("dialog", (dialog) => { void dialog.accept(); });
+    await advanced.getByRole("button", { name: "删除 Workspace", exact: true }).click();
+    await advanced.getByText("Workspace 删除暂不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(deleteWrites, 1);
+    assert.equal(await visibleTextCount(page, "workspace_delete_unavailable"), 0);
+
+    const technical = page.locator("details.workspace-technical-details");
+    await technical.locator("summary").click();
+    await technical.getByText("fabric_runtime_temporarily_unavailable", { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText("workspace_delete_unavailable", { exact: true }).waitFor({ state: "visible" });
+    assert.deepEqual(audit.consoleErrors, ["Failed to load resource: the server responded with a status of 405 (Method Not Allowed)"]);
+    audit.consoleErrors.length = 0;
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
 
 test("pending launch keeps raw evidence behind technical details at desktop and mobile widths", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -393,3 +462,102 @@ test("readback refresh retains the succeeded launch and retries only authoritati
     await demo.close();
   }
 });
+
+async function verifyWorkspaceDetailExperience() {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const expectedRuntimeUrl = "https://workspace.example.invalid/w/ws-1/";
+  try {
+    for (const viewport of viewports) {
+      const context = await browser.newContext({
+        viewport,
+        permissions: ["clipboard-read", "clipboard-write"]
+      });
+      const page = await context.newPage();
+      const audit = await installBrowserAudit(page, demo.origin);
+      await page.addInitScript({ content: `
+        window.openedWorkspaceUrl = "";
+        window.open = (url) => {
+          window.openedWorkspaceUrl = String(url || "");
+          return null;
+        };
+      ` });
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+
+      const identity = page.locator(".workspace-identity-panel");
+      await identity.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
+      await identity.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+      await identity.getByText("BASIC", { exact: true }).waitFor({ state: "visible" });
+      await identity.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
+      await identity.getByText("2026/08/01", { exact: true }).waitFor({ state: "visible" });
+
+      const openWorkspace = identity.getByRole("button", { name: "打开工作空间", exact: true });
+      assert.equal(await openWorkspace.isEnabled(), true);
+      await openWorkspace.click();
+      assert.equal(await page.evaluate(() => (window as Window & { openedWorkspaceUrl?: string }).openedWorkspaceUrl), expectedRuntimeUrl);
+
+      const access = page.locator(".workspace-access-panel");
+      await access.getByText("登录账号", { exact: true }).waitFor({ state: "visible" });
+      await access.getByText("登录密码", { exact: true }).waitFor({ state: "visible" });
+      await access.getByText("API 密钥", { exact: true }).waitFor({ state: "visible" });
+      await access.getByText("敏感信息将在 60 秒后自动隐藏", { exact: true }).waitFor({ state: "visible" });
+
+      const passwordRow = access.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
+      const keyRow = access.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
+      await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+      const password = String(await passwordRow.locator("code").textContent());
+      assert.ok(password && !password.includes("••"));
+      await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
+      await page.getByText("Workspace 密码已复制", { exact: true }).waitFor({ state: "visible" });
+      await keyRow.getByRole("button", { name: "显示", exact: true }).click();
+      const key = String(await keyRow.locator("code").textContent());
+      assert.ok(key && !key.includes("••"));
+      await keyRow.getByRole("button", { name: "复制", exact: true }).click();
+      await page.getByText("Workspace Key 已复制", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByText(password, { exact: true }).count(), 0);
+
+      for (const hidden of [
+        "Runtime ready",
+        "Workspace URL",
+        "Workspace Key",
+        "manual",
+        "ready_pod_uses_retained_pvc",
+        "CPU / 内存规格"
+      ]) {
+        assert.equal(await visibleTextCount(page, hidden), 0, `${hidden} should be disclosed`);
+      }
+      assert.equal(await visibleTextCount(page, /Secret/), 0, "Secret should not be visible by default");
+      assert.equal(await visibleTextCount(page, /micros/), 0, "micros should not be visible by default");
+
+      const advanced = page.locator("details.workspace-advanced-details");
+      assert.equal(await advanced.getAttribute("open"), null);
+      await advanced.getByText("高级设置", { exact: true }).click();
+      await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
+      await advanced.getByRole("button", { name: "删除 Workspace", exact: true }).waitFor({ state: "visible" });
+
+      const technical = page.locator("details.workspace-technical-details");
+      assert.equal(await technical.getAttribute("open"), null);
+      await technical.getByText("技术详情", { exact: true }).click();
+      await technical.getByText("ws-1", { exact: true }).first().waitFor({ state: "visible" });
+      await technical.getByText(expectedRuntimeUrl, { exact: true }).waitFor({ state: "visible" });
+      await technical.getByText("ready_pod_uses_retained_pvc", { exact: true }).waitFor({ state: "visible" });
+      await technical.getByText("manual", { exact: true }).first().waitFor({ state: "visible" });
+
+      const sectionOrder = await page.locator(".workspace-detail-page > .workspace-detail-content > *").evaluateAll((elements) => elements.map((element) => element.className));
+      assert.deepEqual(sectionOrder, [
+        "panel workspace-identity-panel",
+        "panel workspace-access-panel",
+        "panel workspace-plan-panel",
+        "panel workspace-settings-panel",
+        "panel workspace-technical-panel"
+      ]);
+      await assertNoHorizontalOverflow(page);
+      assertBrowserAuditClean(audit);
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+}
