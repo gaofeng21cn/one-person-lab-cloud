@@ -18,7 +18,10 @@ import (
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
-var billingReviewEvidenceRefPattern = regexp.MustCompile(`^case-[0-9]{8}-[a-z0-9]{3,16}$`)
+var (
+	billingReviewEvidenceRefPattern  = regexp.MustCompile(`^case-[0-9]{8}-[a-z0-9]{3,16}$`)
+	operatorProviderErrorCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
+)
 
 const (
 	operatorPageReadTimeout      = 5 * time.Second
@@ -1158,6 +1161,7 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 	fact, factAvailable := facts.providerFacts[operatorProviderFactKey(accountID, workspaceID, kind, resourceID)]
 	factAvailable = factAvailable && fact.Available
 	result["resourceType"] = operatorFactEnvelope("fabric", kind, factAvailable)
+	result["providerErrorCode"] = operatorStringFactEnvelope("fabric", operatorProviderErrorCode(fact.ErrorCode))
 	if !factAvailable {
 		fact.Facts = clients.ProviderResourceFacts{}
 	}
@@ -1177,6 +1181,14 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 		}
 	}
 	return result
+}
+
+func operatorProviderErrorCode(value string) string {
+	code, _, _ := strings.Cut(strings.TrimSpace(value), ":")
+	if !operatorProviderErrorCodePattern.MatchString(code) {
+		return ""
+	}
+	return code
 }
 
 func operatorFactEnvelope(source string, value any, available bool) map[string]any {
