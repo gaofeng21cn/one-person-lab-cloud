@@ -475,7 +475,7 @@ function LaunchOperation({
       </details>
       <div className="launch-operation-actions">
         {!resultUnconfirmed && operationPresentation.canOpenWorkspace ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>查看工作空间</Button> : null}
-        <Button onClick={() => void onRefresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
+        <Button onClick={() => void (controller.launchPollIssue === "readback" ? controller.openLaunchedWorkspace() : onRefresh())} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
         {!resultUnconfirmed && ["failed", "refunded"].includes(operationPresentation.kind) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
       </div>
     </section>
