@@ -513,30 +513,36 @@ async function verifyWorkspaceDetailExperience() {
   const browser = await chromium.launch({ headless: true });
   const workspaceDtoUrl = "https://dto-entry.example.invalid/w/ws-1/";
   const expectedRuntimeUrl = "https://runtime-entry.example.invalid/w/ws-1/";
-  const workspaceDetail: SourceEnvelope<WorkspaceDTO> = {
+  const workspaceDetail: WorkspaceDTO = {
+    id: "ws-1",
+    ownerAccountId: "acct-1",
+    ownerUserId: "user-customer",
+    state: "running",
+    createdAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    name: "Pilot Workspace",
+    url: workspaceDtoUrl,
+    packageId: "basic",
+    storageGb: 10,
+    autoRenew: false,
+    priceVersion: "pilot-usd-2026-07-v1",
+    currency: "USD",
+    totalUsdMicros: 52_580_000,
+    periodStart: "2026-07-01T00:00:00Z",
+    paidThrough: "2026-08-01T00:00:00Z",
+    renewalStatus: "manual",
+    workspaceApiKeyId: "9"
+  };
+  const workspaceList: SourceEnvelope<WorkspaceListData> = {
     source: "control-plane",
     status: "available",
     available: true,
     fetchedAt: "2026-09-01T00:00:00Z",
     data: {
-      id: "ws-1",
-      ownerAccountId: "acct-1",
-      ownerUserId: "user-customer",
-      state: "running",
-      createdAt: "2026-07-01T00:00:00Z",
-      updatedAt: "2026-09-01T00:00:00Z",
-      name: "Pilot Workspace",
-      url: workspaceDtoUrl,
-      packageId: "basic",
-      storageGb: 10,
-      autoRenew: false,
-      priceVersion: "pilot-usd-2026-07-v1",
-      currency: "USD",
-      totalUsdMicros: 52_580_000,
-      periodStart: "2026-07-01T00:00:00Z",
-      paidThrough: "2026-08-01T00:00:00Z",
-      renewalStatus: "manual",
-      workspaceApiKeyId: "9"
+      items: [workspaceDetail],
+      total: 1,
+      page: 1,
+      pageSize: 50
     }
   };
   const workspaceRuntime: SourceEnvelope<WorkspaceRuntimeDTO> = {
@@ -567,9 +573,12 @@ async function verifyWorkspaceDetailExperience() {
       });
       const page = await context.newPage();
       const audit = await installBrowserAudit(page, demo.origin);
-      await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1", async (route) => {
-        if (route.request().method() === "GET") {
-          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(workspaceDetail) });
+      let workspaceDetailFixtureReads = 0;
+      await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces", async (route) => {
+        const requestUrl = new URL(route.request().url());
+        if (route.request().method() === "GET" && requestUrl.searchParams.get("pageSize") === "50") {
+          workspaceDetailFixtureReads += 1;
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(workspaceList) });
           return;
         }
         await route.fallback();
@@ -590,6 +599,7 @@ async function verifyWorkspaceDetailExperience() {
       ` });
       await login(page, demo.origin);
       await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+      assert.ok(workspaceDetailFixtureReads >= 1);
 
       const identity = page.locator(".workspace-identity-panel");
       await identity.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
