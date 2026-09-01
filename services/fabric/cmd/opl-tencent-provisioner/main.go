@@ -2301,7 +2301,7 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 	case stringValue(disk.DiskChargeType) != "PREPAID":
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_charge_type_mismatch"}
 	case stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW":
-		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_renew_flag_mismatch"}
+		return nil, cbsReadbackValidationError{code: cbsRenewFlagMismatchCode(stringValue(disk.RenewFlag))}
 	case stringValue(disk.DiskType) != storage.DiskType:
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_type_mismatch"}
 	case disk.DiskSize == nil || *disk.DiskSize != storage.SizeGB:
@@ -2333,6 +2333,19 @@ func cbsReadbackValidationErrorCode(err error) string {
 		return mismatch.code
 	}
 	return "tencent_cbs_readback_mismatch"
+}
+
+func cbsRenewFlagMismatchCode(renewFlag string) string {
+	switch strings.TrimSpace(renewFlag) {
+	case "":
+		return "tencent_cbs_readback_renew_flag_missing"
+	case "NOTIFY_AND_AUTO_RENEW":
+		return "tencent_cbs_readback_renew_flag_auto_renew"
+	case "DISABLE_NOTIFY_AND_MANUAL_RENEW":
+		return "tencent_cbs_readback_renew_flag_manual_renew_notify_disabled"
+	default:
+		return "tencent_cbs_readback_renew_flag_unknown"
+	}
 }
 
 func (client *tencentSDKClient) RenewComputeAllocation(request Request, _ map[string]string) Response {
@@ -3812,6 +3825,50 @@ func (client *tencentSDKClient) computeDestroyProviderIdentityFailure(request Re
 	return nil
 }
 
+func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) string {
+	const base = "compute_provider_partial_identity_machine_missing"
+	instances, _, err := client.describeClusterInstancePages(nil)
+	if err != nil {
+		return base
+	}
+	matches := []*tke2022.Instance{}
+	for _, instance := range instances {
+		if instance == nil || !strings.EqualFold(stringValue(instance.NodeType), "Native") {
+			continue
+		}
+		native := instance.Native
+		nativeMachineName, nativeInstanceID, nativePrivateIP := "", "", ""
+		if native != nil {
+			nativeMachineName = stringValue(native.MachineName)
+			nativeInstanceID = stringValue(native.InstanceId)
+			nativePrivateIP = stringValue(native.LanIp)
+		}
+		machineMatches := stringValue(instance.InstanceId) == request.Allocation.MachineName || nativeMachineName == request.Allocation.MachineName
+		cvmMatches := nativeInstanceID == request.Allocation.InstanceId
+		privateIPMatches := stringValue(instance.LanIP) == request.Allocation.PrivateIp || nativePrivateIP == request.Allocation.PrivateIp
+		if machineMatches || cvmMatches || privateIPMatches {
+			matches = append(matches, instance)
+		}
+	}
+	if len(matches) == 0 {
+		return base + "_tke_instance_missing"
+	}
+	if len(matches) != 1 {
+		return base + "_tke_instance_ambiguous"
+	}
+	instance := matches[0]
+	native := instance.Native
+	if native == nil || stringValue(instance.InstanceId) != request.Allocation.MachineName ||
+		stringValue(native.MachineName) != request.Allocation.MachineName || stringValue(native.InstanceId) != request.Allocation.InstanceId ||
+		stringValue(instance.LanIP) != request.Allocation.PrivateIp || stringValue(native.LanIp) != request.Allocation.PrivateIp {
+		return base + "_tke_instance_identity_mismatch"
+	}
+	if stringValue(instance.NodePoolId) != request.Pool.NodePoolId {
+		return base + "_tke_instance_wrong_pool"
+	}
+	return base + "_machine_inventory_missing"
+}
+
 func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[string]string) Response {
 	if client == nil || client.nativeTkeClient == nil || client.nativeCvmClient == nil {
 		return Response{Ok: false, ErrorCode: "tencent_sdk_client_missing", Message: "Tencent TKE and CVM SDK clients are required.", Retryable: false}
@@ -3878,6 +3935,8 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		code := "compute_provider_partial_identity_machine_missing"
 		if machine != nil {
 			code = "compute_provider_partial_identity_cvm_missing"
+		} else {
+			code = client.classifyMissingComputeMachine(request)
 		}
 		return Response{Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
 	}
