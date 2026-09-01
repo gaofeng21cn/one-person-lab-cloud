@@ -146,7 +146,7 @@ async function loginAndOpenUsage(page: Page, origin: string) {
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.waitForURL(/\/console\/overview$/);
   await page.goto(`${origin}/console/api/usage`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "使用记录", exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { name: "用量记录", exact: true }).waitFor({ state: "visible" });
 }
 
 async function routePopulatedKeys(page: Page) {
@@ -249,7 +249,7 @@ test("Gateway usage rejects late results for a previously selected key", { timeo
     await firstKeyRequestsHeld.promise;
 
     await page.locator(".gateway-usage-toolbar .console-select").getByRole("button").click();
-    await page.getByRole("option", { name: `${secondKey.name} · ${secondKey.id}`, exact: true }).click();
+    await page.getByRole("option", { name: secondKey.name, exact: true }).click();
     const requestTable = page.locator(".request-table-desktop");
     await requestTable.getByText("10-week", { exact: true }).waitFor({ state: "visible" });
     await page.locator(".usage-summary-strip").getByText("22", { exact: true }).waitFor({ state: "visible" });
@@ -297,9 +297,9 @@ test("Gateway usage rejects a response from an earlier route activation", { time
     await page.locator(".request-table-desktop").getByText("request-month", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("radio", { name: "本周", exact: true }).click();
     await firstVisitRequestsHeld.promise;
-    await page.getByRole("navigation", { name: "API 服务导航" }).getByRole("link", { name: "概览", exact: true }).click();
+    await page.getByRole("navigation", { name: "API 服务导航" }).getByRole("link", { name: "服务信息", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
-    await page.getByRole("navigation", { name: "API 服务导航" }).getByRole("link", { name: "使用记录", exact: true }).click();
+    await page.getByRole("navigation", { name: "API 服务导航" }).getByRole("link", { name: "用量", exact: true }).click();
     await page.waitForURL(/\/console\/api\/usage$/);
     const requestTable = page.locator(".request-table-desktop");
     await requestTable.getByText("new-route-week", { exact: true }).waitFor({ state: "visible" });
@@ -341,10 +341,10 @@ test("Gateway usage clears selection and derived data after an empty key refresh
     await page.locator(".usage-summary-strip").getByText("30", { exact: true }).waitFor({ state: "visible" });
 
     await page.getByRole("button", { name: "刷新", exact: true }).click();
-    await page.getByRole("heading", { name: "暂无 API Key", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "暂无 API 密钥", exact: true }).waitFor({ state: "visible" });
 
     assert.equal(keyReads, 2);
-    assert.equal(await page.getByLabel("API Key").inputValue(), "");
+    assert.equal(await page.getByLabel("API 密钥").inputValue(), "");
     assert.equal(await page.locator(".request-table-desktop").getByText("request-month", { exact: true }).count(), 0);
     assert.equal(await page.locator(".usage-summary-strip").count(), 0);
   } finally {
@@ -373,7 +373,7 @@ test("Gateway usage renders successful records independently from a failed summa
     });
 
     await loginAndOpenUsage(page, demo.origin);
-    await page.getByText("使用汇总暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("用量汇总暂不可用", { exact: true }).waitFor({ state: "visible" });
     const requestTable = page.locator(".request-table-desktop");
     await requestTable.getByText("request-month", { exact: true }).waitFor({ state: "visible" });
 
@@ -406,7 +406,7 @@ test("Gateway usage renders a successful summary independently from failed recor
     });
 
     await loginAndOpenUsage(page, demo.origin);
-    await page.getByText("使用记录暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("用量记录暂不可用", { exact: true }).waitFor({ state: "visible" });
     await page.locator(".usage-summary-strip").getByText("11", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(await page.locator(".usage-summary-strip").getByText("132", { exact: true }).count(), 1);

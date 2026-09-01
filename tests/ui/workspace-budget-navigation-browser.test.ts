@@ -36,7 +36,7 @@ async function openAdvancedSettings(page: Page) {
 }
 
 async function openWorkspace(page: Page, name: string, workspaceId: string) {
-  await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+  await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
   await page.waitForURL(/\/console\/workspaces$/);
   await page.locator(".workspace-list-row").filter({ hasText: name }).click();
   await page.waitForURL(new RegExp(`/console/workspaces/${workspaceId}$`));

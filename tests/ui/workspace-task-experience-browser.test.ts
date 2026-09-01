@@ -296,7 +296,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
 
     await page.getByText("正在确认是否存在未完成的开通操作", { exact: true }).waitFor({ state: "visible" });
     assert.equal(launchListReadCount, 1);
-    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
     assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
     assert.equal(launchPostCount, 0);
@@ -306,7 +306,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
 
     await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
     await page.getByText("为避免重复扣费，请暂勿再次购买。刷新后确认仅有一个或没有未完成操作，才能继续开通。", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
     assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
     assert.equal(launchPostCount, 0);
@@ -319,7 +319,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
     await refreshResponse;
     await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
     assert.equal(launchListReadCount, 2);
-    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
     assert.equal(launchPostCount, 0);
 
     recoveryResult = "unavailable";
@@ -330,7 +330,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
     await page.getByRole("button", { name: "重新检查", exact: true }).click();
     await unavailableResponse;
     await page.getByText("暂时无法确认开通状态", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
     assert.equal(launchPostCount, 0);
 
     recoveryResult = "clear";
@@ -340,7 +340,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
     });
     await page.getByRole("button", { name: "重新检查", exact: true }).click();
     await clearResponse;
-    await page.getByLabel("Workspace 名称").waitFor({ state: "visible" });
+    await page.getByLabel("工作空间名称").waitFor({ state: "visible" });
     await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor({ state: "visible" });
     assert.equal(launchListReadCount, 4);
     assert.equal(launchPostCount, 0);
@@ -393,7 +393,7 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
 
     await login(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-    await page.getByLabel("Workspace 名称").fill(malformedSuccess.name);
+    await page.getByLabel("工作空间名称").fill(malformedSuccess.name);
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("checkbox", {
       name: "我确认一次性预付工作空间月度总额并开通",
@@ -466,8 +466,8 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
     const advanced = page.locator("details.workspace-advanced-details");
     await advanced.locator("summary").click();
     page.once("dialog", (dialog) => { void dialog.accept(); });
-    await advanced.getByRole("button", { name: "删除 Workspace", exact: true }).click();
-    await advanced.getByText("Workspace 删除暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await advanced.getByRole("button", { name: "删除工作空间", exact: true }).click();
+    await advanced.getByText("工作空间删除暂不可用", { exact: true }).waitFor({ state: "visible" });
     assert.equal(deleteWrites, 1);
     assert.equal(await visibleTextCount(page, "workspace_delete_unavailable"), 0);
 
@@ -574,7 +574,7 @@ test("customer entitlement shows authoritative zero due without prepayment langu
     await actualDue.getByText("$0.00", { exact: true }).waitFor({ state: "visible" });
     assert.ok(await page.getByText("$52.58", { exact: true }).count() > 0, "positive preview remains reference evidence");
 
-    await page.getByLabel("Workspace 名称").fill("Customer Entitlement Workspace");
+    await page.getByLabel("工作空间名称").fill("Customer Entitlement Workspace");
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("checkbox", {
       name: "我确认使用当前客户权益开通工作空间（无需预付）",
@@ -666,7 +666,7 @@ test("readback refresh retains the succeeded launch and retries only authoritati
 
     await login(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-    await page.getByLabel("Workspace 名称").fill("Readback Retry Workspace");
+    await page.getByLabel("工作空间名称").fill("Readback Retry Workspace");
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("checkbox", {
       name: "我确认一次性预付工作空间月度总额并开通",
@@ -815,18 +815,18 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     });
 
     await login(page, demo.origin);
-    await page.getByRole("link", { name: "Workspace", exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole("link", { name: "工作空间", exact: true }).filter({ visible: true }).first().click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces");
-    await page.getByRole("button", { name: "新建 Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建 Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     await assertNoHorizontalOverflow(page);
 
     const basicPlan = page.getByRole("radio", { name: /Basic/ });
     await basicPlan.waitFor({ state: "visible" });
     await basicPlan.click();
     assert.equal(await basicPlan.isChecked(), true);
-    await page.getByLabel("Workspace 名称").fill(journeyName);
+    await page.getByLabel("工作空间名称").fill(journeyName);
     const actualDue = page.locator(".workspace-order-summary__total");
     await actualDue.getByText("实际应付", { exact: true }).waitFor({ state: "visible" });
     await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
@@ -949,7 +949,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     assert.equal(await visibleTextCount(page, workspaceDtoUrl), 0);
     await assertNoHorizontalOverflow(page);
 
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces");
     assert.equal(await page.locator(".workspace-access-panel").count(), 0);
     assert.equal(await page.locator(".credential-actions code").count(), 0);
@@ -1157,7 +1157,7 @@ async function verifyWorkspaceDetailExperience() {
       });
       assert.notEqual(await advancedChevron.evaluate((element) => getComputedStyle(element).transform), "none");
       await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
-      await advanced.getByRole("button", { name: "删除 Workspace", exact: true }).waitFor({ state: "visible" });
+      await advanced.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
 
       const technical = page.locator("details.workspace-technical-details");
       assert.equal(await technical.getAttribute("open"), null);

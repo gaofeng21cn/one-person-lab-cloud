@@ -4893,7 +4893,7 @@ select:focus-visible,
 }
 
 .keys-table {
-  min-width: 1280px;
+  min-width: 900px;
 }
 
 .keys-table th:last-child,
@@ -4912,6 +4912,112 @@ select:focus-visible,
   width: 100%;
   height: 5px;
   margin-top: 7px;
+}
+
+.key-technical-details,
+.key-filter-technical-details,
+.key-form-technical-details,
+.key-use-technical-details,
+.keys-source-technical-details,
+.receipt-technical-details {
+  min-width: 0;
+}
+
+.key-technical-details > summary,
+.key-filter-technical-details > summary,
+.key-form-technical-details > summary,
+.key-use-technical-details > summary,
+.keys-source-technical-details > summary,
+.receipt-technical-details > summary {
+  width: max-content;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.key-technical-details {
+  margin-top: 6px;
+}
+
+.key-technical-details__body,
+.receipt-technical-details__body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.key-technical-details__body .data-list,
+.receipt-technical-details__body .data-list,
+.keys-source-technical-details .data-list,
+.key-use-technical-details .data-list {
+  grid-template-columns: 1fr;
+}
+
+.key-technical-details__body code,
+.receipt-technical-details__body code,
+.keys-source-technical-details code,
+.key-use-technical-details code {
+  overflow-wrap: anywhere;
+}
+
+.key-filter-technical-details {
+  align-self: end;
+  padding-bottom: 9px;
+}
+
+.key-filter-technical-details > .console-select {
+  margin-top: 10px;
+}
+
+.keys-source-technical-details {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 20px;
+}
+
+.keys-source-technical-details .data-list {
+  margin-top: 10px;
+}
+
+.receipt-technical-details {
+  border-top: 1px solid var(--line);
+  margin: 0 20px 20px;
+  padding-top: 14px;
+}
+
+.receipt-technical-details__body {
+  margin-top: 14px;
+}
+
+.receipt-row-technical-details {
+  margin-top: 5px;
+}
+
+.receipt-row-technical-details > summary {
+  width: max-content;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.receipt-row-technical-details dl {
+  display: grid;
+  min-width: 260px;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.receipt-row-technical-details dl > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.receipt-row-technical-details dt,
+.receipt-row-technical-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .mobile-key-list {
@@ -5332,6 +5438,10 @@ select:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .key-filter-technical-details {
+    padding-bottom: 0;
+  }
+
   .keys-secret {
     align-items: flex-start;
     flex-direction: column;
@@ -5343,6 +5453,11 @@ select:focus-visible,
 
   .mobile-key-list {
     display: grid;
+  }
+
+  .mobile-key-card > .key-technical-details {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
   }
 
   .key-form-grid,

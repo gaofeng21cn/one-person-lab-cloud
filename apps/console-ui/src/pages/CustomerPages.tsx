@@ -24,9 +24,16 @@ import type { BillingController, CustomerAnnouncementController, GatewayUsageCon
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import {
+  presentBalanceHistoryStatus,
+  presentBalanceHistoryType,
+  presentBillingReceiptType,
+  presentBillingStatus
+} from "../app/customer-experience-model.ts";
+import {
   presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
+  presentWorkspaceLifecycle,
   presentWorkspaceQuote,
   presentWorkspaceRenewal,
   presentWorkspaceRuntime
@@ -66,47 +73,6 @@ function sourceData<T>(source: SourceEnvelope<T> | null | undefined): T | null {
 
 function formatLatency(value: number | null) {
   return value === null ? "-" : `${formatCount(value)} ms`;
-}
-
-function statusLabel(status?: string) {
-  return ({
-    active: "正常",
-    available: "正常",
-    disabled: "已停用",
-    empty: "暂无数据",
-    expired: "已到期",
-    failed: "已失败",
-    manual_review: "人工复核",
-    pending: "处理中",
-    preparing: "开通中",
-    quota_exhausted: "配额已用尽",
-    ready: "已就绪",
-    refunded: "已退款",
-    running: "运行中",
-    succeeded: "已完成",
-    unavailable: "暂不可用",
-    unknown: "结果待确认"
-  } as Record<string, string>)[status || ""] || (status || "暂不可用");
-}
-
-function workspaceLifecycleLabel(state?: string) {
-  return ({
-    active: "已激活",
-    creating: "开通中",
-    expired: "已到期",
-    failed: "已失败",
-    pending: "待开通",
-    running: "运行中",
-    suspended: "已暂停"
-  } as Record<string, string>)[state || ""] || (state || "暂不可用");
-}
-
-function receiptLabel(type: string) {
-  if (type === "billing.workspace_purchased.v1" || type.includes("created")) return "Workspace 开通";
-  if (type === "billing.workspace_expired.v1" || type.includes("expired")) return "Workspace 到期";
-  if (type.includes("renew")) return "Workspace 续费";
-  if (type.includes("refund")) return "Workspace 退款";
-  return type ? "账单记录" : "暂不可用";
 }
 
 function receiptAmount(receipt: BillingReceipt) {
@@ -152,29 +118,31 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric emphasis label="可用余额" note="API 服务余额" value={wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"} />
         <Metric label="本月 API 实际费用" note="请求实际消费" value={usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"} />
         <Metric label="本月请求次数" note="账号级汇总" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
-        <Metric label="Workspace" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
+        <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
       </section>
 
       <div className="overview-primary-action">
         <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate(primaryPath)}>
-          {workspacesUnavailable ? "重试读取 Workspace" : primaryWorkspace ? "查看 Workspace" : workspacesPending ? "正在读取 Workspace" : "新建 Workspace"}
+          {workspacesUnavailable ? "重试读取工作空间" : primaryWorkspace ? "查看工作空间" : workspacesPending ? "正在读取工作空间" : "新建工作空间"}
           {workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
         </Button>
       </div>
 
       <div className="overview-grid">
         <section className="panel overview-workspaces">
-          <div className="panel-title"><h2>Workspace</h2><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button></div>
+          <div className="panel-title"><h2>工作空间</h2><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button></div>
           <SourceState
-            emptyTitle="暂无 Workspace"
+            emptyTitle="暂无工作空间"
             error={workspaceRead.workspaces.error}
+            errorDescription="暂时无法读取工作空间，请稍后重试。"
             loading={workspaceRead.workspaces.loading}
             onRetry={() => void workspaceRead.refresh()}
             source={workspaceRead.workspaces.value}
+            unavailableDescription="暂时无法读取工作空间，请稍后重试。"
           >
             {(data) => (
               <div className="overview-workspace-table table-wrap">
-                <table><thead><tr><th>Workspace</th><th>套餐</th><th>生命周期状态</th><th>已付至</th><th /></tr></thead><tbody>
+                <table><thead><tr><th>工作空间</th><th>套餐</th><th>生命周期状态</th><th>已付至</th><th /></tr></thead><tbody>
                   {data.items.map((workspace) => <WorkspaceSummaryRow controller={controller} key={workspace.id} workspace={workspace} />)}
                 </tbody></table>
               </div>
@@ -183,20 +151,22 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         </section>
 
         <section className="panel overview-receipts">
-          <div className="panel-title"><h2>最近账单</h2><Button onClick={() => controller.navigate("/console/billing")} size="sm" variant="ghost">全部</Button></div>
+          <div className="panel-title"><h2>最近费用</h2><Button onClick={() => controller.navigate("/console/billing")} size="sm" variant="ghost">全部</Button></div>
           <SourceState
             empty={controller.billing.receipts.value?.status === "empty"}
-            emptyTitle="暂无账单收据"
+            emptyTitle="暂无费用记录"
             error={controller.billing.receipts.error}
+            errorDescription="暂时无法读取费用记录，请稍后重试。"
             loading={controller.billing.receipts.loading}
             onRetry={() => void controller.billing.refresh()}
             source={controller.billing.receipts.value}
-            unavailableTitle="账单收据暂不可用"
+            unavailableDescription="暂时无法读取费用记录，请稍后重试。"
+            unavailableTitle="费用记录暂不可用"
           >
             {() => <div className="overview-receipt-list">{receipts.map((receipt) => (
               <button key={receipt.receiptId} onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} type="button">
-                <span><strong>{receiptLabel(receipt.type)}</strong><small>{formatDate(receipt.createdAt, true)}</small></span>
-                <span><strong>{formatUsdMicros(receiptAmount(receipt))}</strong><small>{statusLabel(receipt.status)}</small></span>
+                <span><strong>{presentBillingReceiptType(receipt.type).label}</strong><small>{formatDate(receipt.createdAt, true)}</small></span>
+                <span><strong>{formatUsdMicros(receiptAmount(receipt))}</strong><small>{presentBillingStatus(receipt.status).label}</small></span>
                 <ChevronRight aria-hidden size={17} />
               </button>
             ))}</div>}
@@ -204,14 +174,16 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         </section>
 
         <section className="panel overview-announcements">
-          <div className="panel-title"><h2>公告</h2><Button onClick={() => controller.navigate("/console/announcements")} size="sm" variant="ghost">全部</Button></div>
+          <div className="panel-title"><h2>消息</h2><Button onClick={() => controller.navigate("/console/announcements")} size="sm" variant="ghost">全部</Button></div>
           <SourceState
             empty={announcementController.announcements.value?.status === "empty"}
-            emptyTitle="暂无公告"
+            emptyTitle="暂无消息"
             error={announcementController.announcements.error}
+            errorDescription="暂时无法读取消息，请稍后重试。"
             loading={announcementController.announcements.loading}
             onRetry={() => void announcementController.refresh()}
             source={announcementController.announcements.value}
+            unavailableDescription="暂时无法读取消息，请稍后重试。"
           >
             {() => <AnnouncementRows announcements={announcements} controller={announcementController} compact />}
           </SourceState>
@@ -223,7 +195,7 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
 
 function WorkspaceSummaryRow({ controller, workspace }: { controller: ConsoleController; workspace: WorkspaceDTO }) {
   const path = `/console/workspaces/${encodeURIComponent(workspace.id)}`;
-  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || workspace.id}</strong><small>{workspace.id}</small></PageLink></td><td>{workspace.packageId?.toUpperCase() || "暂不可用"}</td><td><Badge color="secondary">{workspaceLifecycleLabel(workspace.state)}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><ChevronRight aria-label="查看" size={17} /></PageLink></td></tr>;
+  return <tr><td><PageLink controller={controller} path={path}><strong>{workspace.name || "未命名工作空间"}</strong></PageLink></td><td>{workspace.packageId?.toUpperCase() || "暂不可用"}</td><td><Badge color="secondary">{presentWorkspaceLifecycle(workspace.state).label}</Badge></td><td>{formatDate(workspace.paidThrough)}</td><td><PageLink controller={controller} path={path}><ChevronRight aria-label="查看" size={17} /></PageLink></td></tr>;
 }
 
 function WorkspaceListPage({ controller }: { controller: ConsoleController }) {
@@ -232,31 +204,33 @@ function WorkspaceListPage({ controller }: { controller: ConsoleController }) {
   const workspacesPending = !workspaceRead.workspaces.value || workspaceRead.workspaces.loading;
   return (
     <section className="workspace-list-page" data-slide="C-WS-01">
-      <div className="page-toolbar"><p>Workspace 总数：{workspaceRead.workspaces.value?.available ? formatCount(workspaceRead.workspaces.value.data.total) : "暂不可用"}</p><Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建 Workspace"}</Button></div>
+      <div className="page-toolbar"><p>工作空间总数：{workspaceRead.workspaces.value?.available ? formatCount(workspaceRead.workspaces.value.data.total) : "暂不可用"}</p><Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate("/console/workspaces/new")}>{workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <Plus aria-hidden size={16} />}{workspacesUnavailable ? "重试读取" : workspacesPending ? "正在读取" : "新建工作空间"}</Button></div>
       {controller.workspaceLaunch.launchOperation && !["succeeded", "failed", "refunded"].includes(controller.workspaceLaunch.launchOperation.status) ? (
         <LaunchOperation controller={controller.workspaceLaunch} compact onBack={() => controller.navigate("/console/workspaces")} onRefresh={controller.refreshCurrentPage} />
       ) : null}
       <section className="panel workspace-list-panel">
-        <div className="workspace-list-head"><span>Workspace</span><span>套餐</span><span>生命周期状态</span><span>已付至</span><span /></div>
+        <div className="workspace-list-head"><span>工作空间</span><span>套餐</span><span>生命周期状态</span><span>已付至</span><span /></div>
         <SourceState
-          emptyTitle="暂无 Workspace"
-          emptyDescription="当前账号尚未开通 Workspace。"
+          emptyTitle="暂无工作空间"
+          emptyDescription="当前账号尚未开通工作空间。"
           error={workspaceRead.workspaces.error}
+          errorDescription="暂时无法读取工作空间，请稍后重试。"
           loading={workspaceRead.workspaces.loading}
           onRetry={() => void workspaceRead.refresh()}
           source={workspaceRead.workspaces.value}
+          unavailableDescription="暂时无法读取工作空间，请稍后重试。"
         >
           {(data) => <div className="workspace-list" role="list">{data.items.map((workspace) => (
             <PageLink className="workspace-list-row" controller={controller} key={workspace.id} path={`/console/workspaces/${encodeURIComponent(workspace.id)}`}>
-              <span className="workspace-list-name"><strong>{workspace.name || workspace.id}</strong><small>{workspace.id}</small></span>
+              <span className="workspace-list-name"><strong>{workspace.name || "未命名工作空间"}</strong></span>
               <span><strong>{workspace.packageId?.toUpperCase() || "暂不可用"}</strong><small>{workspace.storageGb ? `${workspace.storageGb} GB` : "规格暂不可用"}</small></span>
-              <span><strong>{workspaceLifecycleLabel(workspace.state)}</strong><small>生命周期状态</small></span>
+              <span><strong>{presentWorkspaceLifecycle(workspace.state).label}</strong><small>生命周期状态</small></span>
               <span><strong>{formatDate(workspace.paidThrough)}</strong><small>权益截止</small></span>
               <ChevronRight aria-hidden size={18} />
             </PageLink>
           ))}</div>}
         </SourceState>
-        <Pagination current={workspaceRead.page} label="Workspace 分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} />
+        <Pagination current={workspaceRead.page} label="工作空间分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} />
       </section>
     </section>
   );
@@ -283,7 +257,7 @@ function WorkspaceLaunchSteps({ current }: { current: "configure" | "confirm" | 
     ["operation", "开通状态"]
   ] as const;
   return (
-    <ol aria-label="Workspace 开通步骤" className="workspace-launch-steps">
+    <ol aria-label="工作空间开通步骤" className="workspace-launch-steps">
       {steps.map(([step, label], index) => (
         <li aria-current={current === step ? "step" : undefined} className={current === step ? "active" : ""} key={step}>
           <span>{index + 1}</span><strong>{label}</strong>
@@ -339,7 +313,7 @@ function WorkspaceOrderSummary({
         </>
       ) : (
         <dl className="workspace-order-summary__facts">
-          <div><dt>Workspace</dt><dd>{operation?.name || "暂不可用"}</dd></div>
+          <div><dt>工作空间</dt><dd>{operation?.name || "暂不可用"}</dd></div>
           <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
           <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
           <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
@@ -368,7 +342,7 @@ function WorkspaceLaunchPage({
     const conflict = controller.launchRecoveryState === "conflict";
     return (
       <section className="workspace-launch-page" data-slide="C-WS-04">
-        <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button>
+        <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
         {checking ? (
           <div className="source-loading" aria-live="polite"><span className="spinner" />正在确认是否存在未完成的开通操作</div>
         ) : (
@@ -388,17 +362,17 @@ function WorkspaceLaunchPage({
 
   return (
     <section className="workspace-launch-page" data-slide={controller.launchStep === "confirm" ? "C-WS-03" : "C-WS-02"}>
-      <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button>
+      <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
       <WorkspaceLaunchSteps current={controller.launchStep} />
       {controller.launchStep === "configure" ? (
         <form className="workspace-launch-layout" onSubmit={(event) => { event.preventDefault(); controller.reviewWorkspaceLaunch(); }}>
           <section className="workspace-launch-config">
-            <header><h2>新建 Workspace</h2></header>
-            <Field label="Workspace 名称" maxLength={80} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：产品研发" required value={controller.launchName} />
+            <header><h2>新建工作空间</h2></header>
+            <Field label="工作空间名称" maxLength={80} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：产品研发" required value={controller.launchName} />
             <fieldset><legend>选择套餐</legend>
               {controller.catalog.loading && !catalog ? <div className="source-loading"><span className="spinner" />正在读取计划与价格</div> : null}
               {controller.catalog.error ? <div className="inline-error"><AlertCircle aria-hidden size={16} />计划与价格暂不可用<Button onClick={() => void onRefresh()} size="sm" variant="ghost">重试</Button></div> : null}
-              {catalog ? <RadioGroup<PlanId> aria-label="Workspace 套餐" className="workspace-plan-list" direction="col" name="workspace-plan" onChange={controller.setLaunchPlan} value={controller.launchPlan}>{catalog.packages.filter((plan) => plan.available && (plan.id === "basic" || plan.id === "pro")).map((plan) => <PlanOption controller={controller} key={plan.id} plan={plan} />)}</RadioGroup> : null}
+              {catalog ? <RadioGroup<PlanId> aria-label="工作空间套餐" className="workspace-plan-list" direction="col" name="workspace-plan" onChange={controller.setLaunchPlan} value={controller.launchPlan}>{catalog.packages.filter((plan) => plan.available && (plan.id === "basic" || plan.id === "pro")).map((plan) => <PlanOption controller={controller} key={plan.id} plan={plan} />)}</RadioGroup> : null}
             </fieldset>
             {!controller.customerOwned ? <div className="launch-confirm-check"><Checkbox checked={controller.launchAutoRenew} label="自动续费" onChange={controller.setLaunchAutoRenew} /></div> : null}
           </section>
@@ -430,7 +404,7 @@ function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchCon
       <section className="workspace-launch-review">
         <header><h2 ref={headingRef} tabIndex={-1}>确认开通信息</h2></header>
         <dl className="launch-confirm-list">
-          <div><dt>Workspace 名称</dt><dd>{controller.launchName.trim()}</dd></div>
+          <div><dt>工作空间名称</dt><dd>{controller.launchName.trim()}</dd></div>
           <div><dt>套餐</dt><dd>{plan.name}</dd></div>
           <div><dt>价格版本</dt><dd>{preview?.priceVersion || controller.catalog.value?.priceVersion || "暂不可用"}</dd></div>
           <div><dt>计费周期</dt><dd>{billingUnitLabel(preview?.billingUnit || controller.catalog.value?.billingUnit)}</dd></div>
@@ -656,13 +630,13 @@ function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) 
   const runtime = sourceData(runtimeRead.runtime.value);
   if (workspaceRead.detail.loading && !workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div></section>;
   if (workspaceSource?.available === false) return <section className="workspace-detail-page">
-    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button>
-    <Alert color="warning" indicator={<AlertCircle size={18} />} title="Workspace 详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
+    <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
+    <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />
     <section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace source reason</dt><dd><code>{workspaceSource.reasonCode}</code></dd></div></dl></div></details></section>
   </section>;
-  if (workspaceRead.detail.error && !workspaceSource) return <section className="workspace-detail-page"><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button><Alert color="danger" title="Workspace 详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /><section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace read error</dt><dd><code>{workspaceRead.detail.error}</code></dd></div></dl></div></details></section></section>;
+  if (workspaceRead.detail.error && !workspaceSource) return <section className="workspace-detail-page"><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button><Alert color="danger" title="工作空间详情暂不可用" description="暂时无法确认该工作空间，请稍后重试。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /><section className="panel workspace-technical-panel"><details className="workspace-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-technical-details__body"><dl className="data-list"><div><dt>workspace read error</dt><dd><code>{workspaceRead.detail.error}</code></dd></div></dl></div></details></section></section>;
   if (!workspaceSource) return <section className="workspace-detail-page"><div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div></section>;
-  if (workspaceSource?.available && workspaceSource.data === null) return <section className="workspace-detail-page"><div className="empty-panel"><AlertCircle /><h2>Workspace 不存在</h2><p>该 Workspace 不存在或当前账号无权访问。</p><Button onClick={() => controller.navigate("/console/workspaces")} variant="outline">返回列表</Button></div></section>;
+  if (workspaceSource?.available && workspaceSource.data === null) return <section className="workspace-detail-page"><div className="empty-panel"><AlertCircle /><h2>工作空间不存在</h2><p>该工作空间不存在或当前账号无权访问。</p><Button onClick={() => controller.navigate("/console/workspaces")} variant="outline">返回列表</Button></div></section>;
   const detail = workspaceSource.data;
   const runtimePresentation = runtime ? presentWorkspaceRuntime(runtime) : null;
   const renewalPresentation = presentWorkspaceRenewal(detail.renewalStatus);
@@ -672,14 +646,14 @@ function WorkspaceDetailPage({ controller }: { controller: ConsoleController }) 
   const runtimeUrl = runtimePresentation?.canOpen ? runtimePresentation.url : null;
   return (
     <section className="workspace-detail-page" data-slide="C-WS-05">
-      <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />Workspace 列表</Button>
+      <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <div className="workspace-detail-content">
-        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || detail.id}</h2><div className={`workspace-availability workspace-availability--${runtimePresentation?.kind || "pending"}`}><strong>{runtimeLabel}</strong><span>{runtimeDescription}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!runtimeUrl} onClick={() => runtimeUrl && window.open(runtimeUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>实际月费</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
+        <section className="panel workspace-identity-panel"><div className="workspace-heading"><div><h2>{detail.name || "未命名工作空间"}</h2><div className={`workspace-availability workspace-availability--${runtimePresentation?.kind || "pending"}`}><strong>{runtimeLabel}</strong><span>{runtimeDescription}</span></div></div><div className="workspace-entry-actions"><Button color="primary" disabled={!runtimeUrl} onClick={() => runtimeUrl && window.open(runtimeUrl, "_blank", "noopener,noreferrer")}>打开工作空间<ExternalLink aria-hidden size={16} /></Button><Button onClick={() => void controller.refreshCurrentPage()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div></div><dl className="workspace-primary-facts"><div><dt>套餐</dt><dd>{detail.packageId?.toUpperCase() || "-"}</dd></div><div><dt>实际月费</dt><dd>{formatUsdMicros(detail.totalUsdMicros)}</dd></div><div><dt>权益截止</dt><dd>{formatDate(detail.paidThrough)}</dd></div></dl></section>
         <section className="panel workspace-access-panel"><div className="panel-title"><h2>访问凭据</h2><span>敏感信息将在 60 秒后自动隐藏</span></div>
           {runtime ? <WorkspaceAccessRows controller={controller.workspaceSecrets} runtime={runtime} /> : runtimeRead.runtime.loading && !runtimeRead.runtime.value ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div> : <Alert color="warning" indicator={<AlertCircle size={18} />} title="访问凭据暂不可用" description="暂时无法确认登录信息，请稍后刷新。" actions={<Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} />}
         </section>
         <section className="panel workspace-plan-panel"><div className="panel-title"><h2>续费与存储</h2></div>{controller.workspaceRenewalIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="续费结果待确认" description="工作空间的续费设置尚未获得确认，请稍后刷新。" /> : null}<dl className="data-list"><div><dt>{renewalPresentation.kind === "manual" ? "续费方式" : "续费状态"}</dt><dd>{renewalPresentation.label}</dd></div>{renewalPresentation.kind === "active" ? <div><dt>自动续费</dt><dd><Checkbox checked={detail.autoRenew === true} disabled={controller.workspaceRenewalBusy || controller.workspaceDeleteBusy} label={detail.autoRenew ? "已开启" : "已关闭"} onChange={() => void controller.updateCurrentWorkspaceRenewal(!detail.autoRenew)} /></dd></div> : null}<div><dt>持久存储</dt><dd>{detail.storageGb ? `${detail.storageGb} GB` : "-"}</dd></div></dl></section>
-        <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary><span>高级设置</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><div className="workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>删除后将无法继续访问该工作空间。</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="Workspace 删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}{controller.workspaceDeleteIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="删除结果待确认" description="工作空间列表尚未确认删除结果。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除 Workspace</Button></div></div></details></section>
+        <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary><span>高级设置</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><div className="workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>删除后将无法继续访问该工作空间。</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}{controller.workspaceDeleteIssue === "unconfirmed" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="删除结果待确认" description="工作空间列表尚未确认删除结果。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></div></div></details></section>
         <section className="panel workspace-technical-panel"><WorkspaceTechnicalDetails controller={controller} detail={detail} runtime={runtime} /></section>
       </div>
     </section>
@@ -698,12 +672,12 @@ function ApiOverview({ controller }: { controller: ConsoleController }) {
   return <div className="api-overview" data-slide="C-API-01">
     <section className="spend-strip"><div><WalletCards aria-hidden size={19} /><span>可用余额</span><strong>{wallet ? formatUsdMicros(wallet.usdMicros) : "暂不可用"}</strong></div><div><CircleDollarSign aria-hidden size={19} /><span>本月实际费用</span><strong>{usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"}</strong></div><div><Server aria-hidden size={19} /><span>本月请求次数</span><strong>{usage ? formatCount(usage.totalRequests) : "暂不可用"}</strong></div></section>
     <section className="panel gateway-detail">
-      <div className="panel-title"><h2>API 端点</h2></div>
-      <SourceState emptyTitle="API 端点暂不可用" error={gatewayAccountRead.endpoint.error} loading={gatewayAccountRead.endpoint.loading} onRetry={() => void gatewayAccountRead.refresh()} source={endpointSource} unavailableTitle="API 端点暂不可用">
-        {(endpoint) => <div className="api-endpoint-row"><div><span>OpenAI 兼容地址</span><code>{endpoint.baseUrl}</code></div><Button aria-label="复制 API 端点" disabled={!endpoint.baseUrl} onClick={() => void controller.copyText(endpoint.baseUrl, "API 端点已复制")} size="sm" title="复制 API 端点" uniform variant="outline"><Copy aria-hidden size={16} /></Button></div>}
+      <div className="panel-title"><h2>API 地址</h2></div>
+      <SourceState emptyTitle="API 地址暂不可用" error={gatewayAccountRead.endpoint.error} errorDescription="暂时无法读取 API 地址，请稍后重试。" loading={gatewayAccountRead.endpoint.loading} onRetry={() => void gatewayAccountRead.refresh()} source={endpointSource} unavailableDescription="暂时无法读取 API 地址，请稍后重试。" unavailableTitle="API 地址暂不可用">
+        {(endpoint) => <div className="api-endpoint-row"><div><span>OpenAI 兼容地址</span><code>{endpoint.baseUrl}</code></div><Button aria-label="复制 API 地址" disabled={!endpoint.baseUrl} onClick={() => void controller.copyText(endpoint.baseUrl, "API 地址已复制")} size="sm" title="复制 API 地址" uniform variant="outline"><Copy aria-hidden size={16} /></Button></div>}
       </SourceState>
     </section>
-    <section className="panel"><div className="panel-title"><h2>余额历史</h2></div><SourceState emptyTitle="暂无余额历史" error={gatewayAccountRead.balanceHistory.error} loading={gatewayAccountRead.balanceHistory.loading} onRetry={() => void gatewayAccountRead.refresh()} source={gatewayAccountRead.balanceHistory.value} unavailableTitle="余额历史暂不可用">{(data) => <><div className="table-wrap"><table><thead><tr><th>时间</th><th>类型</th><th>金额</th><th>状态</th></tr></thead><tbody>{data.items.map((item, index) => <tr key={`${item.createdAt}-${index}`}><td>{formatDate(item.usedAt || item.createdAt, true)}</td><td>{item.type}</td><td>{formatUsdMicros(item.valueUsdMicros)}</td><td>{statusLabel(item.status)}</td></tr>)}</tbody></table></div><Pagination current={data.page} label="余额历史分页" onChange={(page) => void gatewayAccountRead.changeBalancePage(page)} pages={data.pages} /></>}</SourceState></section>
+    <section className="panel"><div className="panel-title"><h2>余额历史</h2></div><SourceState emptyTitle="暂无余额历史" error={gatewayAccountRead.balanceHistory.error} errorDescription="暂时无法读取余额历史，请稍后重试。" loading={gatewayAccountRead.balanceHistory.loading} onRetry={() => void gatewayAccountRead.refresh()} source={gatewayAccountRead.balanceHistory.value} unavailableDescription="暂时无法读取余额历史，请稍后重试。" unavailableTitle="余额历史暂不可用">{(data) => <><div className="table-wrap"><table><thead><tr><th>时间</th><th>类型</th><th>金额</th><th>状态</th></tr></thead><tbody>{data.items.map((item, index) => <tr key={`${item.createdAt}-${index}`}><td>{formatDate(item.usedAt || item.createdAt, true)}</td><td>{presentBalanceHistoryType(item.type).label}</td><td>{formatUsdMicros(item.valueUsdMicros)}</td><td>{presentBalanceHistoryStatus(item.status).label}</td></tr>)}</tbody></table></div><Pagination current={data.page} label="余额历史分页" onChange={(page) => void gatewayAccountRead.changeBalancePage(page)} pages={data.pages} /></>}</SourceState></section>
   </div>;
 }
 
@@ -725,7 +699,7 @@ function UsageLatencyFacts({ item }: { item: GatewayUsageItem }) {
 
 function RequestRows({ items, onCopyRequestId }: { items: GatewayUsageItem[]; onCopyRequestId: (requestId: string) => void }) {
   return <>
-    <div className="table-wrap request-table-desktop"><table className="gateway-usage-table"><thead><tr><th>模型 / 端点</th><th>Token</th><th>费用</th><th>延迟</th><th>时间</th><th>请求 ID</th></tr></thead><tbody>{items.map((item) => <tr key={item.requestId}>
+    <div className="table-wrap request-table-desktop"><table className="gateway-usage-table"><thead><tr><th>模型 / API 地址</th><th>Token</th><th>费用</th><th>延迟</th><th>时间</th><th>请求 ID</th></tr></thead><tbody>{items.map((item) => <tr key={item.requestId}>
       <td><span className="usage-request-context"><strong>{item.model}</strong><code>{item.inboundEndpoint || "-"}</code></span></td>
       <td><UsageTokenFacts item={item} /></td>
       <td><strong className="usage-cost">{formatUsdMicros(item.actualCostUsdMicros)}</strong></td>
@@ -751,13 +725,13 @@ function UsagePage({ controller: usage, onCopyRequestId }: {
   onCopyRequestId: (requestId: string) => void;
 }) {
   const keys = sourceData(usage.keys.value)?.items || [];
-  return <section className="panel" data-slide="C-API-02"><div className="panel-title"><h2>使用记录</h2><span>请求级事实来自 API 服务</span></div><div className="gateway-usage-toolbar">
-    <Select block label="API Key" onChange={(value) => void usage.selectKey(value)} options={keys.map((key) => ({ label: `${key.name} · ${key.id}`, value: key.id }))} placeholder="选择 API Key" value={usage.selectedKeyId} />
+  return <section className="panel" data-slide="C-API-02"><div className="panel-title"><h2>用量记录</h2><span>请求级事实来自 API 服务</span></div><div className="gateway-usage-toolbar">
+    <Select block label="API 密钥" onChange={(value) => void usage.selectKey(value)} options={keys.map((key) => ({ label: key.name, value: key.id }))} placeholder="选择 API 密钥" value={usage.selectedKeyId} />
     <SegmentedControl ariaLabel="统计周期" block onChange={(value) => void usage.selectPeriod(value as GatewayUsagePeriod)} options={[{ value: "today", label: "今日" }, { value: "week", label: "本周" }, { value: "month", label: "本月" }]} value={usage.period} />
   </div>
-    <SourceState empty={usage.keys.value?.status === "empty"} emptyTitle="暂无 API Key" error={usage.keys.error} loading={usage.keys.loading} onRetry={() => void usage.refresh()} source={usage.keys.value} unavailableTitle="API Key 暂不可用">{() => <>
-      <SourceState error={usage.summary.error} loading={usage.summary.loading} onRetry={() => void usage.refresh()} source={usage.summary.value} unavailableTitle="使用汇总暂不可用">{(summary) => <dl className="usage-summary-strip"><div><dt>汇总请求次数</dt><dd>{formatCount(summary.totalRequests)}</dd></div><div><dt>汇总总 Token</dt><dd>{formatCount(summary.totalTokens)}</dd></div><div><dt>汇总实际金额</dt><dd>{formatUsdMicros(summary.totalActualCostUsdMicros)}</dd></div></dl>}</SourceState>
-      <SourceState empty={usage.usage.value?.status === "empty"} emptyTitle="暂无请求记录" error={usage.usage.error} loading={usage.usage.loading} onRetry={() => void usage.refresh()} source={usage.usage.value} unavailableTitle="使用记录暂不可用">{(data) => <><RequestRows items={data.items} onCopyRequestId={onCopyRequestId} /><Pagination current={data.page} label="请求记录分页" onChange={(page) => void usage.changePage(page)} pages={data.pages} /></>}</SourceState>
+    <SourceState empty={usage.keys.value?.status === "empty"} emptyTitle="暂无 API 密钥" error={usage.keys.error} errorDescription="暂时无法读取 API 密钥，请稍后重试。" loading={usage.keys.loading} onRetry={() => void usage.refresh()} source={usage.keys.value} unavailableDescription="暂时无法读取 API 密钥，请稍后重试。" unavailableTitle="API 密钥暂不可用">{() => <>
+      <SourceState error={usage.summary.error} errorDescription="暂时无法读取用量汇总，请稍后重试。" loading={usage.summary.loading} onRetry={() => void usage.refresh()} source={usage.summary.value} unavailableDescription="暂时无法读取用量汇总，请稍后重试。" unavailableTitle="用量汇总暂不可用">{(summary) => <dl className="usage-summary-strip"><div><dt>汇总请求次数</dt><dd>{formatCount(summary.totalRequests)}</dd></div><div><dt>汇总总 Token</dt><dd>{formatCount(summary.totalTokens)}</dd></div><div><dt>汇总实际金额</dt><dd>{formatUsdMicros(summary.totalActualCostUsdMicros)}</dd></div></dl>}</SourceState>
+      <SourceState empty={usage.usage.value?.status === "empty"} emptyTitle="暂无请求记录" error={usage.usage.error} errorDescription="暂时无法读取用量记录，请稍后重试。" loading={usage.usage.loading} onRetry={() => void usage.refresh()} source={usage.usage.value} unavailableDescription="暂时无法读取用量记录，请稍后重试。" unavailableTitle="用量记录暂不可用">{(data) => <><RequestRows items={data.items} onCopyRequestId={onCopyRequestId} /><Pagination current={data.page} label="请求记录分页" onChange={(page) => void usage.changePage(page)} pages={data.pages} /></>}</SourceState>
     </>}</SourceState>
   </section>;
 }
@@ -785,11 +759,13 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
   const workspaceRead = controller.customerWorkspaceRead;
   const receipts = sourceData(billing.receipts.value)?.receipts || [];
   const receipt = sourceData(billing.detail.value);
+  const workspaces = sourceData(workspaceRead.workspaces.value)?.items || [];
+  const workspaceName = (workspaceId?: string) => workspaces.find((item) => item.id === workspaceId)?.name || "暂不可用";
   return <section className="billing-page">
-    <SegmentedControl ariaLabel="账单视图" block onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "Workspace 条款" }, { value: "receipts", label: "账单收据" }]} value={billing.view} />
-    {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>Workspace 条款</h2><span>Control Plane 当前商业条款</span></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无 Workspace 条款" error={workspaceRead.workspaces.error} loading={workspaceRead.workspaces.loading} onRetry={() => void workspaceRead.refresh()} unavailableTitle="Workspace 条款暂不可用">{(data) => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>Workspace</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || item.id}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{item.renewalStatus || "-"}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => <PageLink controller={controller} key={item.id} path={`/console/workspaces/${encodeURIComponent(item.id)}`}><span><strong>{item.name || item.id}</strong><small>{item.packageId?.toUpperCase() || "-"}</small></span><span><strong>{formatUsdMicros(item.totalUsdMicros)}</strong><small>已付至 {formatDate(item.paidThrough)}</small></span><ChevronRight aria-hidden size={18} /></PageLink>)}</div><Pagination current={workspaceRead.page} label="Workspace 条款分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} /></>}</SourceState></section> : <>
-      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>账单收据</h2><span>按时间顺序分页</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单收据" error={billing.receipts.error} loading={billing.receipts.loading} onRetry={() => void billing.refresh()} unavailableTitle="账单收据暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>Workspace</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{receiptLabel(item.type)}</td><td>{item.workspaceId || "-"}</td><td>{formatUsdMicros(receiptAmount(item))}</td><td>{statusLabel(item.status)}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span><strong>{receiptLabel(item.type)}</strong><small>{formatDate(item.createdAt, true)}</small></span><span><strong>{formatUsdMicros(receiptAmount(item))}</strong><small>{statusLabel(item.status)}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
-      {billing.selectedReceiptId ? <ReceiptDetail controller={billing} receipt={receipt} /> : null}
+    <SegmentedControl ariaLabel="费用视图" block onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "订阅与续费" }, { value: "receipts", label: "账单记录" }]} value={billing.view} />
+    {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>订阅与续费</h2></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无订阅" error={workspaceRead.workspaces.error} errorDescription="暂时无法读取订阅与续费信息，请稍后重试。" loading={workspaceRead.workspaces.loading} onRetry={() => void workspaceRead.refresh()} unavailableDescription="暂时无法读取订阅与续费信息，请稍后重试。" unavailableTitle="订阅与续费暂不可用">{(data) => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>工作空间</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{presentWorkspaceRenewal(item.renewalStatus).label}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => <PageLink controller={controller} key={item.id} path={`/console/workspaces/${encodeURIComponent(item.id)}`}><span><strong>{item.name || "未命名工作空间"}</strong><small>{item.packageId?.toUpperCase() || "-"}</small></span><span><strong>{formatUsdMicros(item.totalUsdMicros)}</strong><small>已付至 {formatDate(item.paidThrough)}</small></span><ChevronRight aria-hidden size={18} /></PageLink>)}</div><Pagination current={workspaceRead.page} label="订阅分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} /></>}</SourceState></section> : <>
+      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>账单记录</h2><span>按时间顺序分页</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单记录" error={billing.receipts.error} errorDescription="暂时无法读取账单记录，请稍后重试。" loading={billing.receipts.loading} onRetry={() => void billing.refresh()} unavailableDescription="暂时无法读取账单记录，请稍后重试。" unavailableTitle="账单记录暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>工作空间</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{presentBillingReceiptType(item.type).label}<details className="receipt-row-technical-details"><summary>技术详情</summary><dl><div><dt>Receipt ID</dt><dd><code>{item.receiptId}</code></dd></div><div><dt>Workspace ID</dt><dd><code>{item.workspaceId || "-"}</code></dd></div><div><dt>type</dt><dd><code>{item.type}</code></dd></div><div><dt>status</dt><dd><code>{item.status}</code></dd></div></dl></details></td><td>{workspaceName(item.workspaceId)}</td><td>{formatUsdMicros(receiptAmount(item))}</td><td>{presentBillingStatus(item.status).label}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span><strong>{presentBillingReceiptType(item.type).label}</strong><small>{workspaceName(item.workspaceId)} · {formatDate(item.createdAt, true)}</small></span><span><strong>{formatUsdMicros(receiptAmount(item))}</strong><small>{presentBillingStatus(item.status).label}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
+      {billing.selectedReceiptId ? <ReceiptDetail controller={billing} receipt={receipt} workspaceName={workspaceName(receipt?.workspaceId)} /> : null}
     </>}
   </section>;
 }
@@ -797,12 +773,12 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
 function ReceiptCursorNotice({ controller }: { controller: BillingController }) {
   const page = sourceData(controller.receipts.value);
   if (!page || (controller.pageNumber === 1 && !page.hasMore)) return null;
-  return <nav aria-label="账单收据分页" className="pagination"><Button disabled={!controller.canPrevious} onClick={() => void controller.previousPage()} size="sm" variant="outline"><ChevronLeft aria-hidden size={16} />上一页</Button><span>第 {controller.pageNumber} 页</span><Button disabled={!controller.canNext} onClick={() => void controller.nextPage()} size="sm" variant="outline">下一页<ChevronRight aria-hidden size={16} /></Button></nav>;
+  return <nav aria-label="账单记录分页" className="pagination"><Button disabled={!controller.canPrevious} onClick={() => void controller.previousPage()} size="sm" variant="outline"><ChevronLeft aria-hidden size={16} />上一页</Button><span>第 {controller.pageNumber} 页</span><Button disabled={!controller.canNext} onClick={() => void controller.nextPage()} size="sm" variant="outline">下一页<ChevronRight aria-hidden size={16} /></Button></nav>;
 }
 
-function ReceiptDetail({ controller, receipt }: { controller: BillingController; receipt: BillingReceipt | null }) {
+function ReceiptDetail({ controller, receipt, workspaceName }: { controller: BillingController; receipt: BillingReceipt | null; workspaceName: string }) {
   const components = receipt?.components;
-  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.closeReceipt} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => controller.selectedReceiptId && void controller.openReceipt(controller.selectedReceiptId)} source={controller.detail.value} unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>Receipt ID</dt><dd>{detail.receiptId}</dd></div><div><dt>类型</dt><dd>{receiptLabel(detail.type)}</dd></div><div><dt>状态</dt><dd>{statusLabel(detail.status)}</dd></div><div><dt>创建时间</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>Workspace ID</dt><dd>{detail.workspaceId || "-"}</dd></div><div><dt>总额</dt><dd>{formatUsdMicros(detail.totalUsdMicros ?? detail.chargeUsdMicros)}</dd></div>{detail.refundUsdMicros !== undefined ? <div><dt>退款额</dt><dd>{formatUsdMicros(detail.refundUsdMicros)}</dd></div> : null}<div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>价格版本</dt><dd>{detail.priceVersion || "-"}</dd></div><div><dt>计算组成金额</dt><dd>{components?.compute ? formatUsdMicros(components.compute.chargeUsdMicros) : "-"}</dd></div><div><dt>存储组成金额和容量</dt><dd>{components?.storage ? `${formatUsdMicros(components.storage.chargeUsdMicros)} · ${components.storage.sizeGb} GB` : "-"}</dd></div><div><dt>扣款引用</dt><dd>{detail.chargeReference || "-"}</dd></div></dl>}</SourceState></section>;
+  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.closeReceipt} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.detail.error} errorDescription="暂时无法读取收据详情，请稍后重试。" loading={controller.detail.loading} onRetry={() => controller.selectedReceiptId && void controller.openReceipt(controller.selectedReceiptId)} source={controller.detail.value} unavailableDescription="暂时无法读取收据详情，请稍后重试。" unavailableTitle="收据详情暂不可用">{(detail) => <><dl className="data-list"><div><dt>类型</dt><dd>{presentBillingReceiptType(detail.type).label}</dd></div><div><dt>状态</dt><dd>{presentBillingStatus(detail.status).label}</dd></div><div><dt>日期</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>金额</dt><dd>{formatUsdMicros(receiptAmount(detail))}</dd></div><div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>工作空间</dt><dd>{workspaceName}</dd></div></dl><details className="receipt-technical-details"><summary><span>技术详情</span><ChevronDown aria-hidden size={16} /></summary><div className="receipt-technical-details__body"><dl className="data-list"><div><dt>Receipt ID</dt><dd><code>{detail.receiptId}</code></dd></div><div><dt>type</dt><dd><code>{detail.type}</code></dd></div><div><dt>status</dt><dd><code>{detail.status}</code></dd></div><div><dt>Workspace ID</dt><dd><code>{detail.workspaceId || "-"}</code></dd></div><div><dt>priceVersion</dt><dd><code>{detail.priceVersion || "-"}</code></dd></div><div><dt>chargeReference</dt><dd><code>{detail.chargeReference || "-"}</code></dd></div><div><dt>compute evidence</dt><dd>{components?.compute ? formatUsdMicros(components.compute.chargeUsdMicros) : "-"}</dd></div><div><dt>storage evidence</dt><dd>{components?.storage ? `${formatUsdMicros(components.storage.chargeUsdMicros)} · ${components.storage.sizeGb} GB` : "-"}</dd></div>{detail.refundUsdMicros !== undefined ? <div><dt>refund evidence</dt><dd>{formatUsdMicros(detail.refundUsdMicros)}</dd></div> : null}</dl></div></details></>}</SourceState></section>;
 }
 
 function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: CustomerAnnouncementController }) {
@@ -812,7 +788,7 @@ function AnnouncementRows({ announcements, compact, controller }: { announcement
 function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
   const announcementController = controller.customerAnnouncements;
   const announcements = sourceData(announcementController.announcements.value)?.items || [];
-  return <section className="announcements-page" data-slide="C-ANN-01"><section className="panel"><div className="panel-title"><div><h2>公告列表</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div><Button onClick={() => void announcementController.refresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div><SourceState empty={announcementController.announcements.value?.status === "empty"} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">{() => <AnnouncementRows announcements={announcements} controller={announcementController} />}</SourceState></section></section>;
+  return <section className="announcements-page" data-slide="C-ANN-01"><section className="panel"><div className="panel-title"><div><h2>消息列表</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div><Button onClick={() => void announcementController.refresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div><SourceState empty={announcementController.announcements.value?.status === "empty"} emptyTitle="暂无消息" error={announcementController.announcements.error} errorDescription="暂时无法读取消息，请稍后重试。" loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableDescription="暂时无法读取消息，请稍后重试。" unavailableTitle="消息暂不可用">{() => <AnnouncementRows announcements={announcements} controller={announcementController} />}</SourceState></section></section>;
 }
 
 export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
