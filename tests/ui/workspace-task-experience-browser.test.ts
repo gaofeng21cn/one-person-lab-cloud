@@ -253,6 +253,105 @@ test("customer completes one authoritative Workspace journey at desktop and mobi
 
 test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 
+test("multiple active Workspace launches block repeat purchase until recovery is unambiguous", { timeout: 30_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const conflictingLaunches: WorkspaceLaunchResponse[] = [
+    pendingLaunch,
+    {
+      ...pendingLaunch,
+      operationId: "launch-manual-review-conflict",
+      status: "manual_review",
+      updatedAt: "2026-09-01T00:02:00Z"
+    }
+  ];
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    let launchListReadCount = 0;
+    let launchPostCount = 0;
+    let recoveryResult: "conflict" | "unavailable" | "clear" = "conflict";
+    const initialRecovery = deferred();
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
+      if (route.request().method() === "GET") {
+        launchListReadCount += 1;
+        if (launchListReadCount === 1) await initialRecovery.promise;
+        if (recoveryResult === "unavailable") {
+          await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(recoveryResult === "conflict" ? conflictingLaunches : [])
+          });
+        }
+        return;
+      }
+      if (route.request().method() === "POST") launchPostCount += 1;
+      await route.fallback();
+    });
+
+    await login(page, demo.origin);
+    const launchPageNavigation = page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
+
+    await page.getByText("正在确认是否存在未完成的开通操作", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(launchListReadCount, 1);
+    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
+    assert.equal(launchPostCount, 0);
+
+    initialRecovery.resolve();
+    await launchPageNavigation;
+
+    await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("为避免重复扣费，请暂勿再次购买。刷新后确认仅有一个或没有未完成操作，才能继续开通。", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
+    assert.equal(launchPostCount, 0);
+
+    const refreshResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
+    });
+    await page.getByRole("button", { name: "重新检查", exact: true }).click();
+    await refreshResponse;
+    await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(launchListReadCount, 2);
+    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(launchPostCount, 0);
+
+    recoveryResult = "unavailable";
+    const unavailableResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
+    });
+    await page.getByRole("button", { name: "重新检查", exact: true }).click();
+    await unavailableResponse;
+    await page.getByText("暂时无法确认开通状态", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByLabel("Workspace 名称").count(), 0);
+    assert.equal(launchPostCount, 0);
+
+    recoveryResult = "clear";
+    const clearResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
+    });
+    await page.getByRole("button", { name: "重新检查", exact: true }).click();
+    await clearResponse;
+    await page.getByLabel("Workspace 名称").waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor({ state: "visible" });
+    assert.equal(launchListReadCount, 4);
+    assert.equal(launchPostCount, 0);
+    await assertNoHorizontalOverflow(page);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("succeeded launch without a Workspace identity keeps raw success behind technical details", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });

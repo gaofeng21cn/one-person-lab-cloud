@@ -19,6 +19,23 @@ export type WorkspaceLaunchRecovery =
   | { kind: "resume"; operation: WorkspaceLaunchResponse }
   | { kind: "conflict" };
 
+export type WorkspaceLaunchRecoveryState = "idle" | "checking" | "clear" | "conflict" | "unavailable";
+
+export interface WorkspaceLaunchReviewReadiness {
+  recoveryState: WorkspaceLaunchRecoveryState;
+  hasName: boolean;
+  hasSelectedPlan: boolean;
+  selectedPriceKnown: boolean;
+  balanceSufficient: boolean;
+}
+
+export interface WorkspaceLaunchSubmitReadiness extends WorkspaceLaunchReviewReadiness {
+  sessionAvailable: boolean;
+  busy: boolean;
+  step: "configure" | "confirm";
+  confirmed: boolean;
+}
+
 function sameWorkspaceLaunchInput(left: WorkspaceLaunchRequest, right: WorkspaceLaunchRequest): boolean {
   return left.name === right.name
     && left.packageId === right.packageId
@@ -39,6 +56,22 @@ export function resolveWorkspaceLaunchIntent(
     kind: "ready",
     intent: { input: { ...input }, idempotencyKey: createIdempotencyKey() }
   };
+}
+
+export function canReviewWorkspaceLaunch(readiness: WorkspaceLaunchReviewReadiness): boolean {
+  return readiness.recoveryState === "clear"
+    && readiness.hasName
+    && readiness.hasSelectedPlan
+    && readiness.selectedPriceKnown
+    && readiness.balanceSufficient;
+}
+
+export function canSubmitWorkspaceLaunch(readiness: WorkspaceLaunchSubmitReadiness): boolean {
+  return readiness.sessionAvailable
+    && !readiness.busy
+    && readiness.step === "confirm"
+    && readiness.confirmed
+    && canReviewWorkspaceLaunch(readiness);
 }
 
 export function shouldRetainWorkspaceLaunchIntent(error: unknown): boolean {

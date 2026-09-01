@@ -363,6 +363,28 @@ function WorkspaceLaunchPage({
   if (controller.launchOperation) {
     return <section className="workspace-launch-page" data-slide="C-WS-04"><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
   }
+  if (controller.launchRecoveryState !== "clear") {
+    const checking = controller.launchRecoveryState === "idle" || controller.launchRecoveryState === "checking";
+    const conflict = controller.launchRecoveryState === "conflict";
+    return (
+      <section className="workspace-launch-page" data-slide="C-WS-04">
+        <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button>
+        {checking ? (
+          <div className="source-loading" aria-live="polite"><span className="spinner" />正在确认是否存在未完成的开通操作</div>
+        ) : (
+          <Alert
+            color="warning"
+            indicator={<AlertCircle size={18} />}
+            title={conflict ? "存在多个待确认的开通操作" : "暂时无法确认开通状态"}
+            description={conflict
+              ? "为避免重复扣费，请暂勿再次购买。刷新后确认仅有一个或没有未完成操作，才能继续开通。"
+              : "暂时无法确认是否已有未完成操作。为避免重复扣费，请暂勿再次购买。"}
+            actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重新检查</Button>}
+          />
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="workspace-launch-page" data-slide={controller.launchStep === "confirm" ? "C-WS-03" : "C-WS-02"}>

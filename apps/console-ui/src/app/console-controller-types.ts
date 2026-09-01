@@ -43,6 +43,7 @@ import type {
   WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
+import type { WorkspaceLaunchRecoveryState } from "./workspace-launch-controller-model.ts";
 
 export interface RemoteState<T> {
   value: T | null;
@@ -151,6 +152,7 @@ export interface WorkspaceLaunchController {
   balanceSufficient: boolean | null;
   customerOwned: boolean;
   launchOperation: WorkspaceLaunchResponse | null;
+  launchRecoveryState: WorkspaceLaunchRecoveryState;
   launchPollIssue: "" | "error" | "timeout" | "readback";
   busy: boolean;
   reviewWorkspaceLaunch: () => void;
