@@ -350,3 +350,24 @@ test("Workspace quote presentation preserves unavailable, included zero, and pre
     canConfirm: true
   });
 });
+
+test("Workspace quote presentation rejects price and ownership contradictions", () => {
+  const unconfirmed = {
+    kind: "unconfirmed",
+    totalUsdMicros: null,
+    confirmationLabel: "价格结果待确认，暂不能开通工作空间",
+    submitLabel: "价格待确认",
+    requiresPrepayment: false,
+    canConfirm: false
+  } as const;
+
+  assert.deepEqual(presentWorkspaceQuote({
+    selectedPriceUsdMicros: 9_000_000,
+    customerOwned: true
+  }), unconfirmed);
+
+  assert.deepEqual(presentWorkspaceQuote({
+    selectedPriceUsdMicros: 0,
+    customerOwned: false
+  }), unconfirmed);
+});

@@ -322,7 +322,7 @@ export function presentWorkspaceQuote(
       canConfirm: true
     };
   }
-  if (input.selectedPriceUsdMicros > 0) {
+  if (input.customerOwned === false && input.selectedPriceUsdMicros > 0) {
     return {
       kind: "prepaid",
       totalUsdMicros: input.selectedPriceUsdMicros,
