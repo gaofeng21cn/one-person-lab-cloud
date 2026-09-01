@@ -37,6 +37,10 @@ content:
 
 - Launch renders raw `status`, `phase`, `operation ID`, `errorCode`,
   `blockReason`, and check names.
+- When `resourceBillingMode === "none"`, the controller's authoritative
+  `selectedPrice` is zero while the pricing preview may still contain the
+  catalog component total. The current order summary presents that preview
+  total as the amount due and incorrectly asks the customer to prepay.
 - The success command says `读取 Workspace`, which describes an internal
   readback rather than the customer's next task.
 - Workspace detail places `打开 WebUI` at the bottom of a credential table.
@@ -107,6 +111,22 @@ The Presenter does not own:
 - secret retrieval, rotation, cleanup, or persistence.
 
 Those behaviors continue to use their current controllers and APIs.
+
+## Price Confirmation Experience
+
+The confirmation page presents `controller.selectedPrice` as the authoritative
+amount due. It does not infer payment semantics from the pricing preview.
+
+- A customer-entitlement quote (`customerOwned` with selected price `0`) shows
+  `$0.00`, says that no prepayment is required, and uses `确认并开通`.
+- A positive billed quote keeps the explicit prepayment confirmation and
+  action.
+- A missing or contradictory quote remains unavailable or unconfirmed and
+  cannot be submitted. It is never displayed as `$0.00`.
+
+The compute and storage preview may remain visible as catalog composition or
+reference evidence, but it cannot override the selected price or determine the
+customer's payment action.
 
 ## Launch Experience
 

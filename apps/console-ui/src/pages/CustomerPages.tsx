@@ -22,6 +22,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { BillingController, CustomerAnnouncementController, GatewayUsageController, WorkspaceLaunchController, WorkspaceSecretController } from "../app/console-controller-types.ts";
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
+import {
+  presentWorkspaceLaunch,
+  presentWorkspaceLaunchStage,
+  presentWorkspaceQuote
+} from "../app/workspace-experience-model.ts";
 import type {
   AnnouncementDTO,
   BillingReceipt,
@@ -44,23 +49,6 @@ type CustomerApiRoute = Extract<CustomerConsoleRoute, { navigationId: "customer.
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled customer Console route: ${JSON.stringify(value)}`);
-}
-
-const launchPhaseLabels = [
-  ["validate", "校验报价与余额"],
-  ["debit", "确认单次扣款"],
-  ["workspace_key", "准备 Workspace Key"],
-  ["compute", "准备计算资源"],
-  ["storage", "准备存储资源"],
-  ["attachment", "挂载存储"],
-  ["secret", "写入访问 Secret"],
-  ["runtime", "启动 Runtime"],
-  ["activate", "激活 Workspace"],
-  ["receipt", "写入 Receipt"]
-] as const;
-
-function launchPhaseLabel(phase?: string) {
-  return launchPhaseLabels.find(([code]) => phase?.includes(code))?.[1] || "等待服务端更新";
 }
 
 function billingUnitLabel(billingUnit?: string) {
@@ -314,7 +302,11 @@ function WorkspaceOrderSummary({
   const planId = operation?.packageId || controller.selectedPlan?.id;
   const plan = planId ? controller.catalog.value?.packages.find((item) => item.id === planId) : null;
   const preview = planId ? controller.previews[planId] : undefined;
-  const total = operation?.totalChargeUsdMicros ?? preview?.totalChargeUsdMicros;
+  const quote = mode === "quote" ? presentWorkspaceQuote({
+    selectedPriceUsdMicros: controller.selectedPrice,
+    customerOwned: controller.customerOwned
+  }) : null;
+  const total = operation?.totalChargeUsdMicros ?? quote?.totalUsdMicros ?? null;
   const billingCycle = preview?.billingUnit === "calendar_month" ? "按自然月计费" : "暂不可用";
 
   return (
@@ -323,24 +315,28 @@ function WorkspaceOrderSummary({
       {mode === "quote" ? (
         <>
           <section className="workspace-order-summary__prices">
-            <h3>价格明细</h3>
+            <h3>价格构成（参考）</h3>
             <dl>
               <div><dt>计算</dt><dd>{preview?.compute ? formatUsdMicros(preview.compute.chargeUsdMicros) : "暂不可用"}</dd></div>
               <div><dt>存储</dt><dd>{preview?.storage ? formatUsdMicros(preview.storage.chargeUsdMicros) : "暂不可用"}</dd></div>
-              <div className="workspace-order-summary__total"><dt>Workspace 月度总额</dt><dd>{total !== undefined ? formatUsdMicros(total) : "暂不可用"}</dd></div>
+              <div className="workspace-order-summary__total"><dt>实际应付</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
             </dl>
           </section>
           <dl className="workspace-order-summary__facts">
-            <div><dt>可用余额</dt><dd>{controller.walletUsdMicros ? formatUsdMicros(controller.walletUsdMicros) : "暂不可用"}</dd></div>
+            {controller.customerOwned ? (
+              <div><dt>开通方式</dt><dd>客户权益（无需预付）</dd></div>
+            ) : (
+              <div><dt>可用余额</dt><dd>{controller.walletUsdMicros ? formatUsdMicros(controller.walletUsdMicros) : "暂不可用"}</dd></div>
+            )}
             <div><dt>计费周期</dt><dd>{billingCycle}</dd></div>
             <div><dt>续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
           </dl>
-          {controller.balanceSufficient === false ? <p className="workspace-order-summary__warning">余额不足，请联系管理员处理。</p> : null}
+          {quote?.kind === "prepaid" && controller.balanceSufficient === false ? <p className="workspace-order-summary__warning">余额不足，请联系管理员处理。</p> : null}
         </>
       ) : (
         <dl className="workspace-order-summary__facts">
           <div><dt>Workspace</dt><dd>{operation?.name || "暂不可用"}</dd></div>
-          <div><dt>月度总额</dt><dd>{total !== undefined ? formatUsdMicros(total) : "暂不可用"}</dd></div>
+          <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
           <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
           <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
         </dl>
@@ -360,8 +356,8 @@ function WorkspaceLaunchPage({
   onRefresh: () => Promise<void>;
 }) {
   const catalog = controller.catalog.value;
-  if (controller.launchOperation && !["failed", "refunded"].includes(controller.launchOperation.status)) {
-    return <section className="workspace-launch-page" data-slide="C-WS-04"><Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回 Workspace 列表</Button><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
+  if (controller.launchOperation) {
+    return <section className="workspace-launch-page" data-slide="C-WS-04"><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;
   }
 
   return (
@@ -398,7 +394,11 @@ function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchCon
   }, []);
   const plan = controller.selectedPlan;
   const preview = plan ? controller.previews[plan.id] : undefined;
-  if (!plan || !preview) return <div className="empty-panel">计划与价格暂不可用</div>;
+  if (!plan) return <div className="empty-panel">计划与价格暂不可用</div>;
+  const quote = presentWorkspaceQuote({
+    selectedPriceUsdMicros: controller.selectedPrice,
+    customerOwned: controller.customerOwned
+  });
   return (
     <div className="workspace-launch-layout">
       <section className="workspace-launch-review">
@@ -406,15 +406,15 @@ function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchCon
         <dl className="launch-confirm-list">
           <div><dt>Workspace 名称</dt><dd>{controller.launchName.trim()}</dd></div>
           <div><dt>套餐</dt><dd>{plan.name}</dd></div>
-          <div><dt>价格版本</dt><dd>{preview.priceVersion}</dd></div>
-          <div><dt>计费周期</dt><dd>{billingUnitLabel(preview.billingUnit)}</dd></div>
-          <div><dt>自动续费</dt><dd>{controller.launchAutoRenew ? "开启" : "关闭"}</dd></div>
+          <div><dt>价格版本</dt><dd>{preview?.priceVersion || controller.catalog.value?.priceVersion || "暂不可用"}</dd></div>
+          <div><dt>计费周期</dt><dd>{billingUnitLabel(preview?.billingUnit || controller.catalog.value?.billingUnit)}</dd></div>
+          <div><dt>自动续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "开启" : "关闭"}</dd></div>
         </dl>
-        <div className="launch-confirm-check"><Checkbox checked={controller.launchConfirmed} label="我确认一次性预付 Workspace 月度总额并开通" onChange={controller.setLaunchConfirmed} /></div>
+        <div className="launch-confirm-check"><Checkbox checked={controller.launchConfirmed} label={quote.confirmationLabel} onChange={controller.setLaunchConfirmed} /></div>
         <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setLaunchConfirmed(false); }} variant="outline">返回修改</Button></footer>
       </section>
       <WorkspaceOrderSummary
-        action={<Button busy={controller.busy} color="primary" disabled={!controller.launchConfirmed || controller.balanceSufficient !== true} onClick={() => void controller.submitWorkspaceLaunch()}>确认预付并开通</Button>}
+        action={<Button busy={controller.busy} color="primary" disabled={!quote.canConfirm || !controller.launchConfirmed || controller.balanceSufficient !== true} onClick={() => void controller.submitWorkspaceLaunch()}>{quote.submitLabel}</Button>}
         controller={controller}
       />
     </div>
@@ -434,22 +434,31 @@ function LaunchOperation({
 }) {
   const operation = controller.launchOperation;
   if (!operation) return null;
-  const currentPhase = launchPhaseLabel(operation.phase);
+  const operationPresentation = presentWorkspaceLaunch(operation);
+  const presentation = controller.launchPollIssue
+    ? presentWorkspaceLaunch({ status: "unconfirmed", workspaceId: undefined })
+    : operationPresentation;
+  const stagePresentation = presentWorkspaceLaunchStage(operation.phase);
+  const resultUnconfirmed = presentation.kind === "unconfirmed";
   const content = (
     <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
-      <div className="launch-operation-head"><div><h2>{compact ? "Workspace 正在开通" : "开通状态"}</h2><p><span>{statusLabel(operation.status)}</span><code>{operation.status}</code></p></div><Badge color={operation.status === "succeeded" ? "success" : operation.status === "manual_review" ? "warning" : "secondary"}>{statusLabel(operation.status)}</Badge></div>
-      <div className="launch-current-phase"><span>当前处理阶段</span><strong>{currentPhase}</strong><code>{operation.phase || "暂不可用"}</code></div>
-      {!compact ? (
-        <dl className="operation-readback">
-          <div><dt>operation ID</dt><dd><code>{operation.operationId}</code></dd></div>
-          <div><dt>创建时间</dt><dd>{formatDate(operation.createdAt, true)}</dd></div>
-          <div><dt>最后更新</dt><dd>{formatDate(operation.updatedAt, true)}</dd></div>
-          <div><dt>errorCode</dt><dd>{operation.errorCode || "暂不可用"}</dd></div>
-        </dl>
-      ) : null}
-      {operation.status === "manual_review" && operation.blockReason ? (
-        <section aria-label="开通诊断" className="launch-diagnostic">
-          <header><span>阻塞原因</span><code>{operation.blockReason}</code></header>
+      <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
+      <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div>
+      <details className="launch-technical-details">
+        <summary>技术详情</summary>
+        <div className="launch-technical-details__body">
+          <dl className="operation-readback">
+            <div><dt>operation ID</dt><dd><code>{operation.operationId}</code></dd></div>
+            <div><dt>status</dt><dd><code>{operation.status}</code></dd></div>
+            <div><dt>phase</dt><dd><code>{operation.phase}</code></dd></div>
+            <div><dt>errorCode</dt><dd><code>{operation.errorCode || "无"}</code></dd></div>
+            <div><dt>blockReason</dt><dd><code>{operation.blockReason || "无"}</code></dd></div>
+            <div><dt>failureStage</dt><dd><code>{operation.failureStage || "无"}</code></dd></div>
+            <div><dt>创建时间</dt><dd>{formatDate(operation.createdAt, true)}</dd></div>
+            <div><dt>最后更新</dt><dd>{formatDate(operation.updatedAt, true)}</dd></div>
+          </dl>
+          <section aria-label="开通检查" className="launch-diagnostic">
+            <header><span>checks</span></header>
           {operation.checks?.length ? (
             <ul>
               {operation.checks.map((check) => (
@@ -460,14 +469,14 @@ function LaunchOperation({
                 </li>
               ))}
             </ul>
-          ) : null}
-        </section>
-      ) : null}
-      {controller.launchPollIssue ? <p className="inline-error">结果待确认。请刷新同一 operation，禁止重复购买。</p> : null}
+            ) : <p>暂无检查记录</p>}
+          </section>
+        </div>
+      </details>
       <div className="launch-operation-actions">
-        {operation.status === "succeeded" && operation.workspaceId ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>读取 Workspace</Button> : null}
+        {!resultUnconfirmed && operationPresentation.canOpenWorkspace ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>查看工作空间</Button> : null}
         <Button onClick={() => void onRefresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
-        {["failed", "refunded"].includes(operation.status) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
+        {!resultUnconfirmed && ["failed", "refunded"].includes(operationPresentation.kind) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
       </div>
     </section>
   );

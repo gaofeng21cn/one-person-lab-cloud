@@ -68,15 +68,15 @@ npm run typecheck
 
 Expected: both commands pass.
 
-### Task 2: Rebuild The Launch Result Hierarchy
+### Task 2: Rebuild Price Confirmation And The Launch Result Hierarchy
 
 **Files:**
 
 - Modify: `apps/console-ui/src/pages/CustomerPages.tsx`
 - Modify: `apps/console-ui/src/styles.css`
 - Modify: `tools/console-browser-qa.ts`
-- Modify: `tests/ui/workspace-task-experience-browser.test.ts` if created by
-  Task 4 while test-first work is split
+- Create: `tests/ui/workspace-task-experience-browser.test.ts`
+- Modify: `package.json`
 
 **Step 1: Add failing customer-language assertions**
 
@@ -85,11 +85,22 @@ stage, and safe next action. Assert that `operation ID`, raw status/phase,
 `errorCode`, block reason, and check names are not visible until `技术详情` is
 opened. Assert that success uses `查看工作空间`.
 
+Assert separately that `controller.selectedPrice` is the displayed amount due:
+customer entitlement shows `$0.00` and no prepayment action, while a missing
+price remains unavailable rather than being relabeled as zero. Keep a positive
+preview in the entitlement fixture to prove that preview catalog composition
+does not override payment semantics.
+
 Align the fake-only pending operation with the current canonical `pending`
 status and exact `runtime` stage rather than teaching the Presenter a stale
 fixture vocabulary.
 
 **Step 2: Render the Presenter output**
+
+Use `presentWorkspaceQuote` for the amount due, confirmation label, submit
+label, and confirmability. When `resourceBillingMode === "none"`, the existing
+controller owns `selectedPrice === 0`; preview values are reference/component
+evidence only and must not become the amount due.
 
 Replace the local substring phase lookup and generic status dictionary in
 `LaunchOperation`. Render a clear state summary, stage, and actions. Move all

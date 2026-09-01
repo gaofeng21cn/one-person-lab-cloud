@@ -5963,6 +5963,102 @@ textarea:focus-visible,
   padding: 0;
 }
 
+/* Workspace purchase-to-launch task hierarchy. */
+.launch-operation .launch-operation-head > div {
+  min-width: 0;
+}
+
+.launch-operation .launch-operation-head p {
+  max-width: 68ch;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.launch-technical-details {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.launch-technical-details > summary {
+  padding: 15px 22px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.launch-technical-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.launch-technical-details__body {
+  display: grid;
+  min-width: 0;
+}
+
+.launch-technical-details .operation-readback {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 0;
+}
+
+.launch-technical-details .operation-readback > div,
+.launch-technical-details .operation-readback > div:nth-child(even) {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  align-content: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--line);
+  border-left: 0;
+  padding: 14px 22px;
+}
+
+.launch-technical-details .operation-readback > div:nth-child(even) {
+  border-left: 1px solid var(--line);
+}
+
+.launch-technical-details .operation-readback code,
+.launch-technical-details .launch-diagnostic code {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.launch-technical-details .launch-diagnostic {
+  border-bottom: 0;
+}
+
+.launch-technical-details .launch-diagnostic > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 520px) {
+  .launch-technical-details > summary {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .launch-technical-details .operation-readback {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .launch-technical-details .operation-readback > div,
+  .launch-technical-details .operation-readback > div:nth-child(even) {
+    border-left: 0;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+
 @media (max-width: 820px) {
   .request-list-mobile > .request-mobile-card {
     display: grid;

@@ -20,7 +20,7 @@
     "test:browser:operator-account": "node --test tests/ui/operator-account-controller-browser.test.ts",
     "test:browser:operator-announcement": "node --test tests/ui/operator-announcement-controller-browser.test.ts",
     "test:browser:operator-resource-read": "node --test tests/ui/operator-resource-read-controller-browser.test.ts",
-    "test:browser:workspace-lifecycle": "node --test tests/ui/workspace-mvp-flow.test.ts tests/ui/workspace-lifecycle-freshness-browser.test.ts tests/ui/workspace-renewal-navigation-browser.test.ts tests/ui/workspace-budget-navigation-browser.test.ts",
+    "test:browser:workspace-lifecycle": "node --test tests/ui/workspace-mvp-flow.test.ts tests/ui/workspace-lifecycle-freshness-browser.test.ts tests/ui/workspace-renewal-navigation-browser.test.ts tests/ui/workspace-budget-navigation-browser.test.ts tests/ui/workspace-task-experience-browser.test.ts",
     "test:qualification": "node --test \"tests/**/*.test.ts\"",
     "typecheck": "tsc -p apps/console-ui/tsconfig.json --noEmit",
     "lint": "tsc -p apps/console-ui/tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters",

@@ -151,7 +151,7 @@ function billingReceipt() {
 
 function pendingWorkspaceLaunch() {
   return {
-    operationId: "launch-fixture-pending", status: "preparing", phase: "runtime_starting",
+    operationId: "launch-fixture-pending", status: "pending", phase: "runtime",
     accountId: "acct-1", name: "Fixture pending Workspace", packageId: "basic", sizeGb: 10,
     autoRenew: false, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
     totalChargeUsdMicros: 52_580_000, createdAt: NOW, updatedAt: NOW
@@ -1175,7 +1175,7 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
     await page.getByLabel("Workspace 名称").fill("Browser retry Workspace");
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("checkbox", { name: "我确认一次性预付 Workspace 月度总额并开通", exact: true }).click();
+    await page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true }).click();
     const launchButton = page.getByRole("button", { name: "确认预付并开通", exact: true });
     await launchButton.click();
     await waitForText(page, "请求失败，请重试");
@@ -1374,7 +1374,7 @@ export async function runConsoleBrowserQa({
       await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
       await assertWorkspaceLaunchLayout(page, name);
       await assertWorkspaceLaunchConfirmation(page, name);
-      const launchConfirmation = page.getByRole("checkbox", { name: "我确认一次性预付 Workspace 月度总额并开通", exact: true });
+      const launchConfirmation = page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true });
       await launchConfirmation.click();
       if (await launchConfirmation.getAttribute("data-state") !== "checked") throw new Error("console_browser_workspace_confirmation_not_checked");
       if (!await page.getByRole("button", { name: "确认预付并开通", exact: true }).isEnabled()) throw new Error("console_browser_workspace_confirmation_submit_disabled");
@@ -1382,12 +1382,18 @@ export async function runConsoleBrowserQa({
       await captureFixtureScreenshot(page, screenshotDir, "workspace-confirm", name);
       state.launches = [pendingWorkspaceLaunch()];
       await page.goto(`${server.origin}/console/workspaces/new?progress=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "当前处理阶段");
-      await waitForText(page, "runtime_starting");
+      await waitForText(page, "正在准备工作空间");
+      await waitForText(page, "启动工作空间");
+      if (await page.getByText("pending", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_status_visible");
+      if (await page.getByText("runtime", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_phase_visible");
       if (await page.locator(".workspace-progress").count()) throw new Error("console_browser_inferred_workspace_progress_present");
       await assertWorkspaceLaunchLayout(page, name);
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-operation", name);
+      await page.getByText("技术详情", { exact: true }).click();
+      await waitForText(page, "pending");
+      await waitForText(page, "runtime");
+      await assertNoViewportOverflow(page);
       state.launches = [];
       await page.goto(`${server.origin}/console/workspaces?after-progress=${name}`, { waitUntil: "networkidle" });
       await openWorkspaceFromList(page, "Pilot Workspace");
