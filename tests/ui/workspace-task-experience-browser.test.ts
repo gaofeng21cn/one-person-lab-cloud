@@ -545,8 +545,8 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   let context: BrowserContext | null = null;
   const authoritativeReadStarted = deferred();
+  const customerOpenReadStarted = deferred();
   const releaseAuthoritativeRead = deferred();
-  let delayedAuthoritativeRead = false;
   let launchPostCount = 0;
   let launchedWorkspaceId = "";
   let workspaceDtoFixtureReads = 0;
@@ -606,11 +606,12 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
         ? { ...workspace, url: workspaceDtoUrl }
         : workspace);
       if (items.some((workspace) => workspace.id === launchedWorkspaceId)) workspaceDtoFixtureReads += 1;
-      if (!delayedAuthoritativeRead) {
-        delayedAuthoritativeRead = true;
+      if (authoritativeReadRequests.length === 1) {
         authoritativeReadStarted.resolve();
-        await releaseAuthoritativeRead.promise;
+      } else if (authoritativeReadRequests.length === 2) {
+        customerOpenReadStarted.resolve();
       }
+      await releaseAuthoritativeRead.promise;
       await route.fulfill({
         response: upstream,
         body: JSON.stringify({ ...payload, data: { ...payload.data, items } })
@@ -680,6 +681,17 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
     assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
     assert.deepEqual(authoritativeReadRequests[0], { page: "1", pageSize: "50" });
+    await page.getByRole("heading", { name: "工作空间已可使用", exact: true }).waitFor({ state: "visible" });
+    const viewWorkspace = page.getByRole("button", { name: "查看工作空间", exact: true });
+    await viewWorkspace.waitFor({ state: "visible" });
+    await viewWorkspace.click();
+    await customerOpenReadStarted.promise;
+    assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
+    assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
+    assert.deepEqual(authoritativeReadRequests, [
+      { page: "1", pageSize: "50" },
+      { page: "1", pageSize: "50" }
+    ]);
     assert.equal(launchPostCount, 1);
     assert.equal(launchIdempotencyKeys.size, 1);
     assert.notEqual([...launchIdempotencyKeys][0], "");
