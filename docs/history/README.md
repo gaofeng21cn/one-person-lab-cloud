@@ -56,11 +56,12 @@ Current truth starts from [the docs index](../README.md),
   the purchase-to-entry customer task design, execution, and local verification
   retained as historical evidence; these records do not define current product,
   deployment, Instance, or production state.
-- [Console Customer Information Architecture and Support Retirement UX-02B design, 2026-09-02](./2026-09-02-console-customer-information-architecture-design.md):
+- [Console Customer Information Architecture and Support Retirement UX-02B design, 2026-09-02](./2026-09-02-console-customer-information-architecture-design.md)
+  and [implementation plan](./2026-09-02-console-customer-information-architecture-implementation-plan.md):
   the approved customer navigation, exact presentation, and non-destructive
-  Support capability-retirement boundary retained as historical evidence; it
-  does not define current implementation, deployment, Instance, or production
-  state.
+  Support capability-retirement boundary and execution sequence retained as
+  historical evidence; they do not define current implementation, deployment,
+  Instance, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
