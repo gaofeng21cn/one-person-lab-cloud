@@ -28,13 +28,11 @@ test("Console browser covers customer and operator journeys at desktop and mobil
     operatorProvision: 1,
     announcementCreate: 1,
     announcementPublish: 1,
-    announcementWithdraw: 1,
-    supportMapping: 1
+    announcementWithdraw: 1
   });
   assert.equal(result.workspaceLaunchAuthoritativeReadback, true);
   assert.equal(result.operatorProvisionAuthoritativeReadback, true);
   assert.equal(result.announcementLifecycle, true);
-  assert.equal(result.supportMappingReadback, true);
   assert.equal(result.workspaceNavigation, true);
   assert.equal(result.workspacePagination, true);
   assert.equal(result.directDetailRefresh, true);

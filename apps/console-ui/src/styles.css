@@ -4940,6 +4940,13 @@ select:focus-visible,
   margin-top: 6px;
 }
 
+.key-technical-details > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 13px;
+  line-height: 18px;
+}
+
 .key-technical-details__body,
 .receipt-technical-details__body {
   display: grid;
