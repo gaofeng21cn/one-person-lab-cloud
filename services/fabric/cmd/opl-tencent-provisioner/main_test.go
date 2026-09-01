@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	fabricstore "opl-cloud/services/fabric/internal/fabric"
 
 	cbs2017 "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs/v20170312"
@@ -38,6 +39,27 @@ const (
 	computeDestroyProvisionerHelperEnv      = "OPL_COMPUTE_DESTROY_PROVISIONER_HELPER"
 	computeDestroyProvisionerStateFileEnv   = "OPL_COMPUTE_DESTROY_PROVISIONER_STATE_FILE"
 	computeDestroyProvisionerDeletesFileEnv = "OPL_COMPUTE_DESTROY_PROVISIONER_DELETES_FILE"
+)
+
+const (
+	errComputePartialMachineMissing contracts.ErrorCode = "compute_provider_partial_identity_machine_missing"
+	errComputePartialCVMMissing     contracts.ErrorCode = "compute_provider_partial_identity_cvm_missing"
+	errCBSCardinalityMismatch       contracts.ErrorCode = "tencent_cbs_readback_cardinality_mismatch"
+	errCBSDiskIDMismatch            contracts.ErrorCode = "tencent_cbs_readback_disk_id_mismatch"
+	errCBSDiskNameMismatch          contracts.ErrorCode = "tencent_cbs_readback_disk_name_mismatch"
+	errCBSDiskUsageMismatch         contracts.ErrorCode = "tencent_cbs_readback_disk_usage_mismatch"
+	errCBSDiskStateMissing          contracts.ErrorCode = "tencent_cbs_readback_disk_state_missing"
+	errCBSTagDuplicate              contracts.ErrorCode = "tencent_cbs_readback_tag_duplicate"
+	errCBSAccountTagMismatch        contracts.ErrorCode = "tencent_cbs_readback_opl_account_id_tag_mismatch"
+	errCBSWorkspaceTagMismatch      contracts.ErrorCode = "tencent_cbs_readback_opl_workspace_id_tag_mismatch"
+	errCBSResourceTagMismatch       contracts.ErrorCode = "tencent_cbs_readback_opl_resource_id_tag_mismatch"
+	errCBSOperationTagMismatch      contracts.ErrorCode = "tencent_cbs_readback_opl_operation_id_tag_mismatch"
+	errCBSChargeTypeMismatch        contracts.ErrorCode = "tencent_cbs_readback_charge_type_mismatch"
+	errCBSRenewFlagMismatch         contracts.ErrorCode = "tencent_cbs_readback_renew_flag_mismatch"
+	errCBSDiskTypeMismatch          contracts.ErrorCode = "tencent_cbs_readback_disk_type_mismatch"
+	errCBSSizeMismatch              contracts.ErrorCode = "tencent_cbs_readback_size_mismatch"
+	errCBSZoneMismatch              contracts.ErrorCode = "tencent_cbs_readback_zone_mismatch"
+	errCBSDeadlineMissing           contracts.ErrorCode = "tencent_cbs_readback_deadline_missing"
 )
 
 func TestMain(m *testing.M) {
@@ -3691,6 +3713,34 @@ func TestSyncComputeAllocationRevalidatesNodePoolMachineNativeAndCVMResourceShap
 	}
 }
 
+func TestTencentSDKSyncComputeAllocationClassifiesTheMissingProviderIdentitySide(t *testing.T) {
+	request := Request{
+		AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(),
+		Pool: ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4},
+		Allocation: ComputeAllocationInput{
+			Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11",
+		},
+	}
+	for _, test := range []struct {
+		name        string
+		tkeReplicas int64
+		cvmMissing  bool
+		wantCode    contracts.ErrorCode
+	}{
+		{name: "Machine missing", tkeReplicas: 0, wantCode: errComputePartialMachineMissing},
+		{name: "CVM missing", tkeReplicas: 1, cvmMissing: true, wantCode: errComputePartialCVMMissing},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := newFakeTencentSDKClient(&fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: test.tkeReplicas})
+			client.nativeCvmClient = &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags(), empty: test.cvmMissing}
+			response := client.SyncComputeAllocation(request, nil)
+			if response.Ok || contracts.ErrorCode(response.ErrorCode) != test.wantCode || response.MutationCount != 0 {
+				t.Fatalf("partial provider identity response=%#v wantCode=%q", response, test.wantCode)
+			}
+		})
+	}
+}
+
 func TestCreateComputeAllocationClaimsOrderedNPlusOneMachinesFromShuffledReadback(t *testing.T) {
 	tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 7, reverseMachines: true}
 	client := newFakeTencentSDKClient(tkeAPI)
@@ -3853,6 +3903,7 @@ type fakeNativeCbsAPI struct {
 	diskName                        string
 	diskUsage                       string
 	diskState                       string
+	omitDiskState                   bool
 	diskStates                      []string
 	diskIDs                         []string
 	diskType                        string
@@ -3862,6 +3913,7 @@ type fakeNativeCbsAPI struct {
 	zone                            string
 	deadline                        string
 	tags                            map[string]string
+	duplicateTag                    string
 	renewedDeadline                 string
 	omitDeadline                    bool
 	empty                           bool
@@ -4262,8 +4314,15 @@ func (api *fakeNativeCbsAPI) DescribeDisks(request *cbs2017.DescribeDisksRequest
 	for key, value := range tags {
 		diskTags = append(diskTags, &cbs2017.Tag{Key: common.StringPtr(key), Value: common.StringPtr(value)})
 	}
+	if api.duplicateTag != "" {
+		diskTags = append(diskTags, &cbs2017.Tag{Key: common.StringPtr(api.duplicateTag), Value: common.StringPtr(tags[api.duplicateTag])})
+	}
+	var diskStateValue *string
+	if !api.omitDiskState {
+		diskStateValue = common.StringPtr(diskState)
+	}
 	disks := []*cbs2017.Disk{{
-		DiskId: common.StringPtr(diskID), DiskState: common.StringPtr(diskState),
+		DiskId: common.StringPtr(diskID), DiskState: diskStateValue,
 		DiskName: common.StringPtr(firstNonEmpty(api.diskName, "storage-alpha")), DiskUsage: common.StringPtr(firstNonEmpty(api.diskUsage, "DATA_DISK")), Tags: diskTags,
 		DiskType: common.StringPtr(firstNonEmpty(api.diskType, "CLOUD_BSSD")), DiskChargeType: common.StringPtr(firstNonEmpty(api.diskChargeType, "PREPAID")),
 		RenewFlag: common.StringPtr(firstNonEmpty(api.renewFlag, "NOTIFY_AND_MANUAL_RENEW")), DiskSize: common.Uint64Ptr(firstNonZeroUint(api.diskSize, 10)),
@@ -4412,7 +4471,7 @@ func TestTencentSDKDestroyStorageVolumeDetachPollRejectsIdentityDriftWithoutTerm
 	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
 		"TENCENT_CBS_DETACH_ATTEMPTS": "2", "TENCENT_CBS_DETACH_DELAY_MS": "0",
 	})
-	if response.Ok || response.ErrorCode != "tencent_cbs_readback_mismatch" || response.ProviderData["storageDestroyPhase"] != "precondition_unconfirmed" ||
+	if response.Ok || contracts.ErrorCode(response.ErrorCode) != errCBSDiskIDMismatch || response.ProviderData["storageDestroyPhase"] != "precondition_unconfirmed" ||
 		response.ProviderData["storageDestroyMutationCount"] != "0" || len(api.terminateDisksRequests) != 0 || len(api.describeDisksRequests) != 2 {
 		t.Fatalf("identity drift response=%#v describes=%d mutations=%d", response, len(api.describeDisksRequests), len(api.terminateDisksRequests))
 	}
@@ -4446,17 +4505,17 @@ func TestTencentSDKDestroyStorageVolumeFailsClosedWithoutAuthoritativeAbsence(t 
 	for _, test := range []struct {
 		name     string
 		api      *fakeNativeCbsAPI
-		wantCode string
+		wantCode contracts.ErrorCode
 	}{
 		{name: "still present", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", retainTerminatedDisk: true}, wantCode: "storage_volume_delete_unverified"},
-		{name: "malformed readback", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", malformedAfterTerminate: true}, wantCode: "tencent_cbs_readback_mismatch"},
+		{name: "malformed readback", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", malformedAfterTerminate: true}, wantCode: errCBSCardinalityMismatch},
 		{name: "describe error", api: &fakeNativeCbsAPI{diskState: "UNATTACHED", describeErrAfterTerminate: errors.New("describe unavailable")}, wantCode: "tencent_describe_cbs_failed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: test.api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
 				"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
 			})
-			if response.Ok || response.ErrorCode != test.wantCode || response.MutationCount != 1 || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" ||
+			if response.Ok || contracts.ErrorCode(response.ErrorCode) != test.wantCode || response.MutationCount != 1 || response.ProviderData["storageDestroyPhase"] != "terminate_attempted" ||
 				response.ProviderData["storageDestroyMutationCount"] != "1" || len(test.api.terminateDisksRequests) != 1 {
 				t.Fatalf("delete must fail closed: %#v", response)
 			}
@@ -4705,34 +4764,34 @@ func TestTencentSDKStorageVolumeReadbackFailsClosedOnBillingOrIdentityMismatch(t
 	for _, tc := range []struct {
 		name      string
 		configure func(*fakeNativeCbsAPI)
+		wantCode  contracts.ErrorCode
 	}{
-		{name: "ambiguous", configure: func(api *fakeNativeCbsAPI) { api.duplicate = true }},
-		{name: "wrong id", configure: func(api *fakeNativeCbsAPI) { api.diskID = "disk-other" }},
-		{name: "wrong name", configure: func(api *fakeNativeCbsAPI) { api.diskName = "storage-other" }},
-		{name: "wrong usage", configure: func(api *fakeNativeCbsAPI) { api.diskUsage = "SYSTEM_DISK" }},
-		{name: "wrong account tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_account_id": "acct-other"} }},
-		{name: "wrong workspace tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_workspace_id": "ws-other"} }},
-		{name: "wrong resource tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_resource_id": "storage-other"} }},
-		{name: "wrong operation tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_operation_id": "op-other"} }},
-		{name: "postpaid", configure: func(api *fakeNativeCbsAPI) { api.diskChargeType = "POSTPAID_BY_HOUR" }},
-		{name: "auto renew", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "NOTIFY_AND_AUTO_RENEW" }},
-		{name: "wrong type", configure: func(api *fakeNativeCbsAPI) { api.diskType = "CLOUD_SSD" }},
-		{name: "wrong size", configure: func(api *fakeNativeCbsAPI) { api.diskSize = 20 }},
-		{name: "wrong zone", configure: func(api *fakeNativeCbsAPI) { api.zone = "ap-guangzhou-4" }},
-		{name: "deadline missing", configure: func(api *fakeNativeCbsAPI) { api.omitDeadline = true }},
-		{name: "deadline invalid", configure: func(api *fakeNativeCbsAPI) { api.deadline = "not-a-deadline" }},
+		{name: "ambiguous", configure: func(api *fakeNativeCbsAPI) { api.duplicate = true }, wantCode: errCBSCardinalityMismatch},
+		{name: "wrong id", configure: func(api *fakeNativeCbsAPI) { api.diskID = "disk-other" }, wantCode: errCBSDiskIDMismatch},
+		{name: "wrong name", configure: func(api *fakeNativeCbsAPI) { api.diskName = "storage-other" }, wantCode: errCBSDiskNameMismatch},
+		{name: "wrong usage", configure: func(api *fakeNativeCbsAPI) { api.diskUsage = "SYSTEM_DISK" }, wantCode: errCBSDiskUsageMismatch},
+		{name: "state missing", configure: func(api *fakeNativeCbsAPI) { api.omitDiskState = true }, wantCode: errCBSDiskStateMissing},
+		{name: "duplicate tag", configure: func(api *fakeNativeCbsAPI) { api.duplicateTag = "opl_account_id" }, wantCode: errCBSTagDuplicate},
+		{name: "wrong account tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_account_id": "acct-other"} }, wantCode: errCBSAccountTagMismatch},
+		{name: "wrong workspace tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_workspace_id": "ws-other"} }, wantCode: errCBSWorkspaceTagMismatch},
+		{name: "wrong resource tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_resource_id": "storage-other"} }, wantCode: errCBSResourceTagMismatch},
+		{name: "wrong operation tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_operation_id": "op-other"} }, wantCode: errCBSOperationTagMismatch},
+		{name: "postpaid", configure: func(api *fakeNativeCbsAPI) { api.diskChargeType = "POSTPAID_BY_HOUR" }, wantCode: errCBSChargeTypeMismatch},
+		{name: "auto renew", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "NOTIFY_AND_AUTO_RENEW" }, wantCode: errCBSRenewFlagMismatch},
+		{name: "wrong type", configure: func(api *fakeNativeCbsAPI) { api.diskType = "CLOUD_SSD" }, wantCode: errCBSDiskTypeMismatch},
+		{name: "wrong size", configure: func(api *fakeNativeCbsAPI) { api.diskSize = 20 }, wantCode: errCBSSizeMismatch},
+		{name: "wrong zone", configure: func(api *fakeNativeCbsAPI) { api.zone = "ap-guangzhou-4" }, wantCode: errCBSZoneMismatch},
+		{name: "deadline missing", configure: func(api *fakeNativeCbsAPI) { api.omitDeadline = true }, wantCode: errCBSDeadlineMissing},
+		{name: "deadline invalid", configure: func(api *fakeNativeCbsAPI) { api.deadline = "not-a-deadline" }, wantCode: errCBSDeadlineMissing},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := &fakeNativeCbsAPI{}
 			tc.configure(api)
 			client := &tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}
-			response := client.SyncStorageVolume(Request{
-				AccountId: "acct-alpha",
-				Tags:      map[string]string{"opl_account_id": "acct-alpha", "opl_workspace_id": "ws-alpha", "opl_resource_id": "storage-alpha", "opl_operation_id": "op-storage-alpha"},
-				Storage:   StorageInput{Id: "disk-storage-alpha", SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD"},
-			}, nil)
-			if response.Ok {
-				t.Fatalf("mismatched CBS readback must fail closed: %#v", response)
+			response := client.SyncStorageVolume(cbsReadbackRequest(
+				StorageInput{Id: "disk-storage-alpha", SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD"}), nil)
+			if response.Ok || contracts.ErrorCode(response.ErrorCode) != tc.wantCode || response.MutationCount != 0 {
+				t.Fatalf("mismatched CBS readback=%#v wantCode=%q", response, tc.wantCode)
 			}
 		})
 	}
