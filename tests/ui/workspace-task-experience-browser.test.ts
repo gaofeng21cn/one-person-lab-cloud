@@ -259,7 +259,7 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
   const malformedSuccess: WorkspaceLaunchResponse = {
     operationId: "launch-missing-workspace-identity",
     status: "succeeded",
-    phase: "succeeded",
+    phase: "receipt",
     accountId: "acct-1",
     name: "Missing Identity Workspace",
     packageId: "basic",
@@ -303,7 +303,9 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
     await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
 
     await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("当前开通结果尚未确认，请刷新状态，暂勿重复购买。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByRole("heading", { name: "工作空间已可使用", exact: true }).count(), 0);
+    assert.equal(await visibleTextCount(page, "工作空间已完成开通，可以继续查看并进入。"), 0);
     assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
     assert.equal(await visibleTextCount(page, "succeeded"), 0);
     assert.equal(authoritativeReadCount, 0);
@@ -312,7 +314,11 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
 
     const technical = page.locator("details.launch-technical-details");
     await technical.locator("summary").click();
-    await technical.getByText("succeeded", { exact: true }).first().waitFor({ state: "visible" });
+    const statusCode = technical.locator(".operation-readback dt")
+      .filter({ hasText: /^status$/ })
+      .locator("xpath=following-sibling::dd/code");
+    await statusCode.waitFor({ state: "visible" });
+    assert.equal(await statusCode.textContent(), "succeeded");
     await assertNoHorizontalOverflow(page);
     assertBrowserAuditClean(audit);
   } finally {
