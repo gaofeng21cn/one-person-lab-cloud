@@ -3,6 +3,8 @@ package fabric
 import (
 	"errors"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 var ErrJobNotFound = errors.New("job_not_found")
@@ -381,6 +383,8 @@ type WorkspaceRuntime struct {
 	Checks            []Check           `json:"checks,omitempty"`
 	CostTags          map[string]string `json:"costTags,omitempty"`
 	CreatedAt         time.Time         `json:"createdAt"`
+	ComputeID         string            `json:"-"`
+	NodeName          string            `json:"-"`
 }
 
 type RuntimeAccess struct {
@@ -475,13 +479,14 @@ type ProviderFactsBatchInput struct {
 }
 
 type ProviderResourceFacts struct {
-	PackageOrSpec string `json:"packageOrSpec,omitempty"`
-	ProviderID    string `json:"providerId,omitempty"`
-	Zone          string `json:"zone,omitempty"`
-	Status        string `json:"status,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	ExpiresAt     string `json:"expiresAt,omitempty"`
-	LastReadAt    string `json:"lastReadAt,omitempty"`
+	PackageOrSpec         string                                    `json:"packageOrSpec,omitempty"`
+	ProviderID            string                                    `json:"providerId,omitempty"`
+	Zone                  string                                    `json:"zone,omitempty"`
+	Status                string                                    `json:"status,omitempty"`
+	CreatedAt             string                                    `json:"createdAt,omitempty"`
+	ExpiresAt             string                                    `json:"expiresAt,omitempty"`
+	LastReadAt            string                                    `json:"lastReadAt,omitempty"`
+	ComputeRuntimeBinding *contracts.WorkspaceComputeRuntimeBinding `json:"computeRuntimeBinding,omitempty"`
 }
 
 type ProviderFact struct {

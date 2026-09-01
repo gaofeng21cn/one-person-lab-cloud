@@ -135,6 +135,10 @@ type runtimeResourceReader interface {
 	WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error)
 }
 
+type workspaceComputeRuntimeBindingReader interface {
+	ReadWorkspaceComputeRuntimeBinding(context.Context, WorkspaceRuntime, ComputeAllocation, MachineOwnership) (bool, error)
+}
+
 type runtimeProvider interface {
 	runtimeMutationProvider
 	runtimeResourceReader

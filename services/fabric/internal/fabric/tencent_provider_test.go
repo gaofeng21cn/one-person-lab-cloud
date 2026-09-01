@@ -3424,7 +3424,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 	if err != nil {
 		t.Fatalf("runtime status: %v", err)
 	}
-	if !status.Ready {
+	if !status.Ready || status.ComputeID != "compute-alpha" || status.NodeName != "10.0.0.8" {
 		t.Fatalf("status = %#v, want ready", status)
 	}
 	verified := map[string]bool{}
@@ -3552,6 +3552,58 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 	assertUnready("Deployment update incomplete")
 	if !verified["ready_pod_uses_retained_pvc"] {
 		t.Fatalf("runtime must verify Ready Pod retained mount: %#v", status.Checks)
+	}
+}
+
+func TestTencentWorkspaceComputeRuntimeBindingUsesLiveNodeProviderIdentity(t *testing.T) {
+	allocation, _, ownership := computeClaimProviderFixture()
+	ownership.Status = "active"
+	runtime := WorkspaceRuntime{WorkspaceID: allocation.WorkspaceID, ComputeID: allocation.ID, NodeName: allocation.NodeName}
+	provider := NewTencentProvider()
+	node := tencentOwnershipNodeReadback(allocation, ownership, true)
+	var document computeClaimNodeDocument
+	if json.Unmarshal(node, &document) != nil {
+		t.Fatal("decode node fixture")
+	}
+	document.Spec.ProviderID = "qcloud:///800005/" + allocation.InstanceID
+	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+		if !slices.Equal(args, []string{"get", "node/" + allocation.NodeName, "-o", "json"}) {
+			t.Fatalf("kubectl args=%#v", args)
+		}
+		return mustJSON(document), nil
+	}
+
+	matched, err := provider.ReadWorkspaceComputeRuntimeBinding(context.Background(), runtime, allocation, ownership)
+	if err != nil || !matched {
+		t.Fatalf("binding matched=%v err=%v", matched, err)
+	}
+
+	document.Spec.ProviderID = "qcloud:///800005/ins-other"
+	matched, err = provider.ReadWorkspaceComputeRuntimeBinding(context.Background(), runtime, allocation, ownership)
+	if err != nil || matched {
+		t.Fatalf("drifted binding matched=%v err=%v", matched, err)
+	}
+
+	document.Spec.ProviderID = ""
+	if _, err := provider.ReadWorkspaceComputeRuntimeBinding(context.Background(), runtime, allocation, ownership); err == nil {
+		t.Fatal("missing provider identity must keep binding unavailable")
+	}
+}
+
+func TestTencentNodeProviderInstanceIDRejectsAmbiguousIdentity(t *testing.T) {
+	for value, want := range map[string]string{
+		"qcloud:///800005/ins-alpha":   "ins-alpha",
+		"qcloud:///800005/":            "",
+		"qcloud://800005/ins-alpha":    "",
+		"qcloud:///800005/cvm-alpha":   "",
+		"qcloud:///800005/a/ins-alpha": "",
+		"qcloud:///800005/ins%2Dalpha": "",
+		"qcloud:////800005/ins-alpha":  "",
+		"qcloud:///800005/ins-alpha/":  "",
+	} {
+		if got := tencentNodeProviderInstanceID(value); got != want {
+			t.Fatalf("provider identity %q parsed as %q, want %q", value, got, want)
+		}
 	}
 }
 

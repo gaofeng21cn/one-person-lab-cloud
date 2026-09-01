@@ -1172,6 +1172,7 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 	result["createdAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.CreatedAt)
 	result["expiresAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.ExpiresAt)
 	result["lastReadAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.LastReadAt)
+	result["computeRuntimeBinding"] = operatorFactEnvelope("fabric", fact.Facts.ComputeRuntimeBinding, fact.Facts.ComputeRuntimeBinding != nil)
 	result["operationRef"] = operatorStringFactEnvelope("control-plane", stringValue(row["operationId"]))
 	result["receiptRef"] = sourceEnvelope("ledger", "unavailable", nil, "")
 	if liveLedger {
