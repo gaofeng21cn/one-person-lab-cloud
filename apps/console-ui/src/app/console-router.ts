@@ -24,7 +24,7 @@ type ConsoleRouteDefinition = {
   navigationId: ConsoleNavigationId | null;
 };
 
-const STATIC_ROUTE_DEFINITIONS = {
+const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/": {
     kind: "public.home",
     surface: "public",
@@ -48,14 +48,6 @@ const STATIC_ROUTE_DEFINITIONS = {
     requiresSession: false,
     sensitive: false,
     navigationId: null
-  },
-  "/console": {
-    kind: "customer.overview",
-    surface: "customer",
-    title: "概览",
-    requiresSession: true,
-    sensitive: false,
-    navigationId: "customer.overview"
   },
   "/console/overview": {
     kind: "customer.overview",
@@ -121,14 +113,6 @@ const STATIC_ROUTE_DEFINITIONS = {
     sensitive: false,
     navigationId: "customer.announcements"
   },
-  "/admin": {
-    kind: "admin.overview",
-    surface: "admin",
-    title: "运维概览",
-    requiresSession: true,
-    sensitive: false,
-    navigationId: "admin.overview"
-  },
   "/admin/overview": {
     kind: "admin.overview",
     surface: "admin",
@@ -179,10 +163,21 @@ const STATIC_ROUTE_DEFINITIONS = {
   }
 } as const satisfies Record<string, ConsoleRouteDefinition>;
 
-type StaticConsolePath = keyof typeof STATIC_ROUTE_DEFINITIONS;
-type StaticConsoleRoute = {
-  [Path in StaticConsolePath]: typeof STATIC_ROUTE_DEFINITIONS[Path] & { path: Path }
-}[StaticConsolePath];
+type CanonicalStaticConsolePath = keyof typeof CANONICAL_STATIC_ROUTE_DEFINITIONS;
+
+const STATIC_ROUTE_ALIASES = {
+  "/console": "/console/overview",
+  "/admin": "/admin/overview"
+} as const satisfies Record<string, CanonicalStaticConsolePath>;
+
+type StaticRouteAliasPath = keyof typeof STATIC_ROUTE_ALIASES;
+type CanonicalStaticConsoleRoute = {
+  [Path in CanonicalStaticConsolePath]: typeof CANONICAL_STATIC_ROUTE_DEFINITIONS[Path] & { path: Path }
+}[CanonicalStaticConsolePath];
+type AliasedStaticConsoleRoute = {
+  [Path in StaticRouteAliasPath]: typeof CANONICAL_STATIC_ROUTE_DEFINITIONS[typeof STATIC_ROUTE_ALIASES[Path]] & { path: Path }
+}[StaticRouteAliasPath];
+type StaticConsoleRoute = CanonicalStaticConsoleRoute | AliasedStaticConsoleRoute;
 
 type WorkspaceDetailRoute = {
   kind: "customer.workspace-detail";
@@ -207,7 +202,8 @@ function normalizePath(pathname: string) {
 
 export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
   const path = normalizePath(pathname);
-  const staticDefinition = STATIC_ROUTE_DEFINITIONS[path as StaticConsolePath];
+  const canonicalPath = STATIC_ROUTE_ALIASES[path as StaticRouteAliasPath] ?? path;
+  const staticDefinition = CANONICAL_STATIC_ROUTE_DEFINITIONS[canonicalPath as CanonicalStaticConsolePath];
   if (staticDefinition) {
     return { ...staticDefinition, path } as StaticConsoleRoute;
   }

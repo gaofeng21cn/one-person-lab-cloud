@@ -77,6 +77,23 @@ test("Console route owner normalizes aliases and trailing slashes", () => {
   assert.deepEqual(parseConsoleRoute("/console/gateway/keys/"), parseConsoleRoute("/console/api/keys"));
 });
 
+test("Console entry aliases share all metadata with their canonical overview routes", () => {
+  for (const [aliasPath, canonicalPath] of [
+    ["/console", "/console/overview"],
+    ["/admin", "/admin/overview"]
+  ] as const) {
+    const aliasRoute = parseConsoleRoute(aliasPath);
+    const canonicalRoute = parseConsoleRoute(canonicalPath);
+    assert.ok(aliasRoute);
+    assert.ok(canonicalRoute);
+    const { path: normalizedAliasPath, ...aliasMetadata } = aliasRoute;
+    const { path: normalizedCanonicalPath, ...canonicalMetadata } = canonicalRoute;
+    assert.equal(normalizedAliasPath, aliasPath);
+    assert.equal(normalizedCanonicalPath, canonicalPath);
+    assert.deepEqual(aliasMetadata, canonicalMetadata);
+  }
+});
+
 test("Console route owner rejects unknown or malformed paths without guessing", () => {
   for (const path of [
     "/console/unknown",
