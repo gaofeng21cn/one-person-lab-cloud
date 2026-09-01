@@ -42,24 +42,31 @@ const (
 )
 
 const (
-	errComputePartialMachineMissing contracts.ErrorCode = "compute_provider_partial_identity_machine_missing"
-	errComputePartialCVMMissing     contracts.ErrorCode = "compute_provider_partial_identity_cvm_missing"
-	errCBSCardinalityMismatch       contracts.ErrorCode = "tencent_cbs_readback_cardinality_mismatch"
-	errCBSDiskIDMismatch            contracts.ErrorCode = "tencent_cbs_readback_disk_id_mismatch"
-	errCBSDiskNameMismatch          contracts.ErrorCode = "tencent_cbs_readback_disk_name_mismatch"
-	errCBSDiskUsageMismatch         contracts.ErrorCode = "tencent_cbs_readback_disk_usage_mismatch"
-	errCBSDiskStateMissing          contracts.ErrorCode = "tencent_cbs_readback_disk_state_missing"
-	errCBSTagDuplicate              contracts.ErrorCode = "tencent_cbs_readback_tag_duplicate"
-	errCBSAccountTagMismatch        contracts.ErrorCode = "tencent_cbs_readback_opl_account_id_tag_mismatch"
-	errCBSWorkspaceTagMismatch      contracts.ErrorCode = "tencent_cbs_readback_opl_workspace_id_tag_mismatch"
-	errCBSResourceTagMismatch       contracts.ErrorCode = "tencent_cbs_readback_opl_resource_id_tag_mismatch"
-	errCBSOperationTagMismatch      contracts.ErrorCode = "tencent_cbs_readback_opl_operation_id_tag_mismatch"
-	errCBSChargeTypeMismatch        contracts.ErrorCode = "tencent_cbs_readback_charge_type_mismatch"
-	errCBSRenewFlagMismatch         contracts.ErrorCode = "tencent_cbs_readback_renew_flag_mismatch"
-	errCBSDiskTypeMismatch          contracts.ErrorCode = "tencent_cbs_readback_disk_type_mismatch"
-	errCBSSizeMismatch              contracts.ErrorCode = "tencent_cbs_readback_size_mismatch"
-	errCBSZoneMismatch              contracts.ErrorCode = "tencent_cbs_readback_zone_mismatch"
-	errCBSDeadlineMissing           contracts.ErrorCode = "tencent_cbs_readback_deadline_missing"
+	errComputePartialMachineMissingTKEInstanceMissing   contracts.ErrorCode = "compute_provider_partial_identity_machine_missing_tke_instance_missing"
+	errComputePartialMachineMissingTKEInstanceAmbiguous contracts.ErrorCode = "compute_provider_partial_identity_machine_missing_tke_instance_ambiguous"
+	errComputePartialMachineMissingTKEIdentityMismatch  contracts.ErrorCode = "compute_provider_partial_identity_machine_missing_tke_instance_identity_mismatch"
+	errComputePartialMachineMissingTKEWrongPool         contracts.ErrorCode = "compute_provider_partial_identity_machine_missing_tke_instance_wrong_pool"
+	errComputePartialMachineInventoryMissing            contracts.ErrorCode = "compute_provider_partial_identity_machine_missing_machine_inventory_missing"
+	errComputePartialCVMMissing                         contracts.ErrorCode = "compute_provider_partial_identity_cvm_missing"
+	errCBSCardinalityMismatch                           contracts.ErrorCode = "tencent_cbs_readback_cardinality_mismatch"
+	errCBSDiskIDMismatch                                contracts.ErrorCode = "tencent_cbs_readback_disk_id_mismatch"
+	errCBSDiskNameMismatch                              contracts.ErrorCode = "tencent_cbs_readback_disk_name_mismatch"
+	errCBSDiskUsageMismatch                             contracts.ErrorCode = "tencent_cbs_readback_disk_usage_mismatch"
+	errCBSDiskStateMissing                              contracts.ErrorCode = "tencent_cbs_readback_disk_state_missing"
+	errCBSTagDuplicate                                  contracts.ErrorCode = "tencent_cbs_readback_tag_duplicate"
+	errCBSAccountTagMismatch                            contracts.ErrorCode = "tencent_cbs_readback_opl_account_id_tag_mismatch"
+	errCBSWorkspaceTagMismatch                          contracts.ErrorCode = "tencent_cbs_readback_opl_workspace_id_tag_mismatch"
+	errCBSResourceTagMismatch                           contracts.ErrorCode = "tencent_cbs_readback_opl_resource_id_tag_mismatch"
+	errCBSOperationTagMismatch                          contracts.ErrorCode = "tencent_cbs_readback_opl_operation_id_tag_mismatch"
+	errCBSChargeTypeMismatch                            contracts.ErrorCode = "tencent_cbs_readback_charge_type_mismatch"
+	errCBSRenewFlagMissing                              contracts.ErrorCode = "tencent_cbs_readback_renew_flag_missing"
+	errCBSRenewFlagAutoRenew                            contracts.ErrorCode = "tencent_cbs_readback_renew_flag_auto_renew"
+	errCBSRenewFlagManualNotifyOff                      contracts.ErrorCode = "tencent_cbs_readback_renew_flag_manual_renew_notify_disabled"
+	errCBSRenewFlagUnknown                              contracts.ErrorCode = "tencent_cbs_readback_renew_flag_unknown"
+	errCBSDiskTypeMismatch                              contracts.ErrorCode = "tencent_cbs_readback_disk_type_mismatch"
+	errCBSSizeMismatch                                  contracts.ErrorCode = "tencent_cbs_readback_size_mismatch"
+	errCBSZoneMismatch                                  contracts.ErrorCode = "tencent_cbs_readback_zone_mismatch"
+	errCBSDeadlineMissing                               contracts.ErrorCode = "tencent_cbs_readback_deadline_missing"
 )
 
 func TestMain(m *testing.M) {
@@ -3721,17 +3728,22 @@ func TestTencentSDKSyncComputeAllocationClassifiesTheMissingProviderIdentitySide
 			Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11",
 		},
 	}
+	zeroMachines := int64(0)
 	for _, test := range []struct {
-		name        string
-		tkeReplicas int64
-		cvmMissing  bool
-		wantCode    contracts.ErrorCode
+		name       string
+		tke        *fakeNativeTkeAPI
+		cvmMissing bool
+		wantCode   contracts.ErrorCode
 	}{
-		{name: "Machine missing", tkeReplicas: 0, wantCode: errComputePartialMachineMissing},
-		{name: "CVM missing", tkeReplicas: 1, cvmMissing: true, wantCode: errComputePartialCVMMissing},
+		{name: "TKE instance missing", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic"}, wantCode: errComputePartialMachineMissingTKEInstanceMissing},
+		{name: "Machine inventory missing", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, machineReplicas: &zeroMachines}, wantCode: errComputePartialMachineInventoryMissing},
+		{name: "TKE instance in wrong pool", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, machineReplicas: &zeroMachines, machinePoolIds: []string{"np-other"}}, wantCode: errComputePartialMachineMissingTKEWrongPool},
+		{name: "TKE identity mismatch", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, machineReplicas: &zeroMachines, clusterNativeInstanceID: "ins-other"}, wantCode: errComputePartialMachineMissingTKEIdentityMismatch},
+		{name: "TKE identity ambiguous", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 2, machineReplicas: &zeroMachines, clusterInstanceID: "node-basic-1"}, wantCode: errComputePartialMachineMissingTKEInstanceAmbiguous},
+		{name: "CVM missing", tke: &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1}, cvmMissing: true, wantCode: errComputePartialCVMMissing},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			client := newFakeTencentSDKClient(&fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: test.tkeReplicas})
+			client := newFakeTencentSDKClient(test.tke)
 			client.nativeCvmClient = &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags(), empty: test.cvmMissing}
 			response := client.SyncComputeAllocation(request, nil)
 			if response.Ok || contracts.ErrorCode(response.ErrorCode) != test.wantCode || response.MutationCount != 0 {
@@ -4777,7 +4789,7 @@ func TestTencentSDKStorageVolumeReadbackFailsClosedOnBillingOrIdentityMismatch(t
 		{name: "wrong resource tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_resource_id": "storage-other"} }, wantCode: errCBSResourceTagMismatch},
 		{name: "wrong operation tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_operation_id": "op-other"} }, wantCode: errCBSOperationTagMismatch},
 		{name: "postpaid", configure: func(api *fakeNativeCbsAPI) { api.diskChargeType = "POSTPAID_BY_HOUR" }, wantCode: errCBSChargeTypeMismatch},
-		{name: "auto renew", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "NOTIFY_AND_AUTO_RENEW" }, wantCode: errCBSRenewFlagMismatch},
+		{name: "auto renew", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "NOTIFY_AND_AUTO_RENEW" }, wantCode: errCBSRenewFlagAutoRenew},
 		{name: "wrong type", configure: func(api *fakeNativeCbsAPI) { api.diskType = "CLOUD_SSD" }, wantCode: errCBSDiskTypeMismatch},
 		{name: "wrong size", configure: func(api *fakeNativeCbsAPI) { api.diskSize = 20 }, wantCode: errCBSSizeMismatch},
 		{name: "wrong zone", configure: func(api *fakeNativeCbsAPI) { api.zone = "ap-guangzhou-4" }, wantCode: errCBSZoneMismatch},
@@ -4792,6 +4804,25 @@ func TestTencentSDKStorageVolumeReadbackFailsClosedOnBillingOrIdentityMismatch(t
 				StorageInput{Id: "disk-storage-alpha", SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD"}), nil)
 			if response.Ok || contracts.ErrorCode(response.ErrorCode) != tc.wantCode || response.MutationCount != 0 {
 				t.Fatalf("mismatched CBS readback=%#v wantCode=%q", response, tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestCBSRenewFlagMismatchCodeClassifiesOnlyBoundedProviderValues(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		renewFlag string
+		wantCode  contracts.ErrorCode
+	}{
+		{name: "missing", wantCode: errCBSRenewFlagMissing},
+		{name: "automatic", renewFlag: "NOTIFY_AND_AUTO_RENEW", wantCode: errCBSRenewFlagAutoRenew},
+		{name: "manual without notification", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW", wantCode: errCBSRenewFlagManualNotifyOff},
+		{name: "unknown", renewFlag: "provider-new-value", wantCode: errCBSRenewFlagUnknown},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := contracts.ErrorCode(cbsRenewFlagMismatchCode(test.renewFlag)); got != test.wantCode {
+				t.Fatalf("renew flag code=%q want=%q", got, test.wantCode)
 			}
 		})
 	}
