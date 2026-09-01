@@ -50,6 +50,12 @@ Current truth starts from [the docs index](../README.md),
   the route single-source-of-truth design, execution, and local verification
   retained as historical evidence; these records do not define current product,
   deployment, or production state.
+- [Console Workspace Task Experience UX-02A design, 2026-09-01](./2026-09-01-console-workspace-task-experience-design.md),
+  [implementation plan](./2026-09-01-console-workspace-task-experience-implementation-plan.md),
+  and [local verification](./2026-09-01-console-workspace-task-experience-verification.md):
+  the purchase-to-entry customer task design, execution, and local verification
+  retained as historical evidence; these records do not define current product,
+  deployment, Instance, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
