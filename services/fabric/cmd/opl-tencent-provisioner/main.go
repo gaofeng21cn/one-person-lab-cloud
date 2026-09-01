@@ -39,6 +39,14 @@ var requiredTencentEnv = []string{
 var errCVMInstanceNotFound = errors.New("CVM instance not found")
 var errTKEInstanceNotFound = errors.New("TKE instance not found")
 
+type cbsReadbackValidationError struct {
+	code string
+}
+
+func (err cbsReadbackValidationError) Error() string {
+	return err.code
+}
+
 const tkeListPageLimit int64 = 100
 const nodePoolBootstrapMutationConfirmation = "CREATE_MISSING_WORKSPACE_NODEPOOLS"
 const nodePoolTaintMigrationMutationConfirmation = "MIGRATE_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS"
@@ -2107,12 +2115,12 @@ func (client *tencentSDKClient) storageVolumeReadback(request Request, allowAbse
 		return storageDestroyResponseEvidence(Response{Ok: true, StorageVolumeId: storage.Id, CBSStatus: "NOT_FOUND", Status: "external_deleted", ProviderRequestId: requestID, ProviderData: map[string]string{"storageVolumeId": storage.Id, "cbsStatus": "NOT_FOUND", "describeCbsRequestId": requestID, "region": client.region}}, "absence_confirmed", 0)
 	}
 	if result == nil || result.Response == nil || result.Response.TotalCount == nil || *result.Response.TotalCount != 1 || len(result.Response.DiskSet) != 1 || result.Response.DiskSet[0] == nil {
-		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_mismatch", Message: "Tencent CBS readback must return exactly one disk.", ProviderRequestId: requestID, Retryable: true}
+		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_cardinality_mismatch", Message: "Tencent CBS readback must return exactly one disk.", ProviderRequestId: requestID, Retryable: true}
 	}
 	disk := result.Response.DiskSet[0]
 	facts, err := validateCBSVolume(disk, storage, request.Tags)
 	if err != nil {
-		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_mismatch", Message: "Tencent CBS billing or identity facts do not match the requested volume.", ProviderRequestId: requestID, Retryable: true}
+		return Response{Ok: false, ErrorCode: cbsReadbackValidationErrorCode(err), Message: "Tencent CBS billing or identity facts do not match the requested volume.", ProviderRequestId: requestID, Retryable: true}
 	}
 	state := stringValue(disk.DiskState)
 	facts["describeCbsRequestId"] = requestID
@@ -2159,7 +2167,7 @@ func (client *tencentSDKClient) DestroyStorageVolume(request Request, env map[st
 	for attempt := 1; attempt <= detachAttempts; attempt++ {
 		current = client.storageVolumeReadback(request, true)
 		if !current.Ok {
-			if current.ErrorCode == "tencent_cbs_readback_mismatch" {
+			if strings.HasPrefix(current.ErrorCode, "tencent_cbs_readback_") {
 				current.Retryable = false
 			}
 			return storageDestroyResponseEvidence(current, "precondition_unconfirmed", 0)
@@ -2263,7 +2271,7 @@ func validCBSOwnershipTags(tags map[string]string) bool {
 
 func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags map[string]string) (map[string]string, error) {
 	if disk == nil || !validCBSReadbackInput(storage, expectedTags) {
-		return nil, fmt.Errorf("CBS identity is missing")
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_identity_missing"}
 	}
 	zone := ""
 	if disk.Placement != nil {
@@ -2277,19 +2285,35 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 		}
 		key := stringValue(tag.Key)
 		if _, duplicate := actualTags[key]; duplicate {
-			return nil, fmt.Errorf("CBS ownership tag is duplicated")
+			return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_tag_duplicate"}
 		}
 		actualTags[key] = stringValue(tag.Value)
 	}
-	if stringValue(disk.DiskId) != storage.Id || stringValue(disk.DiskName) != expectedTags["opl_resource_id"] || stringValue(disk.DiskUsage) != "DATA_DISK" ||
-		strings.TrimSpace(stringValue(disk.DiskState)) == "" || stringValue(disk.DiskChargeType) != "PREPAID" ||
-		stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW" || stringValue(disk.DiskType) != storage.DiskType ||
-		disk.DiskSize == nil || *disk.DiskSize != storage.SizeGB || zone != storage.Zone || deadline == "" {
-		return nil, fmt.Errorf("CBS billing or identity facts mismatch")
+	switch {
+	case stringValue(disk.DiskId) != storage.Id:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_id_mismatch"}
+	case stringValue(disk.DiskName) != expectedTags["opl_resource_id"]:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_name_mismatch"}
+	case stringValue(disk.DiskUsage) != "DATA_DISK":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_usage_mismatch"}
+	case strings.TrimSpace(stringValue(disk.DiskState)) == "":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_state_missing"}
+	case stringValue(disk.DiskChargeType) != "PREPAID":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_charge_type_mismatch"}
+	case stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_renew_flag_mismatch"}
+	case stringValue(disk.DiskType) != storage.DiskType:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_type_mismatch"}
+	case disk.DiskSize == nil || *disk.DiskSize != storage.SizeGB:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_size_mismatch"}
+	case zone != storage.Zone:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_zone_mismatch"}
+	case deadline == "":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_deadline_missing"}
 	}
 	for _, key := range cbsOwnershipTagKeys {
 		if actualTags[key] != expectedTags[key] {
-			return nil, fmt.Errorf("CBS ownership tag mismatch")
+			return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_" + key + "_tag_mismatch"}
 		}
 	}
 	facts := map[string]string{
@@ -2301,6 +2325,14 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 		facts[key] = actualTags[key]
 	}
 	return facts, nil
+}
+
+func cbsReadbackValidationErrorCode(err error) string {
+	var mismatch cbsReadbackValidationError
+	if errors.As(err, &mismatch) && strings.HasPrefix(mismatch.code, "tencent_cbs_readback_") {
+		return mismatch.code
+	}
+	return "tencent_cbs_readback_mismatch"
 }
 
 func (client *tencentSDKClient) RenewComputeAllocation(request Request, _ map[string]string) Response {
@@ -3843,7 +3875,11 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		}
 	}
 	if machine == nil || cvm.Status == "external_deleted" {
-		return Response{Ok: false, ErrorCode: "compute_provider_partial_identity", Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
+		code := "compute_provider_partial_identity_machine_missing"
+		if machine != nil {
+			code = "compute_provider_partial_identity_cvm_missing"
+		}
+		return Response{Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
