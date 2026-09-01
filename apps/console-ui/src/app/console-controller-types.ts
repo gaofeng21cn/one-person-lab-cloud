@@ -29,8 +29,6 @@ import type {
   PricingCatalogResponse,
   PricingPlan,
   SourceEnvelope,
-  CreateSupportTicketMappingRequest,
-  SupportTicketPageDTO,
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
@@ -109,7 +107,7 @@ export interface OperatorResourceReadController {
 export type AuthStatus = "public" | "checking" | "ready" | "error" | "logout_pending" | "logout_unconfirmed";
 export type BillingView = "terms" | "receipts";
 export type WorkspaceLaunchStep = "configure" | "confirm";
-export type GlobalSlide = "account" | "support" | "";
+export type GlobalSlide = "account" | "";
 
 export interface WorkspaceSecretController {
   credential: WorkspaceCredentialAccess | null;
@@ -192,15 +190,6 @@ export interface WorkspaceRenewalController {
 export interface WorkspaceBudgetController {
   busy: boolean;
   update: (input: WorkspaceGatewayBudgetUpdateRequest) => Promise<boolean>;
-}
-
-export interface SupportController {
-  tickets: SupportTicketPageDTO | null;
-  loading: boolean;
-  error: string;
-  busy: boolean;
-  load: () => Promise<SupportTicketPageDTO | null>;
-  createMapping: (input: Omit<CreateSupportTicketMappingRequest, "accountId">) => Promise<boolean>;
 }
 
 export interface WalletAdjustmentController {

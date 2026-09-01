@@ -465,22 +465,8 @@ a {
   font-weight: 620;
 }
 
-.side-subnav {
-  display: grid;
-  gap: 2px;
-}
-
-.side-subnav a {
-  gap: 10px;
-  font-weight: 600;
-}
-
 .operator-root svg:last-child {
   margin-left: auto;
-}
-
-.operator-nav .side-subnav a {
-  padding-left: 38px;
 }
 
 .side-nav a:focus-visible,
@@ -2240,8 +2226,7 @@ tbody tr:last-child td {
     flex-basis: 44px;
   }
 
-  .sidebar .brand,
-  .side-subnav a {
+  .sidebar .brand {
     min-height: 44px;
   }
 
@@ -4817,58 +4802,6 @@ select:focus-visible,
   gap: 8px;
 }
 
-.support-slide-content,
-.support-ticket-list,
-.support-mapping-form {
-  display: grid;
-  gap: 12px;
-}
-
-.support-slide-toolbar,
-.support-ticket > header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.support-slide-toolbar p {
-  margin: 0;
-  color: #b8c6d2;
-}
-
-.support-mapping-form {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 14px;
-  border: 1px solid var(--navy-line);
-  border-radius: 8px;
-}
-
-.support-mapping-form > :nth-child(5),
-.support-mapping-form > :nth-child(7),
-.support-mapping-form > button {
-  grid-column: 1 / -1;
-}
-
-.support-ticket {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--navy-line);
-  border-radius: 8px;
-}
-
-.support-ticket > header > div {
-  display: grid;
-  gap: 3px;
-}
-
-.support-ticket > header span,
-.support-ticket a {
-  color: #b8c6d2;
-  overflow-wrap: anywhere;
-}
-
 .keys-panel {
   display: grid;
   min-width: 0;
@@ -5359,8 +5292,8 @@ select:focus-visible,
     display: none;
   }
 
-  .mobile-bottom-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+  .mobile-bottom-nav:not(.admin-mobile-nav) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .global-slide {
@@ -5381,14 +5314,6 @@ select:focus-visible,
 
   .global-slide .account-band-action {
     justify-content: flex-end;
-  }
-
-  .support-mapping-form {
-    grid-template-columns: 1fr;
-  }
-
-  .support-mapping-form > * {
-    grid-column: auto;
   }
 
   .keys-panel__header {
@@ -5561,13 +5486,6 @@ textarea:focus-visible,
   background: var(--action-soft);
   color: var(--action);
   font-weight: 680;
-}
-
-.side-subnav a {
-  min-height: 36px;
-  padding-left: 44px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .operator-nav {
@@ -5973,15 +5891,33 @@ textarea:focus-visible,
 }
 
 .global-slide .account-band-copy h2,
-.global-slide .data-list dd,
-.global-slide .support-ticket strong {
+.global-slide .data-list dd {
   color: var(--ink);
 }
 
-.global-slide .data-list dt,
-.global-slide .support-slide-toolbar p,
-.global-slide .support-ticket span {
+.global-slide .data-list dt {
   color: var(--muted);
+}
+
+.account-technical-details {
+  width: 100%;
+}
+
+.account-technical-details summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--action);
+  font-weight: 680;
+  line-height: 44px;
+}
+
+.account-technical-details[open] .data-list {
+  margin-top: 8px;
+}
+
+.account-technical-details code {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .mobile-bottom-nav a.active,

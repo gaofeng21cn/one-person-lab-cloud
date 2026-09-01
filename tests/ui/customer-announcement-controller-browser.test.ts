@@ -472,8 +472,8 @@ test("Customer Announcement session reset admits a new claim and rejects stale c
     await login(page, demo.origin);
     await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
     await oldRequestHeld.promise;
-    await page.getByRole("button", { name: "打开账号菜单", exact: true }).click();
-    await page.getByRole("complementary", { name: "Account Settings" }).getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.getByRole("button", { name: "账号信息", exact: true }).first().click();
+    await page.getByRole("complementary", { name: "账号信息" }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForFunction(() => window.location.pathname === "/");
     await page.locator(".public-nav").getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/login$/);

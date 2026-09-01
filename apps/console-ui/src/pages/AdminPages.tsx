@@ -459,7 +459,6 @@ function AccountDetailModal({ account, onClose }: { account: OperatorAccountDTO 
             <div><dt>Key 汇总</dt><dd><SourceValue source={account.keyCount}>{formatCount}</SourceValue></dd></div>
             <div><dt>API Usage</dt><dd><SourceValue source={account.usage}>{(data) => `今日 ${formatUsdMicros(data.todayActualCostUsdMicros)} · 累计 ${formatUsdMicros(data.totalActualCostUsdMicros)}`}</SourceValue></dd></div>
             <div><dt>Workspace 汇总</dt><dd><SourceValue source={account.workspaceCount}>{formatCount}</SourceValue></dd></div>
-            <div><dt>Support 工单映射</dt><dd>暂不可用</dd></div>
           </dl></section>
           <section className="data-section account-source-detail"><h2>来源状态与读回时间</h2><AccountSourceSummary account={account} /></section>
         </div>

@@ -29,7 +29,6 @@ import type {
   OperatorAnnouncementController,
   OperatorResourceReadController,
   RemoteState,
-  SupportController,
   WalletAdjustmentController,
   WorkspaceBudgetController,
   WorkspaceDeleteController,
@@ -59,7 +58,6 @@ import { useWorkspaceRenewalController } from "./use-workspace-renewal-controlle
 import { useWorkspaceRuntimeImageReplacementController } from "./use-workspace-runtime-image-replacement-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
-import { useSupportController } from "./use-support-controller.ts";
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
 
@@ -175,7 +173,6 @@ export function useConsoleController() {
 
   const resetConsoleState = () => {
     workspaceSecretCapability.reset();
-    supportCapability.reset();
     setSources(initialSources());
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
@@ -389,15 +386,6 @@ export function useConsoleController() {
     mutationError
   });
   const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
-
-  const supportCapability = useSupportController({
-    session,
-    currentMutationRequest,
-    flash,
-    friendlyError,
-    mutationError
-  });
-  const support: SupportController = supportCapability;
 
   const workspaceImageReleaseCapability = useWorkspaceImageReleaseController({
     session,
@@ -704,10 +692,7 @@ export function useConsoleController() {
     sidebarOpen,
     setSidebarOpen,
     globalSlide,
-    setGlobalSlide: (slide: GlobalSlide) => {
-      setGlobalSlide(slide);
-      if (slide === "support") void support.load();
-    },
+    setGlobalSlide: (slide: GlobalSlide) => setGlobalSlide(slide),
     submitLogin,
     signOut,
     refreshCurrentPage,
@@ -721,7 +706,6 @@ export function useConsoleController() {
     workspaceRenewalBusy: workspaceRenewal.busy,
     workspaceRenewalIssue: workspaceRenewal.issue,
     updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
-    support,
     workspaceSecrets,
     workspaceBudgetBusy: workspaceBudget.busy,
     updateWorkspaceBudget: workspaceBudget.update,
