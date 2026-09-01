@@ -406,7 +406,7 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
     assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 1, runtimeReads: 1, budgetReads: 1 });
 
     await page.getByRole("button", { name: "轮换密码", exact: true }).click();
-    await page.getByText("Workspace 凭证已轮换", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("登录密码已轮换", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("heading", { name: refreshedWorkspace.name!, exact: true }).waitFor();
     await page.getByRole("link", { name: refreshedRuntime.url!, exact: true }).waitFor();
     await page.locator(".workspace-budget-panel .data-list > div")

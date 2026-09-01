@@ -213,7 +213,12 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     await page.unroute("**/api/workspaces/ws-1/runtime-credentials/reveal");
     const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await currentPasswordRow.getByRole("button", { name: "显示", exact: true }).click();
-    await currentPasswordRow.locator("code").waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
+      const row = rows.find((candidate) => candidate.textContent?.includes("登录密码"));
+      const value = row?.querySelector("code")?.textContent || "";
+      return Boolean(value) && !value.includes("••");
+    });
     const currentPassword = String(await currentPasswordRow.locator("code").textContent());
     assert.ok(currentPassword && !currentPassword.includes("••"));
     assert.notEqual(currentPassword, lateResponse.access.password);
@@ -231,7 +236,7 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
         && new URL(request.url()).pathname === "/api/workspaces/ws-1/gateway-budget";
     });
     await page.getByRole("button", { name: "轮换密码", exact: true }).click();
-    await page.getByText("Workspace 凭证已轮换", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("登录密码已轮换", { exact: true }).waitFor({ state: "visible" });
     await Promise.all([rotationDetailReadback, rotationRuntimeReadback, rotationBudgetReadback]);
     await page.waitForFunction((previousPassword) => {
       const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];

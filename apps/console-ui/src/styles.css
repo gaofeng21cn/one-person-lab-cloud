@@ -2684,11 +2684,30 @@ tbody tr:last-child td {
   display: flex;
   min-height: 52px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--ink);
   cursor: pointer;
   padding: 0 18px;
   font-size: 14px;
   font-weight: 680;
+}
+
+.workspace-settings-panel summary:focus-visible,
+.workspace-technical-panel summary:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+.workspace-settings-panel summary > svg,
+.workspace-technical-panel summary > svg {
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.workspace-settings-panel details[open] > summary > svg,
+.workspace-technical-panel details[open] > summary > svg {
+  transform: rotate(180deg);
 }
 
 .workspace-settings-panel details[open] > summary,
@@ -4209,7 +4228,9 @@ select:focus-visible,
   .overview-receipt-list > button,
   .billing-list-mobile > button,
   .compact-announcement-list article,
-  .key-filter-disclosure > summary svg {
+  .key-filter-disclosure > summary svg,
+  .workspace-settings-panel summary > svg,
+  .workspace-technical-panel summary > svg {
     animation-duration: 1ms !important;
     transition-duration: 1ms !important;
   }

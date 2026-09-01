@@ -6,9 +6,12 @@ import { chromium, type Page } from "playwright";
 import type {
   PricingCatalogResponse,
   PricingPreviewResponse,
+  RuntimeCredentialResponse,
   SourceEnvelope,
+  WorkspaceDTO,
   WorkspaceListData,
-  WorkspaceLaunchResponse
+  WorkspaceLaunchResponse,
+  WorkspaceRuntimeDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -178,6 +181,15 @@ async function visibleTextCount(page: Page, value: string | RegExp) {
   return visible;
 }
 
+async function focusByKeyboard(page: Page, selector: string) {
+  const target = page.locator(selector);
+  for (let index = 0; index < 40; index += 1) {
+    await page.keyboard.press("Tab");
+    if (await target.evaluate((element) => document.activeElement === element)) return target;
+  }
+  assert.fail(`keyboard focus did not reach ${selector}`);
+}
+
 async function assertTechnicalEvidenceClosed(page: Page) {
   for (const value of [
     "operation ID",
@@ -259,6 +271,39 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
     await technical.getByText("workspace_delete_unavailable", { exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(audit.consoleErrors, ["Failed to load resource: the server responded with a status of 405 (Method Not Allowed)"]);
     audit.consoleErrors.length = 0;
+    assertBrowserAuditClean(audit);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Workspace credential mismatch uses customer terminology", { timeout: 30_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    const audit = await installBrowserAudit(page, demo.origin);
+    const mismatchedCredential: RuntimeCredentialResponse = {
+      workspaceId: "ws-other",
+      access: {
+        account: "opl",
+        username: "opl",
+        password: "mismatched-password",
+        credentialStatus: "configured",
+        credentialVersion: "1"
+      }
+    };
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1/runtime-credentials/reveal", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mismatchedCredential) });
+    });
+
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+    const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
+    await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+    await page.getByText("登录凭据暂不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await visibleTextCount(page, "Workspace 凭证暂不可用"), 0);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -466,7 +511,54 @@ test("readback refresh retains the succeeded launch and retries only authoritati
 async function verifyWorkspaceDetailExperience() {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
-  const expectedRuntimeUrl = "https://workspace.example.invalid/w/ws-1/";
+  const workspaceDtoUrl = "https://dto-entry.example.invalid/w/ws-1/";
+  const expectedRuntimeUrl = "https://runtime-entry.example.invalid/w/ws-1/";
+  const workspaceDetail: SourceEnvelope<WorkspaceDTO> = {
+    source: "control-plane",
+    status: "available",
+    available: true,
+    fetchedAt: "2026-09-01T00:00:00Z",
+    data: {
+      id: "ws-1",
+      ownerAccountId: "acct-1",
+      ownerUserId: "user-customer",
+      state: "running",
+      createdAt: "2026-07-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z",
+      name: "Pilot Workspace",
+      url: workspaceDtoUrl,
+      packageId: "basic",
+      storageGb: 10,
+      autoRenew: false,
+      priceVersion: "pilot-usd-2026-07-v1",
+      currency: "USD",
+      totalUsdMicros: 52_580_000,
+      periodStart: "2026-07-01T00:00:00Z",
+      paidThrough: "2026-08-01T00:00:00Z",
+      renewalStatus: "manual",
+      workspaceApiKeyId: "9"
+    }
+  };
+  const workspaceRuntime: SourceEnvelope<WorkspaceRuntimeDTO> = {
+    source: "fabric",
+    status: "available",
+    available: true,
+    fetchedAt: "2026-09-01T00:00:00Z",
+    data: {
+      workspaceId: "ws-1",
+      status: "running",
+      ready: true,
+      runtimeId: "runtime-ws-1",
+      url: expectedRuntimeUrl,
+      serviceName: "runtime-ws-1",
+      checks: [{ name: "ready_pod_uses_retained_pvc", ok: true }],
+      access: {
+        username: "opl",
+        credentialStatus: "configured",
+        credentialVersion: "1"
+      }
+    }
+  };
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({
@@ -475,10 +567,24 @@ async function verifyWorkspaceDetailExperience() {
       });
       const page = await context.newPage();
       const audit = await installBrowserAudit(page, demo.origin);
+      await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1", async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(workspaceDetail) });
+          return;
+        }
+        await route.fallback();
+      });
+      await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1/runtime-status", async (route) => {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(workspaceRuntime) });
+      });
       await page.addInitScript({ content: `
-        window.openedWorkspaceUrl = "";
-        window.open = (url) => {
-          window.openedWorkspaceUrl = String(url || "");
+        window.openedWorkspace = null;
+        window.open = (url, target, features) => {
+          window.openedWorkspace = {
+            url: String(url || ""),
+            target: String(target || ""),
+            features: String(features || "")
+          };
           return null;
         };
       ` });
@@ -495,7 +601,15 @@ async function verifyWorkspaceDetailExperience() {
       const openWorkspace = identity.getByRole("button", { name: "打开工作空间", exact: true });
       assert.equal(await openWorkspace.isEnabled(), true);
       await openWorkspace.click();
-      assert.equal(await page.evaluate(() => (window as Window & { openedWorkspaceUrl?: string }).openedWorkspaceUrl), expectedRuntimeUrl);
+      const openedWorkspace = await page.evaluate(() => (window as Window & {
+        openedWorkspace?: { url: string; target: string; features: string } | null;
+      }).openedWorkspace);
+      assert.deepEqual(openedWorkspace, {
+        url: expectedRuntimeUrl,
+        target: "_blank",
+        features: "noopener,noreferrer"
+      });
+      assert.notEqual(openedWorkspace?.url, workspaceDtoUrl);
 
       const access = page.locator(".workspace-access-panel");
       await access.getByText("登录账号", { exact: true }).waitFor({ state: "visible" });
@@ -506,16 +620,38 @@ async function verifyWorkspaceDetailExperience() {
       const passwordRow = access.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
       const keyRow = access.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
       await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+      await page.waitForFunction(() => {
+        const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
+        const row = rows.find((candidate) => candidate.textContent?.includes("登录密码"));
+        const value = row?.querySelector("code")?.textContent || "";
+        return Boolean(value) && !value.includes("••");
+      });
       const password = String(await passwordRow.locator("code").textContent());
       assert.ok(password && !password.includes("••"));
       await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
-      await page.getByText("Workspace 密码已复制", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("登录密码已复制", { exact: true }).waitFor({ state: "visible" });
       await keyRow.getByRole("button", { name: "显示", exact: true }).click();
+      await page.waitForFunction(() => {
+        const rows = [...document.querySelectorAll(".workspace-access-panel .data-list > div")];
+        const row = rows.find((candidate) => candidate.textContent?.includes("API 密钥"));
+        const value = row?.querySelector("code")?.textContent || "";
+        return Boolean(value) && !value.includes("••");
+      });
       const key = String(await keyRow.locator("code").textContent());
       assert.ok(key && !key.includes("••"));
       await keyRow.getByRole("button", { name: "复制", exact: true }).click();
-      await page.getByText("Workspace Key 已复制", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("API 密钥已复制", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByText(password, { exact: true }).count(), 0);
+
+      const renewal = page.locator(".workspace-plan-panel");
+      await renewal.getByRole("heading", { name: "续费与存储", exact: true }).waitFor({ state: "visible" });
+      await renewal.getByText("续费方式", { exact: true }).waitFor({ state: "visible" });
+      await renewal.getByText("手动续费", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await renewal.getByText("自动续费", { exact: true }).count(), 0);
+      assert.equal(await renewal.getByRole("checkbox").count(), 0);
+      assert.equal(await visibleTextCount(page, "BASIC"), 1);
+      assert.equal(await visibleTextCount(page, "$52.58"), 1);
+      assert.equal(await visibleTextCount(page, "2026/08/01"), 1);
 
       for (const hidden of [
         "Runtime ready",
@@ -532,15 +668,40 @@ async function verifyWorkspaceDetailExperience() {
 
       const advanced = page.locator("details.workspace-advanced-details");
       assert.equal(await advanced.getAttribute("open"), null);
-      await advanced.getByText("高级设置", { exact: true }).click();
+      const advancedSummary = advanced.locator("summary");
+      const advancedChevron = advancedSummary.locator("svg.lucide-chevron-down");
+      assert.equal(await advancedChevron.count(), 1);
+      assert.equal(await advancedChevron.getAttribute("aria-hidden"), "true");
+      assert.ok((await advancedSummary.boundingBox())!.height >= 44);
+      await focusByKeyboard(page, "details.workspace-advanced-details > summary");
+      assert.notEqual(await advancedSummary.evaluate((element) => getComputedStyle(element).outlineStyle), "none");
+      await advancedSummary.click();
+      await page.waitForFunction(() => {
+        const chevron = document.querySelector("details.workspace-advanced-details summary svg.lucide-chevron-down");
+        return chevron !== null && getComputedStyle(chevron).transform !== "none";
+      });
+      assert.notEqual(await advancedChevron.evaluate((element) => getComputedStyle(element).transform), "none");
       await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
       await advanced.getByRole("button", { name: "删除 Workspace", exact: true }).waitFor({ state: "visible" });
 
       const technical = page.locator("details.workspace-technical-details");
       assert.equal(await technical.getAttribute("open"), null);
-      await technical.getByText("技术详情", { exact: true }).click();
+      const technicalSummary = technical.locator("summary");
+      const technicalChevron = technicalSummary.locator("svg.lucide-chevron-down");
+      assert.equal(await technicalChevron.count(), 1);
+      assert.equal(await technicalChevron.getAttribute("aria-hidden"), "true");
+      assert.ok((await technicalSummary.boundingBox())!.height >= 44);
+      await focusByKeyboard(page, "details.workspace-technical-details > summary");
+      assert.notEqual(await technicalSummary.evaluate((element) => getComputedStyle(element).outlineStyle), "none");
+      await technicalSummary.click();
+      await page.waitForFunction(() => {
+        const chevron = document.querySelector("details.workspace-technical-details summary svg.lucide-chevron-down");
+        return chevron !== null && getComputedStyle(chevron).transform !== "none";
+      });
+      assert.notEqual(await technicalChevron.evaluate((element) => getComputedStyle(element).transform), "none");
       await technical.getByText("ws-1", { exact: true }).first().waitFor({ state: "visible" });
       await technical.getByText(expectedRuntimeUrl, { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await visibleTextCount(page, workspaceDtoUrl), 0);
       await technical.getByText("ready_pod_uses_retained_pvc", { exact: true }).waitFor({ state: "visible" });
       await technical.getByText("manual", { exact: true }).first().waitFor({ state: "visible" });
 
