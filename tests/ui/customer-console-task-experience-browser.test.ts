@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page } from "playwright";
+import { chromium, type Locator, type Page } from "playwright";
 
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -70,6 +70,27 @@ async function assertNoHorizontalOverflow(page: Page, scope: string) {
     dimensions.scrollWidth <= dimensions.clientWidth,
     `${scope}: horizontal overflow ${dimensions.scrollWidth} > ${dimensions.clientWidth}`
   );
+}
+
+async function visibleExactTextCount(root: Page | Locator, value: string) {
+  const matches = root.getByText(value, { exact: true });
+  const count = await matches.count();
+  assert.ok(count > 0, `${value} should exist in technical disclosure`);
+  let visible = 0;
+  for (let index = 0; index < count; index += 1) {
+    if (await matches.nth(index).isVisible()) visible += 1;
+  }
+  return visible;
+}
+
+async function assertExactTextHidden(root: Page | Locator, values: string[], scope: string) {
+  for (const value of values) {
+    assert.equal(
+      await visibleExactTextCount(root, value),
+      0,
+      `${scope}: ${value} should remain behind technical disclosure`
+    );
+  }
 }
 
 async function openCustomerPath(page: Page, origin: string, path: string, selector: string) {
@@ -143,15 +164,14 @@ test("customer shell exposes four tasks and keeps account internals disclosed", 
 
       const technicalDetails = account.locator("details");
       assert.equal(await technicalDetails.getAttribute("open"), null);
-      for (const value of ["acct-1", "user-customer", "9"]) {
-        assert.equal(await account.getByText(value, { exact: true }).isVisible(), false, `${viewport.name}: ${value} should be disclosed`);
-      }
+      await assertExactTextHidden(account, ["acct-1", "user-customer", "9"], `${viewport.name}: account`);
 
       await technicalDetails.getByText("技术详情", { exact: true }).click();
       assert.notEqual(await technicalDetails.getAttribute("open"), null);
       for (const value of ["Account ID", "acct-1", "Console User ID", "user-customer", "Sub2API User ID", "9", "Session ID", "Session 到期"]) {
         await account.getByText(value, { exact: true }).waitFor({ state: "visible" });
       }
+      await assertNoHorizontalOverflow(page, `${viewport.name}: account technical details`);
 
       assert.equal(supportRequests, 0);
       await context.close();
@@ -189,55 +209,87 @@ test("customer task pages use customer language and disclose technical evidence"
         (await apiNavigation.getByRole("link").allTextContents()).map((value) => value.trim()),
         ["服务信息", "用量", "密钥"]
       );
-      await page.getByRole("heading", { name: "API 地址", exact: true }).waitFor({ state: "visible" });
+      await page.getByText("https://gflabtoken.cn/v1", { exact: true }).waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: API overview`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: API overview`);
 
       await openCustomerPath(page, demo.origin, "/console/api/usage", "[data-slide='C-API-02']");
-      await page.getByRole("heading", { name: "用量记录", exact: true }).waitFor({ state: "visible" });
-      await page.getByLabel("API 密钥").waitFor({ state: "visible" });
+      const usageSurface = viewport.name === "desktop"
+        ? page.locator(".request-table-desktop")
+        : page.locator(".request-list-mobile");
+      await usageSurface.getByText("request-fixture", { exact: true }).waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: API usage`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: API usage`);
 
       await openCustomerPath(page, demo.origin, "/console/api/keys", ".keys-panel");
-      await page.getByRole("heading", { name: "API 密钥", exact: true }).waitFor({ state: "visible" });
-      await page.getByRole("button", { name: "创建 API 密钥", exact: true }).waitFor({ state: "visible" });
-      for (const hidden of ["#11", "openai", "101", "5h / 1d / 7d 消费限额"]) {
-        assert.equal(await page.getByText(hidden, { exact: true }).first().isVisible(), false, `${viewport.name}: ${hidden} should be disclosed`);
-      }
+      const keySurface = viewport.name === "desktop"
+        ? page.locator(".keys-table tbody tr").filter({ hasText: "General fixture key" })
+        : page.locator(".mobile-key-card").filter({ hasText: "General fixture key" });
+      await keySurface.getByText("General fixture key", { exact: true }).waitFor({ state: "visible" });
+      const sortControl = page.locator(".keys-filters .console-field")
+        .filter({ has: page.getByText("排序", { exact: true }) })
+        .locator(".console-select")
+        .getByRole("button");
+      await sortControl.click();
+      assert.deepEqual(
+        (await page.getByRole("option").allTextContents()).map((value) => value.trim()),
+        ["创建时间", "名称", "过期时间", "状态", "最近使用"]
+      );
+      await page.keyboard.press("Escape");
+      const keyTechnicalDetailsCopies = page.locator("details.key-technical-details");
+      await assertExactTextHidden(keyTechnicalDetailsCopies, ["11", "openai", "101", "0"], `${viewport.name}: API keys`);
       await assertCustomerLanguage(page, `${viewport.name}: API keys`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: API keys`);
 
-      const keyTechnicalDetails = page.locator("details.key-technical-details:visible").first();
+      const keyTechnicalDetails = keySurface.locator("details.key-technical-details");
       assert.equal(await keyTechnicalDetails.getAttribute("open"), null);
       await keyTechnicalDetails.getByText("技术详情", { exact: true }).click();
       await keyTechnicalDetails.getByText("11", { exact: true }).waitFor({ state: "visible" });
       await keyTechnicalDetails.getByText("openai", { exact: true }).waitFor({ state: "visible" });
+      await keyTechnicalDetails.getByText("101", { exact: true }).waitFor({ state: "visible" });
+      const concurrencyFact = keyTechnicalDetails.locator(".data-list > div").filter({ hasText: "current concurrency" });
+      await concurrencyFact.locator("dd").getByText("0", { exact: true }).waitFor({ state: "visible" });
+      await assertNoHorizontalOverflow(page, `${viewport.name}: API key technical details`);
 
+      const billingReceiptsLoaded = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/api/billing/receipts"
+          && url.searchParams.get("limit") === "20"
+          && response.ok();
+      });
       await openCustomerPath(page, demo.origin, "/console/billing", ".billing-page");
+      await billingReceiptsLoaded;
       const billingSwitch = page.getByRole("radiogroup", { name: "费用视图" });
       assert.deepEqual(
         (await billingSwitch.getByRole("radio").allTextContents()).map((value) => value.trim()),
         ["订阅与续费", "账单记录"]
       );
-      await page.getByRole("heading", { name: "订阅与续费", exact: true }).waitFor({ state: "visible" });
+      const subscriptionSurface = viewport.name === "desktop"
+        ? page.locator(".billing-table-desktop")
+        : page.locator(".billing-list-mobile");
+      await subscriptionSurface.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByText("Control Plane 当前商业条款", { exact: true }).count(), 0);
       await assertCustomerLanguage(page, `${viewport.name}: fees terms`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: fees terms`);
 
       await billingSwitch.getByRole("radio", { name: "账单记录", exact: true }).click();
       await page.getByRole("heading", { name: "账单记录", exact: true }).waitFor({ state: "visible" });
+      const receiptListSurface = viewport.name === "desktop"
+        ? page.locator(".billing-table-desktop")
+        : page.locator(".billing-list-mobile");
+      await receiptListSurface.getByText(
+        viewport.name === "desktop" ? "Pilot Workspace" : "工作空间开通",
+        { exact: true }
+      ).waitFor({ state: "visible" });
       const receiptButton = viewport.name === "desktop"
-        ? page.locator(".billing-table-desktop").getByRole("button", { name: "查看", exact: true })
-        : page.locator(".billing-list-mobile button").first();
+        ? receiptListSurface.getByRole("button", { name: "查看", exact: true })
+        : receiptListSurface.locator("button").first();
       await receiptButton.click();
       const receiptDetail = page.locator(".receipt-detail");
       await receiptDetail.getByText("工作空间开通", { exact: true }).waitFor({ state: "visible" });
       await receiptDetail.getByText("待确认", { exact: true }).waitFor({ state: "visible" });
       await receiptDetail.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
-      for (const hidden of ["receipt-fixture", "pilot-usd-2026-07-v1", "succeeded"]) {
-        assert.equal(await receiptDetail.getByText(hidden, { exact: true }).isVisible(), false, `${viewport.name}: ${hidden} should be disclosed`);
-      }
+      await assertExactTextHidden(receiptDetail, ["receipt-fixture", "pilot-usd-2026-07-v1", "succeeded"], `${viewport.name}: fees receipts`);
       await assertCustomerLanguage(page, `${viewport.name}: fees receipts`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: fees receipts`);
 
@@ -245,6 +297,8 @@ test("customer task pages use customer language and disclose technical evidence"
       await receiptTechnicalDetails.getByText("技术详情", { exact: true }).click();
       await receiptTechnicalDetails.getByText("receipt-fixture", { exact: true }).waitFor({ state: "visible" });
       await receiptTechnicalDetails.getByText("succeeded", { exact: true }).waitFor({ state: "visible" });
+      await receiptTechnicalDetails.getByText("pilot-usd-2026-07-v1", { exact: true }).waitFor({ state: "visible" });
+      await assertNoHorizontalOverflow(page, `${viewport.name}: receipt technical details`);
 
       await openCustomerPath(page, demo.origin, "/console/announcements", ".announcements-page");
       await page.getByRole("heading", { name: "消息列表", exact: true }).waitFor({ state: "visible" });
