@@ -5623,10 +5623,6 @@ textarea:focus-visible,
   gap: 4px;
 }
 
-.topbar-overview .topbar-actions {
-  visibility: hidden;
-}
-
 .page-content {
   position: relative;
   width: 100%;
@@ -6051,10 +6047,6 @@ textarea:focus-visible,
 
   .topbar h1 {
     font-size: 18px;
-  }
-
-  .topbar-overview .topbar-actions {
-    display: none;
   }
 
   .page-content {

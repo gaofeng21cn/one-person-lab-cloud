@@ -192,6 +192,13 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
             </div>
           </div>
           <div className="topbar-actions">
+            {!adminSurface ? (
+              <Tooltip content="消息">
+                <Button aria-label="消息" onClick={() => controller.navigate("/console/announcements")} size="sm" uniform variant="ghost">
+                  <Megaphone aria-hidden size={17} />
+                </Button>
+              </Tooltip>
+            ) : null}
             <Tooltip content="刷新当前页面">
               <Button aria-label="刷新" onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost">
                 <RefreshCw aria-hidden size={17} />

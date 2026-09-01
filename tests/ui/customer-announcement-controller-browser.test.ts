@@ -70,7 +70,7 @@ async function login(page: Page, origin: string) {
 }
 
 async function openAnnouncementList(page: Page) {
-  await page.locator(".side-nav").getByRole("link", { name: "公告", exact: true }).click();
+  await page.getByRole("button", { name: "消息", exact: true }).click();
   await page.waitForURL(/\/console\/announcements$/);
   await page.getByRole("heading", { level: 2, name: "公告列表", exact: true }).waitFor({ state: "visible" });
 }
@@ -415,7 +415,7 @@ test("Customer Announcement holds a route-spanning claim until its request settl
     await login(page, demo.origin);
     await announcementCard(page, target.title).getByRole("button", { name: "标记已读", exact: true }).click();
     await requestHeld.promise;
-    await page.locator(".side-nav").getByRole("link", { name: "Workspace", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "工作空间", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
     await page.locator(".side-nav").getByRole("link", { name: "概览", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);

@@ -3,11 +3,20 @@ export type CustomerPresentation =
   | { kind: "unknown"; label: "待确认"; rawValue: string }
   | { kind: "unavailable"; label: "暂不可用" };
 
-export function presentCustomerStatus(status: string | undefined): CustomerPresentation {
+export function presentBillingStatus(status: string | undefined): CustomerPresentation {
   switch (status) {
     case "completed":
-    case "succeeded":
       return { kind: "known", label: "已完成" };
+    case undefined:
+    case "":
+      return { kind: "unavailable", label: "暂不可用" };
+    default:
+      return { kind: "unknown", label: "待确认", rawValue: status };
+  }
+}
+
+export function presentBalanceHistoryStatus(status: string | undefined): CustomerPresentation {
+  switch (status) {
     case "used":
       return { kind: "known", label: "已生效" };
     case undefined:

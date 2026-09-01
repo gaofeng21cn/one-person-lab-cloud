@@ -3,9 +3,10 @@ import test from "node:test";
 
 import {
   presentAccountStatus,
+  presentBalanceHistoryStatus,
   presentBalanceHistoryType,
+  presentBillingStatus,
   presentBillingReceiptType,
-  presentCustomerStatus,
   presentGatewayKeyStatus
 } from "../../apps/console-ui/src/app/customer-experience-model.ts";
 
@@ -32,7 +33,7 @@ test("balance history type and status use exact current values", () => {
     kind: "known",
     label: "余额变动"
   });
-  assert.deepEqual(presentCustomerStatus("used"), {
+  assert.deepEqual(presentBalanceHistoryStatus("used"), {
     kind: "known",
     label: "已生效"
   });
@@ -49,14 +50,23 @@ test("billing receipt type and status use exact current values", () => {
     assert.deepEqual(presentBillingReceiptType(type), { kind: "known", label });
   }
 
-  assert.deepEqual(presentCustomerStatus("completed"), {
+  assert.deepEqual(presentBillingStatus("completed"), {
     kind: "known",
     label: "已完成"
   });
-  assert.deepEqual(presentCustomerStatus("succeeded"), {
-    kind: "known",
-    label: "已完成"
-  });
+});
+
+test("billing and balance history statuses reject values from the other owner", () => {
+  for (const presentation of [
+    presentBillingStatus("used"),
+    presentBillingStatus("succeeded"),
+    presentBalanceHistoryStatus("completed"),
+    presentBalanceHistoryStatus("succeeded")
+  ]) {
+    assert.equal(presentation.kind, "unknown");
+    assert.equal(presentation.label, "待确认");
+    assert.ok("rawValue" in presentation);
+  }
 });
 
 test("unknown values are unconfirmed without becoming customer labels", () => {
@@ -65,7 +75,8 @@ test("unknown values are unconfirmed without becoming customer labels", () => {
     presentGatewayKeyStatus("active_future"),
     presentBalanceHistoryType("workspace.created"),
     presentBillingReceiptType("billing.workspace_purchased.v2"),
-    presentCustomerStatus("completed_future")
+    presentBillingStatus("completed_future"),
+    presentBalanceHistoryStatus("used_future")
   ];
 
   for (const presentation of cases) {
@@ -82,7 +93,8 @@ test("missing values are unavailable without raw evidence", () => {
     presentGatewayKeyStatus(undefined),
     presentBalanceHistoryType(undefined),
     presentBillingReceiptType(undefined),
-    presentCustomerStatus(undefined)
+    presentBillingStatus(undefined),
+    presentBalanceHistoryStatus(undefined)
   ]) {
     assert.deepEqual(presentation, { kind: "unavailable", label: "暂不可用" });
   }
