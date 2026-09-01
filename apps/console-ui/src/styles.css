@@ -4786,8 +4786,7 @@ select:focus-visible,
   border-color: var(--navy-line);
 }
 
-.global-slide .data-list dt,
-.global-slide .empty-copy p {
+.global-slide .data-list dt {
   color: #b8c6d2;
 }
 
