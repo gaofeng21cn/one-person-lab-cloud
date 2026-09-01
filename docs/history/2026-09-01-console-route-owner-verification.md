@@ -11,16 +11,16 @@ Control Plane API ownership remain unchanged.
 ## Source Identity And Commits
 
 - Branch: `codex/console-route-owner`
-- Base and merge base: `ad6abe1c20da792700cc6846f84177b0f96fab10`
+- Base and merge base: `57d230ddf14daa3350b87a47144c6d1a1dd73f87`
   (`origin/main` at verification time)
-- Verified implementation HEAD: `31b85b09cd6bd4a7392659e3aadede41a47422f9`
-- `08956e4e5ef7c2495b932217150b9d28d7fa55d0` -
+- Verified implementation HEAD: `c75e35e3c8c196cb93ddc233d5529922ec3e30b3`
+- `99af879d7d8d4dcb105b59b529260c50817d372b` -
   `docs(console): define typed route owner plan`
-- `679542f395f042c53e6997cc19b92bfc96b6111d` -
+- `ac6ad6ea0ca2355df51f5f33db579f00cc56aeeb` -
   `refactor(console): establish typed route owner`
-- `8cbbec6005e337eee14272cf56505cefea97f903` -
+- `cc98e438e3a9e75405a69bfb2d0d875be196ec88` -
   `refactor(console): bind route aliases to canonical metadata`
-- `31b85b09cd6bd4a7392659e3aadede41a47422f9` -
+- `c75e35e3c8c196cb93ddc233d5529922ec3e30b3` -
   `refactor(console): route pages through typed owner`
 
 ## Verification

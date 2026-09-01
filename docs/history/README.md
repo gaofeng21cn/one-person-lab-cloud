@@ -44,6 +44,12 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-27-console-customer-announcement-read.md):
   the completed customer published-projection, read-receipt, query-scope, and
   Session/reset ownership migration retained as provenance.
+- [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
+  [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
+  and [local verification](./2026-09-01-console-route-owner-verification.md):
+  the route single-source-of-truth design, execution, and local verification
+  retained as historical evidence; these records do not define current product,
+  deployment, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
