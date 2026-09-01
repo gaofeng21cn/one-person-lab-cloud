@@ -1700,6 +1700,7 @@ type fakeNativeTkeAPI struct {
 	modifyNodePoolRequest         *tke2022.ModifyNodePoolRequest
 	modifyNodePoolRequests        []*tke2022.ModifyNodePoolRequest
 	modifyNodePoolErrAt           int
+	modifyNodePoolErr             error
 	scaleNodePoolRequest          *tke2022.ScaleNodePoolRequest
 	scaleNodePoolRequests         []*tke2022.ScaleNodePoolRequest
 	scaleNodePoolErr              error
@@ -1754,6 +1755,7 @@ type fakeNativeTkeAPI struct {
 	callLog                       *[]string
 	calls                         []string
 	describeNodePoolErr           error
+	describeNodePoolErrAt         int
 	omitDescribeNodePoolRequestID bool
 	describeMachineErr            error
 	describeMachineErrAt          int
@@ -2956,6 +2958,7 @@ func TestMigrateWorkspaceNodePoolTaintsStopsAfterUnknownWithoutTouchingSecondPoo
 
 	result := client.MigrateWorkspaceNodePoolTaints(Request{Action: "migrate_workspace_node_pool_taints"}, env)
 	if result.Ok || result.Status != "unknown" || result.MutationCount != 1 || len(tkeAPI.modifyNodePoolRequests) != 1 ||
+		result.FailureStage != "modify_node_pool" || result.ProviderErrorClass != "" ||
 		stringValue(tkeAPI.modifyNodePoolRequests[0].NodePoolId) != "np-basic" {
 		t.Fatalf("result=%#v requests=%#v", result, tkeAPI.modifyNodePoolRequests)
 	}
@@ -2970,6 +2973,66 @@ func TestMigrateWorkspaceNodePoolTaintsStopsAfterUnknownWithoutTouchingSecondPoo
 	if conflict.Ok || conflict.Status != "conflict" || conflict.ErrorCode != "node_pool_migration_attempt_binding_conflict" ||
 		conflict.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 1 {
 		t.Fatalf("drifted attempt binding=%#v requests=%#v", conflict, tkeAPI.modifyNodePoolRequests)
+	}
+}
+
+func TestMigrateWorkspaceNodePoolTaintsProjectsOnlySafeUnknownFailureEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		failureStage       string
+		providerErrorClass string
+		errorCode          string
+		configure          func(*fakeNativeTkeAPI)
+	}{
+		{
+			name:               "modify",
+			failureStage:       "modify_node_pool",
+			providerErrorClass: "RequestLimitExceeded",
+			errorCode:          "node_pool_taint_migration_result_unknown",
+			configure: func(api *fakeNativeTkeAPI) {
+				api.modifyNodePoolErrAt = 1
+				api.modifyNodePoolErr = tcerrors.NewTencentCloudSDKError("RequestLimitExceeded", "provider-secret np-basic 10.0.0.11", "req-sensitive")
+			},
+		},
+		{
+			name:               "readback",
+			failureStage:       "node_pool_readback",
+			providerErrorClass: "InternalError",
+			errorCode:          "node_pool_taint_migration_readback_unknown",
+			configure: func(api *fakeNativeTkeAPI) {
+				api.describeNodePoolErrAt = 2
+				api.describeNodePoolErr = tcerrors.NewTencentCloudSDKError("InternalError", "provider-secret np-basic 10.0.0.11", "req-sensitive")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePools: []*tke2022.NodePool{
+				bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
+				legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50),
+				legacyBootstrapNodePool("np-pro", "pool-pro-8c16g", "pro", proResolvedInstanceType, 50),
+			}}
+			test.configure(tkeAPI)
+			env := bootstrapEnv()
+			env["OPL_BASIC_COMPUTE_NODE_POOL_ID"] = "np-basic"
+			env["OPL_PRO_COMPUTE_NODE_POOL_ID"] = "np-pro"
+			env[nodePoolTaintMigrationBindingDigestEnv] = strings.Repeat("a", sha256.Size*2)
+
+			result := newBootstrapTencentSDKClient(tkeAPI).MigrateWorkspaceNodePoolTaints(Request{Action: nodePoolTaintMigrationAction}, env)
+
+			if result.Ok || result.Status != "unknown" || result.ErrorCode != test.errorCode || result.MutationCount != 1 ||
+				result.FailureStage != test.failureStage || result.ProviderErrorClass != test.providerErrorClass {
+				t.Fatalf("safe failure projection=%#v", result)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatalf("marshal failure projection: %v", err)
+			}
+			for _, forbidden := range []string{"provider-secret", "req-sensitive", "np-basic", "np-pro", "np-system", "10.0.0.11"} {
+				if strings.Contains(string(encoded), forbidden) {
+					t.Fatalf("failure projection leaked %q: %s", forbidden, encoded)
+				}
+			}
+		})
 	}
 }
 
@@ -3085,6 +3148,122 @@ func TestRecoverWorkspaceNodePoolTaintsStopsAfterUnknownAndCannotReplay(t *testi
 	}
 	if operations, err := store.List(context.Background()); err != nil || len(operations) != 2 {
 		t.Fatalf("unknown recovery operations=%#v err=%v", operations, err)
+	}
+}
+
+func TestRecoverWorkspaceNodePoolTaintsV2RequiresBothPriorAttemptsAndClaimsOneAttempt(t *testing.T) {
+	tkeAPI := &fakeNativeTkeAPI{nodePools: []*tke2022.NodePool{
+		bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
+		legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50),
+		legacyBootstrapNodePool("np-pro", "pool-pro-8c16g", "pro", proResolvedInstanceType, 50),
+	}}
+	store := fabricstore.NewMemoryOperationStore()
+	client := newBootstrapTencentSDKClientWithOperationStore(tkeAPI, store)
+	env := bootstrapEnv()
+	env["OPL_BASIC_COMPUTE_NODE_POOL_ID"] = "np-basic"
+	env["OPL_PRO_COMPUTE_NODE_POOL_ID"] = "np-pro"
+	env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION"] = "1"
+	env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"] = nodePoolTaintMigrationRecoveryMutationConfirmation
+	env[nodePoolTaintMigrationPriorBindingDigestEnv] = strings.Repeat("a", sha256.Size*2)
+	env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv] = strings.Repeat("b", sha256.Size*2)
+	env[nodePoolTaintMigrationBindingDigestEnv] = strings.Repeat("c", sha256.Size*2)
+	original := nodePoolTaintMigrationAttempt(env[nodePoolTaintMigrationPriorBindingDigestEnv], time.Now().UTC())
+	if _, claimed, err := store.ClaimRuntime(context.Background(), original); err != nil || !claimed {
+		t.Fatalf("original migration claim failed: claimed=%v err=%v", claimed, err)
+	}
+
+	unconfirmed := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, client)
+	if unconfirmed.Ok || unconfirmed.ErrorCode != "node_pool_taint_migration_confirmation_required" || len(tkeAPI.modifyNodePoolRequests) != 0 {
+		t.Fatalf("recovery v2 accepted recovery v1 confirmation=%#v", unconfirmed)
+	}
+	env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"] = nodePoolTaintMigrationRecoveryV2MutationConfirmation
+	missing := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, client)
+	if missing.Ok || missing.Status != "conflict" || missing.ErrorCode != "node_pool_migration_recovery_v2_prior_recovery_attempt_missing" ||
+		missing.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 0 {
+		t.Fatalf("recovery v2 without recovery v1=%#v", missing)
+	}
+	priorRecovery := nodePoolTaintMigrationRecoveryAttempt(
+		env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv], env[nodePoolTaintMigrationPriorBindingDigestEnv], time.Now().UTC(),
+	)
+	if _, claimed, err := store.ClaimRuntime(context.Background(), priorRecovery); err != nil || !claimed {
+		t.Fatalf("recovery v1 claim failed: claimed=%v err=%v", claimed, err)
+	}
+	env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv] = strings.Repeat("d", sha256.Size*2)
+	wrongRecovery := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, client)
+	if wrongRecovery.Ok || wrongRecovery.Status != "conflict" || wrongRecovery.ErrorCode != "node_pool_migration_recovery_v2_prior_recovery_attempt_invalid" ||
+		wrongRecovery.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 0 {
+		t.Fatalf("recovery v2 accepted wrong recovery v1 binding=%#v", wrongRecovery)
+	}
+	env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv] = strings.Repeat("b", sha256.Size*2)
+
+	recovered := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, client)
+	if !recovered.Ok || recovered.Status != "migrated" || recovered.MutationCount != 2 || len(tkeAPI.modifyNodePoolRequests) != 2 {
+		t.Fatalf("recovery v2=%#v requests=%#v", recovered, tkeAPI.modifyNodePoolRequests)
+	}
+	operations, err := store.List(context.Background())
+	if err != nil || len(operations) != 3 {
+		t.Fatalf("recovery v2 operations=%#v err=%v", operations, err)
+	}
+	var recoveryV2 fabricstore.FabricOperation
+	for _, operation := range operations {
+		if operation.ID == nodePoolTaintMigrationRecoveryV2RecordID {
+			recoveryV2 = operation
+		}
+	}
+	expectedRecoveryV2 := nodePoolTaintMigrationRecoveryV2Attempt(
+		env[nodePoolTaintMigrationBindingDigestEnv], env[nodePoolTaintMigrationPriorBindingDigestEnv],
+		env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv], recoveryV2.StartedAt,
+	)
+	if !validPersistedNodePoolTaintMigrationRecoveryV2Attempt(
+		recoveryV2, expectedRecoveryV2, env[nodePoolTaintMigrationPriorBindingDigestEnv], env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv],
+	) {
+		t.Fatalf("invalid persisted recovery v2 attempt=%#v", recoveryV2)
+	}
+}
+
+func TestRecoverWorkspaceNodePoolTaintsV2StopsAfterUnknownAndCannotReplay(t *testing.T) {
+	tkeAPI := &fakeNativeTkeAPI{nodePools: []*tke2022.NodePool{
+		bootstrapNodePool("np-system", "system", "system", "S5.2XLARGE16", 20),
+		legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50),
+		legacyBootstrapNodePool("np-pro", "pool-pro-8c16g", "pro", proResolvedInstanceType, 50),
+	}, modifyNodePoolErrAt: 1}
+	store := fabricstore.NewMemoryOperationStore()
+	client := newBootstrapTencentSDKClientWithOperationStore(tkeAPI, store)
+	env := bootstrapEnv()
+	env["OPL_BASIC_COMPUTE_NODE_POOL_ID"] = "np-basic"
+	env["OPL_PRO_COMPUTE_NODE_POOL_ID"] = "np-pro"
+	env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION"] = "1"
+	env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"] = nodePoolTaintMigrationRecoveryV2MutationConfirmation
+	env[nodePoolTaintMigrationPriorBindingDigestEnv] = strings.Repeat("a", sha256.Size*2)
+	env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv] = strings.Repeat("b", sha256.Size*2)
+	env[nodePoolTaintMigrationBindingDigestEnv] = strings.Repeat("c", sha256.Size*2)
+	for _, attempt := range []fabricstore.FabricOperation{
+		nodePoolTaintMigrationAttempt(env[nodePoolTaintMigrationPriorBindingDigestEnv], time.Now().UTC()),
+		nodePoolTaintMigrationRecoveryAttempt(env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv], env[nodePoolTaintMigrationPriorBindingDigestEnv], time.Now().UTC()),
+	} {
+		if _, claimed, err := store.ClaimRuntime(context.Background(), attempt); err != nil || !claimed {
+			t.Fatalf("prior attempt claim failed: attempt=%#v claimed=%v err=%v", attempt, claimed, err)
+		}
+	}
+
+	unknown := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, client)
+	if unknown.Ok || unknown.Status != "unknown" || unknown.ErrorCode != "node_pool_taint_migration_result_unknown" ||
+		unknown.FailureStage != "modify_node_pool" || unknown.MutationCount != 1 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("unknown recovery v2=%#v requests=%#v", unknown, tkeAPI.modifyNodePoolRequests)
+	}
+	restarted := newBootstrapTencentSDKClientWithOperationStore(tkeAPI, store)
+	replayed := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, restarted)
+	if !replayed.Ok || replayed.Status != "reconcile_only" || replayed.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("unknown recovery v2 replayed provider mutation: replay=%#v", replayed)
+	}
+	env[nodePoolTaintMigrationBindingDigestEnv] = strings.Repeat("d", sha256.Size*2)
+	conflict := handleWithClient(Request{Action: nodePoolTaintMigrationRecoveryV2Action}, env, restarted)
+	if conflict.Ok || conflict.Status != "conflict" || conflict.ErrorCode != "node_pool_migration_attempt_binding_conflict" ||
+		conflict.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("drifted recovery v2 binding=%#v", conflict)
+	}
+	if operations, err := store.List(context.Background()); err != nil || len(operations) != 3 {
+		t.Fatalf("unknown recovery v2 operations=%#v err=%v", operations, err)
 	}
 }
 
@@ -5016,7 +5195,7 @@ func (api *fakeNativeTkeAPI) CreateNodePool(request *tke2022.CreateNodePoolReque
 func (api *fakeNativeTkeAPI) DescribeNodePools(request *tke2022.DescribeNodePoolsRequest) (*tke2022.DescribeNodePoolsResponse, error) {
 	api.record("DescribeNodePools")
 	api.describeNodePoolsRequest = append(api.describeNodePoolsRequest, request)
-	if api.describeNodePoolErr != nil {
+	if api.describeNodePoolErr != nil && (api.describeNodePoolErrAt == 0 || len(api.describeNodePoolsRequest) == api.describeNodePoolErrAt) {
 		return nil, api.describeNodePoolErr
 	}
 	if api.nodePools != nil {
@@ -5746,6 +5925,9 @@ func (api *fakeNativeTkeAPI) ModifyNodePool(request *tke2022.ModifyNodePoolReque
 	api.modifyNodePoolRequest = request
 	api.modifyNodePoolRequests = append(api.modifyNodePoolRequests, request)
 	if api.modifyNodePoolErrAt > 0 && len(api.modifyNodePoolRequests) == api.modifyNodePoolErrAt {
+		if api.modifyNodePoolErr != nil {
+			return nil, api.modifyNodePoolErr
+		}
 		return nil, errors.New("modify result unknown")
 	}
 	if request.Native != nil && request.Native.EnableAutoscaling != nil {

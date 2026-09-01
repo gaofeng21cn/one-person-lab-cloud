@@ -378,14 +378,23 @@ exact protected pool set, preserves unrelated kubelet arguments, and reports
 whether reconciliation is required. The mutation path requires its dedicated
 manual confirmation and live-mutation flags, updates existing nodes, and reads
 the NodePool configuration back. An unknown mutation or readback result remains
-unknown and is reconciled by read only. A retry is never inferred from elapsed
-time: after an owner-authoritative read proves that both package NodePools still
-have the exact legacy taint, an independently confirmed recovery action may
-claim one fixed recovery attempt independently bound to the exact original
-attempt digest and a fresh full NodePool/Node digest. That recovery attempt is
-also one-way and cannot be replayed after an unknown result. This is source
-capability in PR #502; no Instance receipt currently proves that the production
-NodePools were changed.
+unknown and is reconciled by read only. Its failure projection retains only the
+fixed `modify_node_pool` or `node_pool_readback` stage and a bounded Tencent SDK
+error code when one exists; SDK messages, request IDs, and original NodePool or
+Node values are excluded.
+
+A retry is never inferred from elapsed time. After an owner-authoritative read
+proves that both package NodePools still have the exact legacy taint, the first
+independently confirmed recovery action may claim one fixed attempt bound to
+the exact original migration digest and a fresh full NodePool/Node digest. If
+that attempt also remains `started` with no provider request recorded and a new
+read again proves both exact legacy taints, recovery v2 requires a distinct
+action, confirmation, operation ID, record ID, and idempotency key. It validates
+both immutable prior attempts and all three binding digests before it may claim
+one fresh attempt. Every attempt is one-way: an unknown result permanently
+allows GET-only reconciliation for that identity and never authorizes replay.
+These are source capabilities; only Instance receipts and owner readback prove
+their production execution and effect.
 
 The read-only `POST /fabric/provider-facts/batch` boundary delegates resource
 interpretation to the selected adapter. Control Plane Provider Acceptance uses
