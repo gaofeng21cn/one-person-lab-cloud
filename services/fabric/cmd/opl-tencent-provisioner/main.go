@@ -348,14 +348,16 @@ type NodePoolTaintFact struct {
 }
 
 type NodePoolImageGCResult struct {
-	PackageID            string   `json:"packageId"`
-	NodePoolID           string   `json:"nodePoolId"`
-	Status               string   `json:"status"`
-	HighThresholdPercent int      `json:"highThresholdPercent"`
-	LowThresholdPercent  int      `json:"lowThresholdPercent"`
-	UpdateExistingNodes  bool     `json:"updateExistingNodes"`
-	KubeletArgsBefore    []string `json:"kubeletArgsBefore"`
-	KubeletArgsAfter     []string `json:"kubeletArgsAfter"`
+	PackageID            string              `json:"packageId"`
+	NodePoolID           string              `json:"nodePoolId"`
+	Status               string              `json:"status"`
+	HighThresholdPercent int                 `json:"highThresholdPercent"`
+	LowThresholdPercent  int                 `json:"lowThresholdPercent"`
+	UpdateExistingNodes  bool                `json:"updateExistingNodes"`
+	TaintsBefore         []NodePoolTaintFact `json:"taintsBefore"`
+	TaintsAfter          []NodePoolTaintFact `json:"taintsAfter"`
+	KubeletArgsBefore    []string            `json:"kubeletArgsBefore"`
+	KubeletArgsAfter     []string            `json:"kubeletArgsAfter"`
 }
 
 type PreflightStage struct {
@@ -5359,7 +5361,7 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 	if err != nil {
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_image_gc_inventory_unavailable", Message: "Tencent NodePool inventory is unavailable.", MutationCount: 0, Retryable: false}
 	}
-	matches, failure := bootstrapInventoryMatches(pools, env, specs)
+	matches, failure := bootstrapInventoryMatchesByStatus(pools, env, specs, bootstrapPackageMigrationStatus)
 	if failure != nil {
 		failure.Status = "conflict"
 		failure.MutationCount = 0
@@ -5383,14 +5385,17 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		if !valid || !mergeable {
 			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_image_gc_kubelet_args_invalid", Message: "Workspace NodePool kubelet arguments cannot be safely reconciled.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 		}
+		taintState := bootstrapPackageMigrationStatus(pool, spec)
 		status := "registered"
-		if !workspaceNodeImageGCMatches(pool.Native.KubeletArgs, high, low) {
+		if taintState != "target" || !workspaceNodeImageGCMatches(pool.Native.KubeletArgs, high, low) {
 			status = "reconciliation_required"
 			required++
 		}
 		results = append(results, NodePoolImageGCResult{
 			PackageID: spec.PackageID, NodePoolID: stringValue(pool.NodePoolId), Status: status,
 			HighThresholdPercent: high, LowThresholdPercent: low, UpdateExistingNodes: status != "registered",
+			TaintsBefore:      nodePoolTaintFacts(pool),
+			TaintsAfter:       []NodePoolTaintFact{{Key: "oplcloud.cn/package-id", Value: spec.PackageID, Effect: "NoSchedule"}},
 			KubeletArgsBefore: before, KubeletArgsAfter: after,
 		})
 	}
@@ -5409,6 +5414,7 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		modifyRequest := tke2022.NewModifyNodePoolRequest()
 		modifyRequest.ClusterId = common.StringPtr(client.clusterId)
 		modifyRequest.NodePoolId = common.StringPtr(results[index].NodePoolID)
+		modifyRequest.Taints = []*tke2022.Taint{{Key: common.StringPtr("oplcloud.cn/package-id"), Value: common.StringPtr(results[index].PackageID), Effect: common.StringPtr("NoSchedule")}}
 		modifyRequest.Native = &tke2022.UpdateNativeNodePoolParam{
 			KubeletArgs:             stringsToPtrs(results[index].KubeletArgsAfter),
 			UpdateExistedNode:       common.BoolPtr(true),
@@ -5419,19 +5425,24 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		if modifyErr != nil || modified == nil || modified.Response == nil || strings.TrimSpace(stringValue(modified.Response.RequestId)) == "" {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_result_unknown"
 			base.Message = "Tencent NodePool image GC reconciliation result is unknown; reconcile by GET only."
+			base.FailureStage = "modify_node_pool"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(modifyErr)
 			results[index].Status = "unknown"
 			base.NodePoolImageGC = results
 			return base
 		}
 		readback, _, readbackErr := client.describeNativeNodePool(results[index].NodePoolID)
-		if readbackErr != nil || readback.Native == nil || !workspaceNodeImageGCMatches(readback.Native.KubeletArgs, high, low) {
+		if readbackErr != nil || bootstrapPackagePoolStatus(readback, specs[index]) != "registered" || readback.Native == nil || !workspaceNodeImageGCMatches(readback.Native.KubeletArgs, high, low) {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_readback_unknown"
 			base.Message = "Tencent NodePool image GC reconciliation readback is unknown; reconcile by GET only."
+			base.FailureStage = "node_pool_readback"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(readbackErr)
 			results[index].Status = "unknown"
 			base.NodePoolImageGC = results
 			return base
 		}
 		results[index].Status = "reconciled"
+		results[index].TaintsAfter = nodePoolTaintFacts(readback)
 		results[index].KubeletArgsAfter, _ = kubeletArgsValues(readback.Native.KubeletArgs)
 	}
 	base.Status, base.NodePoolImageGC = "reconciled", results

@@ -2828,6 +2828,7 @@ func TestWorkspaceNodeImageGCThresholdsFailClosed(t *testing.T) {
 func TestReconcileWorkspaceNodePoolImageGCDryRunPreservesOtherArgsAndSystemPool(t *testing.T) {
 	pools := bootstrapInventory("np-system", "np-basic", "np-pro")
 	pools[0].Native.KubeletArgs = stringsToPtrs([]string{"system-reserved=cpu=500m"})
+	pools[1] = legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50)
 	pools[1].Native.KubeletArgs = stringsToPtrs([]string{"serialize-image-pulls=false", "--image-gc-high-threshold=85", "image-gc-low-threshold=80"})
 	pools[2].Native.KubeletArgs = stringsToPtrs([]string{"image-gc-high-threshold=70", "image-gc-low-threshold=60"})
 	tkeAPI := &fakeNativeTkeAPI{nodePools: pools}
@@ -2839,6 +2840,8 @@ func TestReconcileWorkspaceNodePoolImageGCDryRunPreservesOtherArgsAndSystemPool(
 	}
 	if response.NodePoolImageGC[0].NodePoolID != "np-basic" || response.NodePoolImageGC[0].Status != "reconciliation_required" ||
 		len(response.NodePoolImageGC[0].KubeletArgsAfter) != 3 || response.NodePoolImageGC[0].KubeletArgsAfter[0] != "serialize-image-pulls=false" ||
+		!reflect.DeepEqual(response.NodePoolImageGC[0].TaintsBefore, []NodePoolTaintFact{{Key: "oplcloud.cn/workspace-id", Value: "unallocated", Effect: "NoSchedule"}}) ||
+		!reflect.DeepEqual(response.NodePoolImageGC[0].TaintsAfter, []NodePoolTaintFact{{Key: "oplcloud.cn/package-id", Value: "basic", Effect: "NoSchedule"}}) ||
 		response.NodePoolImageGC[1].NodePoolID != "np-pro" || response.NodePoolImageGC[1].Status != "registered" {
 		t.Fatalf("dry-run package results=%#v", response.NodePoolImageGC)
 	}
@@ -2849,6 +2852,7 @@ func TestReconcileWorkspaceNodePoolImageGCDryRunPreservesOtherArgsAndSystemPool(
 
 func TestReconcileWorkspaceNodePoolImageGCUpdatesDriftOnceAndReadsBack(t *testing.T) {
 	pools := bootstrapInventory("np-system", "np-basic", "np-pro")
+	pools[1] = legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50)
 	pools[1].Native.KubeletArgs = stringsToPtrs([]string{"serialize-image-pulls=false", "image-gc-high-threshold=85", "image-gc-low-threshold=80"})
 	pools[2].Native.KubeletArgs = stringsToPtrs([]string{"image-gc-high-threshold=70", "image-gc-low-threshold=60"})
 	tkeAPI := &fakeNativeTkeAPI{nodePools: pools}
@@ -2860,12 +2864,27 @@ func TestReconcileWorkspaceNodePoolImageGCUpdatesDriftOnceAndReadsBack(t *testin
 	}
 	request := tkeAPI.modifyNodePoolRequests[0]
 	if stringValue(request.NodePoolId) != "np-basic" || request.Native == nil || stringValue(request.Native.UpdateMachineManagement) != "enable" ||
-		request.Native.UpdateExistedNode == nil || !*request.Native.UpdateExistedNode || !workspaceNodeImageGCMatches(request.Native.KubeletArgs, 70, 60) {
+		request.Native.UpdateExistedNode == nil || !*request.Native.UpdateExistedNode || !workspaceNodeImageGCMatches(request.Native.KubeletArgs, 70, 60) ||
+		!reflect.DeepEqual(nodePoolTaintFacts(&tke2022.NodePool{Taints: request.Taints}), []NodePoolTaintFact{{Key: "oplcloud.cn/package-id", Value: "basic", Effect: "NoSchedule"}}) {
 		t.Fatalf("unsafe reconciliation request=%#v", request)
 	}
 	second := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc"}, workspaceNodeImageGCEnv(), client)
 	if !second.Ok || second.Status != "registered" || second.MutationCount != 0 || len(tkeAPI.modifyNodePoolRequests) != 1 {
 		t.Fatalf("idempotent readback=%#v requests=%#v", second, tkeAPI.modifyNodePoolRequests)
+	}
+}
+
+func TestReconcileWorkspaceNodePoolImageGCStopsWhenProviderResultIsUnknown(t *testing.T) {
+	pools := bootstrapInventory("np-system", "np-basic", "np-pro")
+	pools[1] = legacyBootstrapNodePool("np-basic", "pool-basic-2c4g", "basic", basicResolvedInstanceType, 50)
+	pools[2] = legacyBootstrapNodePool("np-pro", "pool-pro-8c16g", "pro", proResolvedInstanceType, 50)
+	tkeAPI := &fakeNativeTkeAPI{nodePools: pools, modifyNodePoolErrAt: 1, modifyNodePoolErr: errors.New("provider result unknown")}
+
+	response := handleWithClient(Request{Action: "reconcile_workspace_node_pool_image_gc"}, workspaceNodeImageGCEnv(), newBootstrapTencentSDKClient(tkeAPI))
+
+	if response.Ok || response.Status != "unknown" || response.ErrorCode != "node_pool_image_gc_reconcile_result_unknown" ||
+		response.FailureStage != "modify_node_pool" || response.MutationCount != 1 || len(tkeAPI.modifyNodePoolRequests) != 1 {
+		t.Fatalf("unknown provider result must stop reconciliation: response=%#v requests=%#v", response, tkeAPI.modifyNodePoolRequests)
 	}
 }
 
