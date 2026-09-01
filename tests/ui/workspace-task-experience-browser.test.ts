@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 
 import type {
   PricingCatalogResponse,
@@ -217,6 +217,40 @@ async function assertTechnicalEvidenceOpen(page: Page) {
     await page.getByText(value, { exact: true }).waitFor({ state: "visible" });
   }
 }
+
+async function credentialIsRevealed(row: Locator) {
+  return row.locator("code").evaluate((element) => {
+    const value = element.textContent || "";
+    return value.length > 0 && value !== "-" && !value.includes("•");
+  });
+}
+
+async function assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(page: Page) {
+  for (const value of [
+    "Runtime ready",
+    "Runtime URL",
+    "Workspace Key",
+    "operation ID",
+    "errorCode",
+    "reasonCode",
+    "manual"
+  ]) {
+    assert.equal(await visibleTextCount(page, value), 0, `${value} should not be visible by default`);
+  }
+  assert.equal(await visibleTextCount(page, /Secret/), 0, "Secret should not be visible by default");
+  assert.equal(await visibleTextCount(page, /micros/i), 0, "micros should not be visible by default");
+}
+
+test("customer completes one authoritative Workspace journey at desktop and mobile widths", { timeout: 120_000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of viewports) {
+      await verifyWorkspaceCustomerJourney(browser, viewport);
+    }
+  } finally {
+    await browser.close();
+  }
+});
 
 test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 
@@ -507,6 +541,246 @@ test("readback refresh retains the succeeded launch and retries only authoritati
     await demo.close();
   }
 });
+
+async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof viewports[number]) {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  let context: BrowserContext | null = null;
+  const authoritativeReadStarted = deferred();
+  const releaseAuthoritativeRead = deferred();
+  let delayedAuthoritativeRead = false;
+  let launchPostCount = 0;
+  let launchedWorkspaceId = "";
+  let workspaceDtoFixtureReads = 0;
+  let runtimeFixtureReads = 0;
+  const authoritativeReadRequests: Array<{ page: string | null; pageSize: string | null }> = [];
+  const launchIdempotencyKeys = new Set<string>();
+  const journeyName = `Customer Journey ${viewport.name}`;
+
+  try {
+    context = await browser.newContext({
+      viewport,
+      permissions: ["clipboard-read", "clipboard-write"]
+    });
+    const page = await context.newPage();
+    const audit = await installBrowserAudit(page, demo.origin);
+    await page.addInitScript({ content: `
+      window.openedWorkspace = null;
+      window.open = (url, target, features) => {
+        window.openedWorkspace = {
+          url: String(url || ""),
+          target: String(target || ""),
+          features: String(features || "")
+        };
+        return null;
+      };
+    ` });
+
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      launchPostCount += 1;
+      launchIdempotencyKeys.add(route.request().headers()["idempotency-key"] || "");
+      const upstream = await route.fetch();
+      const operation = await upstream.json() as WorkspaceLaunchResponse;
+      launchedWorkspaceId = operation.workspaceId || "";
+      await route.fulfill({ response: upstream, body: JSON.stringify(operation) });
+    });
+
+    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (route.request().method() !== "GET" || requestUrl.searchParams.get("pageSize") !== "50" || !launchedWorkspaceId) {
+        await route.fallback();
+        return;
+      }
+      authoritativeReadRequests.push({
+        page: requestUrl.searchParams.get("page"),
+        pageSize: requestUrl.searchParams.get("pageSize")
+      });
+      const upstream = await route.fetch();
+      const payload = await upstream.json() as SourceEnvelope<WorkspaceListData>;
+      assert.equal(payload.available, true, "authoritative Workspace readback must be available");
+      if (!payload.available) return;
+      const workspaceDtoUrl = `https://dto-entry.example.invalid/w/${launchedWorkspaceId}/`;
+      const items = payload.data.items.map((workspace) => workspace.id === launchedWorkspaceId
+        ? { ...workspace, url: workspaceDtoUrl }
+        : workspace);
+      if (items.some((workspace) => workspace.id === launchedWorkspaceId)) workspaceDtoFixtureReads += 1;
+      if (!delayedAuthoritativeRead) {
+        delayedAuthoritativeRead = true;
+        authoritativeReadStarted.resolve();
+        await releaseAuthoritativeRead.promise;
+      }
+      await route.fulfill({
+        response: upstream,
+        body: JSON.stringify({ ...payload, data: { ...payload.data, items } })
+      });
+    });
+
+    await page.route((url) => url.origin === demo.origin && /\/api\/workspaces\/[^/]+\/runtime-status$/.test(url.pathname), async (route) => {
+      const workspaceId = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[3] || "");
+      if (route.request().method() !== "GET" || workspaceId !== launchedWorkspaceId) {
+        await route.fallback();
+        return;
+      }
+      const upstream = await route.fetch();
+      const payload = await upstream.json() as SourceEnvelope<WorkspaceRuntimeDTO>;
+      assert.equal(payload.available, true, "Fabric Runtime read must be available");
+      if (!payload.available) return;
+      runtimeFixtureReads += 1;
+      await route.fulfill({
+        response: upstream,
+        body: JSON.stringify({
+          ...payload,
+          data: {
+            ...payload.data,
+            url: `https://runtime-entry.example.invalid/w/${launchedWorkspaceId}/`
+          }
+        })
+      });
+    });
+
+    await login(page, demo.origin);
+    await page.getByRole("link", { name: "Workspace", exact: true }).filter({ visible: true }).first().click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces");
+    await page.getByRole("button", { name: "新建 Workspace", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
+    await page.getByRole("heading", { name: "新建 Workspace", exact: true }).waitFor({ state: "visible" });
+    await assertNoHorizontalOverflow(page);
+
+    const basicPlan = page.getByRole("radio", { name: /Basic/ });
+    await basicPlan.waitFor({ state: "visible" });
+    await basicPlan.click();
+    assert.equal(await basicPlan.isChecked(), true);
+    await page.getByLabel("Workspace 名称").fill(journeyName);
+    const actualDue = page.locator(".workspace-order-summary__total");
+    await actualDue.getByText("实际应付", { exact: true }).waitFor({ state: "visible" });
+    await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
+    await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
+    await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
+    const confirmation = page.getByRole("checkbox", {
+      name: "我确认一次性预付工作空间月度总额并开通",
+      exact: true
+    });
+    await confirmation.click();
+    await page.getByRole("button", { name: "确认预付并开通", exact: true }).waitFor({ state: "visible" });
+    await assertNoHorizontalOverflow(page);
+
+    const launchResponsePromise = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "POST" && new URL(response.url()).pathname === "/api/workspace-launches";
+    });
+    await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
+    const launchResponse = await launchResponsePromise;
+    const launch = await launchResponse.json() as WorkspaceLaunchResponse;
+    assert.equal(launch.status, "succeeded");
+    assert.ok(launch.workspaceId);
+    await authoritativeReadStarted.promise;
+    assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
+    assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
+    assert.deepEqual(authoritativeReadRequests[0], { page: "1", pageSize: "50" });
+    assert.equal(launchPostCount, 1);
+    assert.equal(launchIdempotencyKeys.size, 1);
+    assert.notEqual([...launchIdempotencyKeys][0], "");
+
+    releaseAuthoritativeRead.resolve();
+    await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
+    const identity = page.locator(".workspace-identity-panel");
+    await identity.getByRole("heading", { name: journeyName, exact: true }).waitFor({ state: "visible" });
+    await identity.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+    await identity.getByText("BASIC", { exact: true }).waitFor({ state: "visible" });
+    await identity.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
+    await identity.getByText("2026/08/19", { exact: true }).waitFor({ state: "visible" });
+    await assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(page);
+    await assertNoHorizontalOverflow(page);
+
+    const access = page.locator(".workspace-access-panel");
+    const passwordRow = access.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
+    const keyRow = access.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
+    assert.equal(await credentialIsRevealed(passwordRow), false);
+    assert.equal(await credentialIsRevealed(keyRow), false);
+    await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll(".workspace-access-panel .data-list > div")]
+        .find((candidate) => candidate.textContent?.includes("登录密码"));
+      return Boolean(row?.querySelector("code")?.textContent?.replaceAll("•", ""));
+    });
+    assert.equal(await credentialIsRevealed(passwordRow), true);
+    assert.equal(await credentialIsRevealed(keyRow), false);
+    await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
+    await page.getByText("登录密码已复制", { exact: true }).waitFor({ state: "visible" });
+    const copiedPassword = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(copiedPassword.length > 0, true);
+
+    await keyRow.getByRole("button", { name: "显示", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll(".workspace-access-panel .data-list > div")]
+        .find((candidate) => candidate.textContent?.includes("API 密钥"));
+      return Boolean(row?.querySelector("code")?.textContent?.replaceAll("•", ""));
+    });
+    assert.equal(await credentialIsRevealed(passwordRow), false);
+    assert.equal(await credentialIsRevealed(keyRow), true);
+    await keyRow.getByRole("button", { name: "复制", exact: true }).click();
+    await page.getByText("API 密钥已复制", { exact: true }).waitFor({ state: "visible" });
+    const copiedKey = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(copiedKey.length > 0, true);
+    assert.equal(copiedKey !== copiedPassword, true);
+
+    const openWorkspace = identity.getByRole("button", { name: "打开工作空间", exact: true });
+    await openWorkspace.click();
+    const openedWorkspace = await page.evaluate(() => (window as Window & {
+      openedWorkspace?: { url: string; target: string; features: string } | null;
+    }).openedWorkspace);
+    const expectedRuntimeUrl = `https://runtime-entry.example.invalid/w/${launch.workspaceId}/`;
+    const workspaceDtoUrl = `https://dto-entry.example.invalid/w/${launch.workspaceId}/`;
+    assert.deepEqual(openedWorkspace, {
+      url: expectedRuntimeUrl,
+      target: "_blank",
+      features: "noopener,noreferrer"
+    });
+    assert.notEqual(openedWorkspace?.url, workspaceDtoUrl);
+    assert.ok(workspaceDtoFixtureReads >= 1);
+    assert.ok(runtimeFixtureReads >= 1);
+
+    const advanced = page.locator("details.workspace-advanced-details");
+    await advanced.locator("summary").click();
+    await advanced.getByRole("heading", { name: "模型预算", exact: true }).waitFor({ state: "visible" });
+    await advanced.getByLabel("总额度（micros）").waitFor({ state: "visible" });
+    await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
+    const technical = page.locator("details.workspace-technical-details");
+    await technical.locator("summary").click();
+    await technical.getByText("Workspace ID", { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText(expectedRuntimeUrl, { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText("manual", { exact: true }).waitFor({ state: "visible" });
+    await technical.getByText("ready_pod_uses_retained_pvc", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await visibleTextCount(page, workspaceDtoUrl), 0);
+    await assertNoHorizontalOverflow(page);
+
+    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces");
+    assert.equal(await page.locator(".workspace-access-panel").count(), 0);
+    assert.equal(await page.locator(".credential-actions code").count(), 0);
+    const journeyRow = page.locator(".workspace-list-row").filter({ hasText: journeyName });
+    await journeyRow.click();
+    await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
+    const returnedAccess = page.locator(".workspace-access-panel");
+    const returnedPasswordRow = returnedAccess.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
+    const returnedKeyRow = returnedAccess.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
+    await returnedPasswordRow.waitFor({ state: "visible" });
+    assert.equal(await credentialIsRevealed(returnedPasswordRow), false);
+    assert.equal(await credentialIsRevealed(returnedKeyRow), false);
+    assert.equal(launchPostCount, 1);
+    assert.equal(launchIdempotencyKeys.size, 1);
+    await assertNoHorizontalOverflow(page);
+    assertBrowserAuditClean(audit);
+  } finally {
+    releaseAuthoritativeRead.resolve();
+    await context?.close();
+    await demo.close();
+  }
+}
 
 async function verifyWorkspaceDetailExperience() {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
