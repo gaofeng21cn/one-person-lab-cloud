@@ -71,6 +71,11 @@ Current truth starts from [the docs index](../README.md),
   the approved customer Shell, Overview, brand, responsive hierarchy, and P1
   presentation-repair direction retained as implementation provenance; it is
   not implementation, deployment, Instance, or production evidence.
+- [Console Customer Visual System UX-03C implementation plan, 2026-09-02](./2026-09-02-console-customer-visual-system-implementation-plan.md):
+  the bounded TDD implementation sequence, file owners, acceptance checks,
+  deferred page slices, and local completion evidence for the approved visual
+  reference slice; it is not implementation, deployment, Instance, or
+  production evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
