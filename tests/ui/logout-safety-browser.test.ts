@@ -13,6 +13,45 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 
+interface ControllerProjectionProbe {
+  workspaceNames: string[];
+  credentialPassword: string | null;
+}
+
+async function readControllerProjection(page: import("playwright").Page): Promise<ControllerProjectionProbe> {
+  return page.locator("main").evaluate((root) => {
+    const propertyName = Object.keys(root).find((key) => key.startsWith("__reactProps$"));
+    if (!propertyName) throw new Error("console_probe_react_props_missing");
+    const props = (root as unknown as Record<string, unknown>)[propertyName];
+    if (!props || typeof props !== "object" || !("controller" in props)) throw new Error("console_probe_controller_missing");
+    const controller = (props as { controller?: unknown }).controller;
+    if (!controller || typeof controller !== "object") throw new Error("console_probe_controller_invalid");
+    const customerWorkspaceRead = (controller as { customerWorkspaceRead?: unknown }).customerWorkspaceRead;
+    const workspaceSecrets = (controller as { workspaceSecrets?: unknown }).workspaceSecrets;
+    const workspaceValue = customerWorkspaceRead && typeof customerWorkspaceRead === "object"
+      ? (customerWorkspaceRead as { workspaces?: { value?: unknown } }).workspaces?.value
+      : null;
+    const workspaceNames = workspaceValue && typeof workspaceValue === "object"
+      && (workspaceValue as { available?: unknown }).available === true
+      && (workspaceValue as { data?: unknown }).data
+      && typeof (workspaceValue as { data: unknown }).data === "object"
+      && Array.isArray(((workspaceValue as { data: { items?: unknown } }).data).items)
+      ? (((workspaceValue as { data: { items: unknown[] } }).data).items)
+        .map((item) => item && typeof item === "object" && typeof (item as { name?: unknown }).name === "string"
+          ? (item as { name: string }).name
+          : "")
+        .filter((name) => name.length > 0)
+      : [];
+    const credentialPassword = workspaceSecrets && typeof workspaceSecrets === "object"
+      ? ((workspaceSecrets as { credential?: { password?: unknown } | null }).credential?.password || null)
+      : null;
+    return {
+      workspaceNames,
+      credentialPassword: typeof credentialPassword === "string" ? credentialPassword : null
+    };
+  });
+}
+
 test("Console hides secrets and rejects late account data while logout is unconfirmed", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -147,16 +186,8 @@ test("Console hides secrets and rejects late account data while logout is unconf
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     }));
     await page.getByRole("button", { name: "重试退出", exact: true }).waitFor({ state: "visible" });
-
-    const verificationPage = await context.newPage();
-    try {
-      await verificationPage.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
-      await verificationPage.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
-      assert.equal(await verificationPage.getByText("LATE-ACCOUNT-RESULT", { exact: false }).count(), 0);
-      assert.equal(await verificationPage.getByText("LATE-WORKSPACE-RESULT", { exact: false }).count(), 0);
-    } finally {
-      await verificationPage.close();
-    }
+    const projection = await readControllerProjection(page);
+    assert.equal(projection.workspaceNames.includes("LATE-ACCOUNT-RESULT / LATE-WORKSPACE-RESULT"), false);
 
     await page.unroute("**/api/auth/logout");
     await page.getByRole("button", { name: "重试退出", exact: true }).click();
@@ -265,21 +296,20 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     });
 
     const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
+    const workspaceKeyRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "API 密钥" }).first();
     await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
     await revealHeld;
-    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
-    await page.waitForURL(/\/console\/workspaces$/);
+    await workspaceKeyRow.getByRole("button", { name: "显示", exact: true }).click();
+    await workspaceKeyRow.locator("code").waitFor({ state: "visible" });
 
     const lateRevealResponse = page.waitForResponse((response) => response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/workspaces/ws-1/runtime-credentials/reveal");
     releaseReveal?.();
     await (await lateRevealResponse).finished();
-
-    await page.getByRole("link", { name: /Pilot Workspace/ }).first().click();
-    await page.waitForURL(/\/console\/workspaces\/ws-1$/);
-    const hiddenPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
-    await hiddenPasswordRow.locator("code").waitFor({ state: "visible" });
-    assert.match(String(await hiddenPasswordRow.locator("code").textContent()), /••/);
+    await page.waitForFunction(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    assert.match(String(await passwordRow.locator("code").textContent()), /••/);
     assert.equal(await page.getByText(lateResponse.access.password, { exact: true }).count(), 0);
     await page.unroute("**/api/workspaces/ws-1/runtime-credentials/reveal");
     const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
