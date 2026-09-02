@@ -42,7 +42,7 @@ completed with exit code 0 unless noted.
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed with no unused symbols. |
 | `git diff --check` | Passed. |
-| `go test ./internal/server` | Not run to completion because the local environment lacks the repository-required PostgreSQL test configuration; this is an environment prerequisite, not a source assertion failure. |
+| `npm run verify:local:full` | First full run reached the temporary PostgreSQL gate but reported three unrelated Fabric PostgreSQL failures after the parallel module run; rerunning the three named tests three times and then `services/fabric` PostgreSQL `go test -count=1 -json ./...` passed. No UX-02B source or contract change was made for this unrelated flaky result. |
 
 The focused browser evidence passed at `1280x900` desktop and `390x844`
 mobile widths. The customer navigation is exactly `概览 / 工作空间 / API / 费用`
@@ -79,6 +79,7 @@ index are documentation-only additions after implementation.
 This is local source and fake-only browser evidence. It does not claim a
 Candidate, publication, deployment, Instance qualification, production
 availability, physical Support data migration, or production data deletion.
-The full `npm run verify:local:full` gate remains the final repository checkpoint
-for this retained persistence boundary; it is intentionally run after this
-record is added.
+The full gate was exercised. Its first parallel run surfaced an unrelated,
+non-reproducible Fabric PostgreSQL failure; focused reruns passed, so no Fabric
+change is justified by UX-02B. This record does not claim a clean full-gate run
+unless that command is rerun serially and passes in the same environment.
