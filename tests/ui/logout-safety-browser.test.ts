@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { chromium } from "playwright";
 
-import type { RuntimeCredentialResponse } from "../../apps/console-ui/src/api/dtos.ts";
+import type {
+  RuntimeCredentialResponse,
+  SourceEnvelope,
+  WorkspaceListData
+} from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
@@ -44,21 +48,58 @@ test("Console hides secrets and rejects late account data while logout is unconf
     const workspaceKey = String(await workspaceKeyRow.locator("code").textContent());
     assert.ok(workspaceKey && !workspaceKey.includes("••"));
 
-    let releaseSupport: (() => void) | undefined;
-    const supportReleased = new Promise<void>((resolve) => { releaseSupport = resolve; });
-    let holdSupport: ((route: import("playwright").Route) => void) | undefined;
-    const supportHeld = new Promise<import("playwright").Route>((resolve) => { holdSupport = resolve; });
-    await page.route("**/api/support/tickets", async (route) => {
-      holdSupport?.(route);
-      await supportReleased;
+    const lateWorkspace: SourceEnvelope<WorkspaceListData> = {
+      source: "control-plane",
+      status: "available",
+      available: true,
+      fetchedAt: "2026-08-27T00:00:00Z",
+      data: {
+        items: [{
+          id: "ws-1",
+          ownerAccountId: "LATE-ACCOUNT-RESULT",
+          ownerUserId: "user-customer",
+          state: "running",
+          createdAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-08-27T00:00:00Z",
+          name: "LATE-ACCOUNT-RESULT / LATE-WORKSPACE-RESULT",
+          url: "https://workspace.example.invalid/w/ws-1/",
+          packageId: "basic",
+          storageGb: 10,
+          autoRenew: false,
+          priceVersion: "pilot-usd-2026-07-v1",
+          currency: "USD",
+          totalUsdMicros: 52_580_000,
+          periodStart: "2026-07-01T00:00:00Z",
+          paidThrough: "2026-08-01T00:00:00Z",
+          renewalStatus: "manual",
+          workspaceApiKeyId: "9"
+        }],
+        total: 1,
+        page: 1,
+        pageSize: 50
+      }
+    };
+    let releaseWorkspace: (() => void) | undefined;
+    const workspaceReleased = new Promise<void>((resolve) => { releaseWorkspace = resolve; });
+    let holdWorkspace: ((route: import("playwright").Route) => void) | undefined;
+    const workspaceHeld = new Promise<import("playwright").Route>((resolve) => { holdWorkspace = resolve; });
+    await page.route("**/api/workspaces?*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== "GET" || url.searchParams.get("page") !== "1" || url.searchParams.get("pageSize") !== "50") {
+        await route.continue();
+        return;
+      }
+      holdWorkspace?.(route);
+      await workspaceReleased;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ tickets: [{ id: "late-ticket", title: "LATE-ACCOUNT-RESULT" }] })
+        body: JSON.stringify(lateWorkspace)
       });
     });
-    await page.getByRole("button", { name: "Support", exact: true }).click();
-    await supportHeld;
+    await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
+    await workspaceHeld;
 
     let releaseLogout: (() => void) | undefined;
     const logoutReleased = new Promise<void>((resolve) => { releaseLogout = resolve; });
@@ -90,9 +131,21 @@ test("Console hides secrets and rejects late account data while logout is unconf
     assert.equal(await page.getByText(CONSOLE_DEMO_CREDENTIALS.customer.email, { exact: true }).count(), 0);
     assert.equal(await page.getByText("Pilot Workspace", { exact: true }).count(), 0);
 
-    releaseSupport?.();
+    const lateWorkspaceResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "GET"
+        && url.pathname === "/api/workspaces"
+        && url.searchParams.get("page") === "1"
+        && url.searchParams.get("pageSize") === "50";
+    });
+    releaseWorkspace?.();
+    await (await lateWorkspaceResponse).finished();
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     await page.getByRole("button", { name: "重试退出", exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByText("LATE-ACCOUNT-RESULT", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("LATE-ACCOUNT-RESULT", { exact: false }).count(), 0);
+    assert.equal(await page.getByText("LATE-WORKSPACE-RESULT", { exact: false }).count(), 0);
 
     await page.unroute("**/api/auth/logout");
     await page.getByRole("button", { name: "重试退出", exact: true }).click();
@@ -145,7 +198,7 @@ test("a late login response cannot restore an account or cancel logout", async (
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.admin.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
-    await page.getByRole("link", { name: "API 服务", exact: true }).click();
+    await page.getByRole("link", { name: "API", exact: true }).click();
     await page.getByText("余额历史", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(`${demo.origin}/`);
@@ -201,7 +254,7 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     const passwordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
     await revealHeld;
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
 
     releaseReveal?.();

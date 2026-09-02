@@ -1019,8 +1019,18 @@ async function exerciseGatewayKeyLifecycle(page, state) {
   const secretStatus = page.locator(".keys-secret");
   await secretStatus.getByRole("button", { name: "复制", exact: true }).click();
   if (await page.evaluate(() => navigator.clipboard.readText()) !== GENERAL_KEY) throw new Error("console_browser_created_key_copy_failed");
+  await page.clock.fastForward(59_999);
+  if (!await secretStatus.getByText(GENERAL_KEY, { exact: true }).isVisible()) {
+    throw new Error("console_browser_created_key_secret_expired_early");
+  }
+  await page.clock.fastForward(1);
+  if (await secretStatus.count()) {
+    throw new Error("console_browser_created_key_secret_expiry_failed");
+  }
 
   let keyRow = page.getByRole("row").filter({ hasText: "Browser retry key" }).first();
+  await keyRow.getByRole("button", { name: "显示 API 密钥", exact: true }).click();
+  await waitForText(page, GENERAL_KEY);
   await keyRow.getByRole("button", { name: "使用说明", exact: true }).click();
   const useDialog = page.getByRole("dialog", { name: "API 密钥使用说明", exact: true });
   const useTechnicalDetails = useDialog.locator("details.key-use-technical-details");
@@ -1484,8 +1494,19 @@ export async function runConsoleBrowserQa({
       await waitForText(page, "暂无数据");
       state.customerRoutes.add("/console/api/keys");
       if (name === "desktop") {
-        await page.goto(`${server.origin}/console/api/keys?write=1`, { waitUntil: "networkidle" });
-        await exerciseGatewayKeyLifecycle(page, state);
+        const lifecycleContext = await browser.newContext({ viewport: VIEWPORTS.desktop, permissions: ["clipboard-read", "clipboard-write"] });
+        const lifecyclePage = await lifecycleContext.newPage();
+        await installFixturePage(lifecyclePage, state, server.origin);
+        await lifecyclePage.clock.install();
+        await lifecyclePage.clock.pauseAt(new Date());
+        try {
+          authenticateFixtureSession(state, "customer");
+          await lifecyclePage.goto(`${server.origin}/console/api/keys?write=1`, { waitUntil: "networkidle" });
+          await exerciseGatewayKeyLifecycle(lifecyclePage, state);
+        } finally {
+          await lifecyclePage.clock.resume();
+          await lifecycleContext.close();
+        }
       }
 
       await page.goto(`${server.origin}/console/billing?viewport=${name}`, { waitUntil: "networkidle" });
@@ -1639,7 +1660,7 @@ export async function runConsoleBrowserQa({
     if (state.gatewayMutationWrites.size !== expectedGatewayActions.length || JSON.stringify(state.gatewayActions) !== JSON.stringify(expectedGatewayActions)) {
       throw new Error(`console_browser_gateway_lifecycle_failed:${JSON.stringify(state.gatewayActions)}`);
     }
-    if (state.revealCalls.get("12") !== 1) throw new Error(`console_browser_created_key_reveal_failed:${state.revealCalls.get("12") || 0}`);
+    if (state.revealCalls.get("12") !== 2) throw new Error(`console_browser_created_key_reveal_failed:${state.revealCalls.get("12") || 0}`);
     if (state.revealCalls.get("9") !== 1 || state.revealCalls.get("19") !== 1) throw new Error(`console_browser_workspace_key_scope_failed:${JSON.stringify(Object.fromEntries(state.revealCalls))}`);
     if (state.workspaceSecretReads.get("ws-1") !== 1 || state.workspaceSecretReads.get("ws-2") !== 1) throw new Error(`console_browser_workspace_secret_scope_failed:${JSON.stringify(Object.fromEntries(state.workspaceSecretReads))}`);
     const missingCustomerRoutes = CUSTOMER_ROUTES.filter((route) => !state.customerRoutes.has(route));
