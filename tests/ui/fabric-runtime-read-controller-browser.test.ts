@@ -299,7 +299,7 @@ test("leaving the Workspace detail route rejects an in-flight Runtime completion
     await login(page, demo.origin);
     await navigate(page, "/console/workspaces/ws-1");
     await staleRuntimeHeld.promise;
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.locator(".workspace-list-page").waitFor({ state: "visible" });
 
     releaseStaleRuntime.resolve();

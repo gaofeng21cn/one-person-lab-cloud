@@ -72,7 +72,7 @@ async function login(page: Page, origin: string) {
 async function openAnnouncementList(page: Page) {
   await page.getByRole("button", { name: "消息", exact: true }).click();
   await page.waitForURL(/\/console\/announcements$/);
-  await page.getByRole("heading", { level: 2, name: "公告列表", exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { level: 2, name: "消息列表", exact: true }).waitFor({ state: "visible" });
 }
 
 function announcementCard(page: Page, title: string) {

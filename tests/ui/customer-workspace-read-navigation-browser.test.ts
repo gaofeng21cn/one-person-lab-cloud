@@ -137,7 +137,7 @@ test("Customer Workspace routes use their exact list and detail read identities"
     assert.ok(reads.includes("?page=1&pageSize=50"));
 
     await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
-    await page.getByText("Control Plane 当前商业条款", { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "订阅与续费", exact: true }).waitFor();
     assert.ok(reads.filter((query) => query === "?page=1&pageSize=10").length >= 2);
   } finally {
     await browser.close();
@@ -187,7 +187,7 @@ test("a late page response cannot replace a newer page selection on the same rou
     });
 
     await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "domcontentloaded" });
-    const pagination = page.getByRole("navigation", { name: "Workspace 分页" });
+    const pagination = page.getByRole("navigation", { name: "工作空间分页" });
     await page.getByText("Initial Page One", { exact: true }).waitFor();
     await pagination.getByRole("button", { name: "下一页" }).click();
     await page.getByText("Current Page Two", { exact: true }).waitFor();
@@ -456,7 +456,7 @@ test("Workspace detail failure settles before and independently from Runtime", {
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await runtimeHeld.promise;
-    await page.getByText("Workspace 详情暂不可用", { exact: true }).waitFor();
+    await page.getByText("工作空间详情暂不可用", { exact: true }).waitFor();
     const technical = page.locator("details.workspace-technical-details");
     assert.equal(await technical.getByText("control_plane_unavailable", { exact: true }).isVisible(), false);
     await technical.locator("summary").click();
@@ -517,7 +517,7 @@ test("a late Workspace detail cannot replace the current route Workspace", { tim
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await staleReadHeld.promise;
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByRole("link", { name: /Second Workspace/ }).first().click();
     await page.waitForURL(/\/console\/workspaces\/ws-2$/);
