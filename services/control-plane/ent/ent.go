@@ -20,7 +20,6 @@ import (
 	"opl-cloud/services/control-plane/ent/session"
 	"opl-cloud/services/control-plane/ent/storageattachment"
 	"opl-cloud/services/control-plane/ent/storagevolume"
-	"opl-cloud/services/control-plane/ent/supportticketmapping"
 	"opl-cloud/services/control-plane/ent/user"
 	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/ent/workspacesyncevent"
@@ -104,7 +103,6 @@ func checkColumn(table, column string) error {
 			session.Table:                 session.ValidColumn,
 			storageattachment.Table:       storageattachment.ValidColumn,
 			storagevolume.Table:           storagevolume.ValidColumn,
-			supportticketmapping.Table:    supportticketmapping.ValidColumn,
 			user.Table:                    user.ValidColumn,
 			workspace.Table:               workspace.ValidColumn,
 			workspacesyncevent.Table:      workspacesyncevent.ValidColumn,

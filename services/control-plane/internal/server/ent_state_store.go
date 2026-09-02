@@ -22,7 +22,6 @@ import (
 	"opl-cloud/services/control-plane/ent/billingreconciliation"
 	"opl-cloud/services/control-plane/ent/productione2erecord"
 	"opl-cloud/services/control-plane/ent/runtimeoperation"
-	"opl-cloud/services/control-plane/ent/supportticketmapping"
 	controlplanemigrations "opl-cloud/services/control-plane/migrations"
 	"opl-cloud/services/internal/postgresmigrate"
 )
@@ -838,13 +837,6 @@ func (s *postgresEntStateStore) ApplyRetention(ctx context.Context, policy reten
 			}
 		}
 		result["adminAuditArchived"] = len(rows)
-	}
-	if cutoff := policy.cutoff(policy.SupportDays); !cutoff.IsZero() {
-		deleted, err := tx.SupportTicketMapping.Delete().Where(supportticketmapping.CreatedAtLT(cutoff)).Exec(ctx)
-		if err != nil {
-			return nil, err
-		}
-		result["supportDeleted"] = deleted
 	}
 	if cutoff := policy.cutoff(policy.ProductionE2EDays); !cutoff.IsZero() {
 		deleted, err := tx.ProductionE2ERecord.Delete().Where(productione2erecord.CreatedAtLT(cutoff)).Exec(ctx)

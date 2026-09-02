@@ -8,14 +8,12 @@ import (
 
 type retentionPolicy struct {
 	AdminAuditDays    int
-	SupportDays       int
 	ProductionE2EDays int
 }
 
 func currentRetentionPolicy() retentionPolicy {
 	return retentionPolicy{
 		AdminAuditDays:    envInt("OPL_RETENTION_ADMIN_AUDIT_DAYS", 180),
-		SupportDays:       envInt("OPL_RETENTION_SUPPORT_DAYS", 365),
 		ProductionE2EDays: envInt("OPL_RETENTION_PRODUCTION_E2E_DAYS", 90),
 	}
 }
@@ -23,7 +21,6 @@ func currentRetentionPolicy() retentionPolicy {
 func (policy retentionPolicy) dto() map[string]any {
 	return map[string]any{
 		"adminAuditDays":    policy.AdminAuditDays,
-		"supportDays":       policy.SupportDays,
 		"productionE2EDays": policy.ProductionE2EDays,
 		"billingLedger":     map[string]any{"action": "retain", "reason": "money_evidence_not_archived_by_control_plane"},
 		"fabricOperations":  map[string]any{"action": "retain", "reason": "provider_evidence"},
