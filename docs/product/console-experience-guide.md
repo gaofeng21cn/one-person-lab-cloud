@@ -17,7 +17,7 @@ The Console should make a signed-in user understand, without architecture
 jargon:
 
 1. that this is OPL Cloud;
-2. which Workspace, AI API, balance and billing tasks are currently available;
+2. which Workspace, OPL Gateway, balance and billing tasks are currently available;
 3. whether each displayed fact is available, empty or unavailable;
 4. what action can be taken next and what the result was.
 

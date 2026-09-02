@@ -67,6 +67,10 @@ Current truth starts from [the docs index](../README.md),
   the local desktop and mobile customer-presentation baseline, prioritized
   findings, evidence exclusions, and UX-03B entry gate; it does not define a
   visual freeze, implementation, deployment, Instance, or production state.
+- [Console Customer Visual System UX-03B design, 2026-09-02](./2026-09-02-console-customer-visual-system-design.md):
+  the approved customer Shell, Overview, brand, responsive hierarchy, and P1
+  presentation-repair direction retained as implementation provenance; it is
+  not implementation, deployment, Instance, or production evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
