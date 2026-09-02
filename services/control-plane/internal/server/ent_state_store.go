@@ -460,24 +460,6 @@ var (
 		textField("UserID", "SetUserID", "userId"),
 		textField("ReadAt", "SetReadAt", "readAt"),
 	}
-	supportEntFields = []entRecordField{
-		textField("AccountID", "SetAccountID", "accountId"),
-		textField("UserID", "SetUserID", "userId"),
-		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
-		textField("ExternalSystem", "SetExternalSystem", "externalSystem"),
-		textField("ExternalTicketID", "SetExternalTicketID", "externalTicketId"),
-		textField("ExternalURL", "SetExternalURL", "externalUrl"),
-		textField("OperationID", "SetOperationID", "operationId"),
-		textField("ResourceID", "SetResourceID", "resourceId"),
-		textField("ResourceKind", "SetResourceKind", "resourceKind"),
-		textField("Title", "SetTitle", "title"),
-		textField("Category", "SetCategory", "category"),
-		textField("Priority", "SetPriority", "priority"),
-		textField("Status", "SetStatus", "status"),
-		textField("Source", "SetSource", "source"),
-		textField("URL", "SetURL", "url"),
-		textField("Reason", "SetReason", "reason"),
-	}
 	productionE2EEntFields = []entRecordField{
 		textField("AccountID", "SetAccountID", "accountId"),
 		textField("WorkspaceID", "SetWorkspaceID", "workspaceId"),
@@ -681,57 +663,6 @@ func announcementReadRecordFromEnt(entity *controlplaneent.AnnouncementRead) map
 		row["updatedAt"] = entity.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
 	return row
-}
-
-func (s *postgresEntStateStore) ListSupportMappings(ctx context.Context, accountID string) ([]map[string]any, error) {
-	query := s.client.SupportTicketMapping.Query()
-	if accountID != "" {
-		query.Where(supportticketmapping.AccountID(accountID))
-	}
-	rows, err := loadRecordSet(ctx, query.All, supportEntFields)
-	if err != nil {
-		return nil, err
-	}
-	return filteredRecords(rows, accountID)
-}
-
-func (s *postgresEntStateStore) CreateSupportMapping(ctx context.Context, row map[string]any, limit int) error {
-	tx, err := s.client.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	rollback := func(err error) error {
-		_ = tx.Rollback()
-		return err
-	}
-	if s.client.Driver().Dialect() == dialect.Postgres {
-		if err := tx.Driver().Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1))", []any{stringValue(row["accountId"])}, nil); err != nil {
-			return rollback(err)
-		}
-	}
-	id := stringValue(row["id"])
-	if _, err := tx.SupportTicketMapping.Get(ctx, id); controlplaneent.IsNotFound(err) {
-		count, err := tx.SupportTicketMapping.Query().Where(supportticketmapping.AccountIDEQ(stringValue(row["accountId"]))).Count(ctx)
-		if err != nil {
-			return rollback(err)
-		}
-		if count >= limit {
-			return rollback(errors.New("support_mapping_limit_reached"))
-		}
-	} else if err != nil {
-		return rollback(err)
-	}
-	if err := tx.SupportTicketMapping.DeleteOneID(id).Exec(ctx); err != nil && !controlplaneent.IsNotFound(err) {
-		return rollback(err)
-	}
-	if err := saveRecord(ctx, id, row, tx.SupportTicketMapping.Create(), supportEntFields); err != nil {
-		return rollback(err)
-	}
-	return tx.Commit()
-}
-
-func (s *postgresEntStateStore) SaveSupportMapping(ctx context.Context, row map[string]any) error {
-	return s.replaceRecord(ctx, row, func(id string) error { return s.client.SupportTicketMapping.DeleteOneID(id).Exec(ctx) }, func() any { return s.client.SupportTicketMapping.Create() }, supportEntFields)
 }
 
 func (s *postgresEntStateStore) ListRuntimeOperations(ctx context.Context) ([]map[string]any, error) {
