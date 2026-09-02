@@ -224,6 +224,43 @@ func TestLocalDockerRuntimeCapacityRecoversMissingReservationFromLiveLimits(t *t
 	}
 }
 
+func TestLocalDockerRuntimeCapacityRecoversUnboundedSwapOnlyWithOptIn(t *testing.T) {
+	rootPath := localDockerStorageTestRoot(t)
+	workspaceID := "ws-unbounded-swap"
+	resourceID := localRuntimeID(workspaceID)
+	runner := &localDockerCapacityRunner{info: []byte("{\"NCPU\":4,\"MemTotal\":8589934592}")}
+	runner.container.ID, runner.container.Name = "container-unbounded-swap", localRuntimeName(workspaceID)
+	runner.container.Config.Labels = map[string]string{
+		"opl.fabric.provider": "local-docker", "opl.fabric.kind": "runtime", "opl.workspace.id": workspaceID,
+		"opl.resource.id": resourceID, localDockerComputePackageLabel: "basic",
+	}
+	runner.container.HostConfig.NanoCPUs, runner.container.HostConfig.Memory, runner.container.HostConfig.MemorySwap = 2_000_000_000, 4_294_967_296, -1
+	requested := localDockerRuntimeReservation{SchemaVersion: 1, WorkspaceID: "ws-new", ResourceID: localRuntimeID("ws-new"), PackageID: "basic", NanoCPUs: 2_000_000_000, MemoryBytes: 4_294_967_296}
+
+	provider := newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: rootPath}, runner)
+	root, err := provider.openStorageRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.localDockerRuntimeCapacityAdmission(context.Background(), root, requested); err == nil || err.Error() != localDockerRuntimeReservationInventoryError {
+		root.Close()
+		t.Fatalf("unbounded swap without opt-in err=%v", err)
+	}
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	provider = newLocalDockerProvider(LocalDockerProviderConfig{HostStorageRoot: rootPath, AllowUnboundedSwap: true}, runner)
+	root, err = provider.openStorageRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := provider.localDockerRuntimeCapacityAdmission(context.Background(), root, requested); err != nil {
+		t.Fatalf("unbounded swap opt-in reservation recovery failed: %v", err)
+	}
+}
+
 func TestLocalDockerRuntimeCapacityRejectsUnboundedLegacyContainer(t *testing.T) {
 	rootPath := localDockerStorageTestRoot(t)
 	workspaceID := "ws-legacy"

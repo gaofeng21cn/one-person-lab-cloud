@@ -26,6 +26,12 @@ test("portable Local-Docker assets configure from a standalone download director
 
   assert.equal(fabric.services.fabric.labels["opl.cloud.fabric-provider"], "local-docker");
   assert.deepEqual(fabric.services.fabric.cap_add, ["SYS_ADMIN"]);
+  assert.equal(fabric.services.fabric.environment.OPL_FABRIC_LOCAL_DOCKER_HOST, "${OPL_FABRIC_LOCAL_DOCKER_HOST:-127.0.0.1}");
+  assert.equal(fabric.services.fabric.environment.OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST, "${OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST:-127.0.0.1}");
+  assert.equal(fabric.services.fabric.environment.OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP, "${OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP:-0}");
+  assert.match(environmentSource, /^OPL_FABRIC_LOCAL_DOCKER_HOST=127\.0\.0\.1$/m);
+  assert.match(environmentSource, /^OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST=127\.0\.0\.1$/m);
+  assert.match(environmentSource, /^OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP=0$/m);
   assert.equal(deployment.services["control-plane"].labels["opl.cloud.deployment-mode"], "customer_owned");
   assert.equal(overlay.services["control-plane"].environment.OPL_WORKSPACE_LAUNCH_WORKER_ENABLED, "1");
 

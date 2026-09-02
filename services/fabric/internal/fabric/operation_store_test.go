@@ -55,6 +55,129 @@ func canonicalRuntimeOperationGraph(t *testing.T, workspaceID, suffix string, no
 	return parent, child, runtime
 }
 
+func legacyLocalDockerRuntimeReadbackGraph(t *testing.T, workspaceID, suffix string, now time.Time) (FabricOperation, FabricOperation, WorkspaceRuntime) {
+	t.Helper()
+	parent, child, runtime := canonicalRuntimeOperationGraph(t, workspaceID, suffix, now)
+	parent.Provider, child.Provider = "local-docker", "local-docker"
+	runtime.ImageID = "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:" + strings.Repeat("a", 64)
+	record, ok := decodeWorkspaceLaunchStageRecord(parent)
+	if !ok {
+		t.Fatal("decode Local-Docker Runtime stage record")
+	}
+	record.ProviderProfileRef = parent.Provider
+	record.ProviderState, _ = encodeLocalDockerWorkspaceLaunchState(localDockerWorkspaceLaunchState{Runtime: &runtime})
+	setWorkspaceLaunchStageRecord(&parent, record)
+	persisted := child.RedactedProviderPayload[providerMutationBindingPayloadKey].(persistedProviderMutationBinding)
+	persisted.Binding.Action = "local_docker_runtime_create"
+	persisted.Binding.FabricOperationID = providerMutationOperationID(
+		persisted.Binding.Parent, persisted.Binding.Action, persisted.Binding.ResourceKind, persisted.Binding.ResourceID, persisted.Binding.ExpectedResourceBinding,
+	)
+	persisted.Digest = hashInput(persisted.Binding)
+	child.ID, child.OperationID, child.Action = persisted.Binding.FabricOperationID, persisted.Binding.FabricOperationID, persisted.Binding.Action
+	child.IdempotencyKey, child.RequestHash = persisted.Binding.FabricOperationID, hashInput(persisted.Binding)
+	child.RedactedProviderPayload[providerMutationBindingPayloadKey] = persisted
+	child.Status, child.ErrorCode = "failed", "local_docker_runtime_readback_mismatch"
+	fillOperationResource(&child, WorkspaceRuntime{ID: runtime.ID, WorkspaceID: runtime.WorkspaceID})
+	return parent, child, runtime
+}
+
+type legacyLocalDockerRuntimeReadbackProvider struct {
+	testProvider
+	runtime WorkspaceRuntime
+}
+
+func (p legacyLocalDockerRuntimeReadbackProvider) WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error) {
+	return p.runtime, nil
+}
+
+func TestMemoryWorkspaceRuntimeIdentityCandidatesRecoverLegacyLocalDockerSwapReadback(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryOperationStore()
+	parent, child, expected := legacyLocalDockerRuntimeReadbackGraph(t, "workspace-local-docker", "legacy-swap", time.Date(2026, 9, 3, 1, 0, 0, 0, time.UTC))
+	binding, bindingOK := decodeProviderMutationBinding(child)
+	record, recordOK := decodeWorkspaceLaunchStageRecord(parent)
+	compatible, compatibilityOK := legacyLocalDockerRuntimeReadbackCandidate(child, binding, canonicalWorkspaceRuntimeParent{operation: parent, binding: binding.Parent, record: record})
+	if !bindingOK || !recordOK || !compatibilityOK || compatible.ID != child.ID {
+		t.Fatalf("legacy compatibility bindingOK=%v recordOK=%v compatible=%#v", bindingOK, recordOK, compatible)
+	}
+	for _, operation := range []FabricOperation{parent, child} {
+		if err := store.Append(ctx, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	candidates, err := store.WorkspaceRuntimeIdentityCandidates(ctx, expected.WorkspaceID)
+	if err != nil || len(candidates) != 1 || candidates[0].ID != child.ID || candidates[0].Status != "failed" {
+		t.Fatalf("legacy Local-Docker candidates=%#v err=%v", candidates, err)
+	}
+	var recovered WorkspaceRuntime
+	if !decodeOperationResource(candidates[0], &recovered) || recovered.ID != expected.ID || recovered.OperationID != expected.OperationID || recovered.ImageID != expected.ImageID {
+		t.Fatalf("recovered Runtime=%#v", recovered)
+	}
+	live := expected
+	live.URL = "http://192.0.2.40:30123/"
+	service := runtimeTestService(legacyLocalDockerRuntimeReadbackProvider{runtime: live}, store)
+	status, err := service.WorkspaceRuntimeStatus(ctx, expected.WorkspaceID)
+	if err != nil || !status.Ready || status.ID != expected.ID || status.URL != live.URL {
+		t.Fatalf("legacy Local-Docker status=%#v err=%v", status, err)
+	}
+}
+
+func TestMemoryWorkspaceRuntimeIdentityCandidatesRejectNonTargetLegacyLocalDockerHistory(t *testing.T) {
+	now := time.Date(2026, 9, 3, 2, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name   string
+		mutate func(*FabricOperation, *FabricOperation, *WorkspaceRuntime)
+	}{
+		{name: "provider", mutate: func(parent, child *FabricOperation, _ *WorkspaceRuntime) {
+			parent.Provider, child.Provider = "tencent-tke", "tencent-tke"
+		}},
+		{name: "error code", mutate: func(_ *FabricOperation, child *FabricOperation, _ *WorkspaceRuntime) {
+			child.ErrorCode = "local_docker_runtime_secret_binding_mismatch"
+		}},
+		{name: "runtime operation", mutate: func(_ *FabricOperation, child *FabricOperation, runtime *WorkspaceRuntime) {
+			drifted := WorkspaceRuntime{ID: runtime.ID, OperationID: runtime.OperationID + "-drift", WorkspaceID: runtime.WorkspaceID}
+			fillOperationResource(child, drifted)
+		}},
+		{name: "record credentials", mutate: func(parent, _ *FabricOperation, _ *WorkspaceRuntime) {
+			record, _ := decodeWorkspaceLaunchStageRecord(*parent)
+			record.Resources.RuntimeCredentialVersion += "-drift"
+			setWorkspaceLaunchStageRecord(parent, record)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := NewMemoryOperationStore()
+			parent, child, runtime := legacyLocalDockerRuntimeReadbackGraph(t, "workspace-local-docker", test.name, now)
+			test.mutate(&parent, &child, &runtime)
+			for _, operation := range []FabricOperation{parent, child} {
+				if err := store.Append(ctx, operation); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := store.WorkspaceRuntimeIdentityCandidates(ctx, runtime.WorkspaceID); !errors.Is(err, ErrLaunchStageBindingConflict) {
+				t.Fatalf("non-target history error=%v", err)
+			}
+		})
+	}
+}
+
+func TestLegacyLocalDockerRuntimeReadbackRejectsLiveIdentityDrift(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryOperationStore()
+	parent, child, expected := legacyLocalDockerRuntimeReadbackGraph(t, "workspace-local-docker", "live-drift", time.Date(2026, 9, 3, 3, 0, 0, 0, time.UTC))
+	for _, operation := range []FabricOperation{parent, child} {
+		if err := store.Append(ctx, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live := expected
+	live.ImageID += "-drift"
+	service := runtimeTestService(legacyLocalDockerRuntimeReadbackProvider{runtime: live}, store)
+	if _, err := service.WorkspaceRuntimeStatus(ctx, expected.WorkspaceID); !errors.Is(err, ErrLaunchStageBindingConflict) {
+		t.Fatalf("live identity drift error=%v", err)
+	}
+}
+
 func TestMemoryWorkspaceRuntimeIdentityCandidatesSupportCanonicalLaunchGraph(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryOperationStore()

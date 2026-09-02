@@ -366,6 +366,45 @@ func workspaceRuntimeImageReplacementProviderMutation(child FabricOperation, bin
 		runtime.ServiceName == input.RuntimeServiceName && runtime.ImageID == input.ReplacementImageDigest
 }
 
+func legacyLocalDockerRuntimeReadbackCandidate(child FabricOperation, binding providerMutationBinding, parent canonicalWorkspaceRuntimeParent) (FabricOperation, bool) {
+	if parent.operation.Provider != "local-docker" || child.Provider != "local-docker" || binding.Action != "local_docker_runtime_create" ||
+		child.Status != "failed" || child.ErrorCode != "local_docker_runtime_readback_mismatch" || child.Retryable ||
+		child.CreatedAt.IsZero() || child.FinishedAt.IsZero() {
+		return FabricOperation{}, false
+	}
+	state, err := decodeLocalDockerWorkspaceLaunchState(parent.record)
+	if err != nil || state.Runtime == nil {
+		return FabricOperation{}, false
+	}
+	runtime := *state.Runtime
+	resources := parent.record.Resources
+	if runtime.ID == "" || runtime.ID != binding.ResourceID || runtime.ID != resources.RuntimeID ||
+		runtime.OperationID != parent.operation.ID || runtime.WorkspaceID != parent.operation.WorkspaceID ||
+		runtime.ServiceName == "" || runtime.ServiceName != binding.ExpectedResourceBinding || runtime.ServiceName != resources.RuntimeServiceName ||
+		runtime.URL == "" || runtime.URL != resources.RuntimeURL || !validWorkspaceRuntimeImageIdentity(runtime.ImageID) ||
+		runtime.Status != "running" || !runtime.Ready || runtime.Access.Password != "" ||
+		runtime.Access.Username == "" || runtime.Access.Username != resources.RuntimeUsername ||
+		runtime.Access.CredentialStatus != "configured" || runtime.Access.CredentialStatus != resources.RuntimeCredentialStatus ||
+		runtime.Access.CredentialVersion == "" || runtime.Access.CredentialVersion != resources.RuntimeCredentialVersion ||
+		runtime.Access.SecretRef == "" || runtime.Access.SecretRef != resources.RuntimeCredentialSecretRef {
+		return FabricOperation{}, false
+	}
+	var failed WorkspaceRuntime
+	if !decodeOperationResource(child, &failed) || failed.ID != runtime.ID || failed.WorkspaceID != runtime.WorkspaceID ||
+		failed.OperationID != "" && failed.OperationID != runtime.OperationID ||
+		failed.URL != "" && failed.URL != runtime.URL || failed.ServiceName != "" && failed.ServiceName != runtime.ServiceName ||
+		failed.ImageID != "" && failed.ImageID != runtime.ImageID || failed.ProviderRequestID != "" && failed.ProviderRequestID != runtime.ProviderRequestID ||
+		failed.Access.Username != "" && failed.Access.Username != runtime.Access.Username ||
+		failed.Access.CredentialStatus != "" && failed.Access.CredentialStatus != runtime.Access.CredentialStatus ||
+		failed.Access.CredentialVersion != "" && failed.Access.CredentialVersion != runtime.Access.CredentialVersion ||
+		failed.Access.SecretRef != "" && failed.Access.SecretRef != runtime.Access.SecretRef || failed.Access.Password != "" {
+		return FabricOperation{}, false
+	}
+	candidate := child
+	fillOperationResource(&candidate, runtime)
+	return candidate, true
+}
+
 func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperation, workspaceID string) ([]FabricOperation, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -433,6 +472,7 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 	}
 
 	childCounts := map[string]int{}
+	legacyParents := map[string]bool{}
 	for _, child := range children {
 		binding, ok := decodeProviderMutationBinding(child)
 		if !ok {
@@ -446,12 +486,20 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 			return nil, ErrLaunchStageBindingConflict
 		}
 		if binding.ResourceKind != "workspace_runtime" || binding.Parent.Stage != "runtime" || binding.Parent.Action != "ensure_runtime" ||
-			binding.Parent.WorkspaceID != workspaceID || child.Status != "succeeded" ||
+			binding.Parent.WorkspaceID != workspaceID ||
 			binding.FabricOperationID != providerMutationOperationID(binding.Parent, binding.Action, binding.ResourceKind, binding.ResourceID, binding.ExpectedResourceBinding) {
 			return nil, ErrLaunchStageBindingConflict
 		}
 		if parent.binding != binding.Parent || child.Provider == "" || child.Provider != parent.operation.Provider {
 			return nil, ErrLaunchStageBindingConflict
+		}
+		if child.Status != "succeeded" {
+			var compatible bool
+			child, compatible = legacyLocalDockerRuntimeReadbackCandidate(child, binding, parent)
+			if !compatible {
+				return nil, ErrLaunchStageBindingConflict
+			}
+			legacyParents[parent.operation.ID] = true
 		}
 		var runtime WorkspaceRuntime
 		if !decodeOperationResource(child, &runtime) || runtime.ID == "" || runtime.ID != binding.ResourceID ||
@@ -465,7 +513,7 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 		matches = append(matches, child)
 	}
 	for parentID := range parents {
-		if childCounts[parentID] == 0 {
+		if childCounts[parentID] == 0 || legacyParents[parentID] && childCounts[parentID] != 1 {
 			return nil, ErrLaunchStageBindingConflict
 		}
 	}
