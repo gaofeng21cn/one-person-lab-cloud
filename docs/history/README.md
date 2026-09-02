@@ -63,6 +63,10 @@ Current truth starts from [the docs index](../README.md),
   Support capability-retirement boundary, execution sequence, and local
   verification retained as historical evidence; they do not define current
   implementation, deployment, Instance, or production state.
+- [Console Customer UI Audit UX-03A, 2026-09-02](./2026-09-02-console-customer-ui-audit.md):
+  the local desktop and mobile customer-presentation baseline, prioritized
+  findings, evidence exclusions, and UX-03B entry gate; it does not define a
+  visual freeze, implementation, deployment, Instance, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
