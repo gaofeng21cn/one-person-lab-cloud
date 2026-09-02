@@ -152,6 +152,10 @@ type runtimeImageReplacementProvider interface {
 	ReplaceWorkspaceRuntimeImage(context.Context, WorkspaceRuntimeImageReplacementInput) (WorkspaceRuntime, error)
 }
 
+type runtimeGatewayNetworkRecoveryProvider interface {
+	RecoverWorkspaceRuntimeGatewayNetwork(context.Context, WorkspaceRuntimeGatewayNetworkRecoveryInput, ComputeAllocation) (WorkspaceRuntimeGatewayNetworkRecoveryResult, error)
+}
+
 type workspaceImagePolicy interface {
 	ValidateWorkspaceImageReference(string) bool
 }

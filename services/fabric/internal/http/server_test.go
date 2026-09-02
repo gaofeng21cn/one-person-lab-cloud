@@ -394,6 +394,11 @@ func TestFabricProviderMutationScopesAreStrict(t *testing.T) {
 			operationID: "reveal-once", resourceKind: "workspace_runtime_credential", resourceID: "ws-alpha", action: "reveal_workspace_runtime_credential", wantOK: true,
 		},
 		{
+			name: "runtime gateway network recovery", path: "/fabric/workspace-runtimes/ws-alpha/gateway-network/recover",
+			body:        `{"accountId":"acct-alpha","workspaceId":"ws-alpha","computeId":"compute-alpha","runtimeId":"rt-alpha","runtimeOperationId":"launch-alpha:runtime","runtimeServiceName":"runtime-alpha"}`,
+			operationID: "recover-once", resourceKind: "workspace_runtime_gateway_network", resourceID: "ws-alpha", action: "recover_workspace_runtime_gateway_network", wantOK: true,
+		},
+		{
 			name: "compute pool head terminalization", path: "/fabric/compute-pool-head/terminalization",
 			body:        `{"nodePoolId":"np-basic","approvalId":"terminalize-operation","approvalDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
 			operationID: "terminalize-operation", resourceKind: "compute_pool_head", resourceID: "np-basic", action: "terminalize_compute_pool_head", wantOK: true,
@@ -435,6 +440,9 @@ func TestFabricProviderMutationScopesAreStrict(t *testing.T) {
 	}
 	if !isFabricMutation(httptest.NewRequest(http.MethodPost, "/fabric/workspace-runtimes/ws-alpha/credentials/reveal", nil)) {
 		t.Fatal("runtime credential reveal must require capability authorization")
+	}
+	if !isFabricMutation(httptest.NewRequest(http.MethodPost, "/fabric/workspace-runtimes/ws-alpha/gateway-network/recover", nil)) {
+		t.Fatal("runtime gateway network recovery must require capability authorization")
 	}
 }
 

@@ -3,6 +3,7 @@ package fabric
 type optionalProviderPorts struct {
 	runtimeRepair                       runtimeRepairProvider
 	runtimeImageReplacement             runtimeImageReplacementProvider
+	runtimeGatewayNetworkRecovery       runtimeGatewayNetworkRecoveryProvider
 	runtimeGatewaySecrets               runtimeGatewaySecretProvider
 	gatewaySecretReadback               gatewaySecretReadbackProvider
 	providerFacts                       providerFactsReader
@@ -22,6 +23,7 @@ func optionalProviderPortsFrom(provider Provider) optionalProviderPorts {
 	ports := optionalProviderPorts{}
 	ports.runtimeRepair, _ = provider.(runtimeRepairProvider)
 	ports.runtimeImageReplacement, _ = provider.(runtimeImageReplacementProvider)
+	ports.runtimeGatewayNetworkRecovery, _ = provider.(runtimeGatewayNetworkRecoveryProvider)
 	ports.runtimeGatewaySecrets, _ = provider.(runtimeGatewaySecretProvider)
 	ports.gatewaySecretReadback, _ = provider.(gatewaySecretReadbackProvider)
 	ports.providerFacts, _ = provider.(providerFactsReader)

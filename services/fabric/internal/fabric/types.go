@@ -369,6 +369,31 @@ type WorkspaceRuntimeImageReplacementResult struct {
 	Runtime                WorkspaceRuntime `json:"runtime"`
 }
 
+type WorkspaceRuntimeGatewayNetworkRecoveryInput struct {
+	AccountID          string `json:"accountId"`
+	WorkspaceID        string `json:"workspaceId"`
+	ComputeID          string `json:"computeId"`
+	RuntimeID          string `json:"runtimeId"`
+	RuntimeOperationID string `json:"runtimeOperationId"`
+	RuntimeServiceName string `json:"runtimeServiceName"`
+	IdempotencyKey     string `json:"-"`
+}
+
+type WorkspaceRuntimeGatewayNetworkRecoveryResult struct {
+	SchemaVersion      int              `json:"schemaVersion"`
+	OperationID        string           `json:"operationId"`
+	AccountID          string           `json:"accountId"`
+	WorkspaceID        string           `json:"workspaceId"`
+	ComputeID          string           `json:"computeId"`
+	RuntimeID          string           `json:"runtimeId"`
+	RuntimeServiceName string           `json:"runtimeServiceName"`
+	GatewayContainerID string           `json:"gatewayContainerId"`
+	NetworkID          string           `json:"networkId"`
+	NetworkName        string           `json:"networkName"`
+	Status             string           `json:"status"`
+	Runtime            WorkspaceRuntime `json:"runtime"`
+}
+
 type WorkspaceRuntime struct {
 	ID                string            `json:"id"`
 	OperationID       string            `json:"operationId,omitempty"`
