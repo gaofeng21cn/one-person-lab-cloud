@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const FabricCapabilityHeader = "X-OPL-Fabric-Capability"
@@ -307,13 +309,14 @@ type ProviderFactsBatchInput struct {
 }
 
 type ProviderResourceFacts struct {
-	PackageOrSpec string `json:"packageOrSpec,omitempty"`
-	ProviderID    string `json:"providerId,omitempty"`
-	Zone          string `json:"zone,omitempty"`
-	Status        string `json:"status,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	ExpiresAt     string `json:"expiresAt,omitempty"`
-	LastReadAt    string `json:"lastReadAt,omitempty"`
+	PackageOrSpec         string                                    `json:"packageOrSpec,omitempty"`
+	ProviderID            string                                    `json:"providerId,omitempty"`
+	Zone                  string                                    `json:"zone,omitempty"`
+	Status                string                                    `json:"status,omitempty"`
+	CreatedAt             string                                    `json:"createdAt,omitempty"`
+	ExpiresAt             string                                    `json:"expiresAt,omitempty"`
+	LastReadAt            string                                    `json:"lastReadAt,omitempty"`
+	ComputeRuntimeBinding *contracts.WorkspaceComputeRuntimeBinding `json:"computeRuntimeBinding,omitempty"`
 }
 
 type ProviderFact struct {

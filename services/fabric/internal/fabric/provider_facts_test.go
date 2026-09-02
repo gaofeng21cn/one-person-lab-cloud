@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 type providerFactsSpy struct {
@@ -29,6 +31,24 @@ type providerWithoutFacts struct{ Provider }
 type computeOwnershipTagProviderFactsSpy struct {
 	testProvider
 	inputs chan ComputeAllocation
+}
+
+type workspaceRuntimeBindingProvider struct {
+	testProvider
+	runtime    WorkspaceRuntime
+	computeErr error
+}
+
+func (p *workspaceRuntimeBindingProvider) ReadComputeProviderFacts(context.Context, ComputeAllocation) (ProviderResourceFacts, error) {
+	return ProviderResourceFacts{}, p.computeErr
+}
+
+func (p *workspaceRuntimeBindingProvider) WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error) {
+	return p.runtime, nil
+}
+
+func (*workspaceRuntimeBindingProvider) ReadWorkspaceComputeRuntimeBinding(_ context.Context, runtime WorkspaceRuntime, compute ComputeAllocation, ownership MachineOwnership) (bool, error) {
+	return runtime.NodeName == compute.NodeName && ownership.NodeName == compute.NodeName, nil
 }
 
 func (p *computeOwnershipTagProviderFactsSpy) Descriptor() ProviderDescriptor {
@@ -164,6 +184,75 @@ func TestProviderFactsBatchRecoversMissingTencentComputeTagsFromExactActiveOwner
 	operations, listErr := service.ListOperations(context.Background())
 	if listErr != nil || len(operations) != 0 {
 		t.Fatalf("provider facts mutated operation store: operations=%#v err=%v", operations, listErr)
+	}
+}
+
+func TestProviderFactsBatchReportsRedactedRuntimeBindingAcrossComputeReadFailure(t *testing.T) {
+	now := time.Date(2026, 9, 2, 4, 5, 6, 0, time.UTC)
+	store := NewMemoryOperationStore()
+	parent, child, runtime := canonicalRuntimeOperationGraph(t, "workspace-alpha", "provider-binding", now)
+	for _, operation := range []FabricOperation{parent, child} {
+		if err := store.Append(context.Background(), operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime.ComputeID, runtime.NodeName = "compute-alpha", "node-alpha"
+	provider := &workspaceRuntimeBindingProvider{
+		runtime:    runtime,
+		computeErr: errors.New("compute_provider_partial_identity_machine_missing_tke_instance_missing"),
+	}
+	service := NewServiceWithOperationStore(provider, store)
+	compute := ComputeAllocation{
+		ID: "compute-alpha", AccountID: parent.AccountID, WorkspaceID: runtime.WorkspaceID, PackageID: "basic", Provider: "tencent-tke",
+		NodePoolID: "node-pool-alpha", MachineName: "machine-alpha", InstanceID: "ins-alpha", CVMInstanceID: "ins-alpha", NodeName: "node-alpha",
+	}
+	service.computes[compute.ID] = compute
+	ownership := MachineOwnership{
+		ID: "ownership-alpha", ResourceID: compute.ID, AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
+		PackageID: compute.PackageID, NodePoolID: compute.NodePoolID, MachineID: compute.MachineName, InstanceID: compute.InstanceID,
+		NodeName: compute.NodeName, Status: "claimed", ClaimedAt: now,
+	}
+	if _, claimed, err := service.machineOwnership.ClaimMachine(context.Background(), ownership); err != nil || !claimed {
+		t.Fatalf("claim ownership: claimed=%v err=%v", claimed, err)
+	}
+	ownership.Status = "active"
+	if err := service.machineOwnership.SaveMachineOwnership(context.Background(), ownership); err != nil {
+		t.Fatal(err)
+	}
+
+	input := ProviderFactsBatchInput{Items: []ProviderFactInput{
+		{AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID, ResourceType: "compute", ResourceID: compute.ID},
+		{AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID, ResourceType: "runtime", ResourceID: provider.runtime.ID},
+	}}
+	batch, err := service.ProviderFactsBatch(context.Background(), input)
+	if err != nil || len(batch.Items) != 2 || batch.Items[0].Available || batch.Items[0].ErrorCode != provider.computeErr.Error() ||
+		!batch.Items[1].Available || batch.Items[1].Facts.ComputeRuntimeBinding == nil ||
+		batch.Items[1].Facts.ComputeRuntimeBinding.Status != contracts.WorkspaceComputeRuntimeBindingMatched {
+		t.Fatalf("provider facts=%#v err=%v", batch, err)
+	}
+	payload, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, privateIdentity := range []string{compute.NodeName, compute.MachineName, compute.InstanceID} {
+		if strings.Contains(string(payload), privateIdentity) {
+			t.Fatalf("provider binding leaked private identity %q: %s", privateIdentity, payload)
+		}
+	}
+
+	provider.runtime.NodeName = "node-other"
+	mismatch, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: input.Items[1:]})
+	if err != nil || mismatch.Items[0].Facts.ComputeRuntimeBinding == nil ||
+		mismatch.Items[0].Facts.ComputeRuntimeBinding.Status != contracts.WorkspaceComputeRuntimeBindingMismatched {
+		t.Fatalf("mismatched binding=%#v err=%v", mismatch, err)
+	}
+	ownership.NodeName = "node-other"
+	if err := service.machineOwnership.SaveMachineOwnership(context.Background(), ownership); err != nil {
+		t.Fatal(err)
+	}
+	unavailable, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: input.Items[1:]})
+	if err != nil || unavailable.Items[0].Facts.ComputeRuntimeBinding != nil {
+		t.Fatalf("drifted ownership binding=%#v err=%v", unavailable, err)
 	}
 }
 

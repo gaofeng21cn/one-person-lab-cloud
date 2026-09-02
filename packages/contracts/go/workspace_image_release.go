@@ -41,6 +41,17 @@ type WorkspaceRuntimeImageReplacementPreview struct {
 	CanReplace         bool   `json:"canReplace"`
 }
 
+type WorkspaceComputeRuntimeBindingStatus string
+
+const (
+	WorkspaceComputeRuntimeBindingMatched    WorkspaceComputeRuntimeBindingStatus = "matched"
+	WorkspaceComputeRuntimeBindingMismatched WorkspaceComputeRuntimeBindingStatus = "mismatched"
+)
+
+type WorkspaceComputeRuntimeBinding struct {
+	Status WorkspaceComputeRuntimeBindingStatus `json:"status"`
+}
+
 func ValidWorkspaceImageReference(value string) bool {
 	value = strings.TrimSpace(value)
 	repository, digest, ok := strings.Cut(value, "@")
