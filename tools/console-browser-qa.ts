@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { BrowserContext, Page } from "playwright";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = "2026-07-19T12:00:00Z";
@@ -1494,18 +1495,22 @@ export async function runConsoleBrowserQa({
       await waitForText(page, "暂无数据");
       state.customerRoutes.add("/console/api/keys");
       if (name === "desktop") {
-        const lifecycleContext = await browser.newContext({ viewport: VIEWPORTS.desktop, permissions: ["clipboard-read", "clipboard-write"] });
-        const lifecyclePage = await lifecycleContext.newPage();
-        await installFixturePage(lifecyclePage, state, server.origin);
-        await lifecyclePage.clock.install();
-        await lifecyclePage.clock.pauseAt(new Date());
+        let lifecycleContext: BrowserContext | undefined;
+        let lifecyclePage: Page | undefined;
+        let lifecycleClockInstalled = false;
         try {
+          lifecycleContext = await browser.newContext({ viewport: VIEWPORTS.desktop, permissions: ["clipboard-read", "clipboard-write"] });
+          lifecyclePage = await lifecycleContext.newPage();
+          await installFixturePage(lifecyclePage, state, server.origin);
           authenticateFixtureSession(state, "customer");
           await lifecyclePage.goto(`${server.origin}/console/api/keys?write=1`, { waitUntil: "networkidle" });
+          await lifecyclePage.clock.install();
+          lifecycleClockInstalled = true;
+          await lifecyclePage.clock.pauseAt(new Date());
           await exerciseGatewayKeyLifecycle(lifecyclePage, state);
         } finally {
-          await lifecyclePage.clock.resume();
-          await lifecycleContext.close();
+          if (lifecyclePage && lifecycleClockInstalled) await lifecyclePage.clock.resume();
+          await lifecycleContext?.close();
         }
       }
 

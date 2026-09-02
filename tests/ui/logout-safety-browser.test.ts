@@ -17,7 +17,8 @@ test("Console hides secrets and rejects late account data while logout is unconf
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
     await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });
     await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
@@ -80,16 +81,18 @@ test("Console hides secrets and rejects late account data while logout is unconf
       }
     };
     let releaseWorkspace: (() => void) | undefined;
+    let holdInitialWorkspace = true;
     const workspaceReleased = new Promise<void>((resolve) => { releaseWorkspace = resolve; });
     let holdWorkspace: ((route: import("playwright").Route) => void) | undefined;
     const workspaceHeld = new Promise<import("playwright").Route>((resolve) => { holdWorkspace = resolve; });
     await page.route("**/api/workspaces?*", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
-      if (request.method() !== "GET" || url.searchParams.get("page") !== "1" || url.searchParams.get("pageSize") !== "50") {
+      if (!holdInitialWorkspace || request.method() !== "GET" || url.searchParams.get("page") !== "1" || url.searchParams.get("pageSize") !== "50") {
         await route.continue();
         return;
       }
+      holdInitialWorkspace = false;
       holdWorkspace?.(route);
       await workspaceReleased;
       await route.fulfill({
@@ -144,8 +147,16 @@ test("Console hides secrets and rejects late account data while logout is unconf
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     }));
     await page.getByRole("button", { name: "重试退出", exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByText("LATE-ACCOUNT-RESULT", { exact: false }).count(), 0);
-    assert.equal(await page.getByText("LATE-WORKSPACE-RESULT", { exact: false }).count(), 0);
+
+    const verificationPage = await context.newPage();
+    try {
+      await verificationPage.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+      await verificationPage.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await verificationPage.getByText("LATE-ACCOUNT-RESULT", { exact: false }).count(), 0);
+      assert.equal(await verificationPage.getByText("LATE-WORKSPACE-RESULT", { exact: false }).count(), 0);
+    } finally {
+      await verificationPage.close();
+    }
 
     await page.unroute("**/api/auth/logout");
     await page.getByRole("button", { name: "重试退出", exact: true }).click();
@@ -204,7 +215,9 @@ test("a late login response cannot restore an account or cancel logout", async (
     await page.waitForURL(`${demo.origin}/`);
 
     await page.evaluate(() => (window as Window & { releaseFirstLogin?: () => void }).releaseFirstLogin?.());
-    await page.waitForTimeout(50);
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     assert.equal(page.url(), `${demo.origin}/`);
     assert.equal(await page.getByText("late@example.com", { exact: true }).count(), 0);
     assert.equal(await page.getByText(CONSOLE_DEMO_CREDENTIALS.admin.email, { exact: true }).count(), 0);
@@ -257,12 +270,17 @@ test("Workspace Secret controller rejects late reveal and refreshes after rotati
     await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
 
+    const lateRevealResponse = page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/workspaces/ws-1/runtime-credentials/reveal");
     releaseReveal?.();
-    await page.waitForTimeout(50);
-    assert.equal(await page.getByText(lateResponse.access.password, { exact: true }).count(), 0);
+    await (await lateRevealResponse).finished();
 
     await page.getByRole("link", { name: /Pilot Workspace/ }).first().click();
     await page.waitForURL(/\/console\/workspaces\/ws-1$/);
+    const hiddenPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
+    await hiddenPasswordRow.locator("code").waitFor({ state: "visible" });
+    assert.match(String(await hiddenPasswordRow.locator("code").textContent()), /••/);
+    assert.equal(await page.getByText(lateResponse.access.password, { exact: true }).count(), 0);
     await page.unroute("**/api/workspaces/ws-1/runtime-credentials/reveal");
     const currentPasswordRow = page.locator(".workspace-access-panel .data-list > div").filter({ hasText: "登录密码" }).first();
     await currentPasswordRow.getByRole("button", { name: "显示", exact: true }).click();
