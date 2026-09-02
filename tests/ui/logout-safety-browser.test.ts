@@ -20,11 +20,22 @@ interface ControllerProjectionProbe {
 
 async function readControllerProjection(page: import("playwright").Page): Promise<ControllerProjectionProbe> {
   return page.locator("main").evaluate((root) => {
-    const propertyName = Object.keys(root).find((key) => key.startsWith("__reactProps$"));
-    if (!propertyName) throw new Error("console_probe_react_props_missing");
-    const props = (root as unknown as Record<string, unknown>)[propertyName];
-    if (!props || typeof props !== "object" || !("controller" in props)) throw new Error("console_probe_controller_missing");
-    const controller = (props as { controller?: unknown }).controller;
+    type Fiber = {
+      return?: Fiber | null;
+      memoizedProps?: unknown;
+    };
+    const fiberName = Object.keys(root).find((key) => key.startsWith("__reactFiber$"));
+    if (!fiberName) throw new Error("console_probe_react_fiber_missing");
+    let fiber = (root as unknown as Record<string, unknown>)[fiberName] as Fiber | undefined;
+    let controller: unknown;
+    while (fiber) {
+      const props = fiber.memoizedProps;
+      if (props && typeof props === "object" && "controller" in props) {
+        controller = (props as { controller?: unknown }).controller;
+        break;
+      }
+      fiber = fiber.return || undefined;
+    }
     if (!controller || typeof controller !== "object") throw new Error("console_probe_controller_invalid");
     const customerWorkspaceRead = (controller as { customerWorkspaceRead?: unknown }).customerWorkspaceRead;
     const workspaceSecrets = (controller as { workspaceSecrets?: unknown }).workspaceSecrets;
