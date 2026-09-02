@@ -320,6 +320,119 @@ func (p *LocalDockerProvider) ensureRuntimeGatewayNetwork(ctx context.Context, r
 	return fmt.Errorf("local_docker_runtime_gateway_network_readback_mismatch")
 }
 
+type localDockerRuntimeGatewayNetworkRecoveryState struct {
+	runtime dockerContainerInspect
+	network dockerNetworkInspect
+	gateway dockerContainerInspect
+	bound   bool
+}
+
+func (p *LocalDockerProvider) runtimeGatewayNetworkRecoveryState(ctx context.Context, input WorkspaceRuntimeGatewayNetworkRecoveryInput, compute ComputeAllocation) (localDockerRuntimeGatewayNetworkRecoveryState, error) {
+	if p.runtimeGatewayContainer == "" || input.RuntimeID != localRuntimeID(input.WorkspaceID) || input.RuntimeServiceName != localRuntimeName(input.WorkspaceID) ||
+		compute.ID != input.ComputeID || compute.AccountID != input.AccountID || compute.WorkspaceID != input.WorkspaceID {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict
+	}
+	computeReadback, err := p.ReadComputeAllocation(ctx, compute)
+	if err != nil || computeReadback.Provider != "local-docker" {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	networkName := localDockerName("opl-compute", compute.ID)
+	network, exists, err := p.inspectNetwork(ctx, networkName)
+	if err != nil || !exists {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	wantNetworkLabels := localDockerLabels(input.AccountID, input.WorkspaceID, input.ComputeID, "", "compute")
+	if network.ID == "" || !exactDockerLabels(network.Labels, wantNetworkLabels) || computeReadback.ProviderResourceID != "network/"+network.ID {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict
+	}
+	runtime, exists, err := p.inspectContainer(ctx, input.RuntimeServiceName)
+	if err != nil || !exists {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	runtimeResource, err := p.runtimeFromContainer(runtime)
+	labels := runtime.Config.Labels
+	if err != nil || runtime.ID == "" || !runtime.State.Running || runtime.State.Health == nil || runtime.State.Health.Status != "healthy" ||
+		runtimeResource.ID != input.RuntimeID || runtimeResource.OperationID != input.RuntimeOperationID || runtimeResource.WorkspaceID != input.WorkspaceID || runtimeResource.ServiceName != input.RuntimeServiceName ||
+		labels["opl.fabric.provider"] != "local-docker" || labels["opl.fabric.kind"] != "runtime" || labels["opl.account.id"] != input.AccountID || labels["opl.compute.id"] != input.ComputeID {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	runtimeBound, err := exactContainerNetworkMembership(runtime, networkName, network.ID)
+	if err != nil || !runtimeBound {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	gateway, exists, err := p.inspectContainer(ctx, p.runtimeGatewayContainer)
+	if err != nil || !exists || gateway.ID == "" || !gateway.State.Running ||
+		gateway.Config.Labels["opl.fabric.local-docker.gateway"] != "control-plane" || gateway.Config.Labels["opl.cloud.fabric-provider"] != "local-docker" {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+	}
+	bound, err := exactContainerNetworkMembership(gateway, networkName, network.ID)
+	if err != nil {
+		return localDockerRuntimeGatewayNetworkRecoveryState{}, err
+	}
+	return localDockerRuntimeGatewayNetworkRecoveryState{runtime: runtime, network: network, gateway: gateway, bound: bound}, nil
+}
+
+func (p *LocalDockerProvider) RecoverWorkspaceRuntimeGatewayNetwork(ctx context.Context, input WorkspaceRuntimeGatewayNetworkRecoveryInput, compute ComputeAllocation) (WorkspaceRuntimeGatewayNetworkRecoveryResult, error) {
+	state, err := p.runtimeGatewayNetworkRecoveryState(ctx, input, compute)
+	if err != nil {
+		return WorkspaceRuntimeGatewayNetworkRecoveryResult{}, err
+	}
+	result := WorkspaceRuntimeGatewayNetworkRecoveryResult{
+		SchemaVersion: 1, OperationID: input.IdempotencyKey, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID,
+		ComputeID: input.ComputeID, RuntimeID: input.RuntimeID, RuntimeServiceName: input.RuntimeServiceName,
+		GatewayContainerID: state.gateway.ID, NetworkID: state.network.ID, NetworkName: state.network.Name, Status: "started",
+	}
+	attempt, beginErr := beginProviderMutation(ctx, "local_docker_runtime_gateway_network_recover", "workspace_runtime_gateway_network", input.RuntimeID, state.network.ID+":"+state.gateway.ID)
+	if beginErr != nil {
+		return result, beginErr
+	}
+	if attempt == nil {
+		return result, fmt.Errorf("local_docker_runtime_gateway_network_recovery_mutation_binding_required")
+	}
+	if !state.bound && !attempt.Fresh {
+		claimed, claimErr := attempt.claimReplay(ctx)
+		if claimErr != nil || !claimed {
+			return result, firstNonNil(claimErr, ErrWorkspaceLaunchPending)
+		}
+		state, err = p.runtimeGatewayNetworkRecoveryState(ctx, input, compute)
+		if err != nil || state.gateway.ID != result.GatewayContainerID || state.network.ID != result.NetworkID {
+			_ = attempt.complete(ctx, "", result, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict))
+			return result, firstNonNil(err, ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict)
+		}
+		if !state.bound {
+			if dispatchErr := attempt.markReplayDispatch(ctx); dispatchErr != nil {
+				return result, dispatchErr
+			}
+		}
+	}
+	if !state.bound {
+		if attempt.Fresh {
+			if dispatchErr := attempt.markReplayDispatch(ctx); dispatchErr != nil {
+				return result, dispatchErr
+			}
+		}
+		_, connectErr := p.runner.Run(ctx, nil, "network", "connect", state.network.ID, state.gateway.ID)
+		state, err = p.runtimeGatewayNetworkRecoveryState(ctx, input, compute)
+		if err != nil || state.gateway.ID != result.GatewayContainerID || state.network.ID != result.NetworkID || !state.bound {
+			readErr := firstNonNil(err, connectErr, fmt.Errorf("local_docker_runtime_gateway_network_readback_mismatch"))
+			_ = attempt.complete(ctx, "", result, readErr)
+			return result, readErr
+		}
+	}
+	runtime, err := p.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+	if err != nil || !runtime.Ready || runtime.ID != input.RuntimeID || runtime.OperationID != input.RuntimeOperationID || runtime.ServiceName != input.RuntimeServiceName {
+		readErr := firstNonNil(err, fmt.Errorf("local_docker_runtime_gateway_network_readback_mismatch"))
+		_ = attempt.complete(ctx, "", result, readErr)
+		return result, readErr
+	}
+	runtime.Access.Password = ""
+	result.Runtime, result.Status = runtime, "succeeded"
+	if completeErr := attempt.complete(ctx, providerRequestID("docker-runtime-gateway-network-recover", input.RuntimeID), result, nil); completeErr != nil {
+		return result, completeErr
+	}
+	return result, nil
+}
+
 func (p *LocalDockerProvider) verifyRuntimeGatewayNetwork(ctx context.Context, container dockerContainerInspect) error {
 	if p.runtimeGatewayContainer == "" {
 		return nil

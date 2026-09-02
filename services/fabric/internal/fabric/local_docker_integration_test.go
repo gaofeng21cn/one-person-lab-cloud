@@ -131,6 +131,7 @@ type bindingCheckingDockerRunner struct {
 	runtimeCreateCalls         int
 	gatewayConnectCalls        int
 	gatewayDisconnectCalls     int
+	gatewayRecoveryCalls       int
 	networkRemoveCalls         int
 	loseGatewayConnectResponse bool
 	loseGatewayCleanupResponse bool
@@ -491,8 +492,12 @@ func (r *bindingCheckingDockerRunner) Run(ctx context.Context, stdin []byte, arg
 		stage, mutation = "ensure_compute_allocation", "local_docker_network_create"
 	}
 	if len(args) == 4 && args[0] == "network" && args[1] == "connect" {
-		stage, mutation = "runtime", "local_docker_runtime_create"
-		r.gatewayConnectCalls++
+		if strings.HasPrefix(args[2], "opl-compute-") {
+			stage, mutation = "runtime", "local_docker_runtime_create"
+			r.gatewayConnectCalls++
+		} else {
+			r.gatewayRecoveryCalls++
+		}
 	}
 	if len(args) == 4 && args[0] == "network" && args[1] == "disconnect" {
 		r.gatewayDisconnectCalls++
@@ -1012,7 +1017,7 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	imageID := strings.TrimSpace(string(imageOutput))
 	gatewayName := "opl-gateway-test-" + stableSuffix(t.Name(), time.Now().String())[:12]
 	if output, err := exec.CommandContext(ctx, "docker", "run", "-d", "--name", gatewayName,
-		"--label", "opl.fabric.local-docker.gateway=control-plane", imageID, "sleep", "300").CombinedOutput(); err != nil {
+		"--label", "opl.fabric.local-docker.gateway=control-plane", "--label", "opl.cloud.fabric-provider=local-docker", imageID, "sleep", "300").CombinedOutput(); err != nil {
 		t.Fatalf("start local gateway container: %v: %s", err, output)
 	}
 	t.Cleanup(func() { _ = exec.Command("docker", "container", "rm", "-f", gatewayName).Run() })
@@ -1137,18 +1142,12 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	if err := waitForLocalRuntime(ctx, runtime.Resources.RuntimeURL); err != nil {
 		t.Fatal(err)
 	}
+	networkName := localDockerName("opl-compute", computeID)
 	runtimeURL := "http://" + runtime.Resources.RuntimeServiceName + ":3000/"
 	fetchRuntime := `fetch(process.argv[1]).then(async response => { if (!response.ok) process.exit(1); process.stdout.write(await response.text()) }).catch(() => process.exit(1))`
 	opened, err := exec.CommandContext(ctx, "docker", "exec", gatewayName, "node", "-e", fetchRuntime, runtimeURL).CombinedOutput()
 	if err != nil || !strings.Contains(string(opened), "OPL Workspace READY") {
 		t.Fatalf("gateway runtime open: %v: %s", err, opened)
-	}
-	if output, err := exec.CommandContext(ctx, "docker", "restart", gatewayName).CombinedOutput(); err != nil {
-		t.Fatalf("restart gateway container: %v: %s", err, output)
-	}
-	opened, err = exec.CommandContext(ctx, "docker", "exec", gatewayName, "node", "-e", fetchRuntime, runtimeURL).CombinedOutput()
-	if err != nil || !strings.Contains(string(opened), "OPL Workspace READY") {
-		t.Fatalf("gateway runtime open after restart: %v: %s", err, opened)
 	}
 	restartedProvider := newLocalDockerProvider(LocalDockerProviderConfig{
 		GatewaySecretRoot: provider.gatewaySecretRoot, HostStorageRoot: storageRoot, RuntimeHost: "127.0.0.1", RuntimeGatewayContainer: gatewayName,
@@ -1183,9 +1182,26 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	if err != nil || len(facts.Items) != 1 || !facts.Items[0].Available || facts.Items[0].ResourceID != status.ID {
 		t.Fatalf("canonical runtime provider facts=%#v err=%v", facts, err)
 	}
-	networkName := localDockerName("opl-compute", computeID)
-	if output, err := exec.CommandContext(ctx, "docker", "network", "disconnect", networkName, gatewayName).CombinedOutput(); err != nil {
-		t.Fatalf("create gateway membership drift: %v: %s", err, output)
+	originalGatewayID, err := exec.CommandContext(ctx, "docker", "container", "inspect", "--format", "{{.Id}}", gatewayName).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "container", "rm", "-f", gatewayName).CombinedOutput(); err != nil {
+		t.Fatalf("remove gateway container before replacement: %v: %s", err, output)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "run", "-d", "--name", gatewayName,
+		"--label", "opl.fabric.local-docker.gateway=control-plane", "--label", "opl.cloud.fabric-provider=local-docker", imageID, "sleep", "300").CombinedOutput(); err != nil {
+		t.Fatalf("replace gateway container: %v: %s", err, output)
+	}
+	replacementGatewayID, err := exec.CommandContext(ctx, "docker", "container", "inspect", "--format", "{{.Id}}", gatewayName).Output()
+	if err != nil || strings.TrimSpace(string(replacementGatewayID)) == strings.TrimSpace(string(originalGatewayID)) {
+		t.Fatalf("gateway container identity was not replaced: before=%q after=%q err=%v", originalGatewayID, replacementGatewayID, err)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "container", "inspect", "--format", "{{.State.Health.Status}}", runtime.Resources.RuntimeServiceName).CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "healthy" {
+		t.Fatalf("runtime changed while replacing gateway: %v: %s", err, output)
+	}
+	if opened, err = exec.CommandContext(ctx, "docker", "exec", gatewayName, "node", "-e", fetchRuntime, runtimeURL).CombinedOutput(); err == nil {
+		t.Fatalf("replacement gateway unexpectedly retained dynamic network access: %s", opened)
 	}
 	if _, err := restartedService.WorkspaceRuntimeStatus(ctx, workspaceID); err == nil {
 		t.Fatal("runtime status accepted missing gateway network membership")
@@ -1202,8 +1218,23 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	if err != nil || len(driftedFacts.Items) != 1 || driftedFacts.Items[0].Available {
 		t.Fatalf("runtime facts accepted missing gateway network membership: %#v err=%v", driftedFacts, err)
 	}
-	if output, err := exec.CommandContext(ctx, "docker", "network", "connect", networkName, gatewayName).CombinedOutput(); err != nil {
-		t.Fatalf("restore gateway membership after drift check: %v: %s", err, output)
+	recoveryInput := WorkspaceRuntimeGatewayNetworkRecoveryInput{
+		AccountID: accountID, WorkspaceID: workspaceID, ComputeID: computeID, RuntimeID: runtime.Resources.RuntimeID,
+		RuntimeOperationID: runtimeInput.Binding.FabricOperationID, RuntimeServiceName: runtime.Resources.RuntimeServiceName,
+		IdempotencyKey: "recover-" + workspaceID,
+	}
+	recovered, err := restartedService.RecoverWorkspaceRuntimeGatewayNetwork(ctx, recoveryInput)
+	if err != nil || recovered.Status != "succeeded" || !recovered.Runtime.Ready || recovered.GatewayContainerID != strings.TrimSpace(string(replacementGatewayID)) || runner.gatewayRecoveryCalls != 1 {
+		t.Fatalf("gateway network recovery=%#v calls=%d err=%v", recovered, runner.gatewayRecoveryCalls, err)
+	}
+	replayed, err := restartedService.RecoverWorkspaceRuntimeGatewayNetwork(ctx, recoveryInput)
+	if err != nil || replayed.NetworkID != recovered.NetworkID || runner.gatewayRecoveryCalls != 1 {
+		t.Fatalf("gateway network recovery replay=%#v calls=%d err=%v", replayed, runner.gatewayRecoveryCalls, err)
+	}
+	alreadyBound := recoveryInput
+	alreadyBound.IdempotencyKey += "-already-bound"
+	if result, err := restartedService.RecoverWorkspaceRuntimeGatewayNetwork(ctx, alreadyBound); err != nil || result.Status != "succeeded" || runner.gatewayRecoveryCalls != 1 {
+		t.Fatalf("already-bound recovery=%#v calls=%d err=%v", result, runner.gatewayRecoveryCalls, err)
 	}
 	if status, err := restartedService.WorkspaceRuntimeStatus(ctx, workspaceID); err != nil || !status.Ready {
 		t.Fatalf("runtime status after exact membership restore=%#v err=%v", status, err)

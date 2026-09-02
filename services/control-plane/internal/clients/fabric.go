@@ -682,6 +682,14 @@ func (c *fabricHTTPClient) ReplaceWorkspaceRuntimeImage(ctx context.Context, inp
 	return result, err
 }
 
+func (c *fabricHTTPClient) RecoverWorkspaceRuntimeGatewayNetwork(ctx context.Context, input WorkspaceRuntimeGatewayNetworkRecoveryInput, idempotencyKey string) (WorkspaceRuntimeGatewayNetworkRecoveryResult, error) {
+	var result WorkspaceRuntimeGatewayNetworkRecoveryResult
+	err := c.postMutation(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(input.WorkspaceID)+"/gateway-network/recover", input, idempotencyKey, fabricMutationScope{
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_runtime_gateway_network", ResourceID: input.WorkspaceID, Action: "recover_workspace_runtime_gateway_network",
+	}, &result)
+	return result, err
+}
+
 func (c *fabricHTTPClient) DestroyWorkspaceRuntime(ctx context.Context, accountID, workspaceID, idempotencyKey string) (WorkspaceRuntime, error) {
 	var result WorkspaceRuntime
 	input := map[string]string{"accountId": accountID, "workspaceId": workspaceID}
