@@ -2839,6 +2839,172 @@ func TestWorkspaceLaunchFreshTypedPendingExhaustsExactReadBudget(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLaunchFreshLocalDockerRuntimePendingWaitsForColdStartReady(t *testing.T) {
+	command := workspaceLaunchUnitCommand()
+	command.ProviderProfileRef = "local-docker"
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Version, operation.Stage, operation.Status = 4, contracts.StageRuntime, contracts.StatusPending
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
+	pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageRuntime): {absent, pending}},
+	}
+	store := &workspaceLaunchUnitStore{row: row}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	seeded, err := reconciler.Reconcile(context.Background(), operation.ID)
+	if err != nil || seeded.Status != contracts.StatusPending || seeded.Stage != contracts.StageRuntime {
+		t.Fatalf("seed local Docker Runtime cold start: operation=%s err=%v", workspaceLaunchReconcileResultSummary(seeded), err)
+	}
+
+	ready := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{
+		State: workspaceLaunchStageReady,
+		Facts: workspaceLaunchReadyFacts(contracts.StageRuntime),
+	}}
+	adapter.readResultsByStage[string(contracts.StageRuntime)] = []workspaceLaunchUnitReadResult{pending, pending, pending, ready}
+	got := seeded
+	for readback := 0; readback < 3; readback++ {
+		got, err = reconciler.Reconcile(context.Background(), got.ID)
+		attempt := got.Attempts[contracts.StageRuntime]
+		if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageRuntime || attempt.Unknown != 0 || attempt.Status != "reserved" {
+			t.Fatalf("local Docker Runtime cold start parked after pending readback %d: operation=%s err=%v", readback+1, workspaceLaunchReconcileResultSummary(got), err)
+		}
+	}
+
+	got, err = reconciler.Reconcile(context.Background(), got.ID)
+	attempt := got.Attempts[contracts.StageRuntime]
+	authorization := got.FreshContinuationAuthorizations[contracts.StageRuntime]
+	if err != nil || got.Status != contracts.StatusPending || got.Stage != contracts.StageActivation ||
+		attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" || attempt.PendingReadbacks != 5 ||
+		attempt.MaxPendingReadbacks != workspaceLaunchMaximumPersistedReadbacks(contracts.StageRuntime) ||
+		authorization.SchemaVersion != workspaceLaunchLocalDockerRuntimeFreshContinuationSchemaVersion ||
+		authorization.AuthorizationClass != workspaceLaunchLocalDockerRuntimeFreshContinuationAuthorizationClass ||
+		authorization.AuthorizationID != workspaceLaunchFreshContinuationAuthorizationIDForContract(
+			operationWithStage(got, contracts.StageRuntime), attempt, authorization.OperationVersion,
+			authorization.SchemaVersion, authorization.AuthorizationClass, authorization.AuthoritativeReadBudget,
+		) ||
+		authorization.Status != "consumed" || authorization.ConsumedAt == "" || adapter.reads != 6 ||
+		adapter.mutationsByStage[string(contracts.StageRuntime)] != 1 {
+		t.Fatalf("local Docker Runtime cold start did not converge read-only: operation=%s authorization=%#v reads=%d mutations=%#v err=%v",
+			workspaceLaunchReconcileResultSummary(got), authorization, adapter.reads, adapter.mutationsByStage, err)
+	}
+}
+
+func TestWorkspaceLaunchLegacyLocalDockerRuntimeFreshContinuationRemainsReadOnly(t *testing.T) {
+	command := workspaceLaunchUnitCommand()
+	command.ProviderProfileRef = "local-docker"
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Version, operation.Stage, operation.Status = 4, contracts.StageRuntime, contracts.StatusPending
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
+	pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
+	seedAdapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageRuntime): {absent, pending}},
+	}
+	seedStore := &workspaceLaunchUnitStore{row: row}
+	seeded, err := NewWorkspaceLaunchReconciler(seedStore, seedAdapter).Reconcile(context.Background(), operation.ID)
+	if err != nil || seeded.Status != contracts.StatusPending || seeded.Stage != contracts.StageRuntime {
+		t.Fatalf("seed local Docker Runtime continuation: operation=%s err=%v", workspaceLaunchReconcileResultSummary(seeded), err)
+	}
+
+	attempt := seeded.Attempts[contracts.StageRuntime]
+	authorization := seeded.FreshContinuationAuthorizations[contracts.StageRuntime]
+	attempt.MaxPendingReadbacks = 1 + workspaceLaunchFreshContinuationReadBudget(contracts.StageRuntime)
+	authorization.SchemaVersion = workspaceLaunchFreshContinuationSchemaVersion
+	authorization.AuthorizationClass = workspaceLaunchFreshContinuationAuthorizationClass
+	authorization.AuthoritativeReadBudget = workspaceLaunchFreshContinuationReadBudget(contracts.StageRuntime)
+	authorization.AuthorizationID = workspaceLaunchFreshContinuationAuthorizationID(
+		operationWithStage(seeded, contracts.StageRuntime), attempt, authorization.OperationVersion,
+	)
+	seeded.Attempts[contracts.StageRuntime] = attempt
+	seeded.FreshContinuationAuthorizations[contracts.StageRuntime] = authorization
+	legacyRow, err := workspaceLaunchReconcileOperationRow(seeded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeWorkspaceLaunchReconcileOperation(legacyRow); err != nil {
+		t.Fatalf("legacy local Docker Runtime continuation no longer decodes: %v", err)
+	}
+
+	adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{string(contracts.StageRuntime): true}}
+	got, err := NewWorkspaceLaunchReconciler(&workspaceLaunchUnitStore{row: legacyRow}, adapter).Reconcile(context.Background(), seeded.ID)
+	if err != nil || got.Stage != contracts.StageActivation || got.Attempts[contracts.StageRuntime].Confirmed != 1 ||
+		adapter.reads != 1 || adapter.mutations != 0 {
+		t.Fatalf("legacy local Docker Runtime continuation did not remain read-only: operation=%s reads=%d mutations=%d err=%v",
+			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
+	}
+
+	forged := seeded
+	forgedAttempt := forged.Attempts[contracts.StageRuntime]
+	forgedAuthorization := forged.FreshContinuationAuthorizations[contracts.StageRuntime]
+	forgedAttempt.MaxPendingReadbacks = workspaceLaunchMaximumPersistedReadbacks(contracts.StageRuntime)
+	forgedAuthorization.AuthoritativeReadBudget = workspaceLaunchMaximumPersistedReadbacks(contracts.StageRuntime) - 1
+	forged.Attempts[contracts.StageRuntime] = forgedAttempt
+	forged.FreshContinuationAuthorizations[contracts.StageRuntime] = forgedAuthorization
+	forgedRow, err := workspaceLaunchReconcileOperationRow(forged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeWorkspaceLaunchReconcileOperation(forgedRow); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+		t.Fatalf("forged legacy local Docker Runtime read budget accepted: authorization=%#v attempt=%#v err=%v",
+			forgedAuthorization, forgedAttempt, err)
+	}
+}
+
+func TestWorkspaceLaunchFreshLocalDockerRuntimeExhaustsExactReadBudget(t *testing.T) {
+	command := workspaceLaunchUnitCommand()
+	command.ProviderProfileRef = "local-docker"
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Version, operation.Stage, operation.Status = 4, contracts.StageRuntime, contracts.StatusPending
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absent := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}}
+	pending := workspaceLaunchUnitReadResult{observation: workspaceLaunchStageObservation{State: workspaceLaunchStagePending}}
+	adapter := &workspaceLaunchUnitAdapter{
+		readResultsByStage: map[string][]workspaceLaunchUnitReadResult{string(contracts.StageRuntime): {absent, pending}},
+		stageObservations:  map[string]workspaceLaunchStageObservation{string(contracts.StageRuntime): {State: workspaceLaunchStagePending}},
+	}
+	store := &workspaceLaunchUnitStore{row: row}
+	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+	got, err := reconciler.Reconcile(context.Background(), operation.ID)
+	if err != nil || got.Status != contracts.StatusPending {
+		t.Fatalf("seed local Docker Runtime exhaustion: operation=%s err=%v", workspaceLaunchReconcileResultSummary(got), err)
+	}
+	for got.Status == contracts.StatusPending {
+		got, err = reconciler.Reconcile(context.Background(), got.ID)
+		if err != nil {
+			t.Fatalf("continue local Docker Runtime exhaustion: operation=%s err=%v", workspaceLaunchReconcileResultSummary(got), err)
+		}
+	}
+	attempt := got.Attempts[contracts.StageRuntime]
+	authorization := got.FreshContinuationAuthorizations[contracts.StageRuntime]
+	if got.Status != contracts.StatusManualReview || got.Stage != contracts.StageRuntime ||
+		attempt.PendingReadbacks != workspaceLaunchMaximumPersistedReadbacks(contracts.StageRuntime) ||
+		attempt.MaxPendingReadbacks != workspaceLaunchMaximumPersistedReadbacks(contracts.StageRuntime) ||
+		attempt.Unknown != 1 || attempt.Status != "unknown" || authorization.Status != "failed" || authorization.ConsumedAt == "" ||
+		adapter.mutationsByStage[string(contracts.StageRuntime)] != 1 {
+		t.Fatalf("local Docker Runtime exhaustion boundary mismatch: operation=%s authorization=%#v reads=%d mutations=%#v",
+			workspaceLaunchReconcileResultSummary(got), authorization, adapter.reads, adapter.mutationsByStage)
+	}
+}
+
 func TestWorkspaceLaunchFreshComputePendingClaimsOwnershipWithOneSameKeyReplay(t *testing.T) {
 	store, adapter, seeded := workspaceLaunchFreshTypedPendingForTest(t, "ensure_compute_allocation")
 	adapter.replayableStages = map[string]bool{"ensure_compute_allocation": true}

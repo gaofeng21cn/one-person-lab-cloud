@@ -22,6 +22,8 @@ const workspaceLaunchAuthoritativeReadBudget = 3
 const workspaceLaunchLegacyV3AuthoritativeReadBudget = 0
 const workspaceLaunchFreshContinuationSchemaVersion = 1
 const workspaceLaunchFreshContinuationAuthorizationClass = "fresh_typed_pending_system"
+const workspaceLaunchLocalDockerRuntimeFreshContinuationSchemaVersion = 2
+const workspaceLaunchLocalDockerRuntimeFreshContinuationAuthorizationClass = "fresh_typed_pending_local_docker_runtime_system"
 const workspaceLaunchFreshContinuationAdditionalReadBudget = 2
 const workspaceLaunchFreshContinuationReadClaimLease = 30 * time.Second
 const workspaceLaunchComputePendingWindow = 10 * time.Minute
@@ -1022,18 +1024,21 @@ func (r *WorkspaceLaunchReconciler) mutateReservedStage(ctx context.Context, res
 		if _, replay := reserved.IdempotentReplayClaims[reserved.Stage]; replay {
 			return r.waitClaimedReplay(ctx, reserved, postRead)
 		}
+		authorizationSchemaVersion, authorizationClass, readBudget := workspaceLaunchFreshContinuationAuthorizationContract(reserved, reserved.Stage)
 		attempt.PendingReadbacks = 1
-		attempt.MaxPendingReadbacks = 1 + workspaceLaunchFreshContinuationReadBudget(reserved.Stage)
+		attempt.MaxPendingReadbacks = 1 + readBudget
 		attempt.PendingDeadlineAt = workspaceLaunchPendingDeadline(reserved.Stage, r.clockNow())
 		reserved.Attempts[reserved.Stage] = attempt
 		authorization := workspaceLaunchFreshContinuationAuthorization{
-			SchemaVersion:      workspaceLaunchFreshContinuationSchemaVersion,
-			AuthorizationID:    workspaceLaunchFreshContinuationAuthorizationID(reserved, attempt, reserved.Version+1),
-			AuthorizationClass: workspaceLaunchFreshContinuationAuthorizationClass,
+			SchemaVersion: authorizationSchemaVersion,
+			AuthorizationID: workspaceLaunchFreshContinuationAuthorizationIDForContract(
+				reserved, attempt, reserved.Version+1, authorizationSchemaVersion, authorizationClass, readBudget,
+			),
+			AuthorizationClass: authorizationClass,
 			AccountID:          reserved.stringFact("accountId"), OperationID: reserved.ID, WorkspaceID: reserved.stringFact("workspaceId"),
 			Stage: reserved.Stage, IdempotencyKey: attempt.IdempotencyKey, Attempt: attempt.Attempted, OperationVersion: reserved.Version + 1,
 			MutationBudget: 0, IdempotentReplayBudget: workspaceLaunchFreshContinuationReplayBudget(reserved.Stage),
-			AuthoritativeReadBudget: workspaceLaunchFreshContinuationReadBudget(reserved.Stage), ReadbacksAtAuthorization: 1, Status: "active",
+			AuthoritativeReadBudget: readBudget, ReadbacksAtAuthorization: 1, Status: "active",
 		}
 		reserved.FreshContinuationAuthorizations[reserved.Stage] = authorization
 		reserved.consumeResumeAuthorization(r.clockNow())
@@ -1083,6 +1088,22 @@ func workspaceLaunchFreshContinuationReadBudget(stage contracts.Stage) int {
 	return workspaceLaunchFreshContinuationAdditionalReadBudget
 }
 
+func workspaceLaunchFreshContinuationReadBudgetForOperation(operation workspaceLaunchReconcileOperation, stage contracts.Stage) int {
+	if stage == contracts.StageRuntime && operation.stringFact("providerProfileRef") == "local-docker" {
+		return workspaceLaunchMaximumPersistedReadbacks(stage) - 1
+	}
+	return workspaceLaunchFreshContinuationReadBudget(stage)
+}
+
+func workspaceLaunchFreshContinuationAuthorizationContract(operation workspaceLaunchReconcileOperation, stage contracts.Stage) (int, string, int) {
+	readBudget := workspaceLaunchFreshContinuationReadBudgetForOperation(operation, stage)
+	if stage == contracts.StageRuntime && operation.stringFact("providerProfileRef") == "local-docker" {
+		return workspaceLaunchLocalDockerRuntimeFreshContinuationSchemaVersion,
+			workspaceLaunchLocalDockerRuntimeFreshContinuationAuthorizationClass, readBudget
+	}
+	return workspaceLaunchFreshContinuationSchemaVersion, workspaceLaunchFreshContinuationAuthorizationClass, readBudget
+}
+
 func workspaceLaunchFreshContinuationReplayBudget(stage contracts.Stage) int {
 	if stage == contracts.StageCompute {
 		return 1
@@ -1126,6 +1147,23 @@ func workspaceLaunchPendingDeadlineExpired(stage contracts.Stage, attempt worksp
 func workspaceLaunchFreshContinuationAuthorizationID(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt, operationVersion int) string {
 	return operation.ID + ":" + operation.stringFact("accountId") + ":" + operation.stringFact("workspaceId") + ":" + string(operation.Stage) + ":" +
 		attempt.IdempotencyKey + ":fresh-typed-pending:" + strconv.Itoa(attempt.Attempted) + ":version:" + strconv.Itoa(operationVersion)
+}
+
+func workspaceLaunchFreshContinuationAuthorizationIDForContract(
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	operationVersion int,
+	schemaVersion int,
+	authorizationClass string,
+	readBudget int,
+) string {
+	legacyID := workspaceLaunchFreshContinuationAuthorizationID(operation, attempt, operationVersion)
+	if schemaVersion == workspaceLaunchFreshContinuationSchemaVersion &&
+		authorizationClass == workspaceLaunchFreshContinuationAuthorizationClass &&
+		readBudget == workspaceLaunchFreshContinuationReadBudget(operation.Stage) {
+		return legacyID
+	}
+	return legacyID + ":schema:" + strconv.Itoa(schemaVersion) + ":class:" + authorizationClass + ":read-budget:" + strconv.Itoa(readBudget)
 }
 
 func workspaceLaunchFreshContinuationClaimKey(authorizationID string, readback int) string {
@@ -2206,18 +2244,17 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	for stage, authorization := range operation.FreshContinuationAuthorizations {
 		attempt, exists := operation.Attempts[stage]
 		boundOperation := operationWithStage(operation, stage)
-		expectedReadBudget := workspaceLaunchFreshContinuationReadBudget(stage)
+		validAuthorizationContract := workspaceLaunchFreshContinuationAuthorizationContractValid(boundOperation, attempt, authorization)
 		expectedReplayBudget := workspaceLaunchFreshContinuationReplayBudget(stage)
 		runtimeImageRevisionContinuation := stage == contracts.StageRuntime && authorization.Status == "failed" && operation.hasRuntimeImageRevisionAuthorization()
 		if !exists || stage != authorization.Stage || !workspaceLaunchReconcileStageValid(stage) || stage == contracts.StageSucceeded ||
-			authorization.SchemaVersion != workspaceLaunchFreshContinuationSchemaVersion || authorization.AuthorizationClass != workspaceLaunchFreshContinuationAuthorizationClass ||
-			authorization.AuthorizationID != workspaceLaunchFreshContinuationAuthorizationID(boundOperation, attempt, authorization.OperationVersion) ||
+			!validAuthorizationContract ||
 			authorization.AccountID != operation.stringFact("accountId") || authorization.OperationID != operation.ID || authorization.WorkspaceID != operation.stringFact("workspaceId") ||
 			authorization.IdempotencyKey != workspaceLaunchStageIdempotencyKey(boundOperation, 1) || authorization.Attempt != 1 ||
 			authorization.OperationVersion <= 0 || authorization.OperationVersion > operation.Version || authorization.MutationBudget != 0 ||
-			authorization.IdempotentReplayBudget != expectedReplayBudget || authorization.AuthoritativeReadBudget != expectedReadBudget ||
+			authorization.IdempotentReplayBudget != expectedReplayBudget ||
 			authorization.ReadbacksAtAuthorization != 1 || attempt.Attempted != 1 || attempt.Max != 1 ||
-			attempt.MaxPendingReadbacks != 1+expectedReadBudget && !runtimeImageRevisionContinuation || attempt.PendingReadbacks < authorization.ReadbacksAtAuthorization ||
+			attempt.MaxPendingReadbacks != 1+authorization.AuthoritativeReadBudget && !runtimeImageRevisionContinuation || attempt.PendingReadbacks < authorization.ReadbacksAtAuthorization ||
 			stage == contracts.StageCompute && attempt.PendingDeadlineAt == "" {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_continuation_claim")
 		}
@@ -2325,6 +2362,29 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	return operation, nil
 }
 
+func workspaceLaunchFreshContinuationAuthorizationContractValid(
+	operation workspaceLaunchReconcileOperation,
+	attempt workspaceLaunchStageAttempt,
+	authorization workspaceLaunchFreshContinuationAuthorization,
+) bool {
+	legacyReadBudget := workspaceLaunchFreshContinuationReadBudget(operation.Stage)
+	if authorization.SchemaVersion == workspaceLaunchFreshContinuationSchemaVersion &&
+		authorization.AuthorizationClass == workspaceLaunchFreshContinuationAuthorizationClass &&
+		authorization.AuthoritativeReadBudget == legacyReadBudget {
+		return authorization.AuthorizationID == workspaceLaunchFreshContinuationAuthorizationID(operation, attempt, authorization.OperationVersion)
+	}
+	if operation.Stage != contracts.StageRuntime || operation.stringFact("providerProfileRef") != "local-docker" {
+		return false
+	}
+	extendedReadBudget := workspaceLaunchFreshContinuationReadBudgetForOperation(operation, operation.Stage)
+	return authorization.SchemaVersion == workspaceLaunchLocalDockerRuntimeFreshContinuationSchemaVersion &&
+		authorization.AuthorizationClass == workspaceLaunchLocalDockerRuntimeFreshContinuationAuthorizationClass &&
+		authorization.AuthoritativeReadBudget == extendedReadBudget &&
+		authorization.AuthorizationID == workspaceLaunchFreshContinuationAuthorizationIDForContract(
+			operation, attempt, authorization.OperationVersion, authorization.SchemaVersion, authorization.AuthorizationClass, authorization.AuthoritativeReadBudget,
+		)
+}
+
 func workspaceLaunchAttemptDecodeFailedFields(operation workspaceLaunchReconcileOperation, stage contracts.Stage, attempt workspaceLaunchStageAttempt, exists bool) []string {
 	checks := []struct {
 		field string
@@ -2338,7 +2398,8 @@ func workspaceLaunchAttemptDecodeFailedFields(operation workspaceLaunchReconcile
 		{"outcome_count", attempt.Confirmed+attempt.Unknown <= attempt.Attempted},
 		{"max_pending_readbacks", attempt.MaxPendingReadbacks >= workspaceLaunchLegacyV3AuthoritativeReadBudget && attempt.MaxPendingReadbacks <= workspaceLaunchMaximumPersistedReadbacks(stage)},
 		{"pending_readbacks", attempt.PendingReadbacks >= 0 && attempt.PendingReadbacks <= attempt.MaxPendingReadbacks},
-		{"runtime_revision_authorization", stage != contracts.StageRuntime || attempt.MaxPendingReadbacks <= workspaceLaunchAuthoritativeReadBudget || operation.hasRuntimeImageRevisionAuthorization()},
+		{"runtime_revision_authorization", stage != contracts.StageRuntime || attempt.MaxPendingReadbacks <= workspaceLaunchAuthoritativeReadBudget ||
+			operation.hasRuntimeImageRevisionAuthorization() || workspaceLaunchLocalDockerRuntimeReadbackAuthorized(operation, attempt)},
 		{"status", attempt.Status == "" || attempt.Status == "reserved" || attempt.Status == "confirmed" || attempt.Status == "unknown"},
 	}
 	failedFields := make([]string, 0)
@@ -2348,6 +2409,14 @@ func workspaceLaunchAttemptDecodeFailedFields(operation workspaceLaunchReconcile
 		}
 	}
 	return failedFields
+}
+
+func workspaceLaunchLocalDockerRuntimeReadbackAuthorized(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
+	authorization, exists := operation.FreshContinuationAuthorizations[contracts.StageRuntime]
+	extendedReadBudget := workspaceLaunchFreshContinuationReadBudgetForOperation(operation, contracts.StageRuntime)
+	return exists && extendedReadBudget != workspaceLaunchFreshContinuationReadBudget(contracts.StageRuntime) &&
+		workspaceLaunchFreshContinuationAuthorizationContractValid(operationWithStage(operation, contracts.StageRuntime), attempt, authorization) &&
+		attempt.MaxPendingReadbacks == 1+extendedReadBudget
 }
 
 func validWorkspaceLaunchDisposableResetEvidence(evidence workspaceLaunchDisposableResetEvidence, operationVersion int) bool {
