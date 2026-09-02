@@ -45,6 +45,8 @@ type LocalDockerProviderConfig struct {
 	GatewaySecretRoot            string
 	HostStorageRoot              string
 	RuntimeHost                  string
+	PublishHost                  string
+	AllowUnboundedSwap           bool
 	RuntimeGatewayContainer      string
 	ConfigureRuntimeGateway      bool
 	StorageQuotaBackend          localDockerProjectQuota
@@ -82,6 +84,8 @@ type LocalDockerProvider struct {
 	hostStorageRoot                   string
 	hostStorageRootErr                error
 	runtimeHost                       string
+	publishHost                       string
+	allowUnboundedSwap                bool
 	runtimeGatewayContainer           string
 	configureRuntimeGatewayEnabled    bool
 	trustedWorkspaceImageRepositories map[string]struct{}
@@ -98,11 +102,14 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 	if raw, configured := os.LookupEnv("OPL_FABRIC_LOCAL_DOCKER_TRUSTED_WORKSPACE_IMAGES"); configured {
 		trustedSources = strings.Split(raw, ",")
 	}
+	runtimeHost := firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_HOST")), "127.0.0.1")
 	return newLocalDockerProvider(LocalDockerProviderConfig{
 		DockerBinary:                 firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_DOCKER_BINARY")), "docker"),
 		GatewaySecretRoot:            strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_SECRET_ROOT")),
 		HostStorageRoot:              strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
-		RuntimeHost:                  firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_HOST")), "127.0.0.1"),
+		RuntimeHost:                  runtimeHost,
+		PublishHost:                  firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST")), runtimeHost),
+		AllowUnboundedSwap:           os.Getenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP") == "1",
 		RuntimeGatewayContainer:      strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER")),
 		ConfigureRuntimeGateway:      true,
 		TrustedWorkspaceImageSources: trustedSources,
@@ -135,11 +142,14 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 		profileJSON = []byte(strings.TrimSpace(os.Getenv(localDockerProviderProfileEnv)))
 	}
 	profile, plans, profileErr := decodeLocalDockerProviderProfile(profileJSON)
+	runtimeHost := firstNonEmpty(strings.TrimSpace(config.RuntimeHost), "127.0.0.1")
 	return &LocalDockerProvider{
 		runner: runner, gatewaySecretRoot: secretRoot, gatewaySecretRootErr: secretRootErr,
 		hostStorageRoot: storageRoot, hostStorageRootErr: storageRootErr,
 		storageQuota:                      storageQuota,
-		runtimeHost:                       firstNonEmpty(strings.TrimSpace(config.RuntimeHost), "127.0.0.1"),
+		runtimeHost:                       runtimeHost,
+		publishHost:                       firstNonEmpty(strings.TrimSpace(config.PublishHost), runtimeHost),
+		allowUnboundedSwap:                config.AllowUnboundedSwap,
 		runtimeGatewayContainer:           strings.TrimSpace(config.RuntimeGatewayContainer),
 		configureRuntimeGatewayEnabled:    config.ConfigureRuntimeGateway,
 		trustedWorkspaceImageRepositories: trustedRepositories, trustedWorkspaceImageReferences: trustedReferences,

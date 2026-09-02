@@ -40,11 +40,21 @@ func (e *workspaceRuntimeReadEngine) readStatusWithOwner(ctx context.Context, wo
 	var created WorkspaceRuntime
 	if runtime.WorkspaceID != workspaceID || len(matches) != 1 || matches[0].ID == "" || matches[0].CreatedAt.IsZero() || !decodeOperationResource(matches[0], &created) ||
 		created.WorkspaceID != workspaceID || strings.TrimSpace(created.ID) == "" || strings.TrimSpace(created.OperationID) == "" ||
-		runtime.ID != "" && runtime.ID != created.ID || runtime.OperationID != "" && runtime.OperationID != created.OperationID {
+		runtime.ID != "" && runtime.ID != created.ID || runtime.OperationID != "" && runtime.OperationID != created.OperationID ||
+		!legacyLocalDockerRuntimeReadbackMatches(matches[0], runtime, created) {
 		return runtime, FabricOperation{}, ErrLaunchStageBindingConflict
 	}
 	runtime.ID, runtime.OperationID = created.ID, created.OperationID
 	return runtime, matches[0], nil
+}
+
+func legacyLocalDockerRuntimeReadbackMatches(operation FabricOperation, live, created WorkspaceRuntime) bool {
+	if operation.Provider != "local-docker" || operation.Status != "failed" || operation.ErrorCode != "local_docker_runtime_readback_mismatch" {
+		return true
+	}
+	return live.ServiceName == created.ServiceName && live.ImageID == created.ImageID &&
+		live.Access.Username == created.Access.Username && live.Access.CredentialStatus == created.Access.CredentialStatus &&
+		live.Access.CredentialVersion == created.Access.CredentialVersion && live.Access.SecretRef == created.Access.SecretRef
 }
 
 func (e *workspaceRuntimeReadEngine) Status(ctx context.Context, workspaceID string) (WorkspaceRuntime, error) {

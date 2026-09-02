@@ -2159,6 +2159,34 @@ func TestLocalDockerRuntimeFailsClosedOnCgroupReadbackDrift(t *testing.T) {
 	if _, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err == nil || err.Error() != "local_docker_runtime_readback_mismatch" {
 		t.Fatalf("memory swap status err=%v", err)
 	}
+
+	runner.container.HostConfig.MemorySwap = -1
+	if _, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err == nil || err.Error() != "local_docker_runtime_readback_mismatch" {
+		t.Fatalf("unbounded swap without opt-in err=%v", err)
+	}
+	provider.allowUnboundedSwap = true
+	if runtime, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err != nil || !runtime.Ready {
+		t.Fatalf("unbounded swap opt-in runtime=%#v err=%v", runtime, err)
+	}
+	runner.container.HostConfig.NanoCPUs--
+	if _, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err == nil || err.Error() != "local_docker_runtime_readback_mismatch" {
+		t.Fatalf("unbounded swap CPU drift err=%v", err)
+	}
+}
+
+func TestLocalDockerProviderReadsExplicitRuntimeCompatibilityConfig(t *testing.T) {
+	t.Setenv("OPL_FABRIC_LOCAL_DOCKER_HOST", "192.0.2.40")
+	t.Setenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST", "127.0.0.1")
+	t.Setenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP", "true")
+	provider := NewLocalDockerProvider()
+	if provider.runtimeHost != "192.0.2.40" || provider.publishHost != "127.0.0.1" || provider.allowUnboundedSwap {
+		t.Fatalf("non-exact opt-in provider=%#v", provider)
+	}
+	t.Setenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP", "1")
+	provider = NewLocalDockerProvider()
+	if !provider.allowUnboundedSwap {
+		t.Fatal("exact unbounded swap opt-in was not enabled")
+	}
 }
 
 func TestLocalDockerRuntimeStatusUsesDurableReservationAcrossProfileDrift(t *testing.T) {

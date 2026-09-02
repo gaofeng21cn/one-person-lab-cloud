@@ -648,10 +648,10 @@ func (p *LocalDockerProvider) runtimeCgroupLimitsForPlan(packageID string, plan 
 	}, true
 }
 
-func validRuntimeCgroupLimits(container dockerContainerInspect, limits localDockerRuntimeCgroupLimits) bool {
+func (p *LocalDockerProvider) validRuntimeCgroupLimits(container dockerContainerInspect, limits localDockerRuntimeCgroupLimits) bool {
 	return container.HostConfig.NanoCPUs == limits.NanoCPUs &&
 		container.HostConfig.Memory == limits.Memory &&
-		container.HostConfig.MemorySwap == limits.Memory
+		(container.HostConfig.MemorySwap == limits.Memory || p.allowUnboundedSwap && container.HostConfig.MemorySwap == -1)
 }
 
 func (p *LocalDockerProvider) CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRuntimeInput, compute ComputeAllocation, volume StorageVolume) (WorkspaceRuntime, error) {
@@ -758,7 +758,7 @@ func (p *LocalDockerProvider) createWorkspaceRuntimeLocked(ctx context.Context, 
 				"--mount", "type=bind,source="+storagePaths.Projects+",target=/projects,bind-propagation=rprivate",
 				"--mount", "type=tmpfs,target=/recovery,tmpfs-mode=0700",
 				"--mount", "type=bind,source="+secretPath+",target=/run/secrets,readonly,bind-propagation=rprivate",
-				"-p", p.runtimeHost+"::"+localDockerWorkspaceRuntimeWebUIPort,
+				"-p", p.publishHost+"::"+localDockerWorkspaceRuntimeWebUIPort,
 				"-e", "OPL_WEBUI_DEPLOYMENT_MODE=cloud", "-e", "OPL_WEBUI_AUTH_MODE=password", "-e", "OPL_WEBUI_USERNAME="+webuiUsername,
 				"-e", "OPL_WEBUI_PASSWORD_FILE=/run/secrets/"+localDockerWebUIPasswordFile,
 				"-e", "OPL_WEBUI_SESSION_SECRET_FILE=/run/secrets/"+localDockerWebUISessionSecretFile,
@@ -788,7 +788,7 @@ func (p *LocalDockerProvider) createWorkspaceRuntimeLocked(ctx context.Context, 
 		}
 	}
 	if inspectErr != nil || !exists || !exactDockerLabels(container.Config.Labels, labels) || !validRuntimeHealthcheck(container) ||
-		!validRuntimeWorkspaceMountViews(container, storagePaths) || !validRuntimeCgroupLimits(container, limits) {
+		!validRuntimeWorkspaceMountViews(container, storagePaths) || !p.validRuntimeCgroupLimits(container, limits) {
 		readErr := fmt.Errorf("local_docker_runtime_readback_mismatch")
 		_ = attempt.complete(ctx, "", WorkspaceRuntime{ID: runtimeID, WorkspaceID: input.WorkspaceID}, readErr)
 		return WorkspaceRuntime{}, readErr
@@ -897,8 +897,9 @@ func (p *LocalDockerProvider) runtimeFromContainer(container dockerContainerInsp
 	bindings := container.NetworkSettings.Ports[localDockerWorkspaceRuntimeWebUIPort+"/tcp"]
 	url := ""
 	if len(bindings) == 1 && bindings[0].HostPort != "" {
-		host := firstNonEmpty(bindings[0].HostIP, p.runtimeHost)
-		if host == "0.0.0.0" || host == "::" {
+		host := strings.TrimSpace(bindings[0].HostIP)
+		ip := net.ParseIP(host)
+		if host == "" || ip != nil && (ip.IsLoopback() || ip.IsUnspecified()) {
 			host = p.runtimeHost
 		}
 		url = "http://" + net.JoinHostPort(host, bindings[0].HostPort) + "/"
@@ -932,7 +933,7 @@ func (p *LocalDockerProvider) WorkspaceRuntimeStatus(ctx context.Context, worksp
 		if rootErr != nil {
 			return rootErr
 		}
-		reservation, reconcileErr := reconcileLocalDockerRuntimeReservation(root, container)
+		reservation, reconcileErr := p.reconcileLocalDockerRuntimeReservation(root, container)
 		closeErr := root.Close()
 		if reconcileErr != nil || closeErr != nil {
 			if reconcileErr != nil && reconcileErr.Error() == localDockerRuntimeReservationInventoryError {
@@ -1049,7 +1050,7 @@ func (p *LocalDockerProvider) workspaceRuntimeStatusWithLimits(ctx context.Conte
 	if !exists {
 		return WorkspaceRuntime{WorkspaceID: workspaceID}, ErrWorkspaceLaunchResourceAbsent
 	}
-	if !validRuntimeCgroupLimits(container, limits) {
+	if !p.validRuntimeCgroupLimits(container, limits) {
 		return WorkspaceRuntime{}, fmt.Errorf("local_docker_runtime_readback_mismatch")
 	}
 	secretRef := gatewaySecretName(workspaceID)
