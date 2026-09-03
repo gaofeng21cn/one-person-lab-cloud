@@ -202,7 +202,7 @@ test("customer task pages use customer language and disclose technical evidence"
       await page.getByText("可用余额", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("本月 API 实际费用", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("本月请求次数", { exact: true }).waitFor({ state: "visible" });
-      await page.getByText("工作空间", { exact: true }).first().waitFor({ state: "visible" });
+      await page.getByText("工作空间", { exact: true }).filter({ visible: true }).first().waitFor({ state: "visible" });
       await page.getByRole("button", { name: /工作空间|重试读取工作空间/ }).first().waitFor({ state: "visible" });
       await page.getByRole("heading", { name: "最近费用", exact: true }).waitFor({ state: "visible" });
       await page.getByRole("heading", { name: "消息", exact: true }).waitFor({ state: "visible" });

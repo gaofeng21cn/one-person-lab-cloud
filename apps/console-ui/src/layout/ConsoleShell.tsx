@@ -38,6 +38,10 @@ function isNavigationActive(route: ConsoleRoute | null, navigationId: ConsoleNav
   return route?.navigationId === navigationId;
 }
 
+function mobileNavigationLabel(item: (typeof customerMenu)[number] | (typeof adminMenu)[number]) {
+  return "mobileLabel" in item && typeof item.mobileLabel === "string" ? item.mobileLabel : item.label;
+}
+
 function NavigationLink({ controller, item }: { controller: ConsoleController; item: (typeof customerMenu)[number] | (typeof adminMenu)[number] }) {
   const Icon = icons[item.icon] || LayoutDashboard;
   const active = isNavigationActive(controller.route, item.id);
@@ -145,7 +149,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
           return (
             <a aria-current={active ? "page" : undefined} className={active ? "active" : ""} href={item.path} key={item.path} onClick={(event) => { event.preventDefault(); controller.navigate(item.path); }}>
               <Icon aria-hidden size={18} />
-              <span>{item.label}</span>
+              <span>{mobileNavigationLabel(item)}</span>
             </a>
           );
         })}

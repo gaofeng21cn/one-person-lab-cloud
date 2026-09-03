@@ -76,7 +76,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api": {
     kind: "customer.api.overview",
     surface: "customer",
-    title: "API",
+    title: "OPL Gateway",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"
@@ -84,7 +84,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api/usage": {
     kind: "customer.api.usage",
     surface: "customer",
-    title: "API",
+    title: "OPL Gateway",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"
@@ -92,7 +92,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
   "/console/api/keys": {
     kind: "customer.api.keys",
     surface: "customer",
-    title: "API",
+    title: "OPL Gateway",
     requiresSession: true,
     sensitive: true,
     navigationId: "customer.api"

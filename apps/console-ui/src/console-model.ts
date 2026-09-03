@@ -4,6 +4,7 @@ import type { ConsoleNavigationId, CustomerConsoleRoute } from "./app/console-ro
 type ConsoleMenuItem = {
   id: ConsoleNavigationId;
   label: string;
+  mobileLabel?: string;
   path: string;
   icon: string;
 };
@@ -18,14 +19,14 @@ type ApiMenuItem = {
 export const customerMenu = Object.freeze([
   { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
   { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
-  { id: "customer.api", label: "API", path: "/console/api", icon: "Server" },
+  { id: "customer.api", label: "OPL Gateway", mobileLabel: "Gateway", path: "/console/api", icon: "Server" },
   { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }
 ] as const satisfies readonly ConsoleMenuItem[]);
 
 export const apiMenu = Object.freeze([
   { kind: "customer.api.overview", label: "服务信息", path: "/console/api" },
   { kind: "customer.api.usage", label: "用量", path: "/console/api/usage" },
-  { kind: "customer.api.keys", label: "密钥", path: "/console/api/keys" }
+  { kind: "customer.api.keys", label: "API 密钥", path: "/console/api/keys" }
 ] as const satisfies readonly ApiMenuItem[]);
 
 export const adminMenu = Object.freeze([
