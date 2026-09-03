@@ -394,12 +394,13 @@ test("Console demo is clickable in a normal browser for customer and Admin", asy
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
-    await page.getByRole("link", { name: "Workspace", exact: true }).click();
+    await page.getByRole("link", { name: "工作空间", exact: true }).click();
     await page.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("link", { name: "API 服务", exact: true }).click();
+    await page.getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.getByText("余额历史", { exact: true }).waitFor({ state: "visible" });
 
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(new RegExp(`${demo.origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/?$`));
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/login$/);

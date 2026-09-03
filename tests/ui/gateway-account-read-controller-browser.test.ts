@@ -217,7 +217,8 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
 
     await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
     await Promise.all([oldWalletHeld.promise, oldHistoryHeld.promise]);
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(`${demo.origin}/`);
     assert.equal(await page.locator(".spend-strip").count(), 0);
     assert.equal(await page.getByText("stale-session-history", { exact: true }).count(), 0);
@@ -228,7 +229,7 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
-    await page.locator(".side-nav").getByRole("link", { name: "API", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
     await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
     await page.locator(".spend-strip strong").nth(0).getByText("$555.00", { exact: true }).waitFor({ state: "visible" });

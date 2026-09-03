@@ -167,7 +167,8 @@ test("Console hides secrets and rejects late account data while logout is unconf
         body: JSON.stringify({ error: "state_persist_failed" })
       });
     });
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await logoutHeld;
     await page.getByRole("heading", { name: "正在安全退出", exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.getByText(password, { exact: true }).count(), 0);
@@ -251,9 +252,10 @@ test("a late login response cannot restore an account or cancel logout", async (
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.admin.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
-    await page.getByRole("link", { name: "API", exact: true }).click();
+    await page.getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.getByText("余额历史", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(`${demo.origin}/`);
 
     await page.evaluate(() => (window as Window & { releaseFirstLogin?: () => void }).releaseFirstLogin?.());

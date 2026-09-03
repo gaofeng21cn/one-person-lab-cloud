@@ -67,6 +67,17 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
   const mobileItems = adminSurface
     ? adminMenu.filter((item) => item.id !== "admin.announcements")
     : customerMenu;
+  const openAccount = () => {
+    controller.setSidebarOpen(false);
+    controller.setGlobalSlide("account");
+  };
+  const toggleAccount = () => {
+    if (controller.globalSlide) {
+      controller.setGlobalSlide("");
+      return;
+    }
+    openAccount();
+  };
 
   return (
     <div className="app-shell">
@@ -100,7 +111,7 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
             <small>{controller.session?.isOperator ? "管理员" : "客户"}</small>
           </span>
           <Tooltip content="账号信息">
-            <button aria-label="账号信息" onClick={() => controller.setGlobalSlide(controller.globalSlide ? "" : "account")}>
+            <button aria-label="账号信息" onClick={toggleAccount}>
               <ChevronDown aria-hidden size={17} />
             </button>
           </Tooltip>
@@ -130,13 +141,15 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
               </Button>
             </Tooltip>
             <Tooltip content="账号信息">
-              <Button aria-label="账号信息" onClick={() => controller.setGlobalSlide("account")} size="sm" uniform variant="ghost">
+              <Button aria-label="账号信息" onClick={openAccount} size="sm" uniform variant="ghost">
                 <Settings aria-hidden size={17} />
               </Button>
             </Tooltip>
-            <Tooltip content="退出登录">
-              <Button aria-label="退出登录" onClick={() => void controller.signOut()} size="sm" uniform variant="ghost"><LogOut aria-hidden size={17} /></Button>
-            </Tooltip>
+            {adminSurface ? (
+              <Tooltip content="退出登录">
+                <Button aria-label="退出登录" onClick={() => void controller.signOut()} size="sm" uniform variant="ghost"><LogOut aria-hidden size={17} /></Button>
+              </Tooltip>
+            ) : null}
           </div>
         </header>
         <main className="page-content">{children}</main>
@@ -164,16 +177,18 @@ export function ConsoleShell({ children, controller }: { children: ReactNode; co
               <div><dt>身份</dt><dd>{controller.session?.isOperator ? "管理员" : "客户"}</dd></div>
               <div><dt>账户状态</dt><dd>{accountStatus.label}</dd></div>
             </dl>
-            <details className="account-technical-details">
-              <summary>技术详情</summary>
-              <dl className="data-list">
-                <div><dt>Account ID</dt><dd><code>{controller.session?.user.accountId || "暂不可用"}</code></dd></div>
-                <div><dt>Console User ID</dt><dd><code>{controller.session?.user.consoleUserId || controller.session?.user.id || "暂不可用"}</code></dd></div>
-                <div><dt>Sub2API User ID</dt><dd><code>{controller.session?.user.sub2apiUserId || "暂不可用"}</code></dd></div>
-                <div><dt>Session ID</dt><dd><code>暂不可用</code></dd></div>
-                <div><dt>Session 到期</dt><dd><code>{controller.session?.expiresAt || "暂不可用"}</code></dd></div>
-              </dl>
-            </details>
+            {adminSurface ? (
+              <details className="account-technical-details">
+                <summary>技术详情</summary>
+                <dl className="data-list">
+                  <div><dt>Account ID</dt><dd><code>{controller.session?.user.accountId || "暂不可用"}</code></dd></div>
+                  <div><dt>Console User ID</dt><dd><code>{controller.session?.user.consoleUserId || controller.session?.user.id || "暂不可用"}</code></dd></div>
+                  <div><dt>Sub2API User ID</dt><dd><code>{controller.session?.user.sub2apiUserId || "暂不可用"}</code></dd></div>
+                  <div><dt>Session ID</dt><dd><code>暂不可用</code></dd></div>
+                  <div><dt>Session 到期</dt><dd><code>{controller.session?.expiresAt || "暂不可用"}</code></dd></div>
+                </dl>
+              </details>
+            ) : null}
           </div>
           <div className="account-band-action">
             <Button onClick={() => void controller.signOut()} variant="outline"><LogOut aria-hidden size={16} />退出登录</Button>

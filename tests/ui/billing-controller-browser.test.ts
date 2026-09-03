@@ -352,7 +352,7 @@ test("Billing route exit rejects an in-flight Receipt detail", { timeout: 60_000
     await openBillingReceipts(page);
     await receiptRow(page, receiptA.receiptId).getByRole("button", { name: "查看", exact: true }).click();
     await detailHeld.promise;
-    await page.locator(".side-nav").getByRole("link", { name: "API", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
 
     const lateDetail = waitForDetailResponse(page, receiptA.receiptId);
@@ -428,7 +428,7 @@ test("Billing list failure does not become a Receipt detail failure", { timeout:
     await openReceiptTechnicalDetails(page, receiptA.receiptId);
 
     failBillingList = true;
-    await page.locator(".side-nav").getByRole("link", { name: "API", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
     await openBillingReceipts(page);
     await page.locator(".billing-surface").getByText("账单记录暂不可用", { exact: true }).waitFor({ state: "visible" });
@@ -465,7 +465,8 @@ test("Billing Session reset rejects a detail completion from the signed-out Sess
     await openBillingReceipts(page);
     await receiptRow(page, firstSessionReceipt.receiptId).getByRole("button", { name: "查看", exact: true }).click();
     await detailHeld.promise;
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(new RegExp(`${demo.origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/?$`));
 
     secondSession = true;
