@@ -8,7 +8,8 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 
-const customerNavigation = ["概览", "工作空间", "API", "费用"];
+const desktopCustomerNavigation = ["概览", "工作空间", "OPL Gateway", "费用"];
+const mobileCustomerNavigation = ["概览", "工作空间", "Gateway", "费用"];
 const viewports = [
   { name: "desktop", width: 1280, height: 900 },
   { name: "mobile", width: 390, height: 844 }
@@ -53,6 +54,8 @@ async function assertCustomerLanguage(page: Page, scope: string) {
     /Control Plane/,
     /原因代码/,
     /(?:control_plane|sub2api)_unavailable/,
+    /\bSupport\b/,
+    /联系支持/,
     /最近账单/,
     /账单收据/,
     /公告列表/
@@ -107,7 +110,7 @@ async function login(page: Page, origin: string) {
   await page.reload({ waitUntil: "domcontentloaded" });
 }
 
-test("customer shell exposes four tasks and keeps account internals disclosed", { timeout: 60_000 }, async () => {
+test("customer shell exposes four tasks and keeps account internals out of the customer surface", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   try {
@@ -128,18 +131,22 @@ test("customer shell exposes four tasks and keeps account internals disclosed", 
         ? navigation.locator(":scope > a")
         : navigation.getByRole("link");
       await links.first().waitFor({ state: "visible" });
-      assert.deepEqual((await links.allTextContents()).map((value) => value.trim()), customerNavigation);
+      const expectedNavigation = viewport.name === "desktop" ? desktopCustomerNavigation : mobileCustomerNavigation;
+      assert.deepEqual((await links.allTextContents()).map((value) => value.trim()), expectedNavigation);
       assert.deepEqual(await navigation.locator('[aria-current="page"]').allTextContents(), ["概览"]);
       assert.equal(await page.locator(".side-subnav").count(), 0);
 
-      await navigation.getByRole("link", { name: "API", exact: true }).click();
+      const gatewayLabel = viewport.name === "desktop" ? "OPL Gateway" : "Gateway";
+      await navigation.getByRole("link", { name: gatewayLabel, exact: true }).click();
       await page.waitForURL(/\/console\/api$/);
-      assert.deepEqual(await navigation.locator('[aria-current="page"]').allTextContents(), ["API"]);
+      assert.deepEqual(await navigation.locator('[aria-current="page"]').allTextContents(), [gatewayLabel]);
+      await page.getByRole("heading", { name: "OPL Gateway", exact: true }).waitFor({ state: "visible" });
 
       const message = page.locator(".topbar-actions").getByRole("button", { name: "消息", exact: true });
       await message.click();
       await page.waitForURL(/\/console\/announcements$/);
       assert.equal(await navigation.locator('[aria-current="page"]').count(), 0);
+      assert.equal(await page.locator(".topbar-actions").getByRole("button", { name: "退出登录", exact: true }).count(), 0);
 
       assert.equal(await page.getByRole("button", { name: "Support", exact: true }).count(), 0);
       assert.equal(await page.getByRole("complementary", { name: "Support", exact: true }).count(), 0);
@@ -153,6 +160,11 @@ test("customer shell exposes four tasks and keeps account internals disclosed", 
       }
       await accountCommand.click();
 
+      if (viewport.name === "mobile") {
+        assert.equal(await page.locator(".sidebar.open").count(), 0);
+        assert.equal(await page.locator(".sidebar-scrim").count(), 0);
+      }
+
       const account = page.getByRole("complementary", { name: "账号信息", exact: true });
       await account.getByRole("heading", { name: "账号信息", exact: true }).waitFor({ state: "visible" });
       await account.getByText(CONSOLE_DEMO_CREDENTIALS.customer.email, { exact: true }).waitFor({ state: "visible" });
@@ -162,16 +174,10 @@ test("customer shell exposes four tasks and keeps account internals disclosed", 
       await account.getByText("正常", { exact: true }).waitFor({ state: "visible" });
       await account.getByRole("button", { name: "退出登录", exact: true }).waitFor({ state: "visible" });
 
-      const technicalDetails = account.locator("details");
-      assert.equal(await technicalDetails.getAttribute("open"), null);
-      await assertExactTextHidden(account, ["acct-1", "user-customer", "9"], `${viewport.name}: account`);
-
-      await technicalDetails.getByText("技术详情", { exact: true }).click();
-      assert.notEqual(await technicalDetails.getAttribute("open"), null);
-      for (const value of ["Account ID", "acct-1", "Console User ID", "user-customer", "Sub2API User ID", "9", "Session ID", "Session 到期"]) {
-        await account.getByText(value, { exact: true }).waitFor({ state: "visible" });
+      for (const value of ["Account ID", "acct-1", "Console User ID", "user-customer", "Sub2API User ID", "9", "Session ID", "Session 到期", "技术详情"]) {
+        assert.equal(await account.getByText(value, { exact: true }).count(), 0, `${viewport.name}: account should not render ${value}`);
       }
-      await assertNoHorizontalOverflow(page, `${viewport.name}: account technical details`);
+      await assertNoHorizontalOverflow(page, `${viewport.name}: account`);
 
       assert.equal(supportRequests, 0);
       await context.close();
@@ -192,6 +198,14 @@ test("customer task pages use customer language and disclose technical evidence"
       await login(page, demo.origin);
 
       await page.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("region", { name: "账户关键指标", exact: true }).waitFor({ state: "visible" });
+      await page.getByText("可用余额", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("本月 API 实际费用", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("本月请求次数", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("工作空间", { exact: true }).first().waitFor({ state: "visible" });
+      await page.getByRole("button", { name: /工作空间|重试读取工作空间/ }).first().waitFor({ state: "visible" });
+      await page.getByRole("heading", { name: "最近费用", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { name: "消息", exact: true }).waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: overview`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: overview`);
 
@@ -207,7 +221,7 @@ test("customer task pages use customer language and disclose technical evidence"
       assert.equal(await apiNavigation.count(), 1);
       assert.deepEqual(
         (await apiNavigation.getByRole("link").allTextContents()).map((value) => value.trim()),
-        ["服务信息", "用量", "密钥"]
+        ["服务信息", "用量", "API 密钥"]
       );
       await page.getByText("https://gflabtoken.cn/v1", { exact: true }).waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: API overview`);

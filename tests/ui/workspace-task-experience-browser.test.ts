@@ -837,8 +837,32 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
       name: "我确认一次性预付工作空间月度总额并开通",
       exact: true
     });
-    await confirmation.click();
-    await page.getByRole("button", { name: "确认预付并开通", exact: true }).waitFor({ state: "visible" });
+    await confirmation.waitFor({ state: "visible" });
+    assert.equal(await confirmation.getAttribute("aria-checked"), "false");
+    const uncheckedBorder = await confirmation.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { borderWidth: style.borderWidth, borderStyle: style.borderStyle };
+    });
+    assert.notEqual(uncheckedBorder.borderWidth, "0px", "unchecked confirmation checkbox needs a visible border");
+    assert.notEqual(uncheckedBorder.borderStyle, "none", "unchecked confirmation checkbox needs a visible border");
+
+    const submit = page.getByRole("button", { name: "确认预付并开通", exact: true });
+    await submit.waitFor({ state: "visible" });
+    assert.equal(await submit.isDisabled(), true, "launch must remain blocked before confirmation");
+
+    const focusedConfirmation = await focusByKeyboard(page, ".launch-confirm-check button[role=\"checkbox\"]");
+    const focusStyles = await focusedConfirmation.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, boxShadow: style.boxShadow };
+    });
+    assert.ok(
+      (focusStyles.outlineStyle !== "none" && focusStyles.outlineWidth !== "0px") || focusStyles.boxShadow !== "none",
+      "confirmation checkbox needs a visible keyboard focus state"
+    );
+
+    await page.keyboard.press("Space");
+    assert.equal(await confirmation.getAttribute("aria-checked"), "true");
+    assert.equal(await submit.isDisabled(), false, "launch becomes available only after confirmation");
     await assertNoHorizontalOverflow(page);
 
     const launchResponsePromise = page.waitForResponse((response) => {

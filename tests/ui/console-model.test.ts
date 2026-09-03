@@ -25,9 +25,9 @@ const staticConsoleRoutes = [
   ["/console/overview", "customer.overview", "customer", "概览", true, false, "customer.overview"],
   ["/console/workspaces", "customer.workspaces", "customer", "工作空间", true, true, "customer.workspaces"],
   ["/console/workspaces/new", "customer.workspace-new", "customer", "工作空间", true, true, "customer.workspaces"],
-  ["/console/api", "customer.api.overview", "customer", "API", true, true, "customer.api"],
-  ["/console/api/usage", "customer.api.usage", "customer", "API", true, true, "customer.api"],
-  ["/console/api/keys", "customer.api.keys", "customer", "API", true, true, "customer.api"],
+  ["/console/api", "customer.api.overview", "customer", "OPL Gateway", true, true, "customer.api"],
+  ["/console/api/usage", "customer.api.usage", "customer", "OPL Gateway", true, true, "customer.api"],
+  ["/console/api/keys", "customer.api.keys", "customer", "OPL Gateway", true, true, "customer.api"],
   ["/console/billing", "customer.billing", "customer", "费用", true, false, "customer.billing"],
   ["/console/announcements", "customer.announcements", "customer", "消息", true, false, "customer.announcements"],
   ["/admin", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
@@ -119,19 +119,27 @@ test("Console navigation targets carry route-owner identities", () => {
 });
 
 test("customer navigation has exactly four task destinations in order", () => {
-  assert.deepEqual(customerMenu, [
+  assert.deepEqual(customerMenu.map(({ id, label, path, icon }) => ({ id, label, path, icon })), [
     { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
     { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
-    { id: "customer.api", label: "API", path: "/console/api", icon: "Server" },
+    { id: "customer.api", label: "OPL Gateway", path: "/console/api", icon: "Server" },
     { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }
   ]);
+});
+
+test("customer mobile navigation has the same four tasks with a compact Gateway label", () => {
+  const mobileLabels = customerMenu.map((item) => {
+    const presentation = item as typeof item & { mobileLabel?: string };
+    return presentation.mobileLabel ?? presentation.label;
+  });
+  assert.deepEqual(mobileLabels, ["概览", "工作空间", "Gateway", "费用"]);
 });
 
 test("API navigation has exactly three customer task pages in order", () => {
   assert.deepEqual(apiMenu, [
     { kind: "customer.api.overview", label: "服务信息", path: "/console/api" },
     { kind: "customer.api.usage", label: "用量", path: "/console/api/usage" },
-    { kind: "customer.api.keys", label: "密钥", path: "/console/api/keys" }
+    { kind: "customer.api.keys", label: "API 密钥", path: "/console/api/keys" }
   ]);
 });
 
