@@ -61,7 +61,7 @@ export function presentWorkspaceLaunch(
       return {
         kind: "failed",
         title: "开通失败",
-        summary: "工作空间未能完成开通，请查看技术详情或联系支持。",
+        summary: "工作空间未能完成开通，请查看技术详情并重试。",
         tone: "danger",
         canOpenWorkspace: false
       };
