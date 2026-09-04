@@ -187,6 +187,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   const [error, setError] = useState("");
   const [referenceError, setReferenceError] = useState("");
   const [notice, setNotice] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>("");
   const [editingKey, setEditingKey] = useState<GatewayKeySummaryDTO | null>(null);
   const [pendingDelete, setPendingDelete] = useState<GatewayKeySummaryDTO | null>(null);
@@ -274,6 +275,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setError("");
     setReferenceError("");
     setNotice("");
+    setFiltersOpen(false);
     setDialog("");
     setEditingKey(null);
     setPendingDelete(null);
@@ -536,33 +538,61 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     ? JSON.stringify({ baseURL: endpoint, apiKey: revealed.value }, null, 2)
     : "";
 
+  const renderFilters = () => (
+    <form className="keys-filters" onSubmit={submitSearch}>
+      <Field label="搜索 API 密钥" maxLength={100} onChange={(event) => changeFilter("search", event.currentTarget.value)} placeholder="名称" value={query.search} />
+      <Select label="状态筛选" onChange={(value) => changeFilter("status", value as KeyQuery["status"])} options={[{ value: "", label: "全部状态" }, { value: "active", label: "启用" }, { value: "disabled", label: "停用" }, { value: "quota_exhausted", label: "额度用尽" }, { value: "expired", label: "已过期" }]} value={query.status} />
+      <Select label="排序" onChange={(value) => changeFilter("sortBy", value as KeyQuery["sortBy"])} options={[{ value: "createdAt", label: "创建时间" }, { value: "name", label: "名称" }, { value: "expiresAt", label: "过期时间" }, { value: "status", label: "状态" }, { value: "lastUsedAt", label: "最近使用" }]} value={query.sortBy} />
+      <Select label="顺序" onChange={(value) => changeFilter("sortOrder", value as KeyQuery["sortOrder"])} options={[{ value: "desc", label: "降序" }, { value: "asc", label: "升序" }]} value={query.sortOrder} />
+      <Select label="每页" onChange={(value) => changeFilter("pageSize", Number(value))} options={[10, 20, 50, 100].map((size) => ({ value: String(size), label: String(size) }))} value={String(query.pageSize)} />
+      <details className="key-filter-technical-details"><summary>技术筛选</summary><Select label="服务分组" onChange={(value) => changeFilter("groupId", value)} options={[{ value: "", label: "全部服务分组" }, { value: "0", label: "未分组" }, ...groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))]} value={query.groupId} /></details>
+      <Button className="keys-filter-submit" type="submit" variant="outline"><Search aria-hidden="true" size={16} />查询</Button>
+    </form>
+  );
+
   const renderKeyActions = (key: GatewayKeySummaryDTO, className = "keys-row-actions") => {
     const manageable = canManage(key);
     return (
       <div className={className}>
-        <Tooltip compact content={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"}>
-          <Button aria-label={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"} disabled={busy} onClick={() => void reveal(key)} size="sm" uniform variant="ghost">
-            {revealed?.id === key.id ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}
-          </Button>
-        </Tooltip>
-        <Tooltip compact content="使用说明">
-          <Button aria-label="使用说明" disabled={busy} onClick={() => void openUse(key)} size="sm" uniform variant="ghost"><BookOpen aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "编辑" : "系统 API 密钥不可编辑"}>
-          <Button aria-label="编辑" disabled={busy || !manageable} onClick={() => openEdit(key)} size="sm" uniform variant="ghost"><Pencil aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? (key.status === "active" ? "停用" : "启用") : "系统 API 密钥不可启停"}>
-          <Button aria-label={key.status === "active" ? "停用" : "启用"} disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { enabled: key.status !== "active" }, key.status === "active" ? "API 密钥已停用" : "API 密钥已启用")} size="sm" uniform variant="ghost"><Power aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "重置配额用量" : "系统 API 密钥不可重置"}>
-          <Button aria-label="重置配额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetQuota: true }, "配额用量已重置")} size="sm" uniform variant="ghost"><RotateCcw aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "重置消费限额用量" : "系统 API 密钥不可重置"}>
-          <Button aria-label="重置消费限额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetRateLimitUsage: true }, "消费限额用量已重置")} size="sm" uniform variant="ghost"><ShieldCheck aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={canDelete(key) ? "删除" : "系统 API 密钥不可删除"}>
-          <Button aria-label="删除" color="danger" disabled={busy || !canDelete(key)} onClick={() => { setPendingDelete(key); setDialog("delete"); }} size="sm" uniform variant="ghost"><Trash2 aria-hidden="true" size={16} /></Button>
-        </Tooltip>
+        <div className="keys-row-actions__primary" aria-label="常用操作">
+          <Tooltip compact content={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"}>
+            <Button aria-label={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"} disabled={busy} onClick={() => void reveal(key)} size="sm" uniform variant="ghost">
+              {revealed?.id === key.id ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}
+            </Button>
+          </Tooltip>
+          <Tooltip compact content="使用说明">
+            <Button aria-label="使用说明" disabled={busy} onClick={() => void openUse(key)} size="sm" uniform variant="ghost"><BookOpen aria-hidden="true" size={16} /></Button>
+          </Tooltip>
+        </div>
+        <details className="key-more-actions">
+          <summary>更多操作</summary>
+          <div className="key-more-actions__body">
+            <div className="key-more-actions__group">
+              <span>管理</span>
+              <Tooltip compact content={manageable ? "编辑" : "系统 API 密钥不可编辑"}>
+                <Button aria-label="编辑" disabled={busy || !manageable} onClick={() => openEdit(key)} size="sm" uniform variant="ghost"><Pencil aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+              <Tooltip compact content={manageable ? (key.status === "active" ? "停用" : "启用") : "系统 API 密钥不可启停"}>
+                <Button aria-label={key.status === "active" ? "停用" : "启用"} disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { enabled: key.status !== "active" }, key.status === "active" ? "API 密钥已停用" : "API 密钥已启用")} size="sm" uniform variant="ghost"><Power aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+            <div className="key-more-actions__group">
+              <span>维护</span>
+              <Tooltip compact content={manageable ? "重置配额用量" : "系统 API 密钥不可重置"}>
+                <Button aria-label="重置配额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetQuota: true }, "配额用量已重置")} size="sm" uniform variant="ghost"><RotateCcw aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+              <Tooltip compact content={manageable ? "重置消费限额用量" : "系统 API 密钥不可重置"}>
+                <Button aria-label="重置消费限额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetRateLimitUsage: true }, "消费限额用量已重置")} size="sm" uniform variant="ghost"><ShieldCheck aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+            <div className="key-more-actions__group key-more-actions__group--danger">
+              <span>危险操作</span>
+              <Tooltip compact content={canDelete(key) ? "删除" : "系统 API 密钥不可删除"}>
+                <Button aria-label="删除" color="danger" disabled={busy || !canDelete(key)} onClick={() => { setPendingDelete(key); setDialog("delete"); }} size="sm" uniform variant="ghost"><Trash2 aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+          </div>
+        </details>
       </div>
     );
   };
@@ -655,22 +685,28 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         </div>
       </header>
 
-      <form className="keys-filters" onSubmit={submitSearch}>
-        <Field label="搜索 API 密钥" maxLength={100} onChange={(event) => changeFilter("search", event.currentTarget.value)} placeholder="名称" value={query.search} />
-        <Select label="状态筛选" onChange={(value) => changeFilter("status", value as KeyQuery["status"])} options={[{ value: "", label: "全部状态" }, { value: "active", label: "启用" }, { value: "disabled", label: "停用" }, { value: "quota_exhausted", label: "额度用尽" }, { value: "expired", label: "已过期" }]} value={query.status} />
-        <Select label="排序" onChange={(value) => changeFilter("sortBy", value as KeyQuery["sortBy"])} options={[{ value: "createdAt", label: "创建时间" }, { value: "name", label: "名称" }, { value: "expiresAt", label: "过期时间" }, { value: "status", label: "状态" }, { value: "lastUsedAt", label: "最近使用" }]} value={query.sortBy} />
-        <Select label="顺序" onChange={(value) => changeFilter("sortOrder", value as KeyQuery["sortOrder"])} options={[{ value: "desc", label: "降序" }, { value: "asc", label: "升序" }]} value={query.sortOrder} />
-        <Select label="每页" onChange={(value) => changeFilter("pageSize", Number(value))} options={[10, 20, 50, 100].map((size) => ({ value: String(size), label: String(size) }))} value={String(query.pageSize)} />
-        <details className="key-filter-technical-details"><summary>技术筛选</summary><Select label="服务分组" onChange={(value) => changeFilter("groupId", value)} options={[{ value: "", label: "全部服务分组" }, { value: "0", label: "未分组" }, ...groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))]} value={query.groupId} /></details>
-        <Button className="keys-filter-submit" type="submit" variant="outline"><Search aria-hidden="true" size={16} />查询</Button>
-      </form>
-
       {referenceError ? <Alert actions={<Button onClick={() => void loadReferenceData()} size="sm" variant="ghost">重试</Button>} color="warning" description={referenceError} title="参考配置部分不可用" /> : null}
       {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务配置，已暂停创建和调整。" title="服务配置暂不可用" /> : null}
       {endpointSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取 API 地址，请稍后重试。" title="API 地址暂不可用" /> : null}
       {source?.status === "unavailable" || groupsSource?.status === "unavailable" || endpointSource?.status === "unavailable" ? <details className="keys-source-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>keys source reason</dt><dd><code>{source?.status === "unavailable" ? source.reasonCode : "-"}</code></dd></div><div><dt>groups source reason</dt><dd><code>{groupsSource?.status === "unavailable" ? groupsSource.reasonCode : "-"}</code></dd></div><div><dt>endpoint source reason</dt><dd><code>{endpointSource?.status === "unavailable" ? endpointSource.reasonCode : "-"}</code></dd></div></dl></details> : null}
       {notice ? <Alert color="success" description={notice} title="操作完成" /> : null}
       {error ? <Alert actions={<Button onClick={() => void refreshAll()} size="sm" variant="ghost">刷新确认</Button>} color="danger" description={error} title="操作未确认" /> : null}
+
+      <section className={`keys-filter-disclosure${filtersOpen ? " is-open" : ""}`} aria-label="筛选与排序">
+        <button
+          aria-controls="gateway-key-filters"
+          aria-expanded={filtersOpen}
+          className="keys-filter-disclosure__toggle"
+          onClick={() => setFiltersOpen((open) => !open)}
+          type="button"
+        >
+          <span>筛选与排序</span>
+          <span aria-hidden="true">{filtersOpen ? "收起" : "展开"}</span>
+        </button>
+        <div className="keys-filter-disclosure__content" id="gateway-key-filters">
+          {renderFilters()}
+        </div>
+      </section>
 
       {revealed ? (
         <div className="keys-secret" role="status">
@@ -686,19 +722,20 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         </div>
       ) : null}
 
-      <SourceState
-        empty={source?.status === "empty"}
-        emptyDescription="创建 API 密钥后即可调用服务。"
-        error={error && !source ? error : ""}
-        errorDescription="暂时无法读取 API 密钥，请稍后重试。"
-        loading={loading}
-        onRetry={() => void refreshAll()}
-        source={source}
-        unavailableDescription="暂时无法读取 API 密钥，请稍后重试。"
-        unavailableTitle="API 密钥暂不可用"
-      >
-        {(data) => (
-          <>
+      <div className="keys-results">
+        <SourceState
+          empty={source?.status === "empty"}
+          emptyDescription="创建 API 密钥后即可调用服务。"
+          error={error && !source ? error : ""}
+          errorDescription="暂时无法读取 API 密钥，请稍后重试。"
+          loading={loading}
+          onRetry={() => void refreshAll()}
+          source={source}
+          unavailableDescription="暂时无法读取 API 密钥，请稍后重试。"
+          unavailableTitle="API 密钥暂不可用"
+        >
+          {(data) => (
+            <>
             <div className="table-wrap keys-table-wrap">
               <table className="keys-table">
                 <thead><tr><th>名称</th><th>状态</th><th>总额度 / 已用</th><th>有效期</th><th>最近使用</th><th>操作</th></tr></thead>
@@ -764,9 +801,10 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               <strong>{query.page} / {data.pages || 1}</strong>
               <Button aria-label="下一页" disabled={query.page >= data.pages || loading} onClick={() => changePage(query.page + 1)} size="sm" uniform variant="outline"><ChevronRight aria-hidden="true" size={16} /></Button>
             </footer>
-          </>
-        )}
-      </SourceState>
+            </>
+          )}
+        </SourceState>
+      </div>
 
       <Modal
         className="keys-modal"

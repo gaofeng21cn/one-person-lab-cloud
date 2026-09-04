@@ -90,6 +90,11 @@ Current truth starts from [the docs index](../README.md),
   the proposed result-first responsive ordering, operation priority, protected
   Key behavior, acceptance criteria, and bounded implementation write set; it
   is not an implementation, deployment, Instance, or production claim.
+- [Console Gateway Key UI verification UX-03D-C, 2026-09-04](./2026-09-04-console-gateway-key-ui-verification.md):
+  the locally implemented result-first page hierarchy, dual-viewport evidence,
+  preserved API and authority boundaries, and verification commands; it does
+  not claim publication, deployment, Instance qualification, or production
+  state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original

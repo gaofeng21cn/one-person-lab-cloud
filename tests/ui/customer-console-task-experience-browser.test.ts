@@ -271,7 +271,31 @@ test("customer task pages use customer language and disclose technical evidence"
       const keySurface = viewport.name === "desktop"
         ? page.locator(".keys-table tbody tr").filter({ hasText: "General fixture key" })
         : page.locator(".mobile-key-card").filter({ hasText: "General fixture key" });
-      await keySurface.getByText("General fixture key", { exact: true }).waitFor({ state: "visible" });
+      const keyName = keySurface.getByText("General fixture key", { exact: true });
+      await keyName.waitFor({ state: "visible" });
+      const filterDisclosure = page.getByRole("region", { name: "筛选与排序", exact: true });
+      const filterToggle = filterDisclosure.getByRole("button", { name: /筛选与排序/ });
+      const moreActions = keySurface.locator("details.key-more-actions");
+      assert.equal(await moreActions.getAttribute("open"), null);
+
+      if (viewport.name === "mobile") {
+        const keyBox = await keyName.boundingBox();
+        const statusBox = await keySurface.getByText("启用", { exact: true }).boundingBox();
+        assert.ok(keyBox && keyBox.y < viewport.height, "mobile: first Key name should enter the initial viewport");
+        assert.ok(statusBox && statusBox.y < viewport.height, "mobile: first Key status should enter the initial viewport");
+        assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
+        assert.equal(await page.locator(".keys-filter-disclosure__content").isVisible(), false);
+      }
+
+      await keySurface.getByRole("button", { name: "显示 API 密钥", exact: true }).waitFor({ state: "visible" });
+      await keySurface.getByRole("button", { name: "使用说明", exact: true }).waitFor({ state: "visible" });
+      await moreActions.getByText("更多操作", { exact: true }).click();
+      for (const action of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
+        await moreActions.getByRole("button", { name: action, exact: true }).waitFor({ state: "visible" });
+      }
+      await moreActions.getByText("更多操作", { exact: true }).click();
+
+      if (viewport.name === "mobile") await filterToggle.click();
       const sortControl = page.locator(".keys-filters .console-field")
         .filter({ has: page.getByText("排序", { exact: true }) })
         .locator(".console-select")
