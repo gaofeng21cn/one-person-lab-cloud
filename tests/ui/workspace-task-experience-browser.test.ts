@@ -9,6 +9,8 @@ import type {
   RuntimeCredentialResponse,
   SourceEnvelope,
   WorkspaceDTO,
+  WorkspaceGatewayBudgetDTO,
+  WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceListData,
   WorkspaceLaunchResponse,
   WorkspaceRuntimeDTO
@@ -976,7 +978,8 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     const advanced = page.locator("details.workspace-advanced-details");
     await advanced.locator("summary").click();
     await advanced.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
-    await advanced.getByLabel("总额度（micros）").waitFor({ state: "visible" });
+    await advanced.getByLabel("总额度（美元）").waitFor({ state: "visible" });
+    assert.equal(await advanced.getByText(/micros/i).count(), 0);
     await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
     const technical = page.locator("details.workspace-technical-details");
     await technical.locator("summary").click();
@@ -1091,6 +1094,36 @@ async function verifyWorkspaceDetailExperience() {
       });
       await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1/runtime-status", async (route) => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(workspaceRuntime) });
+      });
+      let budgetUpdate: WorkspaceGatewayBudgetUpdateRequest | null = null;
+      await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces/ws-1/gateway-budget", async (route) => {
+        if (route.request().method() !== "PATCH") {
+          await route.fallback();
+          return;
+        }
+        budgetUpdate = route.request().postDataJSON() as WorkspaceGatewayBudgetUpdateRequest;
+        const updatedBudget: SourceEnvelope<WorkspaceGatewayBudgetDTO> = {
+          source: "sub2api",
+          status: "available",
+          available: true,
+          fetchedAt: "2026-09-01T00:00:01Z",
+          data: {
+            workspaceId: "ws-1",
+            keyId: "9",
+            status: budgetUpdate.enabled === false ? "disabled" : "active",
+            quotaUsdMicros: String(budgetUpdate.quotaUsdMicros ?? 10_000_000),
+            quotaUsedUsdMicros: "250000",
+            rateLimit5hUsdMicros: String(budgetUpdate.rateLimit5hUsdMicros ?? 0),
+            rateLimit1dUsdMicros: String(budgetUpdate.rateLimit1dUsdMicros ?? 0),
+            rateLimit7dUsdMicros: String(budgetUpdate.rateLimit7dUsdMicros ?? 0),
+            usage5hUsdMicros: "0",
+            usage1dUsdMicros: "10000",
+            usage7dUsdMicros: "30000",
+            enabled: budgetUpdate.enabled ?? true,
+            updatedAt: "2026-09-01T00:00:01Z"
+          }
+        };
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(updatedBudget) });
       });
       await page.addInitScript({ content: `
         window.openedWorkspace = null;
@@ -1208,8 +1241,26 @@ async function verifyWorkspaceDetailExperience() {
       const maintenancePanel = advanced.locator(".workspace-maintenance-panel");
       const deletePanel = page.locator(".workspace-delete-panel");
       await budgetPanel.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
+      const quotaInput = budgetPanel.getByLabel("总额度（美元）");
+      await quotaInput.waitFor({ state: "visible" });
+      assert.equal(await quotaInput.inputValue(), "10");
+      assert.equal(await budgetPanel.getByText(/micros/i).count(), 0);
       assert.equal(await budgetPanel.getByRole("button", { name: "保存预算", exact: true }).count(), 1);
       assert.equal(await budgetPanel.getByRole("button", { name: /^重置/ }).count(), 0);
+      if (viewport.name === "desktop") {
+        await quotaInput.fill("12.345678");
+        const budgetResponsePromise = page.waitForResponse((response) => response.request().method() === "PATCH"
+          && new URL(response.url()).pathname === "/api/workspaces/ws-1/gateway-budget");
+        await budgetPanel.getByRole("button", { name: "保存预算", exact: true }).click();
+        await budgetResponsePromise;
+        assert.deepEqual(budgetUpdate, {
+          quotaUsdMicros: 12_345_678,
+          rateLimit5hUsdMicros: 0,
+          rateLimit1dUsdMicros: 0,
+          rateLimit7dUsdMicros: 0,
+          enabled: true
+        });
+      }
       await maintenancePanel.getByRole("heading", { name: "用量维护", exact: true }).waitFor({ state: "visible" });
       assert.equal(await maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }).count(), 1);
       assert.equal(await maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }).count(), 1);
@@ -1218,6 +1269,8 @@ async function verifyWorkspaceDetailExperience() {
       await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
 
       if (viewport.name === "mobile") {
+        await assertAboveMobileNavigation(page, page.getByRole("button", { name: "工作空间列表", exact: true }));
+        await assertAboveMobileNavigation(page, quotaInput);
         await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }));
         await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }));
         await assertAboveMobileNavigation(page, deletePanel.getByRole("button", { name: "删除工作空间", exact: true }));

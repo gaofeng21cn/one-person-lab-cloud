@@ -219,7 +219,7 @@ test("Fabric Runtime Read rejects late Workspace and refresh responses and settl
     assert.equal(await page.getByRole("heading", { name: beta.name || "", exact: true }).count(), 1);
     await openDisclosure(page, "details.workspace-advanced-details");
     const budgetPanel = page.locator(".workspace-budget-panel");
-    assert.equal(await budgetPanel.getByLabel("总额度（micros）").inputValue(), "12345678");
+    assert.equal(await budgetPanel.getByLabel("总额度（美元）").inputValue(), "12.345678");
     assert.equal(await budgetPanel.getByRole("checkbox", { name: "启用 API 密钥", exact: true }).isChecked(), true);
     assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: /^状态已启用$/ }).locator("dd").textContent(), "已启用");
     assert.equal(await budgetPanel.locator(".data-list > div").filter({ hasText: "总额度已用" }).locator("dd").textContent(), "$0.00");

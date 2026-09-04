@@ -295,6 +295,27 @@ export type WorkspaceBudgetPresentation =
   | { known: true; kind: KnownWorkspaceBudgetStatus; label: string }
   | { known: false; kind: "unknown"; label: "待确认"; rawValue: string };
 
+const USD_MICROS_PER_DOLLAR = 1_000_000n;
+const MAX_SAFE_USD_MICROS = BigInt(Number.MAX_SAFE_INTEGER);
+
+export function formatWorkspaceBudgetUsdInput(value?: string): string {
+  if (!value || !/^(0|[1-9]\d*)$/.test(value)) return "";
+  const micros = BigInt(value);
+  const dollars = micros / USD_MICROS_PER_DOLLAR;
+  const remainder = micros % USD_MICROS_PER_DOLLAR;
+  if (remainder === 0n) return String(dollars);
+  const fraction = String(remainder).padStart(6, "0").replace(/0+$/, "");
+  return `${dollars}.${fraction}`;
+}
+
+export function parseWorkspaceBudgetUsdInput(value: string): number | null {
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/.exec(value.trim());
+  if (!match) return null;
+  const micros = BigInt(match[1]) * USD_MICROS_PER_DOLLAR
+    + BigInt((match[2] || "").padEnd(6, "0"));
+  return micros <= MAX_SAFE_USD_MICROS ? Number(micros) : null;
+}
+
 export function presentWorkspaceBudget(status: string): WorkspaceBudgetPresentation {
   switch (status) {
     case "active":

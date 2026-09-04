@@ -8,6 +8,8 @@ import type {
   WorkspaceRuntimeDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
+  formatWorkspaceBudgetUsdInput,
+  parseWorkspaceBudgetUsdInput,
   presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
@@ -353,6 +355,35 @@ test("Workspace budget statuses have exact labels and an explicit unknown", () =
     label: "待确认",
     rawValue: "future_budget"
   });
+});
+
+test("Workspace budget inputs convert exact USD decimals without floating point rounding", () => {
+  const formatted = [
+    ["0", "0"],
+    ["1", "0.000001"],
+    ["10000", "0.01"],
+    ["1000000", "1"],
+    ["1234567", "1.234567"],
+    ["9007199254740993", "9007199254.740993"]
+  ] as const;
+  for (const [micros, dollars] of formatted) {
+    assert.equal(formatWorkspaceBudgetUsdInput(micros), dollars);
+  }
+
+  const parsed = [
+    ["0", 0],
+    ["0.000001", 1],
+    ["1.23", 1_230_000],
+    ["1.230000", 1_230_000],
+    ["9007199254.740991", Number.MAX_SAFE_INTEGER]
+  ] as const;
+  for (const [dollars, micros] of parsed) {
+    assert.equal(parseWorkspaceBudgetUsdInput(dollars), micros);
+  }
+
+  for (const invalid of ["", " ", "-1", ".5", "1.", "01", "1.0000001", "NaN", "9007199254.740992"]) {
+    assert.equal(parseWorkspaceBudgetUsdInput(invalid), null);
+  }
 });
 
 test("Workspace quote presentation preserves unavailable, included zero, and prepaid totals", () => {

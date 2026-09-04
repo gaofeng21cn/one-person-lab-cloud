@@ -2876,6 +2876,12 @@ tbody tr:last-child td {
     min-height: 44px;
   }
 
+  .workspace-launch-back,
+  .workspace-detail-page > .ui-button,
+  .workspace-budget-panel input {
+    min-height: 44px;
+  }
+
   .workspace-budget-panel,
   .workspace-maintenance-panel,
   .workspace-delete-panel {

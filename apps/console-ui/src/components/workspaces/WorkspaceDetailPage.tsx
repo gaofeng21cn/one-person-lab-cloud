@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { WorkspaceSecretController } from "../../app/console-controller-types.ts";
 import type { ConsoleController } from "../../app/use-console-controller.ts";
 import {
+  formatWorkspaceBudgetUsdInput, parseWorkspaceBudgetUsdInput,
   presentWorkspaceBudget, presentWorkspaceRenewal, presentWorkspaceRuntime
 } from "../../app/workspace-experience-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
@@ -39,26 +40,20 @@ type WorkspaceBudgetLimitField = "quotaUsdMicros" | "rateLimit5hUsdMicros" | "ra
 type WorkspaceBudgetForm = Record<WorkspaceBudgetLimitField, string> & { enabled: boolean };
 
 const workspaceBudgetLimitFields: ReadonlyArray<{ field: WorkspaceBudgetLimitField; label: string }> = [
-  { field: "quotaUsdMicros", label: "总额度（micros）" },
-  { field: "rateLimit5hUsdMicros", label: "5 小时限额（micros）" },
-  { field: "rateLimit1dUsdMicros", label: "1 天限额（micros）" },
-  { field: "rateLimit7dUsdMicros", label: "7 天限额（micros）" }
+  { field: "quotaUsdMicros", label: "总额度（美元）" },
+  { field: "rateLimit5hUsdMicros", label: "5 小时限额（美元）" },
+  { field: "rateLimit1dUsdMicros", label: "1 天限额（美元）" },
+  { field: "rateLimit7dUsdMicros", label: "7 天限额（美元）" }
 ];
 
 function workspaceBudgetForm(budget: WorkspaceGatewayBudgetDTO | null): WorkspaceBudgetForm {
   return {
-    quotaUsdMicros: budget?.quotaUsdMicros || "",
-    rateLimit5hUsdMicros: budget?.rateLimit5hUsdMicros || "",
-    rateLimit1dUsdMicros: budget?.rateLimit1dUsdMicros || "",
-    rateLimit7dUsdMicros: budget?.rateLimit7dUsdMicros || "",
+    quotaUsdMicros: formatWorkspaceBudgetUsdInput(budget?.quotaUsdMicros),
+    rateLimit5hUsdMicros: formatWorkspaceBudgetUsdInput(budget?.rateLimit5hUsdMicros),
+    rateLimit1dUsdMicros: formatWorkspaceBudgetUsdInput(budget?.rateLimit1dUsdMicros),
+    rateLimit7dUsdMicros: formatWorkspaceBudgetUsdInput(budget?.rateLimit7dUsdMicros),
     enabled: budget?.enabled ?? false
   };
-}
-
-function parseBudgetMicros(value: string) {
-  if (value.trim() === "" || !/^(0|[1-9]\d*)$/.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function WorkspaceBudgetPanel({ controller }: { controller: WorkspaceBudgetViewController }) {
@@ -80,8 +75,8 @@ function WorkspaceBudgetPanel({ controller }: { controller: WorkspaceBudgetViewC
     const input: WorkspaceGatewayBudgetUpdateRequest = { enabled: form.enabled };
     const nextErrors: Partial<Record<WorkspaceBudgetLimitField, string>> = {};
     for (const { field } of workspaceBudgetLimitFields) {
-      const value = parseBudgetMicros(form[field]);
-      if (value === null) nextErrors[field] = "请输入非负安全整数";
+      const value = parseWorkspaceBudgetUsdInput(form[field]);
+      if (value === null) nextErrors[field] = "请输入非负美元金额，最多 6 位小数";
       else input[field] = value;
     }
     setErrors(nextErrors);
@@ -93,7 +88,7 @@ function WorkspaceBudgetPanel({ controller }: { controller: WorkspaceBudgetViewC
     <div className="workspace-settings-heading"><h3>预算设置</h3><p>设置 API 密钥的消费上限。</p></div>
     {budget ? <div className="workspace-details key-form">
         <div className="key-form-grid">
-          {workspaceBudgetLimitFields.map(({ field, label }) => <Field description="0 表示不限额" disabled={controller.workspaceBudgetBusy} error={errors[field]} inputMode="numeric" key={field} label={label} min="0" onChange={(event) => updateLimit(field, event.currentTarget.value)} required step="1" type="number" value={form[field]} />)}
+          {workspaceBudgetLimitFields.map(({ field, label }) => <Field description="0 表示不限额，最多 6 位小数" disabled={controller.workspaceBudgetBusy} error={errors[field]} inputMode="decimal" key={field} label={label} max="9007199254.740991" min="0" onChange={(event) => updateLimit(field, event.currentTarget.value)} required step="0.000001" type="number" value={form[field]} />)}
         </div>
         <Checkbox checked={form.enabled} disabled={controller.workspaceBudgetBusy} label="启用 API 密钥" onChange={(enabled) => setForm((current) => ({ ...current, enabled }))} />
         <dl className="data-list">
