@@ -75,6 +75,37 @@ async function assertNoHorizontalOverflow(page: Page, scope: string) {
   );
 }
 
+async function assertOverviewHierarchy(page: Page, viewport: typeof viewports[number]) {
+  const overview = page.locator(".overview-page");
+  const summary = overview.getByRole("region", { name: "账户关键指标", exact: true });
+  const workspace = overview.locator(".overview-workspaces");
+  const receipts = overview.locator(".overview-receipts");
+  const announcements = overview.locator(".overview-announcements");
+  const primaryAction = workspace.getByRole("button", { name: /工作空间|重试读取工作空间/ }).last();
+
+  await workspace.getByText("当前账户共 2 个", { exact: true }).waitFor({ state: "visible" });
+  await workspace.getByRole("button", { name: "全部", exact: true }).waitFor({ state: "visible" });
+  await primaryAction.waitFor({ state: "visible" });
+
+  const layout = await Promise.all([summary, workspace, receipts, announcements, primaryAction].map(async (locator) => {
+    const box = await locator.boundingBox();
+    assert.ok(box, `${viewport.name}: overview region should have a layout box`);
+    return box;
+  }));
+  const [summaryBox, workspaceBox, receiptsBox, announcementsBox, primaryActionBox] = layout;
+
+  assert.ok(summaryBox.y + summaryBox.height <= workspaceBox.y, `${viewport.name}: summary should precede Workspace`);
+  assert.ok(workspaceBox.y + workspaceBox.height <= receiptsBox.y, `${viewport.name}: Workspace should precede recent fees`);
+  assert.ok(receiptsBox.y + receiptsBox.height <= announcementsBox.y || viewport.name === "desktop", `${viewport.name}: secondary regions should follow scan order`);
+  assert.ok(primaryActionBox.x >= workspaceBox.x && primaryActionBox.x + primaryActionBox.width <= workspaceBox.x + workspaceBox.width, `${viewport.name}: primary command should stay inside Workspace`);
+  assert.ok(primaryActionBox.y >= workspaceBox.y && primaryActionBox.y + primaryActionBox.height <= workspaceBox.y + workspaceBox.height, `${viewport.name}: primary command should not cover the page title`);
+
+  if (viewport.name === "desktop") {
+    assert.ok(workspaceBox.width > receiptsBox.width * 1.8, "desktop: Workspace should own the full primary row");
+    assert.ok(Math.abs(receiptsBox.y - announcementsBox.y) <= 1, "desktop: recent fees and messages should share the secondary row");
+  }
+}
+
 async function visibleExactTextCount(root: Page | Locator, value: string) {
   const matches = root.getByText(value, { exact: true });
   const count = await matches.count();
@@ -206,6 +237,7 @@ test("customer task pages use customer language and disclose technical evidence"
       await page.getByRole("button", { name: /工作空间|重试读取工作空间/ }).first().waitFor({ state: "visible" });
       await page.getByRole("heading", { name: "最近费用", exact: true }).waitFor({ state: "visible" });
       await page.getByRole("heading", { name: "消息", exact: true }).waitFor({ state: "visible" });
+      await assertOverviewHierarchy(page, viewport);
       await assertCustomerLanguage(page, `${viewport.name}: overview`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: overview`);
 

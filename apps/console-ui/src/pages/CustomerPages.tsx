@@ -111,6 +111,11 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
   const primaryPath = primaryWorkspace ? `/console/workspaces/${encodeURIComponent(primaryWorkspace.id)}` : "/console/workspaces/new";
   const workspacesUnavailable = workspaceRead.workspaces.value?.status === "unavailable" || Boolean(workspaceRead.workspaces.error);
   const workspacesPending = !workspaceRead.workspaces.value || workspaceRead.workspaces.loading;
+  const workspaceCountLabel = workspaces
+    ? `当前账户共 ${formatCount(workspaces.total)} 个`
+    : workspacesPending && !workspacesUnavailable
+      ? "正在读取工作空间总数"
+      : "工作空间总数暂不可用";
 
   return (
     <section className="overview-page" data-slide="C-OV-01">
@@ -121,16 +126,18 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
       </section>
 
-      <div className="overview-primary-action">
-        <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate(primaryPath)}>
-          {workspacesUnavailable ? "重试读取工作空间" : primaryWorkspace ? "查看工作空间" : workspacesPending ? "正在读取工作空间" : "新建工作空间"}
-          {workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
-        </Button>
-      </div>
-
       <div className="overview-grid">
         <section className="panel overview-workspaces">
-          <div className="panel-title"><h2>工作空间</h2><Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button></div>
+          <div className="panel-title overview-workspace-title">
+            <div><h2>工作空间</h2><span>{workspaceCountLabel}</span></div>
+            <div className="overview-workspace-actions">
+              <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost">全部</Button>
+              <Button color="primary" disabled={workspacesPending && !workspacesUnavailable} onClick={() => workspacesUnavailable ? void workspaceRead.refresh() : controller.navigate(primaryPath)} size="sm">
+                {workspacesUnavailable ? "重试读取工作空间" : primaryWorkspace ? "查看工作空间" : workspacesPending ? "正在读取工作空间" : "新建工作空间"}
+                {workspacesUnavailable ? <RefreshCw aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
+              </Button>
+            </div>
+          </div>
           <SourceState
             emptyTitle="暂无工作空间"
             error={workspaceRead.workspaces.error}

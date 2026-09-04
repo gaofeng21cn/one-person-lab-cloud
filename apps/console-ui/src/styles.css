@@ -5712,7 +5712,6 @@ textarea:focus-visible,
 }
 
 .overview-page {
-  position: relative;
   gap: 0;
 }
 
@@ -5720,7 +5719,7 @@ textarea:focus-visible,
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
-  padding: 26px 0 53px;
+  padding: 26px 0;
 }
 
 .overview-summary > .band-metric {
@@ -5767,25 +5766,10 @@ textarea:focus-visible,
   color: var(--ink);
 }
 
-.overview-primary-action {
-  position: absolute;
-  z-index: 25;
-  top: -70px;
-  right: 0;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.overview-primary-action .ui-button {
-  min-height: 42px;
-  padding-inline: 16px;
-  font-size: 13px;
-}
-
 .overview-grid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(420px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 16px;
-  row-gap: 0;
+  row-gap: 16px;
   padding-top: 22px;
 }
 
@@ -5793,17 +5777,24 @@ textarea:focus-visible,
   border-radius: 8px;
 }
 
-.overview-workspaces,
-.overview-receipts {
-  min-height: 508px;
+.overview-workspaces {
+  grid-column: 1 / -1;
 }
 
 .overview-announcements {
-  min-height: 116px;
+  grid-column: auto;
 }
 
-.overview-announcements .source-empty {
-  min-height: 90px;
+.panel-title .overview-workspace-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.overview-workspace-actions .ui-button:last-child {
+  min-width: 132px;
 }
 
 .overview-workspace-table .ui-table th,
@@ -6074,13 +6065,9 @@ textarea:focus-visible,
     row-gap: 14px;
   }
 
+  .overview-workspaces,
   .overview-announcements {
     grid-column: auto;
-  }
-
-  .overview-workspaces,
-  .overview-receipts {
-    min-height: 0;
   }
 
   .account-band:not(.global-slide) {
@@ -6127,23 +6114,29 @@ textarea:focus-visible,
     font-size: 25px;
   }
 
-  .overview-primary-action {
-    position: static;
-    padding-top: 14px;
-  }
-
-  .overview-primary-action .ui-button {
-    width: 100%;
-  }
-
   .overview-grid {
     gap: 14px;
     padding-top: 14px;
   }
 
-  .overview-workspaces,
-  .overview-receipts {
-    min-height: 0;
+  .overview-workspace-title {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .overview-workspace-title > div:first-child {
+    width: 100%;
+  }
+
+  .panel-title .overview-workspace-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .overview-workspace-actions .ui-button:last-child {
+    width: 100%;
+    min-width: 0;
   }
 
   .panel-title {
