@@ -172,6 +172,17 @@ async function assertNoHorizontalOverflow(page: Page) {
   );
 }
 
+async function assertAboveMobileNavigation(page: Page, target: Locator) {
+  await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  const navigation = page.locator(".mobile-bottom-nav");
+  const [targetBox, navigationBox] = await Promise.all([target.boundingBox(), navigation.boundingBox()]);
+  assert.ok(targetBox, "mobile action must have a rendered box");
+  assert.ok(navigationBox, "mobile navigation must have a rendered box");
+  assert.ok(targetBox.height >= 44, `mobile action height must be at least 44px: ${JSON.stringify(targetBox)}`);
+  assert.ok(targetBox.y + targetBox.height <= navigationBox.y + 1, `mobile action is obscured by navigation: ${JSON.stringify({ targetBox, navigationBox })}`);
+}
+
 async function visibleTextCount(page: Page, value: string | RegExp) {
   const matches = page.getByRole("main").getByText(value, { exact: typeof value === "string" });
   let visible = 0;
@@ -466,8 +477,9 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
     const advanced = page.locator("details.workspace-advanced-details");
     await advanced.locator("summary").click();
     page.once("dialog", (dialog) => { void dialog.accept(); });
-    await advanced.getByRole("button", { name: "删除工作空间", exact: true }).click();
-    await advanced.getByText("工作空间删除暂不可用", { exact: true }).waitFor({ state: "visible" });
+    const deletePanel = page.locator(".workspace-delete-panel");
+    await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).click();
+    await deletePanel.getByText("工作空间删除暂不可用", { exact: true }).waitFor({ state: "visible" });
     assert.equal(deleteWrites, 1);
     assert.equal(await visibleTextCount(page, "workspace_delete_unavailable"), 0);
 
@@ -817,6 +829,10 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await login(page, demo.origin);
     await page.getByRole("link", { name: "工作空间", exact: true }).filter({ visible: true }).first().click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces");
+    const workspaceListPage = page.locator(".workspace-list-page");
+    const firstWorkspaceRow = workspaceListPage.locator(".workspace-list-row").first();
+    await firstWorkspaceRow.getByText("查看详情", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await workspaceListPage.getByText("生命周期状态", { exact: true }).count(), 0);
     await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
     await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
     await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
@@ -959,7 +975,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
 
     const advanced = page.locator("details.workspace-advanced-details");
     await advanced.locator("summary").click();
-    await advanced.getByRole("heading", { name: "模型预算", exact: true }).waitFor({ state: "visible" });
+    await advanced.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
     await advanced.getByLabel("总额度（micros）").waitFor({ state: "visible" });
     await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
     const technical = page.locator("details.workspace-technical-details");
@@ -978,6 +994,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     assert.equal(await page.locator(".workspace-access-panel").count(), 0);
     assert.equal(await page.locator(".credential-actions code").count(), 0);
     const journeyRow = page.locator(".workspace-list-row").filter({ hasText: journeyName });
+    await journeyRow.getByText("查看详情", { exact: true }).waitFor({ state: "visible" });
     await journeyRow.click();
     await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
     const returnedAccess = page.locator(".workspace-access-panel");
@@ -1142,6 +1159,12 @@ async function verifyWorkspaceDetailExperience() {
       await page.getByText("API 密钥已复制", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByText(password, { exact: true }).count(), 0);
 
+      if (viewport.name === "mobile") {
+        await assertAboveMobileNavigation(page, openWorkspace);
+        await assertAboveMobileNavigation(page, passwordRow.getByRole("button").first());
+        await assertAboveMobileNavigation(page, keyRow.getByRole("button").first());
+      }
+
       const renewal = page.locator(".workspace-plan-panel");
       await renewal.getByRole("heading", { name: "续费与存储", exact: true }).waitFor({ state: "visible" });
       await renewal.getByText("续费方式", { exact: true }).waitFor({ state: "visible" });
@@ -1181,7 +1204,24 @@ async function verifyWorkspaceDetailExperience() {
       });
       assert.notEqual(await advancedChevron.evaluate((element) => getComputedStyle(element).transform), "none");
       await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
-      await advanced.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
+      const budgetPanel = advanced.locator(".workspace-budget-panel");
+      const maintenancePanel = advanced.locator(".workspace-maintenance-panel");
+      const deletePanel = page.locator(".workspace-delete-panel");
+      await budgetPanel.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await budgetPanel.getByRole("button", { name: "保存预算", exact: true }).count(), 1);
+      assert.equal(await budgetPanel.getByRole("button", { name: /^重置/ }).count(), 0);
+      await maintenancePanel.getByRole("heading", { name: "用量维护", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }).count(), 1);
+      assert.equal(await maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }).count(), 1);
+      assert.equal(await maintenancePanel.getByRole("button", { name: "保存预算", exact: true }).count(), 0);
+      assert.equal(await advanced.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
+      await deletePanel.getByRole("button", { name: "删除工作空间", exact: true }).waitFor({ state: "visible" });
+
+      if (viewport.name === "mobile") {
+        await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置总额度用量", exact: true }));
+        await assertAboveMobileNavigation(page, maintenancePanel.getByRole("button", { name: "重置滚动窗口用量", exact: true }));
+        await assertAboveMobileNavigation(page, deletePanel.getByRole("button", { name: "删除工作空间", exact: true }));
+      }
 
       const technical = page.locator("details.workspace-technical-details");
       assert.equal(await technical.getAttribute("open"), null);
@@ -1210,6 +1250,7 @@ async function verifyWorkspaceDetailExperience() {
         "panel workspace-access-panel",
         "panel workspace-plan-panel",
         "panel workspace-settings-panel",
+        "panel workspace-delete-panel",
         "panel workspace-technical-panel"
       ]);
       await assertNoHorizontalOverflow(page);

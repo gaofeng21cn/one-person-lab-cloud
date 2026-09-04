@@ -105,6 +105,11 @@ Current truth starts from [the docs index](../README.md),
   pages, action-risk grouping, customer/technical language boundary, and the
   minimal UX-03E-C implementation write set; it is not an implementation,
   deployment, Instance, or production claim.
+- [Console Workspace UI verification UX-03E-C, 2026-09-04](./2026-09-04-console-workspace-ui-verification.md):
+  the locally implemented Workspace presentation bounded context, task-first
+  list and detail hierarchy, dual-viewport evidence, preserved API and owner
+  boundaries, and verification commands; it does not claim publication,
+  deployment, Instance qualification, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
