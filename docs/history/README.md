@@ -123,6 +123,12 @@ Current truth starts from [the docs index](../README.md),
   gaps, and bounded entry point for the next Usage interaction design; it is
   local audit evidence, not an implementation, deployment, Instance, or
   production claim.
+- [Console Gateway Usage interaction hierarchy UX-03F-B, 2026-09-04](./2026-09-04-console-gateway-usage-interaction-hierarchy-design.md):
+  the approved result-first design, searchable and paginated Key selection,
+  committed-scope loading behavior, default request facts, on-demand technical
+  disclosure, DDD boundaries, and the minimal UX-03F-C implementation and
+  acceptance scope; it is not implementation, deployment, Instance, or
+  production evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
