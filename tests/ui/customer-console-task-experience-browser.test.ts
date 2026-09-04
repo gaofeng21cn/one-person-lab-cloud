@@ -263,7 +263,15 @@ test("customer task pages use customer language and disclose technical evidence"
       const usageSurface = viewport.name === "desktop"
         ? page.locator(".request-table-desktop")
         : page.locator(".request-list-mobile");
-      await usageSurface.getByText("request-fixture", { exact: true }).waitFor({ state: "visible" });
+      await usageSurface.getByText("gpt-5-mini", { exact: true }).first().waitFor({ state: "visible" });
+      const requestId = usageSurface.getByText("request-fixture", { exact: true });
+      assert.equal(await requestId.first().isVisible(), false);
+      if (viewport.name === "desktop") {
+        await usageSurface.getByRole("button", { name: "查看详情", exact: true }).first().click();
+      } else {
+        await usageSurface.locator("summary").first().click();
+      }
+      await requestId.first().waitFor({ state: "visible" });
       await assertCustomerLanguage(page, `${viewport.name}: API usage`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: API usage`);
 

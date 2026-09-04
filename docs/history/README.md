@@ -129,6 +129,12 @@ Current truth starts from [the docs index](../README.md),
   disclosure, DDD boundaries, and the minimal UX-03F-C implementation and
   acceptance scope; it is not implementation, deployment, Instance, or
   production evidence.
+- [Console Gateway Usage UI verification UX-03F-C, 2026-09-04](./2026-09-04-console-gateway-usage-ui-verification.md):
+  the locally implemented result-first Usage slice, searchable and paginated
+  Key selection, authoritative refresh behavior, independent Summary/Usage
+  settlement, dual-viewport evidence, preserved DDD boundaries, and the
+  remaining upstream Workspace QA blocker; it is not deployment or production
+  evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original

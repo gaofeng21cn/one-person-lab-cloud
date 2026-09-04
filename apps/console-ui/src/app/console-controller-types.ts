@@ -9,6 +9,7 @@ import type {
   GatewayEndpointDTO,
   GatewayKeyPageDTO,
   GatewayKeySecretDTO,
+  GatewayKeySummaryDTO,
   GatewayKeyUsagePageDTO,
   GatewayUsagePeriod,
   GatewayUsageSummaryDTO,
@@ -206,6 +207,11 @@ export interface GatewayUsageController {
   keys: RemoteState<SourceEnvelope<GatewayKeyPageDTO>>;
   usage: RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>;
   summary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
+  selection: {
+    key: GatewayKeySummaryDTO | null;
+    status: "idle" | "ready" | "confirming" | "unavailable" | "missing";
+  };
+  keySearch: string;
   selectedKeyId: string;
   period: GatewayUsagePeriod;
   page: number;
@@ -213,6 +219,12 @@ export interface GatewayUsageController {
   selectKey: (keyId: string) => Promise<void>;
   selectPeriod: (period: GatewayUsagePeriod) => Promise<void>;
   changePage: (page: number) => Promise<void>;
+  searchKeys: (search: string) => Promise<void>;
+  changeKeyPage: (page: number) => Promise<void>;
+  retryKeys: () => Promise<void>;
+  cancelKeyQuery: () => void;
+  retrySummary: () => Promise<void>;
+  retryUsage: () => Promise<void>;
 }
 
 export interface BillingController {

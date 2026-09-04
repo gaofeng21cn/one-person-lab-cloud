@@ -331,7 +331,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
     reads.balanceHistory = 0;
     reads.endpoint = 0;
     await page.goto(`${demo.origin}/console/api/usage`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "用量记录", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "用量", exact: true }).waitFor({ state: "visible" });
     await settle(page);
     assert.deepEqual(reads, { wallet: 0, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 

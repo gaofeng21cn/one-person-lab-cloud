@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { type ReactNode } from "react";
 
-import type { BillingController, CustomerAnnouncementController, GatewayUsageController } from "../app/console-controller-types.ts";
+import type { BillingController, CustomerAnnouncementController } from "../app/console-controller-types.ts";
 import type { CustomerConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import {
@@ -21,13 +21,14 @@ import {
   presentBillingStatus
 } from "../app/customer-experience-model.ts";
 import { presentWorkspaceRenewal } from "../app/workspace-experience-model.ts";
-import type { AnnouncementDTO, BillingReceipt, GatewayUsageItem, GatewayUsagePeriod, SourceEnvelope } from "../api/dtos.ts";
+import type { AnnouncementDTO, BillingReceipt, SourceEnvelope } from "../api/dtos.ts";
+import { GatewayUsagePage } from "../components/gateway-usage/GatewayUsagePage.tsx";
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPage.tsx";
 import { WorkspaceLaunchPage } from "../components/workspaces/WorkspaceLaunchPage.tsx";
 import { WorkspaceListPage, WorkspaceSummaryRow } from "../components/workspaces/WorkspaceListPage.tsx";
 import { SourceState } from "../components/source/SourceState.tsx";
-import { Badge, Button, SegmentedControl, Select } from "../components/ui/index.ts";
+import { Badge, Button, SegmentedControl } from "../components/ui/index.ts";
 import { apiMenu, formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
 
 type CustomerApiRoute = Extract<CustomerConsoleRoute, { navigationId: "customer.api" }>;
@@ -38,10 +39,6 @@ function assertNever(value: never): never {
 
 function sourceData<T>(source: SourceEnvelope<T> | null | undefined): T | null {
   return source?.available ? source.data : null;
-}
-
-function formatLatency(value: number | null) {
-  return value === null ? "-" : `${formatCount(value)} ms`;
 }
 
 function receiptAmount(receipt: BillingReceipt) {
@@ -190,61 +187,6 @@ function ApiOverview({ controller }: { controller: ConsoleController }) {
   </div>;
 }
 
-function UsageTokenFacts({ item }: { item: GatewayUsageItem }) {
-  return <span className="usage-fact-stack usage-token-stack">
-    <span><small>输入</small><strong>{formatCount(item.inputTokens)}</strong></span>
-    <span><small>输出</small><strong>{formatCount(item.outputTokens)}</strong></span>
-    {item.cacheReadTokens > 0 ? <span><small>缓存读取</small><strong>{formatCount(item.cacheReadTokens)}</strong></span> : null}
-    {item.cacheCreationTokens > 0 ? <span><small>缓存写入</small><strong>{formatCount(item.cacheCreationTokens)}</strong></span> : null}
-  </span>;
-}
-
-function UsageLatencyFacts({ item }: { item: GatewayUsageItem }) {
-  return <span className="usage-fact-stack usage-latency-stack">
-    <span><small>首字</small><strong>{formatLatency(item.firstTokenMs)}</strong></span>
-    <span><small>总耗时</small><strong>{formatLatency(item.durationMs)}</strong></span>
-  </span>;
-}
-
-function RequestRows({ items, onCopyRequestId }: { items: GatewayUsageItem[]; onCopyRequestId: (requestId: string) => void }) {
-  return <>
-    <div className="table-wrap request-table-desktop"><table className="gateway-usage-table"><thead><tr><th>模型 / API 地址</th><th>Token</th><th>费用</th><th>延迟</th><th>时间</th><th>请求 ID</th></tr></thead><tbody>{items.map((item) => <tr key={item.requestId}>
-      <td><span className="usage-request-context"><strong>{item.model}</strong><code>{item.inboundEndpoint || "-"}</code></span></td>
-      <td><UsageTokenFacts item={item} /></td>
-      <td><strong className="usage-cost">{formatUsdMicros(item.actualCostUsdMicros)}</strong></td>
-      <td><UsageLatencyFacts item={item} /></td>
-      <td><time dateTime={item.createdAt}>{formatDate(item.createdAt, true)}</time></td>
-      <td><span className="usage-request-id"><code>{item.requestId}</code><Button aria-label="复制请求 ID" onClick={() => onCopyRequestId(item.requestId)} size="sm" title="复制请求 ID" uniform variant="ghost"><Copy aria-hidden size={14} /></Button></span></td>
-    </tr>)}</tbody></table></div>
-    <div className="request-list-mobile" role="list">{items.map((item) => <article className="request-mobile-card" key={item.requestId} role="listitem">
-      <header className="request-mobile-heading"><strong>{item.model}</strong><code>{item.inboundEndpoint || "-"}</code></header>
-      <dl className="request-mobile-facts">
-        <div><dt>Token</dt><dd><UsageTokenFacts item={item} /></dd></div>
-        <div><dt>费用</dt><dd><strong className="usage-cost">{formatUsdMicros(item.actualCostUsdMicros)}</strong></dd></div>
-        <div><dt>延迟</dt><dd><UsageLatencyFacts item={item} /></dd></div>
-        <div><dt>时间</dt><dd><time dateTime={item.createdAt}>{formatDate(item.createdAt, true)}</time></dd></div>
-      </dl>
-      <footer className="request-mobile-id"><span>请求 ID</span><code>{item.requestId}</code><Button aria-label="复制请求 ID" onClick={() => onCopyRequestId(item.requestId)} size="sm" title="复制请求 ID" uniform variant="ghost"><Copy aria-hidden size={14} /></Button></footer>
-    </article>)}</div>
-  </>;
-}
-
-function UsagePage({ controller: usage, onCopyRequestId }: {
-  controller: GatewayUsageController;
-  onCopyRequestId: (requestId: string) => void;
-}) {
-  const keys = sourceData(usage.keys.value)?.items || [];
-  return <section className="panel" data-slide="C-API-02"><div className="panel-title"><h2>用量记录</h2><span>请求级事实来自 API 服务</span></div><div className="gateway-usage-toolbar">
-    <Select block label="API 密钥" onChange={(value) => void usage.selectKey(value)} options={keys.map((key) => ({ label: key.name, value: key.id }))} placeholder="选择 API 密钥" value={usage.selectedKeyId} />
-    <SegmentedControl ariaLabel="统计周期" block onChange={(value) => void usage.selectPeriod(value as GatewayUsagePeriod)} options={[{ value: "today", label: "今日" }, { value: "week", label: "本周" }, { value: "month", label: "本月" }]} value={usage.period} />
-  </div>
-    <SourceState empty={usage.keys.value?.status === "empty"} emptyTitle="暂无 API 密钥" error={usage.keys.error} errorDescription="暂时无法读取 API 密钥，请稍后重试。" loading={usage.keys.loading} onRetry={() => void usage.refresh()} source={usage.keys.value} unavailableDescription="暂时无法读取 API 密钥，请稍后重试。" unavailableTitle="API 密钥暂不可用">{() => <>
-      <SourceState error={usage.summary.error} errorDescription="暂时无法读取用量汇总，请稍后重试。" loading={usage.summary.loading} onRetry={() => void usage.refresh()} source={usage.summary.value} unavailableDescription="暂时无法读取用量汇总，请稍后重试。" unavailableTitle="用量汇总暂不可用">{(summary) => <dl className="usage-summary-strip"><div><dt>汇总请求次数</dt><dd>{formatCount(summary.totalRequests)}</dd></div><div><dt>汇总总 Token</dt><dd>{formatCount(summary.totalTokens)}</dd></div><div><dt>汇总实际金额</dt><dd>{formatUsdMicros(summary.totalActualCostUsdMicros)}</dd></div></dl>}</SourceState>
-      <SourceState empty={usage.usage.value?.status === "empty"} emptyTitle="暂无请求记录" error={usage.usage.error} errorDescription="暂时无法读取用量记录，请稍后重试。" loading={usage.usage.loading} onRetry={() => void usage.refresh()} source={usage.usage.value} unavailableDescription="暂时无法读取用量记录，请稍后重试。" unavailableTitle="用量记录暂不可用">{(data) => <><RequestRows items={data.items} onCopyRequestId={onCopyRequestId} /><Pagination current={data.page} label="请求记录分页" onChange={(page) => void usage.changePage(page)} pages={data.pages} /></>}</SourceState>
-    </>}</SourceState>
-  </section>;
-}
-
 function ApiPage({ controller, route }: { controller: ConsoleController; route: CustomerApiRoute }) {
   let content: ReactNode;
   switch (route.kind) {
@@ -252,7 +194,7 @@ function ApiPage({ controller, route }: { controller: ConsoleController; route: 
       content = <ApiOverview controller={controller} />;
       break;
     case "customer.api.usage":
-      content = <UsagePage controller={controller.gatewayUsage} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} />;
+      content = <GatewayUsagePage controller={controller.gatewayUsage} onCopyRequestId={(requestId) => void controller.copyText(requestId, "请求 ID 已复制")} onOpenKeys={() => controller.navigate("/console/api/keys")} />;
       break;
     case "customer.api.keys":
       content = <KeysPanel csrfToken={controller.session?.csrfToken || ""} endpoint={controller.gatewayAccountRead.endpoint} refreshEndpoint={controller.gatewayAccountRead.refresh} />;

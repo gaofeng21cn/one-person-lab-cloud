@@ -1130,49 +1130,59 @@ async function openWorkspaceFromList(page, workspaceName, expectedUrl) {
 }
 
 async function assertUsageRecordFields(page, viewportName) {
-  const expectedHeaders = ["模型 / API 地址", "Token", "费用", "延迟", "时间", "请求 ID"];
+  const expectedHeaders = ["时间", "模型", "Token", "实际费用", "操作"];
   const surface = viewportName === "desktop"
     ? page.locator(".request-table-desktop")
     : page.locator(".request-list-mobile");
+  const completeRow = viewportName === "desktop"
+    ? surface.locator(".usage-request-entry").filter({ hasText: "request-fixture" })
+    : surface.getByRole("listitem").filter({ hasText: "request-fixture" });
+  await completeRow.waitFor({ state: "visible" });
   if (viewportName === "desktop") {
-    await surface.getByText("request-fixture", { exact: true }).waitFor({ state: "visible" });
     const headers = (await surface.locator("th").allTextContents()).map((label) => label.trim());
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) {
       throw new Error(`console_browser_request_fields:${JSON.stringify(headers)}`);
     }
-  } else {
-    const row = surface.getByRole("listitem").filter({ hasText: "request-fixture" });
-    const labels = (await row.locator("dt").allTextContents()).map((label) => label.trim());
-    if (JSON.stringify(labels) !== JSON.stringify(["Token", "费用", "延迟", "时间"])) {
-      throw new Error(`console_browser_mobile_request_fields:${JSON.stringify(labels)}`);
-    }
   }
 
-  const completeRow = viewportName === "desktop"
-    ? surface.locator("tbody tr").filter({ hasText: "request-fixture" })
-    : surface.getByRole("listitem").filter({ hasText: "request-fixture" });
-  for (const label of ["输入", "输出", "缓存读取", "缓存写入", "首字", "总耗时"]) {
-    await completeRow.getByText(label, { exact: true }).waitFor({ state: "visible" });
-  }
-  for (const value of ["120", "36", "8", "24", "140 ms", "860 ms", "$0.03"]) {
+  for (const value of ["输入 120", "输出 36", "$0.03"]) {
     await completeRow.getByText(value, { exact: true }).waitFor({ state: "visible" });
   }
-  if (await completeRow.locator("time").count() !== 1 || await completeRow.getByRole("button", { name: "复制请求 ID" }).count() !== 1) {
+  if (await completeRow.getByText("API 路径", { exact: true }).isVisible()) {
+    throw new Error("console_browser_request_technical_details_open_by_default");
+  }
+  if (viewportName === "desktop") {
+    await completeRow.getByRole("button", { name: "查看详情", exact: true }).click();
+  } else {
+    await completeRow.locator("summary").click();
+  }
+  for (const label of ["API 路径", "缓存读取 Token", "缓存写入 Token", "首个 Token 延迟", "总耗时", "请求 ID"]) {
+    await completeRow.getByText(label, { exact: true }).waitFor({ state: "visible" });
+  }
+  for (const value of ["8", "24", "140 ms", "860 ms"]) {
+    await completeRow.getByText(value, { exact: true }).waitFor({ state: "visible" });
+  }
+  if (await completeRow.locator("time").count() !== 1 || await completeRow.getByRole("button", { name: /复制请求 ID request-fixture/ }).count() !== 1) {
     throw new Error("console_browser_request_time_or_copy_missing");
   }
 
   const nullLatencyRow = viewportName === "desktop"
-    ? surface.locator("tbody tr").filter({ hasText: "request-null-latency" })
+    ? surface.locator(".usage-request-entry").filter({ hasText: "request-null-latency" })
     : surface.getByRole("listitem").filter({ hasText: "request-null-latency" });
   await nullLatencyRow.waitFor({ state: "visible" });
-  const nullLatencyValues = (await nullLatencyRow.locator(".usage-latency-stack strong").allTextContents()).map((value) => value.trim());
-  if (JSON.stringify(nullLatencyValues) !== JSON.stringify(["-", "-"]) || await nullLatencyRow.getByText("0 ms", { exact: true }).count()) {
-    throw new Error(`console_browser_null_latency:${JSON.stringify(nullLatencyValues)}`);
+  if (viewportName === "desktop") {
+    await nullLatencyRow.getByRole("button", { name: "查看详情", exact: true }).click();
+  } else {
+    await nullLatencyRow.locator("summary").click();
   }
-  for (const label of ["缓存读取", "缓存写入"]) {
-    if (await nullLatencyRow.getByText(label, { exact: true }).count()) {
-      throw new Error(`console_browser_zero_cache_visible:${label}`);
-    }
+  for (const label of ["首个 Token 延迟", "总耗时"]) {
+    await nullLatencyRow.getByText(label, { exact: true }).locator("..").getByText("-", { exact: true }).waitFor({ state: "visible" });
+  }
+  for (const label of ["缓存读取 Token", "缓存写入 Token"]) {
+    await nullLatencyRow.getByText(label, { exact: true }).locator("..").getByText("0", { exact: true }).waitFor({ state: "visible" });
+  }
+  if (await nullLatencyRow.getByText("0 ms", { exact: true }).count()) {
+    throw new Error("console_browser_null_latency_rendered_as_zero");
   }
 }
 
