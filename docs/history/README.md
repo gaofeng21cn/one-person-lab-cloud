@@ -95,6 +95,11 @@ Current truth starts from [the docs index](../README.md),
   preserved API and authority boundaries, and verification commands; it does
   not claim publication, deployment, Instance qualification, or production
   state.
+- [Console Workspace page UI audit UX-03E-A, 2026-09-04](./2026-09-04-console-workspace-page-ui-audit.md):
+  the fake-only desktop and mobile runtime baseline for Workspace list, launch,
+  and detail pages, including task-region mapping, authority boundaries, and
+  prioritized presentation findings; it is not an interaction design,
+  implementation, deployment, Instance, or production claim.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
