@@ -116,6 +116,13 @@ Current truth starts from [the docs index](../README.md),
   screenshot hashes, preserved DDD and service-owner boundaries, and local
   verification; it does not claim publication, deployment, Instance
   qualification, or production state.
+- [Console Gateway Usage page audit UX-03F-A, 2026-09-04](./2026-09-04-console-gateway-usage-boundary-audit.md):
+  the fake-only desktop and mobile runtime baseline, current input and read
+  order, customer DTO field dictionary, state matrix, prioritized UX findings,
+  candidate default-versus-technical presentation split, real query and contract
+  gaps, and bounded entry point for the next Usage interaction design; it is
+  local audit evidence, not an implementation, deployment, Instance, or
+  production claim.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
