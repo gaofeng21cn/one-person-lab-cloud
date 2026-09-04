@@ -76,6 +76,11 @@ Current truth starts from [the docs index](../README.md),
   deferred page slices, and local completion evidence for the approved visual
   reference slice; it is not implementation, deployment, Instance, or
   production evidence.
+- [Console Customer Visual System UX-03C verification, 2026-09-04](./2026-09-02-console-customer-visual-system-verification.md):
+  the locally verified implementation SHA, dual-viewport browser review,
+  retained screenshot hashes, verification commands, preserved business and
+  authority boundaries, and deferred UX-03D scope; it does not claim
+  publication, deployment, Instance qualification, or production state.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
