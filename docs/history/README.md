@@ -81,6 +81,11 @@ Current truth starts from [the docs index](../README.md),
   retained screenshot hashes, verification commands, preserved business and
   authority boundaries, and deferred UX-03D scope; it does not claim
   publication, deployment, Instance qualification, or production state.
+- [Console Gateway Key page audit UX-03D-A, 2026-09-04](./2026-09-04-console-gateway-key-ui-audit.md):
+  the fake-only desktop and mobile runtime baseline, page-region and operation
+  mapping, request and authority boundary, prioritized findings, and bounded
+  entry point for the next interaction-hierarchy decision; it is not an
+  implementation, deployment, Instance, or production claim.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
