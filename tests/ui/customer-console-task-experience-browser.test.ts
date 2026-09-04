@@ -293,6 +293,15 @@ test("customer task pages use customer language and disclose technical evidence"
       for (const action of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
         await moreActions.getByRole("button", { name: action, exact: true }).waitFor({ state: "visible" });
       }
+      if (viewport.name === "mobile") {
+        const moreBox = await moreActions.locator(".key-more-actions__body").boundingBox();
+        const bottomNavBox = await page.locator(".mobile-bottom-nav").boundingBox();
+        assert.ok(moreBox && bottomNavBox, "mobile: expanded key actions and bottom navigation should have layout boxes");
+        assert.ok(
+          moreBox.y + moreBox.height <= bottomNavBox.y,
+          "mobile: expanded key actions must remain above the fixed bottom navigation"
+        );
+      }
       await moreActions.getByText("更多操作", { exact: true }).click();
 
       if (viewport.name === "mobile") await filterToggle.click();

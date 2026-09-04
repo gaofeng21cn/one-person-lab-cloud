@@ -5609,6 +5609,7 @@ select:focus-visible,
   }
 
   .mobile-key-actions {
+    position: relative;
     width: 100%;
     justify-content: space-between;
   }
@@ -5639,6 +5640,14 @@ select:focus-visible,
   .mobile-key-actions .key-more-actions__body {
     width: 100%;
     min-width: 0;
+  }
+
+  .mobile-key-actions .key-more-actions__body {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: calc(100% + 6px);
+    margin-top: 0;
   }
 
   .key-form-grid,
