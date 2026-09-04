@@ -586,7 +586,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               </Tooltip>
             </div>
             <div className="key-more-actions__group key-more-actions__group--danger">
-              <span>危险操作</span>
+              <span>删除</span>
               <Tooltip compact content={canDelete(key) ? "删除" : "系统 API 密钥不可删除"}>
                 <Button aria-label="删除" color="danger" disabled={busy || !canDelete(key)} onClick={() => { setPendingDelete(key); setDialog("delete"); }} size="sm" uniform variant="ghost"><Trash2 aria-hidden="true" size={16} /></Button>
               </Tooltip>

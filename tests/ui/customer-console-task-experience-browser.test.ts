@@ -293,6 +293,7 @@ test("customer task pages use customer language and disclose technical evidence"
       for (const action of ["编辑", "停用", "重置配额用量", "重置消费限额用量", "删除"]) {
         await moreActions.getByRole("button", { name: action, exact: true }).waitFor({ state: "visible" });
       }
+      await moreActions.getByText("删除", { exact: true }).first().waitFor({ state: "visible" });
       if (viewport.name === "mobile") {
         const moreBox = await moreActions.locator(".key-more-actions__body").boundingBox();
         const bottomNavBox = await page.locator(".mobile-bottom-nav").boundingBox();
