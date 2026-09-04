@@ -100,6 +100,11 @@ Current truth starts from [the docs index](../README.md),
   and detail pages, including task-region mapping, authority boundaries, and
   prioritized presentation findings; it is not an interaction design,
   implementation, deployment, Instance, or production claim.
+- [Console Workspace interaction hierarchy UX-03E-B, 2026-09-04](./2026-09-04-console-workspace-interaction-hierarchy-design.md):
+  the proposed task-first ordering for Workspace list, launch, and detail
+  pages, action-risk grouping, customer/technical language boundary, and the
+  minimal UX-03E-C implementation write set; it is not an implementation,
+  deployment, Instance, or production claim.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
