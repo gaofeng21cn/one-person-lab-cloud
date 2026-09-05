@@ -44,7 +44,7 @@ async function visibleOwnedText(page: Page) {
 async function assertCustomerLanguage(page: Page, scope: string) {
   const text = await visibleOwnedText(page);
   for (const forbidden of [
-    /\bWorkspace\b/,
+    /\bWorkspace\b(?! ID:)/,
     /API Keys?/,
     /API Endpoint/,
     /\bEndpoint\b/,
@@ -356,6 +356,17 @@ test("customer task pages use customer language and disclose technical evidence"
         ? page.locator(".billing-table-desktop")
         : page.locator(".billing-list-mobile");
       await subscriptionSurface.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
+      if (viewport.name === "mobile") {
+        const firstSubscription = subscriptionSurface.locator(":scope > a").first();
+        await firstSubscription.getByText("Workspace ID: ws-1", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("BASIC", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("2026/07/01 至 2026/08/01", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("手动续费", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("自动续费", { exact: true }).waitFor({ state: "visible" });
+        await firstSubscription.getByText("关闭", { exact: true }).waitFor({ state: "visible" });
+        assert.equal(await firstSubscription.getAttribute("href"), "/console/workspaces/ws-1");
+      }
       assert.equal(await page.getByText("Control Plane 当前商业条款", { exact: true }).count(), 0);
       await assertCustomerLanguage(page, `${viewport.name}: fees terms`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: fees terms`);

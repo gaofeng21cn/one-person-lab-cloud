@@ -2454,6 +2454,114 @@ tbody tr:last-child td {
     white-space: nowrap;
   }
 
+  .billing-list-mobile > a.billing-subscription-mobile,
+  .billing-list-mobile > div.billing-subscription-mobile {
+    min-height: 44px;
+    grid-template-columns: minmax(0, 1fr) 20px;
+    grid-template-areas:
+      "identity chevron"
+      "plan chevron"
+      "period chevron"
+      "renewal chevron";
+    align-items: start;
+    gap: 12px 14px;
+    padding: 14px 16px;
+  }
+
+  .billing-subscription-mobile__identity,
+  .billing-subscription-mobile__plan,
+  .billing-subscription-mobile__period,
+  .billing-subscription-mobile__renewal {
+    min-width: 0;
+  }
+
+  .billing-subscription-mobile__identity {
+    display: grid;
+    grid-area: identity;
+    gap: 4px;
+  }
+
+  .billing-subscription-mobile__identity strong {
+    color: #142536;
+    font-size: 14px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .billing-subscription-mobile__identity small,
+  .billing-subscription-mobile__period strong,
+  .billing-subscription-mobile__renewal strong {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .billing-subscription-mobile__plan {
+    display: grid;
+    grid-area: plan;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .billing-subscription-mobile__plan > div,
+  .billing-subscription-mobile__renewal > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .billing-subscription-mobile__plan strong,
+  .billing-subscription-mobile__period strong,
+  .billing-subscription-mobile__renewal strong {
+    color: #142536;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .billing-subscription-mobile__amount {
+    justify-items: end;
+    text-align: right;
+  }
+
+  .billing-subscription-mobile__amount strong {
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .billing-subscription-mobile__period {
+    display: grid;
+    grid-area: period;
+    gap: 3px;
+  }
+
+  .billing-subscription-mobile__renewal {
+    display: grid;
+    grid-area: renewal;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .billing-subscription-mobile__chevron {
+    grid-area: chevron;
+    align-self: center;
+    color: var(--muted);
+  }
+
+  .billing-list-mobile > a.billing-subscription-mobile:hover {
+    background: #f7fafc;
+  }
+
+  .billing-list-mobile > a.billing-subscription-mobile:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 0;
+    box-shadow: inset 0 0 0 2px var(--blue), 0 0 0 3px rgb(22 100 160 / 18%);
+  }
+
+  .billing-list-mobile > a.billing-subscription-mobile:active {
+    transform: translateY(1px);
+  }
+
   .billing-surface .pagination,
   .gateway-usage-toolbar ~ .pagination {
     justify-content: space-between;
