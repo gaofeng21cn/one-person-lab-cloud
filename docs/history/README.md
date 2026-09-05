@@ -47,6 +47,9 @@ Current truth starts from [the docs index](../README.md),
 - [Console Billing page UI audit, 2026-09-05](./2026-09-05-console-billing-page-ui-audit.md):
   the completed UX-03G-A audit of Subscription/Renewal, Billing Records, Receipt
   detail, responsive field mapping, source states, and owner boundaries.
+- [Console mobile subscription interaction hierarchy, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-interaction-hierarchy-design.md):
+  the approved UX-03G-B field hierarchy, missing-field behavior, responsive rules,
+  accessibility acceptance, and DDD boundary for mobile subscription cards.
 - [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
   [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
   and [local verification](./2026-09-01-console-route-owner-verification.md):
