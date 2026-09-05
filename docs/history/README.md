@@ -60,6 +60,11 @@ Current truth starts from [the docs index](../README.md),
   preserved business and owner boundaries, and the rule that later billing
   capabilities begin as independent UX slices; it does not claim publication,
   deployment, Instance qualification, or production state.
+- [Console Billing records and receipt audit UX-03G-E-A, 2026-09-05](./2026-09-05-console-billing-records-receipt-audit.md):
+  the current billing-records and receipt-detail runtime baseline, field/source
+  mapping, independent Ledger and Workspace read boundaries, prioritized identity
+  and evidence-layer findings, and the bounded UX-03G-E-B entry point; it is not
+  an implementation, deployment, Instance, or production claim.
 - [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
   [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
   and [local verification](./2026-09-01-console-route-owner-verification.md):
