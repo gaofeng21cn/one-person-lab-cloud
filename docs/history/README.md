@@ -12,7 +12,7 @@ Current truth starts from [the docs index](../README.md),
 
 ## Records
 
-- [Console Customer UX-03 overall review, 2026-09-05](./2026-09-05-console-ux-03-overall-review.md): the consolidated customer business chain, frozen page-slice matrix, cross-page presentation and DDD boundary review, local evidence, and the unresolved Workspace access full-journey blocker; it does not claim publication, deployment, Instance qualification, or production state.
+- [Console Customer UX-03 overall review, 2026-09-05](./2026-09-05-console-ux-03-overall-review.md): the consolidated customer business chain, frozen page-slice matrix, cross-page presentation and DDD boundary review, local evidence, and the subsequent resolution of the Workspace access full-journey acceptance blocker; it does not claim publication, deployment, Instance qualification, or production state.
 - [Cloud repository unification, 2026-08-11](./cloud-repository-unification-2026-08-11.md): retained repository identity, absorbed product truth, archive boundary, and recovery point.
 - [Research pattern provenance](./research-provenance.md): the external
   scientific-workbench pattern that informed the current Cloud split.

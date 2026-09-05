@@ -1030,6 +1030,11 @@ async function exerciseGatewayKeyLifecycle(page, state) {
   }
 
   let keyRow = page.getByRole("row").filter({ hasText: "Browser retry key" }).first();
+  const clickMoreAction = async (name: string) => {
+    const moreActions = keyRow.locator("details.key-more-actions");
+    if (await moreActions.getAttribute("open") === null) await moreActions.locator("summary").click();
+    await moreActions.getByRole("button", { name, exact: true }).click();
+  };
   await keyRow.getByRole("button", { name: "显示 API 密钥", exact: true }).click();
   await waitForText(page, GENERAL_KEY);
   await keyRow.getByRole("button", { name: "使用说明", exact: true }).click();
@@ -1046,7 +1051,7 @@ async function exerciseGatewayKeyLifecycle(page, state) {
   }
   await useDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
 
-  await keyRow.getByRole("button", { name: "编辑", exact: true }).click();
+  await clickMoreAction("编辑");
   const editDialog = page.getByRole("dialog", { name: "编辑 API 密钥", exact: true });
   await editDialog.getByLabel("名称").fill("Browser edited key");
   await editDialog.getByRole("button", { name: "保存", exact: true }).click();
@@ -1059,19 +1064,19 @@ async function exerciseGatewayKeyLifecycle(page, state) {
   await page.getByRole("option", { name: "priority", exact: true }).click();
   await waitForText(page, "服务分组已更新");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "停用", exact: true }).click();
+  await clickMoreAction("停用");
   await waitForText(page, "API 密钥已停用");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "启用", exact: true }).click();
+  await clickMoreAction("启用");
   await waitForText(page, "API 密钥已启用");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "重置配额用量", exact: true }).click();
+  await clickMoreAction("重置配额用量");
   await waitForText(page, "配额用量已重置");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "重置消费限额用量", exact: true }).click();
+  await clickMoreAction("重置消费限额用量");
   await waitForText(page, "消费限额用量已重置");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "删除", exact: true }).click();
+  await clickMoreAction("删除");
   const deleteDialog = page.getByRole("dialog", { name: "删除 API 密钥", exact: true });
   await deleteDialog.getByRole("button", { name: "删除", exact: true }).click();
   await waitForText(page, "API 密钥已删除");
@@ -1418,7 +1423,7 @@ export async function runConsoleBrowserQa({
         await passwordRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_PASSWORDS["ws-1"]);
         await passwordRow.getByRole("button", { name: "复制" }).click();
-        const keyRow = page.locator(".workspace-access-panel dt").filter({ hasText: /^API 密钥$/ }).locator("..");
+        const keyRow = page.locator(".workspace-access-panel dt > span").filter({ hasText: /^API 密钥$/ }).locator("../..");
         await keyRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_KEYS["9"]);
         if (await page.getByText(WORKSPACE_PASSWORDS["ws-1"], { exact: true }).count()) {
@@ -1449,7 +1454,7 @@ export async function runConsoleBrowserQa({
       }
       if (name === "desktop") {
         const passwordRow = page.locator("dt", { hasText: "密码" }).locator("..");
-        const keyRow = page.locator(".workspace-access-panel dt").filter({ hasText: /^API 密钥$/ }).locator("..");
+        const keyRow = page.locator(".workspace-access-panel dt > span").filter({ hasText: /^API 密钥$/ }).locator("../..");
         await passwordRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_PASSWORDS["ws-2"]);
         await keyRow.getByRole("button", { name: "显示" }).click();
@@ -1532,7 +1537,8 @@ export async function runConsoleBrowserQa({
       }
       await page.getByRole("radio", { name: "账单记录", exact: true }).click();
       await page.getByRole("heading", { name: "账单记录", exact: true }).waitFor({ state: "visible" });
-      await page.getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
+      const billingSurface = name === "desktop" ? page.locator(".billing-table-desktop") : page.locator(".billing-list-mobile");
+      await billingSurface.getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
       if (name === "desktop") {
         await page.locator(".billing-table-desktop").getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
         await page.getByRole("button", { name: "查看", exact: true }).click();
@@ -1541,7 +1547,7 @@ export async function runConsoleBrowserQa({
         await page.locator(".billing-list-mobile").getByRole("listitem").click();
       }
       await page.getByRole("heading", { name: "收据详情", exact: true }).waitFor({ state: "visible" });
-      await page.getByText("工作空间编号：ws-1", { exact: true }).last().waitFor({ state: "visible" });
+      await page.locator(".receipt-detail").getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
       if (await page.locator("details.receipt-technical-details").count() || await page.locator("details.receipt-row-technical-details").count()) {
         throw new Error("console_browser_customer_receipt_technical_details_present");
       }

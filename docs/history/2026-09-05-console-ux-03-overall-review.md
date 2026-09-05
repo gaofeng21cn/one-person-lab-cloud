@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-State: locally reviewed; completed slices frozen; integration gate open
+State: locally reviewed; completed slices frozen; local integration gate passed
 
 ## 审阅目的与边界
 
@@ -129,15 +129,15 @@ suites、TypeScript、Vite build、Go module compile/database-free tests、produ
 boundary 和 whitespace gate。双视口截图均保存在仓库外的 `/tmp` 证据目录，
 不作为产品资源提交；各切片的截图路径和哈希留在对应历史记录中。
 
-## 未闭合的整链路阻塞
+## 已闭合的整链路阻塞
 
-独立重跑：
+总体审阅首次记录时，独立重跑：
 
 ```text
 node tools/console-browser-qa.ts --network=fake-only
 ```
 
-仍在 Workspace 访问凭据步骤失败，退出码为 `1`：
+曾在 Workspace 访问凭据步骤失败，退出码为 `1`：
 
 ```text
 locator.click: Timeout 30000ms exceeded
@@ -146,20 +146,23 @@ waiting for locator('.workspace-access-panel dt')
   .getByRole('button', { name: '显示' })
 ```
 
-这是 Workspace access path 的独立问题，涉及 `WorkspaceDetailPage`/
-`WorkspaceSecretController` 与 `tools/console-browser-qa.ts` 断言的 owner 对齐；
-不是 Gateway Usage 或账单切片的失败。它在账单切片前后都可复现，因此不能在
-汇总时无记录地忽略。
+根因是 acceptance owner 的旧定位器：`SecretRow` 在 `dt` 下增加客户用途
+说明后，脚本仍对 `dt` 完整文本使用 `^API 密钥$` 精确匹配；Gateway Key
+页面已把低频操作收进 `details.key-more-actions`，脚本也曾在折叠状态下直接
+寻找操作按钮；账单页面则同时保留桌面表格和移动卡片，页面级文本断言命中
+两个视口的 DOM。页面、Secret Controller 和业务接口均不是问题 owner。
 
-提 PR 前只有两个严谨选项：
+本次只修改 `tools/console-browser-qa.ts`：
 
-1. 由 Workspace access owner 修复真实运行时或测试断言，再从干净基线重跑全量
-   journey；
-2. 明确把该问题拆成独立阻塞，记录 owner、复现命令和排除范围，并由审阅者
-   接受本 PR 不覆盖整链路验收。
+- Workspace Key 行改为匹配客户标签 `dt > span`；
+- Gateway Key acceptance 增加按需展开且不重复收起 `key-more-actions` 的局部
+  helper；
+- 账单列表断言限定当前视口 surface，收据断言限定 `.receipt-detail`。
 
-在没有作出其中一个决定前，不应把局部 `verify:local` 通过升级为 UX-03
-全链路已验收。
+修复后重新运行同一命令，结果为 `ok: true`，`externalRequests: 0`，
+`consoleErrors: []`，Workspace navigation、billing views、secret cleanup 和
+高风险流程均通过。该修复没有改动 `WorkspaceDetailPage`、
+`WorkspaceSecretController`、Gateway、Ledger 或任何产品业务代码。
 
 ## 交付结论与下一步
 
@@ -170,14 +173,12 @@ UX-03 已完成“业务路径审计 -> 交互层级 -> 页面实现 -> 双视�
 - 各页面的客户字段、默认信息和技术详情边界；
 - 每个切片的页面 owner、数据 owner 和 DDD 写集；
 - Desktop/Mobile 运行时证据、聚焦测试和冻结记录；
-- 明确的全量 QA 阻塞及其合并前决策。
+- 全量 QA 问题的 owner 判断、最小修复和复验结果。
 
-当前不 Push、不提 PR、不合并主干。最短后续链路是：
+当前仍不 Push、不提 PR、不合并主干。全量本地门禁已经闭合，最短后续链路是：
 
 ```text
-确定 Workspace access 阻塞 owner
-  -> 修复或正式排除并记录
-  -> 从最新远程 main rebase
+从最新远程 main rebase
   -> 重跑 focused + full QA
   -> 汇总提交并请求 PR 审阅
   -> 审阅通过后再合并 main
