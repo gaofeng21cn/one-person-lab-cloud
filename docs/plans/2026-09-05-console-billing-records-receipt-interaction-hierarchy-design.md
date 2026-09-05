@@ -56,16 +56,16 @@ State: approved design record
 ```text
 交易类型
 → Workspace 名称
-→ Workspace ID（辅助身份）
+→ 工作空间编号（辅助身份）
 → 发生时间
 → 金额
 → 状态
 → 查看收据详情
 ```
 
-桌面不新增技术列；Workspace 单元格在名称下增加已有 `workspaceId`，不引入新的
-API 或查询参数。移动卡片将 Workspace 名称和 ID 作为同一对象识别区，金额和状态
-保持明显的结果层级，整卡仍然只触发既有 `openReceipt(receiptId)`。
+桌面不新增技术列；Workspace 单元格在名称下增加已有 `workspaceId`，客户文案使用
+“工作空间编号”，不显示原始字段名。移动卡片将 Workspace 名称和编号作为同一对象
+识别区，金额和状态保持明显的结果层级，整卡仍然只触发既有 `openReceipt(receiptId)`。
 
 ### 收据业务详情
 
@@ -78,13 +78,14 @@ API 或查询参数。移动卡片将 Workspace 名称和 ID 作为同一对象�
 | 状态 | `BillingReceipt.status` | 使用现有 `presentBillingStatus`，未知仍为“待确认” |
 | 日期 | `createdAt` | 使用现有日期格式化 |
 | 金额 | `chargeUsdMicros` / `totalUsdMicros` / `refundUsdMicros` | 使用现有金额格式化，不在浏览器重新计算 |
-| Workspace | `workspaceId` + Workspace 投影 | 名称优先，ID 作为辅助身份 |
+| 工作空间 | `workspaceId` + Workspace 投影 | 名称优先，“工作空间编号”作为辅助身份 |
 | 计费周期 | `periodStart` + `paidThrough` | 两端齐全才显示完整周期 |
 
 当前普通客户 UI 不显示以下技术字段：
 
 ```text
 Receipt ID
+`workspaceId` 原始字段标签
 resourceId
 priceVersion
 chargeReference
@@ -101,8 +102,9 @@ refund evidence 的原始字段
 
 - Receipt 列表和 Receipt 详情继续使用现有独立 read state；详情加载失败不能清空已
   成功的列表。
-- Workspace 投影失败不能阻塞 Receipt；名称不可用时仍显示已有 `workspaceId`，并将
-  名称标为“工作空间名称暂不可用”，不把两个远程状态合成一个账单错误。
+- Workspace 投影失败不能阻塞 Receipt；名称不可用时仍显示已有 `workspaceId`，客户
+  文案显示“工作空间名称暂不可用”和“工作空间编号”，不把两个远程状态合成一个
+  账单错误。
 - Receipt 列表为空与读取失败继续区分为“暂无账单记录”和“账单记录暂不可用”。
 - Receipt 详情为空、加载中、失败继续由现有 `SourceState` 呈现；不使用旧详情填充
   新选择的收据。
