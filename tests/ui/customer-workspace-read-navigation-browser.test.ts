@@ -106,6 +106,11 @@ async function login(page: Page, origin: string) {
   await page.waitForURL(/\/console\/overview$/);
 }
 
+async function openWorkspaceDisclosure(page: Page, selector: string) {
+  const details = page.locator(selector);
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 test("Customer Workspace routes use their exact list and detail read identities", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -132,7 +137,7 @@ test("Customer Workspace routes use their exact list and detail read identities"
     assert.ok(reads.includes("?page=1&pageSize=50"));
 
     await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
-    await page.getByText("Control Plane 当前商业条款", { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "订阅与续费", exact: true }).waitFor();
     assert.ok(reads.filter((query) => query === "?page=1&pageSize=10").length >= 2);
   } finally {
     await browser.close();
@@ -182,7 +187,7 @@ test("a late page response cannot replace a newer page selection on the same rou
     });
 
     await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "domcontentloaded" });
-    const pagination = page.getByRole("navigation", { name: "Workspace 分页" });
+    const pagination = page.getByRole("navigation", { name: "工作空间分页" });
     await page.getByText("Initial Page One", { exact: true }).waitFor();
     await pagination.getByRole("button", { name: "下一页" }).click();
     await page.getByText("Current Page Two", { exact: true }).waitFor();
@@ -393,19 +398,21 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: initialWorkspace.name!, exact: true }).waitFor();
+    await openWorkspaceDisclosure(page, "details.workspace-technical-details");
+    await openWorkspaceDisclosure(page, "details.workspace-advanced-details");
     await page.getByRole("link", { name: initialRuntime.url!, exact: true }).waitFor();
     await page.locator(".workspace-budget-panel .data-list > div")
-      .filter({ hasText: "总额度已用（micros）" }).getByText(initialBudget.quotaUsedUsdMicros, { exact: true }).waitFor();
+      .filter({ hasText: "总额度已用" }).getByText("$0.10", { exact: true }).waitFor();
     assert.deepEqual({ detailReads, runtimeReads, budgetReads }, { detailReads: 1, runtimeReads: 1, budgetReads: 1 });
 
     await page.getByRole("button", { name: "轮换密码", exact: true }).click();
-    await page.getByText("Workspace 凭证已轮换", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("登录密码已轮换", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("heading", { name: refreshedWorkspace.name!, exact: true }).waitFor();
     await page.getByRole("link", { name: refreshedRuntime.url!, exact: true }).waitFor();
     await page.locator(".workspace-budget-panel .data-list > div")
-      .filter({ hasText: "总额度已用（micros）" }).getByText(refreshedBudget.quotaUsedUsdMicros, { exact: true }).waitFor();
+      .filter({ hasText: "总额度已用" }).getByText("$7.65", { exact: true }).waitFor();
     const passwordRow = page.locator(".workspace-access-panel .data-list > div")
-      .filter({ hasText: "密码" }).first();
+      .filter({ hasText: "登录密码" }).first();
     await passwordRow.locator("code").getByText(rotation.access.password, { exact: true }).waitFor();
 
     assert.equal(rotationWrites, 1);
@@ -449,7 +456,11 @@ test("Workspace detail failure settles before and independently from Runtime", {
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await runtimeHeld.promise;
-    await page.getByText("Workspace 详情暂不可用", { exact: true }).waitFor();
+    await page.getByText("工作空间详情暂不可用", { exact: true }).waitFor();
+    const technical = page.locator("details.workspace-technical-details");
+    assert.equal(await technical.getByText("control_plane_unavailable", { exact: true }).isVisible(), false);
+    await technical.locator("summary").click();
+    await technical.getByText("control_plane_unavailable", { exact: true }).waitFor({ state: "visible" });
 
     assert.equal(budgetReads, 0);
     releaseRuntime.resolve();
@@ -506,7 +517,7 @@ test("a late Workspace detail cannot replace the current route Workspace", { tim
 
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
     await staleReadHeld.promise;
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByRole("link", { name: /Second Workspace/ }).first().click();
     await page.waitForURL(/\/console\/workspaces\/ws-2$/);

@@ -78,6 +78,61 @@ func TestEntStateStoreSchemaRetiresWorkspaceBackupWithoutDroppingLegacyTable(t *
 	})
 }
 
+func TestEntStateStoreSchemaRetiresSupportTicketMappingWithoutDroppingLegacyTable(t *testing.T) {
+	t.Run("fresh database", func(t *testing.T) {
+		path := t.TempDir() + "/support-ticket-mapping-fresh.sqlite"
+		_ = NewTestEntStateStore(t, path)
+		db, err := sql.Open("sqlite3", path+"?_fk=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		var exists bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_plane_support_ticket_mappings')`).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatal("fresh Ent schema created retired control_plane_support_ticket_mappings table")
+		}
+	})
+
+	t.Run("legacy table", func(t *testing.T) {
+		path := t.TempDir() + "/support-ticket-mapping-legacy.sqlite"
+		legacy, err := sql.Open("sqlite3", path+"?_fk=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := legacy.Exec(`CREATE TABLE control_plane_support_ticket_mappings (id TEXT PRIMARY KEY, marker TEXT NOT NULL); INSERT INTO control_plane_support_ticket_mappings (id, marker) VALUES ('support-legacy', 'preserve')`); err != nil {
+			_ = legacy.Close()
+			t.Fatal(err)
+		}
+		if err := legacy.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		store := NewTestEntStateStore(t, path).(*postgresEntStateStore)
+		app, err := newControlPlaneAppWithStore(store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := app.runRetentionOnce(context.Background()); err != nil {
+			t.Fatalf("run retention: %v", err)
+		}
+		check, err := sql.Open("sqlite3", path+"?_fk=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer check.Close()
+		var marker string
+		if err := check.QueryRow(`SELECT marker FROM control_plane_support_ticket_mappings WHERE id = 'support-legacy'`).Scan(&marker); err != nil {
+			t.Fatal(err)
+		}
+		if marker != "preserve" {
+			t.Fatalf("legacy support ticket mapping marker = %q, want preserve", marker)
+		}
+	})
+}
+
 type workspaceAccessReadContextKey struct{}
 
 type workspaceAccessReadTrackingStore struct {

@@ -12,6 +12,7 @@ Current truth starts from [the docs index](../README.md),
 
 ## Records
 
+- [Console Customer UX-03 overall review, 2026-09-05](./2026-09-05-console-ux-03-overall-review.md): the consolidated customer business chain, frozen page-slice matrix, cross-page presentation and DDD boundary review, local evidence, and the subsequent resolution of the Workspace access full-journey acceptance blocker; it does not claim publication, deployment, Instance qualification, or production state.
 - [Cloud repository unification, 2026-08-11](./cloud-repository-unification-2026-08-11.md): retained repository identity, absorbed product truth, archive boundary, and recovery point.
 - [Research pattern provenance](./research-provenance.md): the external
   scientific-workbench pattern that informed the current Cloud split.
@@ -44,6 +45,128 @@ Current truth starts from [the docs index](../README.md),
   and [implementation plan](./2026-08-27-console-customer-announcement-read.md):
   the completed customer published-projection, read-receipt, query-scope, and
   Session/reset ownership migration retained as provenance.
+- [Console Billing page UI audit, 2026-09-05](./2026-09-05-console-billing-page-ui-audit.md):
+  the completed UX-03G-A audit of Subscription/Renewal, Billing Records, Receipt
+  detail, responsive field mapping, source states, and owner boundaries.
+- [Console mobile subscription interaction hierarchy, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-interaction-hierarchy-design.md):
+  the approved UX-03G-B field hierarchy, missing-field behavior, responsive rules,
+  accessibility acceptance, and DDD boundary for mobile subscription cards.
+- [Console Billing mobile subscription UI verification UX-03G-C, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-ui-verification.md):
+  the locally implemented mobile subscription hierarchy, dual-viewport evidence,
+  preserved billing and owner boundaries, and focused verification results; it
+  does not claim publication, deployment, Instance qualification, or production
+  state.
+- [Console Billing mobile subscription UX-03G-D final freeze, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-ui-final-freeze.md):
+  the final review and frozen subscription-page contract, dual-viewport evidence,
+  preserved business and owner boundaries, and the rule that later billing
+  capabilities begin as independent UX slices; it does not claim publication,
+  deployment, Instance qualification, or production state.
+- [Console Billing records and receipt audit UX-03G-E-A, 2026-09-05](./2026-09-05-console-billing-records-receipt-audit.md):
+  the current billing-records and receipt-detail runtime baseline, field/source
+  mapping, independent Ledger and Workspace read boundaries, prioritized identity
+  and evidence-layer findings, and the bounded UX-03G-E-B entry point; it is not
+  an implementation, deployment, Instance, or production claim.
+- [Console Billing records and receipt UI final freeze UX-03G-E-D, 2026-09-05](./2026-09-05-console-billing-records-receipt-ui-final-freeze.md):
+  the final customer-facing billing-records and receipt-detail hierarchy, removal
+  of Ledger technical disclosure from the ordinary customer path, dual-viewport
+  evidence, and frozen DDD boundaries; it does not claim publication, deployment,
+  Instance qualification, or production state.
+- [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
+  [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
+  and [local verification](./2026-09-01-console-route-owner-verification.md):
+  the route single-source-of-truth design, execution, and local verification
+  retained as historical evidence; these records do not define current product,
+  deployment, or production state.
+- [Console Workspace Task Experience UX-02A design, 2026-09-01](./2026-09-01-console-workspace-task-experience-design.md),
+  [implementation plan](./2026-09-01-console-workspace-task-experience-implementation-plan.md),
+  and [local verification](./2026-09-01-console-workspace-task-experience-verification.md):
+  the purchase-to-entry customer task design, execution, and local verification
+  retained as historical evidence; these records do not define current product,
+  deployment, Instance, or production state.
+- [Console Customer Information Architecture and Support Retirement UX-02B design, 2026-09-02](./2026-09-02-console-customer-information-architecture-design.md)
+  [implementation plan](./2026-09-02-console-customer-information-architecture-implementation-plan.md),
+  and [local verification](./2026-09-02-console-customer-information-architecture-verification.md):
+  the approved customer navigation, exact presentation, and non-destructive
+  Support capability-retirement boundary, execution sequence, and local
+  verification retained as historical evidence; they do not define current
+  implementation, deployment, Instance, or production state.
+- [Console Customer UI Audit UX-03A, 2026-09-02](./2026-09-02-console-customer-ui-audit.md):
+  the local desktop and mobile customer-presentation baseline, prioritized
+  findings, evidence exclusions, and UX-03B entry gate; it does not define a
+  visual freeze, implementation, deployment, Instance, or production state.
+- [Console Customer Visual System UX-03B design, 2026-09-02](./2026-09-02-console-customer-visual-system-design.md):
+  the approved customer Shell, Overview, brand, responsive hierarchy, and P1
+  presentation-repair direction retained as implementation provenance; it is
+  not implementation, deployment, Instance, or production evidence.
+- [Console Customer Visual System UX-03C implementation plan, 2026-09-02](./2026-09-02-console-customer-visual-system-implementation-plan.md):
+  the bounded TDD implementation sequence, file owners, acceptance checks,
+  deferred page slices, and local completion evidence for the approved visual
+  reference slice; it is not implementation, deployment, Instance, or
+  production evidence.
+- [Console Customer Visual System UX-03C verification, 2026-09-04](./2026-09-02-console-customer-visual-system-verification.md):
+  the locally verified implementation SHA, dual-viewport browser review,
+  retained screenshot hashes, verification commands, preserved business and
+  authority boundaries, and deferred UX-03D scope; it does not claim
+  publication, deployment, Instance qualification, or production state.
+- [Console Gateway Key page audit UX-03D-A, 2026-09-04](./2026-09-04-console-gateway-key-ui-audit.md):
+  the fake-only desktop and mobile runtime baseline, page-region and operation
+  mapping, request and authority boundary, prioritized findings, and bounded
+  entry point for the next interaction-hierarchy decision; it is not an
+  implementation, deployment, Instance, or production claim.
+- [Console Gateway Key interaction hierarchy UX-03D-B, 2026-09-04](./2026-09-04-console-gateway-key-interaction-hierarchy-design.md):
+  the proposed result-first responsive ordering, operation priority, protected
+  Key behavior, acceptance criteria, and bounded implementation write set; it
+  is not an implementation, deployment, Instance, or production claim.
+- [Console Gateway Key UI verification UX-03D-C, 2026-09-04](./2026-09-04-console-gateway-key-ui-verification.md):
+  the locally implemented result-first page hierarchy, dual-viewport evidence,
+  preserved API and authority boundaries, and verification commands; it does
+  not claim publication, deployment, Instance qualification, or production
+  state.
+- [Console Workspace page UI audit UX-03E-A, 2026-09-04](./2026-09-04-console-workspace-page-ui-audit.md):
+  the fake-only desktop and mobile runtime baseline for Workspace list, launch,
+  and detail pages, including task-region mapping, authority boundaries, and
+  prioritized presentation findings; it is not an interaction design,
+  implementation, deployment, Instance, or production claim.
+- [Console Workspace interaction hierarchy UX-03E-B, 2026-09-04](./2026-09-04-console-workspace-interaction-hierarchy-design.md):
+  the proposed task-first ordering for Workspace list, launch, and detail
+  pages, action-risk grouping, customer/technical language boundary, and the
+  minimal UX-03E-C implementation write set; it is not an implementation,
+  deployment, Instance, or production claim.
+- [Console Workspace UI verification UX-03E-C, 2026-09-04](./2026-09-04-console-workspace-ui-verification.md):
+  the locally implemented Workspace presentation bounded context, task-first
+  list and detail hierarchy, dual-viewport evidence, preserved API and owner
+  boundaries, and verification commands; it does not claim publication,
+  deployment, Instance qualification, or production state.
+- [Console Workspace final UI review UX-03E-D, 2026-09-04](./2026-09-04-console-workspace-ui-final-review.md):
+  the final dual-viewport Workspace slice review, customer-facing USD budget
+  input with exact micros boundary conversion, mobile touch-target repair,
+  screenshot hashes, preserved DDD and service-owner boundaries, and local
+  verification; it does not claim publication, deployment, Instance
+  qualification, or production state.
+- [Console Gateway Usage page audit UX-03F-A, 2026-09-04](./2026-09-04-console-gateway-usage-boundary-audit.md):
+  the fake-only desktop and mobile runtime baseline, current input and read
+  order, customer DTO field dictionary, state matrix, prioritized UX findings,
+  candidate default-versus-technical presentation split, real query and contract
+  gaps, and bounded entry point for the next Usage interaction design; it is
+  local audit evidence, not an implementation, deployment, Instance, or
+  production claim.
+- [Console Gateway Usage interaction hierarchy UX-03F-B, 2026-09-04](./2026-09-04-console-gateway-usage-interaction-hierarchy-design.md):
+  the approved result-first design, searchable and paginated Key selection,
+  committed-scope loading behavior, default request facts, on-demand technical
+  disclosure, DDD boundaries, and the minimal UX-03F-C implementation and
+  acceptance scope; it is not implementation, deployment, Instance, or
+  production evidence.
+- [Console Gateway Usage UI verification UX-03F-C, 2026-09-04](./2026-09-04-console-gateway-usage-ui-verification.md):
+  the locally implemented result-first Usage slice, searchable and paginated
+  Key selection, authoritative refresh behavior, independent Summary/Usage
+  settlement, dual-viewport evidence, preserved DDD boundaries, and the
+  remaining upstream Workspace QA blocker; it is not deployment or production
+  evidence.
+- [Console Gateway Usage final UI review UX-03F-D, 2026-09-05](./2026-09-05-console-gateway-usage-ui-final-review.md):
+  the final desktop/mobile review and frozen Usage slice, including result-first
+  hierarchy, responsive evidence, accessibility and boundary checks, and the
+  inherited Workspace QA blocker; it is not publication, deployment, Instance
+  qualification, or production evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original

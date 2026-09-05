@@ -191,9 +191,9 @@ form one complete slice.
 | Workspace Delete | `useWorkspaceDeleteController` owns delete intent, busy, issue, local freshness, and paged absence readback | authoritative Workspace list confirms `absent`; no refund or wallet mutation is inferred by the browser | Customer Workspace detail | Control Plane Workspace lifecycle | extracted; resource absence remains separate from renewal |
 | Workspace Renewal | `useWorkspaceRenewalController` owns per-Workspace intent, busy/issue, response validation, local freshness, and list/detail readback | returned renewal fields and authoritative Workspace projection match the requested setting | Customer Workspace detail | Control Plane Workspace lifecycle | extracted; account period and eligibility semantics do not share Delete state |
 | Workspace Budget | `useWorkspaceBudgetController` owns per-Workspace/key intent, request signature, busy claim, local freshness, and typed owner readback | returned Workspace/key identity and stable requested policy fields match the authoritative result | Customer Workspace budget panel | Sub2API/Gateway budget authority | extracted; configuration conflict is not a Workspace lifecycle transition |
-| Support Mapping | `useSupportController` owns ticket projection, loading/error, create intent, busy, and post-write reload | mapping write is followed by an authoritative ticket read | Console support slide | Control Plane support mapping | extracted independent slice |
+| Retired Support Mapping | No live Console controller, route, or HTTP client remains; historical mapping tables and audit evidence are preserved | retired `/api/support/tickets` methods return `404`; legacy rows survive schema initialization and retention | none | historical Control Plane data only | retired; no current product owner |
 | Billing / Receipt | `useBillingController` owns billing view, Receipt list/detail remote state, selected Receipt ID, opaque cursor stack, independent list/detail freshness, and route/session/reset | only the current Session, route, request generation, and selected Receipt may commit; overview requests 3 Receipts and Billing requests 20 | Customer billing page and overview receipt links | Ledger | extracted query slice; Workspace terms remain in the Workspace projection |
-| Gateway Usage | `useGatewayUsageController` owns Key collection, selected Key, period/page, independent usage/summary state, and Key/usage generations | only the current Session, route, Key, period and request generation may commit; an empty authoritative Key collection clears both projections | Customer usage page | Sub2API/Gateway | extracted; query freshness and partial failure remain separate from Billing/Receipt |
+| Gateway Usage | `useGatewayUsageController` owns the searchable/paginated Key query, current Key selection, period/committed Usage page, independent Usage/Summary state, and per-query generations | only the current Session, route, Key, period, page and request generation may commit; page identity must match; refresh confirms the selected Key through single-Key readback; `404` clears the range while transient failure preserves Key identity | Customer usage page | Sub2API/Gateway | extracted; selection, query freshness, and partial failure remain separate from Key mutation and Billing/Receipt |
 | Operator Account | `useOperatorAccountController` owns account projection/pagination, provision intent/operation, per-account disable and purchase-eligibility intents, busy claims, local freshness, readback, and reset | typed command identity and target fields must match; provision, disable, and eligibility complete only after the authoritative paged Account projection matches | Admin accounts page; Wallet Adjustment depends only on its narrow `refresh` port | Control Plane Account/Access; Sub2API remains Gateway identity/wallet authority | extracted; same-semantic response-loss retries resend the original key, without claiming server-side replay semantics for provision or disable |
 | Wallet Adjustment / Recovery | `useWalletAdjustmentController` owns wallet intent, operation projection, recovery intent, busy, and operation/account readback | one wallet operation reaches a typed terminal or manual-review state and is read back | Admin wallet panel | Sub2API wallet with Control Plane audit coordination | extracted; money and recovery remain separate from Account lifecycle |
 | Operator Announcement Lifecycle | `useOperatorAnnouncementController` owns the operator projection, normalized create intent, per-announcement publish/withdraw intents, busy claims, local freshness, authoritative readback, and reset | typed command identity, target status and schedule must match; `draft/scheduled -> scheduled|published -> withdrawn` completes only after the operator projection matches | Admin overview and announcement routes | Control Plane operator/content | extracted state-machine slice; customer published-list/read receipts remain separate |
@@ -249,13 +249,21 @@ bounded active projection, and a visible `read=false` conflict is not committed.
 Session reset clears intents, the active claim, and busy projection while claim
 tokens keep stale `finally` blocks from releasing a new Session's claim.
 
-Support Mapping is the first post-inventory slice. Its
-`useSupportController` owns ticket loading/error state, the mapping intent and
-idempotency key, the command busy state, local read freshness, POST response
-identity validation, and the GET list readback. `ConsoleShell` consumes only
-the typed `SupportController`; the root supplies Session, mutation freshness,
-toast/error rendering, and reset composition. No support state or command
-remains in the broad root.
+Support Mapping is retired from the live product path. The Console has no
+Support controller, route, client, request, or customer affordance. Control
+Plane returns `404` for the exact retired `/api/support/tickets` path and does
+not expose a replacement ticket API. Historical Support migrations, tables,
+rows, and generic audit evidence remain unchanged; schema initialization and
+retention preserve them without creating or deleting current Support state.
+
+The customer Console information architecture is now task-oriented: the
+top-level destinations are `概览`, `工作空间`, `API`, and `费用`; `消息` is a
+top-bar destination and account facts live in the account menu. Customer
+presentation uses exact typed mappings and explicit unavailable or unconfirmed
+states. Internal identifiers, service names, raw enums, and diagnostic source
+facts are disclosed only through closed `技术详情` sections where needed. This
+changes presentation hierarchy and vocabulary, not Workspace, API Key, usage,
+billing, announcement, account, Session, or route contracts.
 
 Workspace lifecycle browser mutations now have three separate owners.
 `useWorkspaceDeleteController` alone retains the stable delete intent and
@@ -272,16 +280,20 @@ conflicting command is active. Navigation invalidates active requests and busy
 claims without deleting unresolved per-Workspace intents; Session replacement
 is the boundary that clears all three controllers.
 
-Gateway Usage now has one `useGatewayUsageController` query owner for the Key
-collection, selected Key, period/page, independent Usage and Summary remote
-state, and both freshness generations. The Customer usage page consumes the
-typed controller, while the root only composes route loading, Session lookup,
-error presentation, and aggregate reset. Key, period, route, Session, and reset
-changes invalidate older completions; an authoritative empty Key collection
-clears the selected Key and both projections. Usage and Summary may fail
-independently without hiding a successful sibling result. Billing/Receipt
-remains separate because its cursor/detail identity and Ledger failure model do
-not share these invariants.
+Gateway Usage now has one `useGatewayUsageController` query owner for the
+searchable/paginated Key collection, current Key selection, period/committed
+Usage page, independent Usage and Summary remote state, and per-query freshness
+generations. The Customer usage page consumes the typed controller, while the
+root only composes route loading, Session lookup, error presentation, and
+aggregate reset. Key, period, page, route, Session, and reset changes invalidate
+older completions. Page refresh confirms the current selection through the
+existing single-Key readback before loading Summary and Usage; only an
+authoritative `404` clears that selection, while a transient readback failure
+preserves its identity and hides stale results. Key-list search/pagination never
+changes the current Usage range until the customer selects a Key. Usage and
+Summary may fail and retry independently without hiding or rereading a
+successful sibling result. Billing/Receipt remains separate because its
+cursor/detail identity and Ledger failure model do not share these invariants.
 
 Billing/Receipt now has one typed `useBillingController` query owner for the
 billing view, Receipt list/detail remote state, selected Receipt ID, opaque

@@ -282,22 +282,6 @@ func TestReconciliationBlockedCustomerMutationsDoNotLeakGlobalProjection(t *test
 	}
 }
 
-func TestCustomerSupportScopeAllRemainsTenantScoped(t *testing.T) {
-	store := newMemoryTableStore()
-	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
-	mustStore(t, store.SaveSupportMapping(context.Background(), map[string]any{"id": "support-alpha", "accountId": "acct-alpha", "externalTicketId": "ALPHA-1"}))
-	mustStore(t, store.SaveSupportMapping(context.Background(), map[string]any{"id": "support-beta", "accountId": "acct-beta", "externalTicketId": "BETA-1"}))
-	server, err := NewPersistentServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}), store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	member := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	rec := requestWithSession(t, server, member, http.MethodGet, "/api/support/tickets?scope=all", "")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "ALPHA-1") || strings.Contains(rec.Body.String(), "BETA-1") {
-		t.Fatalf("tenant support scope status=%d body=%s", rec.Code, rec.Body.String())
-	}
-}
-
 func seedTenantMember(t *testing.T, store controlPlaneTableStore, accountID, _ string, userID, email string) {
 	t.Helper()
 	account := map[string]any{"id": accountID, "ownerUserId": userID, "sub2apiUserId": testSub2APIUserID(email), "status": "active", "workspacePurchaseEnabled": true}

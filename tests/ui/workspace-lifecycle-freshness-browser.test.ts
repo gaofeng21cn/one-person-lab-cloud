@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Route } from "playwright";
+import { chromium, type Page, type Route } from "playwright";
 
 import type {
   SourceEnvelope,
@@ -37,6 +37,11 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+async function openAdvancedSettings(page: Page) {
+  const details = page.locator("details.workspace-advanced-details");
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 test("Workspace refresh rejects an older Budget completion and preserves the refreshed Key projection", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -48,6 +53,7 @@ test("Workspace refresh rejects an older Budget completion and preserves the ref
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
+    await openAdvancedSettings(page);
     await page.getByRole("button", { name: "重置总额度用量", exact: true }).waitFor();
 
     const staleBudget: WorkspaceGatewayBudgetDTO = {
@@ -67,7 +73,7 @@ test("Workspace refresh rejects an older Budget completion and preserves the ref
     };
     const refreshedBudget: WorkspaceGatewayBudgetDTO = {
       ...staleBudget,
-      quotaUsedUsdMicros: "777",
+      quotaUsedUsdMicros: "7770000",
       updatedAt: "2026-08-26T00:01:00Z"
     };
 
@@ -115,9 +121,9 @@ test("Workspace refresh rejects an older Budget completion and preserves the ref
 
     const quotaUsed = page.locator(".workspace-budget-panel .data-list > div")
       .filter({ hasText: "总额度已用" })
-      .locator("code");
+      .locator("dd");
     await quotaUsed.waitFor({ state: "visible" });
-    assert.equal(await quotaUsed.textContent(), refreshedBudget.quotaUsedUsdMicros);
+    assert.equal(await quotaUsed.textContent(), "$7.77");
     assert.equal(requestOrder[0], "PATCH /api/workspaces/ws-1/gateway-budget");
     assert.equal(requestOrder[1], "GET /api/workspaces?page=1&pageSize=50");
     assert.ok(requestOrder.slice(2).includes("GET /api/workspaces/ws-1/runtime-status"));
@@ -129,7 +135,7 @@ test("Workspace refresh rejects an older Budget completion and preserves the ref
     await page.getByRole("button", { name: "重置总额度用量", exact: true }).waitFor({ state: "visible" });
     await page.waitForTimeout(100);
 
-    assert.equal(await quotaUsed.textContent(), refreshedBudget.quotaUsedUsdMicros);
+    assert.equal(await quotaUsed.textContent(), "$7.77");
     assert.equal(await page.getByText("模型预算已更新", { exact: true }).count(), 0);
   } finally {
     await browser.close();
@@ -259,11 +265,9 @@ test("Renewal projection commit rejects an older in-flight Workspace refresh", {
     assert.equal(await enabledRenewal.isChecked(), true);
     assert.equal(await page.getByRole("heading", { name: renewedWorkspace.name!, exact: true }).count(), 1);
     assert.equal(await page.getByText(staleWorkspace.name!, { exact: true }).count(), 0);
-    const runtimeState = page.locator(".workspace-identity-panel .data-list > div")
-      .filter({ hasText: "运行状态" })
-      .locator("dd");
+    const runtimeState = page.locator(".workspace-identity-panel .workspace-availability strong");
     await runtimeState.waitFor({ state: "visible" });
-    assert.equal(await runtimeState.textContent(), "运行中");
+    assert.equal(await runtimeState.textContent(), "可使用");
   } finally {
     releaseStaleRefresh();
     await browser.close();

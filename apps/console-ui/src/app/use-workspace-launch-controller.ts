@@ -20,6 +20,8 @@ import {
 import { hasSufficientWorkspaceLaunchBalance } from "../console-model.ts";
 import type { RemoteState, WorkspaceLaunchController, WorkspaceLaunchStep } from "./console-controller-types.ts";
 import {
+  canReviewWorkspaceLaunch,
+  canSubmitWorkspaceLaunch,
   classifyWorkspaceLaunchRecovery,
   resolveWorkspaceLaunchIntent,
   shouldPollWorkspaceLaunch,
@@ -68,6 +70,7 @@ export function useWorkspaceLaunchController({
   const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
   const [launchConfirmed, setLaunchConfirmed] = useState(false);
   const [launchOperation, setLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
+  const [launchRecoveryState, setLaunchRecoveryState] = useState<WorkspaceLaunchController["launchRecoveryState"]>("idle");
   const [launchPollIssue, setLaunchPollIssue] = useState<"" | "error" | "timeout" | "readback">("");
   const [busy, setBusy] = useState(false);
   const intent = useRef<WorkspaceLaunchIntent | null>(null);
@@ -81,6 +84,7 @@ export function useWorkspaceLaunchController({
     setLaunchStep("configure");
     setLaunchConfirmed(false);
     setLaunchOperation(null);
+    setLaunchRecoveryState("idle");
     setLaunchPollIssue("");
     setBusy(false);
     intent.current = null;
@@ -166,24 +170,28 @@ export function useWorkspaceLaunchController({
   };
 
   const recover = async (generation: number, activeSession: AuthSession) => {
+    setLaunchRecoveryState("checking");
     setLaunchPollIssue("");
     try {
       const recovery = classifyWorkspaceLaunchRecovery(await getWorkspaceLaunches());
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
       if (recovery.kind === "none") {
         setLaunchOperation(null);
+        setLaunchRecoveryState("clear");
         return;
       }
       if (recovery.kind === "conflict") {
-        setLaunchPollIssue("error");
+        setLaunchOperation(null);
+        setLaunchRecoveryState("conflict");
         return;
       }
       setLaunchOperation(recovery.operation);
+      setLaunchRecoveryState("clear");
       if (shouldPollWorkspaceLaunch(recovery.operation)) {
         void poll(recovery.operation.operationId, generation, activeSession);
       }
     } catch {
-      if (isRequestCurrent(generation, activeSession.user.id)) setLaunchPollIssue("error");
+      if (isRequestCurrent(generation, activeSession.user.id)) setLaunchRecoveryState("unavailable");
     }
   };
 
@@ -194,15 +202,28 @@ export function useWorkspaceLaunchController({
   const balanceSufficient = customerOwned ? true : walletValue && selectedPrice !== null
     ? hasSufficientWorkspaceLaunchBalance(walletValue.usdMicros, selectedPrice)
     : walletValue ? false : null;
+  const launchReviewReadiness = {
+    recoveryState: launchRecoveryState,
+    hasName: Boolean(launchName.trim()),
+    hasSelectedPlan: selectedPlan !== null,
+    selectedPriceKnown: selectedPrice !== null,
+    balanceSufficient: balanceSufficient === true
+  } as const;
 
   const reviewWorkspaceLaunch = () => {
-    if (!launchName.trim() || !selectedPlan || selectedPrice === null || balanceSufficient !== true) return;
+    if (!canReviewWorkspaceLaunch(launchReviewReadiness)) return;
     setLaunchConfirmed(false);
     setLaunchStep("confirm");
   };
 
   const submitWorkspaceLaunch = async () => {
-    if (!session || busy || launchStep !== "confirm" || !launchConfirmed || !selectedPlan || selectedPrice === null || balanceSufficient !== true || !launchName.trim()) return;
+    if (!canSubmitWorkspaceLaunch({
+      ...launchReviewReadiness,
+      sessionAvailable: session !== null,
+      busy,
+      step: launchStep,
+      confirmed: launchConfirmed
+    }) || !session || !selectedPlan) return;
     const requestStillCurrent = currentMutationRequest();
     const input = workspaceLaunchSubmission({
       name: launchName.trim(),
@@ -261,6 +282,7 @@ export function useWorkspaceLaunchController({
     balanceSufficient,
     customerOwned,
     launchOperation,
+    launchRecoveryState,
     launchPollIssue,
     busy,
     reviewWorkspaceLaunch,

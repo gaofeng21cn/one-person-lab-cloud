@@ -48,9 +48,6 @@ type StorageAttachment func(*sql.Selector)
 // StorageVolume is the predicate function for storagevolume builders.
 type StorageVolume func(*sql.Selector)
 
-// SupportTicketMapping is the predicate function for supportticketmapping builders.
-type SupportTicketMapping func(*sql.Selector)
-
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 

@@ -96,6 +96,53 @@ async function settle(page: Page) {
   }));
 }
 
+test("Operator Announcement route renders its own page without the overview projection", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 390, height: 844 }
+    ]) {
+      const page = await browser.newPage({ viewport });
+      const listed = announcement("announcement-route", "Route-owned announcement");
+      let overviewRequests = 0;
+      await page.route("**/api/operator/overview", async (route) => {
+        overviewRequests += 1;
+        await route.abort("blockedbyclient");
+      });
+      await page.route("**/api/operator/announcements?*", (route) => fulfill(route, announcementPage([listed])));
+
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/admin/announcements`, { waitUntil: "domcontentloaded" });
+
+      await page.getByRole("heading", { level: 1, name: "公告管理", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { level: 2, name: "公告管理", exact: true }).waitFor({ state: "visible" });
+      await announcementCard(page, listed.title).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "新建草稿", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("heading", { level: 2, name: "运营总览", exact: true }).count(), 0);
+      assert.equal(overviewRequests, 0);
+
+      if (viewport.width >= 1000) {
+        await page.locator(".side-nav").getByRole("link", { name: "公告管理", exact: true }).waitFor({ state: "visible" });
+        assert.equal(
+          await page.locator(".side-nav").getByRole("link", { name: "公告管理", exact: true }).getAttribute("aria-current"),
+          "page"
+        );
+      } else {
+        assert.equal(await page.locator(".mobile-bottom-nav a").count(), 5);
+        assert.equal(await page.locator(".mobile-bottom-nav").getByRole("link", { name: "公告管理", exact: true }).count(), 0);
+        assert.equal(await page.evaluate(() => document.body.scrollWidth <= document.body.clientWidth), true);
+      }
+
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("Operator Announcement rejects an older retry result", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });

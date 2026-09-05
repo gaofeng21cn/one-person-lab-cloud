@@ -46,9 +46,6 @@ import type {
   PricingPreviewResponse,
   ReadinessFact,
   SourceEnvelope,
-  CreateSupportTicketMappingRequest,
-  SupportTicketMappingDTO,
-  SupportTicketPageDTO,
   UpdateGatewayKeyRequest
 } from "./dtos.ts";
 import { deleteJson, getJson, patchJson, postJson, putJson, type ApiError } from "./console-api.ts";
@@ -107,14 +104,6 @@ function sourcePatch<T>(path: string, body: unknown, csrfToken: string, idempote
 
 function sourceDelete<T>(path: string, csrfToken: string, idempotencyKey: string): Promise<SourceEnvelope<T>> {
   return sourceWrite<T>(() => deleteJson<unknown>(path, csrfToken, idempotencyKey));
-}
-
-export function getSupportTickets(signal?: AbortSignal): Promise<SupportTicketPageDTO> {
-  return getJson<unknown>("/api/support/tickets", { signal }).then(decodeDto<SupportTicketPageDTO>);
-}
-
-export function createSupportTicketMapping(input: CreateSupportTicketMappingRequest, csrfToken: string, idempotencyKey: string): Promise<SupportTicketMappingDTO> {
-  return postJson<unknown>("/api/support/tickets", input, csrfToken, idempotencyKey).then(decodeDto<SupportTicketMappingDTO>);
 }
 
 export function getGatewayWallet(signal?: AbortSignal): Promise<SourceEnvelope<GatewayWallet>> {

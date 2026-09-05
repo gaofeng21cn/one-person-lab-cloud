@@ -54,6 +54,15 @@ domain, Secrets, or provider profile as defaults.
 Public registration, customer-operated payment or top-up, shared multi-user
 Workspaces, high availability, and GPU are not current customer capabilities.
 
+The customer Console follows four recurring tasks: `概览`, `工作空间`, `API`,
+and `费用`. `消息` is reached from the top bar and account facts from the
+account menu. Customer defaults use task language and keep internal identifiers,
+service names, raw enums, reason codes, and source evidence behind a closed
+`技术详情` disclosure where a diagnostic consumer exists. The customer
+Support ticket capability is retired because no current ticket system exists;
+legacy Support mapping tables, rows, migrations, and audit evidence remain
+historical data and are not exposed through a live API.
+
 ## Implemented Capability
 
 - Workspace Launch is a durable Control Plane operation that coordinates the
@@ -77,7 +86,9 @@ Workspaces, high availability, and GPU are not current customer capabilities.
   confirmed mutation with owner inventory and post-mutation readback.
 - Console uses capability-specific controllers for Workspace Launch, access
   Secrets, Delete, Renewal, Gateway budget and usage, customer and operator
-  reads, billing/Receipts, Wallet adjustment, support, and announcements.
+  reads, billing/Receipts, Wallet adjustment, and announcements. Customer
+  navigation and presentation are task-oriented; the retired Support client and
+  its live requests are absent.
 - Ledger owns append-only receipts, reconciliation evidence, and the Cloud
   Evidence Index. It does not own spendable balance or provider mutation.
 - Candidate tooling builds one `linux/amd64` plus `linux/arm64` image index and

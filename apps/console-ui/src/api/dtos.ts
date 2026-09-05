@@ -65,47 +65,6 @@ export interface AuthMeData {
 export type SessionDTO = AuthSession;
 export type CurrentAccountDTO = AuthMeData;
 
-export interface SupportTicketMessageDTO {
-  author: string;
-  text: string;
-  createdAt: string;
-}
-
-export interface SupportTicketMappingDTO {
-  id: string;
-  externalSystem: string;
-  externalTicketId: string;
-  externalUrl: string;
-  accountId: string;
-  userId?: string;
-  workspaceId?: string;
-  resourceIds: string[];
-  operationId?: string;
-  title: string;
-  category: string;
-  priority: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: SupportTicketMessageDTO[];
-}
-
-export interface SupportTicketPageDTO {
-  tickets: SupportTicketMappingDTO[];
-}
-
-export interface CreateSupportTicketMappingRequest {
-  accountId: string;
-  externalTicketId: string;
-  title: string;
-  externalUrl?: string;
-  description?: string;
-  externalSystem?: string;
-  workspaceId?: string;
-  resourceIds?: string[];
-  operationId?: string;
-}
-
 export interface LoginRequest {
   email: string;
   password: string;

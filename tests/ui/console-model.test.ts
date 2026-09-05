@@ -2,41 +2,145 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  apiPage,
+  isKnownConsoleRoute,
+  parseConsoleRoute
+} from "../../apps/console-ui/src/app/console-router.ts";
+import {
+  adminMenu,
+  apiMenu,
+  customerMenu,
   formatAvailableBalance,
   formatCount,
   formatUsdMicros,
   hasSufficientWorkspaceLaunchBalance,
-  needsSession,
   readinessRows,
-  workspaceIdFromPath,
-  workspacePage,
   workspaceStatusLabel
 } from "../../apps/console-ui/src/console-model.ts";
 
-test("API routes select the current view", () => {
-  assert.equal(apiPage("/console/api"), "overview");
-  assert.equal(apiPage("/console/api/usage"), "usage");
-  assert.equal(apiPage("/console/api/keys"), "keys");
+const staticConsoleRoutes = [
+  ["/", "public.home", "public", "OPL Cloud", false, false, null],
+  ["/login", "public.login", "public", "登录", false, false, null],
+  ["/403", "public.forbidden", "public", "无权访问", false, false, null],
+  ["/console", "customer.overview", "customer", "概览", true, false, "customer.overview"],
+  ["/console/overview", "customer.overview", "customer", "概览", true, false, "customer.overview"],
+  ["/console/workspaces", "customer.workspaces", "customer", "工作空间", true, true, "customer.workspaces"],
+  ["/console/workspaces/new", "customer.workspace-new", "customer", "工作空间", true, true, "customer.workspaces"],
+  ["/console/api", "customer.api.overview", "customer", "OPL Gateway", true, true, "customer.api"],
+  ["/console/api/usage", "customer.api.usage", "customer", "OPL Gateway", true, true, "customer.api"],
+  ["/console/api/keys", "customer.api.keys", "customer", "OPL Gateway", true, true, "customer.api"],
+  ["/console/billing", "customer.billing", "customer", "费用", true, false, "customer.billing"],
+  ["/console/announcements", "customer.announcements", "customer", "消息", true, false, "customer.announcements"],
+  ["/admin", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
+  ["/admin/overview", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
+  ["/admin/accounts", "admin.accounts", "admin", "客户与计费账户", true, false, "admin.accounts"],
+  ["/admin/billing", "admin.billing", "admin", "计费复核", true, false, "admin.billing"],
+  ["/admin/resources", "admin.resources", "admin", "资源状态", true, false, "admin.resources"],
+  ["/admin/system", "admin.system", "admin", "系统状态", true, false, "admin.system"],
+  ["/admin/announcements", "admin.announcements", "admin", "公告管理", true, false, "admin.announcements"]
+] as const;
+
+test("Console route owner describes every static product route", () => {
+  for (const [path, kind, surface, title, requiresSession, sensitive, navigationId] of staticConsoleRoutes) {
+    const route = parseConsoleRoute(path);
+    assert.ok(route, `missing route: ${path}`);
+    assert.deepEqual({
+      kind: route.kind,
+      path: route.path,
+      surface: route.surface,
+      title: route.title,
+      requiresSession: route.requiresSession,
+      sensitive: route.sensitive,
+      navigationId: route.navigationId
+    }, { kind, path, surface, title, requiresSession, sensitive, navigationId });
+    assert.equal(isKnownConsoleRoute(path), true);
+  }
 });
 
-test("Workspace routes separate list, launch, and refreshable detail views", () => {
-  assert.equal(workspacePage("/console/workspaces"), "list");
-  assert.equal(workspacePage("/console/workspaces/"), "list");
-  assert.equal(workspacePage("/console/workspaces/new"), "new");
-  assert.equal(workspacePage("/console/workspaces/ws%20alpha"), "detail");
-  assert.equal(workspacePage("/console/workspaces/ws-alpha"), "detail");
-  assert.equal(workspaceIdFromPath("/console/workspaces/ws%20alpha"), "ws alpha");
-  assert.equal(workspaceIdFromPath("/console/workspaces/new"), "");
-  assert.equal(workspacePage("/console/workspaces/ws-alpha/extra"), null);
-  assert.equal(workspacePage("/console/workspace"), null);
+test("Console route owner parses one decoded Workspace detail segment", () => {
+  assert.deepEqual(parseConsoleRoute("/console/workspaces/ws%20alpha"), {
+    kind: "customer.workspace-detail",
+    path: "/console/workspaces/ws%20alpha",
+    surface: "customer",
+    title: "工作空间",
+    requiresSession: true,
+    sensitive: true,
+    navigationId: "customer.workspaces",
+    workspaceId: "ws alpha"
+  });
 });
 
-test("public and login routes render without session recovery", () => {
-  assert.equal(needsSession("/"), false);
-  assert.equal(needsSession("/login"), false);
-  assert.equal(needsSession("/console/overview"), true);
-  assert.equal(needsSession("/admin"), true);
+test("Console route owner normalizes aliases and trailing slashes", () => {
+  assert.equal(parseConsoleRoute("/console/")?.path, "/console");
+  assert.equal(parseConsoleRoute("/admin/announcements///")?.path, "/admin/announcements");
+  assert.deepEqual(parseConsoleRoute("/console/gateway"), parseConsoleRoute("/console/api"));
+  assert.deepEqual(parseConsoleRoute("/console/gateway/keys/"), parseConsoleRoute("/console/api/keys"));
+});
+
+test("Console entry aliases share all metadata with their canonical overview routes", () => {
+  for (const [aliasPath, canonicalPath] of [
+    ["/console", "/console/overview"],
+    ["/admin", "/admin/overview"]
+  ] as const) {
+    const aliasRoute = parseConsoleRoute(aliasPath);
+    const canonicalRoute = parseConsoleRoute(canonicalPath);
+    assert.ok(aliasRoute);
+    assert.ok(canonicalRoute);
+    const { path: normalizedAliasPath, ...aliasMetadata } = aliasRoute;
+    const { path: normalizedCanonicalPath, ...canonicalMetadata } = canonicalRoute;
+    assert.equal(normalizedAliasPath, aliasPath);
+    assert.equal(normalizedCanonicalPath, canonicalPath);
+    assert.deepEqual(aliasMetadata, canonicalMetadata);
+  }
+});
+
+test("Console route owner rejects unknown or malformed paths without guessing", () => {
+  for (const path of [
+    "/console/unknown",
+    "/console/api/unknown",
+    "/console/workspaces/ws-alpha/extra",
+    "/console/workspaces/%E0%A4%A",
+    "/console/workspaces/ws%2Falpha",
+    "/admin/unknown"
+  ]) {
+    assert.equal(parseConsoleRoute(path), null, path);
+    assert.equal(isKnownConsoleRoute(path), false, path);
+  }
+  assert.equal(parseConsoleRoute("/console/workspaces/new")?.kind, "customer.workspace-new");
+  assert.equal("workspaceId" in (parseConsoleRoute("/console/workspaces/new") ?? {}), false);
+});
+
+test("Console navigation targets carry route-owner identities", () => {
+  for (const item of [...customerMenu, ...adminMenu]) {
+    assert.equal(parseConsoleRoute(item.path)?.navigationId, item.id, item.path);
+  }
+  for (const item of apiMenu) {
+    assert.equal(parseConsoleRoute(item.path)?.kind, item.kind, item.path);
+  }
+});
+
+test("customer navigation has exactly four task destinations in order", () => {
+  assert.deepEqual(customerMenu.map(({ id, label, path, icon }) => ({ id, label, path, icon })), [
+    { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
+    { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
+    { id: "customer.api", label: "OPL Gateway", path: "/console/api", icon: "Server" },
+    { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }
+  ]);
+});
+
+test("customer mobile navigation has the same four tasks with a compact Gateway label", () => {
+  const mobileLabels = customerMenu.map((item) => {
+    const presentation = item as typeof item & { mobileLabel?: string };
+    return presentation.mobileLabel ?? presentation.label;
+  });
+  assert.deepEqual(mobileLabels, ["概览", "工作空间", "Gateway", "费用"]);
+});
+
+test("API navigation has exactly three customer task pages in order", () => {
+  assert.deepEqual(apiMenu, [
+    { kind: "customer.api.overview", label: "服务信息", path: "/console/api" },
+    { kind: "customer.api.usage", label: "用量", path: "/console/api/usage" },
+    { kind: "customer.api.keys", label: "API 密钥", path: "/console/api/keys" }
+  ]);
 });
 
 test("Workspace status never invents a running state", () => {

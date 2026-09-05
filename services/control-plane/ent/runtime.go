@@ -18,7 +18,6 @@ import (
 	"opl-cloud/services/control-plane/ent/session"
 	"opl-cloud/services/control-plane/ent/storageattachment"
 	"opl-cloud/services/control-plane/ent/storagevolume"
-	"opl-cloud/services/control-plane/ent/supportticketmapping"
 	"opl-cloud/services/control-plane/ent/user"
 	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/ent/workspacesyncevent"
@@ -837,86 +836,6 @@ func init() {
 	storagevolumeDescID := storagevolumeFields[0].Descriptor()
 	// storagevolume.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	storagevolume.IDValidator = storagevolumeDescID.Validators[0].(func(string) error)
-	supportticketmappingFields := schema.SupportTicketMapping{}.Fields()
-	_ = supportticketmappingFields
-	// supportticketmappingDescCreatedAt is the schema descriptor for created_at field.
-	supportticketmappingDescCreatedAt := supportticketmappingFields[1].Descriptor()
-	// supportticketmapping.DefaultCreatedAt holds the default value on creation for the created_at field.
-	supportticketmapping.DefaultCreatedAt = supportticketmappingDescCreatedAt.Default.(func() time.Time)
-	// supportticketmappingDescUpdatedAt is the schema descriptor for updated_at field.
-	supportticketmappingDescUpdatedAt := supportticketmappingFields[2].Descriptor()
-	// supportticketmapping.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	supportticketmapping.DefaultUpdatedAt = supportticketmappingDescUpdatedAt.Default.(func() time.Time)
-	// supportticketmapping.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	supportticketmapping.UpdateDefaultUpdatedAt = supportticketmappingDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// supportticketmappingDescAccountID is the schema descriptor for account_id field.
-	supportticketmappingDescAccountID := supportticketmappingFields[3].Descriptor()
-	// supportticketmapping.DefaultAccountID holds the default value on creation for the account_id field.
-	supportticketmapping.DefaultAccountID = supportticketmappingDescAccountID.Default.(string)
-	// supportticketmappingDescUserID is the schema descriptor for user_id field.
-	supportticketmappingDescUserID := supportticketmappingFields[4].Descriptor()
-	// supportticketmapping.DefaultUserID holds the default value on creation for the user_id field.
-	supportticketmapping.DefaultUserID = supportticketmappingDescUserID.Default.(string)
-	// supportticketmappingDescWorkspaceID is the schema descriptor for workspace_id field.
-	supportticketmappingDescWorkspaceID := supportticketmappingFields[5].Descriptor()
-	// supportticketmapping.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
-	supportticketmapping.DefaultWorkspaceID = supportticketmappingDescWorkspaceID.Default.(string)
-	// supportticketmappingDescExternalSystem is the schema descriptor for external_system field.
-	supportticketmappingDescExternalSystem := supportticketmappingFields[6].Descriptor()
-	// supportticketmapping.DefaultExternalSystem holds the default value on creation for the external_system field.
-	supportticketmapping.DefaultExternalSystem = supportticketmappingDescExternalSystem.Default.(string)
-	// supportticketmappingDescExternalTicketID is the schema descriptor for external_ticket_id field.
-	supportticketmappingDescExternalTicketID := supportticketmappingFields[7].Descriptor()
-	// supportticketmapping.DefaultExternalTicketID holds the default value on creation for the external_ticket_id field.
-	supportticketmapping.DefaultExternalTicketID = supportticketmappingDescExternalTicketID.Default.(string)
-	// supportticketmappingDescExternalURL is the schema descriptor for external_url field.
-	supportticketmappingDescExternalURL := supportticketmappingFields[8].Descriptor()
-	// supportticketmapping.DefaultExternalURL holds the default value on creation for the external_url field.
-	supportticketmapping.DefaultExternalURL = supportticketmappingDescExternalURL.Default.(string)
-	// supportticketmappingDescOperationID is the schema descriptor for operation_id field.
-	supportticketmappingDescOperationID := supportticketmappingFields[9].Descriptor()
-	// supportticketmapping.DefaultOperationID holds the default value on creation for the operation_id field.
-	supportticketmapping.DefaultOperationID = supportticketmappingDescOperationID.Default.(string)
-	// supportticketmappingDescResourceID is the schema descriptor for resource_id field.
-	supportticketmappingDescResourceID := supportticketmappingFields[10].Descriptor()
-	// supportticketmapping.DefaultResourceID holds the default value on creation for the resource_id field.
-	supportticketmapping.DefaultResourceID = supportticketmappingDescResourceID.Default.(string)
-	// supportticketmappingDescResourceKind is the schema descriptor for resource_kind field.
-	supportticketmappingDescResourceKind := supportticketmappingFields[11].Descriptor()
-	// supportticketmapping.DefaultResourceKind holds the default value on creation for the resource_kind field.
-	supportticketmapping.DefaultResourceKind = supportticketmappingDescResourceKind.Default.(string)
-	// supportticketmappingDescTitle is the schema descriptor for title field.
-	supportticketmappingDescTitle := supportticketmappingFields[12].Descriptor()
-	// supportticketmapping.DefaultTitle holds the default value on creation for the title field.
-	supportticketmapping.DefaultTitle = supportticketmappingDescTitle.Default.(string)
-	// supportticketmappingDescCategory is the schema descriptor for category field.
-	supportticketmappingDescCategory := supportticketmappingFields[13].Descriptor()
-	// supportticketmapping.DefaultCategory holds the default value on creation for the category field.
-	supportticketmapping.DefaultCategory = supportticketmappingDescCategory.Default.(string)
-	// supportticketmappingDescPriority is the schema descriptor for priority field.
-	supportticketmappingDescPriority := supportticketmappingFields[14].Descriptor()
-	// supportticketmapping.DefaultPriority holds the default value on creation for the priority field.
-	supportticketmapping.DefaultPriority = supportticketmappingDescPriority.Default.(string)
-	// supportticketmappingDescStatus is the schema descriptor for status field.
-	supportticketmappingDescStatus := supportticketmappingFields[15].Descriptor()
-	// supportticketmapping.DefaultStatus holds the default value on creation for the status field.
-	supportticketmapping.DefaultStatus = supportticketmappingDescStatus.Default.(string)
-	// supportticketmappingDescSource is the schema descriptor for source field.
-	supportticketmappingDescSource := supportticketmappingFields[16].Descriptor()
-	// supportticketmapping.DefaultSource holds the default value on creation for the source field.
-	supportticketmapping.DefaultSource = supportticketmappingDescSource.Default.(string)
-	// supportticketmappingDescURL is the schema descriptor for url field.
-	supportticketmappingDescURL := supportticketmappingFields[17].Descriptor()
-	// supportticketmapping.DefaultURL holds the default value on creation for the url field.
-	supportticketmapping.DefaultURL = supportticketmappingDescURL.Default.(string)
-	// supportticketmappingDescReason is the schema descriptor for reason field.
-	supportticketmappingDescReason := supportticketmappingFields[18].Descriptor()
-	// supportticketmapping.DefaultReason holds the default value on creation for the reason field.
-	supportticketmapping.DefaultReason = supportticketmappingDescReason.Default.(string)
-	// supportticketmappingDescID is the schema descriptor for id field.
-	supportticketmappingDescID := supportticketmappingFields[0].Descriptor()
-	// supportticketmapping.IDValidator is a validator for the "id" field. It is called by the builders before save.
-	supportticketmapping.IDValidator = supportticketmappingDescID.Validators[0].(func(string) error)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescCreatedAt is the schema descriptor for created_at field.

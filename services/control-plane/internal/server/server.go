@@ -76,7 +76,6 @@ func NewPersistentServer(service *controlplane.Service, store StateStore) (http.
 	registerWorkspaceLaunchRoutes(mux, app, service)
 	registerBillingRoutes(mux, app, service)
 	registerAnnouncementRoutes(mux, app)
-	registerSupportRoutes(mux, app)
 	registerAdminRoutes(mux, app, service)
 	registerProviderAcceptanceRoutes(mux, app, service)
 	return &controlPlaneHTTPHandler{app: app, next: mux, service: service}, nil
@@ -86,7 +85,7 @@ var retiredConsoleExactPaths = map[string]struct{}{
 	"/api/me": {}, "/api/overview": {}, "/api/gateway/summary": {}, "/api/billing/summary": {},
 	"/api/gateway/usage": {}, "/api/gateway/usage/stats": {}, "/api/gateway/keys/opl-workspace/reveal": {},
 	"/api/workspaces/runtime-status": {}, "/api/operator/summary": {}, "/api/operator/accounts/invitations": {},
-	"/api/operator/archive-terminal-resources": {},
+	"/api/operator/archive-terminal-resources": {}, "/api/support/tickets": {},
 }
 
 var retiredConsolePrefixes = []string{

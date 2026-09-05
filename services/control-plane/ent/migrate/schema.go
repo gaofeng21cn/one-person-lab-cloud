@@ -347,34 +347,6 @@ var (
 		Columns:    ControlPlaneStorageVolumesColumns,
 		PrimaryKey: []*schema.Column{ControlPlaneStorageVolumesColumns[0]},
 	}
-	// ControlPlaneSupportTicketMappingsColumns holds the columns for the "control_plane_support_ticket_mappings" table.
-	ControlPlaneSupportTicketMappingsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "account_id", Type: field.TypeString, Default: ""},
-		{Name: "user_id", Type: field.TypeString, Default: ""},
-		{Name: "workspace_id", Type: field.TypeString, Default: ""},
-		{Name: "external_system", Type: field.TypeString, Default: ""},
-		{Name: "external_ticket_id", Type: field.TypeString, Default: ""},
-		{Name: "external_url", Type: field.TypeString, Default: ""},
-		{Name: "operation_id", Type: field.TypeString, Default: ""},
-		{Name: "resource_id", Type: field.TypeString, Default: ""},
-		{Name: "resource_kind", Type: field.TypeString, Default: ""},
-		{Name: "title", Type: field.TypeString, Default: ""},
-		{Name: "category", Type: field.TypeString, Default: ""},
-		{Name: "priority", Type: field.TypeString, Default: ""},
-		{Name: "status", Type: field.TypeString, Default: ""},
-		{Name: "source", Type: field.TypeString, Default: ""},
-		{Name: "url", Type: field.TypeString, Default: ""},
-		{Name: "reason", Type: field.TypeString, Default: ""},
-	}
-	// ControlPlaneSupportTicketMappingsTable holds the schema information for the "control_plane_support_ticket_mappings" table.
-	ControlPlaneSupportTicketMappingsTable = &schema.Table{
-		Name:       "control_plane_support_ticket_mappings",
-		Columns:    ControlPlaneSupportTicketMappingsColumns,
-		PrimaryKey: []*schema.Column{ControlPlaneSupportTicketMappingsColumns[0]},
-	}
 	// ControlPlaneUsersColumns holds the columns for the "control_plane_users" table.
 	ControlPlaneUsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -512,7 +484,6 @@ var (
 		ControlPlaneSessionsTable,
 		ControlPlaneStorageAttachmentsTable,
 		ControlPlaneStorageVolumesTable,
-		ControlPlaneSupportTicketMappingsTable,
 		ControlPlaneUsersTable,
 		ControlPlaneWorkspacesTable,
 		ControlPlaneWorkspaceSyncEventsTable,
@@ -561,9 +532,6 @@ func init() {
 	}
 	ControlPlaneStorageVolumesTable.Annotation = &entsql.Annotation{
 		Table: "control_plane_storage_volumes",
-	}
-	ControlPlaneSupportTicketMappingsTable.Annotation = &entsql.Annotation{
-		Table: "control_plane_support_ticket_mappings",
 	}
 	ControlPlaneUsersTable.Annotation = &entsql.Annotation{
 		Table: "control_plane_users",

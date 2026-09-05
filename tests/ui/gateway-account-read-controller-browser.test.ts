@@ -101,7 +101,7 @@ test("Gateway Account Read settles API overview projections independently", { ti
 
     await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
     await page.locator(".api-endpoint-row code").getByText(endpoint.baseUrl, { exact: true }).waitFor({ state: "visible" });
-    await page.getByText("balance-page-1", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
 
     const metrics = page.locator(".spend-strip strong");
     assert.notEqual(await metrics.nth(0).textContent(), "暂不可用");
@@ -154,12 +154,12 @@ test("Gateway Account Read rejects wallet and history completions from an earlie
     await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
     await Promise.all([oldWalletHeld.promise, oldHistoryHeld.promise]);
     const tabs = page.getByRole("navigation", { name: "API 服务导航" });
-    await tabs.getByRole("link", { name: "使用记录", exact: true }).click();
+    await tabs.getByRole("link", { name: "用量", exact: true }).click();
     await page.waitForURL(/\/console\/api\/usage$/);
     await page.getByRole("navigation", { name: "API 服务导航" })
-      .getByRole("link", { name: "概览", exact: true }).click();
+      .getByRole("link", { name: "服务信息", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
-    await page.getByText("fresh-route-history", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
     await page.locator(".spend-strip strong").nth(0).getByText("$222.00", { exact: true }).waitFor({ state: "visible" });
 
     releaseOldReads.resolve();
@@ -168,7 +168,7 @@ test("Gateway Account Read rejects wallet and history completions from an earlie
     assert.equal(walletReads, 2);
     assert.equal(historyReads, 2);
     assert.equal(await page.locator(".spend-strip strong").nth(0).textContent(), "$222.00");
-    assert.equal(await page.getByText("fresh-route-history", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("待确认", { exact: true }).count(), 1);
     assert.equal(await page.getByText("stale-route-history", { exact: true }).count(), 0);
   } finally {
     releaseOldReads.resolve();
@@ -217,7 +217,8 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
 
     await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
     await Promise.all([oldWalletHeld.promise, oldHistoryHeld.promise]);
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".topbar-actions").getByRole("button", { name: "账号信息", exact: true }).click();
+    await page.getByRole("complementary", { name: "账号信息", exact: true }).getByRole("button", { name: "退出登录", exact: true }).click();
     await page.waitForURL(`${demo.origin}/`);
     assert.equal(await page.locator(".spend-strip").count(), 0);
     assert.equal(await page.getByText("stale-session-history", { exact: true }).count(), 0);
@@ -228,9 +229,9 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
     await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
-    await page.locator(".side-nav").getByRole("link", { name: "API 服务", exact: true }).click();
+    await page.locator(".side-nav").getByRole("link", { name: "OPL Gateway", exact: true }).click();
     await page.waitForURL(/\/console\/api$/);
-    await page.getByText("fresh-session-history", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
     await page.locator(".spend-strip strong").nth(0).getByText("$555.00", { exact: true }).waitFor({ state: "visible" });
 
     releaseOldSessionReads.resolve();
@@ -239,7 +240,7 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
     assert.equal(page.url(), `${demo.origin}/console/api`);
     assert.equal(await page.locator(".sidebar-account strong").textContent(), CONSOLE_DEMO_CREDENTIALS.customer.email);
     assert.equal(await page.locator(".spend-strip strong").nth(0).textContent(), "$555.00");
-    assert.equal(await page.getByText("fresh-session-history", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("待确认", { exact: true }).count(), 1);
     assert.equal(await page.getByText("stale-session-history", { exact: true }).count(), 0);
   } finally {
     releaseOldSessionReads.resolve();
@@ -276,19 +277,19 @@ test("Gateway Account Read rejects an older response for the same balance page",
     });
 
     await page.goto(`${demo.origin}/console/api`, { waitUntil: "domcontentloaded" });
-    await page.getByText("balance-page-1", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
     const next = page.getByRole("navigation", { name: "余额历史分页" })
       .getByRole("button", { name: "下一页", exact: true });
     await next.click();
     await firstPageTwoHeld.promise;
     await next.click();
-    await page.getByText("fresh-page-2", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("待确认", { exact: true }).first().waitFor({ state: "visible" });
 
     releaseFirstPageTwo.resolve();
     await firstPageTwoSettled.promise;
     await settle(page);
     assert.equal(pageTwoRequests, 2);
-    assert.equal(await page.getByText("fresh-page-2", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("待确认", { exact: true }).count(), 1);
     assert.equal(await page.getByText("stale-page-2", { exact: true }).count(), 0);
   } finally {
     releaseFirstPageTwo.resolve();
@@ -322,7 +323,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
     });
 
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "新建 Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(reads, { wallet: 1, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 
     reads.wallet = 0;
@@ -330,7 +331,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
     reads.balanceHistory = 0;
     reads.endpoint = 0;
     await page.goto(`${demo.origin}/console/api/usage`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "使用记录", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "用量", exact: true }).waitFor({ state: "visible" });
     await settle(page);
     assert.deepEqual(reads, { wallet: 0, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 
