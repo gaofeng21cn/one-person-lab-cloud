@@ -55,6 +55,11 @@ Current truth starts from [the docs index](../README.md),
   preserved billing and owner boundaries, and focused verification results; it
   does not claim publication, deployment, Instance qualification, or production
   state.
+- [Console Billing mobile subscription UX-03G-D final freeze, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-ui-final-freeze.md):
+  the final review and frozen subscription-page contract, dual-viewport evidence,
+  preserved business and owner boundaries, and the rule that later billing
+  capabilities begin as independent UX slices; it does not claim publication,
+  deployment, Instance qualification, or production state.
 - [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
   [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
   and [local verification](./2026-09-01-console-route-owner-verification.md):
