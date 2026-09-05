@@ -50,6 +50,11 @@ Current truth starts from [the docs index](../README.md),
 - [Console mobile subscription interaction hierarchy, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-interaction-hierarchy-design.md):
   the approved UX-03G-B field hierarchy, missing-field behavior, responsive rules,
   accessibility acceptance, and DDD boundary for mobile subscription cards.
+- [Console Billing mobile subscription UI verification UX-03G-C, 2026-09-05](./2026-09-05-console-billing-mobile-subscription-ui-verification.md):
+  the locally implemented mobile subscription hierarchy, dual-viewport evidence,
+  preserved billing and owner boundaries, and focused verification results; it
+  does not claim publication, deployment, Instance qualification, or production
+  state.
 - [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
   [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
   and [local verification](./2026-09-01-console-route-owner-verification.md):
