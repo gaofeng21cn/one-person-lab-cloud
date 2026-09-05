@@ -65,6 +65,11 @@ Current truth starts from [the docs index](../README.md),
   mapping, independent Ledger and Workspace read boundaries, prioritized identity
   and evidence-layer findings, and the bounded UX-03G-E-B entry point; it is not
   an implementation, deployment, Instance, or production claim.
+- [Console Billing records and receipt UI final freeze UX-03G-E-D, 2026-09-05](./2026-09-05-console-billing-records-receipt-ui-final-freeze.md):
+  the final customer-facing billing-records and receipt-detail hierarchy, removal
+  of Ledger technical disclosure from the ordinary customer path, dual-viewport
+  evidence, and frozen DDD boundaries; it does not claim publication, deployment,
+  Instance qualification, or production state.
 - [Console Route Owner UX-01 design, 2026-09-01](./2026-09-01-console-route-owner-design.md),
   [implementation plan](./2026-09-01-console-route-owner-implementation-plan.md),
   and [local verification](./2026-09-01-console-route-owner-verification.md):
