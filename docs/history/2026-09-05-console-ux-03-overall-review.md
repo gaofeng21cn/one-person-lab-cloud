@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-State: locally reviewed; completed slices frozen; local integration gate passed
+State: locally reviewed; completed slices frozen; Console integration passed; Go gate pending dependency access
 
 ## 审阅目的与边界
 
@@ -124,10 +124,24 @@ npm run verify:local
 git diff --check
 ```
 
-最终 `npm run verify:local` 在对应阶段通过 Node source tests、Console browser
+对应切片阶段的 `npm run verify:local` 曾通过 Node source tests、Console browser
 suites、TypeScript、Vite build、Go module compile/database-free tests、product
 boundary 和 whitespace gate。双视口截图均保存在仓库外的 `/tmp` 证据目录，
 不作为产品资源提交；各切片的截图路径和哈希留在对应历史记录中。
+
+### Rebase 后门禁状态
+
+本分支随后已 rebase 到最新 `origin/main` `8a160289`，当前 HEAD 为
+`f15b5731`，其中已包含 acceptance selector 修复。rebase 后重新运行
+`node tools/console-browser-qa.ts --network=fake-only` 结果为 `ok: true`；
+Node source tests（194 条）、Billing、Gateway Usage、Console owner reads、
+Customer Experience、Operator、Workspace lifecycle、TypeScript、lint、Vite
+build、product boundary 和 whitespace gate 均通过。
+
+完整 `npm run verify:local` 尚未在当前机器完成：Go 首次编译需要下载最新主干
+引入的 `entgo.io/ent@v0.14.6`、`github.com/lib/pq@v1.12.3` 和 Atlas 版本，
+`proxy.golang.org` 以及 GitHub 直连均因网络超时失败。该失败发生在依赖获取阶段，
+没有产生 Go 编译或测试失败结论；恢复模块下载后必须从当前 HEAD 重新运行完整门禁。
 
 ## 已闭合的整链路阻塞
 
@@ -175,12 +189,14 @@ UX-03 已完成“业务路径审计 -> 交互层级 -> 页面实现 -> 双视�
 - Desktop/Mobile 运行时证据、聚焦测试和冻结记录；
 - 全量 QA 问题的 owner 判断、最小修复和复验结果。
 
-当前仍不 Push、不提 PR、不合并主干。全量本地门禁已经闭合，最短后续链路是：
+当前不合并主干。分支可以先 Push 到远程审阅分支，由 CI 在正常依赖网络环境完成
+剩余 Go 门禁；完整门禁通过后再提 PR/合并。最短后续链路是：
 
 ```text
-从最新远程 main rebase
-  -> 重跑 focused + full QA
-  -> 汇总提交并请求 PR 审阅
+Push 当前已 rebase 分支
+  -> CI 重跑完整门禁
+  -> 依赖可用后本地重跑 verify:local
+  -> 请求 PR 审阅
   -> 审阅通过后再合并 main
 ```
 
