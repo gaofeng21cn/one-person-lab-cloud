@@ -135,6 +135,11 @@ Current truth starts from [the docs index](../README.md),
   settlement, dual-viewport evidence, preserved DDD boundaries, and the
   remaining upstream Workspace QA blocker; it is not deployment or production
   evidence.
+- [Console Gateway Usage final UI review UX-03F-D, 2026-09-05](./2026-09-05-console-gateway-usage-ui-final-review.md):
+  the final desktop/mobile review and frozen Usage slice, including result-first
+  hierarchy, responsive evidence, accessibility and boundary checks, and the
+  inherited Workspace QA blocker; it is not publication, deployment, Instance
+  qualification, or production evidence.
 - [Public Beta A-N design, 2026-08-22](./2026-08-22-public-beta-a-n-design.md),
   [implementation plan](./2026-08-22-public-beta-a-n-implementation.md), and
   [execution DAG](./2026-08-22-public-beta-a-n-execution-dag.mmd): the original
