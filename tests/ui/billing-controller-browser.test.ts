@@ -94,7 +94,7 @@ async function openBillingReceipts(page: Page) {
 
 function receiptRow(page: Page, receiptId: string) {
   return page.locator(".billing-table-desktop tbody tr").filter({
-    has: page.locator("details.receipt-row-technical-details").filter({ hasText: receiptId })
+    hasText: `workspace-${receiptId}`
   });
 }
 
@@ -102,10 +102,10 @@ function detailPanel(page: Page) {
   return page.locator(".receipt-detail");
 }
 
-async function openReceiptTechnicalDetails(page: Page, receiptId: string) {
-  const details = detailPanel(page).locator("details.receipt-technical-details");
-  if (await details.getAttribute("open") === null) await details.locator("summary").click();
-  await details.getByText(receiptId, { exact: true }).waitFor({ state: "visible" });
+async function openReceiptDetails(page: Page, workspaceId: string) {
+  await detailPanel(page).getByText(`工作空间编号：${workspaceId}`, { exact: true }).waitFor({ state: "visible" });
+  assert.equal(await detailPanel(page).locator("details.receipt-technical-details").count(), 0);
+  assert.equal(await detailPanel(page).getByText("pilot-usd-2026-07-v1", { exact: true }).count(), 0);
 }
 
 function waitForListResponse(page: Page, limit: number, cursor: string) {
@@ -192,14 +192,14 @@ test("Billing rejects Receipt A when its detail arrives after Receipt B", { time
     await receiptRow(page, receiptA.receiptId).getByRole("button", { name: "查看", exact: true }).click();
     await receiptAHeld.promise;
     await receiptRow(page, receiptB.receiptId).getByRole("button", { name: "查看", exact: true }).click();
-    await openReceiptTechnicalDetails(page, receiptB.receiptId);
+    await openReceiptDetails(page, receiptB.workspaceId);
 
     const lateReceiptA = waitForDetailResponse(page, receiptA.receiptId);
     releaseReceiptA.resolve();
     await settleResponse(page, lateReceiptA);
 
-    assert.equal(await detailPanel(page).getByText(receiptB.receiptId, { exact: true }).count(), 1);
-    assert.equal(await detailPanel(page).getByText(receiptA.receiptId, { exact: true }).count(), 0);
+    assert.equal(await detailPanel(page).getByText(`工作空间编号：${receiptB.workspaceId}`, { exact: true }).count(), 1);
+    assert.equal(await detailPanel(page).getByText(`工作空间编号：${receiptA.workspaceId}`, { exact: true }).count(), 0);
   } finally {
     releaseReceiptA.resolve();
     await browser.close();
@@ -234,7 +234,7 @@ test("Billing close invalidates an in-flight Receipt detail", { timeout: 60_000 
     await settleResponse(page, lateDetail);
 
     assert.equal(await detailPanel(page).count(), 0);
-    assert.equal(await detailPanel(page).getByText(receiptA.receiptId, { exact: true }).count(), 0);
+    assert.equal(await detailPanel(page).getByText(`工作空间编号：${receiptA.workspaceId}`, { exact: true }).count(), 0);
   } finally {
     releaseDetail.resolve();
     await browser.close();
@@ -361,7 +361,7 @@ test("Billing route exit rejects an in-flight Receipt detail", { timeout: 60_000
     await openBillingReceipts(page);
 
     assert.equal(await detailPanel(page).count(), 0);
-    assert.equal(await detailPanel(page).getByText(receiptA.receiptId, { exact: true }).count(), 0);
+    assert.equal(await detailPanel(page).getByText(`工作空间编号：${receiptA.workspaceId}`, { exact: true }).count(), 0);
   } finally {
     releaseDetail.resolve();
     await browser.close();
@@ -396,7 +396,7 @@ test("Billing keeps list and detail failure state isolated", { timeout: 60_000 }
     assert.equal(await page.locator(".billing-surface").getByText("收据详情暂不可用", { exact: true }).count(), 0);
 
     await receiptRow(page, receiptB.receiptId).getByRole("button", { name: "查看", exact: true }).click();
-    await openReceiptTechnicalDetails(page, receiptB.receiptId);
+    await openReceiptDetails(page, receiptB.workspaceId);
     assert.equal(await detailPanel(page).getByText("收据详情暂不可用", { exact: true }).count(), 0);
     assert.equal(await receiptRow(page, receiptA.receiptId).count(), 1);
   } finally {
@@ -425,7 +425,7 @@ test("Billing list failure does not become a Receipt detail failure", { timeout:
     await login(page, demo.origin);
     await openBillingReceipts(page);
     await receiptRow(page, receiptA.receiptId).getByRole("button", { name: "查看", exact: true }).click();
-    await openReceiptTechnicalDetails(page, receiptA.receiptId);
+    await openReceiptDetails(page, receiptA.workspaceId);
 
     failBillingList = true;
     await page.locator(".side-nav").getByRole("link", { name: "OPL Gateway", exact: true }).click();
@@ -480,7 +480,7 @@ test("Billing Session reset rejects a detail completion from the signed-out Sess
 
     assert.equal(await receiptRow(page, firstSessionReceipt.receiptId).count(), 0);
     assert.equal(await detailPanel(page).count(), 0);
-    assert.equal(await page.getByText(firstSessionReceipt.receiptId, { exact: true }).count(), 0);
+    assert.equal(await page.getByText(`工作空间编号：${firstSessionReceipt.workspaceId}`, { exact: true }).count(), 0);
   } finally {
     releaseDetail.resolve();
     await browser.close();

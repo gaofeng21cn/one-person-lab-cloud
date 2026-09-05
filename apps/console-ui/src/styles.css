@@ -1597,6 +1597,24 @@ tbody tr:last-child td {
   font-weight: 650;
 }
 
+.billing-receipt-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.billing-receipt-workspace strong {
+  overflow-wrap: anywhere;
+}
+
+.billing-receipt-workspace small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .billing-surface .pagination,
 .gateway-usage-toolbar + .inline-error,
 .gateway-usage-toolbar + .empty-panel,
@@ -2432,21 +2450,21 @@ tbody tr:last-child td {
     border-bottom: 0;
   }
 
-  .request-list-mobile > article span,
-  .billing-list-mobile span {
+  .request-list-mobile > article > span,
+  .billing-list-mobile > button > span {
     display: grid;
     min-width: 0;
     gap: 4px;
   }
 
-  .request-list-mobile > article span:nth-child(2),
-  .billing-list-mobile span:nth-child(2) {
+  .request-list-mobile > article > span:nth-child(2),
+  .billing-list-mobile > button > span:nth-child(2) {
     justify-items: end;
     text-align: right;
   }
 
-  .request-list-mobile > article small,
-  .billing-list-mobile small {
+  .request-list-mobile > article > small,
+  .billing-list-mobile > button > span > small {
     overflow: hidden;
     color: var(--muted);
     font-size: 11px;
@@ -2560,6 +2578,17 @@ tbody tr:last-child td {
 
   .billing-list-mobile > a.billing-subscription-mobile:active {
     transform: translateY(1px);
+  }
+
+  .billing-receipt-mobile__identity .billing-receipt-workspace {
+    gap: 2px;
+  }
+
+  .billing-receipt-mobile__identity .billing-receipt-workspace small,
+  .billing-receipt-mobile__identity > small {
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .billing-surface .pagination,
@@ -5091,8 +5120,7 @@ select:focus-visible,
 .key-filter-technical-details,
 .key-form-technical-details,
 .key-use-technical-details,
-.keys-source-technical-details,
-.receipt-technical-details {
+.keys-source-technical-details {
   min-width: 0;
 }
 
@@ -5100,8 +5128,7 @@ select:focus-visible,
 .key-filter-technical-details > summary,
 .key-form-technical-details > summary,
 .key-use-technical-details > summary,
-.keys-source-technical-details > summary,
-.receipt-technical-details > summary {
+.keys-source-technical-details > summary {
   width: max-content;
   color: var(--muted);
   font-size: 12px;
@@ -5120,8 +5147,7 @@ select:focus-visible,
   line-height: 18px;
 }
 
-.key-technical-details__body,
-.receipt-technical-details__body {
+.key-technical-details__body {
   display: grid;
   min-width: 0;
   gap: 12px;
@@ -5129,14 +5155,12 @@ select:focus-visible,
 }
 
 .key-technical-details__body .data-list,
-.receipt-technical-details__body .data-list,
 .keys-source-technical-details .data-list,
 .key-use-technical-details .data-list {
   grid-template-columns: 1fr;
 }
 
 .key-technical-details__body code,
-.receipt-technical-details__body code,
 .keys-source-technical-details code,
 .key-use-technical-details code {
   overflow-wrap: anywhere;
@@ -5158,46 +5182,6 @@ select:focus-visible,
 
 .keys-source-technical-details .data-list {
   margin-top: 10px;
-}
-
-.receipt-technical-details {
-  border-top: 1px solid var(--line);
-  margin: 0 20px 20px;
-  padding-top: 14px;
-}
-
-.receipt-technical-details__body {
-  margin-top: 14px;
-}
-
-.receipt-row-technical-details {
-  margin-top: 5px;
-}
-
-.receipt-row-technical-details > summary {
-  width: max-content;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.receipt-row-technical-details dl {
-  display: grid;
-  min-width: 260px;
-  gap: 6px;
-  margin: 8px 0 0;
-}
-
-.receipt-row-technical-details dl > div {
-  display: grid;
-  grid-template-columns: 90px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.receipt-row-technical-details dt,
-.receipt-row-technical-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .mobile-key-list {

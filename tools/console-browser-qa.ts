@@ -1532,6 +1532,7 @@ export async function runConsoleBrowserQa({
       }
       await page.getByRole("radio", { name: "账单记录", exact: true }).click();
       await page.getByRole("heading", { name: "账单记录", exact: true }).waitFor({ state: "visible" });
+      await page.getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
       if (name === "desktop") {
         await page.locator(".billing-table-desktop").getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
         await page.getByRole("button", { name: "查看", exact: true }).click();
@@ -1540,9 +1541,13 @@ export async function runConsoleBrowserQa({
         await page.locator(".billing-list-mobile").getByRole("listitem").click();
       }
       await page.getByRole("heading", { name: "收据详情", exact: true }).waitFor({ state: "visible" });
-      const receiptTechnicalDetails = page.locator("details.receipt-technical-details");
-      await receiptTechnicalDetails.locator("summary").click();
-      await receiptTechnicalDetails.getByText("pilot-usd-2026-07-v1", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("工作空间编号：ws-1", { exact: true }).last().waitFor({ state: "visible" });
+      if (await page.locator("details.receipt-technical-details").count() || await page.locator("details.receipt-row-technical-details").count()) {
+        throw new Error("console_browser_customer_receipt_technical_details_present");
+      }
+      if (await page.getByText("pilot-usd-2026-07-v1", { exact: true }).count()) {
+        throw new Error("console_browser_customer_receipt_price_version_visible");
+      }
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "billing", name);
 

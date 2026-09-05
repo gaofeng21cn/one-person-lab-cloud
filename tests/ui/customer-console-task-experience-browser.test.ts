@@ -219,7 +219,7 @@ test("customer shell exposes four tasks and keeps account internals out of the c
   }
 });
 
-test("customer task pages use customer language and disclose technical evidence", { timeout: 120_000 }, async () => {
+test("customer task pages use customer language and expose task fields", { timeout: 120_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   try {
@@ -388,16 +388,13 @@ test("customer task pages use customer language and disclose technical evidence"
       await receiptDetail.getByText("工作空间开通", { exact: true }).waitFor({ state: "visible" });
       await receiptDetail.getByText("待确认", { exact: true }).waitFor({ state: "visible" });
       await receiptDetail.getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
-      await assertExactTextHidden(receiptDetail, ["receipt-fixture", "pilot-usd-2026-07-v1", "succeeded"], `${viewport.name}: fees receipts`);
+      await receiptDetail.getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
+      for (const technicalValue of ["receipt-fixture", "pilot-usd-2026-07-v1", "succeeded"]) {
+        assert.equal(await receiptDetail.getByText(technicalValue, { exact: true }).count(), 0, `${viewport.name}: ${technicalValue} should stay outside the customer receipt detail`);
+      }
+      assert.equal(await receiptDetail.locator("details.receipt-technical-details").count(), 0);
       await assertCustomerLanguage(page, `${viewport.name}: fees receipts`);
       await assertNoHorizontalOverflow(page, `${viewport.name}: fees receipts`);
-
-      const receiptTechnicalDetails = receiptDetail.locator("details.receipt-technical-details");
-      await receiptTechnicalDetails.getByText("技术详情", { exact: true }).click();
-      await receiptTechnicalDetails.getByText("receipt-fixture", { exact: true }).waitFor({ state: "visible" });
-      await receiptTechnicalDetails.getByText("succeeded", { exact: true }).waitFor({ state: "visible" });
-      await receiptTechnicalDetails.getByText("pilot-usd-2026-07-v1", { exact: true }).waitFor({ state: "visible" });
-      await assertNoHorizontalOverflow(page, `${viewport.name}: receipt technical details`);
 
       await openCustomerPath(page, demo.origin, "/console/announcements", ".announcements-page");
       await page.getByRole("heading", { name: "消息列表", exact: true }).waitFor({ state: "visible" });
