@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-State: locally reviewed; completed slices frozen; Console integration passed; Go gate pending dependency access
+State: locally reviewed; completed slices frozen; CI integration gate passed
 
 ## 审阅目的与边界
 
@@ -138,10 +138,13 @@ Node source tests（194 条）、Billing、Gateway Usage、Console owner reads�
 Customer Experience、Operator、Workspace lifecycle、TypeScript、lint、Vite
 build、product boundary 和 whitespace gate 均通过。
 
-完整 `npm run verify:local` 尚未在当前机器完成：Go 首次编译需要下载最新主干
+完整 `npm run verify:local` 在当前机器曾因 Go 依赖下载受阻而未完成：Go 首次编译需要下载最新主干
 引入的 `entgo.io/ent@v0.14.6`、`github.com/lib/pq@v1.12.3` 和 Atlas 版本，
 `proxy.golang.org` 以及 GitHub 直连均因网络超时失败。该失败发生在依赖获取阶段，
-没有产生 Go 编译或测试失败结论；恢复模块下载后必须从当前 HEAD 重新运行完整门禁。
+没有产生 Go 编译或测试失败结论。随后 Draft PR #530 的 GitHub Actions
+`validate` job（run `33969005460`）在标准 CI 网络中执行同一 `npm run verify:local`
+并通过；`dependency-review` 也通过。该 CI 结果证明当前 PR 提交的仓库门禁通过，
+但不把本机网络状态改写成代码测试结果。
 
 ## 已闭合的整链路阻塞
 
@@ -189,14 +192,12 @@ UX-03 已完成“业务路径审计 -> 交互层级 -> 页面实现 -> 双视�
 - Desktop/Mobile 运行时证据、聚焦测试和冻结记录；
 - 全量 QA 问题的 owner 判断、最小修复和复验结果。
 
-当前不合并主干。分支可以先 Push 到远程审阅分支，由 CI 在正常依赖网络环境完成
-剩余 Go 门禁；完整门禁通过后再提 PR/合并。最短后续链路是：
+当前不合并主干。CI 和依赖审阅已经通过，下一步是人工 PR 审阅；审阅通过后再
+合并主干。最短后续链路是：
 
 ```text
-Push 当前已 rebase 分支
-  -> CI 重跑完整门禁
-  -> 依赖可用后本地重跑 verify:local
-  -> 请求 PR 审阅
+CI 完整门禁通过
+  -> 人工 PR 审阅
   -> 审阅通过后再合并 main
 ```
 
