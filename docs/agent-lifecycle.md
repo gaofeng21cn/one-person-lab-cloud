@@ -8,8 +8,8 @@ package, carrier, service, invocation, resource, receipt, and domain truth stays
 with the owning Package, carrier, Framework, service, runtime, and domain
 surfaces.
 
-OPL Cloud can expose standard OPL Agents in App/Workspace and publish them
-through OPL Serve without owning a second agent package platform. Agent design,
+The target Cloud lifecycle exposes standard OPL Agents in App/Workspace and
+supports publication through the planned OPL Serve capability. Agent design,
 package publication, carrier lifecycle, account policy, service publication,
 resource binding, execution and evidence remain separate responsibilities.
 

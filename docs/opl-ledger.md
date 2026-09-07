@@ -45,19 +45,18 @@ input, output, artifact, review, cost and continuation refs where applicable.
 Ledger persists these as caller-owned opaque provenance; provider secrets and
 event/session state remain with their owners.
 
-Gateway remains the spendable-balance owner, and Console remains the account-total
-billing and settlement-policy surface. Ledger records immutable evidence about
+Gateway remains the spendable-balance owner; Control Plane owns account-total
+billing and settlement policy, and Console presents it. Ledger records immutable evidence about
 money movements and resource charges.
 
 ## MVP Boundary
 
 Core Ledger is limited to receipts, reconciliation evidence, idempotency, and
 receipt lifecycle operations required by the local Workspace plus Gateway
-accounting path. The structured Artifact, Review, ReviewPolicy, ReviewGate, and
-Continuation APIs have been retired. Their historical receipts, the historical
-`review_policies` table, and receipt provenance columns remain readable or
-retained for data integrity; no new structured writes, continuation identity
-generation, or Workspace authorization is provided. Current capability belongs
+accounting path. Ledger does not own structured domain Artifact, Review,
+ReviewPolicy or Continuation services. Persisted provenance and historical data
+custody are documented in [implementation architecture](implementation-architecture.md#persistence);
+they do not create a domain API or Workspace authorization. Current capability belongs
 to [status](status.md), while any later owner decision belongs only to the
 [roadmap](roadmap.md).
 

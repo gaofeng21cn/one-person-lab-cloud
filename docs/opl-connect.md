@@ -51,11 +51,10 @@ binds the adapter and its credentials/resources to a run.
 ## Transport And Domain Boundary
 
 Generic shared providers belong in OPL Connect when their access semantics are
-stable across domains. Current Framework source exposes Crossref, OpenAlex,
-PubMed, and Europe PMC through OPL Connect's read-only scientific search and
-reference-verification transport. OPL Connect owns provider invocation, retry,
-cache, identifier and metadata normalization, source refs, and transport
-receipts for those routes.
+stable across domains. Framework owns its current provider adapters and public transport contracts;
+Cloud does not maintain a provider inventory. OPL Connect owns provider
+invocation, retry, cache, identifier and metadata normalization, source refs
+and transport receipts for its admitted routes.
 
 MAS and other domain owners consume the exact provider/source refs and retain
 query strategy, result selection, evidence interpretation, claim support, and

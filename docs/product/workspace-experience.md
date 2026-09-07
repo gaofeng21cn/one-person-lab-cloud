@@ -1,4 +1,4 @@
-# OPL Console Workspace Product V2
+# Console Workspace Experience
 
 This document owns the Workspace product capability boundary. The
 [Console experience guide](console-experience-guide.md) describes durable user
@@ -13,7 +13,7 @@ register -> sign in -> observe zero balance -> receive administrator top-up
          -> provision -> reveal/copy that Workspace access -> open Workspace
 ```
 
-The public beta allows one customer to register one Account and create multiple
+The target public beta allows one customer to register one Account and create multiple
 independent Workspaces after an administrator funds its Sub2API wallet. A new
 Account starts at zero balance, and registration performs no purchase or Fabric
 mutation. Each Workspace has its own launch identity, resources, Key, Secret,
@@ -30,11 +30,8 @@ Console shows:
 - resource status, `paidThrough`, auto-renew, and manual-review state;
 - Workspace access, billing receipts, messages, and account information.
 
-The customer information architecture has four top-level tasks in this order:
-`概览`, `工作空间`, `API`, and `费用`. `消息` is a top-bar destination and
-account information is an account-menu surface; neither competes with the four
-recurring tasks. The customer Support ticket surface is not a current product
-capability.
+The [experience guide](console-experience-guide.md) owns the customer task
+hierarchy and navigation. The Support ticket surface is retired.
 
 The Workspace access area answers, in one place and from owner readback: URL,
 用户名, 密码 reveal/copy, and the corresponding Workspace Key reveal/copy. The
@@ -76,8 +73,8 @@ the current runtime pointer. The Pilot Console does not expose customer backup,
 recovery, transfer, provider-resource replacement, or storage deletion. Unpaid
 expiry denies access and performs zero Fabric or Tencent resource mutation.
 
-## Evidence Levels
+## Availability
 
-Contract/UI presence is not availability. `code-complete` requires the complete
-local gate, `pilot-ready` requires approved real Pilot evidence, and
-`production-proven` requires evidence from the deployed immutable revision.
+This document defines the intended interaction. Current implemented and verified
+capability is recorded in [status](../status.md), with open outcomes in
+[roadmap](../roadmap.md).

@@ -8,7 +8,8 @@ active gaps, support detail and history.
 
 | Level | Question | Canonical owner | Change rate |
 | --- | --- | --- | --- |
-| 1. Product concept | Why does OPL Cloud exist and what is in scope? | [project.md](./project.md) and the [whitepaper](./whitepapers/opl-cloud-whitepaper.md) | Long term |
+| 1. Product scope | What does this repository own? | [project.md](./project.md) | Long term |
+| Public vision | Why would a user adopt Cloud? | [whitepaper](./whitepapers/opl-cloud-whitepaper.md); root READMEs are entry summaries | Long term |
 | 2. Target architecture | What should the product become and who owns each authority? | [architecture.md](./architecture.md) and durable [decisions.md](./decisions.md) | Long term |
 | 3. Durable invariants | Which safety, integrity and ownership facts must survive refactors? | [invariants.md](./invariants.md) and eligible machine contracts | Infrequent |
 | Security policy | Which boundaries are supported and how are vulnerabilities reported? | [`SECURITY.md`](../SECURITY.md) | Infrequent |
@@ -26,11 +27,11 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Authority Rules
 
-- OPL family topology is fixed outside this repository: Framework is the single
-  Cordis Host; `one-person-lab-app` owns App product/GUI/release truth;
-  `opl-aion-shell` and `opl-studio` are replaceable Shell carriers; Package
-  owners independently publish installable capabilities. Cloud owns online
-  product/service authority and must not redefine those roles.
+- OPL family topology is owned outside this repository. Framework and Studio
+  have separate, explicitly scoped Hosts; App owns product/GUI/release truth
+  and the active Shell choice. The [architecture boundary](./architecture.md#host-client-and-cloud-authority-boundary)
+  links the current Framework contract. Cloud owns online services and does not
+  redefine another repository's runtime or Package authority.
 - Framework `Console` means an in-process read-model contribution. OPL Cloud
   Console means the account/governance product owned here. Lower-level docs must
   not merge these meanings.
@@ -54,24 +55,30 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
-- [Console Workspace product](./product/console-workspace-v1.md)
+- [Console Workspace interaction](./product/workspace-experience.md)
 - [Console experience guide](./product/console-experience-guide.md)
 - [Workspace identity and external SaaS boundary](./workspace-identity-and-external-saas-boundary.md)
-- [Production runbook](./runtime/production-runbook.md)
-- [TKE deployment](./runtime/tke-production-deployment.md)
+- [Product release operations](./runtime/release.md)
+- [Console browser lifecycle](./implementation/console.md)
+- [Launch recovery reference](./implementation/workspace-launch-recovery.md)
+- [Workspace Runtime access](./implementation/workspace-runtime-access.md)
+- [Workspace image lifecycle](./implementation/workspace-images.md)
 - [Documentation lifecycle policy](./policies/docs-lifecycle-policy.md)
 - [Development worktree policy](./policies/development-worktree-policy.md)
 
-## Lifecycle
+## Specialized Owners
 
-Classify sections by meaning, not merely by filename:
+`opl-workspace.md` defines the Cloud workbench capability; the Workspace identity
+decision owns account cardinality, and `product/workspace-experience.md` owns its
+Console interaction. `opl-console.md` defines the wider Console target while
+the experience guide owns presentation principles. The other `opl-*.md` files
+are target capability references, not implementation inventories.
 
-- `current_truth`: concise content owned here and supported by the proper source;
-- `active_gap`: only in `docs/roadmap.md`;
-- `support_detail`: explanation that points to, but does not duplicate, its owner;
-- `history_or_provenance`: under `docs/history/**` and never a current gate;
-- `stale_or_conflicting`: remove or reconcile in the same change.
+`DEV_GUIDE.md` owns local setup and commands; `CONTRIBUTING.md` owns contribution
+and review; `AGENTS.md` owns agent execution rules. Installation, release
+operations and Instance operations have distinct owners. Whitepaper source,
+generated-output handling and publication evidence boundaries stay in their
+respective directory READMEs.
 
-Do not test prose wording. Test the owned behavior or schema. Dated plans,
-design freezes, screenshots, closeout notes and completed implementation
-ledgers belong in history or Git history, not active documentation.
+The [lifecycle policy](./policies/docs-lifecycle-policy.md) owns creation,
+replacement, archival and retirement rules. This index only routes readers.

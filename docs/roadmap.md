@@ -74,6 +74,25 @@ public-beta prerequisites.
 | `WORKSPACE-IMAGE-LIFECYCLE-01` | `verify` | `P1` | Cloud source and Instance configuration now define guarded Workspace NodePool image-GC thresholds and reconciliation, but no protected execution receipt proves the current production NodePools were updated and read back | Fabric owns the Tencent provisioner path; Instance owns the protected mutation and receipt | Dry-run inventories the exact package NodePools; an authorized Instance run changes only mismatched GC arguments, updates existing nodes, and records successful owner readback |
 | `SECRET-VALIDITY-SETTING-01` | `external_owner` | `P2` | GitHub still reported secret validity checks disabled after an attempted setting change | Repository owner and GitHub feature availability | GitHub readback reports enabled, or the owner records that the feature is unavailable for this repository |
 
+## Disposable Reset Acceptance
+
+The disposable-reset portion of J currently has only a protected read-only
+preview. The source does not provide an apply API. Completion must bind an
+explicitly disposable Launch, regenerate its exact owner-derived plan, converge resource and Key
+absence before exact debit compensation, retain all audit/financial history,
+append the reset Receipt and CAS-terminalize the original operation. Unknown,
+conflicting or unrelated owner facts must prevent mutation. This is distinct
+from normal activated-Workspace Delete. Preview must require schema-valid
+`debit/manual_review`, no Workspace projection, exact disposable authority and
+no conflicting non-terminal owner operation. Stage position is not absence.
+Apply must reject plan drift and use deterministic step identities for response-
+loss recovery. Confirmed debit compensation equals the original debit exactly;
+unknown debit stops before Key deletion or terminalization. Existing Receipts,
+financial history and the original Launch row are retained. Final redacted
+readback must prove zero remaining owned resources, Keys or unreconciled debit,
+with scope matching the plan. Shared infrastructure and unrelated accounts are
+outside this operation.
+
 ## Completion Evidence
 
 - Each A-N item records its owner, exact Cloud SHA, focused tests, persistence or

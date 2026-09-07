@@ -1,4 +1,4 @@
-# Instance Operations Boundary
+# Product Release Operations
 
 OPL Cloud does not operate or automatically deploy a concrete instance. This
 repository owns reusable source, contracts, installation assets, candidate
@@ -99,9 +99,8 @@ read-only and non-blocking; a failed follower can be retried with the original
 publication run ID. The Instance evidence reader Secret
 `OPL_INSTANCE_EVIDENCE_TOKEN` must be limited to `Actions: read` and
 `Contents: read` on `opl-instance-medopl`; it is not an Instance deployment
-credential. No hosted run has yet proved the new path for one current qualified
-Candidate, so do not claim or publish a successor to `v0.1.7` without that
-evidence.
+credential. The required evidence must exist for the exact Candidate before publication.
+Retained publication evidence belongs only in [status](../status.md).
 
 Publication retries reconcile the same tag: they promote the admitted digest,
 replace the complete Release asset cohort, remove non-contract assets, and then

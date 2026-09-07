@@ -26,16 +26,21 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 | Layer | Current evidence | What it does not prove |
 | --- | --- | --- |
-| Current source | `origin/main` at `7ce1b2be72ba1cd7388464d8ed78a8db35750b83`; ordinary repository checks cover the current service and UI boundaries | A deployment, public Release, or production acceptance |
+| Audited source baseline | Documentation reconciliation inspected remote `main` at `efb5f07b` on 2026-09-07, including merged Console UX-03 and Support retirement | Deployment, public Release, production acceptance, or a permanently current `main` identity |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
 | Medopl Instance | The 2026-08-30 `workspace-private-state-repair` receipt passed for two existing Workspaces and recorded zero-mutation post-repair readback | A fresh Workspace purchase, full lifecycle, rollback, or qualification of current `main` |
-| NodePool image GC | PR #502 added guarded Tencent Workspace NodePool image-GC configuration, reconciliation, and readback to Cloud source | Production NodePool mutation; no matching Instance execution receipt exists |
+| NodePool maintenance | Source implements guarded image-GC configuration, taint recovery and bounded redacted readback | Production mutation; the retained evidence here contains no matching Instance execution receipt |
 
 Evidence applies only to the exact identity and layer named in its row. An older
 Candidate or Instance receipt cannot upgrade current source to release or
 production-ready status.
+
+The public Release list was read again through the GitHub API on 2026-09-07 and
+still contained only `v0.1.7`. Endpoint, Local runtime and Instance rows retain
+their original observation dates; this documentation audit did not requalify
+those environments.
 
 ## Current Product Cut
 
@@ -54,14 +59,10 @@ domain, Secrets, or provider profile as defaults.
 Public registration, customer-operated payment or top-up, shared multi-user
 Workspaces, high availability, and GPU are not current customer capabilities.
 
-The customer Console follows four recurring tasks: `概览`, `工作空间`, `API`,
-and `费用`. `消息` is reached from the top bar and account facts from the
-account menu. Customer defaults use task language and keep internal identifiers,
-service names, raw enums, reason codes, and source evidence behind a closed
-`技术详情` disclosure where a diagnostic consumer exists. The customer
-Support ticket capability is retired because no current ticket system exists;
-legacy Support mapping tables, rows, migrations, and audit evidence remain
-historical data and are not exposed through a live API.
+The Console customer experience and Support retirement are merged in PR #530.
+Current interaction rules belong to the product experience guide, and browser
+state boundaries belong to the Console implementation reference. Retained
+Support data is historical custody, not an available ticket capability.
 
 ## Implemented Capability
 

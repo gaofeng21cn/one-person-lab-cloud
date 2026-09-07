@@ -6,7 +6,7 @@ This directory contains shared package boundaries only. Runtime ownership now li
 
 | Package | Current role | Runtime owner |
 | --- | --- | --- |
-| `contracts` | Four narrow cross-owner contracts for candidate/distribution identity, launch hashing, and Workspace Runtime ABI | Candidate/Release tooling, Control Plane, Fabric, and the instance handoff |
+| `contracts` | Artifact and byte-level JSON contracts plus shared Go runtime types; [contract ownership](contracts/README.md) | Candidate/Release tooling, Control Plane, Fabric, and the instance handoff |
 
 ## Current Boundary
 

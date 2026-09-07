@@ -88,10 +88,10 @@ npm run verify:local
 ```
 
 The default gate needs no database. It validates the product boundary, Node
-tests, Console typecheck/lint/build, whitepaper build, all four Go modules, and
-Git whitespace. Go coverage means all-module compilation plus the explicitly
-database-free package tests. Changes to persistence, capacity behavior, local Docker, or a
-cross-service path also run the complete local gate:
+tests, Console typecheck/lint/build, five Go modules (including shared contracts),
+and Git whitespace. Go coverage means all-module compilation plus the explicitly
+database-free package tests. Changes to persistence, capacity behavior, local
+Docker, or a cross-service path also run the complete local gate:
 
 ```bash
 npm run verify:local:full
@@ -101,3 +101,6 @@ The complete gate uses Docker to start an ephemeral PostgreSQL 16 container,
 runs the PostgreSQL, capacity, and local-Docker integration tests with zero
 skips, and removes the temporary container on exit. Neither gate accesses a
 production network or dispatches an instance deployment.
+
+Whitepaper source or Profile changes additionally run `npm run build:whitepaper`;
+rendering is separate from the ordinary source gate and from publication.
