@@ -28,8 +28,10 @@ Console shows:
 - general Gateway Key create, enable/disable, delete, reveal/copy, and per-Key
   Usage readback;
 - resource status, `paidThrough`, auto-renew, and manual-review state;
-- Workspace access, billing receipts, announcements, support, and account
-  settings.
+- Workspace access, billing receipts, messages, and account information.
+
+The [experience guide](console-experience-guide.md) owns the customer task
+hierarchy and navigation. The Support ticket surface is retired.
 
 The Workspace access area answers, in one place and from owner readback: URL,
 用户名, 密码 reveal/copy, and the corresponding Workspace Key reveal/copy. The
@@ -38,7 +40,9 @@ second secret store or Key API. Console does not expose a Gateway base-address
 card or link to the server-only Sub2API backend.
 
 Console does not show raw request fingerprints, provider credentials, generic
-Fabric/Ledger APIs, or Sub2API admin operations.
+Fabric/Ledger APIs, Sub2API admin operations, or internal identifiers in the
+default customer layer. Useful source and diagnostic facts remain available in
+closed `技术详情` disclosures where the current surface has a diagnostic need.
 
 ## Admin Surface
 

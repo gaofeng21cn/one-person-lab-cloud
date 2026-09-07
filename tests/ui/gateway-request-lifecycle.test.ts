@@ -131,7 +131,11 @@ test("sensitive routes are classified by their public route behavior", () => {
   assert.equal(isSensitiveConsoleRoute("/console/api"), true);
   assert.equal(isSensitiveConsoleRoute("/console/api/keys"), true);
   assert.equal(isSensitiveConsoleRoute("/console/workspaces/ws-1"), true);
+  assert.equal(isSensitiveConsoleRoute("/console/gateway/keys/"), true);
   assert.equal(isSensitiveConsoleRoute("/console/billing"), false);
+  assert.equal(isSensitiveConsoleRoute("/console/api/unknown"), false);
+  assert.equal(isSensitiveConsoleRoute("/console/workspaces/ws-1/extra"), false);
+  assert.equal(isSensitiveConsoleRoute("/console/workspaces/%E0%A4%A"), false);
 });
 
 test("balance history requests one explicit page", async () => {

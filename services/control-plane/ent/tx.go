@@ -40,8 +40,6 @@ type Tx struct {
 	StorageAttachment *StorageAttachmentClient
 	// StorageVolume is the client for interacting with the StorageVolume builders.
 	StorageVolume *StorageVolumeClient
-	// SupportTicketMapping is the client for interacting with the SupportTicketMapping builders.
-	SupportTicketMapping *SupportTicketMappingClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// Workspace is the client for interacting with the Workspace builders.
@@ -193,7 +191,6 @@ func (tx *Tx) init() {
 	tx.Session = NewSessionClient(tx.config)
 	tx.StorageAttachment = NewStorageAttachmentClient(tx.config)
 	tx.StorageVolume = NewStorageVolumeClient(tx.config)
-	tx.SupportTicketMapping = NewSupportTicketMappingClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.Workspace = NewWorkspaceClient(tx.config)
 	tx.WorkspaceSyncEvent = NewWorkspaceSyncEventClient(tx.config)

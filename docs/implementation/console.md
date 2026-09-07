@@ -6,6 +6,14 @@ durable facts remain in Control Plane, Fabric, Ledger and Sub2API.
 
 ## Composition
 
+`console-router.ts` owns the typed `ConsoleRoute`: route kind, normalized path,
+surface, title, Session requirement, sensitivity and navigation identity. The
+root loader and page dispatch switch exhaustively on that fact; navigation
+consumes its identity. Unknown paths and malformed Workspace IDs remain
+unknown. Route aliases resolve through the same parser rather than maintaining
+another route list. `/admin/announcements` composes the existing announcement
+controller and loads that projection independently of operator Overview.
+
 [`use-console-controller.ts`](../../apps/console-ui/src/app/use-console-controller.ts)
 composes Session/Auth, Router, global toast and shell state, cross-owner route
 loading, reset and dependency ordering. Operator Overview, Reconciliation and
@@ -34,7 +42,7 @@ and replacement-preview errors cannot overwrite each other.
 | Customer Workspace Read | Overview, list, detail and Billing terms; owns the monotonic detail projection lease and committed page |
 | Fabric Runtime Read | Active customer Workspace; requires Fabric source and exact Workspace identity; starts independently of detail |
 | Gateway Account Read | Wallet, monthly account usage, endpoint and 20-item balance-history pages; a failed page never advances the committed page |
-| Gateway Usage | Key collection, selected Key, period/page and separate Usage/Summary generations; an authoritative empty Key list clears both projections |
+| Gateway Usage | Searchable/paginated Key query, independently selected Key, period/committed Usage page and separate Usage/Summary generations; only authoritative single-Key absence clears an established selection |
 | Billing / Receipt | Ledger list/detail, selected Receipt and opaque cursor stack; Overview requests 3 without adopting Billing cursor state, Billing requests 20 |
 | Operator Resource Read | Resource page, selected Workspace detail, image policy and replacement preview; each projection has independent identity/freshness and failure settlement |
 
@@ -43,6 +51,25 @@ only after accepting Workspace detail and its Key identity. Renewal readback
 may commit only through the current detail lease; Budget may commit only through
 its budget lease. `findWorkspaceInPages` remains a thin API adapter used by each
 owning command, not another Workspace state owner.
+
+Gateway Usage Key search and pagination only choose candidates; they cannot
+change the active Usage range. Explicit Key selection or period changes hide
+the old range and load Summary and Usage separately. Page refresh confirms the
+selected Key through single-Key readback, then loads Summary and Usage page 1.
+An authoritative `404` clears the selection; transient failure retains its
+identity but hides stale results. Each source retries independently, and Usage
+pagination commits its new page only after an identity-matching success,
+without reloading Summary. Search explicitly submits, starts at page 1 and
+retains its query across pagination; late dialog responses cannot change the
+committed range. An initial authoritative empty collection leaves no selection
+and does not request Usage.
+
+`customer-experience-model.ts` and `workspace-experience-model.ts` own pure,
+exact presentation mappings. Unknown values remain unconfirmed and unavailable
+values remain unavailable. Presenters do not decode APIs, calculate billing,
+poll, retain Secrets or own command state. Workspace and Gateway Usage page
+components compose these projections; `CustomerPages` remains their route
+composition layer.
 
 ## Commands And Authoritative Completion
 
@@ -59,7 +86,6 @@ backend command implements server-side replay.
 | Workspace Budget | Exact Workspace/Key and requested stable policy fields match the Gateway owner readback |
 | Operator Account | Provision/disable/purchase-eligibility response and authoritative paged Account projection match target identity and fields |
 | Wallet Adjustment / Recovery | Typed wallet operation reaches terminal or manual review and its operation/account readback is refreshed |
-| Support | Typed mapping response and subsequent authoritative ticket collection read |
 | Operator Announcement | Create/publish/withdraw response and operator collection agree on identity, content, schedule and target state |
 
 Launch forces `autoRenew=false` for `resourceBillingMode=none`. Its hook and
@@ -68,6 +94,15 @@ stage machine. Delete, Renewal and Budget keep independent intents, busy and
 freshness state. The detail view cross-disables conflicting Delete/Renewal
 commands. Route changes invalidate pending completions without discarding
 unresolved per-Workspace intents; Session replacement clears them.
+
+Launch confirmation takes the amount due from `selectedPrice`, not the catalog
+component preview. Confirmed entitlement mode requires zero due; billed mode
+requires a positive due amount. Missing or contradictory input cannot submit.
+Unknown results, ambiguous recovery operations or missing success identity
+retain the original intent and offer status recheck, not another purchase.
+Opening a Workspace requires its current owner Runtime projection to be
+running, ready and have a URL. Budget forms convert customer USD decimals to
+the existing exact micro-dollar request boundary and reject invalid input.
 
 Operator announcement claims survive route exit until their request settles;
 route and Session generations reject stale completion. Views retain dialog and

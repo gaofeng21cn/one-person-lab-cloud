@@ -26,7 +26,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 | Layer | Current evidence | What it does not prove |
 | --- | --- | --- |
-| Audited source baseline | Documentation reconciliation inspected remote `main` at `30716227` on 2026-09-07; source and focused tests define the service and UI implementation | Deployment, public Release, production acceptance, or a permanently current `main` identity |
+| Audited source baseline | Documentation reconciliation inspected remote `main` at `efb5f07b` on 2026-09-07, including merged Console UX-03 and Support retirement | Deployment, public Release, production acceptance, or a permanently current `main` identity |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
@@ -59,6 +59,11 @@ domain, Secrets, or provider profile as defaults.
 Public registration, customer-operated payment or top-up, shared multi-user
 Workspaces, high availability, and GPU are not current customer capabilities.
 
+The Console customer experience and Support retirement are merged in PR #530.
+Current interaction rules belong to the product experience guide, and browser
+state boundaries belong to the Console implementation reference. Retained
+Support data is historical custody, not an available ticket capability.
+
 ## Implemented Capability
 
 - Workspace Launch is a durable Control Plane operation that coordinates the
@@ -82,7 +87,9 @@ Workspaces, high availability, and GPU are not current customer capabilities.
   confirmed mutation with owner inventory and post-mutation readback.
 - Console uses capability-specific controllers for Workspace Launch, access
   Secrets, Delete, Renewal, Gateway budget and usage, customer and operator
-  reads, billing/Receipts, Wallet adjustment, support, and announcements.
+  reads, billing/Receipts, Wallet adjustment, and announcements. Customer
+  navigation and presentation are task-oriented; the retired Support client and
+  its live requests are absent.
 - Ledger owns append-only receipts, reconciliation evidence, and the Cloud
   Evidence Index. It does not own spendable balance or provider mutation.
 - Candidate tooling builds one `linux/amd64` plus `linux/arm64` image index and

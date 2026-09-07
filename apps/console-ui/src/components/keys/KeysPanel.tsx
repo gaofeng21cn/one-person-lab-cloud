@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import type { GatewayAccountReadController } from "../../app/console-controller-types.ts";
+import { presentGatewayKeyStatus } from "../../app/customer-experience-model.ts";
 import { unavailableSource } from "../../app/use-console-controller.ts";
 import {
   createGatewayKey,
@@ -94,7 +95,7 @@ function friendlyError(value: unknown) {
     return "服务暂不可用，请稍后重试";
   }
   if (/gateway_key_readback_unavailable/i.test(message)) return "无法确认权威回读，请刷新后再操作";
-  if (/gateway_key_reserved/i.test(message)) return "Workspace 系统 Key 不允许修改或删除";
+  if (/gateway_key_reserved/i.test(message)) return "工作空间系统 API 密钥不允许修改或删除";
   if (/金额格式无效|表单信息无效/.test(message)) return message;
   return message && !message.includes("_") ? message : "请求失败，请稍后重试";
 }
@@ -164,10 +165,6 @@ function keyMatchesUpdate(key: GatewayKeySummaryDTO, input: UpdateGatewayKeyRequ
   return true;
 }
 
-function statusLabel(status: GatewayKeySummaryDTO["status"]) {
-  return { active: "启用", disabled: "停用", quota_exhausted: "额度用尽", expired: "已过期" }[status];
-}
-
 function statusColor(status: GatewayKeySummaryDTO["status"]): "success" | "secondary" | "warning" | "danger" {
   if (status === "active") return "success";
   if (status === "quota_exhausted") return "warning";
@@ -190,6 +187,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   const [error, setError] = useState("");
   const [referenceError, setReferenceError] = useState("");
   const [notice, setNotice] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>("");
   const [editingKey, setEditingKey] = useState<GatewayKeySummaryDTO | null>(null);
   const [pendingDelete, setPendingDelete] = useState<GatewayKeySummaryDTO | null>(null);
@@ -277,6 +275,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setError("");
     setReferenceError("");
     setNotice("");
+    setFiltersOpen(false);
     setDialog("");
     setEditingKey(null);
     setPendingDelete(null);
@@ -295,12 +294,6 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       clearSecret();
     };
   }, [clearSecret, csrfToken, loadKeys, loadReferenceData]);
-
-  const groupName = (groupId: string | null) => groups.find((group) => group.id === groupId)?.name || "未分组";
-  const groupMeta = (groupId: string | null) => {
-    const group = groups.find((item) => item.id === groupId);
-    return group ? groupMetadataLabel(group) : "";
-  };
 
   const copyText = async (value: string, success: string) => {
     if (!value) return;
@@ -441,7 +434,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     setError("");
     try {
       if (editingKey) {
-        await mutateKey(editingKey, updateRequest(), "API Key 已更新");
+        await mutateKey(editingKey, updateRequest(), "API 密钥已更新");
         return;
       }
       const input = createRequest();
@@ -467,7 +460,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       if (!secret.available || secret.data.id !== created.data.id || !secret.data.value) throw new Error("gateway_key_unavailable");
       setRevealed(secret.data);
       armSecretTimer();
-      setNotice("API Key 已创建，请立即复制；完整 Key 将在 60 秒后隐藏");
+      setNotice("API 密钥已创建，请立即复制；完整密钥将在 60 秒后隐藏");
     } catch (value) {
       if (requestIsCurrent(session, token)) setError(friendlyError(value));
     } finally {
@@ -507,7 +500,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
       if (!confirmedMissing) throw commandError || new Error("gateway_key_readback_unavailable");
       deleteIntents.current.delete(key.id);
       if (revealed?.id === key.id) clearSecret();
-      setNotice("API Key 已删除");
+      setNotice("API 密钥已删除");
       setDialog("");
       setPendingDelete(null);
       await loadKeys(query);
@@ -541,52 +534,99 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
   };
 
   const useGroup = groups.find((group) => group.id === useKey?.groupId) || null;
-  const useConfiguration = useKey && revealed?.id === useKey.id && endpoint && useGroup
-    ? JSON.stringify({ platform: useGroup.platform, baseURL: endpoint, apiKey: revealed.value }, null, 2)
+  const useConfiguration = useKey && revealed?.id === useKey.id && endpoint
+    ? JSON.stringify({ baseURL: endpoint, apiKey: revealed.value }, null, 2)
     : "";
+
+  const renderFilters = () => (
+    <form className="keys-filters" onSubmit={submitSearch}>
+      <Field label="搜索 API 密钥" maxLength={100} onChange={(event) => changeFilter("search", event.currentTarget.value)} placeholder="名称" value={query.search} />
+      <Select label="状态筛选" onChange={(value) => changeFilter("status", value as KeyQuery["status"])} options={[{ value: "", label: "全部状态" }, { value: "active", label: "启用" }, { value: "disabled", label: "停用" }, { value: "quota_exhausted", label: "额度用尽" }, { value: "expired", label: "已过期" }]} value={query.status} />
+      <Select label="排序" onChange={(value) => changeFilter("sortBy", value as KeyQuery["sortBy"])} options={[{ value: "createdAt", label: "创建时间" }, { value: "name", label: "名称" }, { value: "expiresAt", label: "过期时间" }, { value: "status", label: "状态" }, { value: "lastUsedAt", label: "最近使用" }]} value={query.sortBy} />
+      <Select label="顺序" onChange={(value) => changeFilter("sortOrder", value as KeyQuery["sortOrder"])} options={[{ value: "desc", label: "降序" }, { value: "asc", label: "升序" }]} value={query.sortOrder} />
+      <Select label="每页" onChange={(value) => changeFilter("pageSize", Number(value))} options={[10, 20, 50, 100].map((size) => ({ value: String(size), label: String(size) }))} value={String(query.pageSize)} />
+      <details className="key-filter-technical-details"><summary>技术筛选</summary><Select label="服务分组" onChange={(value) => changeFilter("groupId", value)} options={[{ value: "", label: "全部服务分组" }, { value: "0", label: "未分组" }, ...groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))]} value={query.groupId} /></details>
+      <Button className="keys-filter-submit" type="submit" variant="outline"><Search aria-hidden="true" size={16} />查询</Button>
+    </form>
+  );
 
   const renderKeyActions = (key: GatewayKeySummaryDTO, className = "keys-row-actions") => {
     const manageable = canManage(key);
     return (
       <div className={className}>
-        <Tooltip compact content={revealed?.id === key.id ? "隐藏 Key" : "显示 Key"}>
-          <Button aria-label={revealed?.id === key.id ? "隐藏 Key" : "显示 Key"} disabled={busy} onClick={() => void reveal(key)} size="sm" uniform variant="ghost">
-            {revealed?.id === key.id ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}
-          </Button>
-        </Tooltip>
-        <Tooltip compact content="使用说明">
-          <Button aria-label="使用说明" disabled={busy} onClick={() => void openUse(key)} size="sm" uniform variant="ghost"><BookOpen aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "编辑" : "系统 Key 不可编辑"}>
-          <Button aria-label="编辑" disabled={busy || !manageable} onClick={() => openEdit(key)} size="sm" uniform variant="ghost"><Pencil aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? (key.status === "active" ? "停用" : "启用") : "系统 Key 不可启停"}>
-          <Button aria-label={key.status === "active" ? "停用" : "启用"} disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { enabled: key.status !== "active" }, key.status === "active" ? "API Key 已停用" : "API Key 已启用")} size="sm" uniform variant="ghost"><Power aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "重置配额用量" : "系统 Key 不可重置"}>
-          <Button aria-label="重置配额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetQuota: true }, "配额用量已重置")} size="sm" uniform variant="ghost"><RotateCcw aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={manageable ? "重置消费限额用量" : "系统 Key 不可重置"}>
-          <Button aria-label="重置消费限额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetRateLimitUsage: true }, "消费限额用量已重置")} size="sm" uniform variant="ghost"><ShieldCheck aria-hidden="true" size={16} /></Button>
-        </Tooltip>
-        <Tooltip compact content={canDelete(key) ? "删除" : "系统 Key 不可删除"}>
-          <Button aria-label="删除" color="danger" disabled={busy || !canDelete(key)} onClick={() => { setPendingDelete(key); setDialog("delete"); }} size="sm" uniform variant="ghost"><Trash2 aria-hidden="true" size={16} /></Button>
-        </Tooltip>
+        <div className="keys-row-actions__primary" aria-label="常用操作">
+          <Tooltip compact content={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"}>
+            <Button aria-label={revealed?.id === key.id ? "隐藏 API 密钥" : "显示 API 密钥"} disabled={busy} onClick={() => void reveal(key)} size="sm" uniform variant="ghost">
+              {revealed?.id === key.id ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}
+            </Button>
+          </Tooltip>
+          <Tooltip compact content="使用说明">
+            <Button aria-label="使用说明" disabled={busy} onClick={() => void openUse(key)} size="sm" uniform variant="ghost"><BookOpen aria-hidden="true" size={16} /></Button>
+          </Tooltip>
+        </div>
+        <details className="key-more-actions">
+          <summary>更多操作</summary>
+          <div className="key-more-actions__body">
+            <div className="key-more-actions__group">
+              <span>管理</span>
+              <Tooltip compact content={manageable ? "编辑" : "系统 API 密钥不可编辑"}>
+                <Button aria-label="编辑" disabled={busy || !manageable} onClick={() => openEdit(key)} size="sm" uniform variant="ghost"><Pencil aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+              <Tooltip compact content={manageable ? (key.status === "active" ? "停用" : "启用") : "系统 API 密钥不可启停"}>
+                <Button aria-label={key.status === "active" ? "停用" : "启用"} disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { enabled: key.status !== "active" }, key.status === "active" ? "API 密钥已停用" : "API 密钥已启用")} size="sm" uniform variant="ghost"><Power aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+            <div className="key-more-actions__group">
+              <span>维护</span>
+              <Tooltip compact content={manageable ? "重置配额用量" : "系统 API 密钥不可重置"}>
+                <Button aria-label="重置配额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetQuota: true }, "配额用量已重置")} size="sm" uniform variant="ghost"><RotateCcw aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+              <Tooltip compact content={manageable ? "重置消费限额用量" : "系统 API 密钥不可重置"}>
+                <Button aria-label="重置消费限额用量" disabled={busy || !manageable} onClick={() => void runKeyMutation(key, { resetRateLimitUsage: true }, "消费限额用量已重置")} size="sm" uniform variant="ghost"><ShieldCheck aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+            <div className="key-more-actions__group key-more-actions__group--danger">
+              <span>删除</span>
+              <Tooltip compact content={canDelete(key) ? "删除" : "系统 API 密钥不可删除"}>
+                <Button aria-label="删除" color="danger" disabled={busy || !canDelete(key)} onClick={() => { setPendingDelete(key); setDialog("delete"); }} size="sm" uniform variant="ghost"><Trash2 aria-hidden="true" size={16} /></Button>
+              </Tooltip>
+            </div>
+          </div>
+        </details>
       </div>
     );
+  };
+
+  const renderKeyTechnicalDetails = (key: GatewayKeySummaryDTO) => {
+    const group = groups.find((item) => item.id === key.groupId);
+    const manageable = canManage(key);
+    return <details className="key-technical-details">
+      <summary>技术详情</summary>
+      <div className="key-technical-details__body">
+        <dl className="data-list">
+          <div><dt>key ID</dt><dd><code>{key.id}</code></dd></div>
+          <div><dt>kind</dt><dd><code>{key.kind}</code></dd></div>
+          <div><dt>status</dt><dd><code>{key.status}</code></dd></div>
+          <div><dt>group ID</dt><dd><code>{key.groupId || "-"}</code></dd></div>
+          <div><dt>group</dt><dd>{group?.name || "未分组"}</dd></div>
+          <div><dt>platform</dt><dd><code>{group?.platform || "-"}</code></dd></div>
+          <div><dt>rate multiplier</dt><dd><code>{group ? String(group.rateMultiplier) : "-"}</code></dd></div>
+          <div><dt>current concurrency</dt><dd><code>{key.currentConcurrency}</code></dd></div>
+          <div><dt>5h limit / used</dt><dd>{formatUsdMicros(key.rateLimit5hUsdMicros)} / {formatUsdMicros(key.usage5hUsdMicros)}</dd></div>
+          <div><dt>1d limit / used</dt><dd>{formatUsdMicros(key.rateLimit1dUsdMicros)} / {formatUsdMicros(key.usage1dUsdMicros)}</dd></div>
+          <div><dt>7d limit / used</dt><dd>{formatUsdMicros(key.rateLimit7dUsdMicros)} / {formatUsdMicros(key.usage7dUsdMicros)}</dd></div>
+          <div><dt>last used IP</dt><dd><code>{key.lastUsedIp || "-"}</code></dd></div>
+          <div><dt>createdAt</dt><dd>{key.createdAt ? formatDate(key.createdAt, true) : "-"}</dd></div>
+        </dl>
+        {manageable ? <Select aria-label="更改服务分组" disabled={busy || !groups.length} onChange={(groupId) => groupId !== key.groupId && void runKeyMutation(key, { groupId }, "服务分组已更新")} options={groups.map((item) => ({ value: item.id, label: item.name }))} value={key.groupId || ""} /> : null}
+      </div>
+    </details>;
   };
 
   const keyForm = (
     <form className="key-form" id="keys-form-submit" onSubmit={submitKey}>
       <div className="key-form-grid">
         <Field autoFocus label="名称" maxLength={100} onChange={(event) => updateForm("name", event.currentTarget.value)} required value={form.name} />
-        <Select
-          label="分组"
-          onChange={(value) => updateForm("groupId", value)}
-          options={groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))}
-          placeholder="请选择分组"
-          value={form.groupId}
-        />
         <Field label="配额（USD，0 为不限）" min="0" onChange={(event) => updateForm("quotaUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.quotaUsd} />
         {editingKey ? (
           <Field label="过期时间" onChange={(event) => updateForm("expiresAt", event.currentTarget.value)} type="datetime-local" value={form.expiresAt} />
@@ -594,9 +634,16 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
           <Field label="有效天数" max="3650" min="1" onChange={(event) => updateForm("expiresInDays", event.currentTarget.value)} required step="1" type="number" value={form.expiresInDays} />
         )}
       </div>
-      <details className="key-advanced-settings">
-        <summary>高级限制</summary>
+      <details className="key-advanced-settings key-form-technical-details">
+        <summary>技术详情</summary>
         <div className="key-advanced-settings__body">
+          <Select
+            label="服务分组"
+            onChange={(value) => updateForm("groupId", value)}
+            options={groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))}
+            placeholder="请选择服务分组"
+            value={form.groupId}
+          />
           <div className="key-form-grid key-form-grid--three">
             <Field label="5 小时消费限额（USD）" min="0" onChange={(event) => updateForm("rateLimit5hUsd", event.currentTarget.value)} step="0.000001" type="number" value={form.rateLimit5hUsd} />
             <Field label="1 天消费限额（USD）" min="0" onChange={(event) => updateForm("rateLimit1dUsd", event.currentTarget.value)} step="0.000001" type="number" value={form.rateLimit1dUsd} />
@@ -615,94 +662,93 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
     <section className="keys-panel panel" data-slide="C-API-03 C-API-04 C-API-05">
       <header className="keys-panel__header panel-title">
         <div className="keys-panel__title">
-          <h2>API Keys</h2>
+          <h2>API 密钥</h2>
           <div className="keys-endpoint">
-            <span>API Endpoint</span>
+            <span>API 地址</span>
             {endpoint ? <code>{endpoint}</code> : <span>暂不可用</span>}
-            <Tooltip compact content="复制 Endpoint">
-              <Button aria-label="复制 Endpoint" disabled={!endpoint} onClick={() => void copyText(endpoint, "Endpoint 已复制")} size="sm" uniform variant="ghost">
+            <Tooltip compact content="复制 API 地址">
+              <Button aria-label="复制 API 地址" disabled={!endpoint} onClick={() => void copyText(endpoint, "API 地址已复制")} size="sm" uniform variant="ghost">
                 <Copy aria-hidden="true" size={16} />
               </Button>
             </Tooltip>
           </div>
         </div>
         <div className="keys-panel__header-actions">
-          <Tooltip compact content="刷新 API Keys">
-            <Button aria-label="刷新 API Keys" disabled={loading || referenceLoading} onClick={() => void refreshAll()} size="sm" uniform variant="outline">
+          <Tooltip compact content="刷新 API 密钥">
+            <Button aria-label="刷新 API 密钥" disabled={loading || referenceLoading} onClick={() => void refreshAll()} size="sm" uniform variant="outline">
               <RefreshCw aria-hidden="true" size={16} />
             </Button>
           </Tooltip>
           <Button color="primary" disabled={!groups.length || !csrfToken} onClick={openCreate} size="sm">
-            <Plus aria-hidden="true" size={16} />创建 Key
+            <Plus aria-hidden="true" size={16} />创建 API 密钥
           </Button>
         </div>
       </header>
 
-      <form className="keys-filters" onSubmit={submitSearch}>
-        <Field label="搜索 Key" maxLength={100} onChange={(event) => changeFilter("search", event.currentTarget.value)} placeholder="名称或 ID" value={query.search} />
-        <Select label="分组筛选" onChange={(value) => changeFilter("groupId", value)} options={[{ value: "", label: "全部分组" }, { value: "0", label: "未分组" }, ...groups.map((group) => ({ value: group.id, label: group.name, description: groupMetadataLabel(group) }))]} value={query.groupId} />
-        <Select label="状态筛选" onChange={(value) => changeFilter("status", value as KeyQuery["status"])} options={[{ value: "", label: "全部状态" }, { value: "active", label: "启用" }, { value: "disabled", label: "停用" }, { value: "quota_exhausted", label: "额度用尽" }, { value: "expired", label: "已过期" }]} value={query.status} />
-        <Select label="排序" onChange={(value) => changeFilter("sortBy", value as KeyQuery["sortBy"])} options={[{ value: "createdAt", label: "创建时间" }, { value: "name", label: "名称" }, { value: "id", label: "ID" }, { value: "currentConcurrency", label: "当前并发" }, { value: "expiresAt", label: "过期时间" }, { value: "status", label: "状态" }, { value: "lastUsedAt", label: "最近使用" }]} value={query.sortBy} />
-        <Select label="顺序" onChange={(value) => changeFilter("sortOrder", value as KeyQuery["sortOrder"])} options={[{ value: "desc", label: "降序" }, { value: "asc", label: "升序" }]} value={query.sortOrder} />
-        <Select label="每页" onChange={(value) => changeFilter("pageSize", Number(value))} options={[10, 20, 50, 100].map((size) => ({ value: String(size), label: String(size) }))} value={String(query.pageSize)} />
-        <Button className="keys-filter-submit" type="submit" variant="outline"><Search aria-hidden="true" size={16} />查询</Button>
-      </form>
-
       {referenceError ? <Alert actions={<Button onClick={() => void loadReferenceData()} size="sm" variant="ghost">重试</Button>} color="warning" description={referenceError} title="参考配置部分不可用" /> : null}
-      {groupsSource?.status === "unavailable" ? <Alert color="warning" description={`无法确认可用分组，已暂停创建和换组。原因代码：${groupsSource.reasonCode}`} title="分组暂不可用" /> : null}
-      {endpointSource?.status === "unavailable" ? <Alert color="warning" description={`无法确认公共模型 Endpoint，未展示推测值。原因代码：${endpointSource.reasonCode}`} title="Endpoint 暂不可用" /> : null}
+      {groupsSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取服务配置，已暂停创建和调整。" title="服务配置暂不可用" /> : null}
+      {endpointSource?.status === "unavailable" ? <Alert color="warning" description="暂时无法读取 API 地址，请稍后重试。" title="API 地址暂不可用" /> : null}
+      {source?.status === "unavailable" || groupsSource?.status === "unavailable" || endpointSource?.status === "unavailable" ? <details className="keys-source-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>keys source reason</dt><dd><code>{source?.status === "unavailable" ? source.reasonCode : "-"}</code></dd></div><div><dt>groups source reason</dt><dd><code>{groupsSource?.status === "unavailable" ? groupsSource.reasonCode : "-"}</code></dd></div><div><dt>endpoint source reason</dt><dd><code>{endpointSource?.status === "unavailable" ? endpointSource.reasonCode : "-"}</code></dd></div></dl></details> : null}
       {notice ? <Alert color="success" description={notice} title="操作完成" /> : null}
       {error ? <Alert actions={<Button onClick={() => void refreshAll()} size="sm" variant="ghost">刷新确认</Button>} color="danger" description={error} title="操作未确认" /> : null}
+
+      <section className={`keys-filter-disclosure${filtersOpen ? " is-open" : ""}`} aria-label="筛选与排序">
+        <button
+          aria-controls="gateway-key-filters"
+          aria-expanded={filtersOpen}
+          className="keys-filter-disclosure__toggle"
+          onClick={() => setFiltersOpen((open) => !open)}
+          type="button"
+        >
+          <span>筛选与排序</span>
+          <span aria-hidden="true">{filtersOpen ? "收起" : "展开"}</span>
+        </button>
+        <div className="keys-filter-disclosure__content" id="gateway-key-filters">
+          {renderFilters()}
+        </div>
+      </section>
 
       {revealed ? (
         <div className="keys-secret" role="status">
           <div>
-            <span>{revealed.name} · 完整 Key</span>
+            <span>{revealed.name} · 完整 API 密钥</span>
             <code>{revealed.value}</code>
             <small>仅保存在当前页面内存，60 秒后自动隐藏。</small>
           </div>
           <div className="keys-secret__actions">
-            <Button onClick={() => void copyText(revealed.value, "Key 已复制")} size="sm" variant="outline"><Copy aria-hidden="true" size={16} />复制</Button>
-            <Button aria-label="隐藏 Key" onClick={clearSecret} size="sm" uniform variant="ghost"><EyeOff aria-hidden="true" size={16} /></Button>
+            <Button onClick={() => void copyText(revealed.value, "API 密钥已复制")} size="sm" variant="outline"><Copy aria-hidden="true" size={16} />复制</Button>
+            <Button aria-label="隐藏 API 密钥" onClick={clearSecret} size="sm" uniform variant="ghost"><EyeOff aria-hidden="true" size={16} /></Button>
           </div>
         </div>
       ) : null}
 
-      <SourceState
-        empty={source?.status === "empty"}
-        emptyDescription="创建普通 Key 后即可设置分组、额度与访问限制。"
-        error={error && !source ? error : ""}
-        loading={loading}
-        onRetry={() => void refreshAll()}
-        source={source}
-        unavailableTitle="API Keys 暂不可用"
-      >
-        {(data) => (
-          <>
+      <div className="keys-results">
+        <SourceState
+          empty={source?.status === "empty"}
+          emptyDescription="创建 API 密钥后即可调用服务。"
+          error={error && !source ? error : ""}
+          errorDescription="暂时无法读取 API 密钥，请稍后重试。"
+          loading={loading}
+          onRetry={() => void refreshAll()}
+          source={source}
+          unavailableDescription="暂时无法读取 API 密钥，请稍后重试。"
+          unavailableTitle="API 密钥暂不可用"
+        >
+          {(data) => (
+            <>
             <div className="table-wrap keys-table-wrap">
               <table className="keys-table">
-                <thead>
-                  <tr><th>名称</th><th>分组 / 平台</th><th>状态</th><th>配额 / 用量</th><th>5h / 1d / 7d 消费限额</th><th>过期</th><th>最近使用</th><th>创建时间</th><th>操作</th></tr>
-                </thead>
+                <thead><tr><th>名称</th><th>状态</th><th>总额度 / 已用</th><th>有效期</th><th>最近使用</th><th>操作</th></tr></thead>
                 <tbody>
                   {data.items.map((key) => {
                     const quotaProgress = key.quotaUsdMicros > 0 ? Math.min(100, Math.max(0, key.quotaUsedUsdMicros / key.quotaUsdMicros * 100)) : null;
-                    const manageable = canManage(key);
                     return (
                       <tr key={key.id}>
-                        <td><strong>{key.name}</strong><small>#{key.id} · {isProtectedWorkspaceKey(key) ? "Workspace 系统 Key" : "普通 Key"}</small></td>
-                        <td>
-                          {manageable ? (
-                            <Select aria-label="快捷换组" disabled={busy || !groups.length} onChange={(groupId) => groupId !== key.groupId && void runKeyMutation(key, { groupId }, "分组已更新")} options={groups.map((group) => ({ value: group.id, label: group.name }))} value={key.groupId || ""} />
-                          ) : <strong>{groupName(key.groupId)}</strong>}
-                          <small>{groupMeta(key.groupId)}</small>
-                        </td>
-                        <td><Badge color={statusColor(key.status)}>{statusLabel(key.status)}</Badge><small>{key.currentConcurrency} 并发</small></td>
+                        <td><strong>{key.name}</strong>{renderKeyTechnicalDetails(key)}</td>
+                        <td><Badge color={statusColor(key.status)}>{presentGatewayKeyStatus(key.status).label}</Badge></td>
                         <td><strong>{key.quotaUsdMicros ? formatUsdMicros(key.quotaUsdMicros) : "不限"}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</td>
-                        <td><strong>{formatUsdMicros(key.rateLimit5hUsdMicros)} / {formatUsdMicros(key.rateLimit1dUsdMicros)} / {formatUsdMicros(key.rateLimit7dUsdMicros)}</strong><small>已用 {formatUsdMicros(key.usage5hUsdMicros)} / {formatUsdMicros(key.usage1dUsdMicros)} / {formatUsdMicros(key.usage7dUsdMicros)}</small></td>
                         <td>{key.expiresAt ? formatDate(key.expiresAt, true) : "永不过期"}</td>
-                        <td><strong>{key.lastUsedAt ? formatDate(key.lastUsedAt, true) : "尚未使用"}</strong>{key.lastUsedIp ? <small>{key.lastUsedIp}</small> : null}</td>
-                        <td>{key.createdAt ? formatDate(key.createdAt, true) : "-"}</td>
+                        <td><strong>{key.lastUsedAt ? formatDate(key.lastUsedAt, true) : "尚未使用"}</strong></td>
                         <td>{renderKeyActions(key)}</td>
                       </tr>
                     );
@@ -710,57 +756,38 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
                 </tbody>
               </table>
             </div>
-            <div aria-label="API Key 列表" className="mobile-key-list">
+            <div aria-label="API 密钥列表" className="mobile-key-list">
               {data.items.map((key) => {
                 const quotaProgress = key.quotaUsdMicros > 0 ? Math.min(100, Math.max(0, key.quotaUsedUsdMicros / key.quotaUsdMicros * 100)) : null;
-                const manageable = canManage(key);
                 return (
                   <article className="mobile-key-card" key={key.id}>
                     <header className="mobile-key-card__header">
                       <div className="mobile-key-card__identity">
                         <strong>{key.name}</strong>
-                        <small>#{key.id} · {isProtectedWorkspaceKey(key) ? "Workspace 系统 Key" : "普通 Key"}</small>
                       </div>
                       <div className="mobile-key-card__status">
-                        <Badge color={statusColor(key.status)}>{statusLabel(key.status)}</Badge>
-                        <small>{key.currentConcurrency} 并发</small>
+                        <Badge color={statusColor(key.status)}>{presentGatewayKeyStatus(key.status).label}</Badge>
                       </div>
                     </header>
                     <dl className="mobile-key-card__facts">
-                      <div className="mobile-key-card__wide">
-                        <dt>分组 / 平台</dt>
-                        <dd>
-                          {manageable ? (
-                            <Select aria-label="快捷换组" disabled={busy || !groups.length} onChange={(groupId) => groupId !== key.groupId && void runKeyMutation(key, { groupId }, "分组已更新")} options={groups.map((group) => ({ value: group.id, label: group.name }))} value={key.groupId || ""} />
-                          ) : <strong>{groupName(key.groupId)}</strong>}
-                          <small>{groupMeta(key.groupId)}</small>
-                        </dd>
-                      </div>
                       <div>
-                        <dt>配额 / 用量</dt>
+                        <dt>总额度 / 已用</dt>
                         <dd><strong>{key.quotaUsdMicros ? formatUsdMicros(key.quotaUsdMicros) : "不限"}</strong><small>已用 {formatUsdMicros(key.quotaUsedUsdMicros)}</small>{quotaProgress !== null ? <progress aria-label={`${key.name} 配额使用进度`} max="100" value={quotaProgress} /> : null}</dd>
                       </div>
                       <div>
                         <dt>过期时间</dt>
                         <dd><strong>{key.expiresAt ? formatDate(key.expiresAt, true) : "永不过期"}</strong></dd>
                       </div>
-                      <div className="mobile-key-card__wide">
-                        <dt>5h / 1d / 7d 消费限额</dt>
-                        <dd><strong>{formatUsdMicros(key.rateLimit5hUsdMicros)} / {formatUsdMicros(key.rateLimit1dUsdMicros)} / {formatUsdMicros(key.rateLimit7dUsdMicros)}</strong><small>已用 {formatUsdMicros(key.usage5hUsdMicros)} / {formatUsdMicros(key.usage1dUsdMicros)} / {formatUsdMicros(key.usage7dUsdMicros)}</small></dd>
-                      </div>
                       <div>
                         <dt>最近使用</dt>
-                        <dd><strong>{key.lastUsedAt ? formatDate(key.lastUsedAt, true) : "尚未使用"}</strong>{key.lastUsedIp ? <small>{key.lastUsedIp}</small> : null}</dd>
-                      </div>
-                      <div>
-                        <dt>创建时间</dt>
-                        <dd><strong>{key.createdAt ? formatDate(key.createdAt, true) : "-"}</strong></dd>
+                        <dd><strong>{key.lastUsedAt ? formatDate(key.lastUsedAt, true) : "尚未使用"}</strong></dd>
                       </div>
                     </dl>
+                    {renderKeyTechnicalDetails(key)}
                     {revealed?.id === key.id ? (
                       <div className="mobile-key-secret">
                         <code>{revealed.value}</code>
-                        <Button aria-label="复制 Key" onClick={() => void copyText(revealed.value, "Key 已复制")} size="sm" uniform variant="outline"><Copy aria-hidden="true" size={16} /></Button>
+                        <Button aria-label="复制 API 密钥" onClick={() => void copyText(revealed.value, "API 密钥已复制")} size="sm" uniform variant="outline"><Copy aria-hidden="true" size={16} /></Button>
                       </div>
                     ) : null}
                     <footer className="mobile-key-card__footer">{renderKeyActions(key, "keys-row-actions mobile-key-actions")}</footer>
@@ -774,16 +801,17 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
               <strong>{query.page} / {data.pages || 1}</strong>
               <Button aria-label="下一页" disabled={query.page >= data.pages || loading} onClick={() => changePage(query.page + 1)} size="sm" uniform variant="outline"><ChevronRight aria-hidden="true" size={16} /></Button>
             </footer>
-          </>
-        )}
-      </SourceState>
+            </>
+          )}
+        </SourceState>
+      </div>
 
       <Modal
         className="keys-modal"
         footer={dialog === "key" ? <><Button disabled={busy} onClick={closeDialog} variant="outline">取消</Button><Button busy={busy} color="primary" disabled={!form.name.trim() || !form.groupId} form="keys-form-submit" type="submit"><Save aria-hidden="true" size={16} />{editingKey ? "保存" : "创建"}</Button></> : undefined}
         onClose={closeDialog}
         open={dialog === "key"}
-        title={editingKey ? "编辑 API Key" : "创建 API Key"}
+        title={editingKey ? "编辑 API 密钥" : "创建 API 密钥"}
       >
         {keyForm}
       </Modal>
@@ -793,7 +821,7 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         footer={<><Button disabled={busy} onClick={closeDialog} variant="outline">取消</Button><Button busy={busy} color="danger" onClick={() => void removeKey()}><Trash2 aria-hidden="true" size={16} />删除</Button></>}
         onClose={closeDialog}
         open={dialog === "delete"}
-        title="删除 API Key"
+        title="删除 API 密钥"
       >
         <Alert color="danger" description={<>确认删除 <strong>{pendingDelete?.name}</strong>？该操作不可恢复。</>} title="删除后无法恢复" />
       </Modal>
@@ -803,17 +831,17 @@ export function KeysPanel({ csrfToken, endpoint: endpointState, refreshEndpoint 
         footer={<Button onClick={closeDialog} variant="outline">关闭</Button>}
         onClose={closeDialog}
         open={dialog === "use"}
-        title="API Key 使用说明"
+        title="API 密钥使用说明"
       >
         <dl className="keys-use-facts">
-          <div><dt>API Endpoint</dt><dd><code>{endpoint || "暂不可用"}</code></dd></div>
-          <div><dt>分组平台</dt><dd><code>{useGroup?.platform || "暂不可用"}</code></dd></div>
-          <div><dt>当前 Key</dt><dd><code>{revealed && useKey && revealed.id === useKey.id ? revealed.value : "已隐藏"}</code></dd></div>
+          <div><dt>API 地址</dt><dd><code>{endpoint || "暂不可用"}</code></dd></div>
+          <div><dt>当前 API 密钥</dt><dd><code>{revealed && useKey && revealed.id === useKey.id ? revealed.value : "已隐藏"}</code></dd></div>
         </dl>
         <div className="keys-code-block">
           <pre><code>{useConfiguration}</code></pre>
           <Button aria-label="复制配置" disabled={!useConfiguration} onClick={() => void copyText(useConfiguration, "配置已复制")} size="sm" uniform variant="ghost"><Copy aria-hidden="true" size={16} /></Button>
         </div>
+        <details className="key-use-technical-details"><summary>技术详情</summary><dl className="data-list"><div><dt>group</dt><dd><code>{useGroup?.id || "-"}</code></dd></div><div><dt>platform</dt><dd><code>{useGroup?.platform || "-"}</code></dd></div></dl></details>
       </Modal>
     </section>
   );

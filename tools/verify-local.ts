@@ -41,6 +41,7 @@ export const localVerificationSteps = Object.freeze([
   { name: "Gateway usage browser tests", command: "npm", args: ["run", "test:browser:gateway-usage"] },
   { name: "Console owner read browser tests", command: "npm", args: ["run", "test:browser:console-owner-reads"] },
   { name: "Customer Announcement browser tests", command: "npm", args: ["run", "test:browser:customer-announcement"] },
+  { name: "Customer experience browser tests", command: "npm", args: ["run", "test:browser:customer-experience"] },
   { name: "Operator Account browser tests", command: "npm", args: ["run", "test:browser:operator-account"] },
   { name: "Operator Announcement browser tests", command: "npm", args: ["run", "test:browser:operator-announcement"] },
   { name: "Operator Resource Read browser tests", command: "npm", args: ["run", "test:browser:operator-resource-read"] },

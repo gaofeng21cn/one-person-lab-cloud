@@ -76,24 +76,6 @@ func TestCreateSessionEvictsOldestActiveSessionAtPerUserBound(t *testing.T) {
 	}
 }
 
-func TestCreateSupportMappingRejectsPerAccountOverflow(t *testing.T) {
-	store := newMemoryTableStore()
-	app, err := newControlPlaneAppWithStore(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for index := 0; index < 1000; index++ {
-		if err := store.SaveSupportMapping(context.Background(), map[string]any{
-			"id": fmt.Sprintf("support-%04d", index), "accountId": "acct-support-bound", "externalTicketId": fmt.Sprintf("EXT-%04d", index),
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := app.createSupportMapping(map[string]any{"accountId": "acct-support-bound", "externalTicketId": "EXT-OVERFLOW"}); err == nil || err.Error() != "support_mapping_limit_reached" {
-		t.Fatalf("overflow error = %v", err)
-	}
-}
-
 func TestWorkspaceProxyStripsPlatformCredentials(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "http://workspace.medopl.cn/w/ws-alpha/", nil)
 	if err != nil {

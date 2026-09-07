@@ -340,6 +340,14 @@ capability owner lookup. Artifact and review identifiers remain provenance
 columns for historical compatibility, while `review_policies` remains a
 historical table with no current writer, API, or migration/delete operation.
 
+Support has no current controller, route, HTTP client, application service,
+Store method, Ent schema or retention writer. The exact retired
+`/api/support/tickets` path returns `404` for every method instead of the SPA.
+Existing migrations, legacy tables/rows and generic audit evidence remain data
+custody only: fresh schema initialization omits the Support table, and startup
+or retention does not delete retained rows. This does not provide a compatible
+ticket API or justify restoring the customer affordance.
+
 All three services serialize startup migrations with one database-wide PostgreSQL
 advisory lock. A migration is journaled in `opl_schema_migrations` by service and
 version only after it succeeds. Completed hard cuts, backfills, Ent schema changes,

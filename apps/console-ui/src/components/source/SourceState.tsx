@@ -12,6 +12,8 @@ export interface SourceStateProps<T> {
   emptyTitle?: string;
   emptyDescription?: string;
   unavailableTitle?: string;
+  unavailableDescription?: string;
+  errorDescription?: string;
   onRetry?: () => void;
   children: (data: T) => ReactNode;
 }
@@ -22,19 +24,21 @@ export function SourceState<T>({
   emptyDescription = "当前没有记录。",
   emptyTitle = "暂无数据",
   error,
+  errorDescription,
   loading,
   onRetry,
   source,
+  unavailableDescription,
   unavailableTitle = "暂不可用"
 }: SourceStateProps<T>) {
   if (loading && !source) return <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取</div>;
 
   if (source?.status === "unavailable") {
-    return <Alert color="warning" indicator={<AlertCircle size={18} />} title={unavailableTitle} description={source.reasonCode ? `原因代码：${source.reasonCode}` : "来源未返回原因代码。"} actions={onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCw size={14} />重试</Button> : undefined} />;
+    return <Alert color="warning" indicator={<AlertCircle size={18} />} title={unavailableTitle} description={unavailableDescription ?? (source.reasonCode ? `原因代码：${source.reasonCode}` : "来源未返回原因代码。")} actions={onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCw size={14} />重试</Button> : undefined} />;
   }
 
   if (error) {
-    return <Alert color="danger" title="服务暂不可用" description={error} actions={onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCw size={14} />重试</Button> : undefined} />;
+    return <Alert color="danger" title="服务暂不可用" description={errorDescription ?? error} actions={onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCw size={14} />重试</Button> : undefined} />;
   }
 
   if (!source) return <div className="source-loading" aria-live="polite"><span className="spinner" />等待读取</div>;

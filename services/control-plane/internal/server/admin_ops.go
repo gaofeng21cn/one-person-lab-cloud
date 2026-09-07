@@ -36,7 +36,6 @@ func (app *controlPlaneServer) managementState(includeDeleted bool, computePools
 	defer app.mu.Unlock()
 	return map[string]any{
 		"users":                  sanitizedUserValues(app.userRecordSet(includeDeleted), includeDeleted),
-		"supportTickets":         rowsAsAnyFromMaps(app.listSupportMappings("")),
 		"accounts":               app.accountsLocked(""),
 		"packages":               packageList(computePools),
 		"computePools":           computePools,

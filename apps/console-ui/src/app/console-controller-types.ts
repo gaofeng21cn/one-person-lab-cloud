@@ -9,6 +9,7 @@ import type {
   GatewayEndpointDTO,
   GatewayKeyPageDTO,
   GatewayKeySecretDTO,
+  GatewayKeySummaryDTO,
   GatewayKeyUsagePageDTO,
   GatewayUsagePeriod,
   GatewayUsageSummaryDTO,
@@ -29,8 +30,6 @@ import type {
   PricingCatalogResponse,
   PricingPlan,
   SourceEnvelope,
-  CreateSupportTicketMappingRequest,
-  SupportTicketPageDTO,
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
@@ -43,6 +42,7 @@ import type {
   WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
+import type { WorkspaceLaunchRecoveryState } from "./workspace-launch-controller-model.ts";
 
 export interface RemoteState<T> {
   value: T | null;
@@ -108,7 +108,7 @@ export interface OperatorResourceReadController {
 export type AuthStatus = "public" | "checking" | "ready" | "error" | "logout_pending" | "logout_unconfirmed";
 export type BillingView = "terms" | "receipts";
 export type WorkspaceLaunchStep = "configure" | "confirm";
-export type GlobalSlide = "account" | "support" | "";
+export type GlobalSlide = "account" | "";
 
 export interface WorkspaceSecretController {
   credential: WorkspaceCredentialAccess | null;
@@ -151,6 +151,7 @@ export interface WorkspaceLaunchController {
   balanceSufficient: boolean | null;
   customerOwned: boolean;
   launchOperation: WorkspaceLaunchResponse | null;
+  launchRecoveryState: WorkspaceLaunchRecoveryState;
   launchPollIssue: "" | "error" | "timeout" | "readback";
   busy: boolean;
   reviewWorkspaceLaunch: () => void;
@@ -192,15 +193,6 @@ export interface WorkspaceBudgetController {
   update: (input: WorkspaceGatewayBudgetUpdateRequest) => Promise<boolean>;
 }
 
-export interface SupportController {
-  tickets: SupportTicketPageDTO | null;
-  loading: boolean;
-  error: string;
-  busy: boolean;
-  load: () => Promise<SupportTicketPageDTO | null>;
-  createMapping: (input: Omit<CreateSupportTicketMappingRequest, "accountId">) => Promise<boolean>;
-}
-
 export interface WalletAdjustmentController {
   operation: WalletAdjustmentOperationDTO | null;
   busy: boolean;
@@ -215,6 +207,11 @@ export interface GatewayUsageController {
   keys: RemoteState<SourceEnvelope<GatewayKeyPageDTO>>;
   usage: RemoteState<SourceEnvelope<GatewayKeyUsagePageDTO>>;
   summary: RemoteState<SourceEnvelope<GatewayUsageSummaryDTO>>;
+  selection: {
+    key: GatewayKeySummaryDTO | null;
+    status: "idle" | "ready" | "confirming" | "unavailable" | "missing";
+  };
+  keySearch: string;
   selectedKeyId: string;
   period: GatewayUsagePeriod;
   page: number;
@@ -222,6 +219,12 @@ export interface GatewayUsageController {
   selectKey: (keyId: string) => Promise<void>;
   selectPeriod: (period: GatewayUsagePeriod) => Promise<void>;
   changePage: (page: number) => Promise<void>;
+  searchKeys: (search: string) => Promise<void>;
+  changeKeyPage: (page: number) => Promise<void>;
+  retryKeys: () => Promise<void>;
+  cancelKeyQuery: () => void;
+  retrySummary: () => Promise<void>;
+  retryUsage: () => Promise<void>;
 }
 
 export interface BillingController {

@@ -25,7 +25,6 @@ import (
 	"opl-cloud/services/control-plane/ent/session"
 	"opl-cloud/services/control-plane/ent/storageattachment"
 	"opl-cloud/services/control-plane/ent/storagevolume"
-	"opl-cloud/services/control-plane/ent/supportticketmapping"
 	"opl-cloud/services/control-plane/ent/user"
 	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/ent/workspacesyncevent"
@@ -68,8 +67,6 @@ type Client struct {
 	StorageAttachment *StorageAttachmentClient
 	// StorageVolume is the client for interacting with the StorageVolume builders.
 	StorageVolume *StorageVolumeClient
-	// SupportTicketMapping is the client for interacting with the SupportTicketMapping builders.
-	SupportTicketMapping *SupportTicketMappingClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// Workspace is the client for interacting with the Workspace builders.
@@ -101,7 +98,6 @@ func (c *Client) init() {
 	c.Session = NewSessionClient(c.config)
 	c.StorageAttachment = NewStorageAttachmentClient(c.config)
 	c.StorageVolume = NewStorageVolumeClient(c.config)
-	c.SupportTicketMapping = NewSupportTicketMappingClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.Workspace = NewWorkspaceClient(c.config)
 	c.WorkspaceSyncEvent = NewWorkspaceSyncEventClient(c.config)
@@ -211,7 +207,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Session:                 NewSessionClient(cfg),
 		StorageAttachment:       NewStorageAttachmentClient(cfg),
 		StorageVolume:           NewStorageVolumeClient(cfg),
-		SupportTicketMapping:    NewSupportTicketMappingClient(cfg),
 		User:                    NewUserClient(cfg),
 		Workspace:               NewWorkspaceClient(cfg),
 		WorkspaceSyncEvent:      NewWorkspaceSyncEventClient(cfg),
@@ -248,7 +243,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Session:                 NewSessionClient(cfg),
 		StorageAttachment:       NewStorageAttachmentClient(cfg),
 		StorageVolume:           NewStorageVolumeClient(cfg),
-		SupportTicketMapping:    NewSupportTicketMappingClient(cfg),
 		User:                    NewUserClient(cfg),
 		Workspace:               NewWorkspaceClient(cfg),
 		WorkspaceSyncEvent:      NewWorkspaceSyncEventClient(cfg),
@@ -284,8 +278,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
 		c.ArchivedAdminAuditEvent, c.AuthAttempt, c.BillingReconciliation,
 		c.ComputeAllocation, c.ProductionE2ERecord, c.ProjectTaskSyncHead,
-		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume,
-		c.SupportTicketMapping, c.User, c.Workspace, c.WorkspaceSyncEvent,
+		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume, c.User,
+		c.Workspace, c.WorkspaceSyncEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -298,8 +292,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
 		c.ArchivedAdminAuditEvent, c.AuthAttempt, c.BillingReconciliation,
 		c.ComputeAllocation, c.ProductionE2ERecord, c.ProjectTaskSyncHead,
-		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume,
-		c.SupportTicketMapping, c.User, c.Workspace, c.WorkspaceSyncEvent,
+		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume, c.User,
+		c.Workspace, c.WorkspaceSyncEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -336,8 +330,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.StorageAttachment.mutate(ctx, m)
 	case *StorageVolumeMutation:
 		return c.StorageVolume.mutate(ctx, m)
-	case *SupportTicketMappingMutation:
-		return c.SupportTicketMapping.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *WorkspaceMutation:
@@ -2211,139 +2203,6 @@ func (c *StorageVolumeClient) mutate(ctx context.Context, m *StorageVolumeMutati
 	}
 }
 
-// SupportTicketMappingClient is a client for the SupportTicketMapping schema.
-type SupportTicketMappingClient struct {
-	config
-}
-
-// NewSupportTicketMappingClient returns a client for the SupportTicketMapping from the given config.
-func NewSupportTicketMappingClient(c config) *SupportTicketMappingClient {
-	return &SupportTicketMappingClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `supportticketmapping.Hooks(f(g(h())))`.
-func (c *SupportTicketMappingClient) Use(hooks ...Hook) {
-	c.hooks.SupportTicketMapping = append(c.hooks.SupportTicketMapping, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `supportticketmapping.Intercept(f(g(h())))`.
-func (c *SupportTicketMappingClient) Intercept(interceptors ...Interceptor) {
-	c.inters.SupportTicketMapping = append(c.inters.SupportTicketMapping, interceptors...)
-}
-
-// Create returns a builder for creating a SupportTicketMapping entity.
-func (c *SupportTicketMappingClient) Create() *SupportTicketMappingCreate {
-	mutation := newSupportTicketMappingMutation(c.config, OpCreate)
-	return &SupportTicketMappingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of SupportTicketMapping entities.
-func (c *SupportTicketMappingClient) CreateBulk(builders ...*SupportTicketMappingCreate) *SupportTicketMappingCreateBulk {
-	return &SupportTicketMappingCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *SupportTicketMappingClient) MapCreateBulk(slice any, setFunc func(*SupportTicketMappingCreate, int)) *SupportTicketMappingCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &SupportTicketMappingCreateBulk{err: fmt.Errorf("calling to SupportTicketMappingClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*SupportTicketMappingCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &SupportTicketMappingCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for SupportTicketMapping.
-func (c *SupportTicketMappingClient) Update() *SupportTicketMappingUpdate {
-	mutation := newSupportTicketMappingMutation(c.config, OpUpdate)
-	return &SupportTicketMappingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *SupportTicketMappingClient) UpdateOne(stm *SupportTicketMapping) *SupportTicketMappingUpdateOne {
-	mutation := newSupportTicketMappingMutation(c.config, OpUpdateOne, withSupportTicketMapping(stm))
-	return &SupportTicketMappingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *SupportTicketMappingClient) UpdateOneID(id string) *SupportTicketMappingUpdateOne {
-	mutation := newSupportTicketMappingMutation(c.config, OpUpdateOne, withSupportTicketMappingID(id))
-	return &SupportTicketMappingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for SupportTicketMapping.
-func (c *SupportTicketMappingClient) Delete() *SupportTicketMappingDelete {
-	mutation := newSupportTicketMappingMutation(c.config, OpDelete)
-	return &SupportTicketMappingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *SupportTicketMappingClient) DeleteOne(stm *SupportTicketMapping) *SupportTicketMappingDeleteOne {
-	return c.DeleteOneID(stm.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *SupportTicketMappingClient) DeleteOneID(id string) *SupportTicketMappingDeleteOne {
-	builder := c.Delete().Where(supportticketmapping.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &SupportTicketMappingDeleteOne{builder}
-}
-
-// Query returns a query builder for SupportTicketMapping.
-func (c *SupportTicketMappingClient) Query() *SupportTicketMappingQuery {
-	return &SupportTicketMappingQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeSupportTicketMapping},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a SupportTicketMapping entity by its id.
-func (c *SupportTicketMappingClient) Get(ctx context.Context, id string) (*SupportTicketMapping, error) {
-	return c.Query().Where(supportticketmapping.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *SupportTicketMappingClient) GetX(ctx context.Context, id string) *SupportTicketMapping {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *SupportTicketMappingClient) Hooks() []Hook {
-	return c.hooks.SupportTicketMapping
-}
-
-// Interceptors returns the client interceptors.
-func (c *SupportTicketMappingClient) Interceptors() []Interceptor {
-	return c.inters.SupportTicketMapping
-}
-
-func (c *SupportTicketMappingClient) mutate(ctx context.Context, m *SupportTicketMappingMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&SupportTicketMappingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&SupportTicketMappingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&SupportTicketMappingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&SupportTicketMappingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown SupportTicketMapping mutation op: %q", m.Op())
-	}
-}
-
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -2749,14 +2608,14 @@ type (
 		Account, AdminAuditEvent, Announcement, AnnouncementRead,
 		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
 		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
-		StorageAttachment, StorageVolume, SupportTicketMapping, User, Workspace,
+		StorageAttachment, StorageVolume, User, Workspace,
 		WorkspaceSyncEvent []ent.Hook
 	}
 	inters struct {
 		Account, AdminAuditEvent, Announcement, AnnouncementRead,
 		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
 		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
-		StorageAttachment, StorageVolume, SupportTicketMapping, User, Workspace,
+		StorageAttachment, StorageVolume, User, Workspace,
 		WorkspaceSyncEvent []ent.Interceptor
 	}
 )

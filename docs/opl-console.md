@@ -104,7 +104,7 @@ installed state, service state, and readiness facts that Console presents.
 ## Product Boundary
 
 Ordinary users ultimately use Console for account onboarding, balance and usage, Workspace
-creation and lifecycle, and support; they perform professional work in App or
+creation and lifecycle; they perform professional work in App or
 Workspace. Administrators use Console to decide who may use or publish which
 managed capability and under what budget or policy.
 Serve performs Agent Service lifecycle actions, Runway owns Invocation/Session

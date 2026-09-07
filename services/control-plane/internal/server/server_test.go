@@ -787,16 +787,6 @@ func TestCustomerOwnerCannotSelectAnotherAccount(t *testing.T) {
 	if readOtherRec.Code != http.StatusOK || strings.Contains(readOtherRec.Body.String(), "acct-beta") {
 		t.Fatalf("cross-account workspace list was not bound to the session account: status=%d body=%s", readOtherRec.Code, readOtherRec.Body.String())
 	}
-
-	mapOtherTicket := requestWithSession(t, server, alpha, http.MethodPost, "/api/support/tickets", `{"accountId":"acct-beta","externalTicketId":"ZAM-403","title":"wrong account"}`)
-	if mapOtherTicket.Code != http.StatusForbidden {
-		t.Fatalf("cross-account support mapping status = %d, want 403: %s", mapOtherTicket.Code, mapOtherTicket.Body.String())
-	}
-
-	mapOwnTicket := requestWithSession(t, server, alpha, http.MethodPost, "/api/support/tickets", `{"accountId":"acct-alpha","externalTicketId":"ZAM-200","title":"own account"}`)
-	if mapOwnTicket.Code != http.StatusCreated {
-		t.Fatalf("own-account support mapping status = %d, want 201: %s", mapOwnTicket.Code, mapOwnTicket.Body.String())
-	}
 }
 
 func TestBillingReconciliationAppendsAuditEvent(t *testing.T) {
@@ -1658,6 +1648,9 @@ func TestRetiredConsoleRoutesRemainConsoleScoped(t *testing.T) {
 		{http.MethodGet, "/api/workspaces/ws-alpha/backups"},
 		{http.MethodGet, "/api/gateway/keys/legacy/revoke"},
 		{http.MethodPost, "/api/workspaces"},
+		{http.MethodGet, "/api/support/tickets?scope=all"},
+		{http.MethodPost, "/api/support/tickets"},
+		{http.MethodPatch, "/api/support/tickets"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
@@ -2058,84 +2051,6 @@ func assertSessionUnauthorized(t *testing.T, server http.Handler, loginRec *http
 	}
 }
 
-func TestSupportTicketMappingRequiresExternalTicket(t *testing.T) {
-	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
-	req := httptest.NewRequest(http.MethodPost, "/api/support/tickets", bytes.NewBufferString(`{"accountId":"acct-alpha","title":"Need help"}`))
-	req.Header.Set("Content-Type", "application/json")
-	addAuth(req, tenantAdminSessionForTest(t, server))
-	rec := httptest.NewRecorder()
-
-	server.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "missing_external_ticket_id") {
-		t.Fatalf("status=%d body=%s, want missing external ticket id", rec.Code, rec.Body.String())
-	}
-}
-
-func TestSupportTicketMappingPersistsExternalContext(t *testing.T) {
-	path := t.TempDir() + "/control-plane-state.sqlite"
-	service := newTestService(fakeLedgerClient{}, &fakeFabricClient{})
-	server, err := NewPersistentServer(service, NewTestEntStateStore(t, path))
-	if err != nil {
-		t.Fatalf("create persistent server: %v", err)
-	}
-	session := tenantAdminSessionForTest(t, server)
-	body := `{"accountId":"acct-alpha","userId":"` + sessionUserIDForTest(t, server, session) + `","workspaceId":"ws-alpha","externalSystem":"zammad","externalTicketId":"ZAM-42","externalUrl":"https://support.example/tickets/42","resourceIds":["compute-alpha"],"operationId":"op-alpha","title":"Workspace failed","description":"provider timeout"}`
-	created := createResourceWithSession(t, server, session, http.MethodPost, "/api/support/tickets", body)
-	if !strings.HasPrefix(stringValue(created["id"]), "support-") || created["externalTicketId"] != "ZAM-42" || created["accountId"] != "acct-alpha" {
-		t.Fatalf("support mapping did not keep external context: %#v", created)
-	}
-
-	restarted, err := NewPersistentServer(service, NewTestEntStateStore(t, path))
-	if err != nil {
-		t.Fatalf("restart persistent server: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/api/support/tickets?scope=all", nil)
-	addSessionCookies(req, tenantAdminSessionForTest(t, restarted))
-	rec := httptest.NewRecorder()
-	restarted.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	var listed map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
-		t.Fatalf("decode support mappings: %v", err)
-	}
-	tickets := listed["tickets"].([]any)
-	if len(tickets) != 1 || tickets[0].(map[string]any)["externalTicketId"] != "ZAM-42" {
-		t.Fatalf("support mapping did not persist: %#v", tickets)
-	}
-}
-
-func TestSupportTicketMappingUsesServerOwnedFields(t *testing.T) {
-	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
-	session := tenantAdminSessionForTest(t, server)
-	userID := sessionUserIDForTest(t, server, session)
-	body := `{"accountId":"acct-alpha","userId":"usr-forged","externalTicketId":"ZAM-99","title":"forged metadata","status":"resolved","category":"billing","priority":"urgent"}`
-	created := createResourceWithSession(t, server, session, http.MethodPost, "/api/support/tickets", body)
-	if stringValue(created["userId"]) != userID || created["status"] != "external_open" || created["category"] != "Workspace" || created["priority"] != "normal" {
-		t.Fatalf("support mapping kept client-owned fields: %#v", created)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/support/tickets", nil)
-	addSessionCookies(req, session)
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	var listed map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
-		t.Fatal(err)
-	}
-	tickets := listed["tickets"].([]any)
-	if len(tickets) != 1 || stringValue(tickets[0].(map[string]any)["userId"]) != userID ||
-		tickets[0].(map[string]any)["status"] != "external_open" || tickets[0].(map[string]any)["category"] != "Workspace" ||
-		tickets[0].(map[string]any)["priority"] != "normal" {
-		t.Fatalf("persisted mapping kept client-owned fields: %#v", tickets)
-	}
-}
-
 func TestActiveConsoleAPIRoutesReachControlPlane(t *testing.T) {
 	server := NewServer(newTestService(fakeLedgerClient{}, &fakeFabricClient{}))
 	cases := []struct {
@@ -2151,7 +2066,6 @@ func TestActiveConsoleAPIRoutesReachControlPlane(t *testing.T) {
 		{http.MethodGet, "/api/production/readiness", ""},
 		{http.MethodGet, "/api/workspaces", ""},
 		{http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", ""},
-		{http.MethodGet, "/api/support/tickets", ""},
 		{http.MethodPost, "/api/auth/logout", `{}`},
 		{http.MethodPost, "/api/billing/reconciliation", `{"report":{"id":"recon-test","generatedAt":"2026-07-06T00:00:00Z"}}`},
 		{http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`},

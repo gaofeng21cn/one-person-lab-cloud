@@ -17,6 +17,7 @@ import {
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
+import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
 import type {
   AnnouncementDTO,
@@ -35,6 +36,10 @@ import { Badge, Button, Field, Modal, SegmentedControl, Select } from "../compon
 import { formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
 
 type BadgeTone = "danger" | "info" | "secondary" | "success" | "warning";
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled admin Console route: ${JSON.stringify(value)}`);
+}
 
 function sourceData<T>(source: SourceEnvelope<T> | null | undefined): T | null {
   return source?.available ? source.data : null;
@@ -262,7 +267,30 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
       </SourceState>
 
       <section className="panel" data-slide="A-OV-02">
-        <div className="panel-title"><div><h2>公告管理</h2></div><Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button></div>
+        <div className="panel-title"><div><h2>公告管理</h2></div><div className="table-actions"><Button onClick={() => controller.navigate("/admin/announcements")} size="sm" variant="outline">管理全部公告</Button><Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button></div></div>
+        <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">
+          {() => <AnnouncementList announcements={announcements} controller={announcementController} />}
+        </SourceState>
+      </section>
+      <AnnouncementDraftModal controller={announcementController} onClose={() => setDraftOpen(false)} open={draftOpen} />
+    </section>
+  );
+}
+
+function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
+  const [draftOpen, setDraftOpen] = useState(false);
+  const announcementController = controller.operatorAnnouncements;
+  const announcements = sourceData(announcementController.announcements.value)?.items || [];
+  return (
+    <section className="admin-dashboard" data-slide="A-ANN-01">
+      <section className="panel">
+        <div className="panel-title">
+          <div><h2>公告管理</h2><span>{announcements.length ? `${announcements.length} 条` : ""}</span></div>
+          <div className="table-actions">
+            <Button onClick={() => void announcementController.refresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button>
+            <Button color="primary" onClick={() => setDraftOpen(true)} size="sm"><Plus aria-hidden size={16} />新建草稿</Button>
+          </div>
+        </div>
         <SourceState empty={announcements.length === 0} emptyTitle="暂无公告" error={announcementController.announcements.error} loading={announcementController.announcements.loading} onRetry={() => void announcementController.refresh()} source={announcementController.announcements.value} unavailableTitle="公告暂不可用">
           {() => <AnnouncementList announcements={announcements} controller={announcementController} />}
         </SourceState>
@@ -431,7 +459,6 @@ function AccountDetailModal({ account, onClose }: { account: OperatorAccountDTO 
             <div><dt>Key 汇总</dt><dd><SourceValue source={account.keyCount}>{formatCount}</SourceValue></dd></div>
             <div><dt>API Usage</dt><dd><SourceValue source={account.usage}>{(data) => `今日 ${formatUsdMicros(data.todayActualCostUsdMicros)} · 累计 ${formatUsdMicros(data.totalActualCostUsdMicros)}`}</SourceValue></dd></div>
             <div><dt>Workspace 汇总</dt><dd><SourceValue source={account.workspaceCount}>{formatCount}</SourceValue></dd></div>
-            <div><dt>Support 工单映射</dt><dd>暂不可用</dd></div>
           </dl></section>
           <section className="data-section account-source-detail"><h2>来源状态与读回时间</h2><AccountSourceSummary account={account} /></section>
         </div>
@@ -828,10 +855,21 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
   );
 }
 
-export function AdminPages({ controller }: { controller: ConsoleController }) {
-  if (controller.path === "/admin/accounts") return <AccountsPage controller={controller} />;
-  if (controller.path === "/admin/billing") return <ReconciliationPage controller={controller} />;
-  if (controller.path === "/admin/resources") return <ResourcesPage controller={controller.operatorResourceRead} release={controller.workspaceImageRelease} replacement={controller.workspaceRuntimeImageReplacement} />;
-  if (controller.path === "/admin/system") return <SystemPage controller={controller} />;
-  return <OverviewPage controller={controller} />;
+export function AdminPages({ controller, route }: { controller: ConsoleController; route: AdminConsoleRoute }) {
+  switch (route.kind) {
+    case "admin.overview":
+      return <OverviewPage controller={controller} />;
+    case "admin.accounts":
+      return <AccountsPage controller={controller} />;
+    case "admin.billing":
+      return <ReconciliationPage controller={controller} />;
+    case "admin.resources":
+      return <ResourcesPage controller={controller.operatorResourceRead} release={controller.workspaceImageRelease} replacement={controller.workspaceRuntimeImageReplacement} />;
+    case "admin.system":
+      return <SystemPage controller={controller} />;
+    case "admin.announcements":
+      return <AnnouncementsPage controller={controller} />;
+    default:
+      return assertNever(route);
+  }
 }

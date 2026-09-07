@@ -286,27 +286,6 @@ func announcementReadFields() []ent.Field {
 	)
 }
 
-func supportTicketMappingFields() []ent.Field {
-	return append(baseFields(),
-		field.String("account_id").Default(""),
-		field.String("user_id").Default(""),
-		field.String("workspace_id").Default(""),
-		field.String("external_system").Default(""),
-		field.String("external_ticket_id").Default(""),
-		field.String("external_url").Default(""),
-		field.String("operation_id").Default(""),
-		field.String("resource_id").Default(""),
-		field.String("resource_kind").Default(""),
-		field.String("title").Default(""),
-		field.String("category").Default(""),
-		field.String("priority").Default(""),
-		field.String("status").Default(""),
-		field.String("source").Default(""),
-		field.String("url").Default(""),
-		field.String("reason").Default(""),
-	)
-}
-
 func productionE2ERecordFields() []ent.Field {
 	return append(baseFields(),
 		field.String("account_id").Default(""),
@@ -350,9 +329,6 @@ func (Announcement) Annotations() []schema.Annotation {
 }
 func (AnnouncementRead) Annotations() []schema.Annotation {
 	return table("control_plane_announcement_reads")
-}
-func (SupportTicketMapping) Annotations() []schema.Annotation {
-	return table("control_plane_support_ticket_mappings")
 }
 func (ProductionE2ERecord) Annotations() []schema.Annotation {
 	return table("control_plane_production_e2e_records")

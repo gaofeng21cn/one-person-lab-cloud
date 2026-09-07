@@ -8,7 +8,8 @@ It follows the development framework from `one-person-lab`. The short
 
 - Console UI and its runtime route registry.
 - Control Plane Sessions, account mapping, permissions, named product DTOs,
-  Workspace state machines, purchase recovery, support, and product projections.
+  Workspace state machines, purchase recovery, and product projections. Historical
+  Support mapping custody remains here; the customer Support capability is retired.
 - Fabric resource catalog, provider-neutral resource operations, attachments,
   runtime operations, provider evidence, and provider adapters, including the
   explicitly selected Local-Docker and Tencent/TKE paths. Historical migrations

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { currentSession, login as loginRequest, logoutAndConfirm } from "../api/auth-api.ts";
 import {
@@ -13,8 +13,8 @@ import type {
 import {
   getWorkspaceGatewayBudget
 } from "../api/workspaces-api.ts";
-import { defaultAuthenticatedRoute, needsSession, workspaceIdFromPath, workspacePage } from "../console-model.ts";
-import { isKnownConsoleRoute, isSensitiveConsoleRoute, useConsoleRouter } from "./console-router.ts";
+import { defaultAuthenticatedRoute } from "../console-model.ts";
+import { parseConsoleRoute, useConsoleRouter, type ConsoleRoute } from "./console-router.ts";
 import type {
   AuthStatus,
   BillingController,
@@ -29,7 +29,6 @@ import type {
   OperatorAnnouncementController,
   OperatorResourceReadController,
   RemoteState,
-  SupportController,
   WalletAdjustmentController,
   WorkspaceBudgetController,
   WorkspaceDeleteController,
@@ -59,7 +58,6 @@ import { useWorkspaceRenewalController } from "./use-workspace-renewal-controlle
 import { useWorkspaceRuntimeImageReplacementController } from "./use-workspace-runtime-image-replacement-controller.ts";
 import { useWorkspaceSecretController } from "./use-workspace-secret-controller.ts";
 import { useWalletAdjustmentController } from "./use-wallet-adjustment-controller.ts";
-import { useSupportController } from "./use-support-controller.ts";
 
 const emptyRemote = <T,>(): RemoteState<T> => ({ value: null, loading: false, error: "" });
 
@@ -104,6 +102,24 @@ export function friendlyError(error: unknown) {
   return messages[raw] || (raw.includes("failed") || raw.includes("_") ? "请求失败，请重试" : raw);
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled Console route: ${JSON.stringify(value)}`);
+}
+
+function authenticatedRedirect(requested: string | null, isOperator: boolean) {
+  if (!requested?.startsWith("/") || requested.startsWith("//")) return "";
+  try {
+    const redirectUrl = new URL(requested, window.location.origin);
+    const requestedRoute = redirectUrl.origin === window.location.origin ? parseConsoleRoute(redirectUrl.pathname) : null;
+    return requestedRoute?.requiresSession === true
+      && (requestedRoute.surface === "customer" || isOperator)
+      ? requested
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function apiErrorCode(error: unknown) {
   const payload = error && typeof error === "object" && "payload" in error
     ? (error as { payload?: unknown }).payload
@@ -117,9 +133,11 @@ function mutationError(error: unknown) {
 }
 
 export function useConsoleController() {
-  const { path, navigate } = useConsoleRouter();
+  const { path, route, navigate } = useConsoleRouter();
+  const currentRouteRef = useRef<ConsoleRoute | null>(route);
+  currentRouteRef.current = route;
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(needsSession(path) ? "checking" : "public");
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(route?.requiresSession ? "checking" : "public");
   const [authError, setAuthError] = useState("");
   const [sources, setSources] = useState<ConsoleSources>(initialSources);
   const [toast, setToast] = useState<{ text: string; tone: "good" | "danger" }>({ text: "", tone: "good" });
@@ -155,7 +173,6 @@ export function useConsoleController() {
 
   const resetConsoleState = () => {
     workspaceSecretCapability.reset();
-    supportCapability.reset();
     setSources(initialSources());
     setGlobalSlide("");
     workspaceLaunchCapability.reset();
@@ -216,21 +233,21 @@ export function useConsoleController() {
     };
   };
 
-  const activeWorkspaceId = workspaceIdFromPath(path);
-  const gatewayAccountReadScope: GatewayAccountReadRouteScope = path === "/console" || path === "/console/overview"
+  const activeWorkspaceId = route?.kind === "customer.workspace-detail" ? route.workspaceId : "";
+  const gatewayAccountReadScope: GatewayAccountReadRouteScope = route?.kind === "customer.overview"
     ? "overview"
-    : path === "/console/workspaces/new"
+    : route?.kind === "customer.workspace-new"
       ? "workspace_launch"
-      : path === "/console/api"
+      : route?.kind === "customer.api.overview"
         ? "api_overview"
-        : path === "/console/api/keys" ? "keys" : "inactive";
-  const customerWorkspaceReadScope: CustomerWorkspaceRouteScope = path === "/console" || path === "/console/overview"
+        : route?.kind === "customer.api.keys" ? "keys" : "inactive";
+  const customerWorkspaceReadScope: CustomerWorkspaceRouteScope = route?.kind === "customer.overview"
     ? { kind: "overview" }
-    : path === "/console/workspaces"
+    : route?.kind === "customer.workspaces"
       ? { kind: "list" }
-      : workspacePage(path) === "detail"
+      : route?.kind === "customer.workspace-detail"
         ? { kind: "detail", workspaceId: activeWorkspaceId }
-        : path === "/console/billing" ? { kind: "terms" } : { kind: "inactive" };
+        : route?.kind === "customer.billing" ? { kind: "terms" } : { kind: "inactive" };
 
   const gatewayAccountReadCapability = useGatewayAccountReadController({
     scope: gatewayAccountReadScope,
@@ -322,7 +339,7 @@ export function useConsoleController() {
   const workspaceBudget: WorkspaceBudgetController = workspaceBudgetCapability;
 
   const operatorAccountCapability = useOperatorAccountController({
-    active: path === "/admin/accounts",
+    active: route?.kind === "admin.accounts",
     currentSession: () => sessionRef.current,
     flash,
     friendlyError,
@@ -332,9 +349,9 @@ export function useConsoleController() {
   const operatorAccounts: OperatorAccountController = operatorAccountCapability;
 
   const customerAnnouncementCapability = useCustomerAnnouncementController({
-    scope: path === "/console" || path === "/console/overview"
+    scope: route?.kind === "customer.overview"
       ? "overview"
-      : path === "/console/announcements" ? "list" : "",
+      : route?.kind === "customer.announcements" ? "list" : "",
     currentSession: () => sessionRef.current,
     flash,
     friendlyError,
@@ -343,7 +360,7 @@ export function useConsoleController() {
   const customerAnnouncements: CustomerAnnouncementController = customerAnnouncementCapability;
 
   const operatorAnnouncementCapability = useOperatorAnnouncementController({
-    active: path === "/admin" || path === "/admin/overview" || path === "/admin/announcements",
+    active: route?.kind === "admin.overview" || route?.kind === "admin.announcements",
     currentSession: () => sessionRef.current,
     flash,
     friendlyError,
@@ -353,7 +370,7 @@ export function useConsoleController() {
   const operatorAnnouncements: OperatorAnnouncementController = operatorAnnouncementCapability;
 
   const operatorResourceReadCapability = useOperatorResourceReadController({
-    active: path === "/admin/resources",
+    active: route?.kind === "admin.resources",
     currentSession: () => sessionRef.current,
     friendlyError,
     unavailableSource
@@ -369,15 +386,6 @@ export function useConsoleController() {
     mutationError
   });
   const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
-
-  const supportCapability = useSupportController({
-    session,
-    currentMutationRequest,
-    flash,
-    friendlyError,
-    mutationError
-  });
-  const support: SupportController = supportCapability;
 
   const workspaceImageReleaseCapability = useWorkspaceImageReleaseController({
     session,
@@ -404,9 +412,9 @@ export function useConsoleController() {
   const workspaceRuntimeImageReplacement: WorkspaceRuntimeImageReplacementController = workspaceRuntimeImageReplacementCapability;
 
   const billingCapability = useBillingController({
-    route: path === "/console" || path === "/console/overview"
+    route: route?.kind === "customer.overview"
       ? "overview"
-      : path === "/console/billing" ? "billing" : "",
+      : route?.kind === "customer.billing" ? "billing" : "",
     currentSession: () => sessionRef.current,
     friendlyError,
     unavailableSource
@@ -414,7 +422,7 @@ export function useConsoleController() {
   const billing: BillingController = billingCapability;
 
   const gatewayUsageCapability = useGatewayUsageController({
-    active: path === "/console/api/usage",
+    active: route?.kind === "customer.api.usage",
     currentSession: () => sessionRef.current,
     friendlyError,
     unavailableSource
@@ -423,9 +431,13 @@ export function useConsoleController() {
 
   const loadWorkspaceAccess = async (generation: number, activeSession: AuthSession, workspaceId: string) => {
     const workspaceBudgetGeneration = ++workspaceBudgetRequestGeneration.current;
-    const budgetReadStillCurrent = () => isRequestCurrent(generation, activeSession.user.id)
-      && workspaceBudgetGeneration === workspaceBudgetRequestGeneration.current
-      && workspaceIdFromPath(window.location.pathname) === workspaceId;
+    const budgetReadStillCurrent = () => {
+      const currentRoute = currentRouteRef.current;
+      return isRequestCurrent(generation, activeSession.user.id)
+        && workspaceBudgetGeneration === workspaceBudgetRequestGeneration.current
+        && currentRoute?.kind === "customer.workspace-detail"
+        && currentRoute.workspaceId === workspaceId;
+    };
     updateSource("workspaceBudget", { value: null, loading: false, error: "" });
     const detailRead = customerWorkspaceReadCapability.load();
     const runtimeRead = fabricRuntimeReadCapability.load();
@@ -478,74 +490,70 @@ export function useConsoleController() {
     }
   };
 
-  const loadRoute = async (generation: number, activeSession: AuthSession, routePath: string) => {
-    if (routePath === "/console" || routePath === "/console/overview") {
-      await Promise.all([customerWorkspaceReadCapability.load(), gatewayAccountReadCapability.load(), billingCapability.loadOverview(), customerAnnouncementCapability.load()]);
-      return;
+  const loadRoute = async (generation: number, activeSession: AuthSession, activeRoute: ConsoleRoute) => {
+    switch (activeRoute.kind) {
+      case "public.home":
+      case "public.login":
+      case "public.forbidden":
+        return;
+      case "customer.overview":
+        await Promise.all([customerWorkspaceReadCapability.load(), gatewayAccountReadCapability.load(), billingCapability.loadOverview(), customerAnnouncementCapability.load()]);
+        return;
+      case "customer.workspaces":
+        await Promise.all([customerWorkspaceReadCapability.load(), workspaceLaunchCapability.recover(generation, activeSession)]);
+        return;
+      case "customer.workspace-new":
+        await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
+        return;
+      case "customer.workspace-detail":
+        await loadWorkspaceAccess(generation, activeSession, activeRoute.workspaceId);
+        return;
+      case "customer.api.overview":
+        await gatewayAccountReadCapability.load();
+        return;
+      case "customer.api.usage":
+        await gatewayUsageCapability.load();
+        return;
+      case "customer.api.keys":
+        await gatewayAccountReadCapability.load();
+        return;
+      case "customer.billing":
+        await Promise.all([customerWorkspaceReadCapability.load(), billingCapability.loadBilling()]);
+        return;
+      case "customer.announcements":
+        await customerAnnouncementCapability.load();
+        return;
+      case "admin.overview":
+        await Promise.all([loadOperatorOverview(generation, activeSession), operatorAnnouncementCapability.load()]);
+        return;
+      case "admin.accounts":
+        await operatorAccountCapability.load();
+        return;
+      case "admin.billing":
+        await loadOperatorReconciliation(generation, activeSession);
+        return;
+      case "admin.resources":
+        await operatorResourceReadCapability.load();
+        return;
+      case "admin.system":
+        await loadOperatorHealth(generation, activeSession);
+        return;
+      case "admin.announcements":
+        await operatorAnnouncementCapability.load();
+        return;
+      default:
+        assertNever(activeRoute);
     }
-    if (routePath === "/console/workspaces") {
-      await Promise.all([customerWorkspaceReadCapability.load(), workspaceLaunchCapability.recover(generation, activeSession)]);
-      return;
-    }
-    if (routePath === "/console/workspaces/new") {
-      await Promise.all([gatewayAccountReadCapability.load(), workspaceLaunchCapability.loadCatalog(generation, activeSession), workspaceLaunchCapability.recover(generation, activeSession)]);
-      return;
-    }
-    if (workspacePage(routePath) === "detail") {
-      await loadWorkspaceAccess(generation, activeSession, workspaceIdFromPath(routePath));
-      return;
-    }
-    if (routePath === "/console/api") {
-      await gatewayAccountReadCapability.load();
-      return;
-    }
-    if (routePath === "/console/api/usage") {
-      await gatewayUsageCapability.load();
-      return;
-    }
-    if (routePath === "/console/api/keys") {
-      await gatewayAccountReadCapability.load();
-      return;
-    }
-    if (routePath === "/console/billing") {
-      await Promise.all([customerWorkspaceReadCapability.load(), billingCapability.loadBilling()]);
-      return;
-    }
-    if (routePath === "/console/announcements") {
-      await customerAnnouncementCapability.load();
-      return;
-    }
-    if (routePath === "/admin" || routePath === "/admin/overview") {
-      await Promise.all([loadOperatorOverview(generation, activeSession), operatorAnnouncementCapability.load()]);
-      return;
-    }
-    if (routePath === "/admin/accounts") {
-      await operatorAccountCapability.load();
-      return;
-    }
-    if (routePath === "/admin/billing") {
-      await loadOperatorReconciliation(generation, activeSession);
-      return;
-    }
-    if (routePath === "/admin/resources") {
-      await operatorResourceReadCapability.load();
-      return;
-    }
-    if (routePath === "/admin/announcements") {
-      await operatorAnnouncementCapability.load();
-      return;
-    }
-    if (routePath === "/admin/system") await loadOperatorHealth(generation, activeSession);
   };
 
   useEffect(() => {
-    if (path !== "/login") invalidateLoginAttempt();
+    if (route?.kind !== "public.login") invalidateLoginAttempt();
     const generation = ++requestGeneration.current;
     workspaceSecretCapability.clear();
     setSidebarOpen(false);
     setGlobalSlide("");
     if (logoutState.current !== "idle") return;
-    if (!needsSession(path)) {
+    if (!route?.requiresSession) {
       setAuthStatus("public");
       setAuthError("");
       return;
@@ -565,12 +573,12 @@ export function useConsoleController() {
           sessionRef.current = activeSession;
           setSession(activeSession);
         }
-        if (path.startsWith("/admin") && activeSession.isOperator !== true) {
+        if (route.surface === "admin" && activeSession.isOperator !== true) {
           navigate("/403");
           return;
         }
         setAuthStatus("ready");
-        if (isKnownConsoleRoute(path)) await loadRoute(generation, activeSession, path);
+        await loadRoute(generation, activeSession, route);
       } catch (error) {
         if (generation === requestGeneration.current) {
           setAuthStatus("error");
@@ -579,9 +587,6 @@ export function useConsoleController() {
       }
     };
     void run();
-    return () => {
-      if (path === "/login") invalidateLoginAttempt();
-    };
   }, [path]);
 
   useEffect(() => () => {
@@ -602,12 +607,11 @@ export function useConsoleController() {
     setAuthStatus("checking");
     try {
       const next = await loginRequest({ email, password }, abortController.signal);
-      if (attempt !== loginAttemptGeneration.current || abortController.signal.aborted || logoutState.current !== "idle" || path !== "/login") return;
+      if (attempt !== loginAttemptGeneration.current || abortController.signal.aborted || logoutState.current !== "idle" || currentRouteRef.current?.kind !== "public.login") return;
       replaceSession(next);
       setAuthStatus("ready");
       const requested = new URLSearchParams(window.location.search).get("redirect");
-      const allowed = requested?.startsWith("/console") || (next.isOperator && requested?.startsWith("/admin"));
-      navigate(allowed && requested ? requested : defaultAuthenticatedRoute(next.isOperator));
+      navigate(authenticatedRedirect(requested, next.isOperator === true) || defaultAuthenticatedRoute(next.isOperator));
     } catch (error) {
       if (attempt !== loginAttemptGeneration.current || abortController.signal.aborted) return;
       setAuthStatus("public");
@@ -652,10 +656,10 @@ export function useConsoleController() {
   };
 
   const refreshCurrentPage = async () => {
-    if (!session) return;
+    if (!session || !route) return;
     const generation = ++requestGeneration.current;
     workspaceSecretCapability.clear();
-    await loadRoute(generation, session, path);
+    await loadRoute(generation, session, route);
   };
 
   const copyText = async (value: string | undefined, message: string) => {
@@ -668,26 +672,13 @@ export function useConsoleController() {
     }
   };
 
-  const isAdminRoute = path === "/admin" || path.startsWith("/admin/");
-  const isKnownRoute = isKnownConsoleRoute(path);
-
-  const pageTitle = useMemo(() => {
-    if (path === "/console" || path === "/console/overview") return "概览";
-    if (path.startsWith("/console/workspaces")) return "Workspace";
-    if (path.startsWith("/console/api")) return "API 服务";
-    if (path === "/console/billing") return "账单";
-    if (path === "/console/announcements") return "公告";
-    if (path === "/admin" || path === "/admin/overview") return "运维概览";
-    if (path === "/admin/accounts") return "客户与计费账户";
-    if (path === "/admin/billing") return "计费复核";
-    if (path === "/admin/resources") return "资源状态";
-    if (path === "/admin/system") return "系统状态";
-    if (path === "/admin/announcements") return "公告管理";
-    return "页面不存在";
-  }, [path]);
+  const isAdminRoute = route?.surface === "admin";
+  const isKnownRoute = route !== null;
+  const pageTitle = route?.title ?? "页面不存在";
 
   return {
     path,
+    route,
     navigate,
     session,
     authStatus,
@@ -697,14 +688,11 @@ export function useConsoleController() {
     pageTitle,
     isAdminRoute,
     isKnownRoute,
-    isSensitiveRoute: isSensitiveConsoleRoute(path),
+    isSensitiveRoute: route?.sensitive ?? false,
     sidebarOpen,
     setSidebarOpen,
     globalSlide,
-    setGlobalSlide: (slide: GlobalSlide) => {
-      setGlobalSlide(slide);
-      if (slide === "support") void support.load();
-    },
+    setGlobalSlide: (slide: GlobalSlide) => setGlobalSlide(slide),
     submitLogin,
     signOut,
     refreshCurrentPage,
@@ -718,7 +706,6 @@ export function useConsoleController() {
     workspaceRenewalBusy: workspaceRenewal.busy,
     workspaceRenewalIssue: workspaceRenewal.issue,
     updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
-    support,
     workspaceSecrets,
     workspaceBudgetBusy: workspaceBudget.busy,
     updateWorkspaceBudget: workspaceBudget.update,

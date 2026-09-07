@@ -22,7 +22,6 @@ type memoryTableStore struct {
 	auditEvents       []map[string]any
 	announcements     controlPlaneRecordSet
 	announcementReads controlPlaneRecordSet
-	support           controlPlaneRecordSet
 	runtimeOps        []map[string]any
 	productionE2E     controlPlaneRecordSet
 	reconciliation    map[string]any
@@ -44,7 +43,6 @@ func newMemoryTableStore() *memoryTableStore {
 		workspaces:        controlPlaneRecordSet{},
 		announcements:     controlPlaneRecordSet{},
 		announcementReads: controlPlaneRecordSet{},
-		support:           controlPlaneRecordSet{},
 		productionE2E:     controlPlaneRecordSet{},
 		reconciliations:   controlPlaneRecordSet{},
 	}
@@ -1000,39 +998,6 @@ func (s *memoryTableStore) MarkAnnouncementRead(_ context.Context, announcementI
 	}
 	s.announcementReads[id] = row
 	return cloneMap(row), nil
-}
-
-func (s *memoryTableStore) ListSupportMappings(_ context.Context, accountID string) ([]map[string]any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return filteredRecords(s.support, accountID)
-}
-
-func (s *memoryTableStore) CreateSupportMapping(_ context.Context, row map[string]any, limit int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	id := stringValue(row["id"])
-	accountID := stringValue(row["accountId"])
-	if _, exists := s.support[id]; !exists {
-		count := 0
-		for _, existing := range s.support {
-			if stringValue(existing["accountId"]) == accountID {
-				count++
-			}
-		}
-		if count >= limit {
-			return errors.New("support_mapping_limit_reached")
-		}
-	}
-	s.support[id] = cloneMap(row)
-	return nil
-}
-
-func (s *memoryTableStore) SaveSupportMapping(_ context.Context, row map[string]any) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.support[stringValue(row["id"])] = cloneMap(row)
-	return nil
 }
 
 func (s *memoryTableStore) ListRuntimeOperations(_ context.Context) ([]map[string]any, error) {

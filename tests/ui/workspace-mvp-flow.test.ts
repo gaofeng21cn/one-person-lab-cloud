@@ -10,6 +10,11 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 
+async function openAdvancedSettings(page: import("playwright").Page) {
+  const details = page.locator("details.workspace-advanced-details");
+  if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -82,6 +87,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await page.waitForURL(/\/console\/overview$/);
     await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+    await openAdvancedSettings(page);
 
     const deleteResponse: WorkspaceDeleteResponse = {
       workspaceId: "ws-1",
@@ -116,18 +122,19 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     });
 
     page.once("dialog", (dialog) => { void dialog.accept(); });
-    const firstDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
+    const firstDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     await firstDelete.click();
     await deleteHeld;
     assert.equal(await firstDelete.getAttribute("aria-busy"), "true");
 
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
     await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).click();
     await page.waitForURL(/\/console\/workspaces\/ws-2$/);
     await page.getByRole("heading", { name: "Second Workspace", exact: true }).waitFor({ state: "visible" });
+    await openAdvancedSettings(page);
 
-    const secondDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
+    const secondDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     assert.equal(await secondDelete.getAttribute("aria-busy"), null);
     assert.equal(await secondDelete.isDisabled(), false);
     const readsBeforeRelease = workspaceListReads;
@@ -149,14 +156,15 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     assert.equal(await page.getByText("Workspace 已删除", { exact: true }).count(), 0);
     assert.equal(await page.getByText("删除结果尚未获得权威回读确认", { exact: true }).count(), 0);
 
-    await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
     await page.waitForURL(/\/console\/workspaces$/);
     await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).click();
     await page.waitForURL(/\/console\/workspaces\/ws-1$/);
     await page.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
+    await openAdvancedSettings(page);
 
     page.once("dialog", (dialog) => { void dialog.accept(); });
-    const retryDelete = page.getByRole("button", { name: "删除 Workspace", exact: true });
+    const retryDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     assert.equal(await retryDelete.getAttribute("aria-busy"), null);
     assert.equal(await retryDelete.isDisabled(), false);
     await retryDelete.click();

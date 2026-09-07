@@ -32,6 +32,16 @@ type SecretOperation = "" | "workspace" | "gateway-key";
 
 const emptyProjection = (): WorkspaceSecretProjection => ({ apiKey: null, workspace: null });
 
+function secretErrorMessage(error: unknown, friendlyError: (error: unknown) => string) {
+  const code = String(error && typeof error === "object" && "message" in error ? error.message : error || "");
+  switch (code) {
+    case "workspace_credentials_unavailable":
+      return "登录凭据暂不可用";
+    default:
+      return friendlyError(error);
+  }
+}
+
 export function useWorkspaceSecretController({
   session,
   workspace,
@@ -143,7 +153,7 @@ export function useWorkspaceSecretController({
       armTimeout();
     } catch (error) {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
-        flash(friendlyError(error), "danger");
+        flash(secretErrorMessage(error, friendlyError), "danger");
       }
     } finally {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setOperation("");
@@ -173,7 +183,7 @@ export function useWorkspaceSecretController({
       armTimeout();
     } catch (error) {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
-        flash(friendlyError(error), "danger");
+        flash(secretErrorMessage(error, friendlyError), "danger");
       }
     } finally {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setOperation("");
@@ -205,11 +215,11 @@ export function useWorkspaceSecretController({
       rotationIntent.current = null;
       setProjection(accepted);
       armTimeout();
-      flash("Workspace 凭证已轮换");
+      flash("登录密码已轮换");
       await refreshWorkspaceDetail(workspaceId);
     } catch (error) {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
-        flash(mutationError(error), "danger");
+        flash(secretErrorMessage(error, mutationError), "danger");
       }
     } finally {
       if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setOperation("");
@@ -236,7 +246,7 @@ export function useWorkspaceSecretController({
     revealWorkspacePassword,
     revealWorkspaceKey,
     rotateWorkspacePassword,
-    copyWorkspacePassword: () => copy(projection.workspace?.password, "Workspace 密码已复制"),
-    copyWorkspaceKey: () => copy(projection.apiKey?.value, "Workspace Key 已复制")
+    copyWorkspacePassword: () => copy(projection.workspace?.password, "登录密码已复制"),
+    copyWorkspaceKey: () => copy(projection.apiKey?.value, "API 密钥已复制")
   };
 }

@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { BrowserContext, Page } from "playwright";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = "2026-07-19T12:00:00Z";
@@ -17,6 +18,8 @@ const WORKSPACE_KEYS = Object.freeze({
   "19": "sk-fixture-second-workspace-key"
 });
 const GENERAL_KEY = "sk-fixture-general-key";
+const WORKSPACE_IMAGE_DIGEST = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const WORKSPACE_IMAGE = `registry.example.invalid/opl/workspace@${WORKSPACE_IMAGE_DIGEST}`;
 const OPERATOR_PAGE_READS = new Set([
   "/api/operator/overview",
   "/api/operator/accounts",
@@ -151,7 +154,7 @@ function billingReceipt() {
 
 function pendingWorkspaceLaunch() {
   return {
-    operationId: "launch-fixture-pending", status: "preparing", phase: "runtime_starting",
+    operationId: "launch-fixture-pending", status: "pending", phase: "runtime",
     accountId: "acct-1", name: "Fixture pending Workspace", packageId: "basic", sizeGb: 10,
     autoRenew: false, priceVersion: "pilot-usd-2026-07-v1", currency: "USD",
     totalChargeUsdMicros: 52_580_000, createdAt: NOW, updatedAt: NOW
@@ -229,24 +232,22 @@ export function createConsoleFixtureState({ faultInjection = true, seedDemoData 
     announcementCreateWriteResults: new Map(),
     announcementPublishWriteResults: new Map(),
     announcementWithdrawWriteResults: new Map(),
-    supportWriteResults: new Map(),
     launches: [],
     workspaces: [workspace(), workspace("ws-2")],
     workspacePasswords: new Map(Object.entries(WORKSPACE_PASSWORDS)),
     workspaceCredentialVersions: new Map(Object.keys(WORKSPACE_PASSWORDS).map((workspaceId) => [workspaceId, 1])),
     announcements: seedDemoData ? [demoAnnouncement()] : [],
-    supportTickets: [],
     basicPlanAvailable: true,
     faultInjection,
     operatorAccounts: [operatorAccount("acct-1", "active"), operatorAccount("acct-2", "disabled")],
     gatewayWrites: new Set(), walletWrites: new Set(), lostGatewayResponses: new Set(), lostWalletResponses: new Set(),
     workspaceLaunchWrites: new Set(), operatorProvisionWrites: new Set(), announcementCreateWrites: new Set(),
-    announcementPublishWrites: new Set(), announcementWithdrawWrites: new Set(), supportWrites: new Set(),
+    announcementPublishWrites: new Set(), announcementWithdrawWrites: new Set(),
     workspaceLaunchAttempts: new Map(), operatorProvisionAttempts: new Map(), announcementCreateAttempts: new Map(),
-    announcementPublishAttempts: new Map(), announcementWithdrawAttempts: new Map(), supportAttempts: new Map(),
+    announcementPublishAttempts: new Map(), announcementWithdrawAttempts: new Map(),
     lostWorkspaceLaunchResponses: new Set(), lostOperatorProvisionResponses: new Set(), lostAnnouncementCreateResponses: new Set(),
-    lostAnnouncementPublishResponses: new Set(), lostAnnouncementWithdrawResponses: new Set(), lostSupportResponses: new Set(),
-    workspaceLaunchReadbacks: new Set(), operatorProvisionReadbacks: new Set(), announcementReadbackStatuses: new Map(), supportReadbacks: new Set(),
+    lostAnnouncementPublishResponses: new Set(), lostAnnouncementWithdrawResponses: new Set(),
+    workspaceLaunchReadbacks: new Set(), operatorProvisionReadbacks: new Set(), announcementReadbackStatuses: new Map(),
     operatorDisableWrites: new Set(),
     gatewayMutationWrites: new Set(), gatewayActions: [], revealCalls: new Map(), emptyGatewayReadbacks: 0,
     runtimeReads: new Map(), workspaceSecretReads: new Map(), workspacePageReads: [],
@@ -518,38 +519,6 @@ export async function apiFixture(route, state, session = state) {
       ? fulfillJson(route, source(billingReceipt(), "ledger"))
       : fulfillJson(route, { error: "receipt_not_found" }, 404);
   }
-  if (path === "/api/support/tickets" && method === "GET") {
-    const tickets = state.supportTickets.filter((item) => item.accountId === session.accountId);
-    for (const ticketId of state.supportWriteResults.values()) {
-      if (tickets.some((ticket) => ticket.id === ticketId)) state.supportReadbacks.add(ticketId);
-    }
-    return fulfillJson(route, { tickets });
-  }
-  if (path === "/api/support/tickets" && method === "POST") {
-    const idempotencyKey = request.headers()["idempotency-key"] || "";
-    if (!idempotencyKey) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
-    const input = request.postDataJSON();
-    const writeIdentity = `${session.accountId}:${idempotencyKey}`;
-    recordWriteAttempt(state.supportWrites, state.supportAttempts, writeIdentity);
-    let ticket = state.supportTickets.find((item) => item.id === state.supportWriteResults.get(writeIdentity));
-    if (!ticket) {
-      ticket = {
-        id: `support-${state.supportTickets.length + 1}`, externalSystem: input.externalSystem || "support",
-        externalTicketId: input.externalTicketId, externalUrl: input.externalUrl || "", accountId: session.accountId,
-        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}), resourceIds: input.resourceIds || [],
-        ...(input.operationId ? { operationId: input.operationId } : {}), title: input.title,
-        category: "support", priority: "normal", status: "open", createdAt: NOW, updatedAt: NOW,
-        messages: input.description ? [{ author: "demo", text: input.description, createdAt: NOW }] : []
-      };
-      state.supportTickets.push(ticket);
-      state.supportWriteResults.set(writeIdentity, ticket.id);
-    }
-    if (state.faultInjection && !state.lostSupportResponses.has(writeIdentity)) {
-      state.lostSupportResponses.add(writeIdentity);
-      return route.abort("failed");
-    }
-    return fulfillJson(route, ticket);
-  }
   if (path === "/api/announcements" && method === "GET") {
     const data = { items: state.announcements, total: state.announcements.length, page: 1, pageSize: 20 };
     return fulfillJson(route, source(data, "control-plane", state.announcements.length ? "available" : "empty"));
@@ -741,6 +710,31 @@ export async function apiFixture(route, state, session = state) {
     if (state.sourceState === "error") return fulfillJson(route, { error: "upstream_unavailable" }, 503);
     const items = state.sourceState === "available" ? [operatorWorkspace()] : [];
     return fulfillJson(route, sourceForState(state, { items, total: items.length, page: 1, pageSize: 20 }, "control-plane+fabric+sub2api"));
+  }
+  if (path === "/api/operator/workspace-runtime-image-policy" && method === "GET") {
+    const release = { version: "2026.08.26", image: WORKSPACE_IMAGE, digest: WORKSPACE_IMAGE_DIGEST };
+    return fulfillJson(route, source({
+      schemaVersion: 1,
+      revision: 1,
+      active: release,
+      installedDefault: release,
+      releases: [release],
+      source: "control-plane-workspace-image-release-policy",
+      updatedAt: NOW,
+      updatedBy: "fixture-operator"
+    }, "control-plane"));
+  }
+  const workspaceImagePreviewMatch = path.match(/^\/api\/operator\/workspaces\/([^/]+)\/runtime-image-replacements\/preview$/);
+  if (workspaceImagePreviewMatch && method === "GET") {
+    return fulfillJson(route, source({
+      workspaceId: workspaceImagePreviewMatch[1],
+      workspaceStatus: "running",
+      runtimeId: "runtime-fixture",
+      runtimeStatus: "running",
+      currentImageDigest: WORKSPACE_IMAGE,
+      targetImageDigest: WORKSPACE_IMAGE,
+      canReplace: false
+    }, "control-plane+fabric"));
   }
   if (path === "/api/operator/workspaces/ws-1") return fulfillJson(route, source(operatorWorkspace(), "control-plane+fabric+ledger+sub2api"));
   if (path === "/api/operator/reconciliation") return fulfillJson(route, source({ items: [{
@@ -1013,60 +1007,79 @@ function assertOperatorPageReads(state, start, expected) {
 }
 
 async function exerciseGatewayKeyLifecycle(page, state) {
-  await page.getByRole("button", { name: "创建 Key" }).click();
-  const dialog = page.getByRole("dialog", { name: "创建 API Key" });
+  await page.getByRole("button", { name: "创建 API 密钥", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "创建 API 密钥", exact: true });
   await dialog.getByLabel("名称").fill("Browser retry key");
   const submit = dialog.getByRole("button", { name: "创建", exact: true });
   await submit.click();
   await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent?.trim() === "创建" && !button.disabled));
   await submit.click();
-  await waitForText(page, "API Key 已创建");
+  await waitForText(page, "API 密钥已创建");
   await waitForText(page, GENERAL_KEY);
 
   const secretStatus = page.locator(".keys-secret");
   await secretStatus.getByRole("button", { name: "复制", exact: true }).click();
   if (await page.evaluate(() => navigator.clipboard.readText()) !== GENERAL_KEY) throw new Error("console_browser_created_key_copy_failed");
+  await page.clock.fastForward(59_999);
+  if (!await secretStatus.getByText(GENERAL_KEY, { exact: true }).isVisible()) {
+    throw new Error("console_browser_created_key_secret_expired_early");
+  }
+  await page.clock.fastForward(1);
+  if (await secretStatus.count()) {
+    throw new Error("console_browser_created_key_secret_expiry_failed");
+  }
 
   let keyRow = page.getByRole("row").filter({ hasText: "Browser retry key" }).first();
+  const clickMoreAction = async (name: string) => {
+    const moreActions = keyRow.locator("details.key-more-actions");
+    if (await moreActions.getAttribute("open") === null) await moreActions.locator("summary").click();
+    await moreActions.getByRole("button", { name, exact: true }).click();
+  };
+  await keyRow.getByRole("button", { name: "显示 API 密钥", exact: true }).click();
+  await waitForText(page, GENERAL_KEY);
   await keyRow.getByRole("button", { name: "使用说明", exact: true }).click();
-  const useDialog = page.getByRole("dialog", { name: "使用说明" });
-  await waitForText(useDialog, "openai");
+  const useDialog = page.getByRole("dialog", { name: "API 密钥使用说明", exact: true });
+  const useTechnicalDetails = useDialog.locator("details.key-use-technical-details");
+  await useTechnicalDetails.locator("summary").click();
+  await useTechnicalDetails.getByText("openai", { exact: true }).waitFor({ state: "visible" });
   await waitForText(useDialog, "https://gflabtoken.cn/v1");
   await waitForText(useDialog, GENERAL_KEY);
   await useDialog.getByRole("button", { name: "复制配置", exact: true }).click();
   const copiedConfiguration = await page.evaluate(() => navigator.clipboard.readText());
-  for (const value of ["https://gflabtoken.cn/v1", GENERAL_KEY, "openai"]) {
+  for (const value of ["https://gflabtoken.cn/v1", GENERAL_KEY]) {
     if (!copiedConfiguration.includes(value)) throw new Error(`console_browser_key_configuration_missing:${value}`);
   }
   await useDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
 
-  await keyRow.getByRole("button", { name: "编辑", exact: true }).click();
-  const editDialog = page.getByRole("dialog", { name: "编辑 API Key" });
+  await clickMoreAction("编辑");
+  const editDialog = page.getByRole("dialog", { name: "编辑 API 密钥", exact: true });
   await editDialog.getByLabel("名称").fill("Browser edited key");
   await editDialog.getByRole("button", { name: "保存", exact: true }).click();
-  await waitForText(page, "API Key 已更新");
+  await waitForText(page, "API 密钥已更新");
 
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.locator(".console-select").getByRole("button").click();
+  const keyTechnicalDetails = keyRow.locator("details.key-technical-details");
+  await keyTechnicalDetails.locator("summary").click();
+  await keyTechnicalDetails.locator(".console-select").getByRole("button").click();
   await page.getByRole("option", { name: "priority", exact: true }).click();
-  await waitForText(page, "分组已更新");
+  await waitForText(page, "服务分组已更新");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "停用", exact: true }).click();
-  await waitForText(page, "API Key 已停用");
+  await clickMoreAction("停用");
+  await waitForText(page, "API 密钥已停用");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "启用", exact: true }).click();
-  await waitForText(page, "API Key 已启用");
+  await clickMoreAction("启用");
+  await waitForText(page, "API 密钥已启用");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "重置配额用量", exact: true }).click();
+  await clickMoreAction("重置配额用量");
   await waitForText(page, "配额用量已重置");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "重置消费限额用量", exact: true }).click();
+  await clickMoreAction("重置消费限额用量");
   await waitForText(page, "消费限额用量已重置");
   keyRow = page.getByRole("row").filter({ hasText: "Browser edited key" }).first();
-  await keyRow.getByRole("button", { name: "删除", exact: true }).click();
-  const deleteDialog = page.getByRole("dialog", { name: "删除 API Key" });
+  await clickMoreAction("删除");
+  const deleteDialog = page.getByRole("dialog", { name: "删除 API 密钥", exact: true });
   await deleteDialog.getByRole("button", { name: "删除", exact: true }).click();
-  await waitForText(page, "API Key 已删除");
+  await waitForText(page, "API 密钥已删除");
   await waitForText(page, "暂无数据");
 
   if (state.keys.length !== 0 || state.emptyGatewayReadbacks < 1) throw new Error("console_browser_gateway_empty_readback_failed");
@@ -1105,58 +1118,76 @@ async function exerciseWalletAdjustment(page, state, screenshotDir, viewportName
   await waitForText(page, "余额操作已提交");
 }
 
-async function openWorkspaceFromList(page, workspaceName) {
+async function assertWorkspaceTechnicalDetails(page, expectedUrl) {
+  await page.getByRole("heading", { name: "访问凭据", exact: true }).waitFor({ state: "visible" });
+  await page.locator(".workspace-access-panel").getByText("opl", { exact: true }).waitFor({ state: "visible" });
+  const technicalDetails = page.locator("details.workspace-technical-details");
+  await technicalDetails.locator("summary").click();
+  await technicalDetails.getByText("Runtime URL", { exact: true }).waitFor({ state: "visible" });
+  await technicalDetails.getByText(expectedUrl, { exact: true }).waitFor({ state: "visible" });
+}
+
+async function openWorkspaceFromList(page, workspaceName, expectedUrl) {
   const workspaceList = page.locator(".workspace-list");
   await workspaceList.locator(".workspace-list-row").filter({ hasText: workspaceName }).click();
   await page.waitForURL(new RegExp(`/console/workspaces/ws-[12]$`));
-  await waitForText(page, "Workspace URL");
-  await page.locator(".workspace-access-panel").getByText("opl", { exact: true }).waitFor({ state: "visible" });
+  await assertWorkspaceTechnicalDetails(page, expectedUrl);
 }
 
 async function assertUsageRecordFields(page, viewportName) {
-  const expectedHeaders = ["模型 / 端点", "Token", "费用", "延迟", "时间", "请求 ID"];
+  const expectedHeaders = ["时间", "模型", "Token", "实际费用", "操作"];
   const surface = viewportName === "desktop"
     ? page.locator(".request-table-desktop")
     : page.locator(".request-list-mobile");
+  const completeRow = viewportName === "desktop"
+    ? surface.locator(".usage-request-entry").filter({ hasText: "request-fixture" })
+    : surface.getByRole("listitem").filter({ hasText: "request-fixture" });
+  await completeRow.waitFor({ state: "visible" });
   if (viewportName === "desktop") {
-    await surface.getByText("request-fixture", { exact: true }).waitFor({ state: "visible" });
     const headers = (await surface.locator("th").allTextContents()).map((label) => label.trim());
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) {
       throw new Error(`console_browser_request_fields:${JSON.stringify(headers)}`);
     }
-  } else {
-    const row = surface.getByRole("listitem").filter({ hasText: "request-fixture" });
-    const labels = (await row.locator("dt").allTextContents()).map((label) => label.trim());
-    if (JSON.stringify(labels) !== JSON.stringify(["Token", "费用", "延迟", "时间"])) {
-      throw new Error(`console_browser_mobile_request_fields:${JSON.stringify(labels)}`);
-    }
   }
 
-  const completeRow = viewportName === "desktop"
-    ? surface.locator("tbody tr").filter({ hasText: "request-fixture" })
-    : surface.getByRole("listitem").filter({ hasText: "request-fixture" });
-  for (const label of ["输入", "输出", "缓存读取", "缓存写入", "首字", "总耗时"]) {
-    await completeRow.getByText(label, { exact: true }).waitFor({ state: "visible" });
-  }
-  for (const value of ["120", "36", "8", "24", "140 ms", "860 ms", "$0.03"]) {
+  for (const value of ["输入 120", "输出 36", "$0.03"]) {
     await completeRow.getByText(value, { exact: true }).waitFor({ state: "visible" });
   }
-  if (await completeRow.locator("time").count() !== 1 || await completeRow.getByRole("button", { name: "复制请求 ID" }).count() !== 1) {
+  if (await completeRow.getByText("API 路径", { exact: true }).isVisible()) {
+    throw new Error("console_browser_request_technical_details_open_by_default");
+  }
+  if (viewportName === "desktop") {
+    await completeRow.getByRole("button", { name: "查看详情", exact: true }).click();
+  } else {
+    await completeRow.locator("summary").click();
+  }
+  for (const label of ["API 路径", "缓存读取 Token", "缓存写入 Token", "首个 Token 延迟", "总耗时", "请求 ID"]) {
+    await completeRow.getByText(label, { exact: true }).waitFor({ state: "visible" });
+  }
+  for (const value of ["8", "24", "140 ms", "860 ms"]) {
+    await completeRow.getByText(value, { exact: true }).waitFor({ state: "visible" });
+  }
+  if (await completeRow.locator("time").count() !== 1 || await completeRow.getByRole("button", { name: /复制请求 ID request-fixture/ }).count() !== 1) {
     throw new Error("console_browser_request_time_or_copy_missing");
   }
 
   const nullLatencyRow = viewportName === "desktop"
-    ? surface.locator("tbody tr").filter({ hasText: "request-null-latency" })
+    ? surface.locator(".usage-request-entry").filter({ hasText: "request-null-latency" })
     : surface.getByRole("listitem").filter({ hasText: "request-null-latency" });
   await nullLatencyRow.waitFor({ state: "visible" });
-  const nullLatencyValues = (await nullLatencyRow.locator(".usage-latency-stack strong").allTextContents()).map((value) => value.trim());
-  if (JSON.stringify(nullLatencyValues) !== JSON.stringify(["-", "-"]) || await nullLatencyRow.getByText("0 ms", { exact: true }).count()) {
-    throw new Error(`console_browser_null_latency:${JSON.stringify(nullLatencyValues)}`);
+  if (viewportName === "desktop") {
+    await nullLatencyRow.getByRole("button", { name: "查看详情", exact: true }).click();
+  } else {
+    await nullLatencyRow.locator("summary").click();
   }
-  for (const label of ["缓存读取", "缓存写入"]) {
-    if (await nullLatencyRow.getByText(label, { exact: true }).count()) {
-      throw new Error(`console_browser_zero_cache_visible:${label}`);
-    }
+  for (const label of ["首个 Token 延迟", "总耗时"]) {
+    await nullLatencyRow.getByText(label, { exact: true }).locator("..").getByText("-", { exact: true }).waitFor({ state: "visible" });
+  }
+  for (const label of ["缓存读取 Token", "缓存写入 Token"]) {
+    await nullLatencyRow.getByText(label, { exact: true }).locator("..").getByText("0", { exact: true }).waitFor({ state: "visible" });
+  }
+  if (await nullLatencyRow.getByText("0 ms", { exact: true }).count()) {
+    throw new Error("console_browser_null_latency_rendered_as_zero");
   }
 }
 
@@ -1172,10 +1203,10 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
     await page.goto(`${serverOrigin}/console/workspaces/new`, { waitUntil: "networkidle" });
     await waitForText(page, "核对开通信息");
     await waitForText(page, "$52.58");
-    await page.getByLabel("Workspace 名称").fill("Browser retry Workspace");
+    await page.getByLabel("工作空间名称").fill("Browser retry Workspace");
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("checkbox", { name: "我确认一次性预付 Workspace 月度总额并开通", exact: true }).click();
+    await page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true }).click();
     const launchButton = page.getByRole("button", { name: "确认预付并开通", exact: true });
     await launchButton.click();
     await waitForText(page, "请求失败，请重试");
@@ -1184,7 +1215,7 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
     const workspaceOperation = [...state.workspaceLaunchWriteResults.values()][0];
     if (!workspaceOperation?.workspaceId) throw new Error("console_browser_workspace_launch_result_missing");
     await waitForText(page, "Browser retry Workspace");
-    await waitForText(page, `https://workspace.example.invalid/w/${workspaceOperation.workspaceId}/`);
+    await assertWorkspaceTechnicalDetails(page, `https://workspace.example.invalid/w/${workspaceOperation.workspaceId}/`);
 
     authenticateFixtureSession(state, "operator");
     await page.goto(`${serverOrigin}/admin/accounts`, { waitUntil: "networkidle" });
@@ -1224,18 +1255,6 @@ async function exerciseHighRiskWriteFlows(browser, serverOrigin) {
     await withdrawButton.click();
     await announcement.getByText("已撤下", { exact: true }).waitFor({ state: "visible" });
 
-    await page.getByRole("button", { name: "Support", exact: true }).click();
-    const supportSlide = page.getByRole("complementary", { name: "Support" });
-    await waitForText(supportSlide, "暂无外部工单映射");
-    await supportSlide.getByRole("button", { name: "新增映射", exact: true }).click();
-    await supportSlide.getByLabel("外部工单号").fill("SUP-2026-001");
-    await supportSlide.getByLabel("标题").fill("Browser support mapping");
-    const saveSupportButton = supportSlide.getByRole("button", { name: "保存外部映射", exact: true });
-    await saveSupportButton.click();
-    await waitForText(page, unknownWriteMessage);
-    await saveSupportButton.click();
-    await waitForText(supportSlide, "Browser support mapping");
-    await waitForText(supportSlide, "SUP-2026-001");
   } finally {
     await context.close();
   }
@@ -1249,8 +1268,7 @@ function highRiskWriteEvidence(state) {
     ["operator_provision", state.operatorProvisionWrites, state.operatorProvisionAttempts, state.operatorProvisionWriteResults, state.lostOperatorProvisionResponses],
     ["announcement_create", state.announcementCreateWrites, state.announcementCreateAttempts, state.announcementCreateWriteResults, state.lostAnnouncementCreateResponses],
     ["announcement_publish", state.announcementPublishWrites, state.announcementPublishAttempts, state.announcementPublishWriteResults, state.lostAnnouncementPublishResponses],
-    ["announcement_withdraw", state.announcementWithdrawWrites, state.announcementWithdrawAttempts, state.announcementWithdrawWriteResults, state.lostAnnouncementWithdrawResponses],
-    ["support_mapping", state.supportWrites, state.supportAttempts, state.supportWriteResults, state.lostSupportResponses]
+    ["announcement_withdraw", state.announcementWithdrawWrites, state.announcementWithdrawAttempts, state.announcementWithdrawWriteResults, state.lostAnnouncementWithdrawResponses]
   ];
   for (const [name, writes, attempts, results, lostResponses] of writeContracts) {
     const identity = [...writes][0] || "";
@@ -1267,7 +1285,6 @@ function highRiskWriteEvidence(state) {
   const workspaceOperation = [...state.workspaceLaunchWriteResults.values()][0];
   const operatorOperation = [...state.operatorProvisionWriteResults.values()][0];
   const announcementId = [...state.announcementCreateWriteResults.values()][0];
-  const supportTicketId = [...state.supportWriteResults.values()][0];
   const announcementStatuses = state.announcementReadbackStatuses.get(announcementId) || new Set();
   const workspaceLaunchAuthoritativeReadback = Boolean(workspaceOperation?.workspaceId
     && state.workspaceLaunchReadbacks.has(workspaceOperation.workspaceId)
@@ -1276,8 +1293,7 @@ function highRiskWriteEvidence(state) {
     && state.operatorProvisionReadbacks.has(operatorOperation.accountId));
   const announcementLifecycle = ["draft", "published", "withdrawn"].every((status) => announcementStatuses.has(status))
     && state.announcements.find((item) => item.id === announcementId)?.status === "withdrawn";
-  const supportMappingReadback = Boolean(supportTicketId && state.supportReadbacks.has(supportTicketId));
-  if (!workspaceLaunchAuthoritativeReadback || !operatorProvisionAuthoritativeReadback || !announcementLifecycle || !supportMappingReadback) {
+  if (!workspaceLaunchAuthoritativeReadback || !operatorProvisionAuthoritativeReadback || !announcementLifecycle) {
     throw new Error("console_browser_high_risk_authoritative_readback_failed");
   }
 
@@ -1287,13 +1303,11 @@ function highRiskWriteEvidence(state) {
       operatorProvision: state.operatorProvisionWrites.size,
       announcementCreate: state.announcementCreateWrites.size,
       announcementPublish: state.announcementPublishWrites.size,
-      announcementWithdraw: state.announcementWithdrawWrites.size,
-      supportMapping: state.supportWrites.size
+      announcementWithdraw: state.announcementWithdrawWrites.size
     },
     workspaceLaunchAuthoritativeReadback,
     operatorProvisionAuthoritativeReadback,
-    announcementLifecycle,
-    supportMappingReadback
+    announcementLifecycle
   };
 }
 
@@ -1342,7 +1356,7 @@ export async function runConsoleBrowserQa({
       state.customerRoutes.add("/console/workspaces");
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-list", name);
-      await page.getByRole("button", { name: "新建 Workspace", exact: true }).click();
+      await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
       await page.waitForURL(/\/console\/workspaces\/new$/);
       await waitForText(page, "核对开通信息");
       if (name === "desktop") await waitForText(page, "$52.58");
@@ -1353,7 +1367,7 @@ export async function runConsoleBrowserQa({
       await assertWorkspacePlanRadios(page, name === "mobile" ? 1 : 2);
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-new", name);
-      const workspaceName = page.getByLabel("Workspace 名称");
+      const workspaceName = page.getByLabel("工作空间名称");
       await workspaceName.fill("Fixture review Workspace");
       if (name === "mobile") {
         const basicPlan = page.getByRole("radio", { name: /Basic/ });
@@ -1374,7 +1388,7 @@ export async function runConsoleBrowserQa({
       await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
       await assertWorkspaceLaunchLayout(page, name);
       await assertWorkspaceLaunchConfirmation(page, name);
-      const launchConfirmation = page.getByRole("checkbox", { name: "我确认一次性预付 Workspace 月度总额并开通", exact: true });
+      const launchConfirmation = page.getByRole("checkbox", { name: "我确认一次性预付工作空间月度总额并开通", exact: true });
       await launchConfirmation.click();
       if (await launchConfirmation.getAttribute("data-state") !== "checked") throw new Error("console_browser_workspace_confirmation_not_checked");
       if (!await page.getByRole("button", { name: "确认预付并开通", exact: true }).isEnabled()) throw new Error("console_browser_workspace_confirmation_submit_disabled");
@@ -1382,18 +1396,24 @@ export async function runConsoleBrowserQa({
       await captureFixtureScreenshot(page, screenshotDir, "workspace-confirm", name);
       state.launches = [pendingWorkspaceLaunch()];
       await page.goto(`${server.origin}/console/workspaces/new?progress=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "当前处理阶段");
-      await waitForText(page, "runtime_starting");
+      await waitForText(page, "正在准备工作空间");
+      await waitForText(page, "启动工作空间");
+      if (await page.getByText("pending", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_status_visible");
+      if (await page.getByText("runtime", { exact: true }).isVisible()) throw new Error("console_browser_raw_launch_phase_visible");
       if (await page.locator(".workspace-progress").count()) throw new Error("console_browser_inferred_workspace_progress_present");
       await assertWorkspaceLaunchLayout(page, name);
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-operation", name);
+      await page.getByText("技术详情", { exact: true }).click();
+      await waitForText(page, "pending");
+      await waitForText(page, "runtime");
+      await assertNoViewportOverflow(page);
       state.launches = [];
       await page.goto(`${server.origin}/console/workspaces?after-progress=${name}`, { waitUntil: "networkidle" });
-      await openWorkspaceFromList(page, "Pilot Workspace");
+      await openWorkspaceFromList(page, "Pilot Workspace", "https://workspace.example.invalid/w/ws-1/");
       state.customerRoutes.add("/console/workspaces/ws-1");
       await page.goto(`${server.origin}/console/workspaces/ws-1?direct=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "https://workspace.example.invalid/w/ws-1/");
+      await assertWorkspaceTechnicalDetails(page, "https://workspace.example.invalid/w/ws-1/");
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "workspace-detail", name);
       if (name === "desktop") {
@@ -1403,7 +1423,7 @@ export async function runConsoleBrowserQa({
         await passwordRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_PASSWORDS["ws-1"]);
         await passwordRow.getByRole("button", { name: "复制" }).click();
-        const keyRow = page.locator("dt", { hasText: "Workspace Key" }).locator("..");
+        const keyRow = page.locator(".workspace-access-panel dt > span").filter({ hasText: /^API 密钥$/ }).locator("../..");
         await keyRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_KEYS["9"]);
         if (await page.getByText(WORKSPACE_PASSWORDS["ws-1"], { exact: true }).count()) {
@@ -1421,12 +1441,12 @@ export async function runConsoleBrowserQa({
         await page.clock.resume();
       }
 
-      await page.getByRole("button", { name: "Workspace 列表", exact: true }).click();
+      await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
       await page.waitForURL(/\/console\/workspaces$/);
-      await openWorkspaceFromList(page, "Second Workspace");
+      await openWorkspaceFromList(page, "Second Workspace", "https://workspace.example.invalid/w/ws-2/");
       state.customerRoutes.add("/console/workspaces/ws-2");
       await page.goto(`${server.origin}/console/workspaces/ws-2?direct=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "https://workspace.example.invalid/w/ws-2/");
+      await assertWorkspaceTechnicalDetails(page, "https://workspace.example.invalid/w/ws-2/");
       await waitForText(page, "PRO");
       await waitForText(page, "2026/08/15");
       if (await page.getByText(WORKSPACE_PASSWORDS["ws-1"], { exact: true }).count() || await page.getByText(WORKSPACE_KEYS["9"], { exact: true }).count()) {
@@ -1434,7 +1454,7 @@ export async function runConsoleBrowserQa({
       }
       if (name === "desktop") {
         const passwordRow = page.locator("dt", { hasText: "密码" }).locator("..");
-        const keyRow = page.locator("dt", { hasText: "Workspace Key" }).locator("..");
+        const keyRow = page.locator(".workspace-access-panel dt > span").filter({ hasText: /^API 密钥$/ }).locator("../..");
         await passwordRow.getByRole("button", { name: "显示" }).click();
         await waitForText(page, WORKSPACE_PASSWORDS["ws-2"]);
         await keyRow.getByRole("button", { name: "显示" }).click();
@@ -1474,44 +1494,71 @@ export async function runConsoleBrowserQa({
         }));
         throw new Error(`console_browser_key_surface_missing:${JSON.stringify({ fixtureKeys: state.keys.map((key) => key.id), pageErrors: state.pageErrors, consoleErrors: state.consoleErrors, diagnostic })}`, { cause: error });
       }
+      const keyTechnicalSummary = keySurface.locator("details.key-technical-details > summary").first();
+      const keyTechnicalSummaryHeight = await keyTechnicalSummary.evaluate((element) => element.getBoundingClientRect().height);
+      if (keyTechnicalSummaryHeight < 44) throw new Error(`console_browser_key_technical_summary_height:${keyTechnicalSummaryHeight}`);
       await assertNoViewportOverflow(page);
       if (name === "mobile") await page.locator(".mobile-key-card").scrollIntoViewIfNeeded();
       await captureFixtureScreenshot(page, screenshotDir, "api-keys", name);
-      await page.getByRole("button", { name: "创建 Key" }).click();
-      await page.getByRole("dialog", { name: "创建 API Key" }).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "创建 API 密钥", exact: true }).click();
+      await page.getByRole("dialog", { name: "创建 API 密钥", exact: true }).waitFor({ state: "visible" });
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "api-key-create", name);
-      await page.getByRole("dialog", { name: "创建 API Key" }).getByRole("button", { name: "关闭" }).click();
+      await page.getByRole("dialog", { name: "创建 API 密钥", exact: true }).getByRole("button", { name: "关闭", exact: true }).click();
       state.keys = [];
       await page.goto(`${server.origin}/console/api/keys?empty=${name}`, { waitUntil: "networkidle" });
       await waitForText(page, "暂无数据");
       state.customerRoutes.add("/console/api/keys");
       if (name === "desktop") {
-        await page.goto(`${server.origin}/console/api/keys?write=1`, { waitUntil: "networkidle" });
-        await exerciseGatewayKeyLifecycle(page, state);
+        let lifecycleContext: BrowserContext | undefined;
+        let lifecyclePage: Page | undefined;
+        let lifecycleClockInstalled = false;
+        try {
+          lifecycleContext = await browser.newContext({ viewport: VIEWPORTS.desktop, permissions: ["clipboard-read", "clipboard-write"] });
+          lifecyclePage = await lifecycleContext.newPage();
+          await installFixturePage(lifecyclePage, state, server.origin);
+          authenticateFixtureSession(state, "customer");
+          await lifecyclePage.goto(`${server.origin}/console/api/keys?write=1`, { waitUntil: "networkidle" });
+          await lifecyclePage.clock.install();
+          lifecycleClockInstalled = true;
+          await lifecyclePage.clock.pauseAt(new Date());
+          await exerciseGatewayKeyLifecycle(lifecyclePage, state);
+        } finally {
+          if (lifecyclePage && lifecycleClockInstalled) await lifecyclePage.clock.resume();
+          await lifecycleContext?.close();
+        }
       }
 
       await page.goto(`${server.origin}/console/billing?viewport=${name}`, { waitUntil: "networkidle" });
-      await page.getByRole("heading", { name: "Workspace 条款", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { name: "订阅与续费", exact: true }).waitFor({ state: "visible" });
       state.customerRoutes.add("/console/billing");
       if (await page.getByText(WORKSPACE_PASSWORDS["ws-2"], { exact: true }).count() || await page.getByText(WORKSPACE_KEYS["19"], { exact: true }).count()) {
         throw new Error("console_browser_secret_cleanup_failed");
       }
-      await page.getByRole("radio", { name: "账单收据", exact: true }).click();
+      await page.getByRole("radio", { name: "账单记录", exact: true }).click();
+      await page.getByRole("heading", { name: "账单记录", exact: true }).waitFor({ state: "visible" });
+      const billingSurface = name === "desktop" ? page.locator(".billing-table-desktop") : page.locator(".billing-list-mobile");
+      await billingSurface.getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
       if (name === "desktop") {
-        await page.locator(".billing-table-desktop").getByText("Workspace 开通", { exact: true }).waitFor({ state: "visible" });
+        await page.locator(".billing-table-desktop").getByText("Pilot Workspace", { exact: true }).waitFor({ state: "visible" });
         await page.getByRole("button", { name: "查看", exact: true }).click();
       } else {
-        await page.locator(".billing-list-mobile").getByText("Workspace 开通", { exact: true }).waitFor({ state: "visible" });
+        await page.locator(".billing-list-mobile").getByText("工作空间开通", { exact: true }).waitFor({ state: "visible" });
         await page.locator(".billing-list-mobile").getByRole("listitem").click();
       }
       await page.getByRole("heading", { name: "收据详情", exact: true }).waitFor({ state: "visible" });
-      await waitForText(page, "pilot-usd-2026-07-v1");
+      await page.locator(".receipt-detail").getByText("工作空间编号：ws-1", { exact: true }).waitFor({ state: "visible" });
+      if (await page.locator("details.receipt-technical-details").count() || await page.locator("details.receipt-row-technical-details").count()) {
+        throw new Error("console_browser_customer_receipt_technical_details_present");
+      }
+      if (await page.getByText("pilot-usd-2026-07-v1", { exact: true }).count()) {
+        throw new Error("console_browser_customer_receipt_price_version_visible");
+      }
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "billing", name);
 
       await page.goto(`${server.origin}/console/announcements?viewport=${name}`, { waitUntil: "networkidle" });
-      await waitForText(page, "暂无公告");
+      await waitForText(page, "暂无消息");
       state.customerRoutes.add("/console/announcements");
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "announcements", name);
@@ -1519,8 +1566,12 @@ export async function runConsoleBrowserQa({
       for (const sourceState of ["empty", "unavailable", "error"]) {
         state.sourceState = sourceState;
         await page.goto(`${server.origin}/console/api/keys?state=${sourceState}&viewport=${name}`, { waitUntil: "networkidle" });
-        await waitForText(page, sourceState === "empty" ? "暂无数据" : "API Keys 暂不可用");
-        if (sourceState !== "empty") await waitForText(page, "原因代码：sub2api_unavailable");
+        await waitForText(page, sourceState === "empty" ? "暂无数据" : "API 密钥暂不可用");
+        if (sourceState !== "empty") {
+          const sourceTechnicalDetails = page.locator("details.keys-source-technical-details");
+          await sourceTechnicalDetails.locator("summary").click();
+          await sourceTechnicalDetails.getByText("sub2api_unavailable", { exact: true }).waitFor({ state: "visible" });
+        }
       }
 
       state.role = "operator";
@@ -1635,7 +1686,7 @@ export async function runConsoleBrowserQa({
     if (state.gatewayMutationWrites.size !== expectedGatewayActions.length || JSON.stringify(state.gatewayActions) !== JSON.stringify(expectedGatewayActions)) {
       throw new Error(`console_browser_gateway_lifecycle_failed:${JSON.stringify(state.gatewayActions)}`);
     }
-    if (state.revealCalls.get("12") !== 1) throw new Error(`console_browser_created_key_reveal_failed:${state.revealCalls.get("12") || 0}`);
+    if (state.revealCalls.get("12") !== 2) throw new Error(`console_browser_created_key_reveal_failed:${state.revealCalls.get("12") || 0}`);
     if (state.revealCalls.get("9") !== 1 || state.revealCalls.get("19") !== 1) throw new Error(`console_browser_workspace_key_scope_failed:${JSON.stringify(Object.fromEntries(state.revealCalls))}`);
     if (state.workspaceSecretReads.get("ws-1") !== 1 || state.workspaceSecretReads.get("ws-2") !== 1) throw new Error(`console_browser_workspace_secret_scope_failed:${JSON.stringify(Object.fromEntries(state.workspaceSecretReads))}`);
     const missingCustomerRoutes = CUSTOMER_ROUTES.filter((route) => !state.customerRoutes.has(route));

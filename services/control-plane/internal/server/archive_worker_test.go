@@ -16,7 +16,6 @@ func TestRetentionWorkerKeepsTerminalResourcesAndAppliesOwnedRetention(t *testin
 	old := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	mustStore(t, store.SaveCompute(ctx, map[string]any{"id": "compute-terminal", "accountId": "acct-unit", "status": "destroyed"}))
 	mustStore(t, store.SaveAuditEvent(ctx, map[string]any{"id": "audit-old", "action": "test", "createdAt": old.Format(time.RFC3339)}))
-	mustStore(t, store.SaveSupportMapping(ctx, map[string]any{"id": "support-old", "createdAt": old.Format(time.RFC3339)}))
 	if err := store.client.ProductionE2ERecord.Create().SetID("e2e-old").SetReason("retention-test").SetCreatedAt(old).SetUpdatedAt(old).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -29,9 +28,6 @@ func TestRetentionWorkerKeepsTerminalResourcesAndAppliesOwnedRetention(t *testin
 	}
 	if count, err := store.client.ArchivedAdminAuditEvent.Query().Count(ctx); err != nil || count != 1 {
 		t.Fatalf("archived audit count=%d err=%v", count, err)
-	}
-	if count, err := store.client.SupportTicketMapping.Query().Count(ctx); err != nil || count != 0 {
-		t.Fatalf("support count=%d err=%v", count, err)
 	}
 	if count, err := store.client.ProductionE2ERecord.Query().Count(ctx); err != nil || count != 0 {
 		t.Fatalf("production E2E count=%d err=%v", count, err)

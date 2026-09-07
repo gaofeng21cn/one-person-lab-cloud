@@ -4,6 +4,8 @@ import test from "node:test";
 import type { ApiError } from "../../apps/console-ui/src/api/console-api.ts";
 import type { WorkspaceLaunchRequest, WorkspaceLaunchResponse } from "../../apps/console-ui/src/api/dtos.ts";
 import {
+  canReviewWorkspaceLaunch,
+  canSubmitWorkspaceLaunch,
   classifyWorkspaceLaunchRecovery,
   resolveWorkspaceLaunchIntent,
   shouldPollWorkspaceLaunch,
@@ -105,6 +107,30 @@ test("Workspace launch recovery distinguishes zero, one, and multiple non-termin
   if (resumable.kind === "resume") assert.equal(resumable.operation, preparing);
 
   assert.deepEqual(classifyWorkspaceLaunchRecovery([preparing, manualReview]), { kind: "conflict" });
+});
+
+test("Workspace launch review and submit require an unambiguous clear recovery", () => {
+  const reviewReady = {
+    recoveryState: "clear",
+    hasName: true,
+    hasSelectedPlan: true,
+    selectedPriceKnown: true,
+    balanceSufficient: true
+  } as const;
+  const submitReady = {
+    ...reviewReady,
+    sessionAvailable: true,
+    busy: false,
+    step: "confirm",
+    confirmed: true
+  } as const;
+
+  assert.equal(canReviewWorkspaceLaunch(reviewReady), true);
+  assert.equal(canSubmitWorkspaceLaunch(submitReady), true);
+  for (const recoveryState of ["idle", "checking", "conflict", "unavailable"] as const) {
+    assert.equal(canReviewWorkspaceLaunch({ ...reviewReady, recoveryState }), false, `review allowed during ${recoveryState}`);
+    assert.equal(canSubmitWorkspaceLaunch({ ...submitReady, recoveryState }), false, `submit allowed during ${recoveryState}`);
+  }
 });
 
 test("Workspace launch polling stops for manual review and terminal operations", () => {
