@@ -1,4 +1,4 @@
-# OPL Console Workspace Product V2
+# Console Workspace Experience
 
 This document owns the Workspace product capability boundary. The
 [Console experience guide](console-experience-guide.md) describes durable user
@@ -13,7 +13,7 @@ register -> sign in -> observe zero balance -> receive administrator top-up
          -> provision -> reveal/copy that Workspace access -> open Workspace
 ```
 
-The public beta allows one customer to register one Account and create multiple
+The target public beta allows one customer to register one Account and create multiple
 independent Workspaces after an administrator funds its Sub2API wallet. A new
 Account starts at zero balance, and registration performs no purchase or Fabric
 mutation. Each Workspace has its own launch identity, resources, Key, Secret,
@@ -69,8 +69,8 @@ the current runtime pointer. The Pilot Console does not expose customer backup,
 recovery, transfer, provider-resource replacement, or storage deletion. Unpaid
 expiry denies access and performs zero Fabric or Tencent resource mutation.
 
-## Evidence Levels
+## Availability
 
-Contract/UI presence is not availability. `code-complete` requires the complete
-local gate, `pilot-ready` requires approved real Pilot evidence, and
-`production-proven` requires evidence from the deployed immutable revision.
+This document defines the intended interaction. Current implemented and verified
+capability is recorded in [status](../status.md), with open outcomes in
+[roadmap](../roadmap.md).

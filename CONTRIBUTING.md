@@ -38,7 +38,8 @@ remove the duplicate current writer in the same pull request.
 4. Read the physical dependency map in `docs/implementation-architecture.md`.
    Cross-service behavior uses typed HTTP contracts. Runtime Go imports between
    Control Plane, Fabric and Ledger are forbidden; the narrow PostgreSQL
-   migration helper is the only shared Go module.
+   migration helper is policy-free infrastructure; `packages/contracts/go`
+   supplies the shared runtime contract types used by Control Plane and Fabric.
 5. Rebase or update from fresh `main` before review. If another pull request has
    entered the same write set, coordinate ownership or split at a contract/API
    boundary before continuing.
@@ -86,7 +87,7 @@ The required `validate` check aggregates four parallel jobs:
 
 Keep `validate` as the single branch-protection context. Do not add path-based
 skip logic, a merge queue, or a second aggregate check without measured queue or
-runtime evidence that the current roughly three-minute gate is a real blocker.
+runtime evidence that the current gate is a real blocker.
 
 Run the checks affected by your change before pushing. The repository-wide
 baseline is:

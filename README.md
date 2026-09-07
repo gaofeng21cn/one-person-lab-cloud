@@ -72,8 +72,9 @@ The first product slice is intentionally narrow: a thin Console for essential
 Workspace, balance, and usage management; a real
 `Console -> Control Plane -> Workspace launcher/provider -> local Docker`
 creation and management path for OPL App/WebUI Workspaces; and authoritative
-Gateway accounting through Sub2API without a second wallet. Self-service
-signup, payment/top-up, and detailed UI refinement are later work.
+Gateway accounting through Sub2API without a second wallet. The accepted public
+beta adds zero-balance registration, administrator top-up and controlled purchase.
+Customer-operated payment/top-up remains deferred.
 
 The repository contains a `local-docker` Workspace provider for supported
 Linux hosts. It requires Workspace storage on a dedicated ext4/XFS mount with

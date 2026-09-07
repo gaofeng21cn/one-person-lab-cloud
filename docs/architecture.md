@@ -20,12 +20,12 @@ individual Cloud capabilities are adopted according to the user's work. Internal
 authorities:
 
 ```text
-OPL Base           Framework runtime product; implemented by the single Cordis Host
+OPL Base           Framework runtime product; implemented by the scoped Framework Cordis Host
 OPL Packages       independently published installable capabilities and owner revisions
 OPL Framework      Host-side discovery/projection and runtime/state/action producer
 one-person-lab-app App product, Client profile, GUI ABI and release authority
 opl-aion-shell     current Stable AionUI Shell carrier
-opl-studio         DSH-derived candidate Shell carrier
+opl-studio         candidate DSH/Cordis Application Host and delivery carrier
 OPL Cloud          Console, Control Plane, Fabric, Ledger and Workspace product
 ```
 
@@ -225,37 +225,25 @@ flowchart TB
 
 ## Host, Client, And Cloud Authority Boundary
 
-OPL Framework is the Host composition authority. Its Host Cordis context selects
-a curated product profile, mounts Framework-side contributions, and projects an
-allowlisted client graph. An OPL App renderer may create a Host-derived Client
-Cordis context from that projection and compose typed views, slots, actions,
-RPCs, and events. The Client context is not a second Host: it cannot discover or
-install plugins independently, own Package currentness, redefine the App product
-profile, or acquire Cloud service authority.
+Framework owns the Cordis Host only within
+`framework_runtime_package_graph_and_app_projection`. Studio independently owns
+its DSH/Cordis Application Host within
+`dsh_profile_plugin_lifecycle_codex_and_delivery_transport_composition`.
+The authoritative family definition is the Framework
+[`host_scope_boundary`](https://github.com/gaofeng21cn/one-person-lab/blob/main/contracts/opl-framework/cordis-architecture-profile.json).
 
-```text
-OPL App product profile
-  -> Framework Host Cordis composition
-       |-- Framework-owned Cloud client/adapter contribution
-       |      -> typed public HTTP and capability contracts
-       |           -> OPL Cloud Control Plane / Fabric / Ledger authorities
-       |
-       +-- projected allowlisted client graph
-              -> Host-derived App Client Cordis composition
-                   -> typed slots, views and actions
-                        -> AionUI mainline renderer
-                        -> DSH-GUI-derived candidate renderer
-```
+The Hosts cooperate through public App state/action, authentication and channel
+callback contracts. Studio owns its application composition, native Codex and
+delivery transport; it does not acquire Framework runtime, Package discovery or
+currentness, App product/state/action, domain, or release authority. The Hosts do
+not share registries, session state, currentness, or internal service graphs.
+AionUI remains the Stable Shell; renderer choice cannot redefine Cloud APIs or
+service state.
 
-AionUI and the DSH-GUI-derived candidate are alternative renderer/package
-carriers for one App product contract. They consume the same Host projection,
-client contribution descriptors, slot/action ABI, and product profile; renderer
-selection cannot create separate Cloud APIs, Package registries, currentness,
-action truth, or product policy.
-
-Cloud integration uses typed public APIs with explicit capability, identity,
-idempotency, and owner-authoritative readback. Fabric owns provider selection and
-mutation behind its provider port; the owning Instance supplies the profile.
+Cloud integrations use typed public APIs with explicit identity, capability,
+idempotency and owner readback. Cloud processes, databases, provider mutation,
+wallet coordination and release authority remain in their existing owners.
+The selected Instance supplies Fabric's provider profile.
 
 ## Core And Extension Boundary
 
@@ -362,141 +350,18 @@ it with readback, and lets the selected adapter map it to provider identities.
 Control Plane cannot infer resource ownership from idempotency suffixes,
 unscoped operation listings, provider tags, or Machine/CVM/Node/CBS fields.
 
-Recovery only persists and consumes an immutable authorization for the original
-Launch version and stage. Mutation, exact-idempotency replay, and typed
-continuation-read budgets are independent: replay never increments the stage's
-`Attempted` or `Max=1`, and read-budget exhaustion becomes
-`unknown/manual_review` without proving owner absence. Fabric adapters opt in
-only after exact owner readback and a durable same-operation child CAS claim,
-then repeat the owner read immediately before reusing the original key. Recovery
-cannot own a business stage, rewrite a resource identity, create a successor
-Launch, or call a provider directly. The exact public binding shape is admitted
-only with a real caller, source implementation in both owners, and focused
-tests; this architecture does not freeze a speculative universal JSON contract.
-For a resource-billed Launch whose original Storage attempt is already
-`unknown/manual_review`, the worker may authorize the first recovery of that
-exact stage through the same Reconciler when the Tencent/TKE binding is intact,
-there is no active authorization or prior replay, and a fresh read proves
-authoritative `absent`. The operator route retains the same rule for explicit
-recovery. Fabric first reads the immutable original binding: `ready` confirms
-the attempt without mutation, `pending` remains
-read-only, and only authoritative `absent` may reuse the original idempotency
-key once. Unknown, conflict, read failure, identity drift, or another unproven
-result leaves the same Launch fail-closed without creating another volume.
-If that exact replay was dispatched and ended with a terminal failed claim, a
-new zero-mutation authorization may classify the same Fabric binding again.
-Exact `ready` confirms the original attempt without mutation. Authoritative
-`absent` may replace only that exact failed claim and replay the original
-idempotency key once; `pending`, `unknown`, read failure, conflict, or identity
-drift leaves the operation byte-for-byte unchanged. This remains the same
-Launch and Fabric operation and cannot create a second purchase or volume key.
-The durable authorization history rejects every later replay authorization,
-including when this final replay ends without a conclusive readback.
-For a resource-billed Launch whose Runtime attempt is already
-`unknown/manual_review`, an operator may authorize recovery of the exact
-original Fabric binding through the same Reconciler. A zero-mutation,
-zero-replay authorization advances only after authoritative `ready` readback.
-When the original apply failed before any Runtime resource existed, a separate
-zero-mutation, one-replay authorization advances only after authoritative
-`absent` readback, then reuses the original Runtime idempotency key once.
-`pending`, `unknown`, read failure, identity drift, or any ineligible attempt
-leaves the operation unchanged in `manual_review`.
+Recovery continues the original Launch through the same Reconciler. An
+immutable authorization binds the original version, stage, attempt, resource
+identity and idempotency key. Readback, replay and mutation are separate
+permissions; unknown or conflicting owner facts never justify an unproven
+purchase or provider write. Runtime image recovery preserves the original
+non-Runtime resources and advances only after authoritative readiness.
 
-The Control Plane worker may issue a zero-mutation, zero-replay authorization
-without an operator for a Tencent/TKE Compute, Storage, Attachment, Secret, or
-Runtime stage whose exact original attempt is `unknown/manual_review`, has no
-active Resume authorization, and returns a fresh identity-valid `ready`
-readback. Runtime additionally rejects an active repair authorization.
-The deterministic single-use authorization is persisted as
-`authorizedBy=control-plane-system` in the same original Launch CAS that
-advances the cursor. `pending`, `absent`, `unknown`, read failure, invalid facts,
-another provider, or any authorization conflict remains unchanged; this system
-path cannot replay Fabric, revise an image, debit, purchase, or create another
-Launch.
-
-The same worker may issue a distinct one-replay system authorization for an
-exact Tencent/TKE Compute attempt already parked as `unknown/manual_review`.
-It first requires an authoritative `ownership_pending` read proving that the
-original Machine is Ready and safely recoverable. The Reconciler then uses the
-original Fabric operation and idempotency key to claim CVM/Node ownership; it
-cannot scale the NodePool or create another Compute. Provider provisioning,
-absence, unknown, conflict, read failure, an earlier replay, or an active
-authorization leaves the operation unchanged in `manual_review`. A terminal
-failed typed continuation may be replaced only when its replay claim and every
-earlier replay authorization are absent; its own completed read claims are
-retired before the new authorization is persisted.
-
-For an exact Tencent/TKE Storage attempt parked as `unknown/manual_review`
-before any earlier replay, the worker may issue a distinct deterministic
-one-replay authorization only after a fresh authoritative `absent` read. The
-same Reconciler and Fabric journal then read again and reuse the original
-Storage idempotency key; CAS and the single-use provider child claim admit one
-dispatch. `ready` still takes the zero-replay path, while `pending`, `unknown`,
-read failure, identity conflict, active authorization, or prior replay remains
-unchanged.
-
-For Tencent/TKE, an identity-exact original Runtime that exists but is blocked
-only by its immutable old Workspace image continues through that same Resume
-route and Reconciler. The administrator supplies the replacement digest, while
-Control Plane binds it to the current deployed Workspace image, exact Launch
-version, authenticated reviewer, original Runtime operation, and original
-stage idempotency key. The original admitted image and stage request hash do
-not change. Fabric admits only old-image-only drift, durably claims one image
-revision replay on the existing Tencent Runtime child operation, and requires
-the same authorization proof on every read and apply. READY advances the
-original Launch to Activation and its single Receipt. Any unrelated identity,
-image, proof, or provider drift remains fail-closed without another apply.
-
-Local-Docker Fulfillment Repair is a separate operator mutation command under the same
-Workspace Launch owner; it does not widen Recovery. It applies only after a
-resource-billed Launch has confirmed its Key, Debit, Compute, Storage,
-Attachment, and Secret, consumed its single Runtime attempt as unknown, and has
-not attempted Activation or Receipt. Control Plane supplies only a new immutable
-image digest and persists the repair authorization on the original Launch,
-including the authenticated operator identity and server authorization time.
-Fabric proves the original Runtime operation and retained resource bindings,
-then an explicitly opted-in provider adapter may replace only the Runtime while
-preserving the Runtime ID/service identity and the existing Secret, Compute,
-Storage, and Attachment. READY readback returns the original Launch to
-Activation and its single Purchase Receipt; exact replay cannot create another
-Key, Debit, provider resource set, Secret, Runtime replacement, or Receipt.
-
-Fresh mutation continuation is a separate Control Plane system authorization,
-never an operator Resume authorization. It exists only when the mandatory first
-post-mutation owner read returns exact typed `pending`, and the same operation
-CAS binds account, Launch, Workspace, stage, original idempotency key, attempt,
-and operation version. Each read claim is persisted before its GET; concurrent
-CAS losers perform no GET, and a crashed claim consumes its ordinal
-permanently. Non-compute stages retain zero replay budget and only two
-additional owner reads after the mandatory read.
-
-Compute allocation has a provider-latency-specific ten-minute deadline and at
-most sixty additional worker read claims after the mandatory read.
-`pending/provider_provisioning` remains read-only. Once exact Fabric/provider
-readback changes to `pending/ownership_pending`, that compute authorization may
-claim one exact-idempotency continuation of the same Fabric stage. Fabric must
-discover the already-created Machine before claiming its ownership, so this
-continuation cannot issue a second NodePool scale. `ready` advances the same
-Launch; unknown, conflict, error, or exact budget/deadline exhaustion enters
-`unknown/manual_review` without another unproven external mutation.
-
-For historical compute operations outside that exact system-owned policy, an
-administrator may resume only the operation already parked by the former
-untyped provider-pending result. The existing Resume route
-first performs authoritative readback and admits only
-`provider_provisioning` or `ownership_pending`; it then restores the original
-attempt to the bounded compute continuation above. `ready`, `absent`,
-`unknown`, read failure, or identity conflict leaves the operation unchanged.
-If that compatibility replay itself ended `failed` before a corrected owner
-classifier could prove the existing Machine, one new explicit administrator
-authorization may replace that terminal claim exactly once after the same
-authoritative admission. The prior authorization remains in the operation
-history; the stage, attempt, Fabric operation, resource binding, and idempotency
-key cannot change, and a second replacement is refused.
-This does not authorize a general unknown recovery path, a successor Launch, a
-new stage attempt, another debit, or direct Receipt creation. Legacy schema-v3
-rows without explicit authorization and claim fields have zero system
-continuation budget.
+The implemented eligibility, authorization lineage, budgets, image repair and
+operator boundaries have one reference:
+[Workspace Launch recovery](implementation/workspace-launch-recovery.md).
+They are implementation policy, not a second target architecture. Durable
+money, Secret and resource guarantees remain in [invariants](invariants.md).
 
 ## Modularity And Simplification Boundary
 
@@ -609,10 +474,9 @@ readback of the configured native carrier. Framework `opl packages` discovers
 descriptors, delegates carrier actions and aggregates those owner/carrier
 projections; it is not a second resolver, lock or currentness authority.
 
-Legacy Framework lock, payload, lifecycle-receipt or rollback projections may
-remain during migration. Cloud target contracts must not make them a new
-consumer or use them as ordinary Package identity, dependency or readiness
-gates.
+Cloud contracts consume only current Package-owner and native-carrier
+interfaces. Retired Framework lock, payload and parallel lifecycle projections
+are not Cloud dependencies or readiness gates.
 
 Cloud surfaces consume those refs without redefining them:
 
@@ -666,9 +530,8 @@ the existence of a remote identity, a local Account, or an existing Workspace
 does not grant new-purchase permission. Operator provisioning explicitly selects
 `full_cloud_customer` or `gateway_only`, and grant/revoke actions are audited.
 The launch route reads this Control Plane fact before any billing or Fabric
-mutation. Revocation affects only future purchases. Historical account migration
-and removal of the Instance per-account pilot allowlist are separate,
-product-approved compatibility work; a fresh deployment does not use that
-per-account environment variable for launch admission.
+mutation. Revocation affects only future purchases. Account migration must preserve persisted eligibility and audit custody;
+Launch admission reads the Control Plane fact rather than an Instance-specific
+per-account allowlist.
 Contract presence, documentation, a successful build or an empty queue does not
 prove Cloud, package, domain or production readiness.

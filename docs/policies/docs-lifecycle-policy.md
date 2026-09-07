@@ -18,6 +18,37 @@ Classify each changed section as `current_truth`, `active_gap`,
   history when no non-resurrection record is needed.
 - Delete stale or conflicting text after its successor and callers are proven.
 
+## Creation And Retirement
+
+Before adding a document, identify its reader, one question, current owner and
+the existing document it replaces or complements. Update an existing owner when
+the question is already covered. Keep target, implementation reference,
+operating procedure, current evidence and open plan in separate documents;
+summaries link to the owner rather than copying its rules or field inventory.
+
+Update the owning text in place when behavior changes. Replace incremental
+completion lists with a cohesive current explanation. Status snapshots name an
+observation date and exact evidence identity; a commit described inside a file
+is a checked baseline, never a self-updating claim about `main`.
+
+At completion, transfer durable rationale and unique safety or data obligations
+to their current owner, then remove task prompts, command transcripts, migration
+checklists and obsolete test inventories. Git preserves routine execution
+history. Keep a historical record only for useful decision provenance, legal
+custody or a plausible reintroduction risk; mark it historical and link its
+successor. Unimplemented accepted decisions remain explicit roadmap outcomes,
+not falsely completed history.
+
+Retire stale module/API/test prose together with obsolete references, navigation
+and unused documentation assets. Do not leave aliases or compatibility pages.
+Actual live callers, published artifacts and persisted financial/resource
+obligations must be identified before retiring their implementation: a prose
+cleanup cannot establish that an external consumer or stored resource is absent.
+
+Review these boundaries whenever the owning source, public contract, release
+format or product decision changes. No separate recurring audit ledger, keyword
+gate or prescribed document count is needed.
+
 ## Downward Reconciliation
 
 An upper-level change must identify affected lower projections. Reconcile them

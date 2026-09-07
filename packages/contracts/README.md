@@ -5,6 +5,11 @@ must agree on bytes or a stable public identity. Runtime behavior, internal
 fields, retired alternatives, current progress, and implementation layout stay
 in source, focused tests, or documentation.
 
+The `go/` module is also a live runtime dependency of Control Plane and Fabric.
+It owns their shared stage/status, resource, provider, operation and protocol
+types. Keep service-local types in the service; a test fixture alone does not
+justify adding a cross-owner type.
+
 ## Current Contracts
 
 | Contract | Current consumers |

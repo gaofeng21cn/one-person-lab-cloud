@@ -8,9 +8,8 @@ registry, compatibility path, package source, or implementation instruction.
 
 The former Cloud-owned `OPL Agent Registry` model is retired. It duplicated
 package identity, version, and approval state across Fabric and Console and
-could drift from the owning Package and its physical carrier. The Framework
-package lock that existed when this tombstone was written is itself now a
-`compatibility-to-delete` migration surface, not the replacement authority.
+could drift from the owning Package and its physical carrier. A Framework
+package lock is not the replacement authority either.
 
 | Retired responsibility | Current owner |
 | --- | --- |

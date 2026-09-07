@@ -25,9 +25,9 @@ balance and usage facts needed to create and manage one local Docker Workspace
 path through Control Plane. Control Plane owns the product DTOs; Sub2API owns
 balance and usage, and Ledger supplies receipt projections.
 
-Self-service signup, customer payment/top-up, detailed visual refinement,
-managed-resource policy, and Serve administration are later or extension
-surfaces. Current capability is owned by [status](status.md); gap and priority
+The accepted public-beta target adds zero-balance registration, administrator
+top-up and controlled purchase. Customer-operated payment/top-up, broader
+managed-resource policy and Serve administration remain deferred. Current capability is owned by [status](status.md); gap and priority
 are owned by the [roadmap](roadmap.md).
 
 ## Governance Objects
