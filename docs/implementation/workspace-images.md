@@ -34,4 +34,3 @@ replacement as two separate commands. The Cloud source and portable image own
 these APIs and capabilities; `opl-instance-medopl` still owns the protected
 catalog values, production deployment authorization, TKE readback, rollback,
 and receipts.
-
