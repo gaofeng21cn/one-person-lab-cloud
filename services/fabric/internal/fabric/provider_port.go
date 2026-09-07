@@ -135,6 +135,10 @@ type runtimeResourceReader interface {
 	WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error)
 }
 
+type workspaceComputeRuntimeBindingReader interface {
+	ReadWorkspaceComputeRuntimeBinding(context.Context, WorkspaceRuntime, ComputeAllocation, MachineOwnership) (bool, error)
+}
+
 type runtimeProvider interface {
 	runtimeMutationProvider
 	runtimeResourceReader
@@ -146,6 +150,10 @@ type runtimeRepairProvider interface {
 
 type runtimeImageReplacementProvider interface {
 	ReplaceWorkspaceRuntimeImage(context.Context, WorkspaceRuntimeImageReplacementInput) (WorkspaceRuntime, error)
+}
+
+type runtimeGatewayNetworkRecoveryProvider interface {
+	RecoverWorkspaceRuntimeGatewayNetwork(context.Context, WorkspaceRuntimeGatewayNetworkRecoveryInput, ComputeAllocation) (WorkspaceRuntimeGatewayNetworkRecoveryResult, error)
 }
 
 type workspaceImagePolicy interface {

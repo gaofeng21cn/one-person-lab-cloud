@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const FabricCapabilityHeader = "X-OPL-Fabric-Capability"
@@ -307,13 +309,14 @@ type ProviderFactsBatchInput struct {
 }
 
 type ProviderResourceFacts struct {
-	PackageOrSpec string `json:"packageOrSpec,omitempty"`
-	ProviderID    string `json:"providerId,omitempty"`
-	Zone          string `json:"zone,omitempty"`
-	Status        string `json:"status,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	ExpiresAt     string `json:"expiresAt,omitempty"`
-	LastReadAt    string `json:"lastReadAt,omitempty"`
+	PackageOrSpec         string                                    `json:"packageOrSpec,omitempty"`
+	ProviderID            string                                    `json:"providerId,omitempty"`
+	Zone                  string                                    `json:"zone,omitempty"`
+	Status                string                                    `json:"status,omitempty"`
+	CreatedAt             string                                    `json:"createdAt,omitempty"`
+	ExpiresAt             string                                    `json:"expiresAt,omitempty"`
+	LastReadAt            string                                    `json:"lastReadAt,omitempty"`
+	ComputeRuntimeBinding *contracts.WorkspaceComputeRuntimeBinding `json:"computeRuntimeBinding,omitempty"`
 }
 
 type ProviderFact struct {
@@ -675,6 +678,14 @@ func (c *fabricHTTPClient) ReplaceWorkspaceRuntimeImage(ctx context.Context, inp
 	var result WorkspaceRuntimeImageReplacementResult
 	err := c.postMutation(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(input.WorkspaceID)+"/image-replacements", input, idempotencyKey, fabricMutationScope{
 		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_runtime", ResourceID: input.WorkspaceID, Action: "replace_workspace_runtime_image",
+	}, &result)
+	return result, err
+}
+
+func (c *fabricHTTPClient) RecoverWorkspaceRuntimeGatewayNetwork(ctx context.Context, input WorkspaceRuntimeGatewayNetworkRecoveryInput, idempotencyKey string) (WorkspaceRuntimeGatewayNetworkRecoveryResult, error) {
+	var result WorkspaceRuntimeGatewayNetworkRecoveryResult
+	err := c.postMutation(ctx, "/fabric/workspace-runtimes/"+url.PathEscape(input.WorkspaceID)+"/gateway-network/recover", input, idempotencyKey, fabricMutationScope{
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_runtime_gateway_network", ResourceID: input.WorkspaceID, Action: "recover_workspace_runtime_gateway_network",
 	}, &result)
 	return result, err
 }

@@ -481,6 +481,18 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		result, err := service.ReplaceWorkspaceRuntimeImage(r.Context(), input)
 		writeResult(w, result, err)
 	})
+	mux.HandleFunc("POST /fabric/workspace-runtimes/{workspaceId}/gateway-network/recover", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.WorkspaceRuntimeGatewayNetworkRecoveryInput
+		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+			return
+		}
+		if input.WorkspaceID != strings.TrimSpace(r.PathValue("workspaceId")) {
+			writeError(w, http.StatusBadRequest, "workspace_runtime_gateway_network_recovery_input_invalid")
+			return
+		}
+		result, err := service.RecoverWorkspaceRuntimeGatewayNetwork(r.Context(), input)
+		writeResult(w, result, err)
+	})
 	mux.HandleFunc("POST /fabric/workspace-runtimes/{workspaceId}/destroy", func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
@@ -670,6 +682,9 @@ func isFabricMutation(r *http.Request) bool {
 	if len(parts) == 5 && parts[0] == "fabric" && parts[1] == "workspace-runtimes" && parts[2] != "" && parts[3] == "credentials" && parts[4] == "reveal" {
 		return true
 	}
+	if len(parts) == 5 && parts[0] == "fabric" && parts[1] == "workspace-runtimes" && parts[2] != "" && parts[3] == "gateway-network" && parts[4] == "recover" {
+		return true
+	}
 	if len(parts) != 4 || parts[0] != "fabric" || parts[2] == "" {
 		return false
 	}
@@ -762,6 +777,11 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 			return fabricMutationScope{}, false
 		}
 		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_runtime", parts[2], "replace_workspace_runtime_image"
+	case len(parts) == 5 && parts[0] == "fabric" && parts[1] == "workspace-runtimes" && parts[2] != "" && parts[3] == "gateway-network" && parts[4] == "recover":
+		if value("workspaceId") != parts[2] {
+			return fabricMutationScope{}, false
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_runtime_gateway_network", parts[2], "recover_workspace_runtime_gateway_network"
 	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-runtimes" && parts[2] != "" && parts[3] == "gateway-secret":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_runtime_gateway_secret", parts[2], "bind_workspace_runtime_gateway_secret"
 	case len(parts) == 5 && parts[0] == "fabric" && parts[1] == "workspace-runtimes" && parts[2] != "" && parts[3] == "credentials" && parts[4] == "reveal":
@@ -870,11 +890,11 @@ func exactQueryValue(r *http.Request, name string) (string, bool) {
 }
 
 func writeResult(w http.ResponseWriter, body any, err error) {
-	if errors.Is(err, fabric.ErrUnsupportedComputePackage) || errors.Is(err, fabric.ErrInvalidStorageSize) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementInputInvalid) {
+	if errors.Is(err, fabric.ErrUnsupportedComputePackage) || errors.Is(err, fabric.ErrInvalidStorageSize) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementInputInvalid) || errors.Is(err, fabric.ErrWorkspaceRuntimeGatewayNetworkRecoveryInputInvalid) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if errors.Is(err, fabric.ErrComputeIdempotencyConflict) || errors.Is(err, fabric.ErrRuntimeIdempotencyConflict) || errors.Is(err, fabric.ErrRuntimeOperationInProgress) || errors.Is(err, fabric.ErrRuntimeOperationFailed) || errors.Is(err, fabric.ErrGatewaySecretIdempotencyConflict) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementConflict) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementUnavailable) {
+	if errors.Is(err, fabric.ErrComputeIdempotencyConflict) || errors.Is(err, fabric.ErrRuntimeIdempotencyConflict) || errors.Is(err, fabric.ErrRuntimeOperationInProgress) || errors.Is(err, fabric.ErrRuntimeOperationFailed) || errors.Is(err, fabric.ErrGatewaySecretIdempotencyConflict) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementConflict) || errors.Is(err, fabric.ErrWorkspaceRuntimeImageReplacementUnavailable) || errors.Is(err, fabric.ErrWorkspaceRuntimeGatewayNetworkRecoveryConflict) || errors.Is(err, fabric.ErrWorkspaceRuntimeGatewayNetworkRecoveryUnavailable) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}

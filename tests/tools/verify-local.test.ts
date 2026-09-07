@@ -44,6 +44,27 @@ test("verify-local exposes one default gate across Node, builds, and every Go mo
   for (const spec of databaseFreeGoTestSpecs) {
     assert.ok(names.includes(`${spec.cwd} database-free tests`));
   }
+  assert.ok(goModules.includes("packages/contracts/go"));
+  assert.deepEqual(
+    databaseFreeGoTestSpecs.find((spec) => spec.cwd === "packages/contracts/go"),
+    { cwd: "packages/contracts/go", packages: ["./..."] }
+  );
+});
+
+test("Qualification executes the independent Go contracts module", async () => {
+  const qualification = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
+  const contractJob = qualification.jobs.go_contracts;
+  assert.equal(contractJob.name, "go-contracts");
+  assert.equal(contractJob.steps.find((step) => step.name === "Set up Go").with.cache, false);
+  assert.ok(contractJob.steps.some((step) => step["working-directory"] === "packages/contracts/go"
+    && step.run === "go test -count=1 ./..."));
+  assert.ok(qualification.jobs.validate.needs.includes("go_contracts"));
+  const validateStep = qualification.jobs.validate.steps.find((step) => step.name === "Require successful test jobs");
+  assert.equal(
+    validateStep.env.GO_CONTRACTS_RESULT,
+    "${{ needs.go_contracts.result }}"
+  );
+  assert.match(validateStep.run, /"\$GO_CONTRACTS_RESULT" != "success"/);
 });
 
 test("verify-local reports leaf Go test failures separately from package failures", () => {

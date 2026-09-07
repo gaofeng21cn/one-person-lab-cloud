@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -1104,7 +1105,10 @@ func TestOperatorResourceOwnerFields(t *testing.T) {
 		},
 		"runtime:runtime-alpha": {
 			AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ResourceType: "runtime", ResourceID: "runtime-alpha", Available: true,
-			Facts: clients.ProviderResourceFacts{ProviderID: "runtime-service-alpha", Status: "running", LastReadAt: "2026-07-19T03:01:00Z"},
+			Facts: clients.ProviderResourceFacts{
+				ProviderID: "runtime-service-alpha", Status: "running", LastReadAt: "2026-07-19T03:01:00Z",
+				ComputeRuntimeBinding: &contracts.WorkspaceComputeRuntimeBinding{Status: contracts.WorkspaceComputeRuntimeBindingMatched},
+			},
 		},
 	}}
 	server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, client), store)
@@ -1156,6 +1160,14 @@ func TestOperatorResourceOwnerFields(t *testing.T) {
 	}
 	if mapField(runtime, "providerId")["data"] != "runtime-service-alpha" || mapField(runtime, "status")["data"] != "running" {
 		t.Fatalf("runtime provider facts = %#v", runtime)
+	}
+	bindingPayload, err := json.Marshal(mapField(runtime, "computeRuntimeBinding")["data"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var binding contracts.WorkspaceComputeRuntimeBinding
+	if err := json.Unmarshal(bindingPayload, &binding); err != nil || binding.Status != contracts.WorkspaceComputeRuntimeBindingMatched {
+		t.Fatalf("runtime compute binding = %#v err=%v", binding, err)
 	}
 	if len(fabric.inputs) != 1 || len(fabric.inputs[0].Items) != 2 {
 		t.Fatalf("provider fact requests = %#v", fabric.inputs)
@@ -1521,7 +1533,7 @@ func TestOperatorResourceUnavailableFields(t *testing.T) {
 		t.Fatalf("operator workspace unavailable detail = %d: %s", response.Code, response.Body.String())
 	}
 	resource := mapField(decodeOperatorEnvelope(t, response), "data")["resources"].([]any)[0].(map[string]any)
-	for _, field := range []string{"packageOrSpec", "providerId", "zone", "createdAt", "expiresAt", "lastReadAt", "operationRef", "receiptRef"} {
+	for _, field := range []string{"packageOrSpec", "providerId", "zone", "createdAt", "expiresAt", "lastReadAt", "computeRuntimeBinding", "operationRef", "receiptRef"} {
 		envelope := mapField(resource, field)
 		if envelope["status"] != "unavailable" || envelope["available"] != false {
 			t.Fatalf("%s must be unavailable: %#v", field, envelope)

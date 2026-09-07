@@ -135,6 +135,28 @@ func TestFabricHTTPClientUsesCapabilityForWorkspaceRuntimeImageReplacement(t *te
 	}
 }
 
+func TestFabricHTTPClientUsesCapabilityForWorkspaceRuntimeGatewayNetworkRecovery(t *testing.T) {
+	const capabilityKey = "test-capability-key"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/fabric/workspace-runtimes/ws-alpha/gateway-network/recover" || r.Header.Get("Idempotency-Key") != "recover-once" || r.Header.Get(FabricCapabilityHeader) == "" {
+			t.Fatalf("unexpected recovery request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(WorkspaceRuntimeGatewayNetworkRecoveryResult{SchemaVersion: 1, OperationID: "recover-once", WorkspaceID: "ws-alpha", RuntimeID: "rt-alpha", Status: "succeeded"})
+	}))
+	defer upstream.Close()
+	client, ok := NewFabricHTTPClientWithCapability(upstream.URL, "internal-secret", capabilityKey, upstream.Client()).(FabricWorkspaceRuntimeGatewayNetworkRecoveryClient)
+	if !ok {
+		t.Fatal("Fabric HTTP client must implement runtime gateway network recovery")
+	}
+	result, err := client.RecoverWorkspaceRuntimeGatewayNetwork(context.Background(), WorkspaceRuntimeGatewayNetworkRecoveryInput{
+		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ComputeID: "compute-alpha", RuntimeID: "rt-alpha",
+		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "runtime-alpha",
+	}, "recover-once")
+	if err != nil || result.Status != "succeeded" || result.OperationID != "recover-once" {
+		t.Fatalf("recovery result=%#v err=%v", result, err)
+	}
+}
+
 func TestFabricHTTPClientWritesWorkspaceScopedGatewaySecret(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/fabric/gateway-secrets" || r.Header.Get("Idempotency-Key") != "workspace-once:gateway-secret" || r.Header.Get("Authorization") != "Bearer internal-secret" {

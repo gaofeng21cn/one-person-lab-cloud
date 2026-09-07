@@ -172,7 +172,14 @@ not the operator Resume record. The mutation's mandatory owner read persists
 account/Launch/Workspace/stage/idempotency/attempt/version binding in one CAS.
 Before each GET, Control Plane claims and increments the exact ordinal by CAS; a
 loser stops before GET, and a crashed claim is never refunded or reissued.
-Non-compute stages keep zero replay and at most two subsequent reads.
+Non-compute stages keep zero replay. Their default continuation allows at most
+two subsequent reads after the mandatory first read. Local-Docker Runtime cold
+start instead uses schema-2
+`fresh_typed_pending_local_docker_runtime_system` authorization, with twenty
+subsequent reads and a total persisted Runtime ceiling of twenty-one. Its
+authorization binds the provider, Runtime stage, exact identity and budget;
+other providers and stages cannot reuse it. Persisted schema-1 continuation
+records retain their original two-read bound and are never silently upgraded.
 
 `ensure_compute_allocation` instead persists a ten-minute deadline, at most
 sixty subsequent worker reads, and one same-key replay budget. Fabric maps a

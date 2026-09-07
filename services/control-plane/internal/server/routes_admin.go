@@ -18,7 +18,10 @@ import (
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
-var billingReviewEvidenceRefPattern = regexp.MustCompile(`^case-[0-9]{8}-[a-z0-9]{3,16}$`)
+var (
+	billingReviewEvidenceRefPattern  = regexp.MustCompile(`^case-[0-9]{8}-[a-z0-9]{3,16}$`)
+	operatorProviderErrorCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,127}$`)
+)
 
 const (
 	operatorPageReadTimeout      = 5 * time.Second
@@ -28,6 +31,7 @@ const (
 
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	registerWorkspaceRuntimeImageReplacementRoutes(mux, app, service)
+	registerWorkspaceRuntimeGatewayNetworkRecoveryRoutes(mux, app, service)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		capabilities := r.Header.Values(productionAcceptanceBCapability)
 		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {
@@ -1158,6 +1162,7 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 	fact, factAvailable := facts.providerFacts[operatorProviderFactKey(accountID, workspaceID, kind, resourceID)]
 	factAvailable = factAvailable && fact.Available
 	result["resourceType"] = operatorFactEnvelope("fabric", kind, factAvailable)
+	result["providerErrorCode"] = operatorStringFactEnvelope("fabric", operatorProviderErrorCode(fact.ErrorCode))
 	if !factAvailable {
 		fact.Facts = clients.ProviderResourceFacts{}
 	}
@@ -1168,6 +1173,7 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 	result["createdAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.CreatedAt)
 	result["expiresAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.ExpiresAt)
 	result["lastReadAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.LastReadAt)
+	result["computeRuntimeBinding"] = operatorFactEnvelope("fabric", fact.Facts.ComputeRuntimeBinding, fact.Facts.ComputeRuntimeBinding != nil)
 	result["operationRef"] = operatorStringFactEnvelope("control-plane", stringValue(row["operationId"]))
 	result["receiptRef"] = sourceEnvelope("ledger", "unavailable", nil, "")
 	if liveLedger {
@@ -1177,6 +1183,14 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 		}
 	}
 	return result
+}
+
+func operatorProviderErrorCode(value string) string {
+	code, _, _ := strings.Cut(strings.TrimSpace(value), ":")
+	if !operatorProviderErrorCodePattern.MatchString(code) {
+		return ""
+	}
+	return code
 }
 
 func operatorFactEnvelope(source string, value any, available bool) map[string]any {

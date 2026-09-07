@@ -88,10 +88,10 @@ npm run verify:local
 ```
 
 The default gate needs no database. It validates the product boundary, Node
-tests, Console typecheck/lint/build, four service/infrastructure Go modules, and
-Git whitespace. Go coverage means all-module compilation plus the explicitly
-database-free package tests. Changes to persistence, capacity behavior, local Docker, or a
-cross-service path also run the complete local gate:
+tests, Console typecheck/lint/build, five Go modules (including shared contracts),
+and Git whitespace. Go coverage means all-module compilation plus the explicitly
+database-free package tests. Changes to persistence, capacity behavior, local
+Docker, or a cross-service path also run the complete local gate:
 
 ```bash
 npm run verify:local:full

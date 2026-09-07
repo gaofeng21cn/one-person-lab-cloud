@@ -680,6 +680,7 @@ export interface OperatorResourceDTO {
   ownerUser: SourceEnvelope<{ id: string; email: string }>;
   workspace: SourceEnvelope<{ id: string; name?: string }>;
   resourceType: SourceEnvelope<string>;
+  providerErrorCode?: SourceEnvelope<string>;
   packageOrSpec: SourceEnvelope<string>;
   providerId: SourceEnvelope<string>;
   zone: SourceEnvelope<string>;

@@ -1479,10 +1479,12 @@ func TestPostgresWorkspaceRuntimeIdentityCandidatesCanonicalRestart(t *testing.T
 	}
 	dynamicURLRecord.Resources.RuntimeURL = "http://127.0.0.1:63118/"
 	setWorkspaceLaunchStageRecord(&dynamicURLParent, dynamicURLRecord)
+	legacySwapParent, legacySwapChild, _ := legacyLocalDockerRuntimeReadbackGraph(t, "workspace-legacy-swap-pg", "legacy-swap-pg", now.Add(5*time.Minute))
 	legacy := legacyWorkspaceRuntimeOperation("workspace-legacy-pg", "legacy-pg", now.Add(-time.Minute))
 	for _, operation := range []FabricOperation{
 		legacy, canonicalParent, canonicalChild, duplicateFirstParent, duplicateFirstChild,
 		duplicateSecondParent, duplicateSecondChild, driftParent, driftChild, dynamicURLParent, dynamicURLChild,
+		legacySwapParent, legacySwapChild,
 	} {
 		if err := first.Append(ctx, operation); err != nil {
 			t.Fatal(err)
@@ -1509,6 +1511,7 @@ func TestPostgresWorkspaceRuntimeIdentityCandidatesCanonicalRestart(t *testing.T
 		{name: "duplicate canonical", workspaceID: duplicateFirstParent.WorkspaceID, wantCount: 2},
 		{name: "canonical binding drift", workspaceID: driftParent.WorkspaceID, wantErr: ErrLaunchStageBindingConflict},
 		{name: "dynamic URL restart", workspaceID: dynamicURLParent.WorkspaceID, wantID: dynamicURLChild.ID, wantCount: 1},
+		{name: "legacy Local-Docker swap readback", workspaceID: legacySwapParent.WorkspaceID, wantID: legacySwapChild.ID, wantCount: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			candidates, err := restarted.WorkspaceRuntimeIdentityCandidates(ctx, test.workspaceID)

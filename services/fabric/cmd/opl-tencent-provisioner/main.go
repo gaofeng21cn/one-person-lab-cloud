@@ -39,14 +39,35 @@ var requiredTencentEnv = []string{
 var errCVMInstanceNotFound = errors.New("CVM instance not found")
 var errTKEInstanceNotFound = errors.New("TKE instance not found")
 
+type cbsReadbackValidationError struct {
+	code string
+}
+
+func (err cbsReadbackValidationError) Error() string {
+	return err.code
+}
+
 const tkeListPageLimit int64 = 100
 const nodePoolBootstrapMutationConfirmation = "CREATE_MISSING_WORKSPACE_NODEPOOLS"
 const nodePoolTaintMigrationMutationConfirmation = "MIGRATE_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS"
+const nodePoolTaintMigrationRecoveryMutationConfirmation = "RECOVER_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS_AFTER_NO_EFFECT_READBACK"
+const nodePoolTaintMigrationRecoveryV2MutationConfirmation = "RECOVER_BASIC_PRO_NODEPOOL_PACKAGE_TAINTS_AFTER_RECOVERY_V1_NO_EFFECT_READBACK"
 const nodePoolImageGCMutationConfirmation = "RECONCILE_WORKSPACE_NODEPOOL_IMAGE_GC"
 const nodePoolTaintMigrationBindingDigestEnv = "OPL_TAINT_MIGRATION_MUTATION_BINDING_DIGEST"
+const nodePoolTaintMigrationPriorBindingDigestEnv = "OPL_TAINT_MIGRATION_PRIOR_MUTATION_BINDING_DIGEST"
+const nodePoolTaintMigrationPriorRecoveryBindingDigestEnv = "OPL_TAINT_MIGRATION_PRIOR_RECOVERY_MUTATION_BINDING_DIGEST"
+const nodePoolTaintMigrationAction = "migrate_workspace_node_pool_taints"
 const nodePoolTaintMigrationOperationID = "op_normal_workspace_node_pool_taint_migration_v1"
 const nodePoolTaintMigrationRecordID = "fop_normal_workspace_node_pool_taint_migration_v1"
 const nodePoolTaintMigrationIdempotencyKey = "normal_workspace_node_pool_package_taints_v1"
+const nodePoolTaintMigrationRecoveryAction = "recover_workspace_node_pool_taint_migration"
+const nodePoolTaintMigrationRecoveryOperationID = "op_normal_workspace_node_pool_taint_migration_recovery_v1"
+const nodePoolTaintMigrationRecoveryRecordID = "fop_normal_workspace_node_pool_taint_migration_recovery_v1"
+const nodePoolTaintMigrationRecoveryIdempotencyKey = "normal_workspace_node_pool_package_taints_recovery_v1"
+const nodePoolTaintMigrationRecoveryV2Action = "recover_workspace_node_pool_taint_migration_v2"
+const nodePoolTaintMigrationRecoveryV2OperationID = "op_normal_workspace_node_pool_taint_migration_recovery_v2"
+const nodePoolTaintMigrationRecoveryV2RecordID = "fop_normal_workspace_node_pool_taint_migration_recovery_v2"
+const nodePoolTaintMigrationRecoveryV2IdempotencyKey = "normal_workspace_node_pool_package_taints_recovery_v2"
 const protectedCheckNotChecked = "not_checked"
 const protectedCheckPassed = "passed"
 const protectedCheckFailed = "failed"
@@ -335,14 +356,16 @@ type NodePoolTaintFact struct {
 }
 
 type NodePoolImageGCResult struct {
-	PackageID            string   `json:"packageId"`
-	NodePoolID           string   `json:"nodePoolId"`
-	Status               string   `json:"status"`
-	HighThresholdPercent int      `json:"highThresholdPercent"`
-	LowThresholdPercent  int      `json:"lowThresholdPercent"`
-	UpdateExistingNodes  bool     `json:"updateExistingNodes"`
-	KubeletArgsBefore    []string `json:"kubeletArgsBefore"`
-	KubeletArgsAfter     []string `json:"kubeletArgsAfter"`
+	PackageID            string              `json:"packageId"`
+	NodePoolID           string              `json:"nodePoolId"`
+	Status               string              `json:"status"`
+	HighThresholdPercent int                 `json:"highThresholdPercent"`
+	LowThresholdPercent  int                 `json:"lowThresholdPercent"`
+	UpdateExistingNodes  bool                `json:"updateExistingNodes"`
+	TaintsBefore         []NodePoolTaintFact `json:"taintsBefore"`
+	TaintsAfter          []NodePoolTaintFact `json:"taintsAfter"`
+	KubeletArgsBefore    []string            `json:"kubeletArgsBefore"`
+	KubeletArgsAfter     []string            `json:"kubeletArgsAfter"`
 }
 
 type PreflightStage struct {
@@ -393,17 +416,18 @@ type TencentClient interface {
 type unimplementedTencentClient struct{}
 
 type tencentSDKClient struct {
-	region                             string
-	clusterId                          string
-	nativeTkeClient                    tkeNativeAPI
-	nativeLegacyTkeClient              tkeLegacyAPI
-	nativeCvmClient                    cvmNativeAPI
-	nativeCbsClient                    cbsNativeAPI
-	nativeVpcClient                    vpcNativeAPI
-	nativeTagClient                    tagNativeAPI
-	convergenceContext                 context.Context
-	convergenceWait                    func(context.Context, int) error
-	claimNodePoolTaintMigrationAttempt func(context.Context, fabricstore.FabricOperation) (fabricstore.FabricOperation, bool, error)
+	region                              string
+	clusterId                           string
+	nativeTkeClient                     tkeNativeAPI
+	nativeLegacyTkeClient               tkeLegacyAPI
+	nativeCvmClient                     cvmNativeAPI
+	nativeCbsClient                     cbsNativeAPI
+	nativeVpcClient                     vpcNativeAPI
+	nativeTagClient                     tagNativeAPI
+	convergenceContext                  context.Context
+	convergenceWait                     func(context.Context, int) error
+	claimNodePoolTaintMigrationAttempt  func(context.Context, fabricstore.FabricOperation) (fabricstore.FabricOperation, bool, error)
+	lookupNodePoolTaintMigrationAttempt func(context.Context, string, string) (fabricstore.FabricOperation, bool, error)
 }
 
 type tagNativeAPI interface {
@@ -958,6 +982,13 @@ func newTencentSDKClient(env map[string]string) (*tencentSDKClient, *Response) {
 				return fabricstore.FabricOperation{}, false, err
 			}
 			return store.ClaimRuntime(ctx, operation)
+		},
+		lookupNodePoolTaintMigrationAttempt: func(ctx context.Context, action, idempotencyKey string) (fabricstore.FabricOperation, bool, error) {
+			store, err := fabricstore.NewPostgresOperationStore(strings.TrimSpace(env["DATABASE_URL"]))
+			if err != nil {
+				return fabricstore.FabricOperation{}, false, err
+			}
+			return store.OperationByActionIdempotency(ctx, action, idempotencyKey)
 		},
 	}, nil
 }
@@ -2084,12 +2115,12 @@ func (client *tencentSDKClient) storageVolumeReadback(request Request, allowAbse
 		return storageDestroyResponseEvidence(Response{Ok: true, StorageVolumeId: storage.Id, CBSStatus: "NOT_FOUND", Status: "external_deleted", ProviderRequestId: requestID, ProviderData: map[string]string{"storageVolumeId": storage.Id, "cbsStatus": "NOT_FOUND", "describeCbsRequestId": requestID, "region": client.region}}, "absence_confirmed", 0)
 	}
 	if result == nil || result.Response == nil || result.Response.TotalCount == nil || *result.Response.TotalCount != 1 || len(result.Response.DiskSet) != 1 || result.Response.DiskSet[0] == nil {
-		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_mismatch", Message: "Tencent CBS readback must return exactly one disk.", ProviderRequestId: requestID, Retryable: true}
+		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_cardinality_mismatch", Message: "Tencent CBS readback must return exactly one disk.", ProviderRequestId: requestID, Retryable: true}
 	}
 	disk := result.Response.DiskSet[0]
 	facts, err := validateCBSVolume(disk, storage, request.Tags)
 	if err != nil {
-		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_mismatch", Message: "Tencent CBS billing or identity facts do not match the requested volume.", ProviderRequestId: requestID, Retryable: true}
+		return Response{Ok: false, ErrorCode: cbsReadbackValidationErrorCode(err), Message: "Tencent CBS billing or identity facts do not match the requested volume.", ProviderRequestId: requestID, Retryable: true}
 	}
 	state := stringValue(disk.DiskState)
 	facts["describeCbsRequestId"] = requestID
@@ -2136,7 +2167,7 @@ func (client *tencentSDKClient) DestroyStorageVolume(request Request, env map[st
 	for attempt := 1; attempt <= detachAttempts; attempt++ {
 		current = client.storageVolumeReadback(request, true)
 		if !current.Ok {
-			if current.ErrorCode == "tencent_cbs_readback_mismatch" {
+			if strings.HasPrefix(current.ErrorCode, "tencent_cbs_readback_") {
 				current.Retryable = false
 			}
 			return storageDestroyResponseEvidence(current, "precondition_unconfirmed", 0)
@@ -2240,7 +2271,7 @@ func validCBSOwnershipTags(tags map[string]string) bool {
 
 func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags map[string]string) (map[string]string, error) {
 	if disk == nil || !validCBSReadbackInput(storage, expectedTags) {
-		return nil, fmt.Errorf("CBS identity is missing")
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_identity_missing"}
 	}
 	zone := ""
 	if disk.Placement != nil {
@@ -2254,19 +2285,35 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 		}
 		key := stringValue(tag.Key)
 		if _, duplicate := actualTags[key]; duplicate {
-			return nil, fmt.Errorf("CBS ownership tag is duplicated")
+			return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_tag_duplicate"}
 		}
 		actualTags[key] = stringValue(tag.Value)
 	}
-	if stringValue(disk.DiskId) != storage.Id || stringValue(disk.DiskName) != expectedTags["opl_resource_id"] || stringValue(disk.DiskUsage) != "DATA_DISK" ||
-		strings.TrimSpace(stringValue(disk.DiskState)) == "" || stringValue(disk.DiskChargeType) != "PREPAID" ||
-		stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW" || stringValue(disk.DiskType) != storage.DiskType ||
-		disk.DiskSize == nil || *disk.DiskSize != storage.SizeGB || zone != storage.Zone || deadline == "" {
-		return nil, fmt.Errorf("CBS billing or identity facts mismatch")
+	switch {
+	case stringValue(disk.DiskId) != storage.Id:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_id_mismatch"}
+	case stringValue(disk.DiskName) != expectedTags["opl_resource_id"]:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_name_mismatch"}
+	case stringValue(disk.DiskUsage) != "DATA_DISK":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_usage_mismatch"}
+	case strings.TrimSpace(stringValue(disk.DiskState)) == "":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_state_missing"}
+	case stringValue(disk.DiskChargeType) != "PREPAID":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_charge_type_mismatch"}
+	case stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW":
+		return nil, cbsReadbackValidationError{code: cbsRenewFlagMismatchCode(stringValue(disk.RenewFlag))}
+	case stringValue(disk.DiskType) != storage.DiskType:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_type_mismatch"}
+	case disk.DiskSize == nil || *disk.DiskSize != storage.SizeGB:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_size_mismatch"}
+	case zone != storage.Zone:
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_zone_mismatch"}
+	case deadline == "":
+		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_deadline_missing"}
 	}
 	for _, key := range cbsOwnershipTagKeys {
 		if actualTags[key] != expectedTags[key] {
-			return nil, fmt.Errorf("CBS ownership tag mismatch")
+			return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_" + key + "_tag_mismatch"}
 		}
 	}
 	facts := map[string]string{
@@ -2278,6 +2325,27 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 		facts[key] = actualTags[key]
 	}
 	return facts, nil
+}
+
+func cbsReadbackValidationErrorCode(err error) string {
+	var mismatch cbsReadbackValidationError
+	if errors.As(err, &mismatch) && strings.HasPrefix(mismatch.code, "tencent_cbs_readback_") {
+		return mismatch.code
+	}
+	return "tencent_cbs_readback_mismatch"
+}
+
+func cbsRenewFlagMismatchCode(renewFlag string) string {
+	switch strings.TrimSpace(renewFlag) {
+	case "":
+		return "tencent_cbs_readback_renew_flag_missing"
+	case "NOTIFY_AND_AUTO_RENEW":
+		return "tencent_cbs_readback_renew_flag_auto_renew"
+	case "DISABLE_NOTIFY_AND_MANUAL_RENEW":
+		return "tencent_cbs_readback_renew_flag_manual_renew_notify_disabled"
+	default:
+		return "tencent_cbs_readback_renew_flag_unknown"
+	}
 }
 
 func (client *tencentSDKClient) RenewComputeAllocation(request Request, _ map[string]string) Response {
@@ -3757,6 +3825,50 @@ func (client *tencentSDKClient) computeDestroyProviderIdentityFailure(request Re
 	return nil
 }
 
+func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) string {
+	const base = "compute_provider_partial_identity_machine_missing"
+	instances, _, err := client.describeClusterInstancePages(nil)
+	if err != nil {
+		return base
+	}
+	matches := []*tke2022.Instance{}
+	for _, instance := range instances {
+		if instance == nil || !strings.EqualFold(stringValue(instance.NodeType), "Native") {
+			continue
+		}
+		native := instance.Native
+		nativeMachineName, nativeInstanceID, nativePrivateIP := "", "", ""
+		if native != nil {
+			nativeMachineName = stringValue(native.MachineName)
+			nativeInstanceID = stringValue(native.InstanceId)
+			nativePrivateIP = stringValue(native.LanIp)
+		}
+		machineMatches := stringValue(instance.InstanceId) == request.Allocation.MachineName || nativeMachineName == request.Allocation.MachineName
+		cvmMatches := nativeInstanceID == request.Allocation.InstanceId
+		privateIPMatches := stringValue(instance.LanIP) == request.Allocation.PrivateIp || nativePrivateIP == request.Allocation.PrivateIp
+		if machineMatches || cvmMatches || privateIPMatches {
+			matches = append(matches, instance)
+		}
+	}
+	if len(matches) == 0 {
+		return base + "_tke_instance_missing"
+	}
+	if len(matches) != 1 {
+		return base + "_tke_instance_ambiguous"
+	}
+	instance := matches[0]
+	native := instance.Native
+	if native == nil || stringValue(instance.InstanceId) != request.Allocation.MachineName ||
+		stringValue(native.MachineName) != request.Allocation.MachineName || stringValue(native.InstanceId) != request.Allocation.InstanceId ||
+		stringValue(instance.LanIP) != request.Allocation.PrivateIp || stringValue(native.LanIp) != request.Allocation.PrivateIp {
+		return base + "_tke_instance_identity_mismatch"
+	}
+	if stringValue(instance.NodePoolId) != request.Pool.NodePoolId {
+		return base + "_tke_instance_wrong_pool"
+	}
+	return base + "_machine_inventory_missing"
+}
+
 func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[string]string) Response {
 	if client == nil || client.nativeTkeClient == nil || client.nativeCvmClient == nil {
 		return Response{Ok: false, ErrorCode: "tencent_sdk_client_missing", Message: "Tencent TKE and CVM SDK clients are required.", Retryable: false}
@@ -3820,7 +3932,13 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		}
 	}
 	if machine == nil || cvm.Status == "external_deleted" {
-		return Response{Ok: false, ErrorCode: "compute_provider_partial_identity", Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
+		code := "compute_provider_partial_identity_machine_missing"
+		if machine != nil {
+			code = "compute_provider_partial_identity_cvm_missing"
+		} else {
+			code = client.classifyMissingComputeMachine(request)
+		}
+		return Response{Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
@@ -4851,6 +4969,57 @@ func bootstrapPackagePoolStatus(pool *tke2022.NodePool, spec bootstrapPackageSpe
 	return "registered"
 }
 
+func bootstrapPackagePoolFailureStage(pool *tke2022.NodePool, spec bootstrapPackageSpec) string {
+	if pool == nil || !isCVMNativeNodePool(pool) {
+		return "package_native_contract_mismatch"
+	}
+	lifeState := strings.ToLower(strings.TrimSpace(stringValue(pool.LifeState)))
+	if lifeState != "running" && lifeState != "creating" {
+		return "package_lifecycle_mismatch"
+	}
+	if spec.ExpectedNodePoolID != "" && stringValue(pool.NodePoolId) != spec.ExpectedNodePoolID {
+		return "package_node_pool_id_mismatch"
+	}
+	labels := nodePoolLabels(pool)
+	switch {
+	case stringValue(pool.Name) != spec.PoolID:
+		return "package_pool_name_mismatch"
+	case labels["oplcloud.cn/pool-id"] != spec.PoolID:
+		return "package_pool_label_mismatch"
+	case labels["oplcloud.cn/package-id"] != spec.PackageID:
+		return "package_id_label_mismatch"
+	case labels["oplcloud.cn/instance-type"] != spec.InstanceType:
+		return "package_instance_type_label_mismatch"
+	case labels["medopl.cn/workload"] != "workspace":
+		return "package_workload_label_mismatch"
+	}
+	native := pool.Native
+	switch {
+	case native == nil || native.Scaling == nil:
+		return "package_scaling_missing"
+	case native.Scaling.MinReplicas == nil || *native.Scaling.MinReplicas != 0:
+		return "package_min_replicas_mismatch"
+	case native.Scaling.MaxReplicas == nil || *native.Scaling.MaxReplicas <= 0 || (spec.MaxReplicas > 0 && *native.Scaling.MaxReplicas != spec.MaxReplicas):
+		return "package_max_replicas_mismatch"
+	case native.Replicas == nil || native.ReadyReplicas == nil || *native.Replicas != *native.ReadyReplicas:
+		return "package_replica_readiness_mismatch"
+	case native.EnableAutoscaling == nil || *native.EnableAutoscaling:
+		return "package_autoscaling_mismatch"
+	case native.AutoRepair == nil || *native.AutoRepair:
+		return "package_auto_repair_mismatch"
+	case len(native.InstanceTypes) != 1 || stringValue(native.InstanceTypes[0]) != spec.InstanceType:
+		return "package_instance_type_mismatch"
+	case len(native.SubnetIds) == 0:
+		return "package_subnet_missing"
+	case pool.DeletionProtection == nil || !*pool.DeletionProtection:
+		return "package_deletion_protection_mismatch"
+	case bootstrapPackageTaintState(pool, spec) != "target":
+		return "package_taint_mismatch"
+	default:
+		return "package_contract_mismatch"
+	}
+}
+
 func bootstrapPackageTaintState(pool *tke2022.NodePool, spec bootstrapPackageSpec) string {
 	if pool == nil || len(pool.Taints) != 1 || pool.Taints[0] == nil || stringValue(pool.Taints[0].Effect) != "NoSchedule" {
 		return "conflict"
@@ -4924,7 +5093,7 @@ func nodePoolTaintMigrationAttempt(bindingDigest string, now time.Time) fabricst
 		ID:             nodePoolTaintMigrationRecordID,
 		OperationID:    nodePoolTaintMigrationOperationID,
 		CallerService:  "opl-tencent-provisioner",
-		Action:         "migrate_workspace_node_pool_taints",
+		Action:         nodePoolTaintMigrationAction,
 		ResourceKind:   "tke_node_pool_package_taints",
 		ResourceID:     "normal_workspace_basic_pro_node_pools",
 		Provider:       "tencent",
@@ -4941,12 +5110,93 @@ func nodePoolTaintMigrationAttempt(bindingDigest string, now time.Time) fabricst
 	}
 }
 
+func nodePoolTaintMigrationRecoveryAttempt(bindingDigest, priorBindingDigest string, now time.Time) fabricstore.FabricOperation {
+	attempt := nodePoolTaintMigrationAttempt(bindingDigest, now)
+	attempt.ID = nodePoolTaintMigrationRecoveryRecordID
+	attempt.OperationID = nodePoolTaintMigrationRecoveryOperationID
+	attempt.Action = nodePoolTaintMigrationRecoveryAction
+	attempt.IdempotencyKey = nodePoolTaintMigrationRecoveryIdempotencyKey
+	attempt.RedactedProviderPayload["recoveryOf"] = nodePoolTaintMigrationRecordID
+	attempt.RedactedProviderPayload["priorBindingDigest"] = priorBindingDigest
+	return attempt
+}
+
+func nodePoolTaintMigrationRecoveryV2Attempt(bindingDigest, originalBindingDigest, priorRecoveryBindingDigest string, now time.Time) fabricstore.FabricOperation {
+	attempt := nodePoolTaintMigrationAttempt(bindingDigest, now)
+	attempt.ID = nodePoolTaintMigrationRecoveryV2RecordID
+	attempt.OperationID = nodePoolTaintMigrationRecoveryV2OperationID
+	attempt.Action = nodePoolTaintMigrationRecoveryV2Action
+	attempt.IdempotencyKey = nodePoolTaintMigrationRecoveryV2IdempotencyKey
+	attempt.RedactedProviderPayload["recoveryOf"] = nodePoolTaintMigrationRecoveryRecordID
+	attempt.RedactedProviderPayload["priorRecoveryBindingDigest"] = priorRecoveryBindingDigest
+	attempt.RedactedProviderPayload["originalMigration"] = nodePoolTaintMigrationRecordID
+	attempt.RedactedProviderPayload["originalBindingDigest"] = originalBindingDigest
+	return attempt
+}
+
 func sameNodePoolTaintMigrationAttempt(existing, requested fabricstore.FabricOperation) bool {
 	return existing.ID == requested.ID && existing.OperationID == requested.OperationID &&
 		existing.CallerService == requested.CallerService && existing.Action == requested.Action &&
 		existing.ResourceKind == requested.ResourceKind && existing.ResourceID == requested.ResourceID &&
 		existing.AccountID == "" && existing.WorkspaceID == "" && existing.Provider == requested.Provider &&
 		existing.IdempotencyKey == requested.IdempotencyKey && existing.RequestHash == requested.RequestHash
+}
+
+func exactNodePoolTaintMigrationPayload(operation fabricstore.FabricOperation, recovery bool, priorBindingDigest string) bool {
+	payload := operation.RedactedProviderPayload
+	wantFields := 3
+	if recovery {
+		wantFields = 5
+	}
+	numberMatches := func(value any, want float64) bool {
+		switch typed := value.(type) {
+		case int:
+			return float64(typed) == want
+		case float64:
+			return typed == want
+		default:
+			return false
+		}
+	}
+	if len(payload) != wantFields || !numberMatches(payload["schemaVersion"], 1) ||
+		!numberMatches(payload["maxModifyCalls"], 2) || payload["updateExistedNode"] != true {
+		return false
+	}
+	if recovery {
+		return payload["recoveryOf"] == nodePoolTaintMigrationRecordID && payload["priorBindingDigest"] == priorBindingDigest
+	}
+	return true
+}
+
+func validPersistedNodePoolTaintMigrationAttempt(existing, expected fabricstore.FabricOperation, recovery bool, priorBindingDigest string) bool {
+	return sameNodePoolTaintMigrationAttempt(existing, expected) && exactNodePoolTaintMigrationPayload(existing, recovery, priorBindingDigest) &&
+		existing.Status == "started" && existing.ErrorCode == "" && !existing.Retryable && existing.ProviderRequestID == "" &&
+		!existing.StartedAt.IsZero() && existing.FinishedAt.IsZero() && !existing.CreatedAt.IsZero()
+}
+
+func exactNodePoolTaintMigrationRecoveryV2Payload(operation fabricstore.FabricOperation, originalBindingDigest, priorRecoveryBindingDigest string) bool {
+	payload := operation.RedactedProviderPayload
+	numberMatches := func(value any, want float64) bool {
+		switch typed := value.(type) {
+		case int:
+			return float64(typed) == want
+		case float64:
+			return typed == want
+		default:
+			return false
+		}
+	}
+	return len(payload) == 7 && numberMatches(payload["schemaVersion"], 1) && numberMatches(payload["maxModifyCalls"], 2) &&
+		payload["updateExistedNode"] == true && payload["recoveryOf"] == nodePoolTaintMigrationRecoveryRecordID &&
+		payload["priorRecoveryBindingDigest"] == priorRecoveryBindingDigest && payload["originalMigration"] == nodePoolTaintMigrationRecordID &&
+		payload["originalBindingDigest"] == originalBindingDigest
+}
+
+func validPersistedNodePoolTaintMigrationRecoveryV2Attempt(existing, expected fabricstore.FabricOperation, originalBindingDigest, priorRecoveryBindingDigest string) bool {
+	return sameNodePoolTaintMigrationAttempt(existing, expected) &&
+		exactNodePoolTaintMigrationRecoveryV2Payload(existing, originalBindingDigest, priorRecoveryBindingDigest) &&
+		existing.Status == "started" && existing.ErrorCode == "" && !existing.Retryable && existing.ProviderRequestID == "" &&
+		!existing.StartedAt.IsZero() && existing.FinishedAt.IsZero() && !existing.CreatedAt.IsZero()
 }
 
 func bootstrapInventoryMatches(pools []*tke2022.NodePool, env map[string]string, specs []bootstrapPackageSpec) (map[string]*tke2022.NodePool, *Response) {
@@ -4964,17 +5214,17 @@ func bootstrapInventoryMatchesByStatus(
 	for _, pool := range pools {
 		if stringValue(pool.NodePoolId) == systemPoolID {
 			if systemPool != nil {
-				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "System NodePool identity is duplicated.", Retryable: false}
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "System NodePool identity is duplicated.", FailureStage: "system_pool_duplicate", Retryable: false}
 			}
 			systemPool = pool
 		}
 	}
 	if systemPool == nil {
-		return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool was not found.", Retryable: false}
+		return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool was not found.", FailureStage: "system_pool_missing", Retryable: false}
 	}
 	for _, spec := range specs {
 		if poolTouchesBootstrapSpec(systemPool, spec) {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool conflicts with a customer package identity.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Protected system NodePool conflicts with a customer package identity.", FailureStage: "system_pool_package_conflict", Retryable: false}
 		}
 	}
 	for _, pool := range pools {
@@ -4988,7 +5238,7 @@ func bootstrapInventoryMatchesByStatus(
 			}
 		}
 		if matchCount != 1 {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "NodePool inventory contains an unknown or ambiguous package identity.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "NodePool inventory contains an unknown or ambiguous package identity.", FailureStage: "package_identity_ambiguous", Retryable: false}
 		}
 	}
 	matches := map[string]*tke2022.NodePool{}
@@ -4997,8 +5247,11 @@ func bootstrapInventoryMatchesByStatus(
 			if pool == systemPool || !poolTouchesBootstrapSpec(pool, spec) {
 				continue
 			}
-			if matches[spec.PackageID] != nil || status(pool, spec) == "" {
-				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated or does not match the fixed contract.", Retryable: false}
+			if matches[spec.PackageID] != nil {
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool inventory is duplicated.", FailureStage: "package_pool_duplicate", Retryable: false}
+			}
+			if status(pool, spec) == "" {
+				return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Package NodePool does not match the fixed contract.", FailureStage: bootstrapPackagePoolFailureStage(pool, spec), Retryable: false}
 			}
 			matches[spec.PackageID] = pool
 		}
@@ -5007,7 +5260,7 @@ func bootstrapInventoryMatchesByStatus(
 	for packageID, pool := range matches {
 		nodePoolID := strings.TrimSpace(stringValue(pool.NodePoolId))
 		if priorPackageID := matchedNodePools[nodePoolID]; nodePoolID != "" && priorPackageID != "" && priorPackageID != packageID {
-			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Provider Profile packages cannot share a NodePool.", Retryable: false}
+			return nil, &Response{Ok: false, ErrorCode: "node_pool_bootstrap_inventory_conflict", Message: "Provider Profile packages cannot share a NodePool.", FailureStage: "package_node_pool_shared", Retryable: false}
 		}
 		matchedNodePools[nodePoolID] = packageID
 	}
@@ -5082,11 +5335,69 @@ func (client *tencentSDKClient) MigrateWorkspaceNodePoolTaints(request Request, 
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_attempt_authority_unavailable", Message: "The persisted NodePool migration attempt authority is unavailable; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
 	attempt := nodePoolTaintMigrationAttempt(bindingDigest, time.Now().UTC())
+	recoveryV1 := request.Action == nodePoolTaintMigrationRecoveryAction
+	recoveryV2 := request.Action == nodePoolTaintMigrationRecoveryV2Action
+	recovery := recoveryV1 || recoveryV2
+	priorBindingDigest := ""
+	priorRecoveryBindingDigest := ""
+	if recovery {
+		if migrationRequired != len(specs) {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_no_effect_readback_required", Message: "Recovery requires every package NodePool to remain on the exact legacy taint.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		if client.lookupNodePoolTaintMigrationAttempt == nil {
+			return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_recovery_prior_attempt_authority_unavailable", Message: "The prior migration attempt authority is unavailable; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		priorBindingDigest = strings.TrimSpace(env[nodePoolTaintMigrationPriorBindingDigestEnv])
+		decodedPriorBindingDigest, priorDigestErr := hex.DecodeString(priorBindingDigest)
+		if priorDigestErr != nil || len(decodedPriorBindingDigest) != sha256.Size || priorBindingDigest != strings.ToLower(priorBindingDigest) {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_binding_invalid", Message: "Recovery requires the exact prior attempt binding digest.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		prior, found, lookupErr := client.lookupNodePoolTaintMigrationAttempt(context.Background(), nodePoolTaintMigrationAction, nodePoolTaintMigrationIdempotencyKey)
+		if lookupErr != nil {
+			return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_recovery_prior_attempt_read_unknown", Message: "The prior migration attempt read is unknown; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		if !found {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_attempt_missing", Message: "Recovery requires the exact prior migration attempt.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		expectedPrior := nodePoolTaintMigrationAttempt(priorBindingDigest, prior.StartedAt)
+		if !validPersistedNodePoolTaintMigrationAttempt(prior, expectedPrior, false, "") {
+			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_prior_attempt_invalid", Message: "The prior migration attempt does not match the provided prior binding.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+		}
+		if recoveryV1 {
+			attempt = nodePoolTaintMigrationRecoveryAttempt(bindingDigest, priorBindingDigest, time.Now().UTC())
+		}
+		if recoveryV2 {
+			priorRecoveryBindingDigest = strings.TrimSpace(env[nodePoolTaintMigrationPriorRecoveryBindingDigestEnv])
+			decodedPriorRecoveryBindingDigest, priorRecoveryDigestErr := hex.DecodeString(priorRecoveryBindingDigest)
+			if priorRecoveryDigestErr != nil || len(decodedPriorRecoveryBindingDigest) != sha256.Size || priorRecoveryBindingDigest != strings.ToLower(priorRecoveryBindingDigest) {
+				return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_v2_prior_recovery_binding_invalid", Message: "Recovery v2 requires the exact recovery v1 attempt binding digest.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+			}
+			priorRecovery, priorRecoveryFound, priorRecoveryLookupErr := client.lookupNodePoolTaintMigrationAttempt(context.Background(), nodePoolTaintMigrationRecoveryAction, nodePoolTaintMigrationRecoveryIdempotencyKey)
+			if priorRecoveryLookupErr != nil {
+				return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_recovery_v2_prior_recovery_attempt_read_unknown", Message: "The recovery v1 attempt read is unknown; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+			}
+			if !priorRecoveryFound {
+				return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_v2_prior_recovery_attempt_missing", Message: "Recovery v2 requires the exact recovery v1 attempt.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+			}
+			expectedPriorRecovery := nodePoolTaintMigrationRecoveryAttempt(priorRecoveryBindingDigest, priorBindingDigest, priorRecovery.StartedAt)
+			if !validPersistedNodePoolTaintMigrationAttempt(priorRecovery, expectedPriorRecovery, true, priorBindingDigest) {
+				return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_recovery_v2_prior_recovery_attempt_invalid", Message: "The recovery v1 attempt does not match the provided prior bindings.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
+			}
+			attempt = nodePoolTaintMigrationRecoveryV2Attempt(bindingDigest, priorBindingDigest, priorRecoveryBindingDigest, time.Now().UTC())
+		}
+	}
 	storedAttempt, claimed, claimErr := client.claimNodePoolTaintMigrationAttempt(context.Background(), attempt)
 	if claimErr != nil {
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_migration_attempt_reservation_unknown", Message: "The persisted NodePool migration attempt reservation is unknown; reconcile by GET only.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
-	if !sameNodePoolTaintMigrationAttempt(storedAttempt, attempt) {
+	validStoredAttempt := sameNodePoolTaintMigrationAttempt(storedAttempt, attempt)
+	if recoveryV1 {
+		validStoredAttempt = validPersistedNodePoolTaintMigrationAttempt(storedAttempt, attempt, true, priorBindingDigest)
+	}
+	if recoveryV2 {
+		validStoredAttempt = validPersistedNodePoolTaintMigrationRecoveryV2Attempt(storedAttempt, attempt, priorBindingDigest, priorRecoveryBindingDigest)
+	}
+	if !validStoredAttempt {
 		return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_migration_attempt_binding_conflict", Message: "The persisted NodePool migration attempt binding conflicts with the fresh mutation binding.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 	}
 	if !claimed {
@@ -5108,16 +5419,18 @@ func (client *tencentSDKClient) MigrateWorkspaceNodePoolTaints(request Request, 
 		if modifyErr != nil || modified == nil || modified.Response == nil || strings.TrimSpace(stringValue(modified.Response.RequestId)) == "" {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_taint_migration_result_unknown"
 			base.Message = "Tencent NodePool taint migration result is unknown; reconcile by GET only."
-			results[index].Status, results[index].ErrorCode = "unknown", base.ErrorCode
-			base.NodePools = results
+			base.FailureStage = "modify_node_pool"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(modifyErr)
+			base.NodePools, base.NodePoolInventory, base.ProtectedSystem = nil, nil, ProtectedSystemFacts{}
 			return base
 		}
 		readback, _, readbackErr := client.describeNativeNodePool(results[index].NodePoolID)
 		if readbackErr != nil || bootstrapPackagePoolStatus(readback, spec) != "registered" {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_taint_migration_readback_unknown"
 			base.Message = "Tencent NodePool taint migration readback is unknown; reconcile by GET only."
-			results[index].Status, results[index].ErrorCode = "unknown", base.ErrorCode
-			base.NodePools = results
+			base.FailureStage = "node_pool_readback"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(readbackErr)
+			base.NodePools, base.NodePoolInventory, base.ProtectedSystem = nil, nil, ProtectedSystemFacts{}
 			return base
 		}
 		results[index].Status = "migrated"
@@ -5143,7 +5456,7 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 	if err != nil {
 		return Response{Ok: false, Status: "unknown", ErrorCode: "node_pool_image_gc_inventory_unavailable", Message: "Tencent NodePool inventory is unavailable.", MutationCount: 0, Retryable: false}
 	}
-	matches, failure := bootstrapInventoryMatches(pools, env, specs)
+	matches, failure := bootstrapInventoryMatchesByStatus(pools, env, specs, bootstrapPackageMigrationStatus)
 	if failure != nil {
 		failure.Status = "conflict"
 		failure.MutationCount = 0
@@ -5167,14 +5480,17 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		if !valid || !mergeable {
 			return Response{Ok: false, Status: "conflict", ErrorCode: "node_pool_image_gc_kubelet_args_invalid", Message: "Workspace NodePool kubelet arguments cannot be safely reconciled.", ProtectedSystem: protectedSystem, NodePoolInventory: bootstrapNodePoolIDs(pools), MutationCount: 0, Retryable: false}
 		}
+		taintState := bootstrapPackageMigrationStatus(pool, spec)
 		status := "registered"
-		if !workspaceNodeImageGCMatches(pool.Native.KubeletArgs, high, low) {
+		if taintState != "target" || !workspaceNodeImageGCMatches(pool.Native.KubeletArgs, high, low) {
 			status = "reconciliation_required"
 			required++
 		}
 		results = append(results, NodePoolImageGCResult{
 			PackageID: spec.PackageID, NodePoolID: stringValue(pool.NodePoolId), Status: status,
 			HighThresholdPercent: high, LowThresholdPercent: low, UpdateExistingNodes: status != "registered",
+			TaintsBefore:      nodePoolTaintFacts(pool),
+			TaintsAfter:       []NodePoolTaintFact{{Key: "oplcloud.cn/package-id", Value: spec.PackageID, Effect: "NoSchedule"}},
 			KubeletArgsBefore: before, KubeletArgsAfter: after,
 		})
 	}
@@ -5193,6 +5509,7 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		modifyRequest := tke2022.NewModifyNodePoolRequest()
 		modifyRequest.ClusterId = common.StringPtr(client.clusterId)
 		modifyRequest.NodePoolId = common.StringPtr(results[index].NodePoolID)
+		modifyRequest.Taints = []*tke2022.Taint{{Key: common.StringPtr("oplcloud.cn/package-id"), Value: common.StringPtr(results[index].PackageID), Effect: common.StringPtr("NoSchedule")}}
 		modifyRequest.Native = &tke2022.UpdateNativeNodePoolParam{
 			KubeletArgs:             stringsToPtrs(results[index].KubeletArgsAfter),
 			UpdateExistedNode:       common.BoolPtr(true),
@@ -5203,19 +5520,24 @@ func (client *tencentSDKClient) ReconcileWorkspaceNodePoolImageGC(request Reques
 		if modifyErr != nil || modified == nil || modified.Response == nil || strings.TrimSpace(stringValue(modified.Response.RequestId)) == "" {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_result_unknown"
 			base.Message = "Tencent NodePool image GC reconciliation result is unknown; reconcile by GET only."
+			base.FailureStage = "modify_node_pool"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(modifyErr)
 			results[index].Status = "unknown"
 			base.NodePoolImageGC = results
 			return base
 		}
 		readback, _, readbackErr := client.describeNativeNodePool(results[index].NodePoolID)
-		if readbackErr != nil || readback.Native == nil || !workspaceNodeImageGCMatches(readback.Native.KubeletArgs, high, low) {
+		if readbackErr != nil || bootstrapPackagePoolStatus(readback, specs[index]) != "registered" || readback.Native == nil || !workspaceNodeImageGCMatches(readback.Native.KubeletArgs, high, low) {
 			base.Ok, base.Status, base.ErrorCode = false, "unknown", "node_pool_image_gc_reconcile_readback_unknown"
 			base.Message = "Tencent NodePool image GC reconciliation readback is unknown; reconcile by GET only."
+			base.FailureStage = "node_pool_readback"
+			base.ProviderErrorClass = safeTencentProviderErrorCode(readbackErr)
 			results[index].Status = "unknown"
 			base.NodePoolImageGC = results
 			return base
 		}
 		results[index].Status = "reconciled"
+		results[index].TaintsAfter = nodePoolTaintFacts(readback)
 		results[index].KubeletArgsAfter, _ = kubeletArgsValues(readback.Native.KubeletArgs)
 	}
 	base.Status, base.NodePoolImageGC = "reconciled", results
@@ -5677,8 +5999,15 @@ func handleWithClient(request Request, env map[string]string, client TencentClie
 		}
 		return client.BootstrapComputeNodePools(request, env)
 	}
-	if request.Action == "migrate_workspace_node_pool_taints" {
-		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"]) != nodePoolTaintMigrationMutationConfirmation {
+	if request.Action == nodePoolTaintMigrationAction || request.Action == nodePoolTaintMigrationRecoveryAction || request.Action == nodePoolTaintMigrationRecoveryV2Action {
+		confirmation := nodePoolTaintMigrationMutationConfirmation
+		if request.Action == nodePoolTaintMigrationRecoveryAction {
+			confirmation = nodePoolTaintMigrationRecoveryMutationConfirmation
+		}
+		if request.Action == nodePoolTaintMigrationRecoveryV2Action {
+			confirmation = nodePoolTaintMigrationRecoveryV2MutationConfirmation
+		}
+		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_NODE_POOL_TAINT_MIGRATION_CONFIRMATION"]) != confirmation {
 			return Response{Ok: false, ErrorCode: "node_pool_taint_migration_confirmation_required", Message: "The exact NodePool taint migration confirmation is required.", Retryable: false}
 		}
 		if !request.DryRun && strings.TrimSpace(env["RUN_TENCENT_CREATE_RELEASE_EXECUTION"]) != "1" {

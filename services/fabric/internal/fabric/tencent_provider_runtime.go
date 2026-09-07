@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"reflect"
@@ -399,6 +400,7 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 		return WorkspaceRuntime{WorkspaceID: workspaceID, ServiceName: serviceName}, workspaceRuntimeStatusError(computeClaimKubectlErrorClass(err))
 	}
 	podDetails := podRuntimeDetails(pods)
+	runtimeNodeName := workspaceReadyPodNodeName(pods)
 	readyPodUsesPVC := false
 	for _, item := range pods {
 		pod, _ := item.(map[string]any)
@@ -447,11 +449,84 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 		costTags["opl_workspace_id"] != workspaceID || costTags["opl_resource_id"] != runtimeID || costTags["opl_account_id"] == "" {
 		return WorkspaceRuntime{WorkspaceID: workspaceID, ServiceName: serviceName}, workspaceRuntimeStatusError("readback_mismatch")
 	}
-	return WorkspaceRuntime{ID: runtimeID, OperationID: runtimeOperationID, WorkspaceID: workspaceID, URL: fmt.Sprintf("https://%s/w/%s/", p.workspaceDomain, workspaceID), Status: status, ServiceName: serviceName, ImageID: image, Access: access, Ready: ready, Checks: checks, CostTags: costTags}, nil
+	return WorkspaceRuntime{
+		ID: runtimeID, OperationID: runtimeOperationID, WorkspaceID: workspaceID,
+		URL: fmt.Sprintf("https://%s/w/%s/", p.workspaceDomain, workspaceID), Status: status, ServiceName: serviceName,
+		ImageID: image, Access: access, Ready: ready, Checks: checks, CostTags: costTags,
+		ComputeID: stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/compute-allocation-id")), NodeName: runtimeNodeName,
+	}, nil
+}
+
+func workspaceReadyPodNodeName(pods []any) string {
+	observed := map[string]struct{}{}
+	for _, item := range pods {
+		pod, _ := item.(map[string]any)
+		conditions := conditionStatuses(nested(pod, "status", "conditions"))
+		if stringValue(nested(pod, "status", "phase")) != "Running" || conditions["Ready"] != "True" || conditions["PodScheduled"] != "True" {
+			continue
+		}
+		nodeName := stringValue(nested(pod, "spec", "nodeName"))
+		if nodeName == "" {
+			return ""
+		}
+		observed[nodeName] = struct{}{}
+	}
+	if len(observed) != 1 {
+		return ""
+	}
+	for nodeName := range observed {
+		return nodeName
+	}
+	return ""
 }
 
 func (*TencentProvider) WorkspaceRuntimeProviderFacts(runtime WorkspaceRuntime) ProviderResourceFacts {
 	return ProviderResourceFacts{ProviderID: runtime.ServiceName, Status: runtime.Status}
+}
+
+func (p *TencentProvider) ReadWorkspaceComputeRuntimeBinding(ctx context.Context, runtime WorkspaceRuntime, allocation ComputeAllocation, ownership MachineOwnership) (bool, error) {
+	if runtime.NodeName == "" || allocation.NodeName == "" || runtime.NodeName != allocation.NodeName {
+		return false, nil
+	}
+	raw, err := p.callKubectl(ctx, []string{"get", "node/" + runtime.NodeName, "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return false, err
+	}
+	var node computeClaimNodeDocument
+	if json.Unmarshal(raw, &node) != nil {
+		return false, fmt.Errorf("workspace_runtime_node_readback_invalid")
+	}
+	nodeInstanceID := tencentNodeProviderInstanceID(node.Spec.ProviderID)
+	if nodeInstanceID == "" {
+		return false, fmt.Errorf("workspace_runtime_node_provider_identity_unavailable")
+	}
+	state, ok := computeClaimNodeOwnershipState(raw, allocation, ownership)
+	return ok && state == "target_owned" && nodeInstanceID == firstNonEmpty(allocation.InstanceID, allocation.CVMInstanceID), nil
+}
+
+func tencentNodeProviderInstanceID(providerID string) string {
+	if strings.Contains(providerID, "%") {
+		return ""
+	}
+	parsed, err := url.Parse(providerID)
+	if err != nil || parsed.Scheme != "qcloud" || parsed.Host != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
+		return ""
+	}
+	if !strings.HasPrefix(parsed.Path, "/") || strings.Count(parsed.Path, "/") != 2 {
+		return ""
+	}
+	parts := strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" || !strings.HasPrefix(parts[1], "ins-") || len(parts[1]) == len("ins-") {
+		return ""
+	}
+	for _, value := range parts {
+		for _, character := range value {
+			if character != '-' && (character < '0' || character > '9') && (character < 'a' || character > 'z') {
+				return ""
+			}
+		}
+	}
+	return parts[1]
 }
 
 func (p *TencentProvider) BindWorkspaceRuntimeGatewaySecret(ctx context.Context, input WorkspaceRuntimeGatewaySecretInput) (WorkspaceRuntimeGatewaySecretBinding, error) {

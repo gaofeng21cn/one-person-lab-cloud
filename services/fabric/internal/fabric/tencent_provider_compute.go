@@ -561,7 +561,8 @@ type computeClaimNodeDocument struct {
 		Labels          map[string]string `json:"labels"`
 	} `json:"metadata"`
 	Spec struct {
-		Taints []computeClaimNodeTaint `json:"taints"`
+		ProviderID string                  `json:"providerID"`
+		Taints     []computeClaimNodeTaint `json:"taints"`
 	} `json:"spec"`
 	Status struct {
 		Addresses []struct {

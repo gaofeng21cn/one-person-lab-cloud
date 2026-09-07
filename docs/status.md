@@ -26,12 +26,12 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 | Layer | Current evidence | What it does not prove |
 | --- | --- | --- |
-| Audited source baseline | Documentation reconciliation inspected `9fdf8dbe` on 2026-09-07; source and focused tests define the service and UI implementation | A new test run, deployment, public Release, production acceptance, or a permanently current `main` identity |
+| Audited source baseline | Documentation reconciliation inspected remote `main` at `30716227` on 2026-09-07; source and focused tests define the service and UI implementation | Deployment, public Release, production acceptance, or a permanently current `main` identity |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
 | Medopl Instance | The 2026-08-30 `workspace-private-state-repair` receipt passed for two existing Workspaces and recorded zero-mutation post-repair readback | A fresh Workspace purchase, full lifecycle, rollback, or qualification of current `main` |
-| NodePool image GC | PR #502 added guarded Tencent Workspace NodePool image-GC configuration, reconciliation, and readback to Cloud source | Production NodePool mutation; no matching Instance execution receipt exists |
+| NodePool maintenance | Source implements guarded image-GC configuration, taint recovery and bounded redacted readback | Production mutation; the retained evidence here contains no matching Instance execution receipt |
 
 Evidence applies only to the exact identity and layer named in its row. An older
 Candidate or Instance receipt cannot upgrade current source to release or

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 func (s *Service) ProviderFactsBatch(ctx context.Context, input ProviderFactsBatchInput) (ProviderFactsBatch, error) {
@@ -126,6 +128,9 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 			return result
 		}
 		facts = provider.WorkspaceRuntimeProviderFacts(runtime)
+		if err == nil {
+			facts.ComputeRuntimeBinding = s.workspaceComputeRuntimeBinding(ctx, provider, input, runtime)
+		}
 	}
 	if err != nil {
 		result.ErrorCode = errorCode(err)
@@ -134,6 +139,40 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 	facts.LastReadAt = s.now().Format(time.RFC3339Nano)
 	result.Available, result.Facts = true, facts
 	return result
+}
+
+func (s *Service) workspaceComputeRuntimeBinding(ctx context.Context, provider providerFactsReader, input ProviderFactInput, runtime WorkspaceRuntime) *contracts.WorkspaceComputeRuntimeBinding {
+	if runtime.ID != input.ResourceID || runtime.WorkspaceID != input.WorkspaceID || runtime.ComputeID == "" || runtime.NodeName == "" {
+		return nil
+	}
+	s.mu.Lock()
+	compute := s.computes[runtime.ComputeID]
+	s.mu.Unlock()
+	instanceID := firstNonEmpty(compute.InstanceID, compute.CVMInstanceID)
+	if compute.ID != runtime.ComputeID || compute.AccountID != input.AccountID || compute.WorkspaceID != input.WorkspaceID || compute.Provider != "tencent-tke" ||
+		compute.PackageID == "" || compute.NodePoolID == "" || compute.MachineName == "" || instanceID == "" || compute.NodeName == "" {
+		return nil
+	}
+	ownership, err := s.machineOwnership.MachineOwnership(ctx, compute.ID)
+	if err != nil || ownership.Status != "active" || ownership.ID == "" || ownership.ClaimedAt.IsZero() ||
+		ownership.ResourceID != compute.ID || ownership.AccountID != compute.AccountID || ownership.WorkspaceID != compute.WorkspaceID ||
+		ownership.PackageID != compute.PackageID || ownership.NodePoolID != compute.NodePoolID || ownership.MachineID != compute.MachineName ||
+		ownership.InstanceID != instanceID || ownership.NodeName != compute.NodeName {
+		return nil
+	}
+	reader, ok := provider.(workspaceComputeRuntimeBindingReader)
+	if !ok {
+		return nil
+	}
+	matched, err := reader.ReadWorkspaceComputeRuntimeBinding(ctx, runtime, compute, ownership)
+	if err != nil {
+		return nil
+	}
+	status := contracts.WorkspaceComputeRuntimeBindingMismatched
+	if matched {
+		status = contracts.WorkspaceComputeRuntimeBindingMatched
+	}
+	return &contracts.WorkspaceComputeRuntimeBinding{Status: status}
 }
 
 func (s *Service) computeProviderFactInput(ctx context.Context, compute ComputeAllocation) ComputeAllocation {

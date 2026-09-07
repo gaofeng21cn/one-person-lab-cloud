@@ -13,32 +13,3 @@ type RuntimeOperationStore interface {
 
 var _ RuntimeOperationStore = (*MemoryOperationStore)(nil)
 var _ RuntimeOperationStore = (*PostgresOperationStore)(nil)
-
-// operationStoreRuntimePort keeps the readback capability optional for legacy
-// OperationStore decorators that only override unrelated query methods.
-type operationStoreRuntimePort struct {
-	store OperationStore
-}
-
-func (s operationStoreRuntimePort) ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error) {
-	return s.store.ClaimRuntime(ctx, operation)
-}
-
-func (s operationStoreRuntimePort) SaveRuntime(ctx context.Context, operation FabricOperation) error {
-	return s.store.SaveRuntime(ctx, operation)
-}
-
-func (s operationStoreRuntimePort) ConvergeRuntimeReadback(ctx context.Context, expected, next FabricOperation) error {
-	converger, ok := s.store.(runtimeReadbackConverger)
-	if !ok {
-		return ErrRuntimeOperationNotCurrent
-	}
-	return converger.ConvergeRuntimeReadback(ctx, expected, next)
-}
-
-func runtimeOperationPort(store OperationStore) RuntimeOperationStore {
-	if runtime, ok := store.(RuntimeOperationStore); ok {
-		return runtime
-	}
-	return operationStoreRuntimePort{store: store}
-}

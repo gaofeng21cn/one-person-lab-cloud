@@ -33,10 +33,16 @@ func TestWorkspaceRuntimeAdaptersProjectVersionedABI(t *testing.T) {
 		t.Fatalf("Local-Docker health command does not project the Runtime ABI: %s", localDockerRuntimeHealthCommand)
 	}
 	localProvider, runner, ctx, _, input, compute, volume := localDockerRuntimeReplayFixture(t, 0)
-	if _, err := localProvider.CreateWorkspaceRuntime(ctx, input, compute, volume); err != nil {
+	localProvider.runtimeHost = "192.0.2.40"
+	localProvider.publishHost = "127.0.0.1"
+	runtime, err := localProvider.CreateWorkspaceRuntime(ctx, input, compute, volume)
+	if err != nil {
 		t.Fatal(err)
 	}
-	wantPublish := localProvider.runtimeHost + "::" + localDockerWorkspaceRuntimeWebUIPort
+	if runtime.URL != "http://192.0.2.40:30123/" {
+		t.Fatalf("Local-Docker Runtime URL=%q, want deployment-owned host", runtime.URL)
+	}
+	wantPublish := localProvider.publishHost + "::" + localDockerWorkspaceRuntimeWebUIPort
 	foundPublish := false
 	for _, call := range runner.calls {
 		for index := 0; index+1 < len(call); index++ {

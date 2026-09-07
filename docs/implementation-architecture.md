@@ -250,8 +250,23 @@ exact protected pool set, preserves unrelated kubelet arguments, and reports
 whether reconciliation is required. The mutation path requires its dedicated
 manual confirmation and live-mutation flags, updates existing nodes, and reads
 the NodePool configuration back. An unknown mutation or readback result remains
-unknown and is reconciled by read only. Instance execution evidence belongs to
-[status](status.md), independently of the configured source capability.
+unknown and is reconciled by read only. Its failure projection retains only the
+fixed `modify_node_pool` or `node_pool_readback` stage and a bounded Tencent SDK
+error code when one exists; SDK messages, request IDs, and original NodePool or
+Node values are excluded.
+
+A retry is never inferred from elapsed time. After an owner-authoritative read
+proves that both package NodePools still have the exact legacy taint, the first
+independently confirmed recovery action may claim one fixed attempt bound to
+the exact original migration digest and a fresh full NodePool/Node digest. If
+that attempt also remains `started` with no provider request recorded and a new
+read again proves both exact legacy taints, recovery v2 requires a distinct
+action, confirmation, operation ID, record ID, and idempotency key. It validates
+both immutable prior attempts and all three binding digests before it may claim
+one fresh attempt. Every attempt is one-way: an unknown result permanently
+allows GET-only reconciliation for that identity and never authorizes replay.
+These are source capabilities; only Instance receipts and owner readback prove
+their production execution and effect, as reported in [status](status.md).
 
 The read-only `POST /fabric/provider-facts/batch` boundary delegates resource
 interpretation to the selected adapter. Control Plane Provider Acceptance uses
@@ -259,12 +274,20 @@ that same provider-neutral facts shape for compute, storage, attachment, and
 Runtime readiness. Provider Acceptance tooling and protected Instance qualification
 require canonical compute/storage provider IDs; compatibility node-pool and
 persistent-volume fields are optional response-only projections and do not
-participate in readiness or continuity comparison. The Local Docker adapter also
-validates an immutable Workspace image against its trusted repository or exact
-release-manifest source before Docker access or Fabric operation persistence.
-Its running container ID, service identity, and provider binding are immutable
-Runtime identity facts; Docker-assigned HostPort and URL are live routing facts
-that authoritative Runtime readback refreshes after a restart.
+participate in readiness or continuity comparison.
+For Tencent Runtime facts, `computeRuntimeBinding` reports `matched` or
+`mismatched` only after the persisted Compute, active Machine ownership, and
+provider Pod/Node binding can be verified together. Missing ownership or a
+failed binding read leaves this observation absent; it does not imply a match.
+Control Plane projects only the bounded provider error code prefix; provider
+messages and response bodies are excluded from the operator fact projection.
+
+The Local Docker adapter validates an immutable Workspace image against its
+trusted repository or exact release-manifest source before Docker access or
+Fabric operation persistence. Its running container ID, service identity, and
+provider binding are immutable Runtime identity facts; Docker-assigned HostPort
+and URL are live routing facts that authoritative Runtime readback refreshes
+after a restart.
 Its Runtime stage maps the admitted package to Docker cgroup CPU and memory
 limits and requires exact `HostConfig` readback. Its storage stage assigns a
 stable Linux project ID to the Workspace host-directory tree, applies the
@@ -388,9 +411,12 @@ delete mutation; Tencent expiry policy owns eventual provider reclamation.
 The local-docker Fabric adapter owns host-capacity admission. Control Plane
 continues to call the existing staged Workspace APIs and Console has no direct
 Docker or quota surface. The Runtime stage maps the admitted package to Docker
-CPU, memory, and memory-swap cgroup limits, then reads the exact HostConfig
-values back. Storage maps admitted SizeGB to a Linux project-quota hard limit on
-the host-owned Workspace root.
+CPU, memory, and memory-swap cgroup limits, then reads HostConfig back. CPU and
+memory must match exactly. Memory-swap must equal the admitted memory limit
+unless `OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP=1` explicitly permits
+Docker's `MemorySwap=-1`; this does not relax CPU, memory or storage admission.
+Storage maps admitted SizeGB to a Linux project-quota hard limit on the
+host-owned Workspace root.
 
 Before a Runtime is dispatched, Fabric holds the storage-root flock, reads the
 Docker daemon NCPU and MemTotal facts, validates every OPL Runtime label and

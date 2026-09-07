@@ -3,6 +3,8 @@ package fabric
 import (
 	"errors"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 var ErrJobNotFound = errors.New("job_not_found")
@@ -367,6 +369,31 @@ type WorkspaceRuntimeImageReplacementResult struct {
 	Runtime                WorkspaceRuntime `json:"runtime"`
 }
 
+type WorkspaceRuntimeGatewayNetworkRecoveryInput struct {
+	AccountID          string `json:"accountId"`
+	WorkspaceID        string `json:"workspaceId"`
+	ComputeID          string `json:"computeId"`
+	RuntimeID          string `json:"runtimeId"`
+	RuntimeOperationID string `json:"runtimeOperationId"`
+	RuntimeServiceName string `json:"runtimeServiceName"`
+	IdempotencyKey     string `json:"-"`
+}
+
+type WorkspaceRuntimeGatewayNetworkRecoveryResult struct {
+	SchemaVersion      int              `json:"schemaVersion"`
+	OperationID        string           `json:"operationId"`
+	AccountID          string           `json:"accountId"`
+	WorkspaceID        string           `json:"workspaceId"`
+	ComputeID          string           `json:"computeId"`
+	RuntimeID          string           `json:"runtimeId"`
+	RuntimeServiceName string           `json:"runtimeServiceName"`
+	GatewayContainerID string           `json:"gatewayContainerId"`
+	NetworkID          string           `json:"networkId"`
+	NetworkName        string           `json:"networkName"`
+	Status             string           `json:"status"`
+	Runtime            WorkspaceRuntime `json:"runtime"`
+}
+
 type WorkspaceRuntime struct {
 	ID                string            `json:"id"`
 	OperationID       string            `json:"operationId,omitempty"`
@@ -381,6 +408,8 @@ type WorkspaceRuntime struct {
 	Checks            []Check           `json:"checks,omitempty"`
 	CostTags          map[string]string `json:"costTags,omitempty"`
 	CreatedAt         time.Time         `json:"createdAt"`
+	ComputeID         string            `json:"-"`
+	NodeName          string            `json:"-"`
 }
 
 type RuntimeAccess struct {
@@ -475,13 +504,14 @@ type ProviderFactsBatchInput struct {
 }
 
 type ProviderResourceFacts struct {
-	PackageOrSpec string `json:"packageOrSpec,omitempty"`
-	ProviderID    string `json:"providerId,omitempty"`
-	Zone          string `json:"zone,omitempty"`
-	Status        string `json:"status,omitempty"`
-	CreatedAt     string `json:"createdAt,omitempty"`
-	ExpiresAt     string `json:"expiresAt,omitempty"`
-	LastReadAt    string `json:"lastReadAt,omitempty"`
+	PackageOrSpec         string                                    `json:"packageOrSpec,omitempty"`
+	ProviderID            string                                    `json:"providerId,omitempty"`
+	Zone                  string                                    `json:"zone,omitempty"`
+	Status                string                                    `json:"status,omitempty"`
+	CreatedAt             string                                    `json:"createdAt,omitempty"`
+	ExpiresAt             string                                    `json:"expiresAt,omitempty"`
+	LastReadAt            string                                    `json:"lastReadAt,omitempty"`
+	ComputeRuntimeBinding *contracts.WorkspaceComputeRuntimeBinding `json:"computeRuntimeBinding,omitempty"`
 }
 
 type ProviderFact struct {

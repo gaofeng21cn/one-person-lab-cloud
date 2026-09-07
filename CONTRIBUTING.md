@@ -78,9 +78,12 @@ the owning contract and update both sides and their focused tests together.
 
 ## Validation
 
-The required `validate` check aggregates four parallel jobs:
+Pull Request CI runs dependency review and a `validate` job that executes
+`npm run verify:local`. The manually dispatched Qualification workflow uses a
+separate `validate` aggregate for five parallel jobs:
 
 - `node-console`
+- `go-contracts`
 - `postgres-ledger`
 - `control-plane`
 - `fabric`
