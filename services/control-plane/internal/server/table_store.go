@@ -76,6 +76,8 @@ type runtimeOperationQuery struct {
 	Statuses         []string
 	ExcludedStatuses []string
 	PeriodStart      string
+	AfterCreatedAt   time.Time
+	AfterID          string
 	Offset           int
 	Limit            int
 }

@@ -201,6 +201,10 @@ func workspaceLaunchFabricObservation(operation workspaceLaunchReconcileOperatio
 	switch {
 	case state == workspaceLaunchStageAbsent && (result.Reason == "no_stage_record" || result.Reason == "started_no_resource" || result.Reason == "failed_no_resource"):
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
+	case operation.Stage == contracts.StageCompute && state == workspaceLaunchStagePending && result.Reason == "compute_dispatch_pending":
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageComputeDispatchPending}, nil
+	case operation.Stage == contracts.StageCompute && state == workspaceLaunchStagePending && result.Reason == "compute_pool_queued":
+		return workspaceLaunchStageObservation{State: workspaceLaunchStageComputePoolQueued}, nil
 	case state == workspaceLaunchStagePending && result.Reason == "provider_provisioning":
 		return workspaceLaunchStageObservation{State: workspaceLaunchStagePending, Diagnostic: result.Diagnostic}, nil
 	case operation.Stage == contracts.StageRuntime && state == workspaceLaunchStagePending && result.Reason == "runtime_image_revision_required":

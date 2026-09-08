@@ -17,6 +17,8 @@ type launchStageEngine struct {
 	runtimeImageRevision workspaceLaunchRuntimeImageRevisionProvider
 	providerMutations    ProviderMutationStore
 	machineOwnership     MachineOwnershipStore
+	computePool          ComputePoolStore
+	computePoolProvider  workspaceLaunchComputePoolProvider
 	now                  func() time.Time
 }
 
@@ -28,6 +30,8 @@ func newLaunchStageEngine(
 	runtimeImageRevision workspaceLaunchRuntimeImageRevisionProvider,
 	providerMutations ProviderMutationStore,
 	machineOwnership MachineOwnershipStore,
+	computePool ComputePoolStore,
+	computePoolProvider workspaceLaunchComputePoolProvider,
 	now func() time.Time,
 ) *launchStageEngine {
 	return &launchStageEngine{
@@ -38,6 +42,8 @@ func newLaunchStageEngine(
 		runtimeImageRevision: runtimeImageRevision,
 		providerMutations:    providerMutations,
 		machineOwnership:     machineOwnership,
+		computePool:          computePool,
+		computePoolProvider:  computePoolProvider,
 		now:                  now,
 	}
 }
@@ -173,7 +179,7 @@ func (e *launchStageEngine) persistWorkspaceLaunchStageResult(ctx context.Contex
 	}
 	setWorkspaceLaunchStageRecord(&next, record)
 	setWorkspaceLaunchStageDiagnostic(&next, result.Diagnostic)
-	if current.Status == "started" {
+	if current.Status == "started" && (current.ComputePoolKey == "" || current.ComputePoolLeaseOwner != "") {
 		return e.stages.SaveStageOutcome(ctx, next)
 	}
 	return e.stages.ConvergeStageReadback(ctx, current, next)
@@ -185,6 +191,11 @@ func (e *launchStageEngine) failWorkspaceLaunchStage(ctx context.Context, curren
 	}
 	next := current
 	next.Status, next.ErrorCode, next.Retryable, next.FinishedAt = "failed", errorCode(err), false, e.now()
+	if current.ComputePoolKey != "" {
+		// An uncertain allocation retains its place until authoritative readback
+		// confirms the original Machine. Later customers cannot reuse its demand.
+		next.Status, next.FinishedAt = "started", time.Time{}
+	}
 	_ = e.stages.SaveStageOutcome(ctx, next)
 }
 
@@ -212,6 +223,18 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 	if err != nil {
 		return WorkspaceLaunchStageResult{}, err
 	}
+	if input.Binding.Stage == "ensure_compute_allocation" && e.computePoolProvider != nil {
+		admission, admissionErr := e.workspaceLaunchPreflight(ctx, input.ProviderBindingRef)
+		if admissionErr != nil {
+			return WorkspaceLaunchStageResult{}, admissionErr
+		}
+		operation.ComputePoolKey, err = e.computePoolProvider.WorkspaceLaunchComputePool(admission.CanonicalProviderPlan, input.PackageID, input.SizeGB)
+		if err != nil || operation.ComputePoolKey == "" {
+			return WorkspaceLaunchStageResult{}, firstNonNil(err, ErrLaunchStageBindingConflict)
+		}
+		record.ComputePoolQueued = true
+		setWorkspaceLaunchStageRecord(&operation, record)
+	}
 	if existing, found, lookupErr := e.stages.OperationByActionIdempotency(ctx, input.Binding.Action, input.Binding.IdempotencyKey); lookupErr != nil {
 		return WorkspaceLaunchStageResult{}, lookupErr
 	} else if found && existing.Status == "failed" {
@@ -224,13 +247,46 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 			}
 		}
 	}
-	stored, claimed, err := e.stages.ClaimStageOperation(ctx, operation)
+	var stored FabricOperation
+	var claimed bool
+	if operation.ComputePoolKey != "" {
+		stored, claimed, err = e.computePool.ClaimComputePoolRuntime(ctx, operation)
+	} else {
+		stored, claimed, err = e.stages.ClaimStageOperation(ctx, operation)
+	}
 	if err != nil {
 		return WorkspaceLaunchStageResult{}, err
 	}
 	record, ok := workspaceLaunchStageOperationMatches(stored, input, providerName)
 	if !ok {
 		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
+	}
+	if operation.ComputePoolKey != "" && stored.Status == "failed" {
+		return pendingWorkspaceLaunchStageResult(input, "compute_pool_queued", nil), nil
+	}
+	if operation.ComputePoolKey != "" && stored.ComputePoolKey != operation.ComputePoolKey {
+		return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
+	}
+	if stored.ComputePoolKey != "" && stored.Status == "started" {
+		leaseOwner, leaseErr := newLeaseToken()
+		if leaseErr != nil {
+			return WorkspaceLaunchStageResult{}, leaseErr
+		}
+		now := e.now()
+		leased, ownsHead, leaseErr := e.computePool.TryClaimComputePoolHead(ctx, stored.ID, stored.ComputePoolKey, leaseOwner, now, now.Add(45*time.Second))
+		if leaseErr != nil {
+			return WorkspaceLaunchStageResult{}, leaseErr
+		}
+		if !ownsHead {
+			return pendingWorkspaceLaunchStageResult(input, "compute_pool_queued", nil), nil
+		}
+		stored = leased
+		defer func() {
+			_ = e.computePool.ReleaseComputePoolHead(context.WithoutCancel(ctx), stored.ID, stored.ComputePoolKey, leaseOwner)
+		}()
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
 	}
 	if stored.Status == "succeeded" {
 		observed, readErr := e.readWorkspaceLaunchStage(ctx, input, stored, record, true)
@@ -256,6 +312,13 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 			stored = current
 		}
 	}
+	if record.ComputePoolQueued {
+		record.ComputePoolQueued = false
+		setWorkspaceLaunchStageRecord(&stored, record)
+		if err := e.stages.SaveStageOutcome(ctx, stored); err != nil {
+			return WorkspaceLaunchStageResult{}, err
+		}
+	}
 	request, err := e.WorkspaceLaunchProviderRequest(ctx, input, record)
 	if err != nil {
 		return WorkspaceLaunchStageResult{}, err
@@ -278,8 +341,11 @@ func (e *launchStageEngine) EnsureWorkspaceLaunchStage(ctx context.Context, inpu
 	if errors.Is(err, ErrWorkspaceLaunchOwnershipPending) {
 		return pendingWorkspaceLaunchStageResult(input, "ownership_pending", providerResult.Diagnostic), nil
 	}
+	if errors.Is(err, ErrWorkspaceLaunchComputeDispatchPending) {
+		return pendingWorkspaceLaunchStageResult(input, "compute_dispatch_pending", providerResult.Diagnostic), nil
+	}
 	if errors.Is(err, ErrWorkspaceLaunchPending) {
-		if input.RuntimeImageRevision != nil {
+		if input.RuntimeImageRevision != nil || stored.ComputePoolKey != "" {
 			return pendingWorkspaceLaunchStageResult(input, "provider_provisioning", providerResult.Diagnostic), nil
 		}
 		return pendingWorkspaceLaunchStageResult(input, stored.ErrorCode, providerResult.Diagnostic), nil
@@ -335,6 +401,20 @@ func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input 
 	if e.provider == nil {
 		return WorkspaceLaunchStageResult{}, ErrWorkspaceLaunchUnavailable
 	}
+	if record.ComputePoolQueued {
+		if input.Binding.Stage != "ensure_compute_allocation" || operation.Status != "started" || operation.ComputePoolKey == "" {
+			return WorkspaceLaunchStageResult{}, ErrLaunchStageBindingConflict
+		}
+		head, found, err := e.computePool.ComputePoolHead(ctx, operation.ComputePoolKey)
+		if err != nil || !found {
+			return WorkspaceLaunchStageResult{}, firstNonNil(err, ErrLaunchStageBindingConflict)
+		}
+		reason := "compute_pool_queued"
+		if head.ID == operation.ID {
+			reason = "compute_dispatch_pending"
+		}
+		return pendingWorkspaceLaunchStageResult(input, reason, nil), nil
+	}
 	request, err := e.WorkspaceLaunchProviderRequest(ctx, input, record)
 	if err != nil {
 		return WorkspaceLaunchStageResult{}, err
@@ -365,6 +445,9 @@ func (e *launchStageEngine) readWorkspaceLaunchStage(ctx context.Context, input 
 			return observedWorkspaceLaunchStageResult(input, "absent", "failed_no_resource", providerResult.Diagnostic), nil
 		}
 		return observedWorkspaceLaunchStageResult(input, "unknown", "resource_absence_status_conflict", providerResult.Diagnostic), nil
+	}
+	if errors.Is(err, ErrWorkspaceLaunchComputeDispatchPending) {
+		return pendingWorkspaceLaunchStageResult(input, "compute_dispatch_pending", providerResult.Diagnostic), nil
 	}
 	if errors.Is(err, ErrWorkspaceLaunchPending) {
 		if input.RuntimeImageRevision != nil {

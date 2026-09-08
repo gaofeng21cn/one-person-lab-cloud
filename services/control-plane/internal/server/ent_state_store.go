@@ -700,6 +700,12 @@ func (s *postgresEntStateStore) PageRuntimeOperations(ctx context.Context, page 
 	if page.PeriodStart != "" {
 		query.Where(runtimeoperation.PeriodStartEQ(page.PeriodStart))
 	}
+	if !page.AfterCreatedAt.IsZero() {
+		query.Where(runtimeoperation.Or(
+			runtimeoperation.CreatedAtGT(page.AfterCreatedAt),
+			runtimeoperation.And(runtimeoperation.CreatedAtEQ(page.AfterCreatedAt), runtimeoperation.IDGT(page.AfterID)),
+		))
+	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
 		return tablePage{}, err

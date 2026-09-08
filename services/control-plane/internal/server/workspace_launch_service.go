@@ -217,34 +217,9 @@ func prepareProductionAcceptanceBResumeExisting(
 }
 
 func (app *controlPlaneServer) runWorkspaceLaunchesOnce(ctx context.Context, service *controlplane.Service) error {
-	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{
-		Action: workspaceLaunchAction, ExcludedStatuses: []string{
-			string(contracts.StatusSucceeded), string(contracts.StatusRefunded), string(contracts.StatusFailed),
-		},
-	})
-	if err != nil {
-		return err
-	}
-	var errs []error
-	for _, row := range rows {
-		operation, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-		if decodeErr != nil {
-			errs = append(errs, decodeErr)
-			continue
-		}
-		unlock := app.lockResource("workspace-launch", operation.stringFact("accountId"))
-		var runErr error
-		if operation.Status == contracts.StatusManualReview {
-			_, runErr = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).AutoRecoverManualReview(ctx, operation.ID)
-		} else {
-			runErr = app.runWorkspaceLaunch(ctx, service, operation.ID)
-		}
-		if runErr != nil {
-			errs = append(errs, runErr)
-		}
-		unlock()
-	}
-	return errors.Join(errs...)
+	scheduler := newWorkspaceLaunchScheduler(app, service)
+	err := scheduler.dispatch(ctx)
+	return errors.Join(err, scheduler.collect(true))
 }
 
 func (app *controlPlaneServer) runWorkspaceLaunch(ctx context.Context, service *controlplane.Service, operationID string) error {

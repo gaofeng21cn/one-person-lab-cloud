@@ -36,7 +36,7 @@ export function presentWorkspaceLaunch(
       return {
         kind: "pending",
         title: "正在准备工作空间",
-        summary: "系统正在准备所需资源，请稍后刷新状态。",
+        summary: "系统正在后台准备所需资源。可以关闭页面，稍后回来查看，无需重复购买。",
         tone: "info",
         canOpenWorkspace: false
       };

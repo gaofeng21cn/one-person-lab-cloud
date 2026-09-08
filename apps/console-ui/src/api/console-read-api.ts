@@ -39,6 +39,8 @@ import type {
   WalletAdjustmentOperationDTO,
   WalletAdjustmentRecoveryRequest,
   WalletAdjustmentRequest,
+  WorkspaceLaunchRecoveryDTO,
+  WorkspaceLaunchRecoveryRequest,
   OperatorAccountsData,
   OperationStatusDTO,
   PricingCatalogResponse,
@@ -298,6 +300,28 @@ export function setOperatorWorkspacePurchaseEligibility(accountId: string, enabl
 
 export function resolveBillingReview(resourceType: string, resourceId: string, input: BillingReviewResolutionRequest, csrfToken: string, idempotencyKey: string): Promise<OperationStatusDTO> {
   return postJson<unknown>(`/api/operator/billing-reviews/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/resolve`, input, csrfToken, idempotencyKey).then(decodeDto<OperationStatusDTO>);
+}
+
+function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): WorkspaceLaunchRecoveryDTO {
+  const result = decodeDto<WorkspaceLaunchRecoveryDTO>(value);
+  if (!result || result.operationId !== operationId || !Number.isSafeInteger(result.launchVersion) || result.launchVersion < 1
+    || typeof result.status !== "string" || !result.status || typeof result.stage !== "string" || !result.stage
+    || !Array.isArray(result.allowedActions) || result.allowedActions.length > 1
+    || result.allowedActions.some((action) => action !== "check_result")
+    || result.status !== "manual_review" && result.allowedActions.length > 0) {
+    throw new Error("invalid_workspace_launch_recovery");
+  }
+  return result;
+}
+
+export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSignal): Promise<WorkspaceLaunchRecoveryDTO> {
+  return getJson<unknown>(`/api/operator/workspace-launches/${encodeURIComponent(operationId)}/recovery`, { signal })
+    .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
+}
+
+export function checkWorkspaceLaunchResult(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WorkspaceLaunchRecoveryDTO> {
+  return postJson<unknown>(`/api/operator/workspace-launches/${encodeURIComponent(operationId)}/recover`, input, csrfToken, idempotencyKey)
+    .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 
 export function createOperatorAnnouncement(input: AnnouncementDraftRequest, csrfToken: string, idempotencyKey: string): Promise<AnnouncementDTO> {

@@ -30,6 +30,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | Local Console simplification | On 2026-09-09, the local diff over `b1d811ea` removed unused presentation helpers, route sensitivity metadata and duplicate selected-Key ID state; 39 focused route, API lifecycle, Gateway Usage and logout/Secret tests plus `npm run verify:local` passed | Canonical merge, Candidate qualification or deployment |
 | D1 local finance development | The 2026-09-08 worktree on `b1d811eab2a2fcff5d77b4cf9685e801d7681360` passes `verify:local:full` with zero PostgreSQL test skips, 6 HTTP business chains plus 11 reservation/CAS cases under race, and focused Renewal/Wallet recovery race tests | Canonical merge, actual Gateway adoption, a released Candidate, provider capacity, or production financial qualification |
 | D2 local reconciliation and customer billing | The retained 2026-09-08 cumulative worktree passes `verify:local:full` with zero PostgreSQL skips; original purchase/renewal/refund HTTP chains, pending and recovery, exact receipt lookup beyond 10k history, historical schema-2 financial readback, race checks and desktop/mobile billing tests pass | Canonical merge, actual Gateway adoption, a deployed Candidate or Tencent/TKE production qualification |
+| D3 local Launch recovery and capacity | Provider-neutral original-result recovery, ordinary operator result checks, four-slot keyset scheduling, fifty-account PostgreSQL admission and actual Tencent Launch NodePool FIFO/lease are implemented; focused business, HTTP, restart and race tests pass, as does `verify:local:full`. Final Control Plane source was rechecked with its complete PostgreSQL suite and the explicit capacity test | Full failed-Launch resource/Key/refund closure, actual Tencent cloud capacity, Instance adoption or deployment |
 | D1 isolated Sub2API | Cloud's real HTTP client and isolated patched Sub2API pass original-transaction lookup, atomic insufficient-balance rejection, concurrent debit/refund, response-loss recovery and historical unverified-debit rejection | Production Gateway byte identity or adoption; a local patched image is not a published upstream release |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
@@ -125,6 +126,32 @@ and schema-2 historical readback. Ledger migration and exact lookup pass with
 10,005 retained receipts. The final full local run passes PostgreSQL and Docker
 integration with no required skips. Tests use separate local stores and fixtures;
 engineering evidence is not written into the production business Ledger.
+
+D3 evidence is retained separately at
+`/Users/huangrende/Documents/ChatGPT/d3-delivery-20260908/VALIDATION.md` and its
+source manifest, patch and logs. The source baseline is local commit
+`0a1a78d6aa2caf4898c1e35c08c30c2a906f371b`, which preserves the verified D1/D2
+work before D3. Tests include fifty concurrent PostgreSQL admissions, the 51st
+rejection, 10,001 unrelated retained operations, keyset ties, one slow account
+while 49 others advance, first-dispatch CAS competition, and late exact debit
+confirmation after restart on both provider profiles. Real typed HTTP tests
+cover long queue wait, original dispatch, provisioning, ownership and stage
+advance. Actual Tencent adapter tests use isolated provider fixtures and
+PostgreSQL, not live Tencent resources. The full local gate passes with zero required PostgreSQL skips. After the final
+Control Plane recovery edits, its complete suite passes again (2,380 test events
+plus the explicitly rerun opt-in 1,000-user data-scale case); focused recovery
+and concurrency tests pass under race. Browser tests cover desktop/mobile
+original-order return and ordinary administrator recovery without technical
+budgets. Test stores and evidence remain outside production state.
+
+D3 remains active for full failed-Launch closure. Fabric partial resource
+cleanup does not by itself close Key and financial obligations: current Key
+mutation requires a short-lived customer delegated credential, and normal
+Workspace Delete requires an immutable succeeded Launch. No new terminal refund
+or cleanup shortcut was added. Exact owner-authorized closure is the remaining
+business development work, distinct from deployment qualification. The existing
+Tencent Instance explicitly enables the Launch worker and still overrides
+admission to one; adopting the new source does not silently change that setting.
 
 The 2026-08-19 Local-Docker runs covered two ownership modes:
 

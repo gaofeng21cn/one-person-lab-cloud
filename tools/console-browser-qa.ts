@@ -2,9 +2,37 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserContext, Page } from "playwright";
+import type { WorkspaceLaunchRecoveryDTO } from "../apps/console-ui/src/api/dtos.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = "2026-07-19T12:00:00Z";
+export const viteClientWithoutHmrTransport = `
+const styles = new Map();
+export class ErrorOverlay extends HTMLElement {}
+export function createHotContext() {
+  return {
+    data: {}, accept() {}, acceptExports() {}, decline() {}, dispose() {}, invalidate() {},
+    off() {}, on() {}, prune() {}, send() {}
+  };
+}
+export function injectQuery(url) { return url; }
+export function updateStyle(id, content) {
+  let style = styles.get(id);
+  if (!style) {
+    style = document.createElement("style");
+    style.setAttribute("data-vite-dev-id", id);
+    document.head.appendChild(style);
+    styles.set(id, style);
+  }
+  style.textContent = content;
+}
+export function removeStyle(id) {
+  const style = styles.get(id);
+  if (!style) return;
+  style.remove();
+  styles.delete(id);
+}
+`;
 export const CONSOLE_DEMO_CREDENTIALS = Object.freeze({
   customer: Object.freeze({ email: "fixture@example.com", password: "fixture-password" }),
   admin: Object.freeze({ email: "operator@example.com", password: "operator-password" })
@@ -26,6 +54,7 @@ const OPERATOR_PAGE_READS = new Set([
   "/api/operator/workspaces",
   "/api/operator/workspaces/ws-1",
   "/api/operator/reconciliation",
+  "/api/operator/workspace-launches/launch-resume-fixture/recovery",
   "/api/operator/health",
   "/api/operator/announcements"
 ]);
@@ -737,6 +766,12 @@ export async function apiFixture(route, state, session = state) {
     }, "control-plane+fabric"));
   }
   if (path === "/api/operator/workspaces/ws-1") return fulfillJson(route, source(operatorWorkspace(), "control-plane+fabric+ledger+sub2api"));
+  if (path === "/api/operator/workspace-launches/launch-resume-fixture/recovery" && method === "GET") {
+    const recovery: WorkspaceLaunchRecoveryDTO = {
+      operationId: "launch-resume-fixture", launchVersion: 7, status: "manual_review", stage: "storage", allowedActions: []
+    };
+    return fulfillJson(route, recovery);
+  }
   if (path === "/api/operator/reconciliation") return fulfillJson(route, source({ items: [{
     id: "review-resume-fixture", resourceType: "workspace", status: "manual_review", accountId: "acct-operator",
     billingOperationId: "launch-resume-fixture", phase: "manual_review", errorCode: "workspace_launch_manual_review",
@@ -886,6 +921,9 @@ async function installFixturePage(page, state, serverOrigin) {
     if (!local) {
       state.externalRequests += 1;
       return route.abort("blockedbyclient");
+    }
+    if (url.pathname === "/@vite/client") {
+      return route.fulfill({ status: 200, contentType: "application/javascript", body: viteClientWithoutHmrTransport });
     }
     if (url.pathname.startsWith("/api/")) return apiFixture(route, state);
     return route.continue();
@@ -1588,9 +1626,9 @@ export async function runConsoleBrowserQa({
       await page.getByRole("button", { name: "查看证据", exact: true }).click();
       const reviewDialog = page.getByRole("dialog", { name: "复核详情", exact: true });
       await reviewDialog.waitFor({ state: "visible" });
-      await waitForText(page, "resume_workspace_launch");
+      await waitForText(reviewDialog, "当前没有服务端允许的核对动作。");
       await reviewDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
-      assertOperatorPageReads(state, operatorReadStart, ["/api/operator/reconciliation"]);
+      assertOperatorPageReads(state, operatorReadStart, ["/api/operator/reconciliation", "/api/operator/workspace-launches/launch-resume-fixture/recovery", "/api/operator/workspace-launches/launch-resume-fixture/recovery"]);
       await assertNoViewportOverflow(page);
       await captureFixtureScreenshot(page, screenshotDir, "admin-reconciliation", name);
       operatorReadStart = state.operatorPageReads.length;

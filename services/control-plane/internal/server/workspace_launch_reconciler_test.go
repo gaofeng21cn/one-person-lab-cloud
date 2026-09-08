@@ -1032,7 +1032,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryLeavesUnprovenStorageUntouched(t
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)
@@ -1116,7 +1116,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutComputeOwnersh
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)
@@ -1280,7 +1280,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutRuntimeReady(t
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)

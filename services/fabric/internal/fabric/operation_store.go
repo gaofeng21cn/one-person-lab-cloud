@@ -597,6 +597,19 @@ func (s *MemoryOperationStore) ClaimComputePoolRuntime(_ context.Context, operat
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for index, existing := range s.operation {
+		if existing.Action == operation.Action && existing.IdempotencyKey == operation.IdempotencyKey &&
+			existing.ResourceKind == "workspace_launch_stage" && existing.Status == "failed" && sameRuntimeOperationRequest(existing, operation) {
+			if head := memoryComputePoolHeadIndex(s.operation, operation.ComputePoolKey); head >= 0 && s.operation[head].ID != existing.ID {
+				return existing, false, nil
+			}
+			existing.ComputePoolKey, existing.Status, existing.ErrorCode = operation.ComputePoolKey, "started", ""
+			existing.StartedAt, existing.FinishedAt, existing.Retryable = operation.StartedAt, time.Time{}, false
+			existing.ComputePoolLeaseOwner, existing.ComputePoolLeaseExpires = "", nil
+			s.operation[index] = existing
+			return existing, true, nil
+		}
+	}
 	operation.CreatedAt = time.Now().UTC()
 	return s.claimRuntimeLocked(operation)
 }
@@ -669,7 +682,7 @@ func memoryComputePoolHeadIndex(operations []FabricOperation, poolKey string) in
 	head := -1
 	for index := range operations {
 		operation := operations[index]
-		if operation.Action != "create_compute_allocation" || !computePoolHeadStatus(operation.Status) || operation.ComputePoolKey != poolKey {
+		if !computePoolAction(operation.Action) || !computePoolHeadStatus(operation.Status) || operation.ComputePoolKey != poolKey {
 			continue
 		}
 		if head < 0 || operation.CreatedAt.Before(operations[head].CreatedAt) || (operation.CreatedAt.Equal(operations[head].CreatedAt) && operation.ID < operations[head].ID) {
@@ -736,7 +749,9 @@ func sameRuntimeReadbackIdentity(current, expected FabricOperation) bool {
 		current.AccountID == expected.AccountID && current.WorkspaceID == expected.WorkspaceID &&
 		current.Provider == expected.Provider && current.ProviderRequestID == expected.ProviderRequestID &&
 		current.IdempotencyKey == expected.IdempotencyKey && current.RequestHash == expected.RequestHash &&
-		current.Status == expected.Status && current.StartedAt.Equal(expected.StartedAt)
+		current.Status == expected.Status && current.StartedAt.Equal(expected.StartedAt) &&
+		current.ComputePoolKey == expected.ComputePoolKey && current.ComputePoolLeaseOwner == expected.ComputePoolLeaseOwner &&
+		sameOptionalTime(current.ComputePoolLeaseExpires, expected.ComputePoolLeaseExpires)
 }
 
 func validRuntimeReadbackConvergence(expected, next FabricOperation) bool {
@@ -944,6 +959,7 @@ func (s *MemoryOperationStore) ConvergeRuntimeReadback(_ context.Context, expect
 			return payloadErr
 		}
 		if current.ID == expected.ID && sameRuntimeReadbackIdentity(current, expected) && currentPayload == expectedPayload {
+			next.ComputePoolLeaseOwner, next.ComputePoolLeaseExpires = "", nil
 			s.operation[index] = next
 			return nil
 		}
@@ -1653,6 +1669,35 @@ func (s *PostgresOperationStore) ClaimComputePoolRuntime(ctx context.Context, op
 	}
 	existing, err := postgresFabricOperationByClaim(ctx, tx, operation.Action, operation.IdempotencyKey)
 	if err == nil {
+		if existing.ResourceKind == "workspace_launch_stage" && existing.Status == "failed" && sameRuntimeOperationRequest(existing, operation) {
+			head, headErr := postgresFabricOperationByPoolHead(ctx, tx, poolKey)
+			if headErr != nil && !errors.Is(headErr, sql.ErrNoRows) {
+				return FabricOperation{}, false, headErr
+			}
+			if headErr == nil && head.ID != existing.ID {
+				if err := tx.Commit(); err != nil {
+					return FabricOperation{}, false, err
+				}
+				committed = true
+				return existing, false, nil
+			}
+			_, updateErr := tx.ExecContext(ctx, `
+				UPDATE fabric_operations SET compute_pool_key = $1, status = 'started', error_code = '', retryable = false,
+				started_at = $2, finished_at = NULL, compute_pool_lease_owner = '', compute_pool_lease_expires_at = NULL
+				WHERE id = $3 AND status = 'failed'`, poolKey, operation.StartedAt, existing.ID)
+			if updateErr != nil {
+				return FabricOperation{}, false, updateErr
+			}
+			existing, err = postgresFabricOperationByClaim(ctx, tx, operation.Action, operation.IdempotencyKey)
+			if err != nil {
+				return FabricOperation{}, false, err
+			}
+			if err := tx.Commit(); err != nil {
+				return FabricOperation{}, false, err
+			}
+			committed = true
+			return existing, true, nil
+		}
 		if existing.RequestHash == operation.RequestHash && existing.ComputePoolKey == "" {
 			result, updateErr := tx.ExecContext(ctx, `
 				UPDATE fabric_operations SET compute_pool_key = $1
@@ -1728,7 +1773,7 @@ func postgresFabricOperationByPoolHead(ctx context.Context, tx *sql.Tx, poolKey 
 			error_code, retryable, compute_pool_key, compute_pool_lease_owner, compute_pool_lease_expires_at,
 			started_at, finished_at, created_at
 		FROM fabric_operations
-		WHERE action = 'create_compute_allocation' AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
+		WHERE action IN ('create_compute_allocation', 'ensure_compute_allocation') AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
 		ORDER BY created_at, id
 		LIMIT 1`, poolKey)
 	return scanPostgresFabricOperation(row)
@@ -1736,6 +1781,10 @@ func postgresFabricOperationByPoolHead(ctx context.Context, tx *sql.Tx, poolKey 
 
 func computePoolHeadStatus(status string) bool {
 	return status == "started" || status == "claim_pending"
+}
+
+func computePoolAction(action string) bool {
+	return action == "create_compute_allocation" || action == "ensure_compute_allocation"
 }
 
 type postgresRowScanner interface {
@@ -1774,7 +1823,7 @@ func (s *PostgresOperationStore) ComputePoolHead(ctx context.Context, poolKey st
 			error_code, retryable, compute_pool_key, compute_pool_lease_owner, compute_pool_lease_expires_at,
 			started_at, finished_at, created_at
 		FROM fabric_operations
-		WHERE action = 'create_compute_allocation' AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
+		WHERE action IN ('create_compute_allocation', 'ensure_compute_allocation') AND status IN ('started', 'claim_pending') AND compute_pool_key = $1
 		ORDER BY created_at, id
 		LIMIT 1`, poolKey)
 	operation, err := scanPostgresFabricOperation(row)
@@ -2003,16 +2052,17 @@ func (s *PostgresOperationStore) ConvergeRuntimeReadback(ctx context.Context, ex
 		UPDATE fabric_operations
 		SET resource_id = $1, workspace_id = $2, provider = $3, provider_request_id = $4,
 			redacted_provider_payload = $5::jsonb, status = $6, error_code = $7,
-			retryable = false, finished_at = $8
+			retryable = false, finished_at = $8, compute_pool_lease_owner = '', compute_pool_lease_expires_at = NULL
 		WHERE id = $9 AND operation_id = $10 AND caller_service = $11 AND action = $12 AND
 			resource_kind = $13 AND resource_id = $14 AND account_id = $15 AND workspace_id = $16 AND
 			provider = $17 AND provider_request_id = $18 AND idempotency_key = $19 AND request_hash = $20 AND
-			status = $21 AND started_at = $22 AND redacted_provider_payload::jsonb = $23::jsonb`,
+			status = $21 AND started_at = $22 AND redacted_provider_payload::jsonb = $23::jsonb AND
+			compute_pool_key = $24 AND compute_pool_lease_owner = $25 AND compute_pool_lease_expires_at IS NOT DISTINCT FROM $26`,
 		next.ResourceID, next.WorkspaceID, next.Provider, next.ProviderRequestID, nextPayload,
 		next.Status, next.ErrorCode, next.FinishedAt, expected.ID, expected.OperationID, expected.CallerService,
 		expected.Action, expected.ResourceKind, expected.ResourceID, expected.AccountID, expected.WorkspaceID,
 		expected.Provider, expected.ProviderRequestID, expected.IdempotencyKey, expected.RequestHash, expected.Status,
-		expected.StartedAt, expectedPayload)
+		expected.StartedAt, expectedPayload, expected.ComputePoolKey, expected.ComputePoolLeaseOwner, expected.ComputePoolLeaseExpires)
 	if err != nil {
 		return err
 	}

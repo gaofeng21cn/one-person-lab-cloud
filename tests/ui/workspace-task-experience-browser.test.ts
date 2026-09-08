@@ -19,6 +19,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
 
 const viewports = [
   { name: "desktop", width: 1280, height: 900 },
@@ -74,42 +75,6 @@ interface BrowserAudit {
   externalRequests: string[];
   pageErrors: string[];
 }
-
-const viteClientWithoutHmrTransport = `
-const styles = new Map();
-export class ErrorOverlay extends HTMLElement {}
-export function createHotContext() {
-  return {
-    data: {},
-    accept() {},
-    acceptExports() {},
-    decline() {},
-    dispose() {},
-    invalidate() {},
-    off() {},
-    on() {},
-    prune() {},
-    send() {}
-  };
-}
-export function injectQuery(url) { return url; }
-export function updateStyle(id, content) {
-  let style = styles.get(id);
-  if (!style) {
-    style = document.createElement("style");
-    style.setAttribute("data-vite-dev-id", id);
-    document.head.appendChild(style);
-    styles.set(id, style);
-  }
-  style.textContent = content;
-}
-export function removeStyle(id) {
-  const style = styles.get(id);
-  if (!style) return;
-  style.remove();
-  styles.delete(id);
-}
-`;
 
 function deferred() {
   let resolve!: () => void;
@@ -558,6 +523,62 @@ test("pending launch keeps raw evidence behind technical details at desktop and 
       await full.getByText("技术详情", { exact: true }).click();
       await assertTechnicalEvidenceOpen(page);
       await assertNoHorizontalOverflow(page);
+      assertBrowserAuditClean(audit);
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("closing and returning resumes the original pending purchase without another order, including after polling ends", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of viewports) {
+      const context = await browser.newContext({ viewport });
+      const operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `launch-return-${viewport.name}` };
+      demo.state.launches = [operation];
+      let purchaseWrites = 0;
+      const observedOperationIds = new Set<string>();
+      context.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/workspace-launches" && request.method() === "POST") purchaseWrites += 1;
+        if (url.pathname.startsWith("/api/workspace-launches/") && request.method() === "GET") {
+          observedOperationIds.add(decodeURIComponent(url.pathname.split("/").at(-1)!));
+        }
+      });
+      let page = await context.newPage();
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      await page.getByText("系统正在后台准备所需资源。可以关闭页面，稍后回来查看，无需重复购买。", { exact: true }).waitFor();
+      await page.close();
+
+      page = await context.newPage();
+      const audit = await installBrowserAudit(page, demo.origin);
+      await page.clock.install();
+      await page.clock.pauseAt(new Date(Date.now() + 1_000));
+      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
+        await page.clock.fastForward(10_000);
+        await (await readback).finished();
+        await page.clock.runFor(1);
+      }
+      await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor();
+      assert.equal(await page.getByRole("heading", { name: "开通失败", exact: true }).count(), 0);
+      assert.equal(purchaseWrites, 0);
+
+      await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      demo.state.launches = [{ ...operation, status: "succeeded", phase: "succeeded", workspaceId: "ws-1" }];
+      await page.clock.fastForward(10_000);
+      await page.waitForURL(/\/console\/workspaces\/ws-1$/);
+      assert.deepEqual([...observedOperationIds], [operation.operationId]);
+      assert.equal(purchaseWrites, 0);
       assertBrowserAuditClean(audit);
       await context.close();
     }

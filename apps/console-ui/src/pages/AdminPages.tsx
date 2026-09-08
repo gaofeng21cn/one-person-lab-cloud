@@ -14,11 +14,12 @@ import {
   ShieldOff,
   WalletCards
 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import type { OperatorAnnouncementController, OperatorResourceReadController, WorkspaceImageReleaseController, WorkspaceRuntimeImageReplacementController } from "../app/console-controller-types.ts";
 import type { AdminConsoleRoute } from "../app/console-router.ts";
 import type { ConsoleController } from "../app/use-console-controller.ts";
+import { checkWorkspaceLaunchResult, getWorkspaceLaunchRecovery } from "../api/console-read-api.ts";
 import type {
   AnnouncementDTO,
   AnnouncementDraftRequest,
@@ -29,7 +30,9 @@ import type {
   OperatorWorkspaceDTO,
   ReadinessFact,
   SourceEnvelope,
-  WalletAdjustmentRequest
+  WalletAdjustmentRequest,
+  WorkspaceLaunchRecoveryDTO,
+  WorkspaceLaunchRecoveryRequest
 } from "../api/dtos.ts";
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, Field, Modal, SegmentedControl, Select } from "../components/ui/index.ts";
@@ -603,7 +606,100 @@ function ReviewDetails({ review }: { review: OperatorReconciliationItemDTO }) {
   );
 }
 
-function ReviewModal({ onClose, review }: { onClose: () => void; review: OperatorReconciliationItemDTO | null }) {
+function LaunchResultCheck({ controller, operationId }: { controller: ConsoleController; operationId: string }) {
+  const [recovery, setRecovery] = useState<WorkspaceLaunchRecoveryDTO | null>(null);
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [issue, setIssue] = useState("");
+  const [message, setMessage] = useState("");
+  const [pendingIntent, setPendingIntent] = useState(false);
+  const generation = useRef(0);
+  const intent = useRef<{ input: WorkspaceLaunchRecoveryRequest; key: string } | null>(null);
+  const csrfToken = controller.session?.csrfToken || "";
+  const userId = controller.session?.user.id || "";
+
+  const read = async () => {
+    const request = ++generation.current;
+    setLoading(true);
+    setIssue("");
+    setMessage("");
+    try {
+      const result = await getWorkspaceLaunchRecovery(operationId);
+      if (request !== generation.current) return;
+      setRecovery(result);
+      if (intent.current && intent.current.input.launchVersion !== result.launchVersion) {
+        intent.current = null;
+        setPendingIntent(false);
+      }
+    } catch {
+      if (request === generation.current) {
+        setRecovery(null);
+        setIssue("暂时无法读取允许动作，请刷新。");
+      }
+    } finally {
+      if (request === generation.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    intent.current = null;
+    setPendingIntent(false);
+    setBusy(false);
+    setReason("");
+    setRecovery(null);
+    void read();
+    return () => { generation.current += 1; };
+  }, [operationId, csrfToken, userId]);
+
+  const checkResult = async () => {
+    if (busy || loading || !csrfToken || !recovery?.allowedActions.includes("check_result") || !reason.trim()) return;
+    const request = ++generation.current;
+    intent.current ||= { input: { action: "check_result", launchVersion: recovery.launchVersion, reason: reason.trim() }, key: `check-${crypto.randomUUID()}` };
+    setBusy(true);
+    setPendingIntent(true);
+    setIssue("");
+    setMessage("");
+    try {
+      const result = await checkWorkspaceLaunchResult(operationId, intent.current.input, csrfToken, intent.current.key);
+      if (request !== generation.current) return;
+      setRecovery(result);
+      intent.current = null;
+      setPendingIntent(false);
+      setMessage(result.status === "manual_review" ? "结果尚未确认，订单已保留。可稍后重新核对。"
+        : result.status === "succeeded" ? "已确认原订单完成开通。"
+        : result.status === "pending" ? "已确认当前阶段，后台将继续处理原订单。"
+        : "原订单状态已更新，请查看最新结果。");
+      await controller.refreshCurrentPage();
+    } catch (error) {
+      if (request !== generation.current) return;
+      if (error && typeof error === "object" && "status" in error && error.status === 409) {
+        setRecovery(null);
+        intent.current = null;
+        setPendingIntent(false);
+        setIssue("订单状态已变化，请刷新后重新核对。");
+      } else {
+        setIssue("核对结果暂未收到。可以重试本次核对，订单不会被重复创建。");
+      }
+    } finally {
+      if (request === generation.current) setBusy(false);
+    }
+  };
+
+  return <section className="data-section" aria-label="核对原开通结果">
+    <div className="panel-title"><h2>核对原开通结果</h2><Button busy={loading} disabled={busy} onClick={() => void read()} size="sm" variant="outline">刷新允许动作</Button></div>
+    <p>重新读取原订单的实际结果。不会重复购买或增加扣款。</p>
+    {recovery ? <p>当前状态：{statusLabel(recovery.status)}</p> : null}
+    {issue ? <p role="alert">{issue}</p> : null}
+    {message ? <p role="status">{message}</p> : null}
+    {recovery?.allowedActions.includes("check_result") ? <>
+      <Field disabled={busy || pendingIntent} label="核对原因" onChange={(event) => setReason(event.target.value)} value={reason} />
+      <div className="page-actions"><Button busy={busy} color="primary" disabled={loading || !reason.trim()} onClick={() => void checkResult()}>重新核对原开通结果</Button></div>
+    </> : !loading && recovery ? <p>当前没有服务端允许的核对动作。</p> : null}
+  </section>;
+}
+
+function ReviewModal({ controller, onClose, review }: { controller: ConsoleController; onClose: () => void; review: OperatorReconciliationItemDTO | null }) {
   return (
     <Modal
       className="modal"
@@ -613,7 +709,7 @@ function ReviewModal({ onClose, review }: { onClose: () => void; review: Operato
       open={Boolean(review)}
       title="复核详情"
     >
-      {review ? <div data-slide="A-REC-02"><ReviewDetails review={review} /><section className="data-section"><h2>服务端允许动作</h2><dl className="data-list"><div><dt>allowedActions</dt><dd>{review.allowedActions.length ? review.allowedActions.join(", ") : "无自动修复动作"}</dd></div></dl></section><div className="inline-notice"><ShieldAlert aria-hidden size={17} /><span>该项目只展示阻断和证据，不提供自动修复。</span></div></div> : null}
+      {review ? <div data-slide="A-REC-02">{review.allowedActions.includes("resume_workspace_launch") ? <LaunchResultCheck controller={controller} key={review.billingOperationId} operationId={review.billingOperationId} /> : <div className="inline-notice"><ShieldAlert aria-hidden size={17} /><span>当前项目仅展示复核证据。</span></div>}<ReviewDetails review={review} /></div> : null}
     </Modal>
   );
 }
@@ -629,7 +725,7 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
           return <tr key={review.id}><td>{review.accountId || "暂不可用"}</td><td>{review.resourceType}</td><td><Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge></td><td>{review.billingOperationId || "暂不可用"}</td><td>{review.phase || "暂不可用"}</td><td>{review.errorCode || "暂不可用"}</td><td>{review.operationRef || "暂不可用"}</td><td>{review.receiptRef || "暂不可用"}</td><td>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</td><td><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></td></tr>;
         })}</tbody></table></div>}
       </SourceState>
-      <ReviewModal onClose={() => setSelectedReview(null)} review={selectedReview} />
+      <ReviewModal controller={controller} onClose={() => setSelectedReview(null)} review={selectedReview} />
     </section>
   );
 }

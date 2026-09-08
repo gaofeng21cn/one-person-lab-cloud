@@ -821,6 +821,20 @@ export interface OperatorReconciliationPageDTO {
   pageSize: number;
 }
 
+export interface WorkspaceLaunchRecoveryDTO {
+  operationId: string;
+  launchVersion: number;
+  status: string;
+  stage: string;
+  allowedActions: Array<"check_result">;
+}
+
+export interface WorkspaceLaunchRecoveryRequest {
+  action: "check_result";
+  launchVersion: number;
+  reason: string;
+}
+
 export interface BillingReviewResolutionRequest {
   accountId: string;
   billingOperationId: string;

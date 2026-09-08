@@ -68,9 +68,6 @@ func (app *controlPlaneServer) startProviderReconcileWorker(ctx context.Context,
 
 func (app *controlPlaneServer) runProviderReconcileOnce(ctx context.Context, service *controlplane.Service, now time.Time) error {
 	var errs []error
-	if err := app.runWorkspaceLaunchesOnce(ctx, service); err != nil {
-		errs = append(errs, err)
-	}
 	for _, row := range app.listComputes("") {
 		if err := app.reconcileMonthlyCompute(ctx, service, row, now); err != nil {
 			errs = append(errs, err)

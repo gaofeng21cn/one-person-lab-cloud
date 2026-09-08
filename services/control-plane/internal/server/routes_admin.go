@@ -32,6 +32,77 @@ const (
 func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	registerWorkspaceRuntimeImageReplacementRoutes(mux, app, service)
 	registerWorkspaceRuntimeGatewayNetworkRecoveryRoutes(mux, app, service)
+	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		row, found, err := app.tables.GetRuntimeOperation(r.Context(), strings.TrimSpace(r.PathValue("operationId")))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "state_read_failed")
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
+			return
+		}
+		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+		if err != nil {
+			writeError(w, http.StatusConflict, errInvalidWorkspaceLaunchOperation.Error())
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, workspaceLaunchRecoveryResponse(operation))
+	}))
+	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/recover", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		key, ok := requiredMutationKey(w, r)
+		if !ok {
+			return
+		}
+		input := decodeJSON(r)
+		launchVersion, validVersion := positiveIntegerField(input, "launchVersion")
+		reason := stringValue(input["reason"])
+		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) ||
+			!exactWorkspaceComputeClaimKeys(input, []string{"action", "launchVersion", "reason"}) ||
+			stringValue(input["action"]) != "check_result" || !validVersion || launchVersion > int64(^uint(0)>>1) ||
+			reason == "" || reason != strings.TrimSpace(reason) {
+			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
+			return
+		}
+		operationID := strings.TrimSpace(r.PathValue("operationId"))
+		row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "state_read_failed")
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "workspace_launch_not_found")
+			return
+		}
+		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+		if err != nil {
+			writeError(w, http.StatusConflict, errInvalidWorkspaceLaunchOperation.Error())
+			return
+		}
+		authorization := workspaceLaunchResumeAuthorization{
+			AuthorizationID: key, LaunchVersion: int(launchVersion), AuthorizedStage: operation.Stage,
+			AuthorizedBy: app.sessionUserID(r), AuthorizedAt: time.Now().UTC().Format(time.RFC3339), Reason: reason,
+			AuthoritativeReadBudget: workspaceLaunchAuthoritativeReadBudget,
+		}
+		if existing, _, exists := operation.resultCheckByID(key); exists {
+			authorization.AuthorizedStage = existing.AuthorizedStage
+			authorization.AuthorizedAt = existing.AuthorizedAt
+			authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
+		}
+		result, err := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).CheckResult(r.Context(), operationID, authorization)
+		if err != nil {
+			if errors.Is(err, errBillingReviewNotFound) {
+				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
+			} else if errors.Is(err, errWorkspaceLaunchGrantConflict) || errors.Is(err, errWorkspaceLaunchCASConflict) || errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+				writeError(w, http.StatusConflict, err.Error())
+			} else {
+				writeError(w, http.StatusInternalServerError, "state_persist_failed")
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, workspaceLaunchRecoveryResponse(result))
+	}))
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		capabilities := r.Header.Values(productionAcceptanceBCapability)
 		if len(capabilities) != 1 || !secureHeaderMatches(strings.TrimSpace(capabilities[0]), strings.TrimSpace(os.Getenv("OPL_INTERNAL_SERVICE_TOKEN"))) {
@@ -1256,6 +1327,23 @@ func (app *controlPlaneServer) operatorOverview(ctx context.Context, service *co
 		result["resources"] = sourceEnvelope("fabric", "available", map[string]any{"total": runtime["total"]}, "")
 	}
 	return result, nil
+}
+
+type workspaceLaunchRecoveryDTO struct {
+	OperationID    string                 `json:"operationId"`
+	LaunchVersion  int                    `json:"launchVersion"`
+	Status         contracts.LaunchStatus `json:"status"`
+	Stage          contracts.Stage        `json:"stage"`
+	AllowedActions []string               `json:"allowedActions"`
+}
+
+func workspaceLaunchRecoveryResponse(operation workspaceLaunchReconcileOperation) workspaceLaunchRecoveryDTO {
+	actions := []string{}
+	if operation.Status == contracts.StatusManualReview && operation.RuntimeRepair == nil &&
+		(operation.ResumeAuthorization == nil || operation.ResumeAuthorizationConsumedAt != "") {
+		actions = append(actions, "check_result")
+	}
+	return workspaceLaunchRecoveryDTO{operation.ID, operation.Version, operation.Status, operation.Stage, actions}
 }
 
 func availableEnvelopeData(value any) (map[string]any, bool) {

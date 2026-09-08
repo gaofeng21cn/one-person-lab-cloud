@@ -1044,6 +1044,12 @@ func (s *memoryTableStore) PageRuntimeOperations(_ context.Context, query runtim
 		if _, excluded := excludedStatuses[stringValue(row["status"])]; excluded {
 			continue
 		}
+		if !query.AfterCreatedAt.IsZero() {
+			createdAt, ok := parseTimeString(stringValue(row["createdAt"]))
+			if !ok || createdAt.Before(query.AfterCreatedAt) || createdAt.Equal(query.AfterCreatedAt) && stringValue(row["id"]) <= query.AfterID {
+				continue
+			}
+		}
 		rows = append(rows, cloneMap(row))
 	}
 	sort.Slice(rows, func(i, j int) bool {

@@ -105,7 +105,7 @@ func observeWorkspaceLaunchStage(
 		return diagnostic, true, nil
 	}
 	if observation.State != workspaceLaunchStageAbsent && observation.State != workspaceLaunchStagePending &&
-		observation.State != workspaceLaunchStageReady && observation.State != workspaceLaunchStageOwnershipPending &&
+		observation.State != workspaceLaunchStageReady && observation.State != workspaceLaunchStageOwnershipPending && observation.State != workspaceLaunchStageComputeDispatchPending && observation.State != workspaceLaunchStageComputePoolQueued &&
 		observation.State != workspaceLaunchStageUnknown {
 		diagnostic.ErrorCode = "stage_observation_invalid"
 		return diagnostic, true, nil
@@ -126,7 +126,7 @@ func observeWorkspaceLaunchStage(
 			diagnostic.BlockReason = "none"
 		case workspaceLaunchStageAbsent:
 			diagnostic.BlockReason = "stage_resource_absent"
-		case workspaceLaunchStagePending, workspaceLaunchStageOwnershipPending:
+		case workspaceLaunchStagePending, workspaceLaunchStageOwnershipPending, workspaceLaunchStageComputeDispatchPending, workspaceLaunchStageComputePoolQueued:
 			diagnostic.BlockReason = "stage_provider_pending"
 		}
 	}
@@ -147,13 +147,13 @@ func workspaceLaunchAutomaticRecoveryEligibility(operation workspaceLaunchReconc
 			return true, "none"
 		}
 		return false, "fabric_ready_ineligible"
-	case workspaceLaunchStageOwnershipPending:
+	case workspaceLaunchStageOwnershipPending, workspaceLaunchStageComputeDispatchPending:
 		_, _, eligible, reason := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, now)
 		return eligible, reason
 	case workspaceLaunchStageAbsent:
 		_, _, eligible, reason := workspaceLaunchAutomaticStorageAbsenceAuthorization(operation, now)
 		return eligible, reason
-	case workspaceLaunchStagePending:
+	case workspaceLaunchStagePending, workspaceLaunchStageComputePoolQueued:
 		return false, "stage_provider_pending"
 	case workspaceLaunchStageUnknown:
 		return false, "stage_observation_unknown"
