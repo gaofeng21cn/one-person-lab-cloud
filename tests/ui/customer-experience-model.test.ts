@@ -46,6 +46,7 @@ test("billing receipt type and status use exact current values", () => {
     ["billing.workspace_purchased.v1", "工作空间开通"],
     ["billing.workspace_renewed.v1", "工作空间续费"],
     ["billing.workspace_expired.v1", "工作空间到期"],
+    ["billing.workspace_closed.v1", "开通未完成，已结案"],
     ["billing.workspace_refunded.v1", "工作空间退款"]
   ] as const;
   for (const [type, label] of typeCases) {
@@ -112,6 +113,9 @@ test("customer receipts distinguish monthly charges, partial refunds and expiry 
   assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_renewed.v1" }), "扣款 $52.58");
   assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_refunded.v1", refundUsdMicros: 3_000_000 }), "退款 $3.00");
   assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_expired.v1" }), "未扣款");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1", chargeUsdMicros: 52_580_000 }), "原扣款 $52.58（退款另列）");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1", chargeUsdMicros: 0 }), "未扣款");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1" }), "原扣款金额暂不可用");
   assert.equal(presentBillingReceiptAmount({ ...base, status: "pending" }), "金额待确认");
   assert.equal(presentBillingReceiptAmount({ ...base, type: "gateway.wallet_adjustment.v1", kind: "business_refund", refundUsdMicros: 3_000_000 }), "退款 $3.00");
   assert.equal(presentBillingReceiptType("gateway.wallet_adjustment.v1", "business_refund").label, "工作空间退款");

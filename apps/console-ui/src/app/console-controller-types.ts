@@ -157,6 +157,8 @@ export interface WorkspaceLaunchController {
   reviewWorkspaceLaunch: () => void;
   submitWorkspaceLaunch: () => Promise<void>;
   openLaunchedWorkspace: () => Promise<void>;
+  openLaunchBilling: () => void;
+  prepareNewWorkspaceLaunch: () => void;
 }
 
 export interface WorkspaceDeleteController {

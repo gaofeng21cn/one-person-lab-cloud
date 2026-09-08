@@ -1071,6 +1071,25 @@ func normalizeSub2APIEmail(email string) string {
 }
 
 func (c *Sub2APIHTTPClient) WorkspaceKeysForConvergence(ctx context.Context, userID int64, name string) ([]Sub2APIWorkspaceKey, error) {
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	matches, err := c.workspaceKeyIdentityRefs(readCtx, userID, name)
+	if err != nil || len(matches) != 1 {
+		return matches, err
+	}
+	key, err := c.adminUserKeyByID(readCtx, userID, matches[0].ID)
+	if err != nil {
+		return nil, err
+	}
+	if key.Name != name || key.Status != "active" {
+		return nil, errors.New("invalid sub2api workspace key search")
+	}
+	return []Sub2APIWorkspaceKey{key}, nil
+}
+
+// workspaceKeyIdentityRefs reads owner-scoped identity facts without inferring
+// whether a key is usable. The search includes disabled and expired keys.
+func (c *Sub2APIHTTPClient) workspaceKeyIdentityRefs(ctx context.Context, userID int64, name string) ([]Sub2APIWorkspaceKey, error) {
 	if userID <= 0 || !validWorkspaceKeyLookupName(name) {
 		return nil, errors.New("invalid sub2api workspace key lookup")
 	}
@@ -1101,20 +1120,10 @@ func (c *Sub2APIHTTPClient) WorkspaceKeysForConvergence(ctx context.Context, use
 		}
 		seen[ref.ID] = struct{}{}
 		if ref.Name == name {
-			matches = append(matches, Sub2APIWorkspaceKey{ID: ref.ID, UserID: ref.UserID, Name: ref.Name, Status: "active"})
+			matches = append(matches, Sub2APIWorkspaceKey{ID: ref.ID, UserID: ref.UserID, Name: ref.Name})
 		}
 	}
-	if len(matches) != 1 {
-		return matches, nil
-	}
-	key, err := c.adminUserKeyByID(readCtx, userID, matches[0].ID)
-	if err != nil {
-		return nil, err
-	}
-	if key.Name != name || key.Status != "active" {
-		return nil, errors.New("invalid sub2api workspace key search")
-	}
-	return []Sub2APIWorkspaceKey{key}, nil
+	return matches, nil
 }
 
 func validWorkspaceKeyLookupName(name string) bool {
@@ -1623,12 +1632,7 @@ func (c *Sub2APIHTTPClient) WorkspaceKey(ctx context.Context, userID int64) (Sub
 	if err != nil {
 		return Sub2APIWorkspaceKey{}, err
 	}
-	matches := make([]Sub2APIWorkspaceKey, 0, 1)
-	for _, key := range keys {
-		if key.Name == "opl-workspace" && key.Status == "active" {
-			matches = append(matches, key)
-		}
-	}
+	matches := keys
 	if len(matches) == 0 {
 		return Sub2APIWorkspaceKey{}, ErrSub2APIWorkspaceKeyMissing
 	}

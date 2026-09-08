@@ -44,6 +44,8 @@ type fabricOperationCursor struct {
 // unified in-memory and PostgreSQL backends. Application capabilities receive
 // the narrow ports derived from this backend in NewServiceWithOperationStore.
 type OperationStore interface {
+	CancelWorkspaceLaunchQueuedCompute(context.Context, FabricOperation, string, time.Time) error
+	WorkspaceLaunchStages(context.Context, string) ([]FabricOperation, error)
 	RuntimeOperationStore
 	Append(ctx context.Context, operation FabricOperation) error
 	Get(ctx context.Context, id string) (FabricOperation, error)
@@ -2341,4 +2343,111 @@ func fabricOperationFromEnt(row *fabricent.FabricOperation) FabricOperation {
 
 func machineOwnershipFromEnt(row *fabricent.MachineOwnership) MachineOwnership {
 	return MachineOwnership{ID: row.ID, ResourceID: row.ResourceID, AccountID: row.AccountID, WorkspaceID: row.WorkspaceID, PackageID: row.PackageID, NodePoolID: row.NodePoolID, MachineID: row.MachineID, InstanceID: row.InstanceID, NodeName: row.NodeName, Status: row.Status, ProviderRequestID: row.ProviderRequestID, ClaimedAt: row.ClaimedAt, ReleasedAt: row.ReleasedAt}
+}
+
+// A Workspace has five Launch stages. A sixth row is retained to expose a
+// duplicate owner instead of silently truncating conflicting state.
+func (s *MemoryOperationStore) WorkspaceLaunchStages(_ context.Context, workspaceID string) ([]FabricOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]FabricOperation, 0, 6)
+	for _, op := range s.operation {
+		if op.WorkspaceID == workspaceID && op.ResourceKind == "workspace_launch_stage" {
+			out = append(out, op)
+			if len(out) == 6 {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *PostgresOperationStore) WorkspaceLaunchStages(ctx context.Context, workspaceID string) ([]FabricOperation, error) {
+	rows, err := s.client.FabricOperation.Query().Where(fabricoperation.WorkspaceID(workspaceID), fabricoperation.ResourceKind("workspace_launch_stage")).Limit(6).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FabricOperation, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fabricOperationFromEnt(row))
+	}
+	return out, nil
+}
+
+func validWorkspaceLaunchQueuedCloseout(expected, closeout FabricOperation, now time.Time) bool {
+	binding, bound := decodeLaunchStageBinding(expected)
+	record, recorded := decodeWorkspaceLaunchStageRecord(expected)
+	var input WorkspaceLaunchCloseoutInput
+	return bound && recorded && binding.Stage == "ensure_compute_allocation" && record.ComputePoolQueued &&
+		expected.Status == "started" && expected.ComputePoolKey != "" &&
+		(expected.ComputePoolLeaseExpires == nil || !expected.ComputePoolLeaseExpires.After(now)) &&
+		decodeWorkspaceLaunchCloseoutPayload(closeout.RedactedProviderPayload[workspaceLaunchCloseoutPayloadKey], &input) &&
+		closeout.ID == workspaceLaunchCloseoutID(binding.LaunchOperationID) && closeout.Action == "closeout_workspace_launch" && closeout.RequestHash == hashInput(input) &&
+		input.LaunchOperationID == binding.LaunchOperationID && input.AccountID == binding.AccountID && input.WorkspaceID == binding.WorkspaceID && input.SpecDigest == record.SpecDigest
+}
+
+func (s *MemoryOperationStore) CancelWorkspaceLaunchQueuedCompute(_ context.Context, expected FabricOperation, closeoutID string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var closeout FabricOperation
+	for _, op := range s.operation {
+		if op.ID == closeoutID {
+			closeout = op
+		}
+	}
+	if !validWorkspaceLaunchQueuedCloseout(expected, closeout, now) {
+		return ErrRuntimeOperationNotCurrent
+	}
+	expectedPayload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return err
+	}
+	for i, current := range s.operation {
+		if current.ID != expected.ID {
+			continue
+		}
+		payload, err := operationPayloadJSON(current)
+		if err != nil {
+			return err
+		}
+		if !sameRuntimeReadbackIdentity(current, expected) || payload != expectedPayload {
+			return ErrRuntimeOperationNotCurrent
+		}
+		current.Status, current.ErrorCode, current.FinishedAt = "failed", "workspace_launch_closed", now
+		current.ComputePoolLeaseOwner, current.ComputePoolLeaseExpires = "", nil
+		s.operation[i] = current
+		return nil
+	}
+	return ErrOperationNotFound
+}
+
+func (s *PostgresOperationStore) CancelWorkspaceLaunchQueuedCompute(ctx context.Context, expected FabricOperation, closeoutID string, now time.Time) error {
+	closeout, err := s.Get(ctx, closeoutID)
+	if err != nil {
+		return err
+	}
+	if !validWorkspaceLaunchQueuedCloseout(expected, closeout, now) {
+		return ErrRuntimeOperationNotCurrent
+	}
+	payload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE fabric_operations SET status = 'failed', error_code = 'workspace_launch_closed', finished_at = $1,
+ compute_pool_lease_owner = '', compute_pool_lease_expires_at = NULL
+ WHERE id = $2 AND status = 'started' AND request_hash = $3 AND compute_pool_key = $4 AND started_at = $5
+ AND compute_pool_lease_owner = $6 AND compute_pool_lease_expires_at IS NOT DISTINCT FROM $7
+ AND (compute_pool_lease_expires_at IS NULL OR compute_pool_lease_expires_at <= clock_timestamp())
+ AND redacted_provider_payload::jsonb = $8::jsonb`, now, expected.ID, expected.RequestHash, expected.ComputePoolKey, expected.StartedAt, expected.ComputePoolLeaseOwner, expected.ComputePoolLeaseExpires, payload)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrRuntimeOperationNotCurrent
+	}
+	return nil
 }

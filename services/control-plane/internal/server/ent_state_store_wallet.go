@@ -56,22 +56,9 @@ func (s *postgresEntStateStore) SaveWalletAdjustment(ctx context.Context, operat
 			if err != nil {
 				return operation, err
 			}
-			refunds, err := client.RuntimeOperation.Query().Where(runtimeoperation.ActionEQ("gateway.wallet_adjustment.v1"), runtimeoperation.IDNEQ(operationID), func(selector *sql.Selector) {
-				selector.Where(sql.P(func(b *sql.Builder) {
-					if selector.Dialect() == dialect.Postgres {
-						b.WriteString("(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString("::jsonb ->> 'relatedOperationId')")
-					} else {
-						b.WriteString("json_extract(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString(", '$.relatedOperationId')")
-					}
-					b.WriteString(" = ").Arg(operation.RelatedOperationID)
-				}))
-			}).All(ctx)
+			rows, err := walletRefundRows(ctx, client, operation.RelatedOperationID, operationID)
 			if err != nil {
 				return operation, err
-			}
-			rows := make([]map[string]any, 0, len(refunds))
-			for _, refund := range refunds {
-				rows = append(rows, recordFromEnt(refund, runtimeOpEntFields))
 			}
 			if err := validateWalletRefundReservation(recordFromEnt(original, runtimeOpEntFields), rows, operation); err != nil {
 				return operation, err
@@ -93,4 +80,72 @@ func (s *postgresEntStateStore) SaveWalletAdjustment(ctx context.Context, operat
 		return operation, err
 	}
 	return decodeWalletAdjustment(row)
+}
+
+func walletRefundRows(ctx context.Context, client *controlplaneent.Client, originalID, excludedID string) ([]map[string]any, error) {
+	query := client.RuntimeOperation.Query().Where(runtimeoperation.ActionEQ("gateway.wallet_adjustment.v1"), func(selector *sql.Selector) {
+		selector.Where(sql.P(func(b *sql.Builder) {
+			if selector.Dialect() == dialect.Postgres {
+				b.WriteString("(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString("::jsonb ->> 'relatedOperationId')")
+			} else {
+				b.WriteString("json_extract(").Ident(selector.C(runtimeoperation.FieldResult)).WriteString(", '$.relatedOperationId')")
+			}
+			b.WriteString(" = ").Arg(originalID)
+		}))
+	})
+	if excludedID != "" {
+		query.Where(runtimeoperation.IDNEQ(excludedID))
+	}
+	refunds, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]map[string]any, 0, len(refunds))
+	for _, refund := range refunds {
+		rows = append(rows, recordFromEnt(refund, runtimeOpEntFields))
+	}
+	return rows, nil
+}
+
+func (s *postgresEntStateStore) ReserveWorkspaceLaunchCloseoutRefund(ctx context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	client := tx.Client()
+	if _, err := client.Account.Query().Where(account.IDEQ(operation.stringFact("accountId")), lockRowForUpdate).Only(ctx); err != nil {
+		return nil, err
+	}
+	// Match the normal wallet writer's wallet-row -> original-row lock order.
+	if _, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(workspaceLaunchRefundOperationID(operation.ID)), lockRowForUpdate).Only(ctx); err != nil && !controlplaneent.IsNotFound(err) {
+		return nil, err
+	}
+	original, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(operation.ID), lockRowForUpdate).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := walletRefundRows(ctx, client, operation.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	refunds, created, err := prepareWorkspaceLaunchCloseoutRefund(recordFromEnt(original, runtimeOpEntFields), rows, operation)
+	if err != nil {
+		return nil, err
+	}
+	if created != nil {
+		row := walletAdjustmentRow(created.ID, created.Operation)
+		if err := saveRecord(ctx, created.ID, row, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+			return nil, err
+		}
+		created.Operation, err = decodeWalletAdjustment(row)
+		if err != nil {
+			return nil, err
+		}
+		refunds[len(refunds)-1] = *created
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return refunds, nil
 }

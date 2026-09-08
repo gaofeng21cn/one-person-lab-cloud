@@ -48,7 +48,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, workspaceLaunchRecoveryResponse(operation))
+		writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, operation))
 	}))
 	mux.HandleFunc("POST /api/operator/workspace-launches/{operationId}/recover", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		key, ok := requiredMutationKey(w, r)
@@ -60,7 +60,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		reason := stringValue(input["reason"])
 		if len(r.Header.Values("Idempotency-Key")) != 1 || !validBillingReviewOpaqueID(key) ||
 			!exactWorkspaceComputeClaimKeys(input, []string{"action", "launchVersion", "reason"}) ||
-			stringValue(input["action"]) != "check_result" || !validVersion || launchVersion > int64(^uint(0)>>1) ||
+			(stringValue(input["action"]) != "check_result" && stringValue(input["action"]) != "close_unfulfilled") || !validVersion || launchVersion > int64(^uint(0)>>1) ||
 			reason == "" || reason != strings.TrimSpace(reason) {
 			writeError(w, http.StatusBadRequest, errInvalidBillingReview.Error())
 			return
@@ -90,7 +90,12 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			authorization.AuthorizedAt = existing.AuthorizedAt
 			authorization.ReadbacksAtAuthorization = existing.ReadbacksAtAuthorization
 		}
-		result, err := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).CheckResult(r.Context(), operationID, authorization)
+		var result workspaceLaunchReconcileOperation
+		if stringValue(input["action"]) == "close_unfulfilled" {
+			result, err = app.closeWorkspaceLaunch(r.Context(), service, operationID, key, app.sessionUserID(r), reason, int(launchVersion))
+		} else {
+			result, err = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).CheckResult(r.Context(), operationID, authorization)
+		}
 		if err != nil {
 			if errors.Is(err, errBillingReviewNotFound) {
 				writeError(w, http.StatusNotFound, "workspace_launch_not_found")
@@ -101,7 +106,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 			}
 			return
 		}
-		writeJSON(w, http.StatusOK, workspaceLaunchRecoveryResponse(result))
+		writeJSON(w, http.StatusOK, app.workspaceLaunchRecovery(r.Context(), service, result))
 	}))
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/stage-observation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		capabilities := r.Header.Values(productionAcceptanceBCapability)
@@ -1330,20 +1335,21 @@ func (app *controlPlaneServer) operatorOverview(ctx context.Context, service *co
 }
 
 type workspaceLaunchRecoveryDTO struct {
-	OperationID    string                 `json:"operationId"`
-	LaunchVersion  int                    `json:"launchVersion"`
-	Status         contracts.LaunchStatus `json:"status"`
-	Stage          contracts.Stage        `json:"stage"`
-	AllowedActions []string               `json:"allowedActions"`
+	Closeout       *workspaceLaunchCloseoutDTO `json:"closeout,omitempty"`
+	OperationID    string                      `json:"operationId"`
+	LaunchVersion  int                         `json:"launchVersion"`
+	Status         contracts.LaunchStatus      `json:"status"`
+	Stage          contracts.Stage             `json:"stage"`
+	AllowedActions []string                    `json:"allowedActions"`
 }
 
 func workspaceLaunchRecoveryResponse(operation workspaceLaunchReconcileOperation) workspaceLaunchRecoveryDTO {
 	actions := []string{}
-	if operation.Status == contracts.StatusManualReview && operation.RuntimeRepair == nil &&
+	if !workspaceLaunchCloseoutActive(operation) && operation.Status == contracts.StatusManualReview && operation.RuntimeRepair == nil &&
 		(operation.ResumeAuthorization == nil || operation.ResumeAuthorizationConsumedAt != "") {
 		actions = append(actions, "check_result")
 	}
-	return workspaceLaunchRecoveryDTO{operation.ID, operation.Version, operation.Status, operation.Stage, actions}
+	return workspaceLaunchRecoveryDTO{workspaceLaunchCloseoutResponse(operation), operation.ID, operation.Version, operation.Status, operation.Stage, actions}
 }
 
 func availableEnvelopeData(value any) (map[string]any, bool) {
@@ -1356,7 +1362,7 @@ func availableEnvelopeData(value any) (map[string]any, bool) {
 }
 
 func (app *controlPlaneServer) operatorReconciliationPage(ctx context.Context, page, pageSize int) (map[string]any, string, error) {
-	operations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{Statuses: []string{"manual_review"}})
+	operations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{Statuses: []string{"manual_review", "pending"}})
 	if err != nil {
 		return nil, "", err
 	}
@@ -1380,6 +1386,12 @@ func (app *controlPlaneServer) operatorReconciliationPage(ctx context.Context, p
 		items = append(items, item)
 	}
 	for _, operation := range operations {
+		if stringValue(operation["status"]) != "manual_review" {
+			launch, err := decodeWorkspaceLaunchReconcileOperation(operation)
+			if err != nil || !workspaceLaunchCloseoutActive(launch) {
+				continue
+			}
+		}
 		details := map[string]any{}
 		_ = json.Unmarshal([]byte(stringValue(operation["result"])), &details)
 		operationID := firstNonEmpty(stringValue(operation["operationId"]), stringValue(operation["id"]))

@@ -714,11 +714,35 @@ func workspaceLaunchStageMayContinueEnsure(input WorkspaceLaunchStageInput, resu
 }
 
 func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	return s.launchStages.EnsureWorkspaceLaunchStage(ctx, input)
+	var result WorkspaceLaunchStageResult
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceLaunchLockKey(input.Binding.LaunchOperationID), func(ctx context.Context) error {
+		frozen, err := s.workspaceLaunchFrozen(ctx, input.Binding.LaunchOperationID)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrWorkspaceLaunchFrozen
+		}
+		result, err = s.launchStages.EnsureWorkspaceLaunchStage(ctx, input)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	return s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
+	var result WorkspaceLaunchStageResult
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceLaunchLockKey(input.Binding.LaunchOperationID), func(ctx context.Context) error {
+		frozen, err := s.workspaceLaunchFrozen(ctx, input.Binding.LaunchOperationID)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrWorkspaceLaunchFrozen
+		}
+		result, err = s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) ObserveWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {

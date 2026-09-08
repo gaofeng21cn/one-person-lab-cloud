@@ -40,6 +40,8 @@ export function presentBillingReceiptType(type: string | undefined, kind?: Billi
       return { kind: "known", label: "工作空间到期" };
     case "billing.workspace_refunded.v1":
       return { kind: "known", label: "工作空间退款" };
+    case "billing.workspace_closed.v1":
+      return { kind: "known", label: "开通未完成，已结案" };
     case "gateway.wallet_adjustment.v1":
       return kind === "business_refund" ? { kind: "known", label: "工作空间退款" } : { kind: "unknown", label: "待确认", rawValue: type };
     case undefined:
@@ -62,6 +64,8 @@ export function presentBillingReceiptAmount(receipt: BillingReceipt): string {
       return receipt.kind !== "business_refund" ? "金额待确认" : receipt.refundUsdMicros === undefined ? "退款金额暂不可用" : `退款 ${formatUsdMicros(receipt.refundUsdMicros)}`;
     case "billing.workspace_expired.v1":
       return "未扣款";
+    case "billing.workspace_closed.v1":
+      return receipt.chargeUsdMicros === 0 ? "未扣款" : receipt.chargeUsdMicros === undefined ? "原扣款金额暂不可用" : `原扣款 ${formatUsdMicros(receipt.chargeUsdMicros)}（退款另列）`;
     default:
       return formatUsdMicros(receipt.chargeUsdMicros);
   }

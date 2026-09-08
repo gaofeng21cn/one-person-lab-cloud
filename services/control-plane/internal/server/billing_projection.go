@@ -166,6 +166,9 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 		if operation.raw["resourceBillingEnabled"] != nil && !operation.boolFact("resourceBillingEnabled") {
 			return nil
 		}
+		if workspaceLaunchCloseoutActive(operation) && operation.Closeout.DebitState == "absent" {
+			return nil
+		}
 		attempt := operation.Attempts["debit"]
 		if !operation.boolFact("chargeAttempted") && attempt.Attempted == 0 && operation.raw["chargeConfirmation"] == nil && operation.Status != "succeeded" {
 			return nil
@@ -174,13 +177,20 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 		base.userID, base.amount, base.code = operation.int64Fact("sub2apiUserId"), operation.int64Fact("totalChargeUsdMicros"), operation.stringFact("sub2apiRedeemCode")
 		base.receiptID = operation.stringFact("receiptId")
 		base.pending = operation.Status == "pending"
-		input, err := workspaceLaunchPurchaseReceiptInput(operation)
-		base.invalid = err != nil || base.accountID != stringValue(row["accountId"]) || base.workspaceID != stringValue(row["workspaceId"])
+		base.invalid = base.accountID != stringValue(row["accountId"]) || base.workspaceID != stringValue(row["workspaceId"])
 		if operation.raw["chargeConfirmation"] != nil {
 			var confirmation map[string]any
 			base.invalid = base.invalid || json.Unmarshal(operation.raw["chargeConfirmation"], &confirmation) != nil || !monthlyChargeConfirmationMatches(confirmation, base.code, base.userID, base.amount)
 		}
-		base.expected = []clients.ReceiptInput{input, workspaceLaunchHistoricalChargedReceiptInput(input)}
+		if workspaceLaunchCloseoutActive(operation) {
+			base.receiptID = operation.Closeout.ReceiptID
+			base.pending = operation.Closeout.Phase != "complete"
+			base.expected = []clients.ReceiptInput{workspaceLaunchCloseoutReceiptInput(operation)}
+		} else {
+			input, err := workspaceLaunchPurchaseReceiptInput(operation)
+			base.invalid = base.invalid || err != nil
+			base.expected = []clients.ReceiptInput{input, workspaceLaunchHistoricalChargedReceiptInput(input)}
+		}
 		return []billingSettlement{base}
 	case "workspace.renewal":
 		base.kind = "renewal"
@@ -252,7 +262,7 @@ func settlementReceiptReconciliationCode(settlement billingSettlement, receipts 
 	matches := []clients.Receipt{}
 	for _, receipt := range receipts {
 		switch receipt.Type {
-		case "billing.workspace_purchased.v1", "billing.workspace_renewed.v1", "billing.workspace_refunded.v1", "gateway.wallet_adjustment.v1":
+		case "billing.workspace_purchased.v1", "billing.workspace_renewed.v1", "billing.workspace_refunded.v1", "billing.workspace_closed.v1", "gateway.wallet_adjustment.v1":
 			matches = append(matches, receipt)
 		}
 	}

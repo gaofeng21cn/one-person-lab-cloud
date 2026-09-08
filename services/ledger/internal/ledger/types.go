@@ -225,6 +225,8 @@ func validateReceiptInput(input ReceiptInput) error {
 		switch input.Type {
 		case "billing.resource_purchased.v1", "billing.resource_renewed.v1", "billing.resource_expired.v1", "billing.resource_refunded.v1", "billing.charge_review_required.v1":
 			billingCostValid = false
+		case string(contracts.ReceiptTypeWorkspaceClosed):
+			billingCostValid = validWorkspaceLaunchCloseoutReceipt(input)
 		case "billing.reconciliation.v1":
 			billingCostValid = validBillingCost(input.Cost)
 		case "billing.workspace_purchased.v1", "billing.workspace_renewed.v1", "billing.workspace_expired.v1", "billing.workspace_refunded.v1":

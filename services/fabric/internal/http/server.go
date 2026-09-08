@@ -98,6 +98,33 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		result, err := service.EnsureWorkspaceLaunchStage(r.Context(), input)
 		writeWorkspaceLaunchResult(w, result, err)
 	})
+
+	for _, route := range []string{"/fabric/workspace-launches/closeout/read", "/fabric/workspace-launches/closeout/freeze", "/fabric/workspace-launches/closeout"} {
+		mux.HandleFunc("POST "+route, func(w http.ResponseWriter, r *http.Request) {
+			var input fabric.WorkspaceLaunchCloseoutInput
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid JSON body")
+				return
+			}
+			var result fabric.WorkspaceLaunchCloseoutResult
+			var err error
+			switch r.URL.Path {
+			case "/fabric/workspace-launches/closeout/read":
+				result, err = service.ReadWorkspaceLaunchCloseout(r.Context(), input)
+			default:
+				if input.IdempotencyKey == "" || r.Header.Get("Idempotency-Key") != input.IdempotencyKey {
+					writeError(w, http.StatusBadRequest, "workspace launch closeout idempotency key mismatch")
+					return
+				}
+				if r.URL.Path == "/fabric/workspace-launches/closeout/freeze" {
+					result, err = service.FreezeWorkspaceLaunch(r.Context(), input)
+				} else {
+					result, err = service.CloseoutWorkspaceLaunch(r.Context(), input)
+				}
+			}
+			writeWorkspaceLaunchResult(w, result, err)
+		})
+	}
 	mux.HandleFunc("GET /fabric/readiness", func(w http.ResponseWriter, r *http.Request) {
 		readiness, err := service.Readiness(r.Context())
 		if err != nil {
@@ -674,6 +701,7 @@ func isFabricMutation(r *http.Request) bool {
 	}
 	if r.URL.Path == "/fabric/compute-allocations" || r.URL.Path == "/fabric/storage-volumes" || r.URL.Path == "/fabric/workspace-runtimes" ||
 		r.URL.Path == "/fabric/gateway-secrets" || r.URL.Path == "/fabric/workspace-launches/stages/ensure" ||
+		r.URL.Path == "/fabric/workspace-launches/closeout" || r.URL.Path == "/fabric/workspace-launches/closeout/freeze" ||
 		r.URL.Path == "/fabric/storage-attachments" ||
 		r.URL.Path == "/fabric/compute-pool-head/terminalization" {
 		return true
@@ -738,6 +766,8 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 			scope.AccountID, scope.WorkspaceID = authorization.AccountID, authorization.WorkspaceID
 			scope.ResourceKind, scope.ResourceID, scope.Action = "compute_pool_head", authorization.NodePoolID, "terminalize_compute_pool_head"
 		}
+	case r.URL.Path == "/fabric/workspace-launches/closeout" || r.URL.Path == "/fabric/workspace-launches/closeout/freeze":
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_launch_closeout", value("launchOperationId"), "closeout_workspace_launch"
 	case r.URL.Path == "/fabric/workspace-launches/stages/ensure":
 		binding, _ := input["binding"].(map[string]any)
 		bindingValue := func(name string) string {
@@ -830,7 +860,7 @@ func writeWorkspaceLaunchResult(w http.ResponseWriter, result any, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, fabric.ErrWorkspaceLaunchInputInvalid), errors.Is(err, fabric.ErrLaunchStageBindingInvalid):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, fabric.ErrLaunchStageBindingConflict):
+	case errors.Is(err, fabric.ErrLaunchStageBindingConflict), errors.Is(err, fabric.ErrWorkspaceLaunchFrozen):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusServiceUnavailable, err.Error())

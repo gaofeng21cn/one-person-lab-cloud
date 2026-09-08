@@ -292,6 +292,7 @@ type workspaceLaunchDisposableResetEvidence struct {
 }
 
 type workspaceLaunchReconcileOperation struct {
+	Closeout                        *workspaceLaunchCloseout                                          `json:"closeout,omitempty"`
 	ID                              string                                                            `json:"-"`
 	Status                          contracts.LaunchStatus                                            `json:"-"`
 	CreatedAt                       string                                                            `json:"-"`
@@ -509,6 +510,13 @@ func (r *WorkspaceLaunchReconciler) Reconcile(ctx context.Context, operationID s
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
+	if workspaceLaunchCloseoutActive(operation) {
+		if adapter, ok := r.adapter.(workspaceLaunchCloseoutAdapter); ok {
+			return adapter.ReconcileCloseout(ctx, operation)
+		}
+		return operation, nil
+	}
+
 	if operation.Status == contracts.StatusManualReview && !operation.boolFact("resourceBillingEnabled") &&
 		(operation.Stage == contracts.StageKey || operation.Stage == contracts.StageStorage || operation.Stage == contracts.StageAttachment || operation.Stage == contracts.StageSecret || operation.Stage == contracts.StageRuntime || operation.Stage == contracts.StageActivation) && operation.Observations[operation.Stage].State == workspaceLaunchStageUnknown {
 		attempt := operation.Attempts[operation.Stage]
@@ -1272,6 +1280,13 @@ func (r *WorkspaceLaunchReconciler) AutoRecoverManualReview(ctx context.Context,
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
+	if workspaceLaunchCloseoutActive(operation) {
+		if adapter, ok := r.adapter.(workspaceLaunchCloseoutAdapter); ok {
+			return adapter.ReconcileCloseout(ctx, operation)
+		}
+		return operation, nil
+	}
+
 	readyAuthorization, readyAttempt, readyEligible := workspaceLaunchAutomaticFabricReadyAuthorization(operation, r.clockNow())
 	computeAuthorization, computeAttempt, computeEligible, _ := workspaceLaunchAutomaticComputeOwnershipAuthorization(operation, r.clockNow())
 	storageAuthorization, storageAttempt, storageEligible, _ := workspaceLaunchAutomaticStorageAbsenceAuthorization(operation, r.clockNow())
@@ -1475,6 +1490,10 @@ func (r *WorkspaceLaunchReconciler) CheckResult(ctx context.Context, operationID
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
+	if workspaceLaunchCloseoutActive(operation) {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+
 	if existing, consumed, found := operation.resultCheckByID(authorization.AuthorizationID); found {
 		if existing != authorization || !consumed {
 			return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
@@ -1524,6 +1543,10 @@ func (r *WorkspaceLaunchReconciler) Resume(ctx context.Context, operationID stri
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
+	if workspaceLaunchCloseoutActive(operation) {
+		return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
+	}
+
 	if existing, consumed, found := operation.resumeAuthorizationByID(authorization.AuthorizationID); found {
 		if existing != authorization || workspaceLaunchResumeAuthorizationDigest(existing) != workspaceLaunchResumeAuthorizationDigest(authorization) {
 			return workspaceLaunchReconcileOperation{}, errWorkspaceLaunchGrantConflict
@@ -2275,6 +2298,10 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_runtime_repair")
 		}
 	}
+	if value := raw["closeout"]; len(value) > 0 && json.Unmarshal(value, &operation.Closeout) != nil {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_closeout")
+	}
+
 	if value := raw["disposableReset"]; len(value) > 0 && json.Unmarshal(value, &operation.DisposableReset) != nil {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_disposable_reset")
 	}
@@ -2413,7 +2440,7 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 			}
 		case "failed":
 			originalFailure := operation.Stage == stage &&
-				(operation.Status == contracts.StatusManualReview || operation.Status == contracts.StatusFailed && operation.DisposableReset != nil) &&
+				(operation.Status == contracts.StatusManualReview || workspaceLaunchCloseoutActive(operation) || operation.Status == contracts.StatusFailed && operation.DisposableReset != nil) &&
 				attempt.Confirmed == 0 && attempt.Unknown == 1 && attempt.Status == "unknown" && operation.Observations[stage].State == workspaceLaunchStageUnknown
 			revisionContinuation := runtimeImageRevisionContinuation && (operation.Stage == stage && operation.Status == contracts.StatusPending && attempt.Confirmed == 0 && attempt.Unknown == 0 && attempt.Status == "reserved" &&
 				(operation.Observations[stage].State == workspaceLaunchStageRuntimeImageRevisionPending || operation.Observations[stage].State == workspaceLaunchStagePending) ||
@@ -2492,6 +2519,16 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 			}
 		}
 	}
+	if !validWorkspaceLaunchCloseout(operation) {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_closeout")
+	}
+	if workspaceLaunchCloseoutActive(operation) {
+		if operation.Stage == contracts.StageSucceeded || operation.Stage == contracts.StageActivation || operation.Stage == contracts.StageReceipt || operation.boolFact("runtimeReady") || operation.stringFact("workspaceActivatedAt") != "" {
+			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_closeout")
+		}
+		return operation, nil
+	}
+
 	if operation.Stage == contracts.StageSucceeded {
 		if operation.Status != contracts.StatusSucceeded {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("status_stage_mismatch")
@@ -2592,8 +2629,9 @@ func workspaceLaunchReconcileOperationRow(operation workspaceLaunchReconcileOper
 		"freshContinuationAuthorizations": operation.FreshContinuationAuthorizations, "continuationReadClaims": operation.ContinuationReadClaims,
 		"runtimeRepair":   operation.RuntimeRepair,
 		"disposableReset": operation.DisposableReset,
+		"closeout":        operation.Closeout,
 	} {
-		if key == "resultChecks" && len(operation.ResultChecks) == 0 ||
+		if key == "closeout" && operation.Closeout == nil || key == "resultChecks" && len(operation.ResultChecks) == 0 ||
 			key == "consumedResumeAuthorizations" && len(operation.ConsumedResumeAuthorizations) == 0 ||
 			key == "resumeAuthorization" && operation.ResumeAuthorization == nil || key == "resumeAuthorizationConsumedAt" && operation.ResumeAuthorizationConsumedAt == "" ||
 			key == "idempotentReplayClaims" && len(operation.IdempotentReplayClaims) == 0 ||
@@ -2891,7 +2929,7 @@ func workspaceLaunchReconcileIdentityMatches(current, desired map[string]any) bo
 	if existing, existingErr := decodeWorkspaceLaunchReconcileOperation(current); existingErr == nil {
 		return existing.ID == next.ID && existing.stringFact("accountId") == next.stringFact("accountId") &&
 			existing.stringFact("workspaceId") == next.stringFact("workspaceId") && existing.stringFact("ownerUserId") == next.stringFact("ownerUserId") &&
-			existing.stringFact("requestHash") == next.stringFact("requestHash") && next.Version == existing.Version+1
+			existing.stringFact("requestHash") == next.stringFact("requestHash") && next.Version == existing.Version+1 && workspaceLaunchCloseoutTransitionMatches(existing.Closeout, next.Closeout)
 	}
 	return false
 }

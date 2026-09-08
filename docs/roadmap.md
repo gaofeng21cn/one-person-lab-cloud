@@ -22,9 +22,10 @@ changes address original-transaction confirmation, original-account refund
 limits, successful Renewal refund parsing and exact financial lookup. Its
 source checks and isolated runtime evidence belong in [status.md](./status.md).
 D2 now covers retained original purchases, all renewal periods and refunds,
-exact receipt lookup and the existing customer fees page. These do not close
-D3's full failure closure, D4's lifecycle, D5's image rollout or D6's
-same-version delivery. Business development continues with D3/D4, then D5. D6 packaging and
+exact receipt lookup and the existing customer fees page. D3 additionally
+closes local original-Launch recovery, bounded admission and failed-Launch
+resource/Key/refund obligations. Business development continues with D4's
+lifecycle, then D5's image rollout. D6 packaging and
 deployment qualification follow the business implementation; they are not a
 prerequisite for local development. Test data isolation applies throughout.
 
@@ -32,7 +33,7 @@ prerequisite for local development. Test data isolation applies throughout.
 | --- | --- | --- | --- |
 | `D1-FINANCIAL-INTEGRITY-01` | `cloud_complete` | Control Plane finance and Sub2API; Instance owns adoption | Local source/full regression and isolated real Sub2API validation pass; [owner evidence](./status.md#retained-runtime-evidence) retains the exact worktree and patch identity. Instance must identify its exact Gateway source/image, adopt atomic debit plus exact lookup before Cloud, and retain owner readback. Historical unverified transactions cannot be certified from current balance. |
 | `D2-SETTLEMENT-RECONCILIATION-01` | `cloud_complete` | Control Plane finance, Ledger and Console | Original-operation business chains, failure/recovery, historical records, more than 10k unrelated receipts, customer browser tests and full PostgreSQL/Docker regression pass. [Owner evidence](./status.md#retained-runtime-evidence) binds the local source snapshot; Instance adoption remains deferred with D6. Unverifiable older split-resource records remain explicit review exceptions. |
-| `D3-LAUNCH-RECOVERY-CAPACITY-01` | `active` | Control Plane Launch; Fabric and Console | Original late-result recovery, operator result checking, bounded scheduling and actual Tencent Launch NodePool admission are implemented. Local evidence is retained in [status](./status.md#retained-runtime-evidence). Full failure closure remains open: exact partial-resource absence, a durable owner-authorized Workspace Key revocation path, original-account refund and append-only closure evidence must all converge before terminalizing the original Launch. Unknown resources must retain their pool claim. Existing customer Delete requires succeeded Launch evidence and is not this path. Tencent adoption and actual provisioning capacity remain Instance obligations; no deployment is part of D3 local development. |
+| `D3-LAUNCH-RECOVERY-CAPACITY-01` | `cloud_complete` | Control Plane Launch; Fabric and Console | Original late-result recovery, bounded scheduling, and owner-authorized failed-Launch closure are implemented and pass focused plus full local verification. The closeout chain freezes the original operation, revokes exact Key identity, proves five resource absences, refunds only the original account's remaining charge, and records `billing.workspace_closed.v1`. Unknown outcomes retain pending state and pool claims. Tencent adoption and actual provisioning capacity remain Instance obligations; no deployment is part of D3 local development. |
 | `D6-PRODUCTION-TEST-ISOLATION-01` | `planned` | Cloud artifact owner; Instance deployment owner | Final Dockerfile still copies all of `packages`, including Go test source. Restrict runtime content to actual consumers and inspect the built artifact before deployment. Keep test accounts, money, orders, Keys, Workspaces, receipts, seeds, snapshots and volumes in independent non-production stores/resources. Validate the same immutable artifact externally, with reports outside the production business Ledger. A deployment mode named development that selects the production environment is not a test environment. |
 
 The artifact and data isolation portion of D6 precedes any deployment of these

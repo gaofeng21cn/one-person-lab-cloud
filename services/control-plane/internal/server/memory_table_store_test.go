@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -1127,6 +1128,38 @@ func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context,
 	s.runtimeOps = upsertProjectionByID(s.runtimeOps, workspaceImageReleasePolicyRow(desired, createdAt))
 	s.auditEvents = upsertProjectionByID(s.auditEvents, workspaceImageReleaseAudit(mutation, current, desired))
 	return desired, nil
+}
+
+func (s *memoryTableStore) ReserveWorkspaceLaunchCloseoutRefund(_ context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var rows []map[string]any
+	for _, row := range s.runtimeOps {
+		if stringValue(row["action"]) != "gateway.wallet_adjustment.v1" {
+			continue
+		}
+		var refund walletAdjustmentOperation
+		if err := json.Unmarshal([]byte(stringValue(row["result"])), &refund); err != nil {
+			return nil, err
+		}
+		if refund.RelatedOperationID == operation.ID {
+			rows = append(rows, row)
+		}
+	}
+	refunds, created, err := prepareWorkspaceLaunchCloseoutRefund(findRecord(s.runtimeOps, operation.ID), rows, operation)
+	if err != nil {
+		return nil, err
+	}
+	if created != nil {
+		row := walletAdjustmentRow(created.ID, created.Operation)
+		created.Operation, err = decodeWalletAdjustment(row)
+		if err != nil {
+			return nil, err
+		}
+		s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
+		refunds[len(refunds)-1] = *created
+	}
+	return refunds, nil
 }
 
 func (s *memoryTableStore) ReserveProductionE2EAttempt(_ context.Context, claim productionE2EAttemptClaim) (map[string]any, error) {

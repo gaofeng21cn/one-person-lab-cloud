@@ -145,6 +145,31 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 }
 
 func (app *controlPlaneServer) projectCustomerBillingReceipt(ctx context.Context, receipt clients.Receipt) (map[string]any, bool) {
+	if receipt.Type == "billing.workspace_closed.v1" {
+		row, found, err := app.tables.GetRuntimeOperation(ctx, receipt.RequestID)
+		if err != nil || !found {
+			return nil, false
+		}
+		operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+		if err != nil || !workspaceLaunchCloseoutActive(operation) || operation.Closeout.ReceiptRequestedAt == "" ||
+			receipt.ReceiptID == "" || operation.Closeout.ReceiptID != "" && operation.Closeout.ReceiptID != receipt.ReceiptID ||
+			!workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, workspaceLaunchCloseoutReceiptInput(operation)) {
+			return nil, false
+		}
+		if _, err := time.Parse(time.RFC3339, receipt.CreatedAt); err != nil {
+			return nil, false
+		}
+		charge, ok := requiredNonNegativeInteger(receipt.Cost, "chargeUsdMicros")
+		if !ok {
+			return nil, false
+		}
+		return map[string]any{
+			"receiptId": receipt.ReceiptID, "operationId": operation.ID, "type": receipt.Type, "status": receipt.Status,
+			"workspaceId": receipt.WorkspaceID, "resourceType": "workspace", "resourceId": receipt.WorkspaceID,
+			"createdAt": receipt.CreatedAt, "priceVersion": operation.stringFact("priceVersion"), "currency": pricingCurrency,
+			"periodStart": operation.stringFact("periodStart"), "paidThrough": operation.stringFact("paidThrough"), "chargeUsdMicros": charge,
+		}, true
+	}
 	if receipt.Type != "gateway.wallet_adjustment.v1" {
 		return projectCustomerBillingReceipt(receipt)
 	}

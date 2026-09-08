@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 func TestWorkspaceLaunchStageBindingAlwaysSerializesExpectedResourceBinding(t *testing.T) {
@@ -182,5 +184,47 @@ func TestFabricWorkspaceLaunchHTTPClientReturnsTypedReadError(t *testing.T) {
 	var upstream *FabricHTTPError
 	if !errors.As(err, &upstream) || upstream.StatusCode != http.StatusServiceUnavailable || upstream.Body != `{"error":"fabric_unavailable"}` {
 		t.Fatalf("typed Fabric error=%#v err=%v", upstream, err)
+	}
+}
+
+func TestFabricWorkspaceLaunchCloseoutHTTPUsesOriginalScope(t *testing.T) {
+	input := contracts.WorkspaceLaunchCloseoutInput{SchemaVersion: 1, LaunchOperationID: "workspace-launch-original", AccountID: "acct-original", WorkspaceID: "workspace-original", ProviderProfileRef: "tencent-tke", ProviderBindingRef: "preflight-original", SpecDigest: strings.Repeat("a", 64), IdempotencyKey: "workspace-launch-original:closeout"}
+	paths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		var received contracts.WorkspaceLaunchCloseoutInput
+		if json.NewDecoder(r.Body).Decode(&received) != nil || received != input {
+			t.Errorf("original binding changed: %+v", received)
+			w.WriteHeader(400)
+			return
+		}
+		if r.URL.Path != "/fabric/workspace-launches/closeout/read" {
+			parts := strings.Split(r.Header.Get(FabricCapabilityHeader), ".")
+			if len(parts) != 2 || r.Header.Get("Idempotency-Key") != input.IdempotencyKey {
+				t.Error("closeout mutation is not scoped")
+				w.WriteHeader(401)
+				return
+			}
+			payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+			if err != nil {
+				t.Error(err)
+			}
+			var claims fabricCapabilityClaims
+			if json.Unmarshal(payload, &claims) != nil || claims.AccountID != input.AccountID || claims.WorkspaceID != input.WorkspaceID || claims.ResourceKind != "workspace_launch_closeout" || claims.ResourceID != input.LaunchOperationID || claims.Action != "closeout_workspace_launch" || claims.OperationID != input.IdempotencyKey {
+				t.Errorf("wrong mutation claims: %+v", claims)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(contracts.WorkspaceLaunchCloseoutResult{SchemaVersion: 1, Binding: received, State: "pending", Frozen: true})
+	}))
+	defer server.Close()
+	client := NewFabricHTTPClientWithCapability(server.URL, "local-token", "local-capability", server.Client()).(FabricWorkspaceLaunchCloseoutClient)
+	for _, call := range []func(context.Context, contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error){client.ReadWorkspaceLaunchCloseout, client.FreezeWorkspaceLaunch, client.CloseoutWorkspaceLaunch} {
+		result, err := call(context.Background(), input)
+		if err != nil || result.Binding != input || !result.Frozen {
+			t.Fatalf("closeout wire result: %+v %v", result, err)
+		}
+	}
+	if len(paths) != 3 || paths[0] != "/fabric/workspace-launches/closeout/read" || paths[1] != "/fabric/workspace-launches/closeout/freeze" || paths[2] != "/fabric/workspace-launches/closeout" {
+		t.Fatalf("wrong closeout route order: %v", paths)
 	}
 }

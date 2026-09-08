@@ -1,6 +1,9 @@
 package fabric
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type OperationJournalStore interface {
 	Append(ctx context.Context, operation FabricOperation) error
@@ -44,6 +47,8 @@ type WorkspaceLaunchPreflightStore interface {
 }
 
 type WorkspaceLaunchStageStore interface {
+	CancelWorkspaceLaunchQueuedCompute(context.Context, FabricOperation, string, time.Time) error
+	WorkspaceLaunchStages(context.Context, string) ([]FabricOperation, error)
 	workspaceLaunchOperationReader
 	OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error)
 	ClaimStageOperation(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
@@ -128,3 +133,11 @@ var _ WorkspaceRuntimeReadStore = operationStoreCapabilityPorts{}
 var _ ComputeClaimStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchPreflightStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchStageStore = operationStoreCapabilityPorts{}
+
+func (p operationStoreCapabilityPorts) WorkspaceLaunchStages(ctx context.Context, workspaceID string) ([]FabricOperation, error) {
+	return p.store.WorkspaceLaunchStages(ctx, workspaceID)
+}
+
+func (p operationStoreCapabilityPorts) CancelWorkspaceLaunchQueuedCompute(ctx context.Context, expected FabricOperation, closeoutID string, now time.Time) error {
+	return p.store.CancelWorkspaceLaunchQueuedCompute(ctx, expected, closeoutID, now)
+}

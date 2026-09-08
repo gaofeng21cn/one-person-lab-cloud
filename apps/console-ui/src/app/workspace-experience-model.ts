@@ -1,9 +1,11 @@
 import type {
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
+  WorkspaceLaunchCloseoutDTO,
   WorkspaceLaunchResponse,
   WorkspaceRuntimeDTO
 } from "../api/dtos.ts";
+import { formatUsdMicros } from "../console-model.ts";
 
 export type WorkspaceExperienceTone = "info" | "success" | "warning" | "danger";
 
@@ -28,9 +30,44 @@ export type WorkspaceLaunchPresentation =
   | KnownWorkspaceLaunchPresentation
   | UnconfirmedWorkspaceLaunchPresentation;
 
+export function presentWorkspaceLaunchCloseout(closeout: WorkspaceLaunchCloseoutDTO, launchStatus: string) {
+  if (closeout.pendingConfirmation) {
+    return { title: "结案结果仍在核对", summary: closeout.refundedUsdMicros > 0 ? `已确认退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。请稍后查看结案结果，无需重复提交。` : "原订单的结案结果尚未确认。请稍后查看，无需重复提交或另行退款。" };
+  }
+  switch (closeout.status) {
+    case "confirming":
+      return { title: "正在核对结案条件", summary: "正在确认原订单和扣款结果，尚未确认退款。可以关闭页面后再查看。" };
+    case "closing":
+      return { title: "正在结束未完成的开通", summary: "正在结束本次开通，处理完成后会核对并退回应退费用，请勿重复购买。" };
+    case "refunding":
+      return { title: "退款处理中", summary: "正在将应退费用退回原账户余额，请等待到账确认。" };
+    case "recording":
+      return { title: "正在记录结案结果", summary: closeout.refundedUsdMicros > 0 ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}，正在完成结案记录。` : "正在完成本次开通的结案记录，请稍后查看。" };
+    case "closed":
+      return { title: "开通未完成，已结案", summary: launchStatus === "refunded" ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。可查看费用记录或重新购买。` : launchStatus === "failed" ? "本次开通未扣款。可查看费用记录或重新购买。" : "正在确认结案后的订单状态，请稍后刷新。" };
+    case "fulfilled":
+      return { title: launchStatus === "succeeded" ? "工作空间已可使用" : "正在完成开通记录", summary: launchStatus === "succeeded" ? "原订单已完成开通，工作空间可继续使用。" : "工作空间已就绪，正在完成原订单的开通记录。" };
+  }
+}
+
 export function presentWorkspaceLaunch(
-  operation: Pick<WorkspaceLaunchResponse, "status" | "workspaceId">
+  operation: Pick<WorkspaceLaunchResponse, "status" | "workspaceId" | "closeout">
 ): WorkspaceLaunchPresentation {
+  if (operation.closeout) {
+    const presentation = presentWorkspaceLaunchCloseout(operation.closeout, operation.status);
+    if (presentation && Number.isSafeInteger(operation.closeout.refundedUsdMicros) && operation.closeout.refundedUsdMicros >= 0) {
+      if (operation.closeout.status === "closed" && ["failed", "refunded"].includes(operation.status)) {
+        return { ...presentation, kind: operation.status as "failed" | "refunded", tone: "info", canOpenWorkspace: false };
+      }
+      if (operation.status === "pending" || operation.status === "manual_review") {
+        return { ...presentation, kind: operation.status === "pending" ? "pending" : "manual_review", tone: "info", canOpenWorkspace: false };
+      }
+      if (operation.closeout.status === "fulfilled" && operation.status === "succeeded" && operation.workspaceId?.trim()) {
+        return { ...presentation, kind: "succeeded", tone: "success", canOpenWorkspace: true };
+      }
+    }
+    return { kind: "unconfirmed", title: "结果待确认", summary: "正在确认结案后的订单状态，请刷新查看，暂勿重复购买。", tone: "warning", canOpenWorkspace: false, rawValue: operation.status };
+  }
   switch (operation.status) {
     case "pending":
       return {

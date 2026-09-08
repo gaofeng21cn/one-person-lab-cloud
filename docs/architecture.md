@@ -333,6 +333,16 @@ exclusive before either claim can cross an external mutation boundary. Delete,
 Cancel Renewal, and Refund are independent operations. Any typed pending,
 conflict, or error that cannot authoritatively converge fails closed.
 
+An operator may end an unfulfilled Launch on its original operation. Control
+Plane first freezes normal continuation by CAS; Fabric then fences the original
+Launch before Sub2API revokes the exact Workspace Key. Fabric confirms partial
+resource absence, the existing wallet settlement owner returns only the original
+account's unrefunded charge, and Ledger records `billing.workspace_closed.v1`.
+A ready Runtime or activated Workspace follows successful-result recovery,
+including missing receipt completion. Unknown money, Key identity or resources
+cannot authorize terminal failure, refund or pool-claim release. This closure
+path is distinct from normal customer deletion of a succeeded Workspace.
+
 Control Plane owns only the Launch cursor, attempt and lease state, CAS,
 account/settlement coordination, and customer projection. Fabric owns compute,
 storage, attachment, Secret binding, Runtime, its operation store, provider and

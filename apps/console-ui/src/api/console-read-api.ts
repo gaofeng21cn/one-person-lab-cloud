@@ -306,8 +306,9 @@ function decodeWorkspaceLaunchRecovery(value: unknown, operationId: string): Wor
   const result = decodeDto<WorkspaceLaunchRecoveryDTO>(value);
   if (!result || result.operationId !== operationId || !Number.isSafeInteger(result.launchVersion) || result.launchVersion < 1
     || typeof result.status !== "string" || !result.status || typeof result.stage !== "string" || !result.stage
-    || !Array.isArray(result.allowedActions) || result.allowedActions.length > 1
-    || result.allowedActions.some((action) => action !== "check_result")
+    || !Array.isArray(result.allowedActions) || result.allowedActions.length > 2
+    || result.allowedActions.some((action) => action !== "check_result" && action !== "close_unfulfilled")
+    || new Set(result.allowedActions).size !== result.allowedActions.length
     || result.status !== "manual_review" && result.allowedActions.length > 0) {
     throw new Error("invalid_workspace_launch_recovery");
   }
@@ -319,7 +320,7 @@ export function getWorkspaceLaunchRecovery(operationId: string, signal?: AbortSi
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }
 
-export function checkWorkspaceLaunchResult(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WorkspaceLaunchRecoveryDTO> {
+export function recoverWorkspaceLaunch(operationId: string, input: WorkspaceLaunchRecoveryRequest, csrfToken: string, idempotencyKey: string): Promise<WorkspaceLaunchRecoveryDTO> {
   return postJson<unknown>(`/api/operator/workspace-launches/${encodeURIComponent(operationId)}/recover`, input, csrfToken, idempotencyKey)
     .then((value) => decodeWorkspaceLaunchRecovery(value, operationId));
 }

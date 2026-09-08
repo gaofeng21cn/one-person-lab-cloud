@@ -151,6 +151,9 @@ func workspaceLaunchReconcileResponse(operation workspaceLaunchReconcileOperatio
 		"runtimeServiceName": operation.stringFact("runtimeServiceName"), "url": operation.stringFact("url"), "receiptId": operation.stringFact("receiptId"),
 		"continuationAttemptBudgets": operation.Attempts,
 	}
+	if operation.Closeout != nil {
+		response["closeout"] = workspaceLaunchCloseoutResponse(operation)
+	}
 	if operation.Status == contracts.StatusManualReview {
 		response["failureStage"] = string(operation.Stage)
 		if diagnostic := operation.Observations[operation.Stage].Diagnostic; diagnostic != nil {

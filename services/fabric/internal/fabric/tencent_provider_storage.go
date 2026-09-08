@@ -560,7 +560,11 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 	if !validIdentity {
 		return volume, fmt.Errorf("storage_volume_destroy_identity_required")
 	}
-	if _, err := p.ReadStaticStorageBinding(ctx, volume); err != nil {
+	if closeout, ok := ctx.Value(workspaceLaunchStorageCloseoutContextKey{}).(WorkspaceLaunchProviderRequest); ok {
+		if err := p.verifyWorkspaceLaunchPartialStorage(ctx, closeout, volume); err != nil {
+			return volume, err
+		}
+	} else if _, err := p.ReadStaticStorageBinding(ctx, volume); err != nil {
 		return volume, fmt.Errorf("storage_volume_destroy_binding_unverified: %w", err)
 	}
 	readback, err := p.ReadStorageVolume(ctx, volume)

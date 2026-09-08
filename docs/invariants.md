@@ -84,6 +84,11 @@ current implementation documentation.
 
 ## Workspace Lifecycle
 
+- Ending an unfulfilled Launch preserves its original authorization and order.
+  Freeze and normal dispatch share owner serialization. Key revocation and exact
+  resource absence precede refund; previous and closing refunds share the same
+  original-charge reservation. A ready-before-freeze Workspace is never closed
+  as failed. Unknown outcomes cannot become absence or payment confirmation.
 - Launch, renewal, Key rotation, Runtime repair, and deletion are durable
   Control Plane operations over one Workspace identity.
 - Recovery continues the original operation and original resource identities.

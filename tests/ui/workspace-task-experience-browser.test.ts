@@ -588,6 +588,68 @@ test("closing and returning resumes the original pending purchase without anothe
   }
 });
 
+test("customers reopen closeout progress, see confirmed refunds or no-charge closure, and explicitly restart purchase", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of viewports) {
+      for (const refundedUsdMicros of [52_580_000, 0]) {
+        const context = await browser.newContext({ viewport });
+        let operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `closeout-${viewport.name}-${refundedUsdMicros}`, status: "pending", closeout: { status: "confirming", refundedUsdMicros: 0 } };
+        demo.state.launches = [operation];
+        let purchaseWrites = 0;
+        context.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/workspace-launches") purchaseWrites += 1; });
+        let page = await context.newPage();
+        await installBrowserAudit(page, demo.origin);
+        await login(page, demo.origin);
+        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("heading", { name: "正在核对结案条件", exact: true }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+        await page.close();
+
+        operation = { ...operation, closeout: { status: "closing", refundedUsdMicros: 0 } };
+        demo.state.launches = [operation];
+        page = await context.newPage();
+        const audit = await installBrowserAudit(page, demo.origin);
+        await page.clock.install();
+        await page.clock.pauseAt(new Date(Date.now() + 1_000));
+        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("heading", { name: "正在结束未完成的开通", exact: true }).waitFor();
+        const advance = async (next: WorkspaceLaunchResponse, heading: string) => {
+          operation = next;
+          demo.state.launches = [operation];
+          const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
+          await page.clock.fastForward(10_000);
+          await (await readback).finished();
+          await page.clock.runFor(1);
+          await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+        };
+        if (refundedUsdMicros > 0) {
+          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0, pendingConfirmation: true } }, "结案结果仍在核对");
+          assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
+          assert.equal((await page.locator(".launch-operation").innerText()).includes("已退回原账户余额"), false);
+          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0 } }, "退款处理中");
+        }
+        await advance({ ...operation, closeout: { status: "recording", refundedUsdMicros } }, "正在记录结案结果");
+        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+        await advance({ ...operation, status: refundedUsdMicros ? "refunded" : "failed", closeout: { status: "closed", refundedUsdMicros, receiptId: "receipt-close-original" } }, "开通未完成，已结案");
+        await page.getByText(refundedUsdMicros ? "已退回原账户余额 $52.58。可查看费用记录或重新购买。" : "本次开通未扣款。可查看费用记录或重新购买。", { exact: true }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "查看费用", exact: true }).count(), 1);
+        assert.equal(purchaseWrites, 0);
+        await page.getByRole("button", { name: "重新购买", exact: true }).click();
+        await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor();
+        assert.equal(purchaseWrites, 0);
+        await assertNoHorizontalOverflow(page);
+        assertBrowserAuditClean(audit);
+        await context.close();
+      }
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("customer entitlement shows authoritative zero due without prepayment language", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });

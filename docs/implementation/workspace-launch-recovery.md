@@ -142,6 +142,57 @@ Console never constructs technical budgets or reads Acceptance B capability
 endpoints. Customers can close the page and return to the original Launch;
 front-end polling expiry is not fulfillment failure.
 
+## End An Unfulfilled Launch
+
+The ordinary operator recovery API also returns `close_unfulfilled` when the
+current original operation and Fabric's read-only preview admit closure. The
+POST accepts the same version, reason and idempotency key as result checking.
+It records the authorization in `closeout` on the schema-3 Launch using the
+existing original-row CAS. The single Launch worker continues the same record:
+`freeze -> key -> resources -> refund -> receipt -> complete`. An authorized
+closing order remains visible in operator reconciliation and customer Launch
+readback. Repeated commands return its current progress; they do not issue a
+new order or a second refund.
+
+Before destructive work, the original exact-code debit must be confirmed or
+proven never dispatched. Fabric's typed `closeout/read`, `closeout/freeze` and
+`closeout` endpoints bind the original preflight, account, Workspace and provider
+profile. Freeze and Ensure share the original Launch resource lock; a durable
+freeze rejects late Ensure after restart. Ready before the freeze means
+`fulfilled`: no Key revocation, resource deletion or refund, and ordinary
+successful-result recovery continues. Resources that become ready only after
+a valid freeze belong to the cancelled, never-activated order and are cleaned
+through their original owner identities.
+
+Sub2API service authorization revokes only the original account and exact
+Workspace Key name/ID, fences late creation into that name and independently
+reads back the revocation. A Key creation that was dispatched but lost its ID
+must first resolve a unique original Key and persist that ID. Name absence alone
+cannot prove an unknown earlier Key was never renamed; such a case stays pending.
+Revocation reads only the exact identity and does not require an active Key;
+ordinary successful Key convergence retains its active-status requirement.
+The separately retained Sub2API patch and replay evidence in [status](../status.md)
+are an Instance adoption requirement, not proof that the deployed Gateway has
+this capability.
+
+Fabric reuses provider adapters and existing resource destruction owners. It
+confirms Runtime/Secret, attachment, storage and compute absence before releasing
+the original queue claim; a dispatched Tencent request with unknown ownership
+retains its claim and cannot authorize another procurement. No provider purchase
+is made by closure. An undispatched queued order can cancel only its own frozen
+entry without acquiring or releasing another order's head claim. Local-Docker
+and Tencent use the same Control Plane chain.
+
+Refunds use `gateway.wallet_adjustment.v1` and the existing original-charge row
+lock. Confirmed partial manual refunds reduce the remainder; unresolved payments
+retain their reservation. Every credited amount is verified against the original
+Sub2API user/code and Ledger receipt. Ledger completion retries only its receipt
+when payment is already proven. `billing.workspace_closed.v1` attests the original
+debit and completed closeout; individual wallet receipts remain the sole refund
+legs in reconciliation and customer fees. A charged order becomes `refunded`
+only at full confirmed credit and receipt completion; an uncharged order becomes
+`failed`, with no invented billing period or refund.
+
 ## Runtime Image Revision
 
 For the Tencent/TKE adapter, the same operator Resume request may also carry a

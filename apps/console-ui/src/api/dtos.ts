@@ -139,6 +139,14 @@ export interface WorkspaceLaunchResponse {
   checks?: RuntimeCheck[];
   createdAt?: string;
   updatedAt?: string;
+  closeout?: WorkspaceLaunchCloseoutDTO;
+}
+
+export interface WorkspaceLaunchCloseoutDTO {
+  status: "confirming" | "closing" | "refunding" | "recording" | "closed" | "fulfilled";
+  refundedUsdMicros: number;
+  receiptId?: string;
+  pendingConfirmation?: boolean;
 }
 
 export interface WorkspaceDeleteResponse {
@@ -826,11 +834,12 @@ export interface WorkspaceLaunchRecoveryDTO {
   launchVersion: number;
   status: string;
   stage: string;
-  allowedActions: Array<"check_result">;
+  allowedActions: Array<"check_result" | "close_unfulfilled">;
+  closeout?: WorkspaceLaunchCloseoutDTO;
 }
 
 export interface WorkspaceLaunchRecoveryRequest {
-  action: "check_result";
+  action: "check_result" | "close_unfulfilled";
   launchVersion: number;
   reason: string;
 }

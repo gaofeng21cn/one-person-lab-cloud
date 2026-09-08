@@ -149,6 +149,35 @@ test("Workspace launch statuses produce exact customer outcomes", () => {
   }
 });
 
+test("closeout progress reports only confirmed money and never opens an unfinished Workspace", () => {
+  const progress = [
+    ["confirming", "正在核对结案条件"], ["closing", "正在结束未完成的开通"],
+    ["refunding", "退款处理中"], ["recording", "正在记录结案结果"], ["fulfilled", "正在完成开通记录"]
+  ] as const;
+  for (const [status, title] of progress) {
+    const presentation = presentWorkspaceLaunch(launch({ status: "pending", closeout: { status, refundedUsdMicros: 0 } }));
+    assert.equal(presentation.title, title);
+    assert.equal(presentation.canOpenWorkspace, false);
+    assert.equal(presentation.summary.includes("本次开通未扣款"), false);
+    assert.equal(presentation.summary.includes("已退回原账户余额"), false);
+  }
+  const confirmedRefund = presentWorkspaceLaunch(launch({ status: "pending", closeout: { status: "recording", refundedUsdMicros: 52_580_000 } }));
+  assert.match(confirmedRefund.summary, /已退回原账户余额 \$52\.58/);
+  assert.equal(confirmedRefund.canOpenWorkspace, false);
+  const pending = presentWorkspaceLaunch(launch({ status: "pending", closeout: { status: "refunding", refundedUsdMicros: 0, pendingConfirmation: true } }));
+  assert.equal(pending.title, "结案结果仍在核对");
+  assert.equal(pending.canOpenWorkspace, false);
+  for (const status of ["failed", "refunded"] as const) {
+    const presentation = presentWorkspaceLaunch(launch({ status, closeout: { status: "closed", refundedUsdMicros: status === "refunded" ? 52_580_000 : 0 } }));
+    assert.equal(presentation.title, "开通未完成，已结案");
+    assert.equal(presentation.summary.includes("本次开通未扣款"), status === "failed");
+    assert.equal(presentation.summary.includes("$52.58"), status === "refunded");
+  }
+  const fulfilled = presentWorkspaceLaunch(launch({ status: "succeeded", workspaceId: "ws-original", closeout: { status: "fulfilled", refundedUsdMicros: 0 } }));
+  assert.equal(fulfilled.canOpenWorkspace, true);
+  assert.equal(fulfilled.summary.includes("退款"), false);
+});
+
 test("unknown Workspace launch status is explicitly unconfirmed and cannot open", () => {
   assert.deepEqual(presentWorkspaceLaunch(launch({
     status: "future_status",
