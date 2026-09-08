@@ -16,6 +16,7 @@ import "context"
 // - workspace_gateway_budget.go: SaveAuditEvent, ListAuditEvents
 // - workspace_renewal_test.go: ListAuditEvents
 type SharedStore interface {
+	SaveWalletAdjustment(ctx context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error)
 	ListAuditEvents(ctx context.Context, accountID string) ([]map[string]any, error)
 	SaveAuditEvent(ctx context.Context, row map[string]any) error
 	ListAnnouncements(ctx context.Context) ([]map[string]any, error)

@@ -25,6 +25,7 @@ type monthlySub2API struct {
 	charges           []clients.Sub2APIChargeInput
 	refundErrors      []error
 	refunds           []clients.Sub2APIRefundInput
+	confirmedHistory  map[string]clients.Sub2APIBalanceHistoryEntry
 	workspaceKeyErr   error
 	workspaceKeyCalls []int64
 }
@@ -42,14 +43,14 @@ type authoritativeReplayConfig struct {
 	initialBalance    json.RawMessage
 	adjustedBalance   json.RawMessage
 	historyStatus     int
-	historyEntries    func(code, value string) []any
 	loseFirstResponse bool
 }
 
 func authoritativeHistoryEntry(code, value string) map[string]any {
 	return map[string]any{
 		"code": code, "type": "balance", "value": json.RawMessage(value), "status": "used", "used_by": 41,
-		"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
+		"balance_applied_value": json.RawMessage(value),
+		"used_at":               "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
 	}
 }
 
@@ -106,21 +107,20 @@ func newAuthoritativeReplaySub2API(t *testing.T, config authoritativeReplayConfi
 				return
 			}
 			http.Error(w, "redeem code exists", http.StatusConflict)
-		case "/api/v1/admin/users/41/balance-history":
+		case "/api/v1/admin/redeem-codes/by-code":
 			fixture.historyCalls++
-			if len(fixture.codes) == 0 || r.URL.Query().Get("type") != "balance" {
-				t.Fatalf("history request without adjustment: %s", r.URL.String())
+			if r.Method != http.MethodGet || len(fixture.codes) == 0 || r.URL.Query().Get("user_id") != "41" || r.URL.Query().Get("code") != fixture.codes[len(fixture.codes)-1] {
+				t.Fatalf("exact transaction request without matching adjustment: %s", r.URL.String())
 			}
 			if config.historyStatus != 0 {
 				http.Error(w, "history unavailable", config.historyStatus)
 				return
 			}
 			code, value := fixture.codes[len(fixture.codes)-1], fixture.values[len(fixture.values)-1]
-			items := []any{authoritativeHistoryEntry(code, value)}
-			if config.historyEntries != nil {
-				items = config.historyEntries(code, value)
-			}
-			success(w, map[string]any{"items": items, "total": len(items), "page": 1, "page_size": 100, "pages": 1})
+			success(w, struct {
+				Lookup     string          `json:"lookup"`
+				RedeemCode json.RawMessage `json:"redeem_code"`
+			}{Lookup: "exact_code_v1", RedeemCode: mustJSON(authoritativeHistoryEntry(code, value))})
 		default:
 			t.Fatalf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
 		}
@@ -192,6 +192,7 @@ func (s *monthlySub2API) Charge(_ context.Context, input clients.Sub2APIChargeIn
 		s.chargeResults = s.chargeResults[1:]
 		return result, nil
 	}
+	s.recordConfirmedAdjustment(input.Code, input.UserID, -input.ChargeUSDMicros)
 	return clients.Sub2APICharge{Code: input.Code, UserID: input.UserID, ChargeUSDMicros: input.ChargeUSDMicros, Status: "used"}, nil
 }
 
@@ -205,11 +206,26 @@ func (s *monthlySub2API) Refund(_ context.Context, input clients.Sub2APIRefundIn
 			return clients.Sub2APIRefund{}, err
 		}
 	}
+	s.recordConfirmedAdjustment(input.Code, input.UserID, input.RefundUSDMicros)
 	return clients.Sub2APIRefund{Code: input.Code, UserID: input.UserID, RefundUSDMicros: input.RefundUSDMicros, Status: "used"}, nil
 }
 
-func (s *monthlySub2API) FinancialBalanceHistoryByCodes(context.Context, int64, []string) (map[string]clients.Sub2APIBalanceHistoryEntry, error) {
-	return map[string]clients.Sub2APIBalanceHistoryEntry{}, nil
+func (s *monthlySub2API) recordConfirmedAdjustment(code string, userID, value int64) {
+	if s.confirmedHistory == nil {
+		s.confirmedHistory = make(map[string]clients.Sub2APIBalanceHistoryEntry)
+	}
+	usedAt := time.Date(2026, 8, 30, 9, 30, 0, 0, time.UTC)
+	s.confirmedHistory[code] = clients.Sub2APIBalanceHistoryEntry{Code: code, Type: "balance", ValueUSDMicros: value, Status: "used", UsedBy: &userID, UsedAt: &usedAt, CreatedAt: usedAt}
+}
+
+func (s *monthlySub2API) FinancialBalanceHistoryByCodes(_ context.Context, _ int64, codes []string) (map[string]clients.Sub2APIBalanceHistoryEntry, error) {
+	matches := make(map[string]clients.Sub2APIBalanceHistoryEntry)
+	for _, code := range codes {
+		if entry, found := s.confirmedHistory[code]; found {
+			matches[code] = entry
+		}
+	}
+	return matches, nil
 }
 
 type monthlyFabric struct {

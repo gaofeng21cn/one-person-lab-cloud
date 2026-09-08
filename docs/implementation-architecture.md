@@ -361,6 +361,72 @@ against an isolated PostgreSQL copy before production deployment.
 
 ## Resource And Billing State
 
+Financial confirmation uses the original code, user, amount and used status.
+Launch and Renewal do not wait for a post-debit wallet snapshot; wallet
+adjustments may report a separately observed snapshot without making it a
+settlement condition. Receipts and reconciliation do not invent an unobserved
+zero balance or compare observations from different times.
+
+Control Plane financial reconciliation enumerates retained Launch, Renewal and
+business-refund operations. Each purchase, renewal debit and refund is counted
+independently, including multiple periods on one Workspace and orders whose
+Workspace has been deleted. An automatically reversed Renewal has two financial
+legs bound by its single refund receipt. Retained original order facts and
+immutable receipts supply the historical resource and period; current provider existence
+is checked by fulfillment and recovery owners, not used to rewrite old accounts.
+Retained schema-2 single-debit purchases and their automatic refunds have a
+read-only financial decoder; it does not reactivate the retired Launch executor.
+Older split-resource Launch rows without a retained single-debit record remain
+explicit review exceptions rather than being certified from current resources.
+Normal in-progress settlements contribute to `counts.pending`, not `matched` or
+the stop-purchase guard. Missing, conflicting, duplicated or over-refunded
+completed settlements retain account/operation/kind/Workspace exception bindings.
+
+Ledger applies `accountId` and exact `requestId` before receipt pagination, with
+an expression index over retained receipt JSON. The returned typed lookup scope
+confirms that the owner applied the filters; an older endpoint ignoring the new
+filter cannot prove absence. Launch readback queries the current and explicitly
+retained historical request identities separately. Disposable inspection scopes
+its existing request/execution matching to the Workspace, preserving historical
+execution-only evidence without scanning unrelated account history.
+
+The existing customer fees page uses one Ledger cursor over billing receipts
+and business-refund wallet-adjustment receipts. Refunds resolve their original
+order through Control Plane's retained typed operation, even after Workspace
+deletion. The page identifies the original order and period, distinguishes
+charges, refunds and expiry without a charge, and explains that monthly fees and
+API use share the account balance. Ledger's query remains policy-free; Console
+receives a safe customer projection without upstream transaction codes.
+
+Wallet adjustment persistence owns refund admission and progress. Initial
+creation locks the account and original order in a PostgreSQL transaction,
+validates the original charge/account, and counts all associated completed and
+unresolved refunds before inserting the operation. The first dispatch rechecks
+the original order and reserved amount. Progress compares the exact stored
+result and status. This reuses RuntimeOperation rows without a second wallet,
+reservation table or workflow engine; legacy operation JSON remains readable.
+Successful Renewal refund sources use their owning `active/complete` state.
+Renewal recovery rechecks the original debit before further fulfillment, and a
+new automatic refund requires that debit's authoritative readback. Once exact
+lookup proves an adjustment absent, authorized recovery uses current account
+admission and the original idempotency identity; intervening consumption or
+top-up does not require restoring an old wallet snapshot.
+
+Sub2API financial reads require the exact-code endpoint
+`GET /api/v1/admin/redeem-codes/by-code?code=...&user_id=...` and its
+`exact_code_v1` response identity. Missing capability is an unavailable read,
+not proof that a transaction is absent. Both adjustment responses and exact
+reads require `balance_applied_value` to equal the requested amount. The
+Sub2API owner records this nullable fact in the same transaction as redemption
+and the full wallet write; insufficient funds roll back both. Historical null
+values remain unverified and exact lookup rejects them, including old
+idempotent replays. No historical amount is inferred from today's wallet.
+Lookup accepts historical codes up to 200 bytes; new codes remain limited to
+32 bytes. The Sub2API owner must adopt these semantics before deploying the
+corresponding Cloud change. Public upstream v0.2.2's balance-clamping behavior
+is not sufficient; production source/image identity and adoption remain
+Instance evidence.
+
 The deployed Sub2API has no generic hold/capture API. The launch path validates
 the account and quote, runs read-only provider preflight, confirms balance, and
 debits the exact monthly amount before Fabric mutates provider resources. It then

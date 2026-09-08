@@ -1060,6 +1060,44 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	return nil
 }
 
+func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing := findRecord(s.runtimeOps, operationID)
+	reserve := existing == nil
+	if existing != nil {
+		current, err := decodeWalletAdjustment(existing)
+		if err != nil || current.RequestHash != operation.RequestHash || current.AccountID != operation.AccountID {
+			return operation, errIdempotencyConflict
+		}
+		if operation.PersistedResult == "" {
+			return current, nil
+		}
+		if current.PersistedResult != operation.PersistedResult || current.PersistedStatus != operation.PersistedStatus {
+			return operation, errWalletAdjustmentConflict
+		}
+		reserve = !current.AdjustmentAttempted && operation.AdjustmentAttempted
+	} else if operation.PersistedResult != "" {
+		return operation, errWalletAdjustmentConflict
+	}
+	if reserve {
+		if operation.Kind == "business_refund" {
+			var refunds []map[string]any
+			for _, row := range s.runtimeOps {
+				if stringValue(row["action"]) == "gateway.wallet_adjustment.v1" && stringValue(row["id"]) != operationID {
+					refunds = append(refunds, row)
+				}
+			}
+			if err := validateWalletRefundReservation(findRecord(s.runtimeOps, operation.RelatedOperationID), refunds, operation); err != nil {
+				return operation, err
+			}
+		}
+	}
+	row := walletAdjustmentRow(operationID, operation)
+	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
+	return decodeWalletAdjustment(row)
+}
+
 func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

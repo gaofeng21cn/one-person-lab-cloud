@@ -104,7 +104,16 @@ func (c *customerFactsSub2API) FinancialBalanceHistoryByCodes(_ context.Context,
 func (l *customerFactsLedger) ListReceipts(_ context.Context, query clients.ReceiptQuery) (clients.ReceiptPage, error) {
 	l.query = query
 	l.queries = append(l.queries, query)
-	return l.page, l.listErr
+	if query.RequestID == "" {
+		return l.page, l.listErr
+	}
+	page := clients.ReceiptPage{NextCursor: l.page.NextCursor, HasMore: l.page.HasMore}
+	for _, receipt := range l.page.Receipts {
+		if receipt.RequestID == query.RequestID {
+			page.Receipts = append(page.Receipts, receipt)
+		}
+	}
+	return page, l.listErr
 }
 
 func (l *customerFactsLedger) Receipt(_ context.Context, _ string) (clients.Receipt, error) {
@@ -113,7 +122,12 @@ func (l *customerFactsLedger) Receipt(_ context.Context, _ string) (clients.Rece
 
 func (l *customerFactsLedger) RecordReceipt(ctx context.Context, input clients.ReceiptInput, key string) (clients.Receipt, error) {
 	l.receiptWrites++
-	return l.fakeLedgerClient.RecordReceipt(ctx, input, key)
+	receipt, err := l.fakeLedgerClient.RecordReceipt(ctx, input, key)
+	if err == nil {
+		receipt.ReceiptID = "receipt-" + stableID(key)[:18]
+		l.page.Receipts = append(l.page.Receipts, receipt)
+	}
+	return receipt, err
 }
 
 func (l *customerFactsLedger) RecordReconciliation(_ context.Context, input clients.ReconciliationInput, key string) (clients.ReconciliationResult, error) {
@@ -164,7 +178,7 @@ func TestBillingReceiptListTenantProjection(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
 	}
-	if ledger.query != (clients.ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing.", Cursor: "opaque", Limit: 50}) {
+	if ledger.query != (clients.ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Cursor: "opaque", Limit: 50}) {
 		t.Fatalf("Ledger query = %#v", ledger.query)
 	}
 	var page map[string]any
@@ -340,7 +354,6 @@ func TestBillingReconciliationTreatsWorkspaceRenewalAsOneCombinedOperation(t *te
 		{name: "total", mutate: func(cost map[string]any) { cost["totalUsdMicros"] = int64(1) }},
 		{name: "Sub2API user", mutate: func(cost map[string]any) { cost["sub2apiUserId"] = int64(42) }},
 		{name: "redeem code", mutate: func(cost map[string]any) { cost["sub2apiRedeemCode"] = "opl:other" }},
-		{name: "post-charge balance", mutate: func(cost map[string]any) { cost["postChargeBalanceUsdMicros"] = int64(1) }},
 		{name: "compute resource type", mutate: func(cost map[string]any) {
 			cost["components"].(map[string]any)["compute"].(map[string]any)["resourceType"] = "storage"
 		}},
@@ -379,7 +392,7 @@ func TestBillingReconciliationTreatsWorkspaceRenewalAsOneCombinedOperation(t *te
 		}
 		mismatchBody := decodeReconciliationResponse(t, mismatch)
 		assertReconciliationReport(t, mismatchBody, "mismatch", 1, 0, 1)
-		assertReconciliationException(t, mismatchBody["report"].(map[string]any), "workspace", operation.WorkspaceID, "ledger_receipt_mismatch")
+		assertReconciliationException(t, mismatchBody["report"].(map[string]any), "workspace", operation.WorkspaceID, "sub2api_charge_mismatch")
 	})
 }
 
@@ -395,23 +408,11 @@ func TestBillingReconciliationMismatchBlocksPurchasesWithoutMutation(t *testing.
 		{name: "Sub2API charge changed", code: "sub2api_charge_mismatch", mutate: func(f *billingReconciliationFixture) {
 			f.sub2API.history[41][0].ValueUSDMicros = -1
 		}},
-		{name: "Fabric provider fact missing", code: "fabric_provider_fact_missing", mutate: func(f *billingReconciliationFixture) {
-			key := providerFactKey(clients.ProviderFactInput{AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", ResourceType: "compute", ResourceID: "compute-reconcile"})
-			fact := f.fabric.facts[key]
-			fact.Facts.Status = "external_deleted"
-			f.fabric.facts[key] = fact
-		}},
-		{name: "Fabric provider fact changed", code: "fabric_provider_fact_mismatch", mutate: func(f *billingReconciliationFixture) {
-			key := providerFactKey(clients.ProviderFactInput{AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", ResourceType: "compute", ResourceID: "compute-reconcile"})
-			fact := f.fabric.facts[key]
-			fact.Facts.ProviderID = "ins-other"
-			f.fabric.facts[key] = fact
-		}},
 		{name: "Ledger receipt missing", code: "ledger_receipt_missing", mutate: func(f *billingReconciliationFixture) {
 			f.ledger.page.Receipts = f.ledger.page.Receipts[1:]
 		}},
 		{name: "Ledger receipt changed", code: "ledger_receipt_mismatch", mutate: func(f *billingReconciliationFixture) {
-			f.ledger.page.Receipts[0].Cost["chargeUsdMicros"] = int64(1)
+			f.ledger.page.Receipts[0].Cost["totalUsdMicros"] = int64(1)
 		}},
 	}
 	for _, tc := range tests {
@@ -424,7 +425,7 @@ func TestBillingReconciliationMismatchBlocksPurchasesWithoutMutation(t *testing.
 			}
 			body := decodeReconciliationResponse(t, response)
 			assertReconciliationReport(t, body, "mismatch", 2, 1, 1)
-			assertReconciliationException(t, body["report"].(map[string]any), "compute", "compute-reconcile", tc.code)
+			d2AssertOperationException(t, body["report"].(map[string]any), fixture.operations[0].ID, fixture.operations[0].AccountID, fixture.operations[0].WorkspaceID, tc.code)
 
 			blocked := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`, "blocked-after-reconciliation")
 			assertErrorResponse(t, blocked.Code, blocked.Body.String(), http.StatusConflict, "billing_reconciliation_blocked")
@@ -440,7 +441,6 @@ func TestBillingReconciliationUnavailableFactsMismatch(t *testing.T) {
 		mutate func(*billingReconciliationFixture)
 	}{
 		{name: "Sub2API", code: "sub2api_balance_history_unavailable", mutate: func(f *billingReconciliationFixture) { f.sub2API.historyErr = errors.New("Sub2API unavailable") }},
-		{name: "Fabric", code: "fabric_provider_facts_unavailable", mutate: func(f *billingReconciliationFixture) { f.fabric.factsErr = errors.New("Fabric unavailable") }},
 		{name: "Ledger", code: "ledger_receipts_unavailable", mutate: func(f *billingReconciliationFixture) { f.ledger.listErr = errors.New("Ledger unavailable") }},
 	}
 	for _, tc := range tests {
@@ -453,7 +453,7 @@ func TestBillingReconciliationUnavailableFactsMismatch(t *testing.T) {
 			}
 			body := decodeReconciliationResponse(t, response)
 			assertReconciliationReport(t, body, "mismatch", 2, 0, 2)
-			assertReconciliationException(t, body["report"].(map[string]any), "compute", "compute-reconcile", tc.code)
+			d2AssertOperationException(t, body["report"].(map[string]any), fixture.operations[0].ID, fixture.operations[0].AccountID, fixture.operations[0].WorkspaceID, tc.code)
 			assertReconciliationReadOnly(t, fixture)
 		})
 	}
@@ -491,55 +491,76 @@ func TestBillingReconciliationMalformedLedgerResponseKeepsLastGuard(t *testing.T
 }
 
 type billingReconciliationFixture struct {
-	server  http.Handler
-	member  *httptest.ResponseRecorder
-	store   *memoryTableStore
-	ledger  *customerFactsLedger
-	sub2API *customerFactsSub2API
-	fabric  *customerFactsFabric
-	calls   *[]string
+	server     http.Handler
+	member     *httptest.ResponseRecorder
+	store      *memoryTableStore
+	ledger     *customerFactsLedger
+	sub2API    *customerFactsSub2API
+	fabric     *customerFactsFabric
+	calls      *[]string
+	operations []workspaceRenewalOperation
 }
 
 func newBillingReconciliationFixture(t *testing.T) *billingReconciliationFixture {
 	t.Helper()
-	store := newMemoryTableStore()
-	seedTenantMember(t, store, "acct-monthly", "org-monthly", "usr-monthly", "monthly@example.com")
-	paidThrough := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
-	compute := monthlyActiveResource("compute", "compute-reconcile", paidThrough)
-	storage := monthlyActiveResource("storage", "storage-reconcile", paidThrough)
-	compute["resourceType"], storage["resourceType"] = "compute", "storage"
-	mustStore(t, store.SaveCompute(context.Background(), compute))
-	mustStore(t, store.SaveStorage(context.Background(), storage))
-	usedBy := int64(41)
-	history := []clients.Sub2APIBalanceHistoryEntry{
-		{Code: stringValue(compute["sub2apiRedeemCode"]), Type: "balance", ValueUSDMicros: -int64(numberField(compute, "chargeUsdMicros", 0)), Status: "used", UsedBy: &usedBy, UsedAt: &paidThrough, CreatedAt: paidThrough.Add(-time.Minute)},
-		{Code: stringValue(storage["sub2apiRedeemCode"]), Type: "balance", ValueUSDMicros: -int64(numberField(storage, "chargeUsdMicros", 0)), Status: "used", UsedBy: &usedBy, UsedAt: &paidThrough, CreatedAt: paidThrough.Add(-time.Minute)},
+	renewal := newWorkspaceRenewalWorkerFixture(t, []int64{200_000_000, 147_420_000})
+	ledger := &customerFactsLedger{}
+	renewal.service = controlplane.NewService(ledger, renewal.fabric, renewal.sub2API)
+	mustStore(t, renewal.app.runMonthlyBillingOnce(context.Background(), renewal.service, renewal.paidThrough.Add(-monthlyRenewalLead)))
+	first := d1RenewalOperation(t, renewal)
+	secondThrough := nextBillingMonth(renewal.renewedThrough, renewal.paidThrough.Day())
+	renewal.fabric.computeRenew.Deadline = secondThrough.Format(time.RFC3339)
+	renewal.fabric.storageRenew.Deadline = renewal.fabric.computeRenew.Deadline
+	renewal.fabric.computeSync, renewal.fabric.storageSync = renewal.fabric.computeRenew, renewal.fabric.storageRenew
+	mustStore(t, renewal.app.runMonthlyBillingOnce(context.Background(), renewal.service, renewal.renewedThrough.Add(-monthlyRenewalLead)))
+	rows, err := queryRuntimeOperations(context.Background(), renewal.app.tables, runtimeOperationQuery{Action: "workspace.renewal"})
+	if err != nil || len(rows) != 2 || len(ledger.page.Receipts) != 2 {
+		t.Fatalf("two completed billing periods: rows=%d receipts=%d err=%v", len(rows), len(ledger.page.Receipts), err)
 	}
-	receipts := []clients.Receipt{reconciliationReceipt(compute), reconciliationReceipt(storage)}
-	facts := []clients.ProviderFact{reconciliationProviderFact("compute", compute), reconciliationProviderFact("storage", storage)}
-	ledger := &customerFactsLedger{page: clients.ReceiptPage{Receipts: receipts}}
+	operations := []workspaceRenewalOperation{first}
+	for _, row := range rows {
+		operation, err := decodeWorkspaceRenewalOperation(row)
+		if err != nil || operation.Status != "active" || operation.Phase != "complete" {
+			t.Fatalf("real renewal did not complete: operation=%+v err=%v", operation, err)
+		}
+		if operation.ID != first.ID {
+			operations = append(operations, operation)
+		}
+	}
+	usedBy := int64(41)
+	history := make([]clients.Sub2APIBalanceHistoryEntry, 0, 2)
+	for _, operation := range operations {
+		history = append(history, clients.Sub2APIBalanceHistoryEntry{Code: operation.RedeemCode, Type: "balance", ValueUSDMicros: -operation.TotalUSDMicros, Status: "used", UsedBy: &usedBy, UsedAt: &renewal.paidThrough, CreatedAt: renewal.paidThrough})
+	}
+	ledger.receiptWrites = 0
 	sub2API := &customerFactsSub2API{
 		testSub2APIClient: &testSub2APIClient{balance: 1_000_000_000, charges: map[string]int64{}},
 		history:           map[int64][]clients.Sub2APIBalanceHistoryEntry{41: history},
 	}
 	calls := &[]string{}
-	fabric := &customerFactsFabric{fakeFabricClient: fakeFabricClient{calls: calls}, facts: providerFactsByKey(facts)}
+	fabric := &customerFactsFabric{fakeFabricClient: fakeFabricClient{calls: calls}}
+	store := renewal.app.tables.(*memoryTableStore)
 	server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, sub2API), store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := loginForTest(t, server, "monthly@example.com", "CorrectHorseBatteryStaple!")
-	return &billingReconciliationFixture{server: server, member: member, store: store, ledger: ledger, sub2API: sub2API, fabric: fabric, calls: calls}
+	member := loginForTest(t, server, "monthly-owner@example.com", "CorrectHorseBatteryStaple!")
+	return &billingReconciliationFixture{server: server, member: member, store: store, ledger: ledger, sub2API: sub2API, fabric: fabric, calls: calls, operations: operations}
 }
 
-func reconciliationReceipt(row map[string]any) clients.Receipt {
-	return clients.Receipt{
-		ReceiptInput: clients.ReceiptInput{
-			Type: "billing.resource_purchased.v1", Status: "completed", AccountID: stringValue(row["accountId"]), WorkspaceID: stringValue(row["workspaceId"]), RequestID: stringValue(row["billingOperationId"]),
-			Cost: map[string]any{"resourceType": stringValue(row["resourceType"]), "resourceId": stringValue(row["id"]), "chargeUsdMicros": int64(numberField(row, "chargeUsdMicros", 0))},
-		},
-		ReceiptID: stringValue(row["lastReceiptId"]), CreatedAt: "2026-07-16T00:00:00Z",
+func TestBillingReconciliationDoesNotReplaceHistoricalPaymentWithCurrentProviderState(t *testing.T) {
+	fixture := newBillingReconciliationFixture(t)
+	fixture.fabric.factsErr = errors.New("provider unavailable after resources retired")
+	mustStore(t, fixture.store.DeleteWorkspace(context.Background(), fixture.operations[0].WorkspaceID))
+	response := requestWithMutationKeyForTest(t, fixture.server, operatorSessionForTest(t, fixture.server), http.MethodPost, "/api/billing/reconciliation", `{"confirm":true}`, "historical-provider-independence")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("historical reconciliation status=%d body=%s", response.Code, response.Body.String())
 	}
+	assertReconciliationReport(t, decodeReconciliationResponse(t, response), "ok", 2, 2, 0)
+	if len(fixture.fabric.factInputs) != 0 {
+		t.Fatalf("historical financial audit depended on current resources: %+v", fixture.fabric.factInputs)
+	}
+	assertReconciliationReadOnly(t, fixture)
 }
 
 func reconciliationProviderFact(resourceType string, row map[string]any) clients.ProviderFact {
@@ -595,7 +616,7 @@ func assertReconciliationException(t *testing.T, report map[string]any, resource
 	items, _ := report["exceptions"].([]any)
 	for _, item := range items {
 		exception, _ := item.(map[string]any)
-		if exception["resourceType"] == resourceType && exception["resourceId"] == resourceID && exception["code"] == code && len(exception) == 3 {
+		if exception["resourceType"] == resourceType && exception["resourceId"] == resourceID && exception["code"] == code {
 			return
 		}
 	}

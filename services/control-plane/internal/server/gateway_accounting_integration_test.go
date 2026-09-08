@@ -319,7 +319,7 @@ func (t *gatewayAccountingFaultTransport) RoundTrip(request *http.Request) (*htt
 		return response, err
 	}
 	isRedeem := request.Method == http.MethodPost && request.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem"
-	isHistory := request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/balance-history")
+	isHistory := request.Method == http.MethodGet && request.URL.Path == "/api/v1/admin/redeem-codes/by-code"
 	t.fixture.mu.Lock()
 	loss := false
 	if t.fixture.responseLoss && isRedeem && !t.fixture.lossInjected {
@@ -713,9 +713,14 @@ func gatewayAccountingEnvelopeData(t *testing.T, payload map[string]any) map[str
 	return data
 }
 
-func startGatewayAccountingLedger(t *testing.T) (clients.LedgerClient, clients.LedgerReceiptListClient) {
+func startGatewayAccountingLedger(t *testing.T, databaseURLs ...string) (clients.LedgerClient, clients.LedgerReceiptListClient) {
 	t.Helper()
-	databaseURL := gatewayAccountingDatabase(t, "opl_gateway_ledger_")
+	var databaseURL string
+	if len(databaseURLs) > 0 {
+		databaseURL = databaseURLs[0]
+	} else {
+		databaseURL = gatewayAccountingDatabase(t, "opl_gateway_ledger_")
+	}
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve integration test location")

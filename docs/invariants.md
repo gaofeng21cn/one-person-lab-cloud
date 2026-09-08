@@ -52,6 +52,20 @@ current implementation documentation.
   are reconciliation evidence, not a customer pricing formula.
 - A Workspace purchase or renewal confirms at most one customer debit for the
   accepted period price. Compute and storage are fulfillment of that purchase.
+- Sub2API must atomically reject an insufficient debit without consuming its
+  transaction identity. A used transaction must represent the full requested
+  amount; clamping a debit to the available balance violates settlement.
+- Confirmation binds the original transaction code, account, USD amount and
+  authoritative used status and applied amount committed with the wallet write.
+  Historical transactions without that fact remain unverified; a current
+  balance or a version cutoff cannot certify their original applied amount.
+  Current wallet snapshots are presentation or
+  historical evidence, not proof of one transaction amid other consumption.
+- Business refunds belong to the original confirmed charge and its account.
+  Persist the refund reservation atomically with the operation; completed and
+  unresolved refunds together cannot exceed that charge. Only a confirmed
+  pre-dispatch rejection releases its reservation. Dispatch and recovery compare
+  persisted operation state so a stale process cannot repeat a monetary write.
 - Operations that can change money use stable idempotency identities and retain
   enough evidence to distinguish confirmed, absent, and unknown outcomes.
 - A confirmed absence of all billable fulfillment after a debit may authorize
@@ -59,6 +73,14 @@ current implementation documentation.
   review before another monetary mutation.
 - Receipt failure retries the receipt only; it does not repeat an already
   confirmed debit, refund, provider operation, activation, or renewal.
+- Financial reconciliation starts from retained original purchase, renewal and
+  refund operations. Workspace deletion, provider absence or a newer period
+  cannot remove historical settlements from the audit set. Each transaction
+  and receipt binds the original account, operation, amount and period.
+- Normal unfinished settlement is reported as pending, never matched. Missing
+  or conflicting evidence for a completed or manually reviewed settlement is
+  an exception. Reconciliation observes money and fulfillment; it never repeats
+  a payment, refund or provider mutation to manufacture a match.
 
 ## Workspace Lifecycle
 
@@ -120,6 +142,16 @@ current implementation documentation.
 - Production credentials are available only inside the smallest authorized
   publish or instance-mutation boundary.
 - Local development does not connect directly to production-private services.
+- Production runtime artifacts contain no project test programs, fixtures,
+  test datasets or test-only routes and startup hooks. Tests run outside the
+  deployable artifact; a disabled test switch does not establish isolation.
+- Test accounts, wallet entries, orders, Workspaces, Keys and receipts stay in
+  independently configured non-production stores and resources. Deployment
+  never imports test database snapshots, seeds, volumes or verification state.
+- Qualification reports stay in engineering evidence storage, not the
+  production business Ledger. Production readback observes actual deployed
+  state and natural business; verification must not create synthetic business
+  records to manufacture evidence.
 - Ordinary verification is read-only with respect to customer billing and
   provider resources. Real mutations require separate explicit authorization.
 

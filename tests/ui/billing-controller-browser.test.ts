@@ -487,3 +487,42 @@ test("Billing Session reset rejects a detail completion from the signed-out Sess
     await demo.close();
   }
 });
+
+test("customers can trace monthly charges and partial refunds to the original Workspace order on desktop and mobile", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const monthly: BillingReceipt = { ...receipt("monthly", "ws-1"), status: "completed", operationId: "renewal-local-order", type: "billing.workspace_renewed.v1" };
+  const refund: BillingReceipt = { ...monthly, receiptId: "refund", type: "gateway.wallet_adjustment.v1", kind: "business_refund", refundUsdMicros: 3_000_000, operationId: "refund-local-order", relatedOperationId: monthly.operationId, chargeReference: "private-upstream-code" };
+  const expiry: BillingReceipt = { ...monthly, receiptId: "expiry", type: "billing.workspace_expired.v1" };
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport });
+      await page.route("**/api/billing/receipts?*", (route) => fulfill(route, receiptSource([refund, expiry, monthly])));
+      await page.route("**/api/billing/receipts/refund", (route) => fulfill(route, detailSource(refund)));
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
+      await page.getByText("工作空间月费与 API 用量从同一账户余额扣除；退款退回原账户余额。", { exact: false }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("link", { name: "查看 API 用量", exact: true }).getAttribute("href"), "/console/api/usage");
+      await page.getByRole("radio", { name: "账单记录", exact: true }).click();
+      const surface = page.locator(viewport.width > 600 ? ".billing-table-desktop" : ".billing-list-mobile");
+      await surface.getByText("扣款 $52.58", { exact: true }).waitFor({ state: "visible" });
+      await surface.getByText("退款 $3.00", { exact: true }).waitFor({ state: "visible" });
+      await surface.getByText("未扣款", { exact: true }).waitFor({ state: "visible" });
+      if (viewport.width > 600) {
+        await surface.locator("tbody tr").filter({ hasText: "退款 $3.00" }).getByRole("button", { name: "查看", exact: true }).click();
+      } else {
+        await surface.getByRole("listitem").filter({ hasText: "退款 $3.00" }).click();
+      }
+      const detail = detailPanel(page);
+      for (const text of ["退款 $3.00", "原账户余额", "renewal-local-order", "refund-local-order", "工作空间编号：ws-1", "2026/08/01 至 2026/09/01"]) {
+        await detail.getByText(text, { exact: true }).waitFor({ state: "visible" });
+      }
+      assert.equal(await detail.getByText("private-upstream-code", { exact: true }).count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});

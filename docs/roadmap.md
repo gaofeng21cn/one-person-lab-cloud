@@ -16,6 +16,28 @@ An `external_owner` item proceeds in that owner's repository.
 
 ## Public Beta Work Packages
 
+D1 finance and D2 original-settlement reconciliation have completed local
+development and verification. Its local source
+changes address original-transaction confirmation, original-account refund
+limits, successful Renewal refund parsing and exact financial lookup. Its
+source checks and isolated runtime evidence belong in [status.md](./status.md).
+D2 now covers retained original purchases, all renewal periods and refunds,
+exact receipt lookup and the existing customer fees page. These do not close
+D3's Launch recovery and capacity, D4's lifecycle, D5's image rollout or D6's
+same-version delivery. Business development continues with D3/D4, then D5. D6 packaging and
+deployment qualification follow the business implementation; they are not a
+prerequisite for local development. Test data isolation applies throughout.
+
+| ID | State | Owner | Remaining acceptance |
+| --- | --- | --- | --- |
+| `D1-FINANCIAL-INTEGRITY-01` | `cloud_complete` | Control Plane finance and Sub2API; Instance owns adoption | Local source/full regression and isolated real Sub2API validation pass; [owner evidence](./status.md#retained-runtime-evidence) retains the exact worktree and patch identity. Instance must identify its exact Gateway source/image, adopt atomic debit plus exact lookup before Cloud, and retain owner readback. Historical unverified transactions cannot be certified from current balance. |
+| `D2-SETTLEMENT-RECONCILIATION-01` | `cloud_complete` | Control Plane finance, Ledger and Console | Original-operation business chains, failure/recovery, historical records, more than 10k unrelated receipts, customer browser tests and full PostgreSQL/Docker regression pass. [Owner evidence](./status.md#retained-runtime-evidence) binds the local source snapshot; Instance adoption remains deferred with D6. Unverifiable older split-resource records remain explicit review exceptions. |
+| `D6-PRODUCTION-TEST-ISOLATION-01` | `planned` | Cloud artifact owner; Instance deployment owner | Final Dockerfile still copies all of `packages`, including Go test source. Restrict runtime content to actual consumers and inspect the built artifact before deployment. Keep test accounts, money, orders, Keys, Workspaces, receipts, seeds, snapshots and volumes in independent non-production stores/resources. Validate the same immutable artifact externally, with reports outside the production business Ledger. A deployment mode named development that selects the production environment is not a test environment. |
+
+The artifact and data isolation portion of D6 precedes any deployment of these
+changes. It is a bounded release prerequisite, not a new test platform or a
+reason to expand D2's customer billing scope.
+
 The accepted delivery target is public registration with zero initial balance,
 administrator top-up, controlled Workspace purchase, complete lifecycle
 recovery, and one portable Candidate qualified without changing its bytes. The

@@ -28,6 +28,9 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | --- | --- | --- |
 | Audited source baseline | Documentation reconciliation inspected remote `main` at `efb5f07b` on 2026-09-07, including merged Console UX-03 and Support retirement | Deployment, public Release, production acceptance, or a permanently current `main` identity |
 | Local Console simplification | On 2026-09-09, the local diff over `b1d811ea` removed unused presentation helpers, route sensitivity metadata and duplicate selected-Key ID state; 39 focused route, API lifecycle, Gateway Usage and logout/Secret tests plus `npm run verify:local` passed | Canonical merge, Candidate qualification or deployment |
+| D1 local finance development | The 2026-09-08 worktree on `b1d811eab2a2fcff5d77b4cf9685e801d7681360` passes `verify:local:full` with zero PostgreSQL test skips, 6 HTTP business chains plus 11 reservation/CAS cases under race, and focused Renewal/Wallet recovery race tests | Canonical merge, actual Gateway adoption, a released Candidate, provider capacity, or production financial qualification |
+| D2 local reconciliation and customer billing | The retained 2026-09-08 cumulative worktree passes `verify:local:full` with zero PostgreSQL skips; original purchase/renewal/refund HTTP chains, pending and recovery, exact receipt lookup beyond 10k history, historical schema-2 financial readback, race checks and desktop/mobile billing tests pass | Canonical merge, actual Gateway adoption, a deployed Candidate or Tencent/TKE production qualification |
+| D1 isolated Sub2API | Cloud's real HTTP client and isolated patched Sub2API pass original-transaction lookup, atomic insufficient-balance rejection, concurrent debit/refund, response-loss recovery and historical unverified-debit rejection | Production Gateway byte identity or adoption; a local patched image is not a published upstream release |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
@@ -100,6 +103,28 @@ The detailed dependency and operation boundaries remain in
 [implementation-architecture.md](./implementation-architecture.md).
 
 ## Retained Runtime Evidence
+
+The D1 local finance evidence is retained outside Git at
+`/Users/huangrende/Documents/ChatGPT/d1-delivery-20260908/VALIDATION.md` and its
+`logs/` and `sub2api/` artifacts. The business chains use real Control Plane,
+HTTP clients, PostgreSQL and Ledger, with explicit Sub2API/Fabric fixtures.
+They exercise concurrent partial refunds, account/amount conflicts, response
+loss, restart and receipt-only recovery. Isolated real Sub2API evidence is a
+separate layer; its applied-amount patch must precede Cloud adoption. Historical
+transactions without a verified applied amount remain unverified. The actual
+production Gateway image identity and adoption are still an Instance obligation.
+
+D2 local source evidence is retained separately at
+`/Users/huangrende/Documents/ChatGPT/d2-delivery-20260908/VALIDATION.md`, with
+`cloud.patch`, `source-manifest.json` and `logs/`. Its snapshot includes the
+retained D1 changes; it does not overwrite the D1 snapshot. Tests prove two
+purchases plus partial refunds, all paid renewal periods after Workspace
+removal, missing/conflicting/duplicate receipts, normal receipt progress without
+blocking new buyers, manual-review refund recovery, automatic refund accounting,
+and schema-2 historical readback. Ledger migration and exact lookup pass with
+10,005 retained receipts. The final full local run passes PostgreSQL and Docker
+integration with no required skips. Tests use separate local stores and fixtures;
+engineering evidence is not written into the production business Ledger.
 
 The 2026-08-19 Local-Docker runs covered two ownership modes:
 

@@ -86,10 +86,14 @@ func TestMemoryBillingReconciliationAuditConflictRollsBackGuard(t *testing.T) {
 
 func TestWorkspaceLaunchFailsClosedWhenReconciliationReadFails(t *testing.T) {
 	fixture := newBillingReconciliationFixture(t)
+	before, err := fixture.store.ListRuntimeOperations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	fixture.store.reconciliationErr = errors.New("reconciliation store unavailable")
 	response := requestWithMutationKeyForTest(t, fixture.server, fixture.member, http.MethodPost, "/api/workspace-launches", `{"name":"Alpha","packageId":"basic","autoRenew":false}`, "guard-read-failure")
 	assertErrorResponse(t, response.Code, response.Body.String(), http.StatusInternalServerError, "state_read_failed")
-	if len(*fixture.calls) != 0 || len(fixture.sub2API.charges) != 0 || len(fixture.store.runtimeOps) != 0 {
+	if len(*fixture.calls) != 0 || len(fixture.sub2API.charges) != 0 || len(fixture.store.runtimeOps) != len(before) {
 		t.Fatalf("guard read failure reached downstream mutation: fabric=%#v charges=%#v operations=%#v", *fixture.calls, fixture.sub2API.charges, fixture.store.runtimeOps)
 	}
 }

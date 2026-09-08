@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 type LedgerClient interface {
@@ -83,16 +85,22 @@ type Receipt struct {
 }
 
 type ReceiptQuery struct {
-	AccountID  string
-	TypePrefix string
-	Cursor     string
-	Limit      int
+	AccountID            string
+	WorkspaceID          string
+	RequestID            string
+	Type                 string
+	TypePrefix           string
+	IncludeType          string
+	IncludeExecutionKind string
+	Cursor               string
+	Limit                int
 }
 
 type ReceiptPage struct {
-	Receipts   []Receipt `json:"receipts"`
-	NextCursor string    `json:"nextCursor"`
-	HasMore    bool      `json:"hasMore"`
+	Lookup     *contracts.ReceiptLookupScope `json:"lookup,omitempty"`
+	Receipts   []Receipt                     `json:"receipts"`
+	NextCursor string                        `json:"nextCursor"`
+	HasMore    bool                          `json:"hasMore"`
 }
 
 type ledgerHTTPClient struct {
@@ -138,6 +146,12 @@ func (c *ledgerHTTPClient) ListReceipts(ctx context.Context, query ReceiptQuery)
 	if query.Limit < 1 || query.Limit > 100 {
 		return ReceiptPage{}, fmt.Errorf("ledger receipt limit must be between 1 and 100")
 	}
+	if (query.Type != "" && query.TypePrefix != "") ||
+		(query.RequestID != "" && query.AccountID == "") ||
+		(query.IncludeExecutionKind != "" && query.IncludeType == "") ||
+		(query.IncludeType != "" && query.Type == "" && query.TypePrefix == "") {
+		return ReceiptPage{}, fmt.Errorf("invalid Ledger receipt query")
+	}
 	values := url.Values{
 		"accountId": {query.AccountID},
 		"limit":     {fmt.Sprint(query.Limit)},
@@ -145,12 +159,56 @@ func (c *ledgerHTTPClient) ListReceipts(ctx context.Context, query ReceiptQuery)
 	if query.TypePrefix != "" {
 		values.Set("typePrefix", query.TypePrefix)
 	}
+	if query.Type != "" {
+		values.Set("type", query.Type)
+	}
+	if query.IncludeType != "" {
+		values.Set("includeType", query.IncludeType)
+	}
+	if query.IncludeExecutionKind != "" {
+		values.Set("includeExecutionKind", query.IncludeExecutionKind)
+	}
+	if query.WorkspaceID != "" {
+		values.Set("workspaceId", query.WorkspaceID)
+	}
+	if query.RequestID != "" {
+		values.Set("requestId", query.RequestID)
+	}
 	if query.Cursor != "" {
 		values.Set("cursor", query.Cursor)
 	}
 	var result ReceiptPage
-	err := c.getScoped(ctx, "/ledger/receipts?"+values.Encode(), query.AccountID, "", &result)
-	return result, err
+	if err := c.getScoped(ctx, "/ledger/receipts?"+values.Encode(), query.AccountID, query.WorkspaceID, &result); err != nil {
+		return ReceiptPage{}, err
+	}
+	if query.RequestID != "" || query.IncludeType != "" {
+		expected := contracts.ReceiptLookupScope{
+			AccountID: query.AccountID, WorkspaceID: query.WorkspaceID, RequestID: query.RequestID,
+			Type: query.Type, TypePrefix: query.TypePrefix,
+			IncludeType: query.IncludeType, IncludeExecutionKind: query.IncludeExecutionKind,
+		}
+		if result.Lookup == nil || *result.Lookup != expected {
+			return ReceiptPage{}, fmt.Errorf("Ledger receipt lookup scope was not confirmed")
+		}
+	}
+	if result.Receipts == nil || len(result.Receipts) > query.Limit ||
+		(result.HasMore && (result.NextCursor == "" || result.NextCursor == query.Cursor || len(result.Receipts) == 0)) ||
+		(!result.HasMore && result.NextCursor != "") {
+		return ReceiptPage{}, fmt.Errorf("invalid Ledger receipt pagination")
+	}
+	for _, receipt := range result.Receipts {
+		primaryType := (query.Type == "" || receipt.Type == query.Type) &&
+			(query.TypePrefix == "" || strings.HasPrefix(receipt.Type, query.TypePrefix))
+		kind, _ := receipt.Execution["kind"].(string)
+		includedType := query.IncludeType != "" && receipt.Type == query.IncludeType &&
+			(query.IncludeExecutionKind == "" || kind == query.IncludeExecutionKind)
+		if receipt.ReceiptID == "" || (query.AccountID != "" && receipt.AccountID != query.AccountID) ||
+			(query.WorkspaceID != "" && receipt.WorkspaceID != query.WorkspaceID) ||
+			(query.RequestID != "" && receipt.RequestID != query.RequestID) || (!primaryType && !includedType) {
+			return ReceiptPage{}, fmt.Errorf("Ledger receipt does not match the requested scope")
+		}
+	}
+	return result, nil
 }
 
 func (c *ledgerHTTPClient) Receipt(ctx context.Context, receiptID string) (Receipt, error) {

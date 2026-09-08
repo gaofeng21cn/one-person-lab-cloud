@@ -606,6 +606,7 @@ export async function startQualificationAuthority(input) {
             code: normalized.code,
             userId: qualificationUserID,
             valueUsdMicros,
+            balanceAppliedValueUsdMicros: valueUsdMicros,
             notes: normalized.notes,
             status: "used",
             usedAt,
@@ -631,9 +632,37 @@ export async function startQualificationAuthority(input) {
           code: debit.code,
           type: "balance",
           value: usdNumber(debit.valueUsdMicros),
+          balance_applied_value: debit.balanceAppliedValueUsdMicros === undefined ? null : usdNumber(debit.balanceAppliedValueUsdMicros),
           status: debit.status,
           used_by: debit.userId
         } });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/v1/admin/redeem-codes/by-code") {
+        const code = url.searchParams.get("code");
+        const userID = Number(url.searchParams.get("user_id"));
+        if (!code || !Number.isSafeInteger(userID) || userID <= 0) {
+          failure(response, 400, "invalid_financial_lookup");
+          return;
+        }
+        const debit = state.adjustments.find((candidate) => candidate.code === code);
+        if (debit && debit.userId !== userID) {
+          failure(response, 409, "financial_owner_conflict");
+          return;
+        }
+        if (debit && debit.balanceAppliedValueUsdMicros === undefined) {
+          failure(response, 409, "BALANCE_ADJUSTMENT_UNVERIFIED");
+          return;
+        }
+        success(response, {
+          lookup: "exact_code_v1",
+          redeem_code: debit ? {
+            code: debit.code, type: "balance", value: usdNumber(debit.valueUsdMicros), status: debit.status,
+            balance_applied_value: usdNumber(debit.balanceAppliedValueUsdMicros),
+            used_by: debit.userId, used_at: debit.usedAt, created_at: debit.createdAt
+          } : null
+        });
         return;
       }
 
@@ -643,6 +672,7 @@ export async function startQualificationAuthority(input) {
           code: debit.code,
           type: "balance",
           value: usdNumber(debit.valueUsdMicros),
+          balance_applied_value: debit.balanceAppliedValueUsdMicros === undefined ? null : usdNumber(debit.balanceAppliedValueUsdMicros),
           status: debit.status,
           used_by: debit.userId,
           used_at: debit.usedAt,

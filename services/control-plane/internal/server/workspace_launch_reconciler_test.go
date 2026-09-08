@@ -45,7 +45,13 @@ func (c workspaceLaunchReceiptLedgerClient) ListReceipts(_ context.Context, quer
 	if query.AccountID == "" {
 		return clients.ReceiptPage{}, errors.New("account scope required")
 	}
-	return clients.ReceiptPage{Receipts: c.receipts}, nil
+	receipts := []clients.Receipt{}
+	for _, receipt := range c.receipts {
+		if (query.RequestID == "" || receipt.RequestID == query.RequestID) && (query.WorkspaceID == "" || receipt.WorkspaceID == query.WorkspaceID) {
+			receipts = append(receipts, receipt)
+		}
+	}
+	return clients.ReceiptPage{Receipts: receipts}, nil
 }
 
 func (s *workspaceLaunchUnitStore) GetRuntimeOperation(_ context.Context, id string) (map[string]any, bool, error) {

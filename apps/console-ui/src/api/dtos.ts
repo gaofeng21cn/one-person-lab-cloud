@@ -497,6 +497,9 @@ export interface GatewayBalanceHistoryPageDTO {
 
 export interface BillingReceipt {
   receiptId: string;
+  operationId?: string;
+  relatedOperationId?: string;
+  kind?: "business_refund";
   type: string;
   status: string;
   workspaceId: string;

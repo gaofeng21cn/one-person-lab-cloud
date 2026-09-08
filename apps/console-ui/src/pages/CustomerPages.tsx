@@ -17,10 +17,11 @@ import {
   presentBalanceHistoryStatus,
   presentBalanceHistoryType,
   presentBillingReceiptType,
+  presentBillingReceiptAmount,
   presentBillingStatus
 } from "../app/customer-experience-model.ts";
 import { presentWorkspaceRenewal } from "../app/workspace-experience-model.ts";
-import type { AnnouncementDTO, BillingReceipt, SourceEnvelope } from "../api/dtos.ts";
+import type { AnnouncementDTO, SourceEnvelope } from "../api/dtos.ts";
 import { GatewayUsagePage } from "../components/gateway-usage/GatewayUsagePage.tsx";
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPage.tsx";
@@ -38,10 +39,6 @@ function assertNever(value: never): never {
 
 function sourceData<T>(source: SourceEnvelope<T> | null | undefined): T | null {
   return source?.available ? source.data : null;
-}
-
-function receiptAmount(receipt: BillingReceipt) {
-  return receipt.refundUsdMicros ?? receipt.chargeUsdMicros ?? receipt.totalUsdMicros;
 }
 
 function ReceiptWorkspaceIdentity({ workspaceId, workspaceName }: { workspaceId?: string; workspaceName: string }) {
@@ -141,8 +138,8 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
           >
             {() => <div className="overview-receipt-list">{receipts.map((receipt) => (
               <button key={receipt.receiptId} onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} type="button">
-                <span><strong>{presentBillingReceiptType(receipt.type).label}</strong><small>{formatDate(receipt.createdAt, true)}</small></span>
-                <span><strong>{formatUsdMicros(receiptAmount(receipt))}</strong><small>{presentBillingStatus(receipt.status).label}</small></span>
+                <span><strong>{presentBillingReceiptType(receipt.type, receipt.kind).label}</strong><small>{formatDate(receipt.createdAt, true)}</small></span>
+                <span><strong>{presentBillingReceiptAmount(receipt)}</strong><small>{presentBillingStatus(receipt.status).label}</small></span>
                 <ChevronRight aria-hidden size={17} />
               </button>
             ))}</div>}
@@ -216,6 +213,7 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
   const workspaces = sourceData(workspaceRead.workspaces.value)?.items || [];
   const workspaceName = (workspaceId?: string) => workspaces.find((item) => item.id === workspaceId)?.name || "工作空间名称暂不可用";
   return <section className="billing-page">
+    <p>工作空间月费与 API 用量从同一账户余额扣除；退款退回原账户余额。<PageLink controller={controller} path="/console/api/usage">查看 API 用量</PageLink></p>
     <SegmentedControl ariaLabel="费用视图" block onChange={(value) => billing.setView(value)} options={[{ value: "terms", label: "订阅与续费" }, { value: "receipts", label: "账单记录" }]} value={billing.view} />
     {billing.view === "terms" ? <section className="panel billing-surface" data-slide="C-BIL-01"><div className="panel-title"><h2>订阅与续费</h2></div><SourceState source={workspaceRead.workspaces.value} empty={workspaceRead.workspaces.value?.status === "empty"} emptyTitle="暂无订阅" error={workspaceRead.workspaces.error} errorDescription="暂时无法读取订阅与续费信息，请稍后重试。" loading={workspaceRead.workspaces.loading} onRetry={() => void workspaceRead.refresh()} unavailableDescription="暂时无法读取订阅与续费信息，请稍后重试。" unavailableTitle="订阅与续费暂不可用">{(data) => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>工作空间</th><th>套餐</th><th>月度总价</th><th>计费周期</th><th>续费状态</th><th>自动续费</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td><PageLink controller={controller} path={`/console/workspaces/${encodeURIComponent(item.id)}`}>{item.name || "未命名工作空间"}</PageLink></td><td>{item.packageId?.toUpperCase() || "-"}</td><td>{formatUsdMicros(item.totalUsdMicros)}</td><td>{item.periodStart && item.paidThrough ? `${formatDate(item.periodStart)} 至 ${formatDate(item.paidThrough)}` : "-"}</td><td>{presentWorkspaceRenewal(item.renewalStatus).label}</td><td>{item.autoRenew === true ? "开启" : item.autoRenew === false ? "关闭" : "-"}</td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{data.items.map((item) => {
       const path = item.id ? `/console/workspaces/${encodeURIComponent(item.id)}` : null;
@@ -230,7 +228,7 @@ function BillingPage({ controller }: { controller: ConsoleController }) {
         ? <PageLink className="billing-subscription-mobile" controller={controller} key={item.id} path={path}>{card}</PageLink>
         : <div className="billing-subscription-mobile billing-subscription-mobile--static" key={item.id || item.name} role="listitem">{card}</div>;
     })}</div><Pagination current={workspaceRead.page} label="订阅分页" onChange={(page) => void workspaceRead.changePage(page)} pages={workspaceRead.pages} /></>}</SourceState></section> : <>
-      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>账单记录</h2><span>按时间顺序分页</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单记录" error={billing.receipts.error} errorDescription="暂时无法读取账单记录，请稍后重试。" loading={billing.receipts.loading} onRetry={() => void billing.refresh()} unavailableDescription="暂时无法读取账单记录，请稍后重试。" unavailableTitle="账单记录暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>工作空间</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{presentBillingReceiptType(item.type).label}</td><td><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /></td><td>{formatUsdMicros(receiptAmount(item))}</td><td>{presentBillingStatus(item.status).label}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span className="billing-receipt-mobile__identity"><strong>{presentBillingReceiptType(item.type).label}</strong><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /><small>{formatDate(item.createdAt, true)}</small></span><span className="billing-receipt-mobile__result"><strong>{formatUsdMicros(receiptAmount(item))}</strong><small>{presentBillingStatus(item.status).label}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
+      <section className="panel billing-surface" data-slide="C-BIL-02"><div className="panel-title"><h2>账单记录</h2><span>按时间顺序分页</span></div><SourceState source={billing.receipts.value} empty={billing.receipts.value?.status === "empty"} emptyTitle="暂无账单记录" error={billing.receipts.error} errorDescription="暂时无法读取账单记录，请稍后重试。" loading={billing.receipts.loading} onRetry={() => void billing.refresh()} unavailableDescription="暂时无法读取账单记录，请稍后重试。" unavailableTitle="账单记录暂不可用">{() => <><div className="table-wrap billing-table-desktop"><table><thead><tr><th>时间</th><th>类型</th><th>工作空间</th><th>金额</th><th>状态</th><th>操作</th></tr></thead><tbody>{receipts.map((item) => <tr key={item.receiptId}><td>{formatDate(item.createdAt, true)}</td><td>{presentBillingReceiptType(item.type, item.kind).label}</td><td><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /></td><td>{presentBillingReceiptAmount(item)}</td><td>{presentBillingStatus(item.status).label}</td><td><Button onClick={() => void billing.openReceipt(item.receiptId)} size="sm" variant="ghost">查看</Button></td></tr>)}</tbody></table></div><div className="billing-list-mobile" role="list">{receipts.map((item) => <button key={item.receiptId} onClick={() => void billing.openReceipt(item.receiptId)} role="listitem"><span className="billing-receipt-mobile__identity"><strong>{presentBillingReceiptType(item.type, item.kind).label}</strong><ReceiptWorkspaceIdentity workspaceId={item.workspaceId} workspaceName={workspaceName(item.workspaceId)} /><small>{formatDate(item.createdAt, true)}</small></span><span className="billing-receipt-mobile__result"><strong>{presentBillingReceiptAmount(item)}</strong><small>{presentBillingStatus(item.status).label}</small></span><ChevronRight aria-hidden size={18} /></button>)}</div><ReceiptCursorNotice controller={billing} /></>}</SourceState></section>
       {billing.selectedReceiptId ? <ReceiptDetail controller={billing} workspaceName={workspaceName(receipt?.workspaceId)} /> : null}
     </>}
   </section>;
@@ -243,7 +241,7 @@ function ReceiptCursorNotice({ controller }: { controller: BillingController }) 
 }
 
 function ReceiptDetail({ controller, workspaceName }: { controller: BillingController; workspaceName: string }) {
-  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.closeReceipt} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.detail.error} errorDescription="暂时无法读取收据详情，请稍后重试。" loading={controller.detail.loading} onRetry={() => controller.selectedReceiptId && void controller.openReceipt(controller.selectedReceiptId)} source={controller.detail.value} unavailableDescription="暂时无法读取收据详情，请稍后重试。" unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>类型</dt><dd>{presentBillingReceiptType(detail.type).label}</dd></div><div><dt>状态</dt><dd>{presentBillingStatus(detail.status).label}</dd></div><div><dt>日期</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>金额</dt><dd>{formatUsdMicros(receiptAmount(detail))}</dd></div><div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>工作空间</dt><dd><ReceiptWorkspaceIdentity workspaceId={detail.workspaceId} workspaceName={workspaceName} /></dd></div></dl>}</SourceState></section>;
+  return <section className="panel receipt-detail" data-slide="C-BIL-03"><div className="panel-title"><h2>收据详情</h2><Button aria-label="关闭收据详情" onClick={controller.closeReceipt} size="sm" variant="ghost">关闭</Button></div><SourceState error={controller.detail.error} errorDescription="暂时无法读取收据详情，请稍后重试。" loading={controller.detail.loading} onRetry={() => controller.selectedReceiptId && void controller.openReceipt(controller.selectedReceiptId)} source={controller.detail.value} unavailableDescription="暂时无法读取收据详情，请稍后重试。" unavailableTitle="收据详情暂不可用">{(detail) => <dl className="data-list"><div><dt>类型</dt><dd>{presentBillingReceiptType(detail.type, detail.kind).label}</dd></div><div><dt>状态</dt><dd>{presentBillingStatus(detail.status).label}</dd></div><div><dt>日期</dt><dd>{formatDate(detail.createdAt, true)}</dd></div><div><dt>金额</dt><dd>{presentBillingReceiptAmount(detail)}</dd></div><div><dt>计费周期</dt><dd>{detail.periodStart && detail.paidThrough ? `${formatDate(detail.periodStart)} 至 ${formatDate(detail.paidThrough)}` : "-"}</dd></div><div><dt>工作空间</dt><dd><ReceiptWorkspaceIdentity workspaceId={detail.workspaceId} workspaceName={workspaceName} /></dd></div>{detail.operationId ? <div><dt>订单编号</dt><dd>{detail.operationId}</dd></div> : null}{detail.relatedOperationId ? <div><dt>原订单编号</dt><dd>{detail.relatedOperationId}</dd></div> : null}{detail.refundUsdMicros !== undefined ? <div><dt>退款去向</dt><dd>原账户余额</dd></div> : null}</dl>}</SourceState></section>;
 }
 
 function AnnouncementRows({ announcements, compact, controller }: { announcements: AnnouncementDTO[]; compact?: boolean; controller: CustomerAnnouncementController }) {

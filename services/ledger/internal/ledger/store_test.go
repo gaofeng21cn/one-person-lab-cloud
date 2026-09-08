@@ -417,7 +417,7 @@ func testWorkspaceBillingReceiptSchema(t *testing.T, store Store) {
 			}
 		})
 	}
-	for _, field := range []string{"sub2apiUserId", "sub2apiRedeemCode", "postChargeBalanceUsdMicros"} {
+	for _, field := range []string{"sub2apiUserId", "sub2apiRedeemCode"} {
 		t.Run("renewed missing "+field, func(t *testing.T) {
 			input := validWorkspaceBillingReceiptInput("billing.workspace_renewed.v1")
 			delete(input.Cost, field)
@@ -426,6 +426,39 @@ func testWorkspaceBillingReceiptSchema(t *testing.T, store Store) {
 				t.Fatalf("error=%v, want ErrInvalidReceiptInput", err)
 			}
 		})
+	}
+	for _, receiptType := range []string{"billing.workspace_purchased.v1", "billing.workspace_renewed.v1"} {
+		t.Run(receiptType+" confirmed charge without wallet snapshot", func(t *testing.T) {
+			input := validWorkspaceBillingReceiptInput(receiptType)
+			if receiptType == "billing.workspace_purchased.v1" {
+				input = validWorkspaceLaunchReceiptInput(receiptType)
+				input.RequestID += "-without-wallet-snapshot"
+				input.Execution["operationId"] = input.RequestID
+				input.IdempotencyKey = input.RequestID + ":purchase-receipt"
+			} else {
+				input.IdempotencyKey += "-without-wallet-snapshot"
+			}
+			delete(input.Cost, "postChargeBalanceUsdMicros")
+			receipt, err := store.RecordReceipt(ctx, input)
+			if err != nil {
+				t.Fatalf("confirmed charge receipt: %v", err)
+			}
+			if _, present := receipt.Cost["postChargeBalanceUsdMicros"]; present {
+				t.Fatal("receipt invented an unobserved wallet balance")
+			}
+		})
+		for _, balance := range []any{int64(-1), 0.5, "unknown", nil} {
+			t.Run(receiptType+" invalid optional wallet snapshot", func(t *testing.T) {
+				input := validWorkspaceBillingReceiptInput(receiptType)
+				if receiptType == "billing.workspace_purchased.v1" {
+					input = validWorkspaceLaunchReceiptInput(receiptType)
+				}
+				input.Cost["postChargeBalanceUsdMicros"] = balance
+				if _, err := store.RecordReceipt(ctx, input); !errors.Is(err, ErrInvalidReceiptInput) {
+					t.Fatalf("invalid wallet snapshot error=%v, want ErrInvalidReceiptInput", err)
+				}
+			})
+		}
 	}
 	for _, field := range []string{"sub2apiUserId", "sub2apiRedeemCode", "sub2apiRefundCode", "refundUsdMicros"} {
 		t.Run("refunded missing "+field, func(t *testing.T) {

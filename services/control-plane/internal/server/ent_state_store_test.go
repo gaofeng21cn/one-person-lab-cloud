@@ -507,6 +507,7 @@ func TestWalletAdjustmentRuntimeOperationRoundTrips(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &controlPlaneServer{tables: tc.new(t)}
+			seedOperatorProjectionAccount(t, app.tables, "acct-wallet", "usr-wallet", "wallet@example.com", 41)
 			operation := walletAdjustmentOperation{
 				RequestHash: "wallet-request-hash", Phase: "authoritative_readback", AccountID: "acct-wallet", Sub2APIUserID: 41,
 				Kind: "debit", AmountUSDMicros: 2_500_000, AmountUSD: "2.50", Reason: "manual correction", ActorUserID: "usr-admin",

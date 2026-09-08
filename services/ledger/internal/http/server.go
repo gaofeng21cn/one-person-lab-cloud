@@ -62,16 +62,19 @@ func NewServerWithAuth(store ledger.Store, token, capabilityKey string) http.Han
 	mux.HandleFunc("GET /ledger/receipts", func(w http.ResponseWriter, r *http.Request) {
 		values := r.URL.Query()
 		query := ledger.ReceiptQuery{
-			AccountID:      values.Get("accountId"),
-			OrganizationID: values.Get("organizationId"),
-			WorkspaceID:    values.Get("workspaceId"),
-			ProjectID:      values.Get("projectId"),
-			TaskID:         values.Get("taskId"),
-			JobID:          values.Get("jobId"),
-			Type:           values.Get("type"),
-			TypePrefix:     values.Get("typePrefix"),
-			Status:         values.Get("status"),
-			Cursor:         values.Get("cursor"),
+			AccountID:            values.Get("accountId"),
+			OrganizationID:       values.Get("organizationId"),
+			WorkspaceID:          values.Get("workspaceId"),
+			RequestID:            values.Get("requestId"),
+			ProjectID:            values.Get("projectId"),
+			TaskID:               values.Get("taskId"),
+			JobID:                values.Get("jobId"),
+			Type:                 values.Get("type"),
+			TypePrefix:           values.Get("typePrefix"),
+			IncludeType:          values.Get("includeType"),
+			IncludeExecutionKind: values.Get("includeExecutionKind"),
+			Status:               values.Get("status"),
+			Cursor:               values.Get("cursor"),
 		}
 		if rawLimit := values.Get("limit"); rawLimit != "" {
 			limit, err := strconv.Atoi(rawLimit)

@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 var ErrIdempotencyConflict = errors.New("idempotency key already used with different payload")
@@ -114,23 +116,27 @@ const (
 )
 
 type ReceiptQuery struct {
-	AccountID      string
-	OrganizationID string
-	WorkspaceID    string
-	ProjectID      string
-	TaskID         string
-	JobID          string
-	Type           string
-	TypePrefix     string
-	Status         string
-	Cursor         string
-	Limit          int
+	AccountID            string
+	OrganizationID       string
+	WorkspaceID          string
+	RequestID            string
+	ProjectID            string
+	TaskID               string
+	JobID                string
+	Type                 string
+	TypePrefix           string
+	IncludeType          string
+	IncludeExecutionKind string
+	Status               string
+	Cursor               string
+	Limit                int
 }
 
 type ReceiptPage struct {
-	Receipts   []Receipt `json:"receipts"`
-	NextCursor string    `json:"nextCursor"`
-	HasMore    bool      `json:"hasMore"`
+	Lookup     *contracts.ReceiptLookupScope `json:"lookup,omitempty"`
+	Receipts   []Receipt                     `json:"receipts"`
+	NextCursor string                        `json:"nextCursor"`
+	HasMore    bool                          `json:"hasMore"`
 }
 
 type receiptCursor struct {
@@ -148,6 +154,13 @@ func normalizeReceiptQuery(query ReceiptQuery) (ReceiptQuery, receiptCursor, err
 	if query.Type != "" && query.TypePrefix != "" {
 		return ReceiptQuery{}, receiptCursor{}, ErrInvalidReceiptQuery
 	}
+	if query.RequestID != "" && query.AccountID == "" {
+		return ReceiptQuery{}, receiptCursor{}, ErrInvalidReceiptQuery
+	}
+	if (query.IncludeExecutionKind != "" && query.IncludeType == "") ||
+		(query.IncludeType != "" && query.Type == "" && query.TypePrefix == "") {
+		return ReceiptQuery{}, receiptCursor{}, ErrInvalidReceiptQuery
+	}
 	if query.Cursor == "" {
 		return query, receiptCursor{}, nil
 	}
@@ -160,6 +173,17 @@ func normalizeReceiptQuery(query ReceiptQuery) (ReceiptQuery, receiptCursor, err
 		return ReceiptQuery{}, receiptCursor{}, ErrInvalidReceiptQuery
 	}
 	return query, cursor, nil
+}
+
+func receiptLookupScope(query ReceiptQuery) *contracts.ReceiptLookupScope {
+	if query.RequestID == "" && query.IncludeType == "" {
+		return nil
+	}
+	return &contracts.ReceiptLookupScope{
+		AccountID: query.AccountID, WorkspaceID: query.WorkspaceID, RequestID: query.RequestID,
+		Type: query.Type, TypePrefix: query.TypePrefix,
+		IncludeType: query.IncludeType, IncludeExecutionKind: query.IncludeExecutionKind,
+	}
 }
 
 func encodeReceiptCursor(receipt Receipt) string {
@@ -423,11 +447,20 @@ func validBillingCost(cost map[string]any) bool {
 
 func validWorkspaceBillingCost(cost map[string]any, receiptType string) bool {
 	wantFields := map[string]int{
-		"billing.workspace_purchased.v1": 12,
-		"billing.workspace_renewed.v1":   12,
+		"billing.workspace_purchased.v1": 11,
+		"billing.workspace_renewed.v1":   11,
 		"billing.workspace_expired.v1":   9,
 		"billing.workspace_refunded.v1":  13,
 	}[receiptType]
+	if receiptType == "billing.workspace_purchased.v1" || receiptType == "billing.workspace_renewed.v1" {
+		if balance, present := cost["postChargeBalanceUsdMicros"]; present {
+			postCharge, ok := integerValue(balance)
+			if !ok || postCharge < 0 {
+				return false
+			}
+			wantFields++
+		}
+	}
 	if len(cost) != wantFields || cost["currency"] != "USD" || cost["billingUnit"] != "calendar_month" || cost["resourceType"] != "workspace" {
 		return false
 	}
@@ -475,8 +508,7 @@ func validWorkspaceBillingCost(cost map[string]any, receiptType string) bool {
 		return false
 	}
 	if receiptType == "billing.workspace_purchased.v1" || receiptType == "billing.workspace_renewed.v1" {
-		postCharge, ok := integerValue(cost["postChargeBalanceUsdMicros"])
-		return ok && postCharge >= 0
+		return true
 	}
 	refund, refundOK := integerValue(cost["refundUsdMicros"])
 	refundCode, refundCodeOK := cost["sub2apiRefundCode"].(string)
@@ -520,6 +552,11 @@ var reconciliationExceptionCodes = map[string]bool{
 	"sub2api_balance_history_unavailable": true,
 	"sub2api_charge_missing":              true,
 	"sub2api_charge_mismatch":             true,
+	"sub2api_refund_missing":              true,
+	"sub2api_refund_mismatch":             true,
+	"billing_refund_source_invalid":       true,
+	"billing_refund_limit_exceeded":       true,
+	"billing_transaction_duplicate":       true,
 	"fabric_operations_unavailable":       true,
 	"fabric_operation_missing":            true,
 	"fabric_operation_mismatch":           true,
@@ -553,8 +590,16 @@ func validateReconciliationReport(report map[string]any) error {
 	}
 	checked, checkedOK := integerValue(counts["billingOperations"])
 	matched, matchedOK := integerValue(counts["matched"])
+	pending := int64(0)
+	if value, present := counts["pending"]; present {
+		var valid bool
+		pending, valid = integerValue(value)
+		if !valid || pending < 0 {
+			return ErrInvalidReconciliationInput
+		}
+	}
 	exceptionCount, exceptionCountOK := integerValue(counts["exceptions"])
-	if !checkedOK || !matchedOK || !exceptionCountOK || checked < 0 || matched < 0 || exceptionCount < 0 || matched > checked || exceptionCount != int64(len(exceptions)) {
+	if !checkedOK || !matchedOK || !exceptionCountOK || checked < 0 || matched < 0 || exceptionCount < 0 || matched > checked || pending > checked-matched || exceptionCount != int64(len(exceptions)) {
 		return ErrInvalidReconciliationInput
 	}
 	for _, value := range counts {
@@ -575,9 +620,29 @@ func validateReconciliationReport(report map[string]any) error {
 		if !resourceTypeOK || (resourceType != "compute" && resourceType != "storage" && resourceType != "workspace") || !resourceIDOK || !isOpaqueReference(resourceID) || !codeOK || !reconciliationExceptionCodes[code] {
 			return ErrInvalidReconciliationInput
 		}
-		exceptionResources[resourceType+"\x00"+resourceID] = true
+		identity := resourceType + "\x00" + resourceID
+		if operationID, present := exception["operationId"]; present {
+			operation, operationOK := operationID.(string)
+			account, accountOK := exception["accountId"].(string)
+			workspace, workspaceOK := exception["workspaceId"].(string)
+			kind, kindOK := exception["kind"].(string)
+			if !operationOK || !isOpaqueReference(operation) || !accountOK || !isOpaqueReference(account) ||
+				!workspaceOK || (workspace != "" && !isOpaqueReference(workspace)) ||
+				(resourceType == "workspace" && workspace != "" && workspace != resourceID) ||
+				!kindOK || (kind != "purchase" && kind != "renewal" && kind != "refund") {
+				return ErrInvalidReconciliationInput
+			}
+			identity = account + "\x00" + operation + "\x00" + kind
+		} else {
+			for _, field := range []string{"accountId", "workspaceId", "kind"} {
+				if _, present := exception[field]; present {
+					return ErrInvalidReconciliationInput
+				}
+			}
+		}
+		exceptionResources[identity] = true
 	}
-	if checked-matched != int64(len(exceptionResources)) || (status == "ok" && len(exceptions) != 0) || (status == "mismatch" && len(exceptions) == 0) {
+	if checked-matched-pending != int64(len(exceptionResources)) || (status == "ok" && len(exceptions) != 0) || (status == "mismatch" && len(exceptions) == 0) {
 		return ErrInvalidReconciliationInput
 	}
 	return nil

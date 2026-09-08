@@ -212,18 +212,22 @@ func workspaceLaunchPurchaseReceiptInput(operation workspaceLaunchReconcileOpera
 	if operation.raw["resourceBillingEnabled"] != nil && !operation.boolFact("resourceBillingEnabled") {
 		return clients.ReceiptInput{Type: "workspace.created", Status: "completed", Surface: "control_plane", AccountID: operation.stringFact("accountId"), WorkspaceID: operation.stringFact("workspaceId"), RequestID: operation.ID, Execution: execution, Owner: owner}, nil
 	}
-	return clients.ReceiptInput{
+	input := clients.ReceiptInput{
 		Type: "billing.workspace_purchased.v1", Status: "completed", Surface: "control_plane", AccountID: operation.stringFact("accountId"),
 		WorkspaceID: operation.stringFact("workspaceId"), RequestID: operation.ID,
 		Execution: execution,
 		Cost: map[string]any{"priceVersion": operation.stringFact("priceVersion"), "currency": pricingCurrency, "billingUnit": pricingBillingUnit,
 			"totalUsdMicros": operation.int64Fact("totalChargeUsdMicros"), "sub2apiUserId": operation.int64Fact("sub2apiUserId"),
-			"sub2apiRedeemCode": operation.stringFact("sub2apiRedeemCode"), "postChargeBalanceUsdMicros": operation.int64Fact("postChargeBalanceUsdMicros"),
-			"periodStart": operation.stringFact("periodStart"), "paidThrough": operation.stringFact("paidThrough"), "resourceType": "workspace", "resourceId": operation.stringFact("workspaceId"),
+			"sub2apiRedeemCode": operation.stringFact("sub2apiRedeemCode"),
+			"periodStart":       operation.stringFact("periodStart"), "paidThrough": operation.stringFact("paidThrough"), "resourceType": "workspace", "resourceId": operation.stringFact("workspaceId"),
 			"components": map[string]any{"compute": map[string]any{"resourceType": "compute", "resourceId": operation.stringFact("computeAllocationId"), "chargeUsdMicros": computePrice},
 				"storage": map[string]any{"resourceType": "storage", "resourceId": operation.stringFact("storageId"), "sizeGb": int64(operation.intFact("sizeGb")), "chargeUsdMicros": storagePrice}}},
 		Owner: owner,
-	}, nil
+	}
+	if operation.boolFact("postChargeBalanceKnown") {
+		input.Cost["postChargeBalanceUsdMicros"] = operation.int64Fact("postChargeBalanceUsdMicros")
+	}
+	return input, nil
 }
 
 func workspaceLaunchAcceptedPriceComponents(operation workspaceLaunchReconcileOperation) (int64, int64, error) {

@@ -214,7 +214,7 @@ func TestSub2APIEmptyListingsRequireV0162Pagination(t *testing.T) {
 			name: "balance history",
 			path: "/api/v1/admin/users/41/balance-history",
 			call: func(client *Sub2APIHTTPClient) error {
-				_, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:target"})
+				_, err := client.BalanceHistoryPage(context.Background(), 41, Sub2APIBalanceHistoryPageQuery{Page: 1, PageSize: 100})
 				return err
 			},
 		},
@@ -228,7 +228,10 @@ func TestSub2APIEmptyListingsRequireV0162Pagination(t *testing.T) {
 					client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 						switch r.URL.Path {
 						case "/api/v1/auth/login":
-							writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
+							writeSub2APISuccess(t, w, struct {
+								AccessToken  string `json:"access_token"`
+								RefreshToken string `json:"refresh_token"`
+							}{"access", "refresh"})
 						case tc.path:
 							pageSize := 100
 							if tc.path == "/api/v1/admin/usage" {
@@ -236,7 +239,13 @@ func TestSub2APIEmptyListingsRequireV0162Pagination(t *testing.T) {
 							} else if tc.path == "/api/v1/admin/users/41/balance-history" {
 								pageSize = 100
 							}
-							writeSub2APISuccess(t, w, map[string]any{"items": []any{}, "total": 0, "page": 1, "page_size": pageSize, "pages": pagination.pages})
+							writeSub2APISuccess(t, w, struct {
+								Items    []json.RawMessage `json:"items"`
+								Total    int               `json:"total"`
+								Page     int               `json:"page"`
+								PageSize int               `json:"page_size"`
+								Pages    int               `json:"pages"`
+							}{Items: []json.RawMessage{}, Page: 1, PageSize: pageSize, Pages: pagination.pages})
 						default:
 							t.Fatalf("unexpected route %s", r.URL.Path)
 						}
@@ -1147,7 +1156,7 @@ func TestSub2APIAdjustmentExactAmount(t *testing.T) {
 			if body["code"] != "opl:production:op-41:charge:v1" || body["type"] != "balance" || body["user_id"] != json.Number("41") || body["value"] != json.Number("-50.000000") {
 				t.Errorf("charge request = %#v", body)
 			}
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:charge:v1","type":"balance","value":-50.000000,"status":"used","used_by":41}}`))
+			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:charge:v1","type":"balance","value":-50.000000,"balance_applied_value":-50.000000,"status":"used","used_by":41}}`))
 		default:
 			t.Errorf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -1225,7 +1234,7 @@ func TestSub2APIClientRefundsWithExactPositiveMicrosAndReplays(t *testing.T) {
 			if body["code"] != "opl:production:op-41:refund:v1" || body["type"] != "balance" || body["user_id"] != json.Number("41") || body["value"] != json.Number("50.000000") {
 				t.Errorf("refund request = %#v", body)
 			}
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:refund:v1","type":"balance","value":50.000000,"status":"used","used_by":41}}`))
+			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:refund:v1","type":"balance","value":50.000000,"balance_applied_value":50.000000,"status":"used","used_by":41}}`))
 		default:
 			t.Errorf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -1363,9 +1372,9 @@ func TestSub2APIClientCapabilitiesDoNotRequestVersion(t *testing.T) {
 					if err := decoder.Decode(&input); err != nil {
 						t.Fatalf("decode balance adjustment: %v", err)
 					}
-					writeSub2APISuccess(t, w, map[string]any{"redeem_code": map[string]any{
-						"code": input.Code, "type": input.Type, "value": input.Value, "status": "used", "used_by": input.UserID,
-					}})
+					writeSub2APISuccess(t, w, struct {
+						RedeemCode sub2APIBalanceHistoryRecord `json:"redeem_code"`
+					}{RedeemCode: sub2APIBalanceHistoryRecord{Code: input.Code, Type: input.Type, Value: &input.Value, BalanceAppliedValue: &input.Value, Status: "used", UsedBy: &input.UserID}})
 				default:
 					http.NotFound(w, r)
 				}
@@ -1389,7 +1398,7 @@ func TestSub2APIClientDetectsSameCodeDifferentValue(t *testing.T) {
 		case "/api/v1/admin/system/version":
 			writeSub2APISuccess(t, w, map[string]any{"version": "0.1.151"})
 		case "/api/v1/admin/redeem-codes/create-and-redeem":
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:replay","type":"balance","value":-50.000000,"status":"used","used_by":41}}`))
+			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:replay","type":"balance","value":-50.000000,"balance_applied_value":-50.000000,"status":"used","used_by":41}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1401,97 +1410,19 @@ func TestSub2APIClientDetectsSameCodeDifferentValue(t *testing.T) {
 	}
 }
 
-func TestSub2APIAdjustmentReplay(t *testing.T) {
-	historyEntry := func(code string, valueUSDMicros int64) map[string]any {
-		return map[string]any{
-			"code": code, "type": "balance", "value": usdMicrosJSON(valueUSDMicros), "status": "used", "used_by": 41,
-			"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
-		}
-	}
-	for _, adjustment := range []struct {
-		name   string
-		code   string
-		signed int64
-		call   func(*Sub2APIHTTPClient) (string, error)
-	}{
-		{name: "charge", code: "opl:replay:charge", signed: -50_000_000, call: func(client *Sub2APIHTTPClient) (string, error) {
-			result, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:replay:charge", ChargeUSDMicros: 50_000_000})
-			return result.Status, err
-		}},
-		{name: "refund", code: "opl:replay:refund", signed: 50_000_000, call: func(client *Sub2APIHTTPClient) (string, error) {
-			result, err := client.Refund(context.Background(), Sub2APIRefundInput{UserID: 41, Code: "opl:replay:refund", RefundUSDMicros: 50_000_000})
-			return result.Status, err
-		}},
-	} {
-		for _, scenario := range []struct {
-			name          string
-			items         func() []any
-			total         int
-			historyStatus int
-			wantErr       error
-		}{
-			{name: "exact", items: func() []any { return []any{historyEntry(adjustment.code, adjustment.signed)} }, total: 1},
-			{name: "different amount", items: func() []any { return []any{historyEntry(adjustment.code, adjustment.signed+1)} }, total: 1, wantErr: ErrSub2APIChargeConflict},
-			{name: "missing", items: func() []any { return []any{historyEntry("opl:other", adjustment.signed)} }, total: 1, wantErr: ErrSub2APIChargeUnknown},
-			{name: "duplicate", items: func() []any {
-				return []any{historyEntry(adjustment.code, adjustment.signed), historyEntry(adjustment.code, adjustment.signed)}
-			}, total: 2, wantErr: ErrSub2APIChargeConflict},
-			{name: "history unavailable", historyStatus: http.StatusServiceUnavailable, wantErr: ErrSub2APIChargeUnknown},
-			{name: "invalid history pagination", items: func() []any { return []any{historyEntry(adjustment.code, adjustment.signed)} }, total: 2, wantErr: ErrSub2APIChargeUnknown},
-		} {
-			t.Run(adjustment.name+" "+scenario.name, func(t *testing.T) {
-				postCalls, historyCalls := 0, 0
-				client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-					switch r.URL.Path {
-					case "/api/v1/auth/login":
-						writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-					case "/api/v1/admin/redeem-codes/create-and-redeem":
-						postCalls++
-						http.Error(w, "conflict", http.StatusConflict)
-					case "/api/v1/admin/users/41/balance-history":
-						historyCalls++
-						if r.URL.Query().Get("type") != "balance" || r.URL.Query().Get("page") != "1" || r.URL.Query().Get("page_size") != "100" {
-							t.Fatalf("history query = %s", r.URL.RawQuery)
-						}
-						if scenario.historyStatus != 0 {
-							http.Error(w, "unavailable", scenario.historyStatus)
-							return
-						}
-						writeSub2APISuccess(t, w, map[string]any{"items": scenario.items(), "total": scenario.total, "page": 1, "page_size": 100, "pages": 1})
-					default:
-						t.Fatalf("unexpected route %s", r.URL.Path)
-					}
-				}, time.Second)
-
-				status, err := adjustment.call(client)
-				if scenario.wantErr == nil {
-					if err != nil || status != "used" {
-						t.Fatalf("confirmed replay status=%q err=%v", status, err)
-					}
-				} else if !errors.Is(err, scenario.wantErr) {
-					t.Fatalf("replay error=%v, want %v", err, scenario.wantErr)
-				}
-				if postCalls != 1 || historyCalls != 1 {
-					t.Fatalf("replay calls post=%d history=%d", postCalls, historyCalls)
-				}
-			})
-		}
-	}
-}
-
 func TestSub2APIAdjustmentUnknown(t *testing.T) {
 	t.Run("conflict diagnostics survive missing replay evidence", func(t *testing.T) {
 		client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
-				writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
+				writeD1Sub2APILogin(t, w)
 			case "/api/v1/admin/redeem-codes/create-and-redeem":
 				w.Header().Set("X-Request-ID", "req-upstream-409")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusConflict)
 				_, _ = w.Write([]byte(`{"code":"redeem_conflict","message":"response-secret"}`))
-			case "/api/v1/admin/users/41/balance-history":
-				writeSub2APISuccess(t, w, map[string]any{"items": []any{}, "total": 0, "page": 1, "pages": 1})
+			case "/api/v1/admin/redeem-codes/by-code":
+				writeSub2APISuccess(t, w, d1ExactHistoryData(t, nil))
 			default:
 				http.NotFound(w, r)
 			}
@@ -1514,7 +1445,7 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 		client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
-				writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
+				writeD1Sub2APILogin(t, w)
 			case "/api/v1/admin/redeem-codes/create-and-redeem":
 				w.Header().Set("X-Request-ID", "req-upstream-503")
 				w.Header().Set("Content-Type", "application/json")
@@ -1542,9 +1473,11 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 		client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
-				writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
+				writeD1Sub2APILogin(t, w)
 			case "/api/v1/admin/system/version":
-				writeSub2APISuccess(t, w, map[string]any{"version": "0.1.151"})
+				writeSub2APISuccess(t, w, struct {
+					Version string `json:"version"`
+				}{"0.1.151"})
 			case "/api/v1/admin/users/41":
 				_, _ = fmt.Fprintf(w, `{"code":0,"message":"success","data":{"id":41,"balance":1,"padding":"%s"}}`, strings.Repeat("x", maxSub2APIResponseBytes))
 			default:
@@ -1557,19 +1490,26 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 	})
 
 	t.Run("charge timeout", func(t *testing.T) {
+		release := make(chan struct{})
+		defer close(release)
 		client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
-				writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
+				writeD1Sub2APILogin(t, w)
 			case "/api/v1/admin/system/version":
-				writeSub2APISuccess(t, w, map[string]any{"version": "0.1.151"})
+				writeSub2APISuccess(t, w, struct {
+					Version string `json:"version"`
+				}{"0.1.151"})
 			case "/api/v1/admin/redeem-codes/create-and-redeem":
-				time.Sleep(100 * time.Millisecond)
-				writeSub2APISuccess(t, w, map[string]any{})
+				<-release
 			default:
 				http.NotFound(w, r)
 			}
-		}, 20*time.Millisecond)
+		}, time.Second)
+		if _, err := client.token(context.Background()); err != nil {
+			t.Fatalf("warm authentication: %v", err)
+		}
+		client.client.Timeout = 20 * time.Millisecond
 
 		_, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:timeout", ChargeUSDMicros: 1_000_000})
 		if !errors.Is(err, ErrSub2APIChargeUnknown) {
@@ -1866,174 +1806,6 @@ func TestSub2APIUsageStatsRejectsInvalidFacts(t *testing.T) {
 			}, time.Second)
 			if _, err := client.UsageStats(context.Background(), Sub2APIUsageStatsQuery{UserID: 41, APIKeyID: 9, Period: "month"}); err == nil {
 				t.Fatalf("invalid stats accepted: %s", data)
-			}
-		})
-	}
-}
-
-func TestSub2APIFinancialBalanceHistoryByCodesReadsAuthoritativeFinalPageAfterTarget(t *testing.T) {
-	requestedPages := []string{}
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/users/41/balance-history":
-			query := r.URL.Query()
-			if query.Get("page_size") != "100" || query.Get("type") != "balance" {
-				t.Fatalf("history query = %s", r.URL.RawQuery)
-			}
-			requestedPages = append(requestedPages, query.Get("page"))
-			page, err := strconv.Atoi(query.Get("page"))
-			if err != nil || page < 1 || page > 3 {
-				t.Fatalf("history page = %q", query.Get("page"))
-			}
-			items := make([]any, 0, 100)
-			for index := 0; index < 100; index++ {
-				code := fmt.Sprintf("opl:filler:%d", (page-1)*100+index)
-				if page == 2 && index == 42 {
-					code = "opl:target"
-				}
-				items = append(items, map[string]any{
-					"code": code, "type": "balance", "value": -52.58, "status": "used", "used_by": 41,
-					"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z", "notes": "must-not-leak",
-				})
-			}
-			writeSub2APISuccess(t, w, map[string]any{"items": items, "total": 300, "page": page, "page_size": 100, "pages": 3})
-		default:
-			t.Fatalf("unexpected route %s", r.URL.Path)
-		}
-	}, time.Second)
-
-	matches, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:target"})
-	if err != nil || !slices.Equal(requestedPages, []string{"1", "2", "3"}) || len(matches) != 1 {
-		t.Fatalf("financial history matches=%#v pages=%#v err=%v", matches, requestedPages, err)
-	}
-	entry := matches["opl:target"]
-	if entry.Code != "opl:target" || entry.ValueUSDMicros != -52_580_000 || entry.UsedBy == nil || *entry.UsedBy != 41 {
-		t.Fatalf("financial history entry = %#v", entry)
-	}
-	encoded, _ := json.Marshal(matches)
-	if strings.Contains(string(encoded), "must-not-leak") || strings.Contains(string(encoded), "notes") {
-		t.Fatalf("financial history leaked upstream fields: %s", encoded)
-	}
-}
-
-func TestSub2APIFinancialBalanceHistoryByCodesRejectsDuplicateOnLaterPage(t *testing.T) {
-	requestedPages := []string{}
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/users/41/balance-history":
-			query := r.URL.Query()
-			if query.Get("page_size") != "100" || query.Get("type") != "balance" {
-				t.Fatalf("history query = %s", r.URL.RawQuery)
-			}
-			requestedPages = append(requestedPages, query.Get("page"))
-			page, err := strconv.Atoi(query.Get("page"))
-			if err != nil || page < 1 || page > 3 {
-				t.Fatalf("history page = %q", query.Get("page"))
-			}
-			count := 100
-			if page == 3 {
-				count = 1
-			}
-			items := make([]any, 0, count)
-			for index := 0; index < count; index++ {
-				code := fmt.Sprintf("opl:filler:%d", (page-1)*100+index)
-				if page == 2 && index == 42 || page == 3 {
-					code = "opl:target"
-				}
-				items = append(items, map[string]any{
-					"code": code, "type": "balance", "value": -52.58, "status": "used", "used_by": 41,
-					"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
-				})
-			}
-			writeSub2APISuccess(t, w, map[string]any{"items": items, "total": 201, "page": page, "page_size": 100, "pages": 3})
-		default:
-			t.Fatalf("unexpected route %s", r.URL.Path)
-		}
-	}, time.Second)
-
-	_, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:target"})
-	if !errors.Is(err, ErrSub2APIChargeConflict) || !slices.Equal(requestedPages, []string{"1", "2", "3"}) {
-		t.Fatalf("duplicate financial history pages=%#v err=%v", requestedPages, err)
-	}
-}
-
-func TestSub2APIFinancialBalanceHistoryByCodesFindsTargetBeyondTenThousandRows(t *testing.T) {
-	requests := 0
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/users/41/balance-history":
-			page, err := strconv.Atoi(r.URL.Query().Get("page"))
-			if err != nil || page < 1 || page > 101 || r.URL.Query().Get("page_size") != "100" || r.URL.Query().Get("type") != "balance" {
-				t.Fatalf("history query = %s", r.URL.RawQuery)
-			}
-			requests++
-			count := 100
-			if page == 101 {
-				count = 1
-			}
-			items := make([]any, 0, count)
-			for index := 0; index < count; index++ {
-				code := fmt.Sprintf("opl:financial:%d", (page-1)*100+index+1)
-				if page == 101 {
-					code = "opl:financial:last"
-				}
-				items = append(items, map[string]any{
-					"code": code, "type": "balance", "value": -0.000001, "status": "used", "used_by": 41,
-					"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
-				})
-			}
-			writeSub2APISuccess(t, w, map[string]any{"items": items, "total": 10001, "page": page, "page_size": 100, "pages": 101})
-		default:
-			t.Fatalf("unexpected route %s", r.URL.Path)
-		}
-	}, 5*time.Second)
-
-	matches, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:financial:last"})
-	if err != nil || requests != 101 || len(matches) != 1 || matches["opl:financial:last"].Code != "opl:financial:last" {
-		t.Fatalf("financial history requests=%d matches=%#v err=%v", requests, matches, err)
-	}
-}
-
-func TestSub2APIFinancialBalanceHistoryByCodesAcceptsAuthoritativeMissingTarget(t *testing.T) {
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/auth/login" {
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-			return
-		}
-		writeSub2APISuccess(t, w, map[string]any{"items": []any{}, "total": 0, "page": 1, "page_size": 100, "pages": 1})
-	}, time.Second)
-	matches, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:missing"})
-	if err != nil || len(matches) != 0 {
-		t.Fatalf("missing balance history=%#v err=%v", matches, err)
-	}
-}
-
-func TestSub2APIFinancialBalanceHistoryByCodesRejectsUntrustedIdentityAndPagination(t *testing.T) {
-	for name, data := range map[string]string{
-		"used by another user": `{"items":[{"code":"opl:target","type":"balance","value":-1,"status":"used","used_by":42,"used_at":"2026-07-16T00:01:00Z","created_at":"2026-07-16T00:00:00Z"}],"total":1,"page":1,"page_size":100,"pages":1}`,
-		"wrong page count":     `{"items":[],"total":0,"page":1,"page_size":100,"pages":2}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			requests := 0
-			client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/v1/auth/login" {
-					writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-					return
-				}
-				requests++
-				writeSub2APISuccess(t, w, json.RawMessage(data))
-			}, time.Second)
-			if _, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"opl:target"}); err == nil {
-				t.Fatalf("untrusted history accepted: %s", data)
-			}
-			if requests != 1 {
-				t.Fatalf("history requests = %d", requests)
 			}
 		})
 	}

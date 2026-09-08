@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"math"
@@ -30,7 +31,7 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 			}
 			limit = parsed
 		}
-		page, err := service.BillingReceipts(r.Context(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.", Cursor: r.URL.Query().Get("cursor"), Limit: limit})
+		page, err := service.BillingReceipts(r.Context(), clients.ReceiptQuery{AccountID: accountID, TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Cursor: r.URL.Query().Get("cursor"), Limit: limit})
 		if err != nil {
 			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 			return
@@ -41,11 +42,11 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 				return
 			}
-			if !strings.HasPrefix(receipt.Type, "billing.") {
+			if !strings.HasPrefix(receipt.Type, "billing.") && (receipt.Type != "gateway.wallet_adjustment.v1" || receipt.Execution["kind"] != "business_refund") {
 				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 				return
 			}
-			projected, ok := projectCustomerBillingReceipt(receipt)
+			projected, ok := app.projectCustomerBillingReceipt(r.Context(), receipt)
 			if !ok {
 				writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
 				return
@@ -83,8 +84,8 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 		var projectedOK bool
 		if receipt.Type == "workspace.created" {
 			projected, projectedOK = projectWorkspaceCreatedReceipt(receipt)
-		} else if strings.HasPrefix(receipt.Type, "billing.") {
-			projected, projectedOK = projectCustomerBillingReceipt(receipt)
+		} else {
+			projected, projectedOK = app.projectCustomerBillingReceipt(r.Context(), receipt)
 		}
 		if !projectedOK {
 			writeSourceEnvelope(w, http.StatusBadGateway, "ledger", "unavailable", nil)
@@ -143,6 +144,64 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 	}))
 }
 
+func (app *controlPlaneServer) projectCustomerBillingReceipt(ctx context.Context, receipt clients.Receipt) (map[string]any, bool) {
+	if receipt.Type != "gateway.wallet_adjustment.v1" {
+		return projectCustomerBillingReceipt(receipt)
+	}
+	amount, validAmount := requiredPositiveInteger(receipt.Execution, "amountUsdMicros")
+	relatedID := stringValue(receipt.InputRefs["relatedOperationId"])
+	if receipt.Status != "completed" || receipt.Surface != "control_plane" || receipt.AccountID == "" || receipt.ReceiptID == "" ||
+		receipt.Execution["kind"] != "business_refund" || !validAmount || relatedID == "" || receipt.RequestID == "" || receipt.Execution["operationId"] != receipt.RequestID {
+		return nil, false
+	}
+	original, found, err := app.tables.GetRuntimeOperation(ctx, relatedID)
+	if err != nil || !found || stringValue(original["accountId"]) != receipt.AccountID {
+		return nil, false
+	}
+	var workspaceID, periodStart, paidThrough, priceVersion string
+	var originalAmount int64
+	switch stringValue(original["action"]) {
+	case "workspace.launch", "workspace.launch.v2":
+		if history, retained := readWorkspaceLaunchBillingHistory(original); retained {
+			if history.AccountID != receipt.AccountID {
+				return nil, false
+			}
+			workspaceID, periodStart, paidThrough, priceVersion = history.WorkspaceID, history.PeriodStart, history.PaidThrough, history.PriceVersion
+			originalAmount = history.TotalChargeUSDMicros
+			break
+		}
+		operation, err := decodeWorkspaceLaunchReconcileOperation(original)
+		if err != nil || operation.ID != relatedID || operation.stringFact("accountId") != receipt.AccountID {
+			return nil, false
+		}
+		workspaceID, periodStart, paidThrough, priceVersion = operation.stringFact("workspaceId"), operation.stringFact("periodStart"), operation.stringFact("paidThrough"), operation.stringFact("priceVersion")
+		originalAmount = operation.int64Fact("totalChargeUsdMicros")
+	case "workspace.renewal":
+		operation, err := decodeWorkspaceRenewalOperation(original)
+		if err != nil || operation.ID != relatedID || operation.AccountID != receipt.AccountID {
+			return nil, false
+		}
+		workspaceID, periodStart, paidThrough, priceVersion = operation.WorkspaceID, operation.PaidThrough, operation.RenewedThrough, operation.PriceVersion
+		originalAmount = operation.TotalUSDMicros
+	default:
+		return nil, false
+	}
+	if workspaceID == "" || priceVersion == "" || !validSettlementPeriod(periodStart, paidThrough) || amount > originalAmount || (receipt.WorkspaceID != "" && receipt.WorkspaceID != workspaceID) {
+		return nil, false
+	}
+	for _, timestamp := range []string{receipt.CreatedAt, periodStart, paidThrough} {
+		if _, err := time.Parse(time.RFC3339, timestamp); err != nil {
+			return nil, false
+		}
+	}
+	return map[string]any{
+		"receiptId": receipt.ReceiptID, "type": receipt.Type, "kind": "business_refund", "status": receipt.Status,
+		"workspaceId": workspaceID, "createdAt": receipt.CreatedAt, "resourceType": "workspace", "resourceId": workspaceID,
+		"priceVersion": priceVersion, "currency": pricingCurrency, "periodStart": periodStart, "paidThrough": paidThrough,
+		"refundUsdMicros": amount, "operationId": receipt.RequestID, "relatedOperationId": relatedID,
+	}, true
+}
+
 func projectWorkspaceCreatedReceipt(receipt clients.Receipt) (map[string]any, bool) {
 	if strings.TrimSpace(receipt.ReceiptID) == "" || receipt.Type != "workspace.created" || receipt.Status != "completed" ||
 		(receipt.Surface != "workspace" && receipt.Surface != "control_plane") ||
@@ -182,6 +241,9 @@ func projectCustomerBillingReceipt(receipt clients.Receipt) (map[string]any, boo
 		"resourceType": resourceType, "resourceId": resourceID,
 		"priceVersion": priceVersion, "currency": currency,
 		"periodStart": periodStart, "paidThrough": paidThrough,
+	}
+	if operationID := strings.TrimSpace(receipt.RequestID); operationID != "" {
+		body["operationId"] = operationID
 	}
 	switch receipt.Type {
 	case "billing.workspace_purchased.v1", "billing.workspace_renewed.v1", "billing.workspace_expired.v1", "billing.workspace_refunded.v1":
