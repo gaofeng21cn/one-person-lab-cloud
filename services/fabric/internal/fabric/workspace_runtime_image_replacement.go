@@ -24,7 +24,7 @@ func validWorkspaceRuntimeImageReplacementInput(input WorkspaceRuntimeImageRepla
 			return false
 		}
 	}
-	return validateImage != nil && validateImage(input.PreviousImageDigest) && validateImage(input.ReplacementImageDigest) &&
+	return validateImage != nil && validWorkspaceRuntimeImageIdentity(input.PreviousImageDigest) && validateImage(input.ReplacementImageDigest) &&
 		input.PreviousImageDigest != input.ReplacementImageDigest
 }
 
@@ -41,9 +41,6 @@ func (s *Service) ReplaceWorkspaceRuntimeImage(ctx context.Context, input Worksp
 	provider := s.optionalProviders.runtimeImageReplacement
 	if provider == nil {
 		return WorkspaceRuntimeImageReplacementResult{}, ErrWorkspaceRuntimeImageReplacementUnavailable
-	}
-	if !s.workspaceRuntimeImageReplacementResourcesMatch(input) {
-		return WorkspaceRuntimeImageReplacementResult{}, ErrWorkspaceRuntimeImageReplacementConflict
 	}
 	returnResult := WorkspaceRuntimeImageReplacementResult{
 		SchemaVersion:          1,
@@ -63,7 +60,29 @@ func (s *Service) ReplaceWorkspaceRuntimeImage(ctx context.Context, input Worksp
 	operation.CreatedAt = now
 	operation.RedactedProviderPayload = map[string]any{"replacement": input}
 
-	err := s.resourceLocks.WithPoolLock(ctx, "workspace-runtime-image-replacement:"+input.WorkspaceID, func(lockCtx context.Context) error {
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(input.WorkspaceID), func(lockCtx context.Context) error {
+		if !s.workspaceRuntimeImageReplacementResourcesMatch(input) {
+			return ErrWorkspaceRuntimeImageReplacementConflict
+		}
+		latestRuntime, found, err := s.resourceOperations.LatestResourceOperation(lockCtx, "workspace_runtime", input.WorkspaceID)
+		if err != nil {
+			return err
+		}
+		if found && latestRuntime.Action == "destroy_workspace_runtime" {
+			return ErrWorkspaceRuntimeImageReplacementConflict
+		}
+		power, found, err := s.resourceOperations.LatestResourceOperation(lockCtx, "workspace_runtime_power", input.WorkspaceID)
+		if err != nil {
+			return err
+		}
+		if found {
+			var binding WorkspaceRuntimePowerInput
+			if power.Action != workspaceRuntimePowerAction || !decodeWorkspaceLaunchCloseoutPayload(power.RedactedProviderPayload["power"], &binding) ||
+				power.RequestHash != hashInput(binding) || binding.AccountID != input.AccountID || binding.RuntimeID != input.RuntimeID ||
+				binding.RuntimeOperationID != input.RuntimeOperationID || binding.DesiredState != "running" {
+				return ErrWorkspaceRuntimeImageReplacementConflict
+			}
+		}
 		stored, claimed, err := s.claimRuntimeOperation(lockCtx, operation)
 		if err != nil {
 			return err
@@ -72,29 +91,31 @@ func (s *Service) ReplaceWorkspaceRuntimeImage(ctx context.Context, input Worksp
 			if stored.RequestHash != requestHash {
 				return ErrRuntimeIdempotencyConflict
 			}
+			if latestRuntime.Action == workspaceRuntimeImageReplacementAction && latestRuntime.ID != stored.ID {
+				return ErrWorkspaceRuntimeImageReplacementConflict
+			}
 			if stored.Status == "succeeded" {
 				return decodeWorkspaceRuntimeImageReplacementResult(stored, &returnResult)
 			}
-			readback, readErr := s.runtimeRead.providerStatus(lockCtx, input.WorkspaceID)
-			readback.Access.Password = ""
-			if readErr == nil && replacementRuntimeReadbackMatches(readback, input) && readback.Ready {
-				if _, convergeErr := s.convergeRuntimeOperationReadback(lockCtx, stored, readback, map[string]any{"replacement": input}); convergeErr != nil {
-					return convergeErr
-				}
-				returnResult.Runtime = readback
-				returnResult.Status = "succeeded"
-				return nil
+			if stored.Status != "started" {
+				return ErrRuntimeOperationFailed
 			}
-			if stored.Status == "started" {
-				return ErrRuntimeOperationInProgress
-			}
-			return ErrRuntimeOperationFailed
 		}
 		current, err := s.runtimeRead.providerStatus(lockCtx, input.WorkspaceID)
 		current.Access.Password = ""
 		if err != nil {
 			_ = s.saveWorkspaceRuntimeImageReplacementOperation(lockCtx, stored, input, current, "started", err)
 			return err
+		}
+		if (current.Status == "running" || current.Status == "unready") && replacementRuntimeReadbackMatches(current, input) {
+			if !current.Ready {
+				return ErrRuntimeOperationInProgress
+			}
+			if err := s.saveWorkspaceRuntimeImageReplacementOperation(lockCtx, stored, input, current, "succeeded", nil); err != nil {
+				return err
+			}
+			returnResult.Runtime, returnResult.Status = current, "succeeded"
+			return nil
 		}
 		if !replacementRuntimeSourceMatches(current, input) {
 			_ = s.saveWorkspaceRuntimeImageReplacementOperation(lockCtx, stored, input, current, "failed", ErrWorkspaceRuntimeImageReplacementConflict)
@@ -161,7 +182,7 @@ func (s *Service) workspaceRuntimeImageReplacementResourcesMatch(input Workspace
 }
 
 func replacementRuntimeSourceMatches(runtime WorkspaceRuntime, input WorkspaceRuntimeImageReplacementInput) bool {
-	return runtime.WorkspaceID == input.WorkspaceID && runtime.ID == input.RuntimeID &&
+	return (runtime.Status == "running" || runtime.Status == "unready") && runtime.WorkspaceID == input.WorkspaceID && runtime.ID == input.RuntimeID &&
 		runtime.OperationID == input.RuntimeOperationID && runtime.ServiceName == input.RuntimeServiceName &&
 		runtime.ImageID == input.PreviousImageDigest
 }

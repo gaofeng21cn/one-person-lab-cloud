@@ -1171,14 +1171,17 @@ func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Con
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, bool, error) {
 	return app.canonicalWorkspaceLaunch(ctx, workspace, func(launch workspaceLaunchReconcileOperation, current map[string]any) []string {
-		if stringValue(current["periodStart"]) != launch.stringFact("periodStart") || stringValue(current["paidThrough"]) != launch.stringFact("paidThrough") {
-			if app.workspaceRenewalCurrentEntitlement(ctx, current) {
-				current = cloneMap(current)
-				current["periodStart"], current["paidThrough"] = launch.stringFact("periodStart"), launch.stringFact("paidThrough")
-			}
-		}
+		current = app.workspaceLaunchProjectionWithCurrentEntitlement(ctx, launch, current)
 		return workspaceLaunchAccessProjectionMismatchFields(launch, current)
 	}, app.recordCanonicalWorkspaceLaunchFailure)
+}
+
+func (app *controlPlaneServer) workspaceLaunchProjectionWithCurrentEntitlement(ctx context.Context, launch workspaceLaunchReconcileOperation, current map[string]any) map[string]any {
+	if (stringValue(current["periodStart"]) != launch.stringFact("periodStart") || stringValue(current["paidThrough"]) != launch.stringFact("paidThrough")) && app.workspaceRenewalCurrentEntitlement(ctx, current) {
+		current = cloneMap(current)
+		current["periodStart"], current["paidThrough"] = launch.stringFact("periodStart"), launch.stringFact("paidThrough")
+	}
+	return current
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunch(

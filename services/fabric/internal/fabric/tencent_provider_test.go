@@ -3124,7 +3124,7 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 	setProtectedResourceEnv(t)
 	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
 	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
-	setWorkspaceImageReleaseCatalogForTest(t, newImage, oldImage, newImage)
+	setWorkspaceImageReleaseCatalogForTest(t, newImage, newImage)
 	provider := NewTencentProvider()
 	patchErr := errors.New("provider patch response lost")
 	var patchBody []byte
@@ -3153,6 +3153,9 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 		t.Fatal("replacement did not reach the deployment patch")
 	}
 	type imagePatch struct {
+		Metadata struct {
+			ResourceVersion string `json:"resourceVersion"`
+		} `json:"metadata"`
 		Spec struct {
 			Template struct {
 				Spec struct {
@@ -3167,7 +3170,7 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 	var patch imagePatch
 	decoder := json.NewDecoder(bytes.NewReader(patchBody))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&patch); err != nil || len(patch.Spec.Template.Spec.Containers) != 1 ||
+	if err := decoder.Decode(&patch); err != nil || patch.Metadata.ResourceVersion != "17" || len(patch.Spec.Template.Spec.Containers) != 1 ||
 		patch.Spec.Template.Spec.Containers[0].Name != "workspace" || patch.Spec.Template.Spec.Containers[0].Image != newImage {
 		t.Fatalf("patch=%s err=%v", patchBody, err)
 	}
@@ -3200,12 +3203,47 @@ func TestTencentRuntimeImageReplacementRejectsOwnerMismatchBeforePatch(t *testin
 	}
 }
 
+func TestD5TencentImageReplacementRejectsStoppedDeletingOrUnversionedDeployment(t *testing.T) {
+	for _, state := range []string{"suspended", "deleting", "missing resourceVersion"} {
+		t.Run(state, func(t *testing.T) {
+			setProtectedResourceEnv(t)
+			input := runtimeImageReplacementTestInput("d5-provider-boundary")
+			input.WorkspaceID = "ws-alpha"
+			input.RuntimeID = "rt-alpha"
+			input.RuntimeOperationID = "workspace-launch-alpha:workspace:runtime"
+			setWorkspaceImageReleaseCatalogForTest(t, input.ReplacementImageDigest, input.ReplacementImageDigest)
+			provider := NewTencentProvider()
+			var deployment map[string]any
+			if err := json.Unmarshal(tencentRuntimeImageReplacementDeployment(input.PreviousImageDigest), &deployment); err != nil {
+				t.Fatal(err)
+			}
+			switch state {
+			case "suspended":
+				deployment["spec"].(map[string]any)["replicas"] = 0
+			case "deleting":
+				deployment["metadata"].(map[string]any)["deletionTimestamp"] = "2026-09-09T00:00:00Z"
+			case "missing resourceVersion":
+				delete(deployment["metadata"].(map[string]any), "resourceVersion")
+			}
+			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+				if !slices.Equal(args, []string{"get", "deployment/opl-compute-alpha", "-o", "json"}) {
+					t.Fatalf("ineligible Runtime reached mutation: %#v", args)
+				}
+				return mustJSON(deployment), nil
+			}
+			if _, err := provider.ReplaceWorkspaceRuntimeImage(context.Background(), input); !errors.Is(err, ErrWorkspaceRuntimeImageReplacementConflict) {
+				t.Fatalf("state=%s err=%v", state, err)
+			}
+		})
+	}
+}
+
 func tencentRuntimeImageReplacementDeployment(image string) []byte {
 	return tencentRuntimeImageReplacementDeploymentWithWorkspace(image, "ws-alpha")
 }
 
 func tencentRuntimeImageReplacementDeploymentWithWorkspace(image, workspaceID string) []byte {
-	return []byte(fmt.Sprintf(`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":%q,"oplcloud.cn/compute-allocation-id":"compute-alpha","oplcloud.cn/storage-id":"storage-alpha","oplcloud.cn/attachment-id":"attachment-alpha","oplcloud.cn/resource-id":"rt-alpha","oplcloud.cn/runtime-operation-id":%q}},"spec":{"replicas":1,"template":{"metadata":{"annotations":{"example":"preserve"}},"spec":{"containers":[{"name":"workspace","image":%q,"imagePullPolicy":"IfNotPresent","env":[{"name":"KEEP","value":"true"}],"volumeMounts":[{"name":"workspace-data","mountPath":"/projects"}]}]}}}}`, workspaceID, k8sCostLabelValue("workspace-launch-alpha:workspace:runtime"), image))
+	return []byte(fmt.Sprintf(`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"opl-compute-alpha","resourceVersion":"17","labels":{"oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":%q,"oplcloud.cn/compute-allocation-id":"compute-alpha","oplcloud.cn/storage-id":"storage-alpha","oplcloud.cn/attachment-id":"attachment-alpha","oplcloud.cn/resource-id":"rt-alpha","oplcloud.cn/runtime-operation-id":%q}},"spec":{"replicas":1,"template":{"metadata":{"annotations":{"example":"preserve"}},"spec":{"containers":[{"name":"workspace","image":%q,"imagePullPolicy":"IfNotPresent","env":[{"name":"KEEP","value":"true"}],"volumeMounts":[{"name":"workspace-data","mountPath":"/projects"}]}]}}}}`, workspaceID, k8sCostLabelValue("workspace-launch-alpha:workspace:runtime"), image))
 }
 
 func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testing.T) {
@@ -3388,7 +3426,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 				map[string]any{"type": "PodScheduled", "status": "True"},
 				map[string]any{"type": "Ready", "status": "True"},
 			},
-			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
+			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "imageID": workspaceImage, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
 		},
 	}
 	pods := []any{pod}
@@ -3446,6 +3484,16 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 			t.Fatalf("%s runtime status=%#v err=%v", name, status, err)
 		}
 	}
+	deployment["metadata"].(map[string]any)["generation"] = 3
+	assertUnready("new Deployment generation has not been observed")
+	deployment["metadata"].(map[string]any)["generation"] = 2
+	containerStatus := pod["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)
+	containerStatus["imageID"] = workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
+	assertUnready("ready Pod still runs the previous image")
+	containerStatus["imageID"] = workspaceImage
+	deployment["spec"].(map[string]any)["replicas"] = 0
+	assertUnready("suspended Deployment still has stale ready replicas")
+	deployment["spec"].(map[string]any)["replicas"] = 1
 	networkPolicies = append(networkPolicies, map[string]any{
 		"kind":     "NetworkPolicy",
 		"metadata": map[string]any{"name": "workspace-egress-open"},

@@ -37,6 +37,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
 | Medopl Instance | The 2026-08-30 `workspace-private-state-repair` receipt passed for two existing Workspaces and recorded zero-mutation post-repair readback | A fresh Workspace purchase, full lifecycle, rollback, or qualification of current `main` |
+| D5 local image lifecycle | Catalog-fixed replacement, renewed entitlement, persisted recovery, current-generation Pod digest readback and exact CRI cache retirement pass local source/full PostgreSQL/Docker regression. An isolated real containerd verifies preview, protected alias, removal and replay; Instance source passes 345 tests and 18 workflow checks | Production rollout, actual CVM cache/space reclamation, TCR deletion or deployed maintenance permissions |
 | NodePool maintenance | Source implements guarded image-GC configuration, taint recovery and bounded redacted readback | Production mutation; the retained evidence here contains no matching Instance execution receipt |
 
 Evidence applies only to the exact identity and layer named in its row. An older
@@ -203,6 +204,28 @@ worker; Instance source defaults its interval to 60 seconds while retaining
 Bootstrap's disabled workers. Protected environment overrides and actual
 adoption require Instance readback. Test accounts, charges, resources and
 receipts remain isolated; none is deployment input.
+
+D5 local image lifecycle evidence is retained at
+`/Users/huangrende/Documents/ChatGPT/d5-delivery-20260909/VALIDATION.md`, with
+source manifests and patches based on Cloud `30ccd1a31e9bc0f9308782798fc6c51ca856ad79`
+and Instance `c11001a3c9ab312930fb42919be77548049a0b68`. The final
+`verify:local:full` passes all four PostgreSQL owners with zero required skips;
+Instance passes 345 tests and 18 workflow validations. Focused business tests
+cover fixed catalog targets, current paid renewal, stopped/deleting exclusion,
+response-loss recovery, Runtime locking, exact Pod digest and rollback without
+changing the global default. Tencent/Kubernetes mutation boundaries use isolated
+fixtures; Local-Docker image replacement was not added.
+
+The real isolated containerd run uses the compiled CRI maintenance command and
+proves preview without removal, protected alias retention, exact old-image
+removal, absence readback and idempotent replay. Its reported image filesystem
+usage remains unchanged immediately after removal, so this evidence proves
+cache-reference absence, not reclaimed bytes. All test resources are disposable
+and outside production. The delivery manifest binds the exact source, executable
+and logs. Instance must adopt that Cloud image, configure its read-only Cloud
+qualification-evidence credential, qualify the same linux/amd64 Workspace
+manifest and execute protected rollout/node retirement before claiming actual
+CVM results. TCR deletion is optional and unchanged.
 
 The 2026-08-19 Local-Docker runs covered two ownership modes:
 

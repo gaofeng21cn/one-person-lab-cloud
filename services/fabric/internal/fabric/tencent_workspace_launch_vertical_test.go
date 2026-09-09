@@ -562,7 +562,7 @@ func (fixture *tencentRuntimeReadbackFixture) resources() map[string]map[string]
 		"spec": cloneJSONMap(nested(deployment, "spec", "template", "spec").(map[string]any)),
 		"status": map[string]any{
 			"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}},
-			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
+			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "imageID": firstContainerField(deployment, "image"), "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
 		},
 	}
 	resources["Pod"] = pod
@@ -694,7 +694,7 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 	}
 	persistedChecks, _ := json.Marshal(persistedDiagnostic.Checks)
 	if err != nil || operationErr != nil || result.State != "pending" || operation.Status != "started" || fixture.applyCalls != 1 ||
-		result.Diagnostic == nil || result.Diagnostic.Owner != "fabric.tencent_tke" || result.Diagnostic.BlockReason != "runtime_deployment_not_ready" ||
+		result.Diagnostic == nil || result.Diagnostic.Owner != "fabric.tencent_tke" || result.Diagnostic.BlockReason != "runtime_image_not_ready" ||
 		!result.Diagnostic.Retryable || result.Diagnostic.ObservedAt != now.Format(time.RFC3339Nano) || len(result.Diagnostic.Checks) != 11 ||
 		!diagnosticPersisted || persistedDiagnostic.Owner != result.Diagnostic.Owner || persistedDiagnostic.BlockReason != result.Diagnostic.BlockReason ||
 		persistedDiagnostic.ObservedAt != result.Diagnostic.ObservedAt || string(persistedChecks) != string(resultChecks) {

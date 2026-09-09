@@ -32,12 +32,9 @@ func (p *TencentProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, inpu
 		return WorkspaceRuntime{}, err
 	}
 	if input.WorkspaceID == "" || input.RuntimeID == "" || input.RuntimeOperationID == "" || input.RuntimeServiceName == "" ||
-		!p.ValidateWorkspaceImageReference(input.PreviousImageDigest) || !p.ValidateWorkspaceImageReference(input.ReplacementImageDigest) ||
+		!validWorkspaceRuntimeImageIdentity(input.PreviousImageDigest) || !p.ValidateWorkspaceImageReference(input.ReplacementImageDigest) ||
 		input.PreviousImageDigest == input.ReplacementImageDigest {
 		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementInputInvalid
-	}
-	if !p.ValidateWorkspaceImageReference(input.ReplacementImageDigest) {
-		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
 	}
 	serviceName := input.RuntimeServiceName
 	raw, err := p.callKubectl(ctx, []string{"get", "deployment/" + serviceName, "-o", "json"}, nil, protectedresource.Target{})
@@ -63,6 +60,11 @@ func (p *TencentProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, inpu
 		}
 	}
 	currentImage := stringValue(firstContainerField(deployment, "image"))
+	resourceVersion := stringValue(nested(deployment, "metadata", "resourceVersion"))
+	if number(nested(deployment, "spec", "replicas")) != 1 || resourceVersion == "" ||
+		stringValue(nested(deployment, "metadata", "deletionTimestamp")) != "" {
+		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
+	}
 	if currentImage != input.PreviousImageDigest && currentImage != input.ReplacementImageDigest {
 		return WorkspaceRuntime{}, ErrWorkspaceRuntimeImageReplacementConflict
 	}
@@ -98,7 +100,7 @@ func (p *TencentProvider) ReplaceWorkspaceRuntimeImage(ctx context.Context, inpu
 			return WorkspaceRuntime{}, err
 		}
 	}
-	patch := mustJSON(map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+	patch := mustJSON(map[string]any{"metadata": map[string]any{"resourceVersion": resourceVersion}, "spec": map[string]any{"template": map[string]any{"spec": map[string]any{
 		"containers": []any{map[string]any{"name": "workspace", "image": input.ReplacementImageDigest}},
 	}}}})
 	if _, err := p.callKubectl(ctx, []string{"patch", "deployment/" + serviceName, "--type=strategic", "-p", string(patch)}, nil, protectedresource.Target{}); err != nil {
@@ -434,11 +436,13 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 	}
 	readyReplicas := number(nested(deployment, "status", "readyReplicas"))
 	availableReplicas := number(nested(deployment, "status", "availableReplicas"))
+	generation := number(nested(deployment, "metadata", "generation"))
+	observedGeneration := number(nested(deployment, "status", "observedGeneration"))
 	image := stringValue(firstContainerField(deployment, "image"))
 	readyAddresses := endpointReadyAddresses(endpoints)
 	checks := []Check{
-		{Name: "deployment_ready", OK: readyReplicas > 0 && availableReplicas > 0, Details: mergeDetails(map[string]any{"readyReplicas": readyReplicas, "availableReplicas": availableReplicas}, podDetails)},
-		{Name: "workspace_image_pulled", OK: validWorkspaceRuntimeImageIdentity(image), Details: map[string]any{"imageId": image}},
+		{Name: "deployment_ready", OK: number(nested(deployment, "spec", "replicas")) == 1 && generation > 0 && observedGeneration >= generation && readyReplicas == 1 && availableReplicas == 1, Details: mergeDetails(map[string]any{"readyReplicas": readyReplicas, "availableReplicas": availableReplicas, "generation": generation, "observedGeneration": observedGeneration}, podDetails)},
+		{Name: "workspace_image_pulled", OK: validWorkspaceRuntimeImageIdentity(image) && podImageIDsMatch(pods, "oplcloud.cn/workspace-id", workspaceID, "workspace", image), Details: map[string]any{"imageId": image}},
 		{Name: "pvc_bound", OK: stringValue(nested(pvc, "status", "phase")) == "Bound"},
 		{Name: "deployment_uses_retained_pvc", OK: workloadUsesPVC(deployment, pvcName)},
 		{Name: "ready_pod_uses_retained_pvc", OK: readyPodUsesPVC, Details: podDetails},

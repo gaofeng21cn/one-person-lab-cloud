@@ -11,7 +11,8 @@ COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/fabric ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric \
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
 
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm@sha256:6359592445455f2dbe2412bed411336035bc019a50017720d77454ffdd6d0f82 AS control-plane-build
 
@@ -77,6 +78,7 @@ COPY --from=fabric-build /out/opl-tencent-provisioner /usr/local/bin/opl-tencent
 COPY --from=control-plane-build /out/opl-control-plane /usr/local/bin/opl-control-plane
 COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger
 COPY --from=fabric-build /out/opl-fabric /usr/local/bin/opl-fabric
+COPY --from=fabric-build /out/opl-node-image-retire /usr/local/bin/opl-node-image-retire
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN mkdir -p /app/.runtime && chown -R node:node /app/.runtime
 
