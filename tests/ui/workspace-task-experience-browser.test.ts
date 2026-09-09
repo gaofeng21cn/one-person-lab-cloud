@@ -933,6 +933,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。", { exact: true }).waitFor({ state: "visible" });
     await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
     const confirmation = page.getByRole("checkbox", {
       name: "我确认一次性预付工作空间月度总额并开通",
@@ -1283,6 +1284,7 @@ async function verifyWorkspaceDetailExperience() {
 
       const renewal = page.locator(".workspace-plan-panel");
       await renewal.getByRole("heading", { name: "续费与存储", exact: true }).waitFor({ state: "visible" });
+      await renewal.getByText("请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。", { exact: true }).waitFor({ state: "visible" });
       await renewal.getByText("续费方式", { exact: true }).waitFor({ state: "visible" });
       await renewal.getByText("手动续费", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await renewal.getByText("自动续费", { exact: true }).count(), 0);

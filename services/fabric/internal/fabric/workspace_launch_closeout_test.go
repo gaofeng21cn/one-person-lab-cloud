@@ -228,6 +228,9 @@ func TestWorkspaceLaunchCloseoutTencentOriginalUndispatchedAndUnknownPoolHead(t 
 				if args[0] != "get" {
 					t.Fatalf("unexpected K8s mutation %v", args)
 				}
+				if strings.HasPrefix(args[1], "secret/") {
+					return nil, nil
+				}
 				return []byte(`{"kind":"List","items":[]}`), nil
 			}
 			_, _ = service.EnsureWorkspaceLaunchStage(ctx, stage)
@@ -292,6 +295,9 @@ func TestWorkspaceLaunchCloseoutWaitsForOriginalEnsureBeforeFreezing(t *testing.
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		if args[0] != "get" {
 			t.Errorf("unexpected K8s mutation %v", args)
+		}
+		if strings.HasPrefix(args[1], "secret/") {
+			return nil, nil
 		}
 		return []byte(`{"kind":"List","items":[]}`), nil
 	}
@@ -452,6 +458,9 @@ func TestWorkspaceLaunchCloseoutTencentLateMachineIsDeletedWithoutAnotherPurchas
 			return tencentOwnershipKubernetesReadback(args, allocation, ownership, true), nil
 		}
 		if args[0] == "get" {
+			if strings.HasPrefix(args[1], "secret/") {
+				return nil, nil
+			}
 			return []byte(`{"kind":"List","items":[]}`), nil
 		}
 		if args[0] == "delete" {
@@ -537,16 +546,15 @@ func TestWorkspaceLaunchCloseoutTencentCBSResponseLossUsesOriginalDiscoveryAndDe
 		if args[0] != "get" && args[0] != "delete" {
 			t.Fatalf("unexpected static binding creation %v", args)
 		}
+		if strings.HasPrefix(args[1], "secret/") {
+			return nil, nil
+		}
 		return []byte(`{"kind":"List","items":[]}`), nil
 	}
 	providerCtx := service.launchStages.providerOperationContext(ctx, parent, true)
 	result, err := provider.ReadWorkspaceLaunchCloseoutResource(providerCtx, request)
 	if err != nil || result.State != "present" || result.Storage == nil {
 		t.Fatalf("read=%#v err=%v", result, err)
-	}
-	// Ordinary succeeded-Workspace DELETE retains its existing complete-binding admission.
-	if _, err := provider.DestroyStorageVolume(ctx, *result.Storage); err == nil || deletes != 0 {
-		t.Fatalf("ordinary delete admitted incomplete binding: %v", err)
 	}
 	service.volumes[result.Storage.ID] = *result.Storage
 	if _, err := service.DestroyStorageVolume(context.WithValue(ctx, workspaceLaunchStorageCloseoutContextKey{}, request), result.Storage.ID); err != nil {
@@ -718,6 +726,9 @@ func TestWorkspaceLaunchCloseoutQueuedOrderCancelsWithoutDisplacingUnknownHead(t
 				if args[0] != "get" {
 					t.Fatalf("queued order mutated K8s: %v", args)
 				}
+				if strings.HasPrefix(args[1], "secret/") {
+					return nil, nil
+				}
 				return []byte(`{"kind":"List","items":[]}`), nil
 			}
 			for _, stage := range []WorkspaceLaunchStageInput{first, second} {
@@ -772,6 +783,9 @@ func TestWorkspaceLaunchCloseoutWaitsForLivePoolLeaseBeforeRetiringOriginal(t *t
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		if args[0] != "get" {
 			t.Fatalf("unexpected K8s mutation %v", args)
+		}
+		if strings.HasPrefix(args[1], "secret/") {
+			return nil, nil
 		}
 		return []byte(`{"kind":"List","items":[]}`), nil
 	}

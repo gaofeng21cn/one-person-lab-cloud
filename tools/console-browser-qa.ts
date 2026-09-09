@@ -444,6 +444,21 @@ export async function apiFixture(route, state, session = state) {
     return launch ? fulfillJson(route, launch) : fulfillJson(route, { error: "workspace_launch_not_found" }, 404);
   }
   const runtimeMatch = path.match(/^\/api\/workspaces\/([^/]+)\/runtime-status$/);
+  const deletionMatch = path.match(/^\/api\/workspaces\/([^/]+)\/deletion$/);
+  if (deletionMatch && method === "GET") return fulfillJson(route, null);
+  const renewalMatch = path.match(/^\/api\/workspaces\/([^/]+)\/renewal$/);
+  if (renewalMatch && method === "GET") {
+    const currentWorkspace = state.workspaces.find((item) => item.id === renewalMatch[1] && item.ownerAccountId === session.accountId);
+    if (!currentWorkspace) return fulfillJson(route, { error: "workspace_not_found" }, 404);
+    return fulfillJson(route, {
+      autoRenew: currentWorkspace.autoRenew,
+      effectiveAfter: currentWorkspace.paidThrough,
+      nextRenewalAt: currentWorkspace.nextRenewalAt || currentWorkspace.paidThrough,
+      paidThrough: currentWorkspace.paidThrough,
+      renewalStatus: currentWorkspace.renewalStatus,
+      recovery: { state: "not_required", reason: "workspace_paid_period_active" }
+    });
+  }
   if (runtimeMatch) {
     const workspaceId = runtimeMatch[1];
     const currentWorkspace = state.workspaces.find((item) => item.id === workspaceId && item.ownerAccountId === session.accountId);

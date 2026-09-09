@@ -32,6 +32,14 @@ clean Workspace URL is opened; the cookie is not an authentication credential.
 It forwards traffic only after Fabric reports the Runtime ready and the
 persisted Workspace state becomes `running`.
 
+Access uses the current paid entitlement. After renewal, its period is accepted
+only from the original-period committed renewal and exact debit confirmation,
+with the same account, owner and resources. The immutable initial Launch record
+is not rewritten. An existing proxied connection rechecks entitlement at its
+paid-through boundary: a confirmed renewal extends the connection's deadline;
+unpaid, deleted or unconfirmed access closes it. Runtime suspension and recovery
+remain Fabric operations described in the lifecycle implementation reference.
+
 Fabric runs the Workspace image in `cloud` deployment mode with `password`
 authentication. Fabric derives the runtime password and session secret from a
 stable per-Workspace credential seed. Tencent/TKE stores them in a Kubernetes

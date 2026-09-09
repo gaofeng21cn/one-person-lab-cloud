@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	workspaceDeleteAction                  = "workspace.delete.v2"
-	workspaceDeleteLegacyAction            = "workspace.delete.v1"
-	workspaceDeleteReplayLease             = 30 * time.Second
+	workspaceDeleteAction       = "workspace.delete.v2"
+	workspaceDeleteLegacyAction = "workspace.delete.v1"
+	// Retained v2 encoding marker; delayed absence no longer has a lifetime read limit.
 	workspaceDeleteComputeReadbackBudget   = 8
 	workspaceDeleteComputeReadbackInterval = time.Second
 )
@@ -135,12 +135,18 @@ type workspaceDeleteGatewayIdentity struct {
 }
 
 func (app *controlPlaneServer) deleteWorkspace(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
-	authorizationID, ok := requiredMutationKey(w, r)
+	_, ok := requiredMutationKey(w, r)
 	if !ok {
 		return
 	}
-	user, sub2APIUserID, credential, ok := app.gatewayUserContext(w, r)
+	user, ok := app.sessionUserContext(r)
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "not_authenticated")
+		return
+	}
+	sub2APIUserID, userErr := app.sub2APIUserID(r.Context(), stringValue(user["accountId"]))
+	if userErr != nil {
+		writeError(w, http.StatusBadGateway, "sub2api_account_unavailable")
 		return
 	}
 	workspaceID := strings.TrimSpace(r.PathValue("workspaceId"))
@@ -231,7 +237,7 @@ func (app *controlPlaneServer) deleteWorkspace(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
 		return
 	}
-	operation, err = app.runWorkspaceDelete(r.Context(), service, credential, authorizationID, operation)
+	operation, err = app.runWorkspaceDelete(r.Context(), service, operation)
 	if err != nil {
 		if errors.Is(err, errWorkspaceDeleteTerminalConflict) {
 			if auditErr := app.saveWorkspaceDeleteTerminalConflictAudit(r, operation); auditErr != nil {
@@ -552,7 +558,7 @@ func validWorkspaceDeleteComputeReadbackState(operation workspaceDeleteOperation
 	if operation.ComputeReadbacks == 0 && operation.MaxComputeReadbacks == 0 {
 		return operation.ComputeStatus == "" && operation.ComputeReadbackNotBefore == ""
 	}
-	if operation.MaxComputeReadbacks != workspaceDeleteComputeReadbackBudget || operation.ComputeReadbacks <= 0 || operation.ComputeReadbacks > operation.MaxComputeReadbacks || operation.ComputeStatus == "" {
+	if operation.MaxComputeReadbacks != workspaceDeleteComputeReadbackBudget || operation.ComputeReadbacks <= 0 || operation.ComputeStatus == "" {
 		return false
 	}
 	if operation.ComputeStatus == "destroying" {
@@ -761,7 +767,7 @@ func workspaceDeleteBlocksRenewal(row map[string]any) bool {
 	return stringValue(row["action"]) == workspaceDeleteAction
 }
 
-func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *controlplane.Service, credential clients.SessionDelegatedCredential, authorizationID string, operation workspaceDeleteOperation) (workspaceDeleteOperation, error) {
+func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *controlplane.Service, operation workspaceDeleteOperation) (workspaceDeleteOperation, error) {
 	for {
 		if operation.Phase == "complete" {
 			if !validWorkspaceDeleteIdentity(operation) || operation.Status != "succeeded" || operation.RuntimeStatus != "absent" || operation.SecretStatus != "absent" ||
@@ -786,21 +792,29 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 			if err != nil {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_readback_unavailable")
 			}
-			if !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
-				if !workspaceDeleteRuntimeAndSecretReady(operation, runtimeObservation, secretObservation) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
+			if !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
+			}
+			needsDestroy := !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation)
+			if !needsDestroy {
+				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
+				if readErr != nil || residual.SchemaVersion != clients.WorkspaceRuntimeDeleteObservationSchemaVersion || residual.WorkspaceID != operation.WorkspaceID ||
+					!workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) && residual.State != clients.WorkspaceRuntimeDeleteObservationPresent {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
 				}
-				runtime, destroyErr := service.DestroyWorkspaceRuntime(ctx, operation.AccountID, operation.WorkspaceID, workspaceDeleteStageKey(operation, "runtime"))
+				needsDestroy = !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID)
+			}
+			if needsDestroy {
+				_, destroyErr := service.DestroyWorkspaceRuntime(ctx, operation.AccountID, operation.WorkspaceID, workspaceDeleteStageKey(operation, "runtime"))
 				runtimeObservation, secretObservation, err = observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
-				var residualObservation clients.WorkspaceRuntimeDeleteObservation
-				var residualErr error
-				if err == nil && workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
-					residualObservation, residualErr = service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
+				if err != nil || !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) || !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
+					if destroyErr != nil {
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_destroy_unconfirmed")
+					}
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
 				}
-				if err == nil && residualErr == nil && workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) && workspaceDeleteRuntimeResidualsAbsent(residualObservation, operation.WorkspaceID) {
-				} else if destroyErr != nil || runtime.ID != operation.RuntimeID || runtime.WorkspaceID != operation.WorkspaceID || runtime.Status != "destroyed" {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_destroy_unconfirmed")
-				} else {
+				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
+				if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
 					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
 				}
 			}
@@ -844,7 +858,7 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				if readNow.Before(notBefore) {
 					return operation, errWorkspaceDeletePending
 				}
-				if operation.MaxComputeReadbacks != workspaceDeleteComputeReadbackBudget || operation.ComputeReadbacks >= operation.MaxComputeReadbacks {
+				if operation.MaxComputeReadbacks != workspaceDeleteComputeReadbackBudget {
 					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_absence_unconfirmed")
 				}
 				claimed := operation
@@ -876,9 +890,6 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				}
 			}
 			if compute.Status == "destroying" {
-				if operation.ComputeReadbacks >= operation.MaxComputeReadbacks {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_compute_absence_unconfirmed")
-				}
 				return operation, errWorkspaceDeletePending
 			}
 			if !workspaceDeleteComputeTerminal(compute.Status) {
@@ -891,7 +902,7 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 			}
 			operation = next
 		case "compute_absent":
-			key, err := service.GatewayUserKey(ctx, credential, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
+			key, err := service.WorkspaceKeyForDeletion(ctx, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
 			if errors.Is(err, clients.ErrSub2APIKeyNotFound) {
 				next, advanceErr := app.confirmWorkspaceDeleteKeyAbsent(ctx, operation)
 				if advanceErr != nil {
@@ -903,16 +914,7 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 			if err != nil || !workspaceDeleteKeyMatches(operation, key) {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "sub2api_key_readback_unconfirmed")
 			}
-			if operation.KeyDeleteAttempted {
-				claimed, won, claimErr := app.claimWorkspaceDeleteReplay(ctx, operation, authorizationID)
-				if claimErr != nil {
-					return operation, claimErr
-				}
-				if !won {
-					return claimed, errWorkspaceDeleteUnconfirmed
-				}
-				operation = claimed
-			} else {
+			if !operation.KeyDeleteAttempted {
 				attempted := operation
 				attempted.Status, attempted.KeyDeleteAttempted, attempted.LastErrorCode = "running", true, ""
 				if err := app.persistWorkspaceDelete(ctx, operation, attempted, false, false); err != nil {
@@ -920,7 +922,7 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				}
 				operation = attempted
 			}
-			key, err = service.GatewayUserKey(ctx, credential, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
+			key, err = service.WorkspaceKeyForDeletion(ctx, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
 			if errors.Is(err, clients.ErrSub2APIKeyNotFound) {
 				next, advanceErr := app.confirmWorkspaceDeleteKeyAbsent(ctx, operation)
 				if advanceErr != nil {
@@ -932,15 +934,8 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 			if err != nil || !workspaceDeleteKeyMatches(operation, key) {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "sub2api_key_readback_unconfirmed")
 			}
-			if operation.KeyDeleteReplay.AuthorizationID != "" {
-				dispatched, dispatchErr := app.markWorkspaceDeleteReplayDispatch(ctx, operation)
-				if dispatchErr != nil {
-					return operation, dispatchErr
-				}
-				operation = dispatched
-			}
-			deleteErr := service.DeleteGatewayUserKeyIdempotent(ctx, credential, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID, workspaceDeleteStageKey(operation, "key"))
-			_, err = service.GatewayUserKey(ctx, credential, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
+			deleteErr := service.RevokeWorkspaceKey(ctx, clients.Sub2APIWorkspaceKeyRevokeInput{UserID: operation.Sub2APIUserID, KeyID: operation.WorkspaceAPIKeyID, ExactName: workspaceReservedKeyName(operation.WorkspaceID), LaunchOperationID: operation.LaunchOperationID})
+			_, err = service.WorkspaceKeyForDeletion(ctx, operation.Sub2APIUserID, operation.WorkspaceAPIKeyID)
 			if !errors.Is(err, clients.ErrSub2APIKeyNotFound) {
 				if deleteErr != nil {
 					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "sub2api_key_delete_unconfirmed")
@@ -986,51 +981,6 @@ func (app *controlPlaneServer) persistWorkspaceDelete(ctx context.Context, curre
 		DeleteWorkspace: deleteWorkspace, RequireWorkspaceAbsent: requireAbsent,
 		ExpectedResult: stringValue(workspaceDeleteOperationRow(current)["result"]), DesiredOperation: workspaceDeleteOperationRow(next),
 	})
-}
-
-func (app *controlPlaneServer) claimWorkspaceDeleteReplay(ctx context.Context, operation workspaceDeleteOperation, authorizationID string) (workspaceDeleteOperation, bool, error) {
-	if !validBillingReviewOpaqueID(authorizationID) || operation.Status != "running" || operation.Phase != "compute_absent" || !operation.KeyDeleteAttempted {
-		return operation, false, errWorkspaceDeleteCASConflict
-	}
-	now := time.Now().UTC()
-	replay := operation.KeyDeleteReplay
-	if replay.AuthorizationID != "" {
-		if replay.AuthorizationID != authorizationID || replay.IdempotencyKey != workspaceDeleteStageKey(operation, "key") || replay.State != "claimed" {
-			return operation, false, errWorkspaceDeleteUnconfirmed
-		}
-		leaseExpiresAt, err := time.Parse(time.RFC3339Nano, replay.LeaseExpiresAt)
-		if err != nil {
-			return operation, false, errWorkspaceDeleteCASConflict
-		}
-		if leaseExpiresAt.After(now) {
-			return operation, false, nil
-		}
-		replay.LeaseGeneration++
-	} else {
-		replay = workspaceDeleteReplayAuthorization{SchemaVersion: 1, AuthorizationID: authorizationID, IdempotencyKey: workspaceDeleteStageKey(operation, "key"), State: "claimed", LeaseGeneration: 1}
-	}
-	replay.LeaseExpiresAt = now.Add(workspaceDeleteReplayLease).Format(time.RFC3339Nano)
-	next := operation
-	next.KeyDeleteReplay = replay
-	if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-		return operation, false, err
-	}
-	return next, true, nil
-}
-
-func (app *controlPlaneServer) markWorkspaceDeleteReplayDispatch(ctx context.Context, operation workspaceDeleteOperation) (workspaceDeleteOperation, error) {
-	replay := operation.KeyDeleteReplay
-	if replay.State != "claimed" || replay.DispatchStartedAt != "" || replay.ConsumedAt != "" {
-		return operation, errWorkspaceDeleteCASConflict
-	}
-	replay.State = "dispatched"
-	replay.DispatchStartedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	next := operation
-	next.KeyDeleteReplay = replay
-	if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-		return operation, err
-	}
-	return next, nil
 }
 
 func consumeWorkspaceDeleteReplay(operation *workspaceDeleteOperation, now time.Time) error {
@@ -1088,17 +1038,25 @@ func workspaceDeleteRuntimeResidualsAbsent(observation clients.WorkspaceRuntimeD
 		observation.State == clients.WorkspaceOwnerObservationAbsent && len(observation.Residuals) == 0
 }
 
-func workspaceDeleteRuntimeAndSecretReady(operation workspaceDeleteOperation, runtime clients.WorkspaceRuntimeObservation, secret clients.WorkspaceRuntimeGatewaySecretObservation) bool {
-	return runtime.SchemaVersion == clients.WorkspaceOwnerObservationSchemaVersion && runtime.State == clients.WorkspaceOwnerObservationReady && runtime.Runtime != nil &&
-		runtime.WorkspaceID == operation.WorkspaceID && runtime.Runtime.WorkspaceID == operation.WorkspaceID && runtime.Runtime.ID == operation.RuntimeID &&
-		secret.SchemaVersion == clients.WorkspaceOwnerObservationSchemaVersion && secret.State == clients.WorkspaceOwnerObservationReady && secret.Binding != nil &&
-		secret.WorkspaceID == operation.WorkspaceID && secret.Binding.WorkspaceID == operation.WorkspaceID && secret.Binding.WorkspaceAPIKeyID == operation.WorkspaceAPIKeyID &&
-		secret.Binding.SecretRef == operation.GatewaySecretRef && secret.Binding.Fingerprint == operation.GatewayFingerprint && secret.Binding.Bound
+// Runtime and its standalone Gateway Secret can disappear independently. Every
+// remaining object must still match the original Delete before the owner acts.
+func workspaceDeleteRuntimeAndSecretOwned(operation workspaceDeleteOperation, runtime clients.WorkspaceRuntimeObservation, secret clients.WorkspaceRuntimeGatewaySecretObservation) bool {
+	if runtime.SchemaVersion != clients.WorkspaceOwnerObservationSchemaVersion || secret.SchemaVersion != clients.WorkspaceOwnerObservationSchemaVersion ||
+		runtime.WorkspaceID != operation.WorkspaceID || secret.WorkspaceID != operation.WorkspaceID {
+		return false
+	}
+	runtimeOwned := runtime.State == clients.WorkspaceOwnerObservationAbsent && runtime.Runtime == nil ||
+		(runtime.State == clients.WorkspaceOwnerObservationReady || runtime.State == clients.WorkspaceOwnerObservationPending) && runtime.Runtime != nil &&
+			runtime.Runtime.WorkspaceID == operation.WorkspaceID && runtime.Runtime.ID == operation.RuntimeID
+	secretOwned := secret.State == clients.WorkspaceOwnerObservationAbsent && secret.Binding == nil ||
+		(secret.State == clients.WorkspaceOwnerObservationReady || secret.State == clients.WorkspaceOwnerObservationPending) && secret.Binding != nil &&
+			secret.Binding.WorkspaceID == operation.WorkspaceID && secret.Binding.WorkspaceAPIKeyID == operation.WorkspaceAPIKeyID &&
+			secret.Binding.SecretRef == operation.GatewaySecretRef && secret.Binding.Fingerprint == operation.GatewayFingerprint
+	return runtimeOwned && secretOwned
 }
 
 func workspaceDeleteKeyMatches(operation workspaceDeleteOperation, key clients.Sub2APIWorkspaceKey) bool {
-	return key.ID == operation.WorkspaceAPIKeyID && key.UserID == operation.Sub2APIUserID && key.Name == workspaceReservedKeyName(operation.WorkspaceID) &&
-		(key.Status == "active" || key.Status == "quota_exhausted")
+	return key.ID == operation.WorkspaceAPIKeyID && key.UserID == operation.Sub2APIUserID && key.Name == workspaceReservedKeyName(operation.WorkspaceID)
 }
 
 func workspaceDeletionReceiptInput(operation workspaceDeleteOperation) clients.ReceiptInput {

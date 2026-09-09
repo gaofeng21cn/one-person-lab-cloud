@@ -18,7 +18,7 @@ medopl run has verified two existing Workspaces through restart, storage,
 private-state, and Package readback.
 
 This does not mean Public Beta or a current Product Release is ready. Public
-registration, complete Renewal/Delete recovery, alert and restore qualification,
+registration, deployed Renewal/Delete qualification, alert and restore qualification,
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
@@ -31,6 +31,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | D1 local finance development | The 2026-09-08 worktree on `b1d811eab2a2fcff5d77b4cf9685e801d7681360` passes `verify:local:full` with zero PostgreSQL test skips, 6 HTTP business chains plus 11 reservation/CAS cases under race, and focused Renewal/Wallet recovery race tests | Canonical merge, actual Gateway adoption, a released Candidate, provider capacity, or production financial qualification |
 | D2 local reconciliation and customer billing | The retained 2026-09-08 cumulative worktree passes `verify:local:full` with zero PostgreSQL skips; original purchase/renewal/refund HTTP chains, pending and recovery, exact receipt lookup beyond 10k history, historical schema-2 financial readback, race checks and desktop/mobile billing tests pass | Canonical merge, actual Gateway adoption, a deployed Candidate or Tencent/TKE production qualification |
 | D3 local Launch recovery and capacity | Provider-neutral original-result recovery, bounded scheduling, and failed-Launch closure are implemented. Focused business, HTTP, restart and race tests plus `verify:local:full` pass; exact Key identity, five resource absence facts, original-account refund budget, and Ledger closeout receipt are covered | Actual Tencent cloud capacity, Instance adoption or deployment |
+| D4 local lifecycle | Expiry stops original Runtime use; explicit recovery preserves original period, transaction and resources; service-authorized Delete continues after restart and confirms residual absence plus Receipt. Focused PostgreSQL, race, HTTP and desktop/mobile business tests plus `verify:local:full` pass with zero required PostgreSQL skips | Actual Tencent/TKE lifecycle, production Gateway adoption or deployment |
 | D1 isolated Sub2API | Cloud's real HTTP client and isolated patched Sub2API pass original-transaction lookup, atomic insufficient-balance rejection, concurrent debit/refund, response-loss recovery and historical unverified-debit rejection | Production Gateway byte identity or adoption; a local patched image is not a published upstream release |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
@@ -76,11 +77,14 @@ Support data is historical custody, not an available ticket capability.
   purchase Receipt. Exact replay and bounded recovery preserve the original
   identities and fail closed on unproven provider results.
 - Workspace Delete is permanent and performs no refund or wallet mutation.
-  Source has typed resource observations, but complete Tencent Gateway Secret
-  and asymmetric PV/PVC residue convergence remain open.
-- Renewal authorization is persisted and exposed through Control Plane and
-  Console. Expired-Workspace reactivation and live exactly-once renewal remain
-  incomplete.
+  Its background worker preserves the original owner intent without a customer
+  credential, polls delayed compute absence, and waits for the deletion Receipt.
+  Fabric converges exact standalone Gateway Secret and asymmetric PV/PVC residue.
+- Renewal authorization and recovery eligibility are exposed through Control
+  Plane and Console. Unpaid expiry closes access and stops the original Runtime.
+  Explicit recovery confirms the original charge, provider renewal and Runtime
+  readiness before entitlement; balance changes alone never restart service.
+  Customer-facing purchase/details explain pre-expiry backup responsibility.
 - Fabric owns compute, storage, attachment, Secret, Runtime, provider mutation,
   and authoritative readback. Local-Docker enforces immutable Workspace images,
   cgroup limits, and project-quota storage on a supported Linux host.
@@ -169,6 +173,37 @@ fifty-user creation/revocation races. Its D1+D3 patch must be adopted before
 the Cloud consumer. These tests do not certify production Gateway multi-node
 cache convergence or actual Tencent resource capacity.
 
+D4 local lifecycle evidence is retained at
+`/Users/huangrende/Documents/ChatGPT/d4-delivery-20260909/VALIDATION.md`, based on
+Cloud `4aeb239146165b8612bfcf0300dfc0629992fafd` and Instance
+`a30d9ebeb775b6d566758a8909960838be6f7791`. Original-period renewal/recovery uses
+real Control Plane HTTP and PostgreSQL with explicit local wallet/provider
+fixtures. Focused tests cover response loss, competing processes, repaired
+Runtime identity, historical expiry, precise worker wakeup, and existing
+WebSocket termination. Delete tests cover no-session background continuation,
+late compute absence beyond the old read limit, exact disabled-Key revocation,
+partial Runtime objects, owner isolation and receipt-only recovery. Independent
+HTTP tests validate the new Fabric power capability and exact Sub2API deletion
+read. Tencent adapter tests use isolated Kubernetes/Tencent IO and persisted
+owner journals; they do not access the real provider.
+
+The final `verify:local:full` passes all source/browser/build checks and all four
+PostgreSQL owners, including capacity and real Local-Docker integration, with
+zero required skips. Fabric's independently retained final whole-module run
+contains 1,842 passing test events and no skips. The real Docker path preserves
+the original container ID and data in both mounted directories across stop/start.
+The final renewal race suite passes 275 cases, including new and existing
+connections after a real confirmed renewal. Initial failed verification logs
+are retained separately and are not counted as passing evidence.
+
+The Console browser evidence includes expiry/recovery, top-up without automatic
+recovery, unknown-response reentry, Runtime readiness, and one-submit deletion
+on desktop and mobile. The local Workspace overlay enables the existing monthly
+worker; Instance source defaults its interval to 60 seconds while retaining
+Bootstrap's disabled workers. Protected environment overrides and actual
+adoption require Instance readback. Test accounts, charges, resources and
+receipts remain isolated; none is deployment input.
+
 The 2026-08-19 Local-Docker runs covered two ownership modes:
 
 - `customer_owned` created two independent Workspaces, retained them across
@@ -216,6 +251,6 @@ proven.
 "Basically usable" describes the presently demonstrated administrator-operated
 surface. Public Beta requires the Cloud and Instance evidence named by the A-N
 work packages in [roadmap.md](./roadmap.md). In particular, current evidence
-does not yet close public registration, complete lifecycle recovery, data
+does not yet close public registration, production lifecycle qualification, data
 restore and alert operations, clean exact-Candidate qualification, rollback,
 or same-byte publication.

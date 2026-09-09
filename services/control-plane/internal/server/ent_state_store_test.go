@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -1714,7 +1715,16 @@ func TestPostgresWorkspaceRenewalPersistAndOwnerDisableUseSameLockOrder(t *testi
 		t.Fatal(err)
 	}
 	newStore := func(applicationName string) *postgresEntStateStore {
-		stateStore, err := newTestPostgresEntStateStore(controlPlaneTestPostgresURL(t, "postgres", schema) + " application_name=" + applicationName)
+		databaseURL := controlPlaneTestPostgresURL(t, "postgres", schema)
+		if parsed, parseErr := url.Parse(databaseURL); parseErr == nil && parsed.Scheme != "" {
+			query := parsed.Query()
+			query.Set("application_name", applicationName)
+			parsed.RawQuery = query.Encode()
+			databaseURL = parsed.String()
+		} else {
+			databaseURL += " application_name=" + applicationName
+		}
+		stateStore, err := newTestPostgresEntStateStore(databaseURL)
 		if err != nil {
 			t.Fatal(err)
 		}

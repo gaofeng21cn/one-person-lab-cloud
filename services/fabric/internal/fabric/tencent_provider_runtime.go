@@ -250,10 +250,23 @@ func (p *TencentProvider) DestroyWorkspaceRuntime(ctx context.Context, workspace
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
+	secret, secretErr := p.workspaceGatewaySecretIdentity(ctx, workspaceID)
+	if secretErr != nil && !errors.Is(secretErr, ErrWorkspaceLaunchResourceAbsent) {
+		return WorkspaceRuntime{}, secretErr
+	}
 	if serviceName != "" {
 		if _, err := p.callKubectl(ctx, []string{"delete", "deployment/" + serviceName, "service/" + serviceName, "networkpolicy/" + serviceName, "secret/" + serviceName + "-env", "--ignore-not-found=true"}, nil, protectedresource.Target{}); err != nil {
 			return WorkspaceRuntime{}, err
 		}
+	}
+	if secretErr == nil {
+		if err := p.destroyGatewaySecret(ctx, secret, workspaceID); err != nil {
+			return WorkspaceRuntime{}, err
+		}
+	}
+	observation, err := p.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
+	if err != nil || observation.State != WorkspaceOwnerObservationAbsent {
+		return WorkspaceRuntime{}, firstNonNil(err, ErrWorkspaceLaunchPending)
 	}
 	return WorkspaceRuntime{WorkspaceID: workspaceID, Status: "destroyed", ServiceName: serviceName}, nil
 }
@@ -278,6 +291,12 @@ func (p *TencentProvider) ObserveWorkspaceRuntimeDelete(ctx context.Context, wor
 	residuals, err := workspaceRuntimeDeleteResidualsFromItems(items, observation.WorkspaceID)
 	if err != nil {
 		return observation, err
+	}
+	secret, secretErr := p.workspaceGatewaySecretIdentity(ctx, observation.WorkspaceID)
+	if secretErr == nil {
+		residuals = append(residuals, WorkspaceRuntimeDeleteResidual{Kind: "Secret", Name: secret.SecretRef})
+	} else if !errors.Is(secretErr, ErrWorkspaceLaunchResourceAbsent) {
+		return observation, secretErr
 	}
 	observation.Residuals = residuals
 	if len(residuals) == 0 {
@@ -322,7 +341,11 @@ func (p *TencentProvider) workspaceRuntimeResourceNameForDestroy(ctx context.Con
 		return "", err
 	}
 	names := map[string]bool{}
-	for _, item := range kubectlItems(raw) {
+	items, err := strictKubectlItems(raw)
+	if err != nil {
+		return "", err
+	}
+	for _, item := range items {
 		resource, ok := item.(map[string]any)
 		if !ok || stringValue(nested(resource, "metadata", "labels", "oplcloud.cn/workspace-id")) != workspaceID {
 			continue
@@ -560,17 +583,25 @@ func (p *TencentProvider) BindWorkspaceRuntimeGatewaySecret(ctx context.Context,
 }
 
 func (p *TencentProvider) WorkspaceRuntimeGatewaySecret(ctx context.Context, workspaceID string) (WorkspaceRuntimeGatewaySecretBinding, error) {
-	serviceName, _, err := p.workspaceRuntimeResourcesStrict(ctx, workspaceID, false)
-	if err != nil || serviceName == "" {
-		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_not_found")
-	}
-	raw, err := p.callKubectl(ctx, []string{"get", "deployment/" + serviceName, "-o", "json"}, nil, protectedresource.Target{})
+	identity, err := p.workspaceGatewaySecretIdentity(ctx, workspaceID)
 	if err != nil {
 		return WorkspaceRuntimeGatewaySecretBinding{}, err
 	}
+	binding := WorkspaceRuntimeGatewaySecretBinding{WorkspaceID: workspaceID, WorkspaceAPIKeyID: identity.WorkspaceAPIKeyID, SecretRef: identity.SecretRef, Fingerprint: identity.Fingerprint}
+	serviceName, _, err := p.workspaceRuntimeResourcesStrict(ctx, workspaceID, false)
+	if err != nil || serviceName == "" {
+		if err != nil {
+			return binding, err
+		}
+		return binding, nil
+	}
+	raw, err := p.callKubectl(ctx, []string{"get", "deployment/" + serviceName, "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return binding, err
+	}
 	var deployment map[string]any
-	if json.Unmarshal(raw, &deployment) != nil || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/workspace-id")) != workspaceID {
-		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_readback_mismatch")
+	if json.Unmarshal(raw, &deployment) != nil || stringValue(deployment["kind"]) != "Deployment" || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/workspace-id")) != workspaceID {
+		return binding, ErrLaunchStageBindingConflict
 	}
 	secretRef := stringValue(nested(deployment, "spec", "template", "metadata", "annotations", "opl.medopl.cn/gateway-secret-ref"))
 	fingerprint := stringValue(nested(deployment, "spec", "template", "metadata", "annotations", "opl.medopl.cn/gateway-fingerprint"))
@@ -588,10 +619,11 @@ func (p *TencentProvider) WorkspaceRuntimeGatewaySecret(ctx context.Context, wor
 			bound = bound || stringValue(nested(source, "secret", "name")) == secretRef
 		}
 	}
-	if parseErr != nil || keyID <= 0 || secretRef == "" || fingerprint == "" || !bound {
-		return WorkspaceRuntimeGatewaySecretBinding{}, fmt.Errorf("workspace_runtime_gateway_secret_readback_mismatch")
+	if parseErr != nil || keyID != identity.WorkspaceAPIKeyID || secretRef != identity.SecretRef || fingerprint != identity.Fingerprint || !bound {
+		return binding, ErrLaunchStageBindingConflict
 	}
-	return WorkspaceRuntimeGatewaySecretBinding{WorkspaceID: workspaceID, WorkspaceAPIKeyID: keyID, SecretRef: secretRef, Fingerprint: fingerprint, Bound: true}, nil
+	binding.Bound = true
+	return binding, nil
 }
 
 func runtimeAccessFromSecret(secret map[string]any, secretRef string) (RuntimeAccess, Check) {

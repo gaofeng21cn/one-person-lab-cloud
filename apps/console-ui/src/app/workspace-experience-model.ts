@@ -3,6 +3,7 @@ import type {
   WorkspaceGatewayBudgetDTO,
   WorkspaceLaunchCloseoutDTO,
   WorkspaceLaunchResponse,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "../api/dtos.ts";
 import { formatUsdMicros } from "../console-model.ts";
@@ -323,6 +324,27 @@ export function presentWorkspaceRenewal(
       return status === undefined
         ? { known: false, kind: "unknown", label: "待确认" }
         : { known: false, kind: "unknown", label: "待确认", rawValue: status };
+  }
+}
+
+export function presentWorkspaceRecovery(recovery: WorkspaceRenewalReadDTO["recovery"]) {
+  switch (recovery.state) {
+    case "not_required": return null;
+    case "recoverable": return { title: "可以续费恢复", description: "确认续费并完成扣款后，系统将恢复原工作空间。充值本身不会恢复使用。" };
+    case "pending": return { title: "正在处理续费恢复", description: "原续费请求正在处理，请勿重复提交。可以关闭页面后再查看；工作空间显示可使用后才能打开。" };
+    case "reclaimed": return { title: "原工作空间无法恢复", description: "原工作空间资源已回收，无法续费恢复。请重新购买工作空间，原数据不提供恢复。" };
+    case "unavailable": {
+      const reasons: Record<string, string> = {
+        workspace_renewal_insufficient_balance: "余额不足。请补足余额后刷新续费条件；充值不会自动恢复工作空间。",
+        workspace_renewal_account_unavailable: "暂时无法确认账户余额，请稍后刷新续费条件。",
+        workspace_renewal_provider_truth_unavailable: "暂时无法确认原工作空间资源，请稍后刷新续费条件。",
+        workspace_renewal_identity_mismatch: "原工作空间的续费条件需要管理员核对，请联系管理员处理。",
+        workspace_renewal_manual_review: "原续费结果需要管理员核对，请勿重复付款。",
+        workspace_renewal_period_elapsed: "原续费期间已过，当前无法续费恢复，请重新购买工作空间。",
+        workspace_delete_in_progress: "工作空间正在删除，不能续费恢复。"
+      };
+      return { title: "暂时无法续费恢复", description: reasons[recovery.reason] || "暂时无法确认续费恢复条件，请稍后刷新。" };
+    }
   }
 }
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AuthSession, WorkspaceDTO } from "../api/dtos.ts";
+import type { AuthSession, WorkspaceDeletionDTO, WorkspaceDTO } from "../api/dtos.ts";
 import {
   deleteWorkspace,
   findWorkspaceInPages,
+  getWorkspaceDeletion,
   workspaceDeleteIdempotencyKey
 } from "../api/workspaces-api.ts";
 import {
@@ -41,6 +42,8 @@ export function useWorkspaceDeleteController({
 }: WorkspaceDeleteDependencies): WorkspaceDeleteCapability {
   const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState<WorkspaceDeleteIssue>("");
+  const [loading, setLoading] = useState(false);
+  const [readback, setReadback] = useState<{ workspaceId: string; operation: WorkspaceDeletionDTO | null }>({ workspaceId: "", operation: null });
   const requestGeneration = useRef(0);
   const intents = useRef(new Map<string, WorkspaceDeleteIntent>());
   const scope = useRef({
@@ -59,6 +62,8 @@ export function useWorkspaceDeleteController({
     intents.current.clear();
     setBusy(false);
     setIssue("");
+    setLoading(false);
+    setReadback({ workspaceId: "", operation: null });
   }, []);
 
   useEffect(() => {
@@ -70,7 +75,15 @@ export function useWorkspaceDeleteController({
     requestGeneration.current += 1;
     setBusy(false);
     setIssue("");
-  }, [activeWorkspaceId]);
+    setReadback({ workspaceId: "", operation: null });
+    if (session && activeWorkspaceId) void refresh();
+  }, [activeWorkspaceId, session?.csrfToken, session?.user.id]);
+
+  useEffect(() => {
+    if (readback.workspaceId !== activeWorkspaceId || readback.operation?.status !== "pending" || loading || busy || issue) return;
+    const timer = window.setTimeout(() => void refresh(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [readback, activeWorkspaceId, loading, busy, issue]);
 
   const requestIsCurrent = (
     generation: number,
@@ -113,9 +126,41 @@ export function useWorkspaceDeleteController({
     }
   };
 
+  const readDeletion = async (
+    workspaceId: string,
+    generation: number,
+    requestStillCurrent: () => boolean,
+    userId: string,
+    csrfToken: string,
+    expectOperation = false
+  ) => {
+    setLoading(true);
+    try {
+      const operation = await getWorkspaceDeletion(workspaceId);
+      if (expectOperation && operation === null) throw new Error("workspace_deletion_unconfirmed");
+      if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
+      setReadback({ workspaceId, operation });
+      setIssue("");
+      if (operation?.status === "deleted") await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
+    } catch {
+      if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) {
+        setReadback((current) => ({ workspaceId, operation: current.workspaceId === workspaceId ? current.operation : null }));
+        setIssue("unconfirmed");
+      }
+    } finally {
+      if (requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) setLoading(false);
+    }
+  };
+
+  const refresh = async () => {
+    if (!session || !activeWorkspaceId || busy) return;
+    await readDeletion(activeWorkspaceId, ++requestGeneration.current, currentMutationRequest(), session.user.id, session.csrfToken);
+  };
+
   const deleteCurrentWorkspace = async () => {
-    if (!session || !workspace || workspace.id !== activeWorkspaceId || busy) return;
-    if (!window.confirm(`确认删除 Workspace “${workspace.name || workspace.id}”？`)) return;
+    if (!session || !workspace || workspace.id !== activeWorkspaceId || busy || loading
+      || readback.workspaceId !== activeWorkspaceId || readback.operation || issue === "unconfirmed") return;
+    if (!window.confirm(`确认删除工作空间“${workspace.name || workspace.id}”？请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。`)) return;
 
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;
@@ -140,11 +185,11 @@ export function useWorkspaceDeleteController({
         flash("Workspace 删除暂不可用", "danger");
         return;
       }
-      await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
+      await readDeletion(workspaceId, generation, requestStillCurrent, userId, csrfToken, true);
     } catch (error) {
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       if (isWorkspaceDeleteNotFound(error)) {
-        await confirmReadback(workspaceId, generation, requestStillCurrent, userId, csrfToken);
+        await readDeletion(workspaceId, generation, requestStillCurrent, userId, csrfToken);
         return;
       }
       if (!shouldRetainWorkspaceDeleteIntent(error) && intents.current.get(workspaceId) === resolved) {
@@ -157,5 +202,5 @@ export function useWorkspaceDeleteController({
     }
   };
 
-  return { busy, issue, deleteCurrentWorkspace, reset };
+  return { busy, issue, loading: loading || Boolean(activeWorkspaceId && readback.workspaceId !== activeWorkspaceId), operation: readback.workspaceId === activeWorkspaceId ? readback.operation : null, refresh, deleteCurrentWorkspace, reset };
 }

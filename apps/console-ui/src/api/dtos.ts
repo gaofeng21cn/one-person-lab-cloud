@@ -155,6 +155,14 @@ export interface WorkspaceDeleteResponse {
   operationId?: string;
 }
 
+export interface WorkspaceDeletionDTO {
+  workspaceId: string;
+  operationId: string;
+  status: "pending" | "manual_review" | "deleted";
+  phase: string;
+  receiptId?: string;
+}
+
 export type WorkspaceDeleteCommandResult =
   | { available: true; data: WorkspaceDeleteResponse }
   | { available: false; reasonCode: "workspace_delete_unavailable" };
@@ -177,6 +185,13 @@ export interface WorkspaceRenewalResponse {
   nextRenewalAt: string;
   paidThrough: string;
   renewalStatus: string;
+}
+
+export interface WorkspaceRenewalReadDTO extends WorkspaceRenewalResponse {
+  recovery: {
+    state: "not_required" | "recoverable" | "pending" | "unavailable" | "reclaimed";
+    reason: string;
+  };
 }
 
 export type WorkspaceAutoRenewRequest = WorkspaceRenewalRequest;

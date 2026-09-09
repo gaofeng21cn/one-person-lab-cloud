@@ -474,11 +474,39 @@ v1 Delete and concurrent Renewal fail closed before a v2 mutation. Delete and
 Key Rotation use the same durable Workspace claim order and block each other
 before Fabric or Sub2API mutation.
 
+The enabled Workspace Launch worker starts the retained v2 Delete worker; the
+portable Local Workspace overlay enables both it and the monthly worker. The
+Delete worker continues retained v2 operations using service
+authorization and the original Launch/Key identity; it needs no customer password
+or session credential. `GET /api/workspaces/{id}/deletion` returns owner-bound
+pending/manual-review/deleted progress, or `null` before a Delete is authorized.
+It remains readable after the Workspace projection is removed so a pending
+Ledger Receipt is not displayed as completion. Compute absence reads remain
+scheduled until the owner confirms absence, without repeating destroy.
+
 Each Workspace operation owns renewal intent and one combined monthly debit.
-Compute and storage rows are provider/compatibility facts, not independent
-customer renewal controls. At unpaid expiry, access is denied and auto-renew is
-disabled, but Control Plane performs no Fabric/Tencent stop, renew, destroy, or
-delete mutation; Tencent expiry policy owns eventual provider reclamation.
+Compute and storage rows are provider facts, not independent customer renewal
+controls. The existing monthly worker wakes at the next known renewal/expiry
+boundary, with a one-minute default discovery interval. Unpaid expiry disables
+entitlement and auto-renew, terminates existing proxied streams, and persists a
+`runtime_suspend` step. The typed Fabric Runtime power contract binds the
+original account, Workspace, Runtime operation and paid-through period. Fabric
+serializes power with destroy and rejects stale periods or deleted Runtimes;
+Tencent scales the exact Deployment to zero and waits for Pod absence, while
+Local-Docker stops the original container. Storage is not deleted by expiry.
+
+The renewal read reports recovery eligibility from original resource, Runtime,
+period and wallet readback. A customer's explicit `autoRenew=true` authorization
+after expiry both authorizes original-period recovery and enables subsequent
+auto-renewal. Every new debit attempt rechecks original resources. Confirmed
+renewal waits for original Runtime running before restoring entitlement. Access then validates the current
+period against that committed renewal and exact debit, retaining the immutable
+initial Launch. Existing proxy connections follow the confirmed renewed period. A
+reclaimed resource or elapsed next anchored period is unavailable for recovery;
+no replacement purchase or multi-period catch-up is implied. Adding balance
+alone cannot recover a Workspace. Non-billing customer-owned resources keep
+their existing non-billing access semantics. Provider reclamation remains the
+provider's lifecycle, and no post-expiry data retention is promised.
 
 ### Local-Docker Host Capacity Admission
 

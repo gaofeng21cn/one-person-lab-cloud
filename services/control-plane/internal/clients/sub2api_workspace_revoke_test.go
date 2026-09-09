@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -146,3 +147,72 @@ func TestWorkspaceRevocationIdentityLookupAcceptsUnusableKeysWithoutClaimingUsab
 		})
 	}
 }
+
+func TestWorkspaceDeletionReadUsesExactServiceIdentityWithoutCredential(t *testing.T) {
+	for _, tc := range []struct {
+		name, status                         string
+		missing, badOwner, badPage, notFound bool
+	}{
+		{name: "disabled", status: "disabled"}, {name: "expired", status: "expired"}, {name: "quota exhausted", status: "quota_exhausted"},
+		{name: "verified absent", missing: true}, {name: "foreign owner", badOwner: true}, {name: "invalid pagination", badPage: true}, {name: "route 404 is not absence", notFound: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/auth/login" {
+					writeSub2APISuccess(t, w, map[string]any{"access_token": "service-token"})
+					return
+				}
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/41/api-keys" || r.Header.Get("Authorization") != "Bearer service-token" {
+					t.Errorf("unexpected owner request %s %s", r.Method, r.URL.Path)
+				}
+				if tc.notFound {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				userID := int64(41)
+				if tc.badOwner {
+					userID = 42
+				}
+				items := []sub2APIKeyPayload{{ID: 19, UserID: userID, Name: "opl-workspace-alpha", Status: tc.status, Key: "must-not-leave-owner-read", Quota: jsonNumberPtr("1"), QuotaUsed: jsonNumberPtr("0"), RateLimit5h: jsonNumberPtr("1"), RateLimit1d: jsonNumberPtr("1"), RateLimit7d: jsonNumberPtr("1"), Usage5h: jsonNumberPtr("0"), Usage1d: jsonNumberPtr("0"), Usage7d: jsonNumberPtr("0")}}
+				total := 1
+				if tc.missing {
+					items = nil
+					total = 0
+				}
+				page := 1
+				if tc.badPage {
+					page = 2
+				}
+				writeSub2APISuccess(t, w, struct {
+					Items    []sub2APIKeyPayload `json:"items"`
+					Page     int                 `json:"page"`
+					PageSize int                 `json:"page_size"`
+					Pages    int                 `json:"pages"`
+					Total    int                 `json:"total"`
+				}{items, page, 1, 1, total})
+			}, time.Second)
+			key, err := client.WorkspaceKeyForDeletion(context.Background(), 41, 19)
+			if tc.missing {
+				if !errors.Is(err, ErrSub2APIKeyNotFound) {
+					t.Fatalf("absence error=%v", err)
+				}
+				return
+			}
+			if tc.badOwner || tc.badPage || tc.notFound {
+				if err == nil || errors.Is(err, ErrSub2APIKeyNotFound) {
+					t.Fatalf("unverified response treated as key or absence: key=%+v err=%v", key, err)
+				}
+				return
+			}
+			if err != nil || key.ID != 19 || key.UserID != 41 || key.Name != "opl-workspace-alpha" || key.Status != tc.status {
+				t.Fatalf("identity=%+v err=%v", key, err)
+			}
+			body, _ := json.Marshal(key)
+			if strings.Contains(string(body), "must-not-leave") {
+				t.Fatal("credential escaped deletion read")
+			}
+		})
+	}
+}
+
+func jsonNumberPtr(value string) *json.Number { n := json.Number(value); return &n }

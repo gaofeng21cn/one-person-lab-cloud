@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -229,6 +230,11 @@ func (s *monthlySub2API) FinancialBalanceHistoryByCodes(_ context.Context, _ int
 }
 
 type monthlyFabric struct {
+	runtimePowerIdentity contracts.WorkspaceRuntimePowerInput
+	runtimePowerState    string
+	runtimePowerErr      error
+	runtimePowerCalls    []contracts.WorkspaceRuntimePowerInput
+	runtimePowerReads    []contracts.WorkspaceRuntimePowerInput
 	fakeFabricClient
 	events             *[]string
 	createErr          error

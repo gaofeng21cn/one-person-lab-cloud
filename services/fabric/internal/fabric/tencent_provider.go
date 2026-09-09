@@ -888,14 +888,22 @@ func (p *TencentProvider) ReadGatewaySecretByDigest(ctx context.Context, input G
 		input.SecretRef != gatewaySecretName(input.WorkspaceID) || input.Fingerprint != "sha256:"+input.KeyDigest {
 		return GatewaySecret{}, fmt.Errorf("gateway_secret_readback_mismatch")
 	}
-	expected := GatewaySecret{SecretRef: input.SecretRef, Version: input.KeyDigest[:16], Fingerprint: input.Fingerprint}
-	readback, err := p.callKubectl(ctx, []string{"get", "secret/" + expected.SecretRef, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
+	readback, err := p.callKubectl(ctx, []string{"get", "secret/" + input.SecretRef, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return GatewaySecret{}, err
 	}
+	return decodeTencentGatewaySecretReadback(readback, input)
+}
+
+func decodeTencentGatewaySecretReadback(readback []byte, input GatewaySecretReadbackInput) (GatewaySecret, error) {
 	if strings.TrimSpace(string(readback)) == "" {
 		return GatewaySecret{}, ErrWorkspaceLaunchResourceAbsent
 	}
+	if input.AccountID == "" || input.WorkspaceID == "" || input.WorkspaceAPIKeyID <= 0 || len(input.KeyDigest) != 64 ||
+		input.SecretRef != gatewaySecretName(input.WorkspaceID) || input.Fingerprint != "sha256:"+input.KeyDigest {
+		return GatewaySecret{}, ErrLaunchStageBindingConflict
+	}
+	expected := GatewaySecret{SecretRef: input.SecretRef, Version: input.KeyDigest[:16], Fingerprint: input.Fingerprint}
 	var actual struct {
 		Kind     string `json:"kind"`
 		Type     string `json:"type"`
@@ -922,6 +930,37 @@ func (p *TencentProvider) ReadGatewaySecretByDigest(ctx context.Context, input G
 		return GatewaySecret{}, ErrLaunchStageBindingConflict
 	}
 	return expected, nil
+}
+
+func (p *TencentProvider) workspaceGatewaySecretIdentity(ctx context.Context, workspaceID string) (GatewaySecretReadbackInput, error) {
+	input := GatewaySecretReadbackInput{WorkspaceID: workspaceID, SecretRef: gatewaySecretName(workspaceID)}
+	raw, err := p.callKubectl(ctx, []string{"get", "secret/" + input.SecretRef, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return input, err
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return input, ErrWorkspaceLaunchResourceAbsent
+	}
+	var secret struct {
+		Metadata struct {
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(raw, &secret) != nil {
+		return input, ErrLaunchStageBindingConflict
+	}
+	input.AccountID = secret.Metadata.Annotations["oplcloud.cn/account-id"]
+	if accountID, ok := ctx.Value(workspaceRuntimeOwnerContextKey{}).(string); ok && accountID != input.AccountID {
+		return input, ErrLaunchStageBindingConflict
+	}
+	input.WorkspaceAPIKeyID, err = strconv.ParseInt(secret.Metadata.Annotations["oplcloud.cn/workspace-api-key-id"], 10, 64)
+	if err != nil {
+		return input, ErrLaunchStageBindingConflict
+	}
+	input.Fingerprint = secret.Metadata.Annotations["oplcloud.cn/secret-fingerprint"]
+	input.KeyDigest = strings.TrimPrefix(input.Fingerprint, "sha256:")
+	_, err = decodeTencentGatewaySecretReadback(raw, input)
+	return input, err
 }
 
 func gatewaySecretName(workspaceID string) string {

@@ -22,6 +22,28 @@ type Sub2APIWorkspaceKeyRevokeClient interface {
 	RevokeWorkspaceKey(context.Context, Sub2APIWorkspaceKeyRevokeInput) error
 }
 
+type Sub2APIWorkspaceKeyDeleteReadClient interface {
+	WorkspaceKeyForDeletion(context.Context, int64, int64) (Sub2APIWorkspaceKey, error)
+}
+
+// Deletion reads the exact retained Key ID under its original account. Usability
+// and a customer's temporary session are not prerequisites for removing that Key.
+func (c *Sub2APIHTTPClient) WorkspaceKeyForDeletion(ctx context.Context, userID, keyID int64) (Sub2APIWorkspaceKey, error) {
+	if userID <= 0 || keyID <= 0 {
+		return Sub2APIWorkspaceKey{}, errors.New("invalid sub2api workspace key identity")
+	}
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	key, err := c.adminUserKeyByID(readCtx, userID, keyID)
+	if errors.Is(err, ErrSub2APIWorkspaceKeyMissing) {
+		return Sub2APIWorkspaceKey{}, ErrSub2APIKeyNotFound
+	}
+	if err != nil {
+		return Sub2APIWorkspaceKey{}, err
+	}
+	return Sub2APIWorkspaceKey{ID: key.ID, UserID: key.UserID, Name: key.Name, Status: key.Status}, nil
+}
+
 // WorkspaceKeysForRevocation obtains the original owner/key/name identity even
 // when the key is disabled. It never returns credentials or asserts usability.
 func (c *Sub2APIHTTPClient) WorkspaceKeysForRevocation(ctx context.Context, userID int64, name string) ([]Sub2APIWorkspaceKey, error) {

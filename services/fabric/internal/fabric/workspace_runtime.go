@@ -324,6 +324,47 @@ func (s *Service) DestroyWorkspaceRuntime(ctx context.Context, workspaceID, idem
 	if strings.TrimSpace(workspaceID) == "" || strings.TrimSpace(idempotencyKey) == "" {
 		return WorkspaceRuntime{}, fmt.Errorf("runtime_destroy_identity_required")
 	}
+	var result WorkspaceRuntime
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(workspaceID), func(ctx context.Context) error {
+		var err error
+		result, err = s.destroyWorkspaceRuntime(ctx, workspaceID, idempotencyKey)
+		return err
+	})
+	return result, err
+}
+
+func workspaceRuntimeLockKey(workspaceID string) string { return "workspace-runtime:" + workspaceID }
+
+type workspaceRuntimeOwnerContextKey struct{}
+
+func (s *Service) destroyWorkspaceRuntime(ctx context.Context, workspaceID, idempotencyKey string) (WorkspaceRuntime, error) {
+	stages, err := s.launchStages.stages.WorkspaceLaunchStages(ctx, workspaceID)
+	if err != nil {
+		return WorkspaceRuntime{}, err
+	}
+	accountID := ""
+	for _, stage := range stages {
+		binding, valid := decodeLaunchStageBinding(stage)
+		if !valid || binding.WorkspaceID != workspaceID || binding.AccountID == "" || accountID != "" && accountID != binding.AccountID {
+			return WorkspaceRuntime{}, ErrLaunchStageBindingConflict
+		}
+		accountID = binding.AccountID
+	}
+	if len(stages) == 0 {
+		owners, err := s.runtimeRead.operations.WorkspaceRuntimeIdentityCandidates(ctx, workspaceID)
+		if err != nil {
+			return WorkspaceRuntime{}, err
+		}
+		if len(owners) > 1 {
+			return WorkspaceRuntime{}, ErrLaunchStageBindingConflict
+		}
+		if len(owners) == 1 {
+			accountID = owners[0].AccountID
+		}
+	}
+	if accountID != "" {
+		ctx = context.WithValue(ctx, workspaceRuntimeOwnerContextKey{}, accountID)
+	}
 	requestHash := hashInput(map[string]string{"workspaceId": workspaceID})
 	now := s.now()
 	operation := newOperation("destroy_workspace_runtime", "workspace_runtime", workspaceID, "", workspaceID, idempotencyKey, requestHash, now)
@@ -336,7 +377,30 @@ func (s *Service) DestroyWorkspaceRuntime(ctx context.Context, workspaceID, idem
 		return WorkspaceRuntime{}, err
 	}
 	if !claimed {
-		return replayRuntimeOperation(stored, requestHash)
+		if stored.RequestHash != requestHash {
+			return WorkspaceRuntime{}, ErrRuntimeIdempotencyConflict
+		}
+		if s.optionalProviders.workspaceRuntimeDeleteObservation == nil {
+			return replayRuntimeOperation(stored, requestHash)
+		}
+		observation := s.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
+		if observation.State == WorkspaceOwnerObservationAbsent {
+			if stored.Status != "succeeded" {
+				runtime := WorkspaceRuntime{WorkspaceID: workspaceID, Status: "destroyed", ProviderRequestID: providerRequestID("runtime-destroy", idempotencyKey)}
+				if _, err := s.convergeRuntimeOperationReadback(ctx, stored, runtime, nil); err != nil {
+					return runtime, err
+				}
+				return runtime, nil
+			}
+			return replayRuntimeOperation(stored, requestHash)
+		}
+		if observation.State != WorkspaceRuntimeDeleteObservationPresent {
+			return WorkspaceRuntime{}, ErrWorkspaceLaunchPending
+		}
+		stored, err = s.runtimeOperations.ReopenWorkspaceRuntimeDelete(ctx, stored, now)
+		if err != nil {
+			return WorkspaceRuntime{}, err
+		}
 	}
 	runtime, err := s.runtimeProvider.DestroyWorkspaceRuntime(ctx, workspaceID)
 	runtime.Access.Password = ""

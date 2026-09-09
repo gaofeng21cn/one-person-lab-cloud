@@ -105,6 +105,18 @@ current implementation documentation.
   compute, and Key state through their respective owners before removing the
   Workspace projection. Delete is independent from refund and performs no
   automatic wallet mutation.
+- Unpaid expiry denies new access, ends existing proxied access, and stops the
+  original Runtime through Fabric. It does not authorize new procurement or
+  silently extend entitlement. Stop/resume preserves storage and Key identity.
+- Expired recovery requires fresh explicit owner authorization, the original
+  anchored period, exact charge confirmation, original resources still present,
+  and Runtime ready. Balance changes alone cannot restore access. Older power
+  periods and a deleted Runtime cannot override newer entitlement or deletion.
+- A persisted Delete continues without a customer credential. Pending owner
+  absence never becomes success through a read-count limit; only exact absence
+  plus the non-financial deletion Receipt completes the operation.
+- Customers download and back up data before expiry. The product does not
+  promise post-expiry retention or restoration.
 - Operations that can mutate the same Workspace-owned resource serialize on the
   owning durable state.
 - Historical rows needed for current reads or migration validation remain

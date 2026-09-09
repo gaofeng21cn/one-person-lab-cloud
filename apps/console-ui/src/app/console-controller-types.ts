@@ -33,12 +33,14 @@ import type {
   WalletAdjustmentOperationDTO,
   WorkspaceCredentialAccess,
   WorkspaceDTO,
+  WorkspaceDeletionDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceLaunchResponse,
   WorkspacePricePreview,
   WorkspaceListData,
   WorkspaceRuntimeDTO,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeImageReplacementDTO,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
@@ -164,6 +166,9 @@ export interface WorkspaceLaunchController {
 export interface WorkspaceDeleteController {
   busy: boolean;
   issue: "" | "unavailable" | "unconfirmed";
+  loading: boolean;
+  operation: WorkspaceDeletionDTO | null;
+  refresh: () => Promise<void>;
   deleteCurrentWorkspace: () => Promise<void>;
 }
 
@@ -187,6 +192,9 @@ export interface WorkspaceImageReleaseController {
 export interface WorkspaceRenewalController {
   busy: boolean;
   issue: "" | "unconfirmed";
+  loading: boolean;
+  renewal: WorkspaceRenewalReadDTO | null;
+  refresh: () => Promise<void>;
   updateCurrentWorkspaceRenewal: (autoRenew: boolean) => Promise<boolean>;
 }
 

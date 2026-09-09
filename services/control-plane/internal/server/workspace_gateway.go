@@ -43,6 +43,11 @@ func (app *controlPlaneServer) workspaceResponse(row map[string]any) map[string]
 
 func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row map[string]any, now time.Time) (map[string]any, string) {
 	response := workspaceResponse(row)
+	_, found, err := app.workspaceDeleteOperation(ctx, stringValue(row["id"]))
+	if err != nil || found {
+		response["openable"], response["accessState"] = false, "disabled"
+		return response, "workspace_delete_in_progress"
+	}
 	canonicalComputeID, canonicalStorageID := stringValue(row["currentComputeAllocationId"]), stringValue(row["storageId"])
 	if !providerAcceptanceWorkspaceBillingExempt(row) {
 		state, present, err := normalizeWorkspaceBillingStateForWorkspace(row, row)
@@ -50,13 +55,14 @@ func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row 
 			response["openable"], response["accessState"] = false, "disabled"
 			return response, "workspace_billing_state_invalid"
 		}
-		if state.RenewalStatus != "active" {
+		paid := state.ResourceBillingEnabled == nil || *state.ResourceBillingEnabled
+		if paid && state.RenewalStatus != "active" {
 			response["openable"], response["accessState"] = false, "disabled"
 			return response, "workspace_billing_manual_review"
 		}
 		canonicalPaidThrough, _ := time.Parse(time.RFC3339, state.PaidThrough)
 		canonicalComputeID, canonicalStorageID = state.ComputeAllocationID, state.StorageID
-		if !now.UTC().Before(canonicalPaidThrough) {
+		if paid && !now.UTC().Before(canonicalPaidThrough) {
 			response["openable"], response["accessState"] = false, "disabled"
 			return response, "workspace_billing_period_expired"
 		}
@@ -1053,6 +1059,46 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		writeUpstreamError(w)
 		return
 	}
+	if !providerAcceptanceWorkspaceBillingExempt(workspace) && workspace["resourceBillingEnabled"] != false {
+		paidThrough, err := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
+		if err != nil {
+			writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
+			return
+		}
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		go func() {
+			timer := time.NewTimer(time.Until(paidThrough))
+			defer timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					current, found := app.getWorkspace(workspaceID)
+					if !found || stringValue(current["state"]) != "running" {
+						cancel()
+						return
+					}
+					access, reason := app.workspaceAccessResponse(ctx, current, time.Now().UTC())
+					if reason != "" || access["openable"] != true {
+						cancel()
+						return
+					}
+					if current["resourceBillingEnabled"] == false {
+						return
+					}
+					nextPaidThrough, err := time.Parse(time.RFC3339, stringValue(current["paidThrough"]))
+					if err != nil || !time.Now().Before(nextPaidThrough) {
+						cancel()
+						return
+					}
+					timer.Reset(time.Until(nextPaidThrough))
+				}
+			}
+		}()
+		r = r.WithContext(ctx)
+	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
@@ -1124,7 +1170,15 @@ func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Con
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, bool, error) {
-	return app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchAccessProjectionMismatchFields, app.recordCanonicalWorkspaceLaunchFailure)
+	return app.canonicalWorkspaceLaunch(ctx, workspace, func(launch workspaceLaunchReconcileOperation, current map[string]any) []string {
+		if stringValue(current["periodStart"]) != launch.stringFact("periodStart") || stringValue(current["paidThrough"]) != launch.stringFact("paidThrough") {
+			if app.workspaceRenewalCurrentEntitlement(ctx, current) {
+				current = cloneMap(current)
+				current["periodStart"], current["paidThrough"] = launch.stringFact("periodStart"), launch.stringFact("paidThrough")
+			}
+		}
+		return workspaceLaunchAccessProjectionMismatchFields(launch, current)
+	}, app.recordCanonicalWorkspaceLaunchFailure)
 }
 
 func (app *controlPlaneServer) canonicalWorkspaceLaunch(

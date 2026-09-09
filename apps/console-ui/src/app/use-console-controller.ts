@@ -319,6 +319,7 @@ export function useConsoleController() {
     currentMutationRequest,
     workspaceDetailProjectionLease: customerWorkspaceReadCapability.workspaceDetailProjectionLease,
     onWorkspaceReadback: customerWorkspaceReadCapability.applyWorkspaceReadback,
+    onRecovered: () => refreshCurrentPage(),
     flash,
     mutationError
   });
@@ -700,9 +701,15 @@ export function useConsoleController() {
     workspaceLaunch,
     workspaceDeleteBusy: workspaceDelete.busy,
     workspaceDeleteIssue: workspaceDelete.issue,
+    workspaceDeletion: workspaceDelete.operation,
+    workspaceDeletionLoading: workspaceDelete.loading,
+    refreshWorkspaceDeletion: workspaceDelete.refresh,
     deleteCurrentWorkspace: workspaceDelete.deleteCurrentWorkspace,
     workspaceRenewalBusy: workspaceRenewal.busy,
     workspaceRenewalIssue: workspaceRenewal.issue,
+    workspaceRenewalRead: workspaceRenewal.renewal,
+    workspaceRenewalLoading: workspaceRenewal.loading,
+    refreshWorkspaceRenewal: workspaceRenewal.refresh,
     updateCurrentWorkspaceRenewal: workspaceRenewal.updateCurrentWorkspaceRenewal,
     workspaceSecrets,
     workspaceBudgetBusy: workspaceBudget.busy,

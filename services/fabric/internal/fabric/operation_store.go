@@ -2451,3 +2451,58 @@ func (s *PostgresOperationStore) CancelWorkspaceLaunchQueuedCompute(ctx context.
 	}
 	return nil
 }
+
+func validWorkspaceRuntimeDeleteReopen(op FabricOperation) bool {
+	return op.ID != "" && op.Action == "destroy_workspace_runtime" && op.ResourceKind == "workspace_runtime" &&
+		op.ResourceID != "" && op.ResourceID == op.WorkspaceID && op.ComputePoolKey == "" && op.IdempotencyKey != "" &&
+		op.RequestHash == hashInput(map[string]string{"workspaceId": op.WorkspaceID}) && (op.Status == "succeeded" || op.Status == "started")
+}
+
+func (s *MemoryOperationStore) ReopenWorkspaceRuntimeDelete(_ context.Context, expected FabricOperation, now time.Time) (FabricOperation, error) {
+	if !validWorkspaceRuntimeDeleteReopen(expected) {
+		return FabricOperation{}, ErrRuntimeOperationNotCurrent
+	}
+	expectedPayload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return FabricOperation{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, current := range s.operation {
+		payload, err := operationPayloadJSON(current)
+		if err != nil {
+			return FabricOperation{}, err
+		}
+		if sameRuntimeReadbackIdentity(current, expected) && payload == expectedPayload {
+			current.Status, current.StartedAt, current.FinishedAt, current.ErrorCode, current.Retryable = "started", now, time.Time{}, "", false
+			s.operation[i] = current
+			return current, nil
+		}
+	}
+	return FabricOperation{}, ErrRuntimeOperationNotCurrent
+}
+
+func (s *PostgresOperationStore) ReopenWorkspaceRuntimeDelete(ctx context.Context, expected FabricOperation, now time.Time) (FabricOperation, error) {
+	if !validWorkspaceRuntimeDeleteReopen(expected) {
+		return FabricOperation{}, ErrRuntimeOperationNotCurrent
+	}
+	payload, err := operationPayloadJSON(expected)
+	if err != nil {
+		return FabricOperation{}, err
+	}
+	var startedAt time.Time
+	err = s.db.QueryRowContext(ctx, `UPDATE fabric_operations
+ SET status = 'started', started_at = $1, finished_at = NULL, error_code = '', retryable = false
+ WHERE id = $2 AND action = 'destroy_workspace_runtime' AND resource_kind = 'workspace_runtime'
+ AND resource_id = $3 AND workspace_id = $3 AND request_hash = $4 AND status = $5 AND started_at = $6
+ AND idempotency_key = $7 AND redacted_provider_payload::jsonb = $8::jsonb
+ RETURNING started_at`, now, expected.ID, expected.WorkspaceID, expected.RequestHash, expected.Status, expected.StartedAt, expected.IdempotencyKey, payload).Scan(&startedAt)
+	if err == sql.ErrNoRows {
+		return FabricOperation{}, ErrRuntimeOperationNotCurrent
+	}
+	if err != nil {
+		return FabricOperation{}, err
+	}
+	expected.Status, expected.StartedAt, expected.FinishedAt, expected.ErrorCode, expected.Retryable = "started", startedAt, time.Time{}, "", false
+	return expected, nil
+}

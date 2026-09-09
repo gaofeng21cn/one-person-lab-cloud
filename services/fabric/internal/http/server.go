@@ -125,6 +125,27 @@ func newFabricMux(service *fabric.Service) http.Handler {
 			writeWorkspaceLaunchResult(w, result, err)
 		})
 	}
+	for _, route := range []string{"/fabric/workspace-runtimes/power", "/fabric/workspace-runtimes/power/read"} {
+		mux.HandleFunc("POST "+route, func(w http.ResponseWriter, r *http.Request) {
+			var input fabric.WorkspaceRuntimePowerInput
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid JSON body")
+				return
+			}
+			var result fabric.WorkspaceRuntimePowerResult
+			var err error
+			if r.URL.Path == "/fabric/workspace-runtimes/power/read" {
+				result, err = service.ReadWorkspaceRuntimePower(r.Context(), input)
+			} else {
+				if input.IdempotencyKey == "" || r.Header.Get("Idempotency-Key") != input.IdempotencyKey {
+					writeError(w, http.StatusBadRequest, "workspace runtime power idempotency key mismatch")
+					return
+				}
+				result, err = service.SetWorkspaceRuntimePower(r.Context(), input)
+			}
+			writeWorkspaceLaunchResult(w, result, err)
+		})
+	}
 	mux.HandleFunc("GET /fabric/readiness", func(w http.ResponseWriter, r *http.Request) {
 		readiness, err := service.Readiness(r.Context())
 		if err != nil {
@@ -702,6 +723,7 @@ func isFabricMutation(r *http.Request) bool {
 	if r.URL.Path == "/fabric/compute-allocations" || r.URL.Path == "/fabric/storage-volumes" || r.URL.Path == "/fabric/workspace-runtimes" ||
 		r.URL.Path == "/fabric/gateway-secrets" || r.URL.Path == "/fabric/workspace-launches/stages/ensure" ||
 		r.URL.Path == "/fabric/workspace-launches/closeout" || r.URL.Path == "/fabric/workspace-launches/closeout/freeze" ||
+		r.URL.Path == "/fabric/workspace-runtimes/power" ||
 		r.URL.Path == "/fabric/storage-attachments" ||
 		r.URL.Path == "/fabric/compute-pool-head/terminalization" {
 		return true
@@ -768,6 +790,8 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 		}
 	case r.URL.Path == "/fabric/workspace-launches/closeout" || r.URL.Path == "/fabric/workspace-launches/closeout/freeze":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_launch_closeout", value("launchOperationId"), "closeout_workspace_launch"
+	case r.URL.Path == "/fabric/workspace-runtimes/power":
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_runtime_power", scope.WorkspaceID, "set_workspace_runtime_power"
 	case r.URL.Path == "/fabric/workspace-launches/stages/ensure":
 		binding, _ := input["binding"].(map[string]any)
 		bindingValue := func(name string) string {

@@ -8,6 +8,7 @@ import type {
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceListData,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
@@ -162,6 +163,16 @@ test("Fabric Runtime Read rejects late Workspace and refresh responses and settl
       const workspaceId = new URL(route.request().url()).pathname.split("/")[3];
       const value = workspaceId === alpha.id ? alpha : beta;
       await fulfill(route, source(budget(value.id, value.workspaceApiKeyId || ""), "sub2api"));
+    });
+    await page.route("**/api/workspaces/*/renewal", async (route) => {
+      const workspaceId = new URL(route.request().url()).pathname.split("/")[3];
+      const value = workspaceId === alpha.id ? alpha : beta;
+      const renewal: WorkspaceRenewalReadDTO = {
+        autoRenew: value.autoRenew!, effectiveAfter: value.paidThrough!, nextRenewalAt: value.paidThrough!,
+        paidThrough: value.paidThrough!, renewalStatus: value.renewalStatus!,
+        recovery: { state: "not_required", reason: "workspace_paid_period_active" }
+      };
+      await fulfill(route, renewal);
     });
     await page.route("**/api/workspaces/*/runtime-status", async (route) => {
       const workspaceId = new URL(route.request().url()).pathname.split("/")[3];

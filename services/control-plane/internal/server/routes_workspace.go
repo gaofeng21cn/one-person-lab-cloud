@@ -44,6 +44,7 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		}
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", status, map[string]any{"items": items, "total": workspacePage.Total, "page": page, "pageSize": pageSize})
 	}))
+	mux.HandleFunc("GET /api/workspaces/{workspaceId}/deletion", app.protected(false, func(w http.ResponseWriter, r *http.Request) { app.workspaceDeletionStatus(w, r) }))
 	mux.HandleFunc("DELETE /api/workspaces/{workspaceId}", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.deleteWorkspace(w, r, service)
 	}))
@@ -172,7 +173,7 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 			OwnerID:   firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"])),
 			ComputeID: launch.stringFact("computeAllocationId"), VolumeID: launch.stringFact("storageId"), AttachmentID: launch.stringFact("attachmentId"),
 			AttachmentOperationID: launch.ID + ":attachment", RuntimeID: launch.stringFact("runtimeId"),
-			RuntimeOperationID: launch.ID + ":runtime",
+			RuntimeOperationID: launch.stringFact("runtimeBindingRef"),
 		}, key)
 		if err != nil {
 			writeUpstreamError(w, err)
@@ -207,6 +208,32 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 	}))
 	mux.HandleFunc("PATCH /api/workspaces/{workspaceId}/gateway-budget", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		app.updateWorkspaceGatewayBudget(w, r, service)
+	}))
+	mux.HandleFunc("GET /api/workspaces/{workspaceId}/renewal", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
+		workspace, ok := app.getWorkspace(r.PathValue("workspaceId"))
+		if !ok {
+			writeError(w, http.StatusNotFound, "workspace_not_found")
+			return
+		}
+		if !app.canAccessResource(r, workspace) {
+			writeError(w, http.StatusForbidden, "account_scope_forbidden")
+			return
+		}
+		operations, err := queryRuntimeOperations(r.Context(), app.tables, runtimeOperationQuery{WorkspaceID: stringValue(workspace["id"])})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "state_read_failed")
+			return
+		}
+		now := time.Now().UTC()
+		response, err := workspaceAutoRenewResponse(workspace, operations, workspace["autoRenew"] == true, now)
+		if err != nil {
+			writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
+			return
+		}
+		response["renewalStatus"] = stringValue(workspace["renewalStatus"])
+		response["recovery"] = app.workspaceRenewalRecoveryState(r.Context(), service, workspace, operations, now)
+		w.Header().Set("Cache-Control", "private, no-store")
+		writeJSON(w, http.StatusOK, response)
 	}))
 	mux.HandleFunc("POST /api/workspaces/{workspaceId}/auto-renew", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
 		input := decodeJSON(r)
@@ -264,7 +291,9 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 				writeJSON(w, http.StatusOK, result.Response)
 				return
 			}
-			if workspace["autoRenew"] == autoRenew {
+			paidThrough, paidThroughErr := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
+			expired := paidThroughErr == nil && !time.Now().UTC().Before(paidThrough)
+			if workspace["autoRenew"] == autoRenew && !expired {
 				paidThrough, parseErr := time.Parse(time.RFC3339, stringValue(workspace["paidThrough"]))
 				if parseErr != nil {
 					writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
@@ -280,10 +309,6 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 					operations = append(operations, operation)
 				}
 				response, responseErr := workspaceAutoRenewResponse(workspace, operations, autoRenew, time.Now().UTC())
-				if errors.Is(responseErr, errWorkspaceReactivationRequired) {
-					writeError(w, http.StatusConflict, responseErr.Error())
-					return
-				}
 				if responseErr != nil {
 					writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
 					return
@@ -296,11 +321,14 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 				writeError(w, http.StatusInternalServerError, "state_read_failed")
 				return
 			}
-			update, response, err := planWorkspaceRenewalIntent(workspace, user, operations, autoRenew, key, time.Now().UTC())
-			if errors.Is(err, errWorkspaceReactivationRequired) {
-				writeError(w, http.StatusConflict, err.Error())
-				return
+			if expired && autoRenew {
+				recovery := app.workspaceRenewalRecoveryState(r.Context(), service, workspace, operations, time.Now().UTC())
+				if recovery.State != "recoverable" && recovery.State != "pending" {
+					writeError(w, http.StatusConflict, recovery.Reason)
+					return
+				}
 			}
+			update, response, err := planWorkspaceRenewalIntent(workspace, user, operations, autoRenew, key, time.Now().UTC())
 			if err != nil {
 				writeError(w, http.StatusConflict, "workspace_billing_state_invalid")
 				return

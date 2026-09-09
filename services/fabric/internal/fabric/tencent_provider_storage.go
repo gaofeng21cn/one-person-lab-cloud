@@ -3,6 +3,7 @@ package fabric
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -453,7 +454,23 @@ func (p *TencentProvider) SyncStorageVolume(ctx context.Context, volume StorageV
 }
 
 func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume StorageVolume) (StorageVolume, error) {
+	destroyPhase := volume.ProviderData["storageDestroyPhase"]
 	volume, err := p.ReadStorageVolume(ctx, volume)
+	if err == nil && destroyPhase != "" {
+		if owner, ok := ctx.Value(workspaceStorageDeleteOwnerContextKey{}).(StorageVolume); ok {
+			if !sameStorageDestroyStableIdentity(owner, volume) {
+				return volume, ErrLaunchStageBindingConflict
+			}
+			remaining, bindingErr := p.readStorageDeleteBindings(ctx, volume)
+			if bindingErr != nil {
+				return volume, bindingErr
+			}
+			if volume.Status == "external_deleted" && len(remaining) != 0 {
+				return volume, ErrWorkspaceLaunchPending
+			}
+			return volume, nil
+		}
+	}
 	if err != nil || volume.Status == "external_deleted" || volume.Status == "pending" {
 		return volume, err
 	}
@@ -560,8 +577,16 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 	if !validIdentity {
 		return volume, fmt.Errorf("storage_volume_destroy_identity_required")
 	}
+	owner, ownedDelete := ctx.Value(workspaceStorageDeleteOwnerContextKey{}).(StorageVolume)
+	if ownedDelete && !sameStorageDestroyStableIdentity(owner, volume) {
+		return volume, ErrLaunchStageBindingConflict
+	}
 	if closeout, ok := ctx.Value(workspaceLaunchStorageCloseoutContextKey{}).(WorkspaceLaunchProviderRequest); ok {
 		if err := p.verifyWorkspaceLaunchPartialStorage(ctx, closeout, volume); err != nil {
+			return volume, err
+		}
+	} else if ownedDelete {
+		if _, err := p.readStorageDeleteBindings(ctx, volume); err != nil {
 			return volume, err
 		}
 	} else if _, err := p.ReadStaticStorageBinding(ctx, volume); err != nil {
@@ -575,9 +600,24 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 		return volume, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
 	volume = readback
+	// Only this phase authorizes another binding delete: no CBS RPC has started.
+	beforeTerminate := func(err error) (StorageVolume, error) {
+		volume = cloneStorageVolume(volume)
+		volume.ProviderData["storageDestroyPhase"], volume.ProviderData["storageDestroyMutationCount"] = storageDestroyPhaseBindingDeletePending, "0"
+		return volume, err
+	}
 	resources := []string{"pvc/" + pvc, "pv/" + pv}
 	if _, err := p.callKubectl(ctx, append([]string{"delete"}, append(resources, "--ignore-not-found=true", "--wait=true")...), nil, protectedresource.Target{}); err != nil {
-		return StorageVolume{}, err
+		return beforeTerminate(err)
+	}
+	if _, closeout := ctx.Value(workspaceLaunchStorageCloseoutContextKey{}).(WorkspaceLaunchProviderRequest); closeout || ownedDelete {
+		remaining, err := p.readStorageDeleteBindings(ctx, volume)
+		if err != nil || len(remaining) != 0 {
+			return beforeTerminate(firstNonNil(err, ErrWorkspaceLaunchPending))
+		}
+		if storageDestroyReadbackConfirmsAbsence(volume) {
+			return volume, nil
+		}
 	}
 	expectedProviderResourceID := volume.ProviderResourceID
 	response, err := p.provision(ctx, provisionerRequest{
@@ -605,6 +645,65 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 		return result, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
 	return result, nil
+}
+
+// Deletion accepts missing members, but every remaining object must still
+// match the exact original static manifest. ReadStaticStorageBinding continues
+// to require the complete pair for provisioning and attachment readiness.
+func (p *TencentProvider) readStorageDeleteBindings(ctx context.Context, volume StorageVolume) ([]any, error) {
+	if err := validateStaticStorageBindingInput(volume); err != nil {
+		return nil, err
+	}
+	pv, pvc := storageBindingNames(volume)
+	raw, err := p.callKubectl(ctx, []string{"get", "pv/" + pv, "pvc/" + pvc, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return nil, err
+	}
+	var items []any
+	if len(bytes.TrimSpace(raw)) > 0 {
+		items, err = strictKubectlItems(raw)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var manifest struct {
+		Items []map[string]any `json:"items"`
+	}
+	if json.Unmarshal(staticCBSManifest(volume), &manifest) != nil {
+		return nil, ErrLaunchStageBindingConflict
+	}
+	expected := map[string]map[string]any{}
+	for _, item := range manifest.Items {
+		expected[stringValue(item["kind"])+"/"+stringValue(nested(item, "metadata", "name"))] = item
+	}
+	seen := map[string]bool{}
+	for _, item := range items {
+		actual, ok := item.(map[string]any)
+		if !ok {
+			return nil, ErrLaunchStageBindingConflict
+		}
+		key := stringValue(actual["kind"]) + "/" + stringValue(nested(actual, "metadata", "name"))
+		wanted, ok := expected[key]
+		if !ok || seen[key] {
+			return nil, ErrLaunchStageBindingConflict
+		}
+		seen[key] = true
+		for _, section := range []string{"labels", "annotations"} {
+			labels, _ := nested(wanted, "metadata", section).(map[string]any)
+			for name, value := range labels {
+				if !reflect.DeepEqual(nested(actual, "metadata", section, name), value) {
+					return nil, ErrLaunchStageBindingConflict
+				}
+			}
+		}
+		spec, _ := wanted["spec"].(map[string]any)
+		for name, value := range spec {
+			if !reflect.DeepEqual(nested(actual, "spec", name), value) {
+				return nil, ErrLaunchStageBindingConflict
+			}
+		}
+	}
+	return items, nil
 }
 
 func tencentStorageDestroyBindingIdentity(volume StorageVolume) (string, string, bool) {

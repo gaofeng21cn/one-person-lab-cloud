@@ -3,10 +3,8 @@ package fabric
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"maps"
-	"reflect"
 	"strings"
 
 	"opl-cloud/services/fabric/internal/protectedresource"
@@ -227,6 +225,10 @@ func workspaceLaunchCloseoutSecretInput(request WorkspaceLaunchProviderRequest) 
 
 func (p *TencentProvider) DestroyWorkspaceLaunchGatewaySecret(ctx context.Context, request WorkspaceLaunchProviderRequest) error {
 	input := workspaceLaunchCloseoutSecretInput(request)
+	return p.destroyGatewaySecret(ctx, input, request.Input.Binding.IdempotencyKey)
+}
+
+func (p *TencentProvider) destroyGatewaySecret(ctx context.Context, input GatewaySecretReadbackInput, idempotencyKey string) error {
 	secret, err := p.ReadGatewaySecretByDigest(ctx, input)
 	if errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
 		return nil
@@ -243,7 +245,7 @@ func (p *TencentProvider) DestroyWorkspaceLaunchGatewaySecret(ctx context.Contex
 	if !errors.Is(readErr, ErrWorkspaceLaunchResourceAbsent) {
 		return firstNonNil(readErr, deleteErr, ErrWorkspaceLaunchPending)
 	}
-	return attempt.complete(ctx, providerRequestID("gateway-secret-delete", request.Input.Binding.IdempotencyKey), secret, nil)
+	return attempt.complete(ctx, providerRequestID("gateway-secret-delete", idempotencyKey), secret, nil)
 }
 
 func (p *LocalDockerProvider) DestroyWorkspaceLaunchGatewaySecret(ctx context.Context, request WorkspaceLaunchProviderRequest) error {
@@ -260,8 +262,7 @@ func workspaceLaunchCloseoutKubectlItems(raw []byte) ([]any, error) {
 	return strictKubectlItems(raw)
 }
 
-// Only failure closeout admits a partially materialized static binding. Every
-// object which exists must match the original manifest before any delete.
+// Failure closeout additionally binds deletion to the frozen original plan.
 func (p *TencentProvider) verifyWorkspaceLaunchPartialStorage(ctx context.Context, request WorkspaceLaunchProviderRequest, volume StorageVolume) error {
 	binding := request.Input.Binding
 	if binding.Stage != "storage" || volume.ID != workspaceLaunchStorageID(binding) || volume.AccountID != binding.AccountID || volume.WorkspaceID != binding.WorkspaceID || volume.OperationID != binding.IdempotencyKey {
@@ -271,51 +272,6 @@ func (p *TencentProvider) verifyWorkspaceLaunchPartialStorage(ctx context.Contex
 	if err != nil || plan.Region != volume.ProviderData["region"] || plan.Zone != volume.Zone || plan.Storage.SizeGB != volume.SizeGB || plan.Storage.DiskType != volume.DiskType {
 		return ErrLaunchStageBindingConflict
 	}
-	pv, pvc := storageBindingNames(volume)
-	raw, err := p.callKubectl(ctx, []string{"get", "pv/" + pv, "pvc/" + pvc, "--ignore-not-found", "-o", "json"}, nil, protectedresource.Target{})
-	if err != nil {
-		return err
-	}
-	items, err := workspaceLaunchCloseoutKubectlItems(raw)
-	if err != nil {
-		return err
-	}
-	var manifest struct {
-		Items []map[string]any `json:"items"`
-	}
-	if json.Unmarshal(staticCBSManifest(volume), &manifest) != nil {
-		return ErrLaunchStageBindingConflict
-	}
-	expected := map[string]map[string]any{}
-	for _, item := range manifest.Items {
-		expected[stringValue(item["kind"])+"/"+stringValue(nested(item, "metadata", "name"))] = item
-	}
-	seen := map[string]bool{}
-	for _, item := range items {
-		actual, ok := item.(map[string]any)
-		if !ok {
-			return ErrLaunchStageBindingConflict
-		}
-		key := stringValue(actual["kind"]) + "/" + stringValue(nested(actual, "metadata", "name"))
-		wanted, ok := expected[key]
-		if !ok || seen[key] {
-			return ErrLaunchStageBindingConflict
-		}
-		seen[key] = true
-		for _, section := range []string{"labels", "annotations"} {
-			labels, _ := nested(wanted, "metadata", section).(map[string]any)
-			for name, value := range labels {
-				if !reflect.DeepEqual(nested(actual, "metadata", section, name), value) {
-					return ErrLaunchStageBindingConflict
-				}
-			}
-		}
-		spec, _ := wanted["spec"].(map[string]any)
-		for name, value := range spec {
-			if !reflect.DeepEqual(nested(actual, "spec", name), value) {
-				return ErrLaunchStageBindingConflict
-			}
-		}
-	}
-	return nil
+	_, err = p.readStorageDeleteBindings(ctx, volume)
+	return err
 }

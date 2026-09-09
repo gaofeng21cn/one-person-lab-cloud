@@ -781,7 +781,7 @@ func TestWorkspaceRenewalOriginalResourcesWithoutChildBilling(t *testing.T) {
 }
 
 func TestWorkspaceRenewalConcurrentWorkersClaimOnce(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	second, err := newControlPlaneAppWithStore(fixture.app.tables)
 	if err != nil {
 		t.Fatal(err)
@@ -1274,7 +1274,7 @@ func TestWorkspaceRenewalStorageAbsentAfterComputeRenewedNeedsManualReviewWithou
 }
 
 func TestWorkspaceRenewalExpiryDeniesAccessWithoutProviderMutation(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
+	fixture := newWorkspaceRenewalRuntimeFixture(t, nil)
 	workspace, _ := fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
 	paidThrough := time.Now().UTC().Add(-time.Minute)
 	workspace["periodStart"] = paidThrough.AddDate(0, -1, 0).Format(time.RFC3339Nano)
@@ -1302,7 +1302,7 @@ func TestWorkspaceRenewalExpiryDeniesAccessWithoutProviderMutation(t *testing.T)
 }
 
 func TestWorkspaceRenewalExpiryPreservesProviderFactsWithoutReadback(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
+	fixture := newWorkspaceRenewalRuntimeFixture(t, nil)
 	workspace, _ := fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
 	paidThrough := time.Now().UTC().Add(-time.Minute)
 	workspace["periodStart"] = paidThrough.AddDate(0, -1, 0).Format(time.RFC3339Nano)
@@ -1327,7 +1327,7 @@ func TestWorkspaceRenewalExpiryPreservesProviderFactsWithoutReadback(t *testing.
 }
 
 func TestWorkspaceRenewalLegacyComputePhaseAdvancesWithoutProviderMutation(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
+	fixture := newWorkspaceRenewalRuntimeFixture(t, nil)
 	workspace, _ := fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
 	paidThrough := time.Now().UTC().Add(-time.Minute)
 	workspace["periodStart"] = paidThrough.AddDate(0, -1, 0).Format(time.RFC3339Nano)
@@ -1355,7 +1355,7 @@ func TestWorkspaceRenewalLegacyComputePhaseAdvancesWithoutProviderMutation(t *te
 }
 
 func TestWorkspaceRenewalExpiryReceiptFailureRetriesOnlyReceipt(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
+	fixture := newWorkspaceRenewalRuntimeFixture(t, nil)
 	workspace, _ := fixture.app.getWorkspace(stringValue(fixture.workspace["id"]))
 	paidThrough := time.Now().UTC().Add(-time.Minute)
 	workspace["periodStart"] = paidThrough.AddDate(0, -1, 0).Format(time.RFC3339Nano)
@@ -1465,7 +1465,7 @@ func TestWorkspaceRenewalRetriesStableRefundCodeWhenAttemptHistoryMissing(t *tes
 }
 
 func TestWorkspaceRenewalRefundPendingDefersExpiryCleanup(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
 	fixture.sub2API.refundErrors = []error{clients.ErrSub2APIChargeUnknown, clients.ErrSub2APIChargeUnknown, clients.ErrSub2APIChargeUnknown}
@@ -1499,7 +1499,7 @@ func TestWorkspaceRenewalRefundPendingDefersExpiryCleanup(t *testing.T) {
 }
 
 func TestWorkspaceRenewalRefundReceiptCannotBlockExpiry(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
 	fixture.ledger.receiptErrors = []error{
@@ -1520,7 +1520,7 @@ func TestWorkspaceRenewalRefundReceiptCannotBlockExpiry(t *testing.T) {
 }
 
 func TestWorkspaceRenewalRenewedReceiptCannotBlockNextPeriodExpiry(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.ledger.receiptErrors = []error{
 		errors.New("ledger unavailable"), errors.New("ledger unavailable"), errors.New("ledger unavailable"), errors.New("ledger unavailable"), errors.New("ledger unavailable"),
 	}
@@ -1770,7 +1770,7 @@ func TestWorkspaceRenewalConcurrentAPIConsumptionDoesNotInvalidateConfirmedDebit
 }
 
 func TestWorkspaceRenewalDebitedCrashCrossingExpiryCompletesFinancialSaga(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	persistErr := errors.New("persist provider transition failed")
 	store := &failingWorkspaceRenewalPersistStore{
 		memoryTableStore: fixture.app.tables.(*memoryTableStore), err: persistErr,
@@ -1817,7 +1817,7 @@ func TestWorkspaceRenewalDebitedCrashCrossingExpiryCompletesFinancialSaga(t *tes
 }
 
 func TestWorkspaceRenewalManualReviewCrossingExpiryRemainsResolvable(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "renewing"}
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
@@ -1873,7 +1873,7 @@ func TestWorkspaceRenewalManualReviewCrossingExpiryRemainsResolvable(t *testing.
 }
 
 func TestWorkspaceRenewalManualReviewCrossingExpirySuspendsWithoutDestroy(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "renewing"}
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
@@ -1913,7 +1913,7 @@ func TestWorkspaceRenewalManualReviewCrossingExpirySuspendsWithoutDestroy(t *tes
 }
 
 func TestWorkspaceRenewalRefundedPeriodExpiresWithoutProviderMutation(t *testing.T) {
-	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	fixture := newWorkspaceRenewalRuntimeFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {

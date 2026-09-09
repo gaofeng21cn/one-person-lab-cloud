@@ -241,7 +241,10 @@ func normalizeWorkspaceBillingState(row map[string]any, expectedComputeID, expec
 		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
 	}
 	if renewalStatus == "expired_unpaid" && autoRenew {
-		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
+		authorized, err := time.Parse(time.RFC3339Nano, authorizedAt)
+		if err != nil || authorizedBy != expectedOwnerID || authorized.Before(paidThrough) {
+			return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
+		}
 	}
 	if autoRenew && (authorizedBy == "" || authorizedAt == "") || authorizedBy != "" && authorizedBy != expectedOwnerID || (authorizedBy == "") != (authorizedAt == "") {
 		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
