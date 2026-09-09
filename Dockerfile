@@ -36,6 +36,7 @@ ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src/services/ledger
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
+COPY packages/contracts/go /src/packages/contracts/go
 COPY services/ledger/go.mod services/ledger/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/ledger ./
@@ -73,7 +74,6 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY --from=build /app/dist ./dist
-COPY packages ./packages
 COPY --from=fabric-build /out/opl-tencent-provisioner /usr/local/bin/opl-tencent-provisioner
 COPY --from=control-plane-build /out/opl-control-plane /usr/local/bin/opl-control-plane
 COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger

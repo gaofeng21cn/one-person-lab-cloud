@@ -27,22 +27,25 @@ closes local original-Launch recovery, bounded admission and failed-Launch
 resource/Key/refund obligations. D4 closes expiry, explicit recovery and background deletion with focused and
 full local verification. D5 completes local fixed-image rollout, original-operation
 recovery and explicit CVM cache retirement development; production qualification
-and actual node readback remain external. TCR deletion is optional. D6 packaging and
-deployment qualification follow the business implementation; they are not a
-prerequisite for local development. Test data isolation applies throughout.
+and actual node readback remain external. TCR deletion is optional. Completed development proceeds through PR review, CI,
+merge and Candidate construction; Instance owns subsequent deployment and
+qualification. Artifact hygiene and test-data isolation are checks in those
+existing paths, not a separate D6 development stage.
 
 | ID | State | Owner | Remaining acceptance |
 | --- | --- | --- | --- |
 | `D1-FINANCIAL-INTEGRITY-01` | `cloud_complete` | Control Plane finance and Sub2API; Instance owns adoption | Local source/full regression and isolated real Sub2API validation pass; [owner evidence](./status.md#retained-runtime-evidence) retains the exact worktree and patch identity. Instance must identify its exact Gateway source/image, adopt atomic debit plus exact lookup before Cloud, and retain owner readback. Historical unverified transactions cannot be certified from current balance. |
-| `D2-SETTLEMENT-RECONCILIATION-01` | `cloud_complete` | Control Plane finance, Ledger and Console | Original-operation business chains, failure/recovery, historical records, more than 10k unrelated receipts, customer browser tests and full PostgreSQL/Docker regression pass. [Owner evidence](./status.md#retained-runtime-evidence) binds the local source snapshot; Instance adoption remains deferred with D6. Unverifiable older split-resource records remain explicit review exceptions. |
+| `D2-SETTLEMENT-RECONCILIATION-01` | `cloud_complete` | Control Plane finance, Ledger and Console | Original-operation business chains, failure/recovery, historical records, more than 10k unrelated receipts, customer browser tests and full PostgreSQL/Docker regression pass. [Owner evidence](./status.md#retained-runtime-evidence) binds the local source snapshot; Instance adoption remains a separate deployment action. Unverifiable older split-resource records remain explicit review exceptions. |
 | `D3-LAUNCH-RECOVERY-CAPACITY-01` | `cloud_complete` | Control Plane Launch; Fabric and Console | Original late-result recovery, bounded scheduling, and owner-authorized failed-Launch closure are implemented and pass focused plus full local verification. The closeout chain freezes the original operation, revokes exact Key identity, proves five resource absences, refunds only the original account's remaining charge, and records `billing.workspace_closed.v1`. Unknown outcomes retain pending state and pool claims. Tencent adoption and actual provisioning capacity remain Instance obligations; no deployment is part of D3 local development. |
 | `D4-WORKSPACE-LIFECYCLE-01` | `cloud_complete` | Control Plane lifecycle; Fabric, Sub2API and Console | Original-period renewal, unpaid Runtime suspension, explicit recovery and background non-refunding Delete are implemented. Focused business, restart, concurrency and browser tests plus `verify:local:full` pass with zero required PostgreSQL skips. [Owner evidence](./status.md#retained-runtime-evidence) retains the isolated source and tests. Instance must adopt the same bytes and qualify actual Tencent/TKE and Gateway behavior. |
 | `D5-WORKSPACE-IMAGE-LIFECYCLE-01` | `cloud_complete` | Control Plane/Fabric replacement and CRI maintenance command; Instance rollout/node retirement | Fixed approved digest, paid lifecycle preservation, persisted replacement recovery, bounded fleet results and exact node-cache removal pass focused/full local verification. [Owner evidence](./status.md#retained-runtime-evidence) binds source and isolated containerd results. Instance must adopt the same bytes, configure read-only qualification evidence access, qualify the exact linux/amd64 manifest and retain protected node/space readback. TCR deletion is optional, not a completion prerequisite. |
-| `D6-PRODUCTION-TEST-ISOLATION-01` | `planned` | Cloud artifact owner; Instance deployment owner | Final Dockerfile still copies all of `packages`, including Go test source. Restrict runtime content to actual consumers and inspect the built artifact before deployment. Keep test accounts, money, orders, Keys, Workspaces, receipts, seeds, snapshots and volumes in independent non-production stores/resources. Validate the same immutable artifact externally, with reports outside the production business Ledger. A deployment mode named development that selects the production environment is not a test environment. |
 
-The artifact and data isolation portion of D6 precedes any deployment of these
-changes. It is a bounded release prerequisite, not a new test platform or a
-reason to expand D2's customer billing scope.
+Runtime packaging includes only current consumers. Existing PR/CI and Instance
+deployment checks keep test accounts, money, orders, Keys, Workspaces, receipts,
+seeds, snapshots and volumes outside production. A development-named mode that
+selects a production environment is not an isolated test environment. A concrete
+packaging or deployment-input defect is fixed in its owner; there is no separate
+D6 implementation gate for otherwise completed business work.
 
 The accepted delivery target is public registration with zero initial balance,
 administrator top-up, controlled Workspace purchase, complete lifecycle
