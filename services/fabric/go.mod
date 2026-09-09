@@ -9,7 +9,7 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.3.169
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/vpc v1.3.170
 	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.2
 	k8s.io/apimachinery v0.37.0
 	k8s.io/cri-api v0.37.0
 	opl-cloud/packages/contracts/go v0.0.0
@@ -50,9 +50,9 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
-	golang.org/x/mod v0.37.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect
