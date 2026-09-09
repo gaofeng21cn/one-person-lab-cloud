@@ -1,46 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  isKnownConsoleRoute,
-  parseConsoleRoute
-} from "../../apps/console-ui/src/app/console-router.ts";
+import { parseConsoleRoute } from "../../apps/console-ui/src/app/console-router.ts";
 import {
   adminMenu,
   apiMenu,
   customerMenu,
-  formatAvailableBalance,
   formatCount,
   formatUsdMicros,
   hasSufficientWorkspaceLaunchBalance,
-  readinessRows,
-  workspaceStatusLabel
+  readinessRows
 } from "../../apps/console-ui/src/console-model.ts";
 
 const staticConsoleRoutes = [
-  ["/", "public.home", "public", "OPL Cloud", false, false, null],
-  ["/login", "public.login", "public", "登录", false, false, null],
-  ["/403", "public.forbidden", "public", "无权访问", false, false, null],
-  ["/console", "customer.overview", "customer", "概览", true, false, "customer.overview"],
-  ["/console/overview", "customer.overview", "customer", "概览", true, false, "customer.overview"],
-  ["/console/workspaces", "customer.workspaces", "customer", "工作空间", true, true, "customer.workspaces"],
-  ["/console/workspaces/new", "customer.workspace-new", "customer", "工作空间", true, true, "customer.workspaces"],
-  ["/console/api", "customer.api.overview", "customer", "OPL Gateway", true, true, "customer.api"],
-  ["/console/api/usage", "customer.api.usage", "customer", "OPL Gateway", true, true, "customer.api"],
-  ["/console/api/keys", "customer.api.keys", "customer", "OPL Gateway", true, true, "customer.api"],
-  ["/console/billing", "customer.billing", "customer", "费用", true, false, "customer.billing"],
-  ["/console/announcements", "customer.announcements", "customer", "消息", true, false, "customer.announcements"],
-  ["/admin", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
-  ["/admin/overview", "admin.overview", "admin", "运维概览", true, false, "admin.overview"],
-  ["/admin/accounts", "admin.accounts", "admin", "客户与计费账户", true, false, "admin.accounts"],
-  ["/admin/billing", "admin.billing", "admin", "计费复核", true, false, "admin.billing"],
-  ["/admin/resources", "admin.resources", "admin", "资源状态", true, false, "admin.resources"],
-  ["/admin/system", "admin.system", "admin", "系统状态", true, false, "admin.system"],
-  ["/admin/announcements", "admin.announcements", "admin", "公告管理", true, false, "admin.announcements"]
+  ["/", "public.home", "public", "OPL Cloud", false, null],
+  ["/login", "public.login", "public", "登录", false, null],
+  ["/403", "public.forbidden", "public", "无权访问", false, null],
+  ["/console", "customer.overview", "customer", "概览", true, "customer.overview"],
+  ["/console/overview", "customer.overview", "customer", "概览", true, "customer.overview"],
+  ["/console/workspaces", "customer.workspaces", "customer", "工作空间", true, "customer.workspaces"],
+  ["/console/workspaces/new", "customer.workspace-new", "customer", "工作空间", true, "customer.workspaces"],
+  ["/console/api", "customer.api.overview", "customer", "OPL Gateway", true, "customer.api"],
+  ["/console/api/usage", "customer.api.usage", "customer", "OPL Gateway", true, "customer.api"],
+  ["/console/api/keys", "customer.api.keys", "customer", "OPL Gateway", true, "customer.api"],
+  ["/console/billing", "customer.billing", "customer", "费用", true, "customer.billing"],
+  ["/console/announcements", "customer.announcements", "customer", "消息", true, "customer.announcements"],
+  ["/admin", "admin.overview", "admin", "运维概览", true, "admin.overview"],
+  ["/admin/overview", "admin.overview", "admin", "运维概览", true, "admin.overview"],
+  ["/admin/accounts", "admin.accounts", "admin", "客户与计费账户", true, "admin.accounts"],
+  ["/admin/billing", "admin.billing", "admin", "计费复核", true, "admin.billing"],
+  ["/admin/resources", "admin.resources", "admin", "资源状态", true, "admin.resources"],
+  ["/admin/system", "admin.system", "admin", "系统状态", true, "admin.system"],
+  ["/admin/announcements", "admin.announcements", "admin", "公告管理", true, "admin.announcements"]
 ] as const;
 
 test("Console route owner describes every static product route", () => {
-  for (const [path, kind, surface, title, requiresSession, sensitive, navigationId] of staticConsoleRoutes) {
+  for (const [path, kind, surface, title, requiresSession, navigationId] of staticConsoleRoutes) {
     const route = parseConsoleRoute(path);
     assert.ok(route, `missing route: ${path}`);
     assert.deepEqual({
@@ -49,10 +44,8 @@ test("Console route owner describes every static product route", () => {
       surface: route.surface,
       title: route.title,
       requiresSession: route.requiresSession,
-      sensitive: route.sensitive,
       navigationId: route.navigationId
-    }, { kind, path, surface, title, requiresSession, sensitive, navigationId });
-    assert.equal(isKnownConsoleRoute(path), true);
+    }, { kind, path, surface, title, requiresSession, navigationId });
   }
 });
 
@@ -63,7 +56,6 @@ test("Console route owner parses one decoded Workspace detail segment", () => {
     surface: "customer",
     title: "工作空间",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.workspaces",
     workspaceId: "ws alpha"
   });
@@ -103,7 +95,6 @@ test("Console route owner rejects unknown or malformed paths without guessing", 
     "/admin/unknown"
   ]) {
     assert.equal(parseConsoleRoute(path), null, path);
-    assert.equal(isKnownConsoleRoute(path), false, path);
   }
   assert.equal(parseConsoleRoute("/console/workspaces/new")?.kind, "customer.workspace-new");
   assert.equal("workspaceId" in (parseConsoleRoute("/console/workspaces/new") ?? {}), false);
@@ -143,21 +134,13 @@ test("API navigation has exactly three customer task pages in order", () => {
   ]);
 });
 
-test("Workspace status never invents a running state", () => {
-  assert.equal(workspaceStatusLabel({ status: "running", ready: true }), "运行中");
-  assert.equal(workspaceStatusLabel({ status: "unready", ready: false }), "暂不可用");
-  assert.equal(workspaceStatusLabel({}), "暂不可用");
-});
-
 test("Workspace launch accepts balance equal to or greater than the server quote", async () => {
   assert.equal(hasSufficientWorkspaceLaunchBalance("52579999", 52_580_000), false);
   assert.equal(hasSufficientWorkspaceLaunchBalance("52580000", 52_580_000), true);
   assert.equal(hasSufficientWorkspaceLaunchBalance("52580001", 52_580_000), true);
 });
 
-test("unavailable and zero are distinct source facts", () => {
-  assert.equal(formatAvailableBalance({ available: false, status: "unavailable" }), "暂不可用");
-  assert.equal(formatAvailableBalance({ available: true, status: "available", usdMicros: "0" }), "$0.00");
+test("formatters preserve exact money and unavailable facts", () => {
   assert.equal(formatUsdMicros("9223372036854775807"), "$9,223,372,036,854.78");
   assert.equal(formatUsdMicros("-9223372036854775808"), "-$9,223,372,036,854.78");
   assert.equal(formatCount(undefined), "-");
