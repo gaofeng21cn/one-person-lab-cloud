@@ -25,6 +25,7 @@ var (
 	ErrWorkspaceLaunchUnavailable                  = errors.New("workspace_launch_unavailable")
 	ErrWorkspaceLaunchPending                      = errors.New("workspace_launch_pending")
 	ErrWorkspaceLaunchOwnershipPending             = errors.New("workspace_launch_ownership_pending")
+	ErrWorkspaceLaunchComputeDispatchPending       = errors.New("workspace_launch_compute_dispatch_pending")
 	ErrWorkspaceLaunchRuntimeImageRevisionRequired = errors.New("workspace_launch_runtime_image_revision_required")
 	ErrWorkspaceLaunchResourceAbsent               = errors.New("workspace_launch_resource_absent")
 )
@@ -163,6 +164,7 @@ type workspaceLaunchStageRecord struct {
 	GatewayKeyID         int64                                `json:"gatewayKeyId,omitempty"`
 	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
 	ProviderState        json.RawMessage                      `json:"providerState,omitempty"`
+	ComputePoolQueued    bool                                 `json:"computePoolQueued,omitempty"`
 }
 
 type persistedWorkspaceLaunchStageRecord struct {
@@ -186,6 +188,10 @@ type WorkspaceLaunchProviderResult struct {
 type workspaceLaunchProvider interface {
 	EnsureWorkspaceLaunchStage(context.Context, WorkspaceLaunchProviderRequest) (WorkspaceLaunchProviderResult, error)
 	ReadWorkspaceLaunchStage(context.Context, WorkspaceLaunchProviderRequest) (WorkspaceLaunchProviderResult, error)
+}
+
+type workspaceLaunchComputePoolProvider interface {
+	WorkspaceLaunchComputePool(json.RawMessage, string, int) (string, error)
 }
 
 type workspaceLaunchRuntimeImageRevisionProvider interface {
@@ -703,16 +709,40 @@ func observedWorkspaceLaunchStageResult(input WorkspaceLaunchStageInput, state, 
 
 func workspaceLaunchStageMayContinueEnsure(input WorkspaceLaunchStageInput, result WorkspaceLaunchStageResult) bool {
 	return result.State == "absent" || result.State == "pending" &&
-		(result.Reason == "ownership_pending" || result.Reason == "runtime_image_revision_required" ||
+		(result.Reason == "ownership_pending" || result.Reason == "compute_dispatch_pending" || result.Reason == "runtime_image_revision_required" ||
 			input.RuntimeImageRevision != nil && result.Reason == "provider_provisioning")
 }
 
 func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	return s.launchStages.EnsureWorkspaceLaunchStage(ctx, input)
+	var result WorkspaceLaunchStageResult
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceLaunchLockKey(input.Binding.LaunchOperationID), func(ctx context.Context) error {
+		frozen, err := s.workspaceLaunchFrozen(ctx, input.Binding.LaunchOperationID)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrWorkspaceLaunchFrozen
+		}
+		result, err = s.launchStages.EnsureWorkspaceLaunchStage(ctx, input)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) ReadWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {
-	return s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
+	var result WorkspaceLaunchStageResult
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceLaunchLockKey(input.Binding.LaunchOperationID), func(ctx context.Context) error {
+		frozen, err := s.workspaceLaunchFrozen(ctx, input.Binding.LaunchOperationID)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrWorkspaceLaunchFrozen
+		}
+		result, err = s.launchStages.ReadWorkspaceLaunchStage(ctx, input)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) ObserveWorkspaceLaunchStage(ctx context.Context, input WorkspaceLaunchStageInput) (WorkspaceLaunchStageResult, error) {

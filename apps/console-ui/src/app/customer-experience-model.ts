@@ -1,3 +1,6 @@
+import type { BillingReceipt } from "../api/dtos.ts";
+import { formatUsdMicros } from "../console-model.ts";
+
 export type CustomerPresentation =
   | { kind: "known"; label: string }
   | { kind: "unknown"; label: "待确认"; rawValue: string }
@@ -27,7 +30,7 @@ export function presentBalanceHistoryStatus(status: string | undefined): Custome
   }
 }
 
-export function presentBillingReceiptType(type: string | undefined): CustomerPresentation {
+export function presentBillingReceiptType(type: string | undefined, kind?: BillingReceipt["kind"]): CustomerPresentation {
   switch (type) {
     case "billing.workspace_purchased.v1":
       return { kind: "known", label: "工作空间开通" };
@@ -37,11 +40,34 @@ export function presentBillingReceiptType(type: string | undefined): CustomerPre
       return { kind: "known", label: "工作空间到期" };
     case "billing.workspace_refunded.v1":
       return { kind: "known", label: "工作空间退款" };
+    case "billing.workspace_closed.v1":
+      return { kind: "known", label: "开通未完成，已结案" };
+    case "gateway.wallet_adjustment.v1":
+      return kind === "business_refund" ? { kind: "known", label: "工作空间退款" } : { kind: "unknown", label: "待确认", rawValue: type };
     case undefined:
     case "":
       return { kind: "unavailable", label: "暂不可用" };
     default:
       return { kind: "unknown", label: "待确认", rawValue: type };
+  }
+}
+
+export function presentBillingReceiptAmount(receipt: BillingReceipt): string {
+  if (receipt.status !== "completed") return "金额待确认";
+  switch (receipt.type) {
+    case "billing.workspace_purchased.v1":
+    case "billing.workspace_renewed.v1":
+      return `扣款 ${formatUsdMicros(receipt.totalUsdMicros)}`;
+    case "billing.workspace_refunded.v1":
+      return receipt.refundUsdMicros === undefined ? "退款金额暂不可用" : `退款 ${formatUsdMicros(receipt.refundUsdMicros)}`;
+    case "gateway.wallet_adjustment.v1":
+      return receipt.kind !== "business_refund" ? "金额待确认" : receipt.refundUsdMicros === undefined ? "退款金额暂不可用" : `退款 ${formatUsdMicros(receipt.refundUsdMicros)}`;
+    case "billing.workspace_expired.v1":
+      return "未扣款";
+    case "billing.workspace_closed.v1":
+      return receipt.chargeUsdMicros === 0 ? "未扣款" : receipt.chargeUsdMicros === undefined ? "原扣款金额暂不可用" : `原扣款 ${formatUsdMicros(receipt.chargeUsdMicros)}（退款另列）`;
+    default:
+      return formatUsdMicros(receipt.chargeUsdMicros);
   }
 }
 

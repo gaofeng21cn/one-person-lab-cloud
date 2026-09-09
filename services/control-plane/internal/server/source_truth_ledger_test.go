@@ -52,7 +52,7 @@ func TestBillingReceiptListIsStrictLedgerSource(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("receipt list = %d: %s", response.Code, response.Body.String())
 	}
-	if ledger.query != (clients.ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing.", Cursor: "opaque", Limit: 50}) {
+	if ledger.query != (clients.ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund", Cursor: "opaque", Limit: 50}) {
 		t.Fatalf("Ledger query = %#v", ledger.query)
 	}
 	var envelope map[string]any

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -1044,6 +1045,12 @@ func (s *memoryTableStore) PageRuntimeOperations(_ context.Context, query runtim
 		if _, excluded := excludedStatuses[stringValue(row["status"])]; excluded {
 			continue
 		}
+		if !query.AfterCreatedAt.IsZero() {
+			createdAt, ok := parseTimeString(stringValue(row["createdAt"]))
+			if !ok || createdAt.Before(query.AfterCreatedAt) || createdAt.Equal(query.AfterCreatedAt) && stringValue(row["id"]) <= query.AfterID {
+				continue
+			}
+		}
 		rows = append(rows, cloneMap(row))
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -1058,6 +1065,44 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	defer s.mu.Unlock()
 	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
 	return nil
+}
+
+func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing := findRecord(s.runtimeOps, operationID)
+	reserve := existing == nil
+	if existing != nil {
+		current, err := decodeWalletAdjustment(existing)
+		if err != nil || current.RequestHash != operation.RequestHash || current.AccountID != operation.AccountID {
+			return operation, errIdempotencyConflict
+		}
+		if operation.PersistedResult == "" {
+			return current, nil
+		}
+		if current.PersistedResult != operation.PersistedResult || current.PersistedStatus != operation.PersistedStatus {
+			return operation, errWalletAdjustmentConflict
+		}
+		reserve = !current.AdjustmentAttempted && operation.AdjustmentAttempted
+	} else if operation.PersistedResult != "" {
+		return operation, errWalletAdjustmentConflict
+	}
+	if reserve {
+		if operation.Kind == "business_refund" {
+			var refunds []map[string]any
+			for _, row := range s.runtimeOps {
+				if stringValue(row["action"]) == "gateway.wallet_adjustment.v1" && stringValue(row["id"]) != operationID {
+					refunds = append(refunds, row)
+				}
+			}
+			if err := validateWalletRefundReservation(findRecord(s.runtimeOps, operation.RelatedOperationID), refunds, operation); err != nil {
+				return operation, err
+			}
+		}
+	}
+	row := walletAdjustmentRow(operationID, operation)
+	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
+	return decodeWalletAdjustment(row)
 }
 
 func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context, mutation workspaceImageReleaseMutation) (workspaceImageReleasePolicy, error) {
@@ -1083,6 +1128,38 @@ func (s *memoryTableStore) ApplyWorkspaceImageReleaseMutation(_ context.Context,
 	s.runtimeOps = upsertProjectionByID(s.runtimeOps, workspaceImageReleasePolicyRow(desired, createdAt))
 	s.auditEvents = upsertProjectionByID(s.auditEvents, workspaceImageReleaseAudit(mutation, current, desired))
 	return desired, nil
+}
+
+func (s *memoryTableStore) ReserveWorkspaceLaunchCloseoutRefund(_ context.Context, operation workspaceLaunchReconcileOperation) ([]walletRefundOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var rows []map[string]any
+	for _, row := range s.runtimeOps {
+		if stringValue(row["action"]) != "gateway.wallet_adjustment.v1" {
+			continue
+		}
+		var refund walletAdjustmentOperation
+		if err := json.Unmarshal([]byte(stringValue(row["result"])), &refund); err != nil {
+			return nil, err
+		}
+		if refund.RelatedOperationID == operation.ID {
+			rows = append(rows, row)
+		}
+	}
+	refunds, created, err := prepareWorkspaceLaunchCloseoutRefund(findRecord(s.runtimeOps, operation.ID), rows, operation)
+	if err != nil {
+		return nil, err
+	}
+	if created != nil {
+		row := walletAdjustmentRow(created.ID, created.Operation)
+		created.Operation, err = decodeWalletAdjustment(row)
+		if err != nil {
+			return nil, err
+		}
+		s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
+		refunds[len(refunds)-1] = *created
+	}
+	return refunds, nil
 }
 
 func (s *memoryTableStore) ReserveProductionE2EAttempt(_ context.Context, claim productionE2EAttemptClaim) (map[string]any, error) {

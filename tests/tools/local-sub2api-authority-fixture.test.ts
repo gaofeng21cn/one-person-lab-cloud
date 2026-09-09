@@ -207,6 +207,7 @@ test("qualification authority provides one persistent user, key, and exact debit
     code: debitInput.code,
     type: "balance",
     value: -52.58,
+    balance_applied_value: -52.58,
     status: "used",
     used_by: 41
   });
@@ -218,6 +219,14 @@ test("qualification authority provides one persistent user, key, and exact debit
     body: debitInput
   }));
   assert.deepEqual(debitReplay, debit);
+
+  const exact = assertSuccess(await jsonRequest(authority.origin,
+    `/api/v1/admin/redeem-codes/by-code?code=${encodeURIComponent(debitInput.code)}&user_id=41`,
+    { token: credentials.userToken }
+  ));
+  assert.equal(exact.lookup, "exact_code_v1");
+  assert.equal(exact.redeem_code.code, debitInput.code);
+  assert.equal(exact.redeem_code.balance_applied_value, -52.58);
 
   const conflict = await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
     method: "POST",

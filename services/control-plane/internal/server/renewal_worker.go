@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultMonthlyBillingInterval = time.Hour
+	defaultMonthlyBillingInterval = time.Minute
 	monthlyRenewalLead            = 24 * time.Hour
 	monthlyBillingWorkspacePage   = 50
 )
@@ -32,30 +32,45 @@ func (app *controlPlaneServer) startMonthlyBillingWorker(ctx context.Context, se
 		interval = defaultMonthlyBillingInterval
 	}
 	go func() {
-		if err := app.runMonthlyBillingOnce(ctx, service, time.Now().UTC()); err != nil {
-			log.Printf("monthly billing failed: %v", err)
-		}
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
 		for {
+			now := time.Now().UTC()
+			next, err := app.runMonthlyBillingSweep(ctx, service, now)
+			if err != nil {
+				log.Printf("monthly billing failed: %v", err)
+			}
+			delay := interval
+			if !next.IsZero() {
+				until := time.Until(next)
+				if until < 0 {
+					until = 0
+				}
+				if until < delay {
+					delay = until
+				}
+			}
+			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case now := <-ticker.C:
-				if err := app.runMonthlyBillingOnce(ctx, service, now.UTC()); err != nil {
-					log.Printf("monthly billing failed: %v", err)
-				}
+			case <-timer.C:
 			}
 		}
 	}()
 }
 
 func (app *controlPlaneServer) runMonthlyBillingOnce(ctx context.Context, service *controlplane.Service, now time.Time) error {
+	_, err := app.runMonthlyBillingSweep(ctx, service, now)
+	return err
+}
+
+func (app *controlPlaneServer) runMonthlyBillingSweep(ctx context.Context, service *controlplane.Service, now time.Time) (time.Time, error) {
+	var next time.Time
 	recoveryOperations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{
 		Action: "workspace.renewal", Statuses: []string{"verifying"},
 	})
 	if err != nil {
-		return err
+		return next, err
 	}
 	recoveryWorkspaces := make(map[string]struct{}, len(recoveryOperations))
 	for _, operation := range recoveryOperations {
@@ -68,7 +83,7 @@ func (app *controlPlaneServer) runMonthlyBillingOnce(ctx context.Context, servic
 	for offset := 0; ; {
 		page, err := app.tables.PageWorkspaces(ctx, "", tablePageQuery{Offset: offset, Limit: monthlyBillingWorkspacePage})
 		if err != nil {
-			return errors.Join(append(errs, err)...)
+			return next, errors.Join(append(errs, err)...)
 		}
 		for _, workspace := range page.Items {
 			state, present, stateErr := normalizeWorkspaceBillingStateForWorkspace(workspace, workspace)
@@ -78,6 +93,16 @@ func (app *controlPlaneServer) runMonthlyBillingOnce(ctx context.Context, servic
 			}
 			if !present {
 				continue
+			}
+			paidThrough, _ := time.Parse(time.RFC3339, state.PaidThrough)
+			deadlines := []time.Time{paidThrough}
+			if state.AutoRenew {
+				deadlines = append(deadlines, paidThrough.Add(-monthlyRenewalLead))
+			}
+			for _, deadline := range deadlines {
+				if deadline.After(now) && (next.IsZero() || deadline.Before(next)) {
+					next = deadline
+				}
 			}
 			workspaceID := stringValue(workspace["id"])
 			_, recovering := recoveryWorkspaces[workspaceID]
@@ -93,10 +118,13 @@ func (app *controlPlaneServer) runMonthlyBillingOnce(ctx context.Context, servic
 			break
 		}
 	}
-	return errors.Join(errs...)
+	return next, errors.Join(errs...)
 }
 
 func workspaceRenewalDue(state workspaceBillingState, now time.Time) bool {
+	if state.ResourceBillingEnabled != nil && !*state.ResourceBillingEnabled {
+		return false
+	}
 	paidThrough, err := time.Parse(time.RFC3339, state.PaidThrough)
 	if err != nil {
 		return false

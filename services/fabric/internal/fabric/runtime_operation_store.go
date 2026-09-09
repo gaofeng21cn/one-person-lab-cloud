@@ -1,6 +1,9 @@
 package fabric
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // RuntimeOperationStore is the capability port for Runtime operation claims,
 // durable outcomes, and readback convergence. Runtime workflows must not
@@ -9,6 +12,7 @@ type RuntimeOperationStore interface {
 	ClaimRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
 	SaveRuntime(ctx context.Context, operation FabricOperation) error
 	ConvergeRuntimeReadback(ctx context.Context, expected, next FabricOperation) error
+	ReopenWorkspaceRuntimeDelete(context.Context, FabricOperation, time.Time) (FabricOperation, error)
 }
 
 var _ RuntimeOperationStore = (*MemoryOperationStore)(nil)

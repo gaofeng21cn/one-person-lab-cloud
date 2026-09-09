@@ -1161,7 +1161,7 @@ func TestWorkspaceKeyRotationStopsBeforeMutationWhileDeleteIsActive(t *testing.T
 		t.Fatal(err)
 	}
 	response := fixture.rotate(t, "rotate-during-delete")
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), errWorkspaceKeyRotationInProgress.Error()) {
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "workspace_delete_in_progress") {
 		t.Fatalf("Rotation during Delete status=%d body=%s", response.Code, response.Body.String())
 	}
 	if fixture.client.createWrites != 0 || fixture.client.updateWrites != 0 || fixture.client.deleteWrites != 0 || len(fixture.fabric.gatewaySecretInputs) != 0 || len(fixture.fabric.bindings) != 0 {

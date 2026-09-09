@@ -76,7 +76,7 @@ func (t *localE2EFaultTransport) RoundTrip(request *http.Request) (*http.Respons
 		return nil, err
 	}
 	isRedeem := request.Method == http.MethodPost && request.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem"
-	isHistory := request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/balance-history")
+	isHistory := request.Method == http.MethodGet && request.URL.Path == "/api/v1/admin/redeem-codes/by-code"
 
 	t.mu.Lock()
 	if isRedeem {

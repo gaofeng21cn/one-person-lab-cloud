@@ -1816,17 +1816,11 @@ func (p *countingStorageDestroyProvider) DestroyStorageVolume(ctx context.Contex
 			return volume, ctx.Err()
 		}
 	}
-	volume = cloneStorageVolume(volume)
-	volume.Status = "external_deleted"
-	volume.CBSStatus = "NOT_FOUND"
-	volume.ProviderRequestID = "req-destroy-storage"
-	if volume.ProviderData == nil {
-		volume.ProviderData = map[string]string{}
-	}
-	volume.ProviderData["cbsStatus"] = "NOT_FOUND"
-	volume.ProviderData["describeCbsRequestId"] = "req-describe-storage-absent"
-	volume.ProviderData["terminateCbsRequestId"] = "req-destroy-storage"
-	return volume, nil
+	return storageDestroyAbsentReadback(volume), nil
+}
+
+func (p *countingStorageDestroyProvider) ReadStorageVolumeStatus(_ context.Context, volume StorageVolume) (StorageVolume, error) {
+	return storageDestroyAbsentReadback(volume), nil
 }
 
 func (p *recoveringStorageDestroyProvider) DestroyStorageVolume(_ context.Context, volume StorageVolume) (StorageVolume, error) {
@@ -1914,8 +1908,8 @@ func TestDestroyStorageVolumeSerializesOverlappingRequests(t *testing.T) {
 			destroyOperations++
 		}
 	}
-	if destroyOperations != 2 {
-		t.Fatalf("destroy operation records=%d, want one started and one succeeded: %#v", destroyOperations, operations)
+	if destroyOperations != 3 {
+		t.Fatalf("destroy operation records=%d, want one started, one mutation completion, and one absence readback: %#v", destroyOperations, operations)
 	}
 }
 
@@ -1975,7 +1969,7 @@ func TestDestroyStorageVolumeRecoversFailedMutationByReadbackOnly(t *testing.T) 
 		t.Fatalf("readback recovery=%#v err=%v destroyCalls=%d readbackCalls=%d", recovered, err, provider.destroyCalls.Load(), provider.readbackCalls.Load())
 	}
 	replayed, err := service.DestroyStorageVolume(ctx, resource.ID)
-	if err != nil || !reflect.DeepEqual(replayed, recovered) || provider.destroyCalls.Load() != 1 || provider.readbackCalls.Load() != 1 {
+	if err != nil || !reflect.DeepEqual(replayed, recovered) || provider.destroyCalls.Load() != 1 || provider.readbackCalls.Load() != 2 {
 		t.Fatalf("terminal replay=%#v recovered=%#v err=%v destroyCalls=%d readbackCalls=%d", replayed, recovered, err, provider.destroyCalls.Load(), provider.readbackCalls.Load())
 	}
 }

@@ -8,12 +8,14 @@ import type {
   WorkspaceLaunchResponse,
   WorkspaceDeleteCommandResult,
   WorkspaceDeleteResponse,
+  WorkspaceDeletionDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceListData,
   WorkspaceDTO,
   WorkspaceRenewalRequest,
   WorkspaceRenewalResponse,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "./dtos.ts";
 import { deleteJson, postJson, getJson, patchJson, type ApiError } from "./console-api.ts";
@@ -155,6 +157,23 @@ export async function deleteWorkspace(
     }
     throw error;
   }
+}
+
+export async function getWorkspaceDeletion(workspaceId: string): Promise<WorkspaceDeletionDTO | null> {
+  const value = await getJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
+  if (value === null) return null;
+  const dto = decodeDto<WorkspaceDeletionDTO>(value);
+  if (dto.workspaceId !== workspaceId || !dto.operationId?.trim() || !dto.phase?.trim()
+    || !["pending", "manual_review", "deleted"].includes(dto.status)) throw new Error("invalid_workspace_deletion_response");
+  return dto;
+}
+
+export async function getWorkspaceRenewal(workspaceId: string): Promise<WorkspaceRenewalReadDTO> {
+  const dto = decodeDto<WorkspaceRenewalReadDTO>(await getJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/renewal`));
+  if (!dto.recovery || !["not_required", "recoverable", "pending", "unavailable", "reclaimed"].includes(dto.recovery.state)
+    || typeof dto.recovery.reason !== "string" || typeof dto.autoRenew !== "boolean"
+    || typeof dto.paidThrough !== "string" || typeof dto.renewalStatus !== "string") throw new Error("invalid_workspace_renewal_response");
+  return dto;
 }
 
 export function getWorkspaces(page = 1, pageSize = 20): Promise<SourceEnvelope<WorkspaceListData>> {

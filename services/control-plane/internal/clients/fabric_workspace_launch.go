@@ -3,6 +3,8 @@ package clients
 import (
 	"context"
 	"errors"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const WorkspaceLaunchFabricSchemaVersion = 1
@@ -182,6 +184,38 @@ func (c *fabricHTTPClient) EnsureWorkspaceLaunchStage(ctx context.Context, input
 	err := c.postMutation(ctx, "/fabric/workspace-launches/stages/ensure", input, input.Binding.IdempotencyKey, fabricMutationScope{
 		AccountID: input.Binding.AccountID, WorkspaceID: input.Binding.WorkspaceID,
 		ResourceKind: "workspace_launch_stage", ResourceID: input.Binding.FabricOperationID, Action: input.Binding.Action,
+	}, &result)
+	return result, err
+}
+
+// Fabric owns both the durable launch fence and exact partial-resource absence.
+type FabricWorkspaceLaunchCloseoutClient interface {
+	ReadWorkspaceLaunchCloseout(context.Context, contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error)
+	FreezeWorkspaceLaunch(context.Context, contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error)
+	CloseoutWorkspaceLaunch(context.Context, contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error)
+}
+
+func (c *fabricHTTPClient) ReadWorkspaceLaunchCloseout(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	var result contracts.WorkspaceLaunchCloseoutResult
+	err := c.post(ctx, "/fabric/workspace-launches/closeout/read", input, "", &result)
+	return result, err
+}
+
+func (c *fabricHTTPClient) FreezeWorkspaceLaunch(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	return c.mutateWorkspaceLaunchCloseout(ctx, "/fabric/workspace-launches/closeout/freeze", input)
+}
+
+func (c *fabricHTTPClient) CloseoutWorkspaceLaunch(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	return c.mutateWorkspaceLaunchCloseout(ctx, "/fabric/workspace-launches/closeout", input)
+}
+
+func (c *fabricHTTPClient) mutateWorkspaceLaunchCloseout(ctx context.Context, path string, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	if input.IdempotencyKey == "" {
+		return contracts.WorkspaceLaunchCloseoutResult{}, errors.New("workspace launch closeout idempotency key is required")
+	}
+	var result contracts.WorkspaceLaunchCloseoutResult
+	err := c.postMutation(ctx, path, input, input.IdempotencyKey, fabricMutationScope{
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_launch_closeout", ResourceID: input.LaunchOperationID, Action: "closeout_workspace_launch",
 	}, &result)
 	return result, err
 }

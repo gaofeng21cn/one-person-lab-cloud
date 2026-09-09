@@ -241,7 +241,10 @@ func normalizeWorkspaceBillingState(row map[string]any, expectedComputeID, expec
 		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
 	}
 	if renewalStatus == "expired_unpaid" && autoRenew {
-		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
+		authorized, err := time.Parse(time.RFC3339Nano, authorizedAt)
+		if err != nil || authorizedBy != expectedOwnerID || authorized.Before(paidThrough) {
+			return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
+		}
 	}
 	if autoRenew && (authorizedBy == "" || authorizedAt == "") || authorizedBy != "" && authorizedBy != expectedOwnerID || (authorizedBy == "") != (authorizedAt == "") {
 		return workspaceBillingState{}, false, errInvalidWorkspaceBillingState
@@ -721,41 +724,46 @@ func claimWorkspaceLaunchReconcileLocked(ctx context.Context, client *controlpla
 		}
 		return err
 	}
-	accountOperations, err := client.RuntimeOperation.Query().Where(runtimeoperation.AccountIDEQ(claim.AccountID), lockRowForUpdate).All(ctx)
+	exists, err := client.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(desired.ID)).Exist(ctx)
 	if err != nil {
 		return err
 	}
-	for _, entity := range accountOperations {
-		row := recordFromEnt(entity, runtimeOpEntFields)
-		if stringValue(row["id"]) == desired.ID {
-			return errWorkspaceLaunchCASConflict
-		}
-		if isWorkspaceLaunchAction(stringValue(row["action"])) && !terminalWorkspaceLaunchStatus(stringValue(row["status"])) {
-			return errWorkspaceLaunchInProgress
-		}
+	if exists {
+		return errWorkspaceLaunchCASConflict
 	}
-	launchEntities, err := client.RuntimeOperation.Query().Where(
+	activeLaunches := client.RuntimeOperation.Query().Where(
 		runtimeoperation.ActionIn(workspaceLaunchAction, "workspace.launch"),
-	).All(ctx)
+		runtimeoperation.StatusNotIn(string(contracts.StatusSucceeded), string(contracts.StatusFailed), string(contracts.StatusRefunded)),
+	)
+	accountInFlight, err := activeLaunches.Clone().Where(runtimeoperation.AccountIDEQ(claim.AccountID)).Exist(ctx)
 	if err != nil {
 		return err
 	}
-	inFlight, acceptanceClaims := 0, 0
-	for _, entity := range launchEntities {
-		row := recordFromEnt(entity, runtimeOpEntFields)
-		if workspaceLaunchReconcileAcceptanceSlot(row) || workspaceLaunchHasAcceptanceBCapacitySlot(row) {
-			acceptanceClaims++
-		}
-		if !terminalWorkspaceLaunchStatus(stringValue(row["status"])) {
-			inFlight++
-		}
+	if accountInFlight {
+		return errWorkspaceLaunchInProgress
 	}
 	if claim.AcceptanceBCapacitySlot {
-		if acceptanceClaims >= 1 {
+		// Acceptance B is a one-use qualification slot, including terminal history.
+		launchEntities, err := client.RuntimeOperation.Query().Where(
+			runtimeoperation.ActionIn(workspaceLaunchAction, "workspace.launch"),
+		).All(ctx)
+		if err != nil {
+			return err
+		}
+		for _, entity := range launchEntities {
+			row := recordFromEnt(entity, runtimeOpEntFields)
+			if workspaceLaunchReconcileAcceptanceSlot(row) || workspaceLaunchHasAcceptanceBCapacitySlot(row) {
+				return errWorkspaceLaunchCapacityReached
+			}
+		}
+	} else {
+		inFlight, err := activeLaunches.Count(ctx)
+		if err != nil {
+			return err
+		}
+		if inFlight >= controlledBasicPilotGlobalInFlightLimit() {
 			return errWorkspaceLaunchCapacityReached
 		}
-	} else if inFlight >= controlledBasicPilotGlobalInFlightLimit() {
-		return errWorkspaceLaunchCapacityReached
 	}
 	if err := saveRecord(ctx, desired.ID, controlPlaneRecord(claim.DesiredOperation), client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
 		if controlplaneent.IsConstraintError(err) {

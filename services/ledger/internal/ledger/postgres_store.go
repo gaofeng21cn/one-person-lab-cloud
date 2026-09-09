@@ -17,6 +17,7 @@ import (
 	"opl-cloud/services/internal/postgresmigrate"
 	ledgerent "opl-cloud/services/ledger/ent"
 	"opl-cloud/services/ledger/ent/evidencereceipt"
+	"opl-cloud/services/ledger/ent/predicate"
 	"opl-cloud/services/ledger/ent/reconciliationreport"
 )
 
@@ -307,6 +308,13 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	if query.WorkspaceID != "" {
 		q = q.Where(evidencereceipt.WorkspaceID(query.WorkspaceID))
 	}
+	if query.RequestID != "" {
+		q = q.Where(func(selector *entsql.Selector) {
+			selector.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteString("(").Ident(selector.C(evidencereceipt.FieldPayloadJSON)).WriteString("::jsonb ->> 'requestId') = ").Arg(query.RequestID)
+			}))
+		})
+	}
 	if query.ProjectID != "" {
 		q = q.Where(evidencereceipt.ProjectID(query.ProjectID))
 	}
@@ -316,11 +324,25 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	if query.JobID != "" {
 		q = q.Where(evidencereceipt.JobID(query.JobID))
 	}
+	var receiptType predicate.EvidenceReceipt
 	if query.Type != "" {
-		q = q.Where(evidencereceipt.ReceiptType(query.Type))
+		receiptType = evidencereceipt.ReceiptType(query.Type)
+	} else if query.TypePrefix != "" {
+		receiptType = evidencereceipt.ReceiptTypeHasPrefix(query.TypePrefix)
 	}
-	if query.TypePrefix != "" {
-		q = q.Where(evidencereceipt.ReceiptTypeHasPrefix(query.TypePrefix))
+	if query.IncludeType != "" {
+		included := evidencereceipt.ReceiptType(query.IncludeType)
+		if query.IncludeExecutionKind != "" {
+			included = evidencereceipt.And(included, func(selector *entsql.Selector) {
+				selector.Where(entsql.P(func(b *entsql.Builder) {
+					b.WriteString("(").Ident(selector.C(evidencereceipt.FieldPayloadJSON)).WriteString("::jsonb -> 'execution' ->> 'kind') = ").Arg(query.IncludeExecutionKind)
+				}))
+			})
+		}
+		receiptType = evidencereceipt.Or(receiptType, included)
+	}
+	if receiptType != nil {
+		q = q.Where(receiptType)
 	}
 	if query.Status != "" {
 		q = q.Where(evidencereceipt.Status(query.Status))
@@ -347,7 +369,7 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 		}
 		receipts = append(receipts, receipt)
 	}
-	page := ReceiptPage{Receipts: receipts, HasMore: hasMore}
+	page := ReceiptPage{Receipts: receipts, HasMore: hasMore, Lookup: receiptLookupScope(query)}
 	if hasMore {
 		page.NextCursor = encodeReceiptCursor(receipts[len(receipts)-1])
 	}

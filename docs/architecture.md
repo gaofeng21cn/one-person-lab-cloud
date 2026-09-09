@@ -333,6 +333,35 @@ exclusive before either claim can cross an external mutation boundary. Delete,
 Cancel Renewal, and Refund are independent operations. Any typed pending,
 conflict, or error that cannot authoritatively converge fails closed.
 
+The persisted customer Delete authorizes background continuation after the
+request or session ends. Remaining Runtime objects may disappear independently;
+Fabric validates every remaining object's exact ownership and confirms final
+absence, including standalone Secrets and volume bindings. Delayed compute
+absence is polled on the same operation without another destroy dispatch.
+Customer progress remains pending until the deletion Receipt is confirmed.
+
+Unpaid expiry closes new access and existing proxied streams at the paid-period
+boundary. Control Plane also commands Fabric to stop the original Runtime and
+records owner readback; it does not buy resources or delete data as a substitute
+for stopping use. Runtime power binds account, Workspace, Runtime operation and
+paid-through period, serializes with deletion, and fences stale periods. An
+explicit customer renewal authorization can recover the original order only
+while its resources still exist and its next anchored period is still current.
+Sub2API confirms the original debit, Fabric confirms renewal and Runtime ready,
+and only then Control Plane restores entitlement. Adding balance alone never
+authorizes recovery. Customers must download their data before expiry; there is
+no promised free retention period or post-expiry data recovery.
+
+An operator may end an unfulfilled Launch on its original operation. Control
+Plane first freezes normal continuation by CAS; Fabric then fences the original
+Launch before Sub2API revokes the exact Workspace Key. Fabric confirms partial
+resource absence, the existing wallet settlement owner returns only the original
+account's unrefunded charge, and Ledger records `billing.workspace_closed.v1`.
+A ready Runtime or activated Workspace follows successful-result recovery,
+including missing receipt completion. Unknown money, Key identity or resources
+cannot authorize terminal failure, refund or pool-claim release. This closure
+path is distinct from normal customer deletion of a succeeded Workspace.
+
 Control Plane owns only the Launch cursor, attempt and lease state, CAS,
 account/settlement coordination, and customer projection. Fabric owns compute,
 storage, attachment, Secret binding, Runtime, its operation store, provider and

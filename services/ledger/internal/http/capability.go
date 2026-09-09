@@ -56,7 +56,7 @@ func ledgerCapabilityScopeForRequest(r *http.Request, body []byte) (ledgerCapabi
 	case r.Method == http.MethodPost && r.URL.Path == "/ledger/receipts":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "receipt", scope.OperationID, "record_receipt"
 	case r.Method == http.MethodGet && r.URL.Path == "/ledger/receipts":
-		scope.AccountID = strings.TrimSpace(r.URL.Query().Get("accountId"))
+		scope.AccountID, scope.WorkspaceID = strings.TrimSpace(r.URL.Query().Get("accountId")), strings.TrimSpace(r.URL.Query().Get("workspaceId"))
 		scope.ResourceKind, scope.ResourceID, scope.Action = "receipt_collection", scope.AccountID, "list_receipts"
 		scope.OperationID = requestOperationID(r)
 	case r.Method == http.MethodGet && len(parts) == 3 && parts[0] == "ledger" && parts[1] == "receipts":

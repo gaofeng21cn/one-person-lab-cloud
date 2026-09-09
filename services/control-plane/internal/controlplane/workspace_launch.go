@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	contracts "opl-cloud/packages/contracts/go"
+
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
@@ -45,4 +47,28 @@ func (s *Service) EnsureWorkspaceLaunchStage(ctx context.Context, input clients.
 		return clients.WorkspaceLaunchStageResult{}, errors.New("fabric_workspace_launch_unavailable")
 	}
 	return client.EnsureWorkspaceLaunchStage(ctx, input)
+}
+
+func (s *Service) ReadWorkspaceLaunchCloseout(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceLaunchCloseoutClient)
+	if !ok {
+		return contracts.WorkspaceLaunchCloseoutResult{}, errors.New("fabric_workspace_launch_closeout_unavailable")
+	}
+	return client.ReadWorkspaceLaunchCloseout(ctx, input)
+}
+
+func (s *Service) FreezeWorkspaceLaunch(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceLaunchCloseoutClient)
+	if !ok {
+		return contracts.WorkspaceLaunchCloseoutResult{}, errors.New("fabric_workspace_launch_closeout_unavailable")
+	}
+	return client.FreezeWorkspaceLaunch(ctx, input)
+}
+
+func (s *Service) CloseoutWorkspaceLaunch(ctx context.Context, input contracts.WorkspaceLaunchCloseoutInput) (contracts.WorkspaceLaunchCloseoutResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceLaunchCloseoutClient)
+	if !ok {
+		return contracts.WorkspaceLaunchCloseoutResult{}, errors.New("fabric_workspace_launch_closeout_unavailable")
+	}
+	return client.CloseoutWorkspaceLaunch(ctx, input)
 }

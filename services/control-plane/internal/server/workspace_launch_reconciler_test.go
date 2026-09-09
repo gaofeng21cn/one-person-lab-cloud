@@ -45,7 +45,13 @@ func (c workspaceLaunchReceiptLedgerClient) ListReceipts(_ context.Context, quer
 	if query.AccountID == "" {
 		return clients.ReceiptPage{}, errors.New("account scope required")
 	}
-	return clients.ReceiptPage{Receipts: c.receipts}, nil
+	receipts := []clients.Receipt{}
+	for _, receipt := range c.receipts {
+		if (query.RequestID == "" || receipt.RequestID == query.RequestID) && (query.WorkspaceID == "" || receipt.WorkspaceID == query.WorkspaceID) {
+			receipts = append(receipts, receipt)
+		}
+	}
+	return clients.ReceiptPage{Receipts: receipts}, nil
 }
 
 func (s *workspaceLaunchUnitStore) GetRuntimeOperation(_ context.Context, id string) (map[string]any, bool, error) {
@@ -1026,7 +1032,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryLeavesUnprovenStorageUntouched(t
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)
@@ -1110,7 +1116,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutComputeOwnersh
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)
@@ -1274,7 +1280,7 @@ func TestWorkspaceLaunchManualReviewAutoRecoveryFailsClosedWithoutRuntimeReady(t
 		wantReads int
 		wantError error
 	}{
-		{name: "provider outside policy", configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
+		{name: "other provider still permits read only confirmation", wantReads: 1, configure: func(operation *workspaceLaunchReconcileOperation, _ *workspaceLaunchUnitAdapter) {
 			provider, err := json.Marshal("profile-unit")
 			if err != nil {
 				t.Fatal(err)

@@ -12,6 +12,9 @@ import (
 var errStorageDestroyRecoveryUnconfirmed = errors.New("storage_destroy_recovery_unconfirmed")
 
 const storageDestroyPhaseDispatchAuthorized = "dispatch_authorized_uncertain"
+const storageDestroyPhaseBindingDeletePending = "binding_delete_pending"
+
+type workspaceStorageDeleteOwnerContextKey struct{}
 
 func attachmentReadbackMatches(result StorageAttachment, input StorageAttachmentInput, compute ComputeAllocation, volume StorageVolume) bool {
 	return strings.HasPrefix(result.ID, "att_") && result.OperationID == input.IdempotencyKey &&
@@ -139,7 +142,7 @@ func (s *Service) ReadStorageVolume(ctx context.Context, volumeID string) (Stora
 	if reader == nil {
 		return existing, nil
 	}
-	volume, err := reader.ReadStorageVolumeStatus(ctx, existing)
+	volume, err := reader.ReadStorageVolumeStatus(context.WithValue(ctx, workspaceStorageDeleteOwnerContextKey{}, existing), existing)
 	if volume.ID == "" {
 		volume.ID = existing.ID
 	}
@@ -197,6 +200,9 @@ func (s *Service) DestroyStorageVolume(ctx context.Context, volumeID string) (St
 			result = persisted
 			switch latest.Status {
 			case "succeeded":
+				if persisted.Provider == "tencent-tke" {
+					return s.recoverStorageDestroyByReadback(lockCtx, latest, existing, persisted, &result)
+				}
 				s.mu.Lock()
 				s.volumes[volumeID] = cloneStorageVolume(persisted)
 				s.mu.Unlock()
@@ -229,6 +235,7 @@ func (s *Service) DestroyStorageVolume(ctx context.Context, volumeID string) (St
 }
 
 func (s *Service) dispatchStorageDestroy(ctx context.Context, operation FabricOperation, existing, request StorageVolume, result *StorageVolume) error {
+	ctx = context.WithValue(ctx, workspaceStorageDeleteOwnerContextKey{}, existing)
 	volume, providerErr := s.storageProvider.DestroyStorageVolume(ctx, cloneStorageVolume(request))
 	if providerErr != nil && volume.ID == "" {
 		volume = cloneStorageVolume(request)
@@ -300,15 +307,28 @@ func (s *Service) recoverStorageDestroyByReadback(ctx context.Context, operation
 	if reader == nil {
 		return errStorageDestroyRecoveryUnconfirmed
 	}
+	ctx = context.WithValue(ctx, workspaceStorageDeleteOwnerContextKey{}, persisted)
 	readback, readErr := reader.ReadStorageVolumeStatus(ctx, cloneStorageVolume(persisted))
 	*result = readback
 	if !sameStorageDestroyStableIdentity(existing, readback) {
 		return fmt.Errorf("storage_destroy_replay_identity_mismatch")
 	}
-	if readErr != nil {
+	residualBinding := errors.Is(readErr, ErrWorkspaceLaunchPending) && storageDestroyReadbackConfirmsAbsence(readback)
+	if readErr != nil && !residualBinding {
 		return fmt.Errorf("%w: %v", errStorageDestroyRecoveryUnconfirmed, readErr)
 	}
-	if !storageDestroyReadbackConfirmsAbsence(readback) {
+	if !storageDestroyReadbackConfirmsAbsence(readback) || residualBinding {
+		if residualBinding || operation.Status == "failed" && persisted.Provider == "tencent-tke" &&
+			persisted.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending && persisted.ProviderData["storageDestroyMutationCount"] == "0" &&
+			readback.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending && readback.ProviderData["storageDestroyMutationCount"] == "0" {
+			request := cloneStorageVolume(readback)
+			request.Status = "destroying"
+			request.ProviderData["storageDestroyPhase"] = storageDestroyPhaseDispatchAuthorized
+			if err := s.recordOperation(ctx, operation, "started", request, nil); err != nil {
+				return err
+			}
+			return s.dispatchStorageDestroy(ctx, operation, existing, request, result)
+		}
 		return errStorageDestroyRecoveryUnconfirmed
 	}
 	if err := s.recordOperation(ctx, operation, "succeeded", readback, nil); err != nil {

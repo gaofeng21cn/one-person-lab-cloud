@@ -19,6 +19,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
 
 const viewports = [
   { name: "desktop", width: 1280, height: 900 },
@@ -74,42 +75,6 @@ interface BrowserAudit {
   externalRequests: string[];
   pageErrors: string[];
 }
-
-const viteClientWithoutHmrTransport = `
-const styles = new Map();
-export class ErrorOverlay extends HTMLElement {}
-export function createHotContext() {
-  return {
-    data: {},
-    accept() {},
-    acceptExports() {},
-    decline() {},
-    dispose() {},
-    invalidate() {},
-    off() {},
-    on() {},
-    prune() {},
-    send() {}
-  };
-}
-export function injectQuery(url) { return url; }
-export function updateStyle(id, content) {
-  let style = styles.get(id);
-  if (!style) {
-    style = document.createElement("style");
-    style.setAttribute("data-vite-dev-id", id);
-    document.head.appendChild(style);
-    styles.set(id, style);
-  }
-  style.textContent = content;
-}
-export function removeStyle(id) {
-  const style = styles.get(id);
-  if (!style) return;
-  style.remove();
-  styles.delete(id);
-}
-`;
 
 function deferred() {
   let resolve!: () => void;
@@ -567,6 +532,124 @@ test("pending launch keeps raw evidence behind technical details at desktop and 
   }
 });
 
+test("closing and returning resumes the original pending purchase without another order, including after polling ends", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of viewports) {
+      const context = await browser.newContext({ viewport });
+      const operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `launch-return-${viewport.name}` };
+      demo.state.launches = [operation];
+      let purchaseWrites = 0;
+      const observedOperationIds = new Set<string>();
+      context.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === "/api/workspace-launches" && request.method() === "POST") purchaseWrites += 1;
+        if (url.pathname.startsWith("/api/workspace-launches/") && request.method() === "GET") {
+          observedOperationIds.add(decodeURIComponent(url.pathname.split("/").at(-1)!));
+        }
+      });
+      let page = await context.newPage();
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      await page.getByText("系统正在后台准备所需资源。可以关闭页面，稍后回来查看，无需重复购买。", { exact: true }).waitFor();
+      await page.close();
+
+      page = await context.newPage();
+      const audit = await installBrowserAudit(page, demo.origin);
+      await page.clock.install();
+      await page.clock.pauseAt(new Date(Date.now() + 1_000));
+      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
+        await page.clock.fastForward(10_000);
+        await (await readback).finished();
+        await page.clock.runFor(1);
+      }
+      await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor();
+      assert.equal(await page.getByRole("heading", { name: "开通失败", exact: true }).count(), 0);
+      assert.equal(purchaseWrites, 0);
+
+      await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
+      demo.state.launches = [{ ...operation, status: "succeeded", phase: "succeeded", workspaceId: "ws-1" }];
+      await page.clock.fastForward(10_000);
+      await page.waitForURL(/\/console\/workspaces\/ws-1$/);
+      assert.deepEqual([...observedOperationIds], [operation.operationId]);
+      assert.equal(purchaseWrites, 0);
+      assertBrowserAuditClean(audit);
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("customers reopen closeout progress, see confirmed refunds or no-charge closure, and explicitly restart purchase", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const viewport of viewports) {
+      for (const refundedUsdMicros of [52_580_000, 0]) {
+        const context = await browser.newContext({ viewport });
+        let operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `closeout-${viewport.name}-${refundedUsdMicros}`, status: "pending", closeout: { status: "confirming", refundedUsdMicros: 0 } };
+        demo.state.launches = [operation];
+        let purchaseWrites = 0;
+        context.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/workspace-launches") purchaseWrites += 1; });
+        let page = await context.newPage();
+        await installBrowserAudit(page, demo.origin);
+        await login(page, demo.origin);
+        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("heading", { name: "正在核对结案条件", exact: true }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+        await page.close();
+
+        operation = { ...operation, closeout: { status: "closing", refundedUsdMicros: 0 } };
+        demo.state.launches = [operation];
+        page = await context.newPage();
+        const audit = await installBrowserAudit(page, demo.origin);
+        await page.clock.install();
+        await page.clock.pauseAt(new Date(Date.now() + 1_000));
+        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
+        await page.getByRole("heading", { name: "正在结束未完成的开通", exact: true }).waitFor();
+        const advance = async (next: WorkspaceLaunchResponse, heading: string) => {
+          operation = next;
+          demo.state.launches = [operation];
+          const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
+          await page.clock.fastForward(10_000);
+          await (await readback).finished();
+          await page.clock.runFor(1);
+          await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+        };
+        if (refundedUsdMicros > 0) {
+          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0, pendingConfirmation: true } }, "结案结果仍在核对");
+          assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
+          assert.equal((await page.locator(".launch-operation").innerText()).includes("已退回原账户余额"), false);
+          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0 } }, "退款处理中");
+        }
+        await advance({ ...operation, closeout: { status: "recording", refundedUsdMicros } }, "正在记录结案结果");
+        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+        await advance({ ...operation, status: refundedUsdMicros ? "refunded" : "failed", closeout: { status: "closed", refundedUsdMicros, receiptId: "receipt-close-original" } }, "开通未完成，已结案");
+        await page.getByText(refundedUsdMicros ? "已退回原账户余额 $52.58。可查看费用记录或重新购买。" : "本次开通未扣款。可查看费用记录或重新购买。", { exact: true }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "查看费用", exact: true }).count(), 1);
+        assert.equal(purchaseWrites, 0);
+        await page.getByRole("button", { name: "重新购买", exact: true }).click();
+        await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor();
+        assert.equal(purchaseWrites, 0);
+        await assertNoHorizontalOverflow(page);
+        assertBrowserAuditClean(audit);
+        await context.close();
+      }
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("customer entitlement shows authoritative zero due without prepayment language", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -850,6 +933,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
     await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。", { exact: true }).waitFor({ state: "visible" });
     await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
     const confirmation = page.getByRole("checkbox", {
       name: "我确认一次性预付工作空间月度总额并开通",
@@ -1200,6 +1284,7 @@ async function verifyWorkspaceDetailExperience() {
 
       const renewal = page.locator(".workspace-plan-panel");
       await renewal.getByRole("heading", { name: "续费与存储", exact: true }).waitFor({ state: "visible" });
+      await renewal.getByText("请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。", { exact: true }).waitFor({ state: "visible" });
       await renewal.getByText("续费方式", { exact: true }).waitFor({ state: "visible" });
       await renewal.getByText("手动续费", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await renewal.getByText("自动续费", { exact: true }).count(), 0);

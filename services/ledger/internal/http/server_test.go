@@ -773,12 +773,91 @@ func TestReceiptListHTTPIsAuthenticatedFilteredAndPaginated(t *testing.T) {
 
 func TestReceiptListHTTPRejectsInvalidPagination(t *testing.T) {
 	server := NewServer(ledger.NewMemoryStore(), "internal-secret")
-	for _, path := range []string{"/ledger/receipts?limit=0", "/ledger/receipts?limit=101", "/ledger/receipts?cursor=invalid"} {
+	for _, path := range []string{"/ledger/receipts?limit=0", "/ledger/receipts?limit=101", "/ledger/receipts?cursor=invalid", "/ledger/receipts?requestId=unscoped", "/ledger/receipts?type=billing.workspace_purchased.v1&typePrefix=billing.", "/ledger/receipts?includeExecutionKind=business_refund", "/ledger/receipts?includeType=gateway.wallet_adjustment.v1"} {
 		rec := httptest.NewRecorder()
 		server.ServeHTTP(rec, testRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d, want 400: %s", path, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+func TestD2ReceiptListHTTPConfirmsExactScopeAndWorkspaceCapability(t *testing.T) {
+	const key = "ledger-capability-key-for-http-tests-32-chars"
+	store := ledger.NewMemoryStore()
+	input := capabilityWorkspaceReceiptInput("billing.workspace_purchased.v1")
+	created, err := store.RecordReceipt(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := ledger.ReceiptInput{Type: "execution.receipt.v1", Status: "completed", Surface: "workspace", AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, RequestID: "irrelevant", IdempotencyKey: "irrelevant"}
+	if _, err := store.RecordReceipt(context.Background(), other); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServerWithAuth(store, "internal-secret", key)
+	for _, test := range []struct {
+		name, accountID, requestID, claimWorkspace string
+		wantCount, wantStatus                      int
+	}{
+		{name: "original operation", accountID: input.AccountID, requestID: input.RequestID, claimWorkspace: input.WorkspaceID, wantCount: 1, wantStatus: http.StatusOK},
+		{name: "wrong account has no evidence", accountID: "acct-other", requestID: input.RequestID, claimWorkspace: input.WorkspaceID, wantStatus: http.StatusOK},
+		{name: "absent original operation", accountID: input.AccountID, requestID: "absent", claimWorkspace: input.WorkspaceID, wantStatus: http.StatusOK},
+		{name: "workspace capability mismatch", accountID: input.AccountID, requestID: input.RequestID, claimWorkspace: "workspace-other", wantStatus: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			values := url.Values{"accountId": {test.accountID}, "workspaceId": {input.WorkspaceID}, "requestId": {test.requestID}, "type": {input.Type}}
+			req := testRequest(http.MethodGet, "/ledger/receipts?"+values.Encode(), nil)
+			claims := ledgerCapabilityClaims{Version: 1, Caller: "control-plane", AccountID: test.accountID, WorkspaceID: test.claimWorkspace, ResourceKind: "receipt_collection", ResourceID: test.accountID, Action: "list_receipts", OperationID: requestOperationID(req), ExpiresAt: time.Now().Add(time.Minute).Unix()}
+			req.Header.Set(ledgerCapabilityHeader, testLedgerCapability(t, key, claims, nil))
+			rec := httptest.NewRecorder()
+			server.ServeHTTP(rec, req)
+			if rec.Code != test.wantStatus {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			if rec.Code != http.StatusOK {
+				return
+			}
+			var page ledger.ReceiptPage
+			if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+				t.Fatal(err)
+			}
+			if page.Lookup == nil || page.Lookup.AccountID != test.accountID || page.Lookup.WorkspaceID != input.WorkspaceID || page.Lookup.RequestID != test.requestID || page.Lookup.Type != input.Type || len(page.Receipts) != test.wantCount || (test.wantCount == 1 && page.Receipts[0].ReceiptID != created.ReceiptID) {
+				t.Fatalf("scoped page=%#v", page)
+			}
+		})
+	}
+}
+
+func TestD2InclusiveReceiptListHTTP(t *testing.T) {
+	store := ledger.NewMemoryStore()
+	purchase, err := store.RecordReceipt(context.Background(), capabilityWorkspaceReceiptInput("billing.workspace_purchased.v1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := ledger.ReceiptInput{
+		Type: "gateway.wallet_adjustment.v1", Status: "completed", Surface: "control_plane", AccountID: purchase.AccountID, RequestID: "refund-alpha", IdempotencyKey: "refund-alpha:receipt",
+		Actor: map[string]any{"userId": "operator-alpha"}, Execution: map[string]any{"operationId": "refund-alpha", "kind": "business_refund", "amountUsdMicros": int64(1_000_000)},
+		InputRefs: map[string]any{"relatedOperationId": purchase.RequestID, "balanceHistoryRef": "sub2api:balance-history:41:refund-alpha"}, Owner: map[string]any{"accountId": purchase.AccountID},
+	}
+	refund, err := store.RecordReceipt(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(store, "internal-secret")
+	query := url.Values{"accountId": {purchase.AccountID}, "typePrefix": {"billing."}, "includeType": {"gateway.wallet_adjustment.v1"}, "includeExecutionKind": {"business_refund"}, "limit": {"1"}}
+	wanted := map[string]bool{purchase.ReceiptID: true, refund.ReceiptID: true}
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, testRequest(http.MethodGet, "/ledger/receipts?"+query.Encode(), nil))
+		var page ledger.ReceiptPage
+		if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK || page.Lookup == nil || page.Lookup.IncludeType != input.Type || page.Lookup.IncludeExecutionKind != "business_refund" || len(page.Receipts) != 1 || !wanted[page.Receipts[0].ReceiptID] || page.HasMore != (i == 0) {
+			t.Fatalf("customer bill page %d: status=%d page=%#v", i, rec.Code, page)
+		}
+		delete(wanted, page.Receipts[0].ReceiptID)
+		query.Set("cursor", page.NextCursor)
 	}
 }
 

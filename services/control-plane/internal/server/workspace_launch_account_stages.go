@@ -185,23 +185,12 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchDebit(ctx c
 		}
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 	}
-	postChargeBalance, err := a.service.Sub2APIBalance(ctx, userID)
-	if err != nil {
-		if workspaceLaunchDebitReadbackCanConverge(operation) {
-			return workspaceLaunchStageObservation{State: workspaceLaunchStagePending}, nil
-		}
-		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, err
-	}
-	if postChargeBalance.UserID != userID || postChargeBalance.USDMicros < 0 {
-		return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
-	}
 	periodStart := entry.UsedAt.UTC()
 	return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: map[string]any{
-		"chargeAttempted":            true,
-		"chargeConfirmation":         map[string]any{"code": code, "userId": userID, "chargeUsdMicros": operation.int64Fact("totalChargeUsdMicros"), "status": "used"},
-		"preChargeBalanceUsdMicros":  operation.int64Fact("preChargeBalanceUsdMicros"),
-		"postChargeBalanceUsdMicros": postChargeBalance.USDMicros, "postChargeBalanceKnown": true,
-		"billingPeriodState": "frozen", "periodStart": periodStart.Format(time.RFC3339Nano),
+		"chargeAttempted":           true,
+		"chargeConfirmation":        map[string]any{"code": code, "userId": userID, "chargeUsdMicros": operation.int64Fact("totalChargeUsdMicros"), "status": "used"},
+		"preChargeBalanceUsdMicros": operation.int64Fact("preChargeBalanceUsdMicros"),
+		"billingPeriodState":        "frozen", "periodStart": periodStart.Format(time.RFC3339Nano),
 		"paidThrough": nextBillingMonth(periodStart, periodStart.Day()).Format(time.RFC3339Nano), "billingAnchorDay": periodStart.Day(),
 	}}, nil
 }
@@ -244,9 +233,18 @@ func workspaceLaunchPurchaseReceiptFromLedger(ctx context.Context, adapter *cont
 	if len(expected) == 0 {
 		return clients.Receipt{}, false, errors.New("workspace_launch_receipt_identity_mismatch")
 	}
-	receipts, err := reconciliationLedgerReceipts(ctx, adapter.service, expected[0].AccountID)
-	if err != nil {
-		return clients.Receipt{}, false, err
+	receipts := []clients.Receipt{}
+	requests := map[string]bool{}
+	for _, input := range expected {
+		if requests[input.RequestID] {
+			continue
+		}
+		requests[input.RequestID] = true
+		page, err := reconciliationLedgerReceipts(ctx, adapter.service, clients.ReceiptQuery{AccountID: input.AccountID, RequestID: input.RequestID})
+		if err != nil {
+			return clients.Receipt{}, false, err
+		}
+		receipts = append(receipts, page...)
 	}
 	var match *clients.Receipt
 	for index := range receipts {

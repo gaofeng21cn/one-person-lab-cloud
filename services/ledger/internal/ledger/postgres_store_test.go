@@ -249,11 +249,14 @@ func TestPostgresEvidenceNumberReadback(t *testing.T) {
 		t.Fatalf("persisted reconciliation = %#v, %v", replayed, err)
 	}
 
-	if _, err := db.Exec(`UPDATE evidence_receipts SET payload_json = '{' WHERE id = $1`, created.ReceiptID); err != nil {
-		t.Fatal(err)
+	_, err = db.Exec(`UPDATE evidence_receipts SET payload_json = '{' WHERE id = $1`, created.ReceiptID)
+	var invalidJSON *pq.Error
+	if !errors.As(err, &invalidJSON) || invalidJSON.Code != "22P02" {
+		t.Fatalf("indexed receipt payload must reject invalid JSON before persistence: %v", err)
 	}
-	if _, err := store.Receipt(ctx, created.ReceiptID); err == nil {
-		t.Fatal("invalid persisted receipt payload must fail closed")
+	read, err = store.Receipt(ctx, created.ReceiptID)
+	if err != nil || fmt.Sprint(read.Cost["monthlyPriceCnyCents"]) != "9007199254740993" {
+		t.Fatalf("rejected corruption changed receipt = %#v, %v", read.Cost, err)
 	}
 }
 

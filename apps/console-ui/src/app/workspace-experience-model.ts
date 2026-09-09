@@ -1,9 +1,12 @@
 import type {
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
+  WorkspaceLaunchCloseoutDTO,
   WorkspaceLaunchResponse,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "../api/dtos.ts";
+import { formatUsdMicros } from "../console-model.ts";
 
 export type WorkspaceExperienceTone = "info" | "success" | "warning" | "danger";
 
@@ -28,15 +31,50 @@ export type WorkspaceLaunchPresentation =
   | KnownWorkspaceLaunchPresentation
   | UnconfirmedWorkspaceLaunchPresentation;
 
+export function presentWorkspaceLaunchCloseout(closeout: WorkspaceLaunchCloseoutDTO, launchStatus: string) {
+  if (closeout.pendingConfirmation) {
+    return { title: "结案结果仍在核对", summary: closeout.refundedUsdMicros > 0 ? `已确认退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。请稍后查看结案结果，无需重复提交。` : "原订单的结案结果尚未确认。请稍后查看，无需重复提交或另行退款。" };
+  }
+  switch (closeout.status) {
+    case "confirming":
+      return { title: "正在核对结案条件", summary: "正在确认原订单和扣款结果，尚未确认退款。可以关闭页面后再查看。" };
+    case "closing":
+      return { title: "正在结束未完成的开通", summary: "正在结束本次开通，处理完成后会核对并退回应退费用，请勿重复购买。" };
+    case "refunding":
+      return { title: "退款处理中", summary: "正在将应退费用退回原账户余额，请等待到账确认。" };
+    case "recording":
+      return { title: "正在记录结案结果", summary: closeout.refundedUsdMicros > 0 ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}，正在完成结案记录。` : "正在完成本次开通的结案记录，请稍后查看。" };
+    case "closed":
+      return { title: "开通未完成，已结案", summary: launchStatus === "refunded" ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。可查看费用记录或重新购买。` : launchStatus === "failed" ? "本次开通未扣款。可查看费用记录或重新购买。" : "正在确认结案后的订单状态，请稍后刷新。" };
+    case "fulfilled":
+      return { title: launchStatus === "succeeded" ? "工作空间已可使用" : "正在完成开通记录", summary: launchStatus === "succeeded" ? "原订单已完成开通，工作空间可继续使用。" : "工作空间已就绪，正在完成原订单的开通记录。" };
+  }
+}
+
 export function presentWorkspaceLaunch(
-  operation: Pick<WorkspaceLaunchResponse, "status" | "workspaceId">
+  operation: Pick<WorkspaceLaunchResponse, "status" | "workspaceId" | "closeout">
 ): WorkspaceLaunchPresentation {
+  if (operation.closeout) {
+    const presentation = presentWorkspaceLaunchCloseout(operation.closeout, operation.status);
+    if (presentation && Number.isSafeInteger(operation.closeout.refundedUsdMicros) && operation.closeout.refundedUsdMicros >= 0) {
+      if (operation.closeout.status === "closed" && ["failed", "refunded"].includes(operation.status)) {
+        return { ...presentation, kind: operation.status as "failed" | "refunded", tone: "info", canOpenWorkspace: false };
+      }
+      if (operation.status === "pending" || operation.status === "manual_review") {
+        return { ...presentation, kind: operation.status === "pending" ? "pending" : "manual_review", tone: "info", canOpenWorkspace: false };
+      }
+      if (operation.closeout.status === "fulfilled" && operation.status === "succeeded" && operation.workspaceId?.trim()) {
+        return { ...presentation, kind: "succeeded", tone: "success", canOpenWorkspace: true };
+      }
+    }
+    return { kind: "unconfirmed", title: "结果待确认", summary: "正在确认结案后的订单状态，请刷新查看，暂勿重复购买。", tone: "warning", canOpenWorkspace: false, rawValue: operation.status };
+  }
   switch (operation.status) {
     case "pending":
       return {
         kind: "pending",
         title: "正在准备工作空间",
-        summary: "系统正在准备所需资源，请稍后刷新状态。",
+        summary: "系统正在后台准备所需资源。可以关闭页面，稍后回来查看，无需重复购买。",
         tone: "info",
         canOpenWorkspace: false
       };
@@ -286,6 +324,27 @@ export function presentWorkspaceRenewal(
       return status === undefined
         ? { known: false, kind: "unknown", label: "待确认" }
         : { known: false, kind: "unknown", label: "待确认", rawValue: status };
+  }
+}
+
+export function presentWorkspaceRecovery(recovery: WorkspaceRenewalReadDTO["recovery"]) {
+  switch (recovery.state) {
+    case "not_required": return null;
+    case "recoverable": return { title: "可以续费恢复", description: "确认续费并完成扣款后，系统将恢复原工作空间。充值本身不会恢复使用。" };
+    case "pending": return { title: "正在处理续费恢复", description: "原续费请求正在处理，请勿重复提交。可以关闭页面后再查看；工作空间显示可使用后才能打开。" };
+    case "reclaimed": return { title: "原工作空间无法恢复", description: "原工作空间资源已回收，无法续费恢复。请重新购买工作空间，原数据不提供恢复。" };
+    case "unavailable": {
+      const reasons: Record<string, string> = {
+        workspace_renewal_insufficient_balance: "余额不足。请补足余额后刷新续费条件；充值不会自动恢复工作空间。",
+        workspace_renewal_account_unavailable: "暂时无法确认账户余额，请稍后刷新续费条件。",
+        workspace_renewal_provider_truth_unavailable: "暂时无法确认原工作空间资源，请稍后刷新续费条件。",
+        workspace_renewal_identity_mismatch: "原工作空间的续费条件需要管理员核对，请联系管理员处理。",
+        workspace_renewal_manual_review: "原续费结果需要管理员核对，请勿重复付款。",
+        workspace_renewal_period_elapsed: "原续费期间已过，当前无法续费恢复，请重新购买工作空间。",
+        workspace_delete_in_progress: "工作空间正在删除，不能续费恢复。"
+      };
+      return { title: "暂时无法续费恢复", description: reasons[recovery.reason] || "暂时无法确认续费恢复条件，请稍后刷新。" };
+    }
   }
 }
 

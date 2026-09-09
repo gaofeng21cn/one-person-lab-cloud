@@ -5,8 +5,11 @@ go 1.25
 require (
 	entgo.io/ent v0.14.6
 	github.com/lib/pq v1.12.3
+	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0
 )
+
+replace opl-cloud/packages/contracts/go => ../../packages/contracts/go
 
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -507,6 +508,7 @@ func TestWalletAdjustmentRuntimeOperationRoundTrips(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &controlPlaneServer{tables: tc.new(t)}
+			seedOperatorProjectionAccount(t, app.tables, "acct-wallet", "usr-wallet", "wallet@example.com", 41)
 			operation := walletAdjustmentOperation{
 				RequestHash: "wallet-request-hash", Phase: "authoritative_readback", AccountID: "acct-wallet", Sub2APIUserID: 41,
 				Kind: "debit", AmountUSDMicros: 2_500_000, AmountUSD: "2.50", Reason: "manual correction", ActorUserID: "usr-admin",
@@ -1713,7 +1715,16 @@ func TestPostgresWorkspaceRenewalPersistAndOwnerDisableUseSameLockOrder(t *testi
 		t.Fatal(err)
 	}
 	newStore := func(applicationName string) *postgresEntStateStore {
-		stateStore, err := newTestPostgresEntStateStore(controlPlaneTestPostgresURL(t, "postgres", schema) + " application_name=" + applicationName)
+		databaseURL := controlPlaneTestPostgresURL(t, "postgres", schema)
+		if parsed, parseErr := url.Parse(databaseURL); parseErr == nil && parsed.Scheme != "" {
+			query := parsed.Query()
+			query.Set("application_name", applicationName)
+			parsed.RawQuery = query.Encode()
+			databaseURL = parsed.String()
+		} else {
+			databaseURL += " application_name=" + applicationName
+		}
+		stateStore, err := newTestPostgresEntStateStore(databaseURL)
 		if err != nil {
 			t.Fatal(err)
 		}

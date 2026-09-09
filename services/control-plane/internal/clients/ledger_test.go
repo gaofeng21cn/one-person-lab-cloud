@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 func TestLedgerReceiptList(t *testing.T) {
@@ -77,6 +79,94 @@ func TestLedgerReceiptListSendsTypePrefix(t *testing.T) {
 	client := NewLedgerHTTPClient(server.URL, "internal-secret", server.Client()).(LedgerReceiptListClient)
 	if _, err := client.ListReceipts(context.Background(), ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing."}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLedgerExactReceiptLookupRequiresOwnerConfirmation(t *testing.T) {
+	query := ReceiptQuery{AccountID: "acct-alpha", WorkspaceID: "ws-alpha", RequestID: "purchase-alpha", Type: "billing.workspace_purchased.v1", Limit: 100}
+	for _, test := range []struct {
+		name      string
+		mutate    func(*ReceiptPage)
+		wantError bool
+	}{
+		{name: "original receipt"},
+		{name: "confirmed absence", mutate: func(page *ReceiptPage) { page.Receipts = []Receipt{} }},
+		{name: "duplicate evidence preserved", mutate: func(page *ReceiptPage) {
+			other := page.Receipts[0]
+			other.ReceiptID = "receipt-duplicate"
+			page.Receipts = append(page.Receipts, other)
+		}},
+		{name: "old server ignored request", mutate: func(page *ReceiptPage) { page.Lookup = nil; page.Receipts = []Receipt{} }, wantError: true},
+		{name: "wrong lookup request", mutate: func(page *ReceiptPage) { page.Lookup.RequestID = "other" }, wantError: true},
+		{name: "wrong lookup account", mutate: func(page *ReceiptPage) { page.Lookup.AccountID = "acct-other" }, wantError: true},
+		{name: "wrong lookup workspace", mutate: func(page *ReceiptPage) { page.Lookup.WorkspaceID = "ws-other" }, wantError: true},
+		{name: "wrong lookup type", mutate: func(page *ReceiptPage) { page.Lookup.Type = "billing.workspace_refunded.v1" }, wantError: true},
+		{name: "wrong receipt request", mutate: func(page *ReceiptPage) { page.Receipts[0].RequestID = "other" }, wantError: true},
+		{name: "wrong receipt account", mutate: func(page *ReceiptPage) { page.Receipts[0].AccountID = "acct-other" }, wantError: true},
+		{name: "wrong receipt workspace", mutate: func(page *ReceiptPage) { page.Receipts[0].WorkspaceID = "ws-other" }, wantError: true},
+		{name: "wrong receipt type", mutate: func(page *ReceiptPage) { page.Receipts[0].Type = "billing.workspace_refunded.v1" }, wantError: true},
+		{name: "missing collection", mutate: func(page *ReceiptPage) { page.Receipts = nil }, wantError: true},
+		{name: "truncated without cursor", mutate: func(page *ReceiptPage) { page.HasMore = true }, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page := ReceiptPage{
+				Lookup:   &contracts.ReceiptLookupScope{AccountID: query.AccountID, WorkspaceID: query.WorkspaceID, RequestID: query.RequestID, Type: query.Type},
+				Receipts: []Receipt{{ReceiptInput: ReceiptInput{AccountID: query.AccountID, WorkspaceID: query.WorkspaceID, RequestID: query.RequestID, Type: query.Type}, ReceiptID: "receipt-alpha"}},
+			}
+			if test.mutate != nil {
+				test.mutate(&page)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				values := r.URL.Query()
+				claims := ledgerCapabilityClaimsForTest(t, r.Header.Get("X-OPL-Ledger-Capability"))
+				if values.Get("requestId") != query.RequestID || values.Get("workspaceId") != query.WorkspaceID || values.Get("type") != query.Type || values.Get("limit") != "100" || claims["workspaceId"] != query.WorkspaceID || claims["accountId"] != query.AccountID {
+					t.Errorf("exact lookup request=%s claims=%#v", r.URL, claims)
+				}
+				_ = json.NewEncoder(w).Encode(page)
+			}))
+			defer server.Close()
+			client := NewLedgerHTTPClientWithCapability(server.URL, "internal-secret", "ledger-capability-key-for-client-tests-32-chars", server.Client()).(LedgerReceiptListClient)
+			actual, err := client.ListReceipts(context.Background(), query)
+			if (err != nil) != test.wantError || (!test.wantError && len(actual.Receipts) != len(page.Receipts)) {
+				t.Fatalf("lookup page=%#v error=%v wantError=%v", actual, err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestLedgerInclusiveReceiptLookupRequiresCompleteScope(t *testing.T) {
+	query := ReceiptQuery{AccountID: "acct-alpha", TypePrefix: "billing.", IncludeType: "gateway.wallet_adjustment.v1", IncludeExecutionKind: "business_refund"}
+	for _, test := range []struct {
+		name      string
+		mutate    func(*ReceiptPage)
+		wantError bool
+	}{
+		{name: "includes only business refunds"},
+		{name: "old Ledger omitted refunds", mutate: func(page *ReceiptPage) { page.Lookup = nil; page.Receipts = []Receipt{} }, wantError: true},
+		{name: "ignored refund kind", mutate: func(page *ReceiptPage) { page.Lookup.IncludeExecutionKind = "" }, wantError: true},
+		{name: "recharge leaked into bill", mutate: func(page *ReceiptPage) { page.Receipts[0].Execution["kind"] = "recharge" }, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page := ReceiptPage{
+				Lookup:   &contracts.ReceiptLookupScope{AccountID: query.AccountID, TypePrefix: query.TypePrefix, IncludeType: query.IncludeType, IncludeExecutionKind: query.IncludeExecutionKind},
+				Receipts: []Receipt{{ReceiptInput: ReceiptInput{AccountID: query.AccountID, Type: query.IncludeType, Execution: map[string]any{"kind": "business_refund"}}, ReceiptID: "refund-alpha"}},
+			}
+			if test.mutate != nil {
+				test.mutate(&page)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				values := r.URL.Query()
+				if values.Get("includeType") != query.IncludeType || values.Get("includeExecutionKind") != query.IncludeExecutionKind {
+					t.Errorf("missing inclusive type filter: %s", r.URL)
+				}
+				_ = json.NewEncoder(w).Encode(page)
+			}))
+			defer server.Close()
+			client := NewLedgerHTTPClient(server.URL, "internal-secret", server.Client()).(LedgerReceiptListClient)
+			if _, err := client.ListReceipts(context.Background(), query); (err != nil) != test.wantError {
+				t.Fatalf("inclusive lookup error=%v wantError=%v", err, test.wantError)
+			}
+		})
 	}
 }
 
@@ -236,7 +326,7 @@ func TestLedgerHTTPClientPreservesLargeReceiptCostIntegers(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/ledger/receipts":
 			_, _ = fmt.Fprint(w, `{"receiptId":"receipt-write","workspaceId":"workspace-alpha","cost":{"chargeUsdMicros":9007199254740993}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/ledger/receipts":
-			_, _ = fmt.Fprint(w, `{"receipts":[{"receiptId":"receipt-list","workspaceId":"workspace-alpha","cost":{"chargeUsdMicros":9223372036854775807}}],"hasMore":false}`)
+			_, _ = fmt.Fprint(w, `{"receipts":[{"receiptId":"receipt-list","accountId":"acct-alpha","workspaceId":"workspace-alpha","cost":{"chargeUsdMicros":9223372036854775807}}],"hasMore":false}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/ledger/receipts/receipt-readback":
 			_, _ = fmt.Fprint(w, `{"receiptId":"receipt-readback","workspaceId":"workspace-alpha","cost":{"chargeUsdMicros":9007199254740993}}`)
 		default:

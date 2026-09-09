@@ -12,6 +12,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
 
 const fetchedAt = "2026-08-26T00:00:00Z";
 
@@ -483,6 +484,136 @@ test("Billing Session reset rejects a detail completion from the signed-out Sess
     assert.equal(await page.getByText(`工作空间编号：${firstSessionReceipt.workspaceId}`, { exact: true }).count(), 0);
   } finally {
     releaseDetail.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("customers can trace monthly charges and partial refunds to the original Workspace order on desktop and mobile", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const monthly: BillingReceipt = { ...receipt("monthly", "ws-1"), status: "completed", operationId: "renewal-local-order", type: "billing.workspace_renewed.v1" };
+  const refund: BillingReceipt = { ...monthly, receiptId: "refund", type: "gateway.wallet_adjustment.v1", kind: "business_refund", refundUsdMicros: 3_000_000, operationId: "refund-local-order", relatedOperationId: monthly.operationId, chargeReference: "private-upstream-code" };
+  const expiry: BillingReceipt = { ...monthly, receiptId: "expiry", type: "billing.workspace_expired.v1" };
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport });
+      await page.route("**/api/billing/receipts?*", (route) => fulfill(route, receiptSource([refund, expiry, monthly])));
+      await page.route("**/api/billing/receipts/refund", (route) => fulfill(route, detailSource(refund)));
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
+      await page.getByText("工作空间月费与 API 用量从同一账户余额扣除；退款退回原账户余额。", { exact: false }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("link", { name: "查看 API 用量", exact: true }).getAttribute("href"), "/console/api/usage");
+      await page.getByRole("radio", { name: "账单记录", exact: true }).click();
+      const surface = page.locator(viewport.width > 600 ? ".billing-table-desktop" : ".billing-list-mobile");
+      await surface.getByText("扣款 $52.58", { exact: true }).waitFor({ state: "visible" });
+      await surface.getByText("退款 $3.00", { exact: true }).waitFor({ state: "visible" });
+      await surface.getByText("未扣款", { exact: true }).waitFor({ state: "visible" });
+      if (viewport.width > 600) {
+        await surface.locator("tbody tr").filter({ hasText: "退款 $3.00" }).getByRole("button", { name: "查看", exact: true }).click();
+      } else {
+        await surface.getByRole("listitem").filter({ hasText: "退款 $3.00" }).click();
+      }
+      const detail = detailPanel(page);
+      for (const text of ["退款 $3.00", "原账户余额", "renewal-local-order", "refund-local-order", "工作空间编号：ws-1", "2026/08/01 至 2026/09/01"]) {
+        await detail.getByText(text, { exact: true }).waitFor({ state: "visible" });
+      }
+      assert.equal(await detail.getByText("private-upstream-code", { exact: true }).count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("customers distinguish a closed unfulfilled order from its refund and can identify an uncharged closure", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const closed: BillingReceipt = {
+    ...receipt("closed", "ws-closed"),
+    status: "completed",
+    operationId: "launch-local-closed",
+    type: "billing.workspace_closed.v1",
+    chargeUsdMicros: 52_580_000
+  };
+  const refund: BillingReceipt = {
+    ...closed,
+    receiptId: "closed-refund",
+    type: "gateway.wallet_adjustment.v1",
+    kind: "business_refund",
+    operationId: "refund-local-closed",
+    relatedOperationId: closed.operationId,
+    refundUsdMicros: 52_580_000
+  };
+  const uncharged: BillingReceipt = {
+    ...closed,
+    receiptId: "uncharged-closed",
+    workspaceId: "ws-uncharged-closed",
+    resourceId: "ws-uncharged-closed",
+    operationId: "launch-local-uncharged",
+    chargeUsdMicros: 0,
+    periodStart: "",
+    paidThrough: ""
+  };
+  const receipts = [closed, refund, uncharged];
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport });
+      const pageErrors: string[] = [];
+      const externalRequests: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      await page.route("**/*", async (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin !== demo.origin) {
+          externalRequests.push(route.request().url());
+          await route.abort("blockedbyclient");
+          return;
+        }
+        if (url.pathname === "/@vite/client") {
+          await route.fulfill({ contentType: "application/javascript", body: viteClientWithoutHmrTransport });
+          return;
+        }
+        await route.continue();
+      });
+      await page.route("**/api/billing/receipts?*", (route) => fulfill(route, receiptSource(receipts)));
+      await page.route("**/api/billing/receipts/*", (route) => {
+        const receiptId = new URL(route.request().url()).pathname.split("/").at(-1);
+        const detail = receipts.find((item) => item.receiptId === receiptId);
+        assert.ok(detail);
+        return fulfill(route, detailSource(detail));
+      });
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/billing`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("radio", { name: "账单记录", exact: true }).click();
+      const desktop = viewport.width > 600;
+      const surface = page.locator(desktop ? ".billing-table-desktop" : ".billing-list-mobile");
+      for (const amount of ["原扣款 $52.58（退款另列）", "退款 $52.58", "未扣款"]) {
+        await surface.getByText(amount, { exact: true }).waitFor({ state: "visible" });
+      }
+      assert.equal(await surface.getByText("扣款 $52.58", { exact: true }).count(), 0);
+      assert.equal(await surface.getByText("开通未完成，已结案", { exact: true }).count(), 2);
+      for (const [amount, expected] of [
+        ["原扣款 $52.58（退款另列）", [closed.operationId!, "工作空间编号：ws-closed", "2026/08/01 至 2026/09/01"]],
+        ["退款 $52.58", [refund.operationId!, closed.operationId!, "原账户余额"]],
+        ["未扣款", [uncharged.operationId!, "工作空间编号：ws-uncharged-closed", "未开始计费"]]
+      ] as const) {
+        const row = desktop
+          ? surface.locator("tbody tr").filter({ hasText: amount })
+          : surface.getByRole("listitem").filter({ hasText: amount });
+        if (desktop) await row.getByRole("button", { name: "查看", exact: true }).click();
+        else await row.click();
+        await detailPanel(page).getByText(amount, { exact: true }).waitFor({ state: "visible" });
+        for (const text of expected) await detailPanel(page).getByText(text, { exact: true }).waitFor({ state: "visible" });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+        await page.getByRole("button", { name: "关闭收据详情", exact: true }).click();
+      }
+      assert.deepEqual(pageErrors, []);
+      assert.deepEqual(externalRequests, []);
+      await page.close();
+    }
+  } finally {
     await browser.close();
     await demo.close();
   }

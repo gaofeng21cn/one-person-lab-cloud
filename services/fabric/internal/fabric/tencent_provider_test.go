@@ -3124,7 +3124,7 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 	setProtectedResourceEnv(t)
 	oldImage := workspaceImageRepository + "@sha256:" + strings.Repeat("a", 64)
 	newImage := workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
-	setWorkspaceImageReleaseCatalogForTest(t, newImage, oldImage, newImage)
+	setWorkspaceImageReleaseCatalogForTest(t, newImage, newImage)
 	provider := NewTencentProvider()
 	patchErr := errors.New("provider patch response lost")
 	var patchBody []byte
@@ -3153,6 +3153,9 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 		t.Fatal("replacement did not reach the deployment patch")
 	}
 	type imagePatch struct {
+		Metadata struct {
+			ResourceVersion string `json:"resourceVersion"`
+		} `json:"metadata"`
 		Spec struct {
 			Template struct {
 				Spec struct {
@@ -3167,7 +3170,7 @@ func TestTencentRuntimeImageReplacementPatchesOnlyWorkspaceImage(t *testing.T) {
 	var patch imagePatch
 	decoder := json.NewDecoder(bytes.NewReader(patchBody))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&patch); err != nil || len(patch.Spec.Template.Spec.Containers) != 1 ||
+	if err := decoder.Decode(&patch); err != nil || patch.Metadata.ResourceVersion != "17" || len(patch.Spec.Template.Spec.Containers) != 1 ||
 		patch.Spec.Template.Spec.Containers[0].Name != "workspace" || patch.Spec.Template.Spec.Containers[0].Image != newImage {
 		t.Fatalf("patch=%s err=%v", patchBody, err)
 	}
@@ -3200,12 +3203,47 @@ func TestTencentRuntimeImageReplacementRejectsOwnerMismatchBeforePatch(t *testin
 	}
 }
 
+func TestD5TencentImageReplacementRejectsStoppedDeletingOrUnversionedDeployment(t *testing.T) {
+	for _, state := range []string{"suspended", "deleting", "missing resourceVersion"} {
+		t.Run(state, func(t *testing.T) {
+			setProtectedResourceEnv(t)
+			input := runtimeImageReplacementTestInput("d5-provider-boundary")
+			input.WorkspaceID = "ws-alpha"
+			input.RuntimeID = "rt-alpha"
+			input.RuntimeOperationID = "workspace-launch-alpha:workspace:runtime"
+			setWorkspaceImageReleaseCatalogForTest(t, input.ReplacementImageDigest, input.ReplacementImageDigest)
+			provider := NewTencentProvider()
+			var deployment map[string]any
+			if err := json.Unmarshal(tencentRuntimeImageReplacementDeployment(input.PreviousImageDigest), &deployment); err != nil {
+				t.Fatal(err)
+			}
+			switch state {
+			case "suspended":
+				deployment["spec"].(map[string]any)["replicas"] = 0
+			case "deleting":
+				deployment["metadata"].(map[string]any)["deletionTimestamp"] = "2026-09-09T00:00:00Z"
+			case "missing resourceVersion":
+				delete(deployment["metadata"].(map[string]any), "resourceVersion")
+			}
+			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+				if !slices.Equal(args, []string{"get", "deployment/opl-compute-alpha", "-o", "json"}) {
+					t.Fatalf("ineligible Runtime reached mutation: %#v", args)
+				}
+				return mustJSON(deployment), nil
+			}
+			if _, err := provider.ReplaceWorkspaceRuntimeImage(context.Background(), input); !errors.Is(err, ErrWorkspaceRuntimeImageReplacementConflict) {
+				t.Fatalf("state=%s err=%v", state, err)
+			}
+		})
+	}
+}
+
 func tencentRuntimeImageReplacementDeployment(image string) []byte {
 	return tencentRuntimeImageReplacementDeploymentWithWorkspace(image, "ws-alpha")
 }
 
 func tencentRuntimeImageReplacementDeploymentWithWorkspace(image, workspaceID string) []byte {
-	return []byte(fmt.Sprintf(`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":%q,"oplcloud.cn/compute-allocation-id":"compute-alpha","oplcloud.cn/storage-id":"storage-alpha","oplcloud.cn/attachment-id":"attachment-alpha","oplcloud.cn/resource-id":"rt-alpha","oplcloud.cn/runtime-operation-id":%q}},"spec":{"replicas":1,"template":{"metadata":{"annotations":{"example":"preserve"}},"spec":{"containers":[{"name":"workspace","image":%q,"imagePullPolicy":"IfNotPresent","env":[{"name":"KEEP","value":"true"}],"volumeMounts":[{"name":"workspace-data","mountPath":"/projects"}]}]}}}}`, workspaceID, k8sCostLabelValue("workspace-launch-alpha:workspace:runtime"), image))
+	return []byte(fmt.Sprintf(`{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"opl-compute-alpha","resourceVersion":"17","labels":{"oplcloud.cn/account-id":"acct-alpha","oplcloud.cn/workspace-id":%q,"oplcloud.cn/compute-allocation-id":"compute-alpha","oplcloud.cn/storage-id":"storage-alpha","oplcloud.cn/attachment-id":"attachment-alpha","oplcloud.cn/resource-id":"rt-alpha","oplcloud.cn/runtime-operation-id":%q}},"spec":{"replicas":1,"template":{"metadata":{"annotations":{"example":"preserve"}},"spec":{"containers":[{"name":"workspace","image":%q,"imagePullPolicy":"IfNotPresent","env":[{"name":"KEEP","value":"true"}],"volumeMounts":[{"name":"workspace-data","mountPath":"/projects"}]}]}}}}`, workspaceID, k8sCostLabelValue("workspace-launch-alpha:workspace:runtime"), image))
 }
 
 func TestTencentStorageAttachmentVerifiesBoundStaticVolumeBeforeRuntime(t *testing.T) {
@@ -3388,7 +3426,7 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 				map[string]any{"type": "PodScheduled", "status": "True"},
 				map[string]any{"type": "Ready", "status": "True"},
 			},
-			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
+			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "imageID": workspaceImage, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
 		},
 	}
 	pods := []any{pod}
@@ -3446,6 +3484,16 @@ func TestRuntimeStatusVerifiesFinalMountAfterPreRuntimeAttachment(t *testing.T) 
 			t.Fatalf("%s runtime status=%#v err=%v", name, status, err)
 		}
 	}
+	deployment["metadata"].(map[string]any)["generation"] = 3
+	assertUnready("new Deployment generation has not been observed")
+	deployment["metadata"].(map[string]any)["generation"] = 2
+	containerStatus := pod["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)
+	containerStatus["imageID"] = workspaceImageRepository + "@sha256:" + strings.Repeat("b", 64)
+	assertUnready("ready Pod still runs the previous image")
+	containerStatus["imageID"] = workspaceImage
+	deployment["spec"].(map[string]any)["replicas"] = 0
+	assertUnready("suspended Deployment still has stale ready replicas")
+	deployment["spec"].(map[string]any)["replicas"] = 1
 	networkPolicies = append(networkPolicies, map[string]any{
 		"kind":     "NetworkPolicy",
 		"metadata": map[string]any{"name": "workspace-egress-open"},
@@ -3677,11 +3725,19 @@ func workspaceDataMounts() []any {
 func TestDestroyWorkspaceRuntimeDeletesOnlyWorkspaceResources(t *testing.T) {
 	provider := NewTencentProvider()
 	var calls [][]string
+	deleted := false
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		calls = append(calls, append([]string(nil), args...))
 		if args[0] == "get" {
-			return []byte(`{"items":[{"kind":"Deployment","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"template":{"spec":{"volumes":[{"persistentVolumeClaim":{"claimName":"opl-storage-alpha-data"}}]}}}},{"kind":"Service","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
+			if strings.HasPrefix(args[1], "secret/") {
+				return nil, nil
+			}
+			if deleted {
+				return []byte(`{"kind":"List","items":[]}`), nil
+			}
+			return []byte(`{"kind":"List","items":[{"kind":"Deployment","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}},"spec":{"template":{"spec":{"volumes":[{"persistentVolumeClaim":{"claimName":"opl-storage-alpha-data"}}]}}}},{"kind":"Service","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
 		}
+		deleted = true
 		return nil, nil
 	}
 
@@ -3689,7 +3745,7 @@ func TestDestroyWorkspaceRuntimeDeletesOnlyWorkspaceResources(t *testing.T) {
 	if err != nil || runtime.Status != "destroyed" || runtime.WorkspaceID != "ws-alpha" || runtime.Access.Password != "" {
 		t.Fatalf("destroy runtime = %#v err=%v", runtime, err)
 	}
-	if len(calls) != 2 || calls[1][0] != "delete" || !slices.Contains(calls[1], "deployment/opl-compute-alpha") || !slices.Contains(calls[1], "service/opl-compute-alpha") || !slices.Contains(calls[1], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[1], "secret/opl-compute-alpha-env") || slices.Contains(calls[1], "ingress/opl-cloud") {
+	if len(calls) != 5 || calls[2][0] != "delete" || !slices.Contains(calls[2], "deployment/opl-compute-alpha") || !slices.Contains(calls[2], "service/opl-compute-alpha") || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[2], "secret/opl-compute-alpha-env") || slices.Contains(calls[2], "ingress/opl-cloud") {
 		t.Fatalf("kubectl calls = %#v", calls)
 	}
 }
@@ -3708,18 +3764,26 @@ func TestDestroyWorkspaceRuntimeReturnsDiscoveryFailure(t *testing.T) {
 func TestDestroyWorkspaceRuntimeDeletesSecretOnlyRemnant(t *testing.T) {
 	provider := NewTencentProvider()
 	var calls [][]string
+	deleted := false
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		calls = append(calls, append([]string(nil), args...))
 		if args[0] == "get" {
-			return []byte(`{"items":[{"kind":"Secret","metadata":{"name":"opl-compute-alpha-env","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
+			if strings.HasPrefix(args[1], "secret/") {
+				return nil, nil
+			}
+			if deleted {
+				return []byte(`{"kind":"List","items":[]}`), nil
+			}
+			return []byte(`{"kind":"List","items":[{"kind":"Secret","metadata":{"name":"opl-compute-alpha-env","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
 		}
+		deleted = true
 		return nil, nil
 	}
 
 	if _, err := provider.DestroyWorkspaceRuntime(context.Background(), "ws-alpha"); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[1], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[1], "secret/opl-compute-alpha-env") || slices.Contains(calls[1], "ingress/opl-cloud") {
+	if len(calls) != 5 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[2], "secret/opl-compute-alpha-env") || slices.Contains(calls[2], "ingress/opl-cloud") {
 		t.Fatalf("kubectl calls = %#v", calls)
 	}
 }
@@ -3727,11 +3791,19 @@ func TestDestroyWorkspaceRuntimeDeletesSecretOnlyRemnant(t *testing.T) {
 func TestDestroyWorkspaceRuntimeDeletesNetworkPolicyOnlyRemnant(t *testing.T) {
 	provider := NewTencentProvider()
 	var calls [][]string
+	deleted := false
 	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		calls = append(calls, append([]string(nil), args...))
 		if args[0] == "get" {
-			return []byte(`{"items":[{"kind":"NetworkPolicy","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
+			if strings.HasPrefix(args[1], "secret/") {
+				return nil, nil
+			}
+			if deleted {
+				return []byte(`{"kind":"List","items":[]}`), nil
+			}
+			return []byte(`{"kind":"List","items":[{"kind":"NetworkPolicy","metadata":{"name":"opl-compute-alpha","labels":{"oplcloud.cn/workspace-id":"ws-alpha"}}}]}`), nil
 		}
+		deleted = true
 		return nil, nil
 	}
 
@@ -3739,7 +3811,7 @@ func TestDestroyWorkspaceRuntimeDeletesNetworkPolicyOnlyRemnant(t *testing.T) {
 	if err != nil || runtime.Status != "destroyed" || runtime.ServiceName != "opl-compute-alpha" {
 		t.Fatalf("destroy policy-only runtime = %#v err=%v", runtime, err)
 	}
-	if len(calls) != 2 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[1], "networkpolicy/opl-compute-alpha") {
+	if len(calls) != 5 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") {
 		t.Fatalf("kubectl calls = %#v", calls)
 	}
 }
@@ -4835,11 +4907,16 @@ func canonicalTencentStorageBindingObjects(t *testing.T, volume StorageVolume) m
 func exactTencentStorageBindingKubectl(t *testing.T, volume StorageVolume, deletedArgs *[]string) func(context.Context, []string, []byte) ([]byte, error) {
 	t.Helper()
 	readback := mustJSON(canonicalTencentStorageBindingObjects(t, volume))
+	deleted := false
 	return func(_ context.Context, args []string, _ []byte) ([]byte, error) {
 		switch {
 		case len(args) > 0 && args[0] == "get":
+			if deleted {
+				return []byte(`{"kind":"List","items":[]}`), nil
+			}
 			return readback, nil
 		case len(args) > 0 && args[0] == "delete":
+			deleted = true
 			if deletedArgs != nil {
 				*deletedArgs = append([]string(nil), args...)
 			}
@@ -5091,6 +5168,9 @@ func TestTencentStorageDestroyFailureDoesNotPolluteRestartReplay(t *testing.T) {
 				},
 			}, nil
 		case "sync_storage_volume":
+			if destroyCalls == 0 {
+				return canonicalTencentStorageStatusResponse(request), nil
+			}
 			return provisionerResponse{
 				OK: true, StorageVolumeID: resource.ProviderResourceID, ProviderRequestID: "req-read-cbs-absence", CBSStatus: "NOT_FOUND", Status: "external_deleted",
 				ProviderData: map[string]string{
@@ -5124,12 +5204,7 @@ func TestTencentStorageDestroyOKResponsePollutionDoesNotSurviveRestart(t *testin
 	appendSucceededStorageCreate(t, store, resource)
 	provider := NewTencentProvider()
 	destroyCalls := 0
-	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
-		if len(args) > 0 && args[0] == "get" {
-			return mustJSON(canonicalTencentStorageBindingObjects(t, resource)), nil
-		}
-		return nil, nil
-	}
+	provider.kubectl = exactTencentStorageBindingKubectl(t, resource, nil)
 	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
 		switch request.Action {
 		case "destroy_storage_volume":
@@ -5143,6 +5218,9 @@ func TestTencentStorageDestroyOKResponsePollutionDoesNotSurviveRestart(t *testin
 				},
 			}, nil
 		case "sync_storage_volume":
+			if destroyCalls == 0 {
+				return canonicalTencentStorageStatusResponse(request), nil
+			}
 			return provisionerResponse{
 				OK: true, StorageVolumeID: resource.ProviderResourceID, ProviderRequestID: "req-read-cbs-absence", CBSStatus: "NOT_FOUND", Status: "external_deleted",
 				ProviderData: map[string]string{

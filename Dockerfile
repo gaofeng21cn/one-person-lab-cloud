@@ -11,7 +11,8 @@ COPY services/fabric/go.mod services/fabric/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/fabric ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-tencent-provisioner ./cmd/opl-tencent-provisioner \
-  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-fabric ./cmd/fabric \
+  && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-node-image-retire ./cmd/opl-node-image-retire
 
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm@sha256:6359592445455f2dbe2412bed411336035bc019a50017720d77454ffdd6d0f82 AS control-plane-build
 
@@ -35,6 +36,7 @@ ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src/services/ledger
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
+COPY packages/contracts/go /src/packages/contracts/go
 COPY services/ledger/go.mod services/ledger/go.sum ./
 RUN GOPROXY="$GOPROXY" go mod download
 COPY services/ledger ./
@@ -72,11 +74,11 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY --from=build /app/dist ./dist
-COPY packages ./packages
 COPY --from=fabric-build /out/opl-tencent-provisioner /usr/local/bin/opl-tencent-provisioner
 COPY --from=control-plane-build /out/opl-control-plane /usr/local/bin/opl-control-plane
 COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger
 COPY --from=fabric-build /out/opl-fabric /usr/local/bin/opl-fabric
+COPY --from=fabric-build /out/opl-node-image-retire /usr/local/bin/opl-node-image-retire
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN mkdir -p /app/.runtime && chown -R node:node /app/.runtime
 

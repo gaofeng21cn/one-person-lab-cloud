@@ -93,7 +93,7 @@ function WorkspaceOrderSummary({
           <div><dt>工作空间</dt><dd>{operation?.name || "暂不可用"}</dd></div>
           <div><dt>月度总额</dt><dd>{total !== null ? formatUsdMicros(total) : "暂不可用"}</dd></div>
           <div><dt>价格版本</dt><dd>{operation?.priceVersion || "暂不可用"}</dd></div>
-          <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div>
+          {!operation?.closeout || operation.closeout.status === "fulfilled" ? <div><dt>续费</dt><dd>{operation?.autoRenew ? "自动续费开启" : "自动续费关闭"}</dd></div> : null}
         </dl>
       )}
       {action ? <div className="workspace-order-summary__action">{action}</div> : null}
@@ -187,6 +187,7 @@ function WorkspaceLaunchConfirm({ controller }: { controller: WorkspaceLaunchCon
           <div><dt>计费周期</dt><dd>{billingUnitLabel(preview?.billingUnit || controller.catalog.value?.billingUnit)}</dd></div>
           <div><dt>自动续费</dt><dd>{controller.customerOwned ? "不适用" : controller.launchAutoRenew ? "开启" : "关闭"}</dd></div>
         </dl>
+        {!controller.customerOwned ? <p>请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。</p> : null}
         <div className="launch-confirm-check"><Checkbox checked={controller.launchConfirmed} label={quote.confirmationLabel} onChange={controller.setLaunchConfirmed} /></div>
         <footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setLaunchConfirmed(false); }} variant="outline">返回修改</Button></footer>
       </section>
@@ -220,7 +221,7 @@ export function LaunchOperation({
   const content = (
     <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
       <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
-      <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div>
+      {!operation.closeout ? <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div> : null}
       <details className="launch-technical-details">
         <summary>技术详情</summary>
         <div className="launch-technical-details__body">
@@ -253,6 +254,8 @@ export function LaunchOperation({
       <div className="launch-operation-actions">
         {!resultUnconfirmed && operationPresentation.canOpenWorkspace ? <Button color="primary" onClick={() => void controller.openLaunchedWorkspace()}>查看工作空间</Button> : null}
         <Button onClick={() => void (controller.launchPollIssue === "readback" ? controller.openLaunchedWorkspace() : onRefresh())} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
+        {operation.closeout ? <Button onClick={controller.openLaunchBilling} variant="outline">查看费用</Button> : null}
+        {!resultUnconfirmed && operation.closeout?.status === "closed" && ["failed", "refunded"].includes(operation.status) ? <Button onClick={() => { controller.prepareNewWorkspaceLaunch(); void onRefresh(); }}>重新购买</Button> : null}
         {!resultUnconfirmed && ["failed", "refunded"].includes(operationPresentation.kind) ? <Button onClick={onBack} variant="outline">返回列表</Button> : null}
       </div>
     </section>

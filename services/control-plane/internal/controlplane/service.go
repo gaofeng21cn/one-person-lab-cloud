@@ -174,6 +174,30 @@ func (s *Service) DeleteGatewayUserKeyIdempotent(ctx context.Context, credential
 	return client.DeleteUserKeyIdempotent(ctx, credential, userID, keyID, idempotencyKey)
 }
 
+func (s *Service) WorkspaceKeysForRevocation(ctx context.Context, userID int64, name string) ([]clients.Sub2APIWorkspaceKey, error) {
+	client, ok := s.sub2API.(clients.Sub2APIWorkspaceKeyRevokeClient)
+	if !ok {
+		return nil, errors.New("sub2api_workspace_key_revocation_unavailable")
+	}
+	return client.WorkspaceKeysForRevocation(ctx, userID, name)
+}
+
+func (s *Service) RevokeWorkspaceKey(ctx context.Context, input clients.Sub2APIWorkspaceKeyRevokeInput) error {
+	client, ok := s.sub2API.(clients.Sub2APIWorkspaceKeyRevokeClient)
+	if !ok {
+		return errors.New("sub2api_workspace_key_revocation_unavailable")
+	}
+	return client.RevokeWorkspaceKey(ctx, input)
+}
+
+func (s *Service) WorkspaceKeyForDeletion(ctx context.Context, userID, keyID int64) (clients.Sub2APIWorkspaceKey, error) {
+	client, ok := s.sub2API.(clients.Sub2APIWorkspaceKeyDeleteReadClient)
+	if !ok {
+		return clients.Sub2APIWorkspaceKey{}, errors.New("sub2api_workspace_key_deletion_read_unavailable")
+	}
+	return client.WorkspaceKeyForDeletion(ctx, userID, keyID)
+}
+
 func (s *Service) Sub2APIUser(ctx context.Context, userID int64) (clients.Sub2APIIdentity, error) {
 	client, ok := s.sub2API.(clients.Sub2APIUserReadClient)
 	if !ok {

@@ -6,6 +6,8 @@ type StageState string
 
 const (
 	StageStateAbsent                      StageState = "absent"
+	StageStateComputePoolQueued           StageState = "compute_pool_queued"
+	StageStateComputeDispatchPending      StageState = "compute_dispatch_pending"
 	StageStateOwnershipPending            StageState = "ownership_pending"
 	StageStatePending                     StageState = "pending"
 	StageStateReady                       StageState = "ready"

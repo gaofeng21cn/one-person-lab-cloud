@@ -2,8 +2,10 @@ package fabric
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -518,6 +520,13 @@ type tencentRuntimeReadbackFixture struct {
 	fingerprint  string
 }
 
+const tencentRuntimeFixtureGatewayKey = "runtime-test-gateway-key"
+
+func tencentRuntimeFixtureGatewaySecret(workspaceID string) GatewaySecret {
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(tencentRuntimeFixtureGatewayKey)))
+	return GatewaySecret{SecretRef: gatewaySecretName(workspaceID), Version: digest[:16], Fingerprint: "sha256:" + digest}
+}
+
 func (fixture *tencentRuntimeReadbackFixture) resources() map[string]map[string]any {
 	fixture.t.Helper()
 	var list map[string]any
@@ -553,7 +562,7 @@ func (fixture *tencentRuntimeReadbackFixture) resources() map[string]map[string]
 		"spec": cloneJSONMap(nested(deployment, "spec", "template", "spec").(map[string]any)),
 		"status": map[string]any{
 			"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}},
-			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
+			"containerStatuses": []any{map[string]any{"name": "workspace", "ready": true, "imageID": firstContainerField(deployment, "image"), "restartCount": 0, "state": map[string]any{"running": map[string]any{}}}},
 		},
 	}
 	resources["Pod"] = pod
@@ -579,6 +588,15 @@ func (fixture *tencentRuntimeReadbackFixture) kubectl(_ context.Context, args []
 	resources := fixture.resources()
 	deployment, service, policy, secret := resources["Deployment"], resources["Service"], resources["NetworkPolicy"], resources["Secret"]
 	switch {
+	case len(args) == 5 && args[0] == "get" && args[1] == "secret/"+fixture.gatewayRef && args[2] == "--ignore-not-found":
+		secretIdentity := tencentRuntimeFixtureGatewaySecret(fixture.workspaceID)
+		return mustJSON(map[string]any{
+			"kind": "Secret", "type": "Opaque",
+			"metadata": map[string]any{"name": fixture.gatewayRef, "labels": map[string]any{"app.kubernetes.io/name": "opl-gateway-secret"}, "annotations": map[string]any{
+				"oplcloud.cn/account-id": fixture.storage.AccountID, "oplcloud.cn/workspace-id": fixture.workspaceID,
+				"oplcloud.cn/workspace-api-key-id": fmt.Sprint(fixture.gatewayKeyID), "oplcloud.cn/secret-version": secretIdentity.Version, "oplcloud.cn/secret-fingerprint": secretIdentity.Fingerprint,
+			}}, "data": map[string]any{"opl_gateway_api_key": b64(tencentRuntimeFixtureGatewayKey)},
+		}), nil
 	case len(args) >= 2 && args[0] == "get" && args[1] == "deployment,service,networkpolicy,secret":
 		return mustJSON(map[string]any{"kind": "List", "items": []any{deployment, service, policy, secret}}), nil
 	case len(args) >= 2 && args[0] == "get" && args[1] == "deployment,service,networkpolicy":
@@ -635,7 +653,7 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 		ID: "att-alpha", OperationID: "launch-alpha:attachment", WorkspaceID: compute.WorkspaceID, ComputeID: compute.ID,
 		VolumeID: storage.ID, Status: "attached", Provider: "tencent-tke",
 	}
-	secret := GatewaySecret{SecretRef: "opl-gateway-ws-alpha", Version: "19", Fingerprint: "sha256:" + strings.Repeat("d", 64)}
+	secret := tencentRuntimeFixtureGatewaySecret(compute.WorkspaceID)
 
 	computeResources := WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: "launch-alpha:ensure_compute_allocation"}
 	storageResources := computeResources
@@ -676,7 +694,7 @@ func testTencentWorkspaceLaunchUnreadyRuntimeRemainsPending(t *testing.T, comple
 	}
 	persistedChecks, _ := json.Marshal(persistedDiagnostic.Checks)
 	if err != nil || operationErr != nil || result.State != "pending" || operation.Status != "started" || fixture.applyCalls != 1 ||
-		result.Diagnostic == nil || result.Diagnostic.Owner != "fabric.tencent_tke" || result.Diagnostic.BlockReason != "runtime_deployment_not_ready" ||
+		result.Diagnostic == nil || result.Diagnostic.Owner != "fabric.tencent_tke" || result.Diagnostic.BlockReason != "runtime_image_not_ready" ||
 		!result.Diagnostic.Retryable || result.Diagnostic.ObservedAt != now.Format(time.RFC3339Nano) || len(result.Diagnostic.Checks) != 11 ||
 		!diagnosticPersisted || persistedDiagnostic.Owner != result.Diagnostic.Owner || persistedDiagnostic.BlockReason != result.Diagnostic.BlockReason ||
 		persistedDiagnostic.ObservedAt != result.Diagnostic.ObservedAt || string(persistedChecks) != string(resultChecks) {
@@ -872,7 +890,7 @@ func TestTencentWorkspaceLaunchRuntimeReplayRequiresExactRuntimeAndGatewayBindin
 		ID: "att-alpha", OperationID: "launch-alpha:attachment", WorkspaceID: compute.WorkspaceID, ComputeID: compute.ID,
 		VolumeID: storage.ID, Status: "attached", Provider: "tencent-tke",
 	}
-	secret := GatewaySecret{SecretRef: "opl-gateway-ws-alpha", Version: "19", Fingerprint: "sha256:" + strings.Repeat("d", 64)}
+	secret := tencentRuntimeFixtureGatewaySecret(compute.WorkspaceID)
 
 	computeResources := WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: "launch-alpha:ensure_compute_allocation"}
 	storageResources := computeResources

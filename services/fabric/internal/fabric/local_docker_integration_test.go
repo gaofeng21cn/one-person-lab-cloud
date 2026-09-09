@@ -1176,6 +1176,70 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	if _, err := restartedService.WorkspaceRuntimeCredentials(ctx, accountID+"-other", workspaceID); err == nil {
 		t.Fatal("cross-account canonical runtime credentials succeeded")
 	}
+	// Expiry and renewal use the original container and mounted customer data.
+	originalContainer, exists, err := restartedProvider.inspectContainer(ctx, localRuntimeName(workspaceID))
+	if err != nil || !exists || !originalContainer.State.Running {
+		t.Fatalf("original runtime container=%#v exists=%t err=%v", originalContainer, exists, err)
+	}
+	dataProbe := `const fs=require('fs'); for(const path of ['/data/d4-renewal-preserved','/projects/d4-renewal-preserved']) fs.writeFileSync(path,'original workspace data');`
+	if output, err := exec.CommandContext(ctx, "docker", "exec", originalContainer.ID, "node", "-e", dataProbe).CombinedOutput(); err != nil {
+		t.Fatalf("write original workspace data: %v: %s", err, output)
+	}
+	powerInput := WorkspaceRuntimePowerInput{SchemaVersion: 1, AccountID: accountID, WorkspaceID: workspaceID,
+		RuntimeID: status.ID, RuntimeOperationID: status.OperationID, DesiredState: "suspended",
+		PaidThrough: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), IdempotencyKey: launchID + ":expire-runtime"}
+	if result, err := restartedService.SetWorkspaceRuntimePower(ctx, powerInput); err != nil || result.State != "suspended" {
+		t.Fatalf("expired runtime power=%#v err=%v", result, err)
+	}
+	if result, err := restartedService.ReadWorkspaceRuntimePower(ctx, powerInput); err != nil || result.State != "suspended" {
+		t.Fatalf("expired runtime readback=%#v err=%v", result, err)
+	}
+	stoppedContainer, exists, err := restartedProvider.inspectContainer(ctx, localRuntimeName(workspaceID))
+	if err != nil || !exists || stoppedContainer.ID != originalContainer.ID || stoppedContainer.State.Running {
+		t.Fatalf("stop changed original runtime=%#v exists=%t err=%v", stoppedContainer, exists, err)
+	}
+	powerInput.DesiredState, powerInput.IdempotencyKey = "running", launchID+":renew-runtime"
+	powerInput.PaidThrough = time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339Nano)
+	if result, err := restartedService.SetWorkspaceRuntimePower(ctx, powerInput); err != nil || result.State != "running" && result.State != "pending" {
+		t.Fatalf("renewed runtime power=%#v err=%v", result, err)
+	}
+	renewalReadyBy := time.Now().Add(30 * time.Second)
+	for {
+		result, err := restartedService.SetWorkspaceRuntimePower(ctx, powerInput)
+		if err != nil || result.State != "running" && result.State != "pending" {
+			t.Fatalf("renewing runtime=%#v err=%v", result, err)
+		}
+		if result.State == "running" {
+			break
+		}
+		if time.Now().After(renewalReadyBy) {
+			t.Fatalf("renewal readiness not observed: %#v", result)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	if result, err := restartedService.ReadWorkspaceRuntimePower(ctx, powerInput); err != nil || result.State != "running" {
+		t.Fatalf("renewed runtime readback=%#v err=%v", result, err)
+	}
+	resumedContainer, exists, err := restartedProvider.inspectContainer(ctx, localRuntimeName(workspaceID))
+	if err != nil || !exists || resumedContainer.ID != originalContainer.ID || !resumedContainer.State.Running || runner.runtimeCreateCalls != 1 {
+		t.Fatalf("renewal replaced original runtime=%#v exists=%t err=%v creates=%d", resumedContainer, exists, err, runner.runtimeCreateCalls)
+	}
+	resumedRuntime, err := restartedProvider.runtimeFromContainer(resumedContainer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForLocalRuntime(ctx, resumedRuntime.URL); err != nil {
+		t.Fatal(err)
+	}
+	verifyData := `const fs=require('fs'); for(const path of ['/data/d4-renewal-preserved','/projects/d4-renewal-preserved']) if(fs.readFileSync(path,'utf8')!=='original workspace data') process.exit(1);`
+	if output, err := exec.CommandContext(ctx, "docker", "exec", originalContainer.ID, "node", "-e", verifyData).CombinedOutput(); err != nil {
+		t.Fatalf("renewal lost original workspace data: %v: %s", err, output)
+	}
+	t.Log("D4 real Docker expiry/renewal: original container stopped, resumed with unchanged ID and /data + /projects contents")
 	facts, err := restartedService.ProviderFactsBatch(ctx, ProviderFactsBatchInput{Items: []ProviderFactInput{{
 		AccountID: accountID, WorkspaceID: workspaceID, ResourceType: "runtime", ResourceID: status.ID,
 	}}})

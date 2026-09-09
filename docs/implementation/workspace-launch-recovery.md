@@ -31,7 +31,8 @@ The current recovery row keeps `Max=1` and does not reset `Attempted`. An
 operator may CAS-persist one exact-idempotency replay budget plus a finite typed
 continuation-read budget; the server binds the starting readback count. Fabric
 reports only `ready/none`, `pending/provider_provisioning`, compute-only
-`pending/ownership_pending`, the three explicit absent reasons, or the two
+`pending/ownership_pending`, `pending/compute_pool_queued` and
+`pending/compute_dispatch_pending`, the three explicit absent reasons, or the two
 explicit unknown reasons. Adapters perform owner read, child replay CAS, owner
 read again, then reuse the exact original key only for an admitted absence or
 compute ownership continuation. Budget exhaustion records
@@ -82,12 +83,30 @@ persisted state remains coherent.
 
 ## Worker Recovery
 
+The Workspace Launch worker is the single background Launch entry. Its keyset
+cursor (`createdAt`, `id`) reads four operations per page and runs at most four
+accounts concurrently. Completion dispatches the next operation in the current
+round; a new round waits for the configured interval, avoiding hot polling.
+The default admission limit is fifty active Launches, independently of the four
+execution slots. Explicit instance settings override admission. These are local
+source bounds, not a claim about Tencent provisioning latency or model capacity.
+PostgreSQL admission uses exact identity/account existence and active counts;
+ordinary purchases do not load all historical Launch payloads. The distinct
+one-use Acceptance B capacity slot retains its historical check.
+
+The first stage dispatch persists its original key and a thirty-second lease
+before invoking the owner. Other workers leave that reservation unchanged while
+the lease is active. Expiry permits authoritative readback, never a second fresh
+mutation. A lost or late result can subsequently converge on the same order.
+
 The Workspace Launch worker also presents `manual_review` rows to a distinct
-Reconciler auto-recovery entry point. For `providerProfileRef=tencent-tke`, a
-fresh `ready` read on the exact original `unknown`, `Max=1` Compute, Storage,
-Attachment, Secret, or Runtime attempt generates a deterministic
+Reconciler auto-recovery entry point. Across provider profiles, a fresh `ready`
+read on the exact original unresolved `Max=1` Key, Debit, Compute, Storage,
+Attachment, Secret, Runtime, Activation or Receipt attempt generates a deterministic
 `control-plane-system` `0/0/3` authorization that atomically confirms the
-stage. Compute additionally accepts a fresh `ownership_pending` read and
+stage. This read-only path also recovers an expired original dispatch reservation;
+it never charges again or shifts the original debit timestamp. Tencent Compute
+additionally accepts a fresh `ownership_pending` or `compute_dispatch_pending` read and
 generates a distinct deterministic zero-mutation, one-replay authorization.
 Storage additionally accepts a fresh authoritative `absent` read, when no
 earlier replay or active authorization exists, and generates its distinct
@@ -107,6 +126,72 @@ The capability-protected, read-only stage observation returns schema v3 with
 the same auto-recovery eligibility decision and one safe block-reason
 enum. It performs no persistence or provider/Kubernetes mutation and exposes no
 operation, provider, or customer identity.
+
+## Operator Result Check
+
+Ordinary authenticated operators use `GET .../workspace-launches/{id}/recovery`
+and `POST .../workspace-launches/{id}/recover`. The server returns the current
+version, stage and allowed actions. `check_result` accepts only that version,
+a reason and an idempotency key. It supplies its own zero mutation/replay
+budgets, reads the original owner and records the operator check in the original
+operation's result-check history, separate from recovery authorization lineage. Confirmed ready advances the original
+stage; absent, pending, unknown or unavailable readback preserves manual review.
+Exact replay performs no additional owner call; stale versions and changed
+parameters conflict. Active recovery or Runtime repair cannot overlap it.
+Console never constructs technical budgets or reads Acceptance B capability
+endpoints. Customers can close the page and return to the original Launch;
+front-end polling expiry is not fulfillment failure.
+
+## End An Unfulfilled Launch
+
+The ordinary operator recovery API also returns `close_unfulfilled` when the
+current original operation and Fabric's read-only preview admit closure. The
+POST accepts the same version, reason and idempotency key as result checking.
+It records the authorization in `closeout` on the schema-3 Launch using the
+existing original-row CAS. The single Launch worker continues the same record:
+`freeze -> key -> resources -> refund -> receipt -> complete`. An authorized
+closing order remains visible in operator reconciliation and customer Launch
+readback. Repeated commands return its current progress; they do not issue a
+new order or a second refund.
+
+Before destructive work, the original exact-code debit must be confirmed or
+proven never dispatched. Fabric's typed `closeout/read`, `closeout/freeze` and
+`closeout` endpoints bind the original preflight, account, Workspace and provider
+profile. Freeze and Ensure share the original Launch resource lock; a durable
+freeze rejects late Ensure after restart. Ready before the freeze means
+`fulfilled`: no Key revocation, resource deletion or refund, and ordinary
+successful-result recovery continues. Resources that become ready only after
+a valid freeze belong to the cancelled, never-activated order and are cleaned
+through their original owner identities.
+
+Sub2API service authorization revokes only the original account and exact
+Workspace Key name/ID, fences late creation into that name and independently
+reads back the revocation. A Key creation that was dispatched but lost its ID
+must first resolve a unique original Key and persist that ID. Name absence alone
+cannot prove an unknown earlier Key was never renamed; such a case stays pending.
+Revocation reads only the exact identity and does not require an active Key;
+ordinary successful Key convergence retains its active-status requirement.
+The separately retained Sub2API patch and replay evidence in [status](../status.md)
+are an Instance adoption requirement, not proof that the deployed Gateway has
+this capability.
+
+Fabric reuses provider adapters and existing resource destruction owners. It
+confirms Runtime/Secret, attachment, storage and compute absence before releasing
+the original queue claim; a dispatched Tencent request with unknown ownership
+retains its claim and cannot authorize another procurement. No provider purchase
+is made by closure. An undispatched queued order can cancel only its own frozen
+entry without acquiring or releasing another order's head claim. Local-Docker
+and Tencent use the same Control Plane chain.
+
+Refunds use `gateway.wallet_adjustment.v1` and the existing original-charge row
+lock. Confirmed partial manual refunds reduce the remainder; unresolved payments
+retain their reservation. Every credited amount is verified against the original
+Sub2API user/code and Ledger receipt. Ledger completion retries only its receipt
+when payment is already proven. `billing.workspace_closed.v1` attests the original
+debit and completed closeout; individual wallet receipts remain the sole refund
+legs in reconciliation and customer fees. A charged order becomes `refunded`
+only at full confirmed credit and receipt completion; an uncharged order becomes
+`failed`, with no invented billing period or refund.
 
 ## Runtime Image Revision
 
@@ -203,6 +288,19 @@ idempotency key. Absent, unknown, conflict, and read failure do not change the
 operation. This does not add a generic compute-unknown mutation route. A
 schema-v3 row without the required authorization and claim maps remains
 explicitly zero-budget.
+
+Tencent's actual Launch stage engine joins the existing NodePool FIFO and
+lease before Prepare/Create, including across service processes. Queued stages
+return `compute_pool_queued`; these round-bounded head reads do not consume the
+provisioning deadline. At the head, `compute_dispatch_pending` authorizes Ensure
+with the original key; only actual provisioning starts its ten-minute budget.
+After provisioning, a later `ownership_pending` can renew the same waiting
+replay claim by CAS and continue Ensure. Every such continuation consumes a
+bounded authoritative read, preserves the original attempt and key, and is
+fenced by the Fabric pool lease. The persisted exact child journal distinguishes
+not-yet-dispatched work from response loss. Ready ownership releases the FIFO
+head; unknown supply keeps it occupied. This avoids using another customer's
+Machine or issuing another Scale for a dispatched order.
 
 Fabric's child transport claim is a local replay epoch, not Control Plane
 operator authorization and not a second business attempt budget. It binds the

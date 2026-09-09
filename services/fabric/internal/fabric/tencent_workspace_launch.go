@@ -20,6 +20,14 @@ type tencentWorkspaceLaunchState struct {
 
 func (*TencentProvider) WorkspaceLaunchRuntimeImageRevisionSupported() bool { return true }
 
+func (*TencentProvider) WorkspaceLaunchComputePool(raw json.RawMessage, packageID string, sizeGB int) (string, error) {
+	plan, err := decodeTencentWorkspacePlanEnvelope(raw, packageID, sizeGB)
+	if err != nil {
+		return "", err
+	}
+	return plan.NodePoolID, nil
+}
+
 func encodeTencentWorkspaceLaunchState(state tencentWorkspaceLaunchState) (json.RawMessage, error) {
 	body, err := json.Marshal(state)
 	return body, err
@@ -219,6 +227,11 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 		if stateErr != nil || state.Compute == nil || state.ComputePlan == nil || state.Ownership == nil {
 			var err error
 			state, err = p.tencentWorkspaceLaunchComputeStateFromMutation(ctx, binding, input.PackageID)
+			if errors.Is(err, ErrOperationNotFound) {
+				// The exact child journal is written before the first cloud mutation.
+				// Its absence proves that this original stage has not dispatched.
+				return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchComputeDispatchPending
+			}
 			if err != nil {
 				return WorkspaceLaunchProviderResult{}, err
 			}
@@ -459,13 +472,15 @@ func (p *TencentProvider) tencentWorkspaceLaunchComputeStateFromMutation(ctx con
 	if journal == nil {
 		return tencentWorkspaceLaunchState{}, ErrLaunchStageBindingConflict
 	}
+	boundPlan, boundPlanErr := p.workspacePlanForContext(ctx, packageID)
+	if boundPlanErr != nil || boundPlan.NodePoolID == "" {
+		return tencentWorkspaceLaunchState{}, ErrLaunchStageBindingConflict
+	}
 	computeID := workspaceLaunchComputeID(binding)
-	operation, found, err := journal.operations.LatestResourceOperation(ctx, "compute_allocation", computeID)
+	operationID := providerMutationOperationID(binding, "tencent_compute_allocation_create", "compute_allocation", computeID, boundPlan.NodePoolID)
+	operation, err := journal.operations.Get(ctx, operationID)
 	if err != nil {
 		return tencentWorkspaceLaunchState{}, err
-	}
-	if !found {
-		return tencentWorkspaceLaunchState{}, ErrOperationNotFound
 	}
 	child, ok := decodeProviderMutationBinding(operation)
 	if !ok || child.Parent != binding || child.Action != "tencent_compute_allocation_create" || child.ResourceKind != "compute_allocation" ||
@@ -483,7 +498,6 @@ func (p *TencentProvider) tencentWorkspaceLaunchComputeStateFromMutation(ctx con
 		return tencentWorkspaceLaunchState{}, ownershipErr
 	}
 	var mutationState tencentComputeMutationState
-	boundPlan, boundPlanErr := p.workspacePlanForContext(ctx, packageID)
 	if !decodeProviderMutationState(operation, &mutationState) || mutationState.Allocation.ID != computeID ||
 		mutationState.Allocation.AccountID != binding.AccountID || mutationState.Allocation.WorkspaceID != binding.WorkspaceID ||
 		mutationState.Allocation.PackageID != packageID || mutationState.Allocation.NodePoolID != nodePoolID ||

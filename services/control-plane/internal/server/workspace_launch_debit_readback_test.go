@@ -22,6 +22,7 @@ type workspaceLaunchDebitReadbackStub struct {
 	balanceErr      error
 	balanceErrors   []error
 	chargeCalls     int
+	balanceCalls    int
 }
 
 func (s *workspaceLaunchDebitReadbackStub) FinancialBalanceHistoryByCodes(_ context.Context, _ int64, codes []string) (map[string]clients.Sub2APIBalanceHistoryEntry, error) {
@@ -47,6 +48,7 @@ func (s *workspaceLaunchDebitReadbackStub) FinancialBalanceHistoryByCodes(_ cont
 func (s *workspaceLaunchDebitReadbackStub) Balance(context.Context, int64) (clients.Sub2APIBalance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.balanceCalls++
 	if len(s.balanceErrors) > 0 {
 		err := s.balanceErrors[0]
 		s.balanceErrors = s.balanceErrors[1:]
@@ -128,7 +130,7 @@ func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
 				stub.history[code] = exactEntry
 				stub.balanceErr = errors.New("balance projection unavailable")
 			},
-			wantState: workspaceLaunchStagePending,
+			wantState: workspaceLaunchStageReady, wantFacts: true,
 		},
 		{
 			name: "user identity conflict",
@@ -164,7 +166,7 @@ func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
 				stub.history[code] = exactEntry
 				stub.balance.UserID++
 			},
-			wantState: workspaceLaunchStageUnknown,
+			wantState: workspaceLaunchStageReady, wantFacts: true,
 		},
 	}
 
@@ -179,6 +181,9 @@ func TestWorkspaceLaunchDebitAuthoritativeReadbackClassification(t *testing.T) {
 			adapter := &controlPlaneWorkspaceLaunchStageAdapter{app: &controlPlaneServer{}, service: service}
 
 			observation, readErr := adapter.readWorkspaceLaunchDebit(context.Background(), operation)
+			if stub.balanceCalls != 0 {
+				t.Fatal("transaction confirmation depended on an unrelated wallet snapshot")
+			}
 			if observation.State != tc.wantState || (readErr != nil) != tc.wantErr || (len(observation.Facts) > 0) != tc.wantFacts {
 				t.Fatalf("readback state=%q facts=%#v err=%v, want state=%q facts=%t err=%t", observation.State, observation.Facts, readErr, tc.wantState, tc.wantFacts, tc.wantErr)
 			}
@@ -227,7 +232,6 @@ func TestWorkspaceLaunchDebitConvergesWithBoundedReadOnlyContinuation(t *testing
 	}{
 		{name: "history delayed", postMutation: empty},
 		{name: "used timestamp delayed", postMutation: delayedUsedAtHistory},
-		{name: "balance read delayed", postMutation: exactHistory, balanceErrors: []error{errors.New("balance temporarily unavailable"), nil}},
 	}
 
 	for _, tc := range tests {

@@ -18,7 +18,7 @@ medopl run has verified two existing Workspaces through restart, storage,
 private-state, and Package readback.
 
 This does not mean Public Beta or a current Product Release is ready. Public
-registration, complete Renewal/Delete recovery, alert and restore qualification,
+registration, deployed Renewal/Delete qualification, alert and restore qualification,
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
@@ -28,10 +28,16 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | --- | --- | --- |
 | Audited source baseline | Documentation reconciliation inspected remote `main` at `efb5f07b` on 2026-09-07, including merged Console UX-03 and Support retirement | Deployment, public Release, production acceptance, or a permanently current `main` identity |
 | Local Console simplification | On 2026-09-09, the local diff over `b1d811ea` removed unused presentation helpers, route sensitivity metadata and duplicate selected-Key ID state; 39 focused route, API lifecycle, Gateway Usage and logout/Secret tests plus `npm run verify:local` passed | Canonical merge, Candidate qualification or deployment |
+| D1 local finance development | The 2026-09-08 worktree on `b1d811eab2a2fcff5d77b4cf9685e801d7681360` passes `verify:local:full` with zero PostgreSQL test skips, 6 HTTP business chains plus 11 reservation/CAS cases under race, and focused Renewal/Wallet recovery race tests | Canonical merge, actual Gateway adoption, a released Candidate, provider capacity, or production financial qualification |
+| D2 local reconciliation and customer billing | The retained 2026-09-08 cumulative worktree passes `verify:local:full` with zero PostgreSQL skips; original purchase/renewal/refund HTTP chains, pending and recovery, exact receipt lookup beyond 10k history, historical schema-2 financial readback, race checks and desktop/mobile billing tests pass | Canonical merge, actual Gateway adoption, a deployed Candidate or Tencent/TKE production qualification |
+| D3 local Launch recovery and capacity | Provider-neutral original-result recovery, bounded scheduling, and failed-Launch closure are implemented. Focused business, HTTP, restart and race tests plus `verify:local:full` pass; exact Key identity, five resource absence facts, original-account refund budget, and Ledger closeout receipt are covered | Actual Tencent cloud capacity, Instance adoption or deployment |
+| D4 local lifecycle | Expiry stops original Runtime use; explicit recovery preserves original period, transaction and resources; service-authorized Delete continues after restart and confirms residual absence plus Receipt. Focused PostgreSQL, race, HTTP and desktop/mobile business tests plus `verify:local:full` pass with zero required PostgreSQL skips | Actual Tencent/TKE lifecycle, production Gateway adoption or deployment |
+| D1 isolated Sub2API | Cloud's real HTTP client and isolated patched Sub2API pass original-transaction lookup, atomic insufficient-balance rejection, concurrent debit/refund, response-loss recovery and historical unverified-debit rejection | Production Gateway byte identity or adoption; a local patched image is not a published upstream release |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
 | Medopl Instance | The 2026-08-30 `workspace-private-state-repair` receipt passed for two existing Workspaces and recorded zero-mutation post-repair readback | A fresh Workspace purchase, full lifecycle, rollback, or qualification of current `main` |
+| D5 local image lifecycle | Catalog-fixed replacement, renewed entitlement, persisted recovery, current-generation Pod digest readback and exact CRI cache retirement pass local source/full PostgreSQL/Docker regression. An isolated real containerd verifies preview, protected alias, removal and replay; Instance source passes 345 tests and 18 workflow checks | Production rollout, actual CVM cache/space reclamation, TCR deletion or deployed maintenance permissions |
 | NodePool maintenance | Source implements guarded image-GC configuration, taint recovery and bounded redacted readback | Production mutation; the retained evidence here contains no matching Instance execution receipt |
 
 Evidence applies only to the exact identity and layer named in its row. An older
@@ -72,11 +78,14 @@ Support data is historical custody, not an available ticket capability.
   purchase Receipt. Exact replay and bounded recovery preserve the original
   identities and fail closed on unproven provider results.
 - Workspace Delete is permanent and performs no refund or wallet mutation.
-  Source has typed resource observations, but complete Tencent Gateway Secret
-  and asymmetric PV/PVC residue convergence remain open.
-- Renewal authorization is persisted and exposed through Control Plane and
-  Console. Expired-Workspace reactivation and live exactly-once renewal remain
-  incomplete.
+  Its background worker preserves the original owner intent without a customer
+  credential, polls delayed compute absence, and waits for the deletion Receipt.
+  Fabric converges exact standalone Gateway Secret and asymmetric PV/PVC residue.
+- Renewal authorization and recovery eligibility are exposed through Control
+  Plane and Console. Unpaid expiry closes access and stops the original Runtime.
+  Explicit recovery confirms the original charge, provider renewal and Runtime
+  readiness before entitlement; balance changes alone never restart service.
+  Customer-facing purchase/details explain pre-expiry backup responsibility.
 - Fabric owns compute, storage, attachment, Secret, Runtime, provider mutation,
   and authoritative readback. Local-Docker enforces immutable Workspace images,
   cgroup limits, and project-quota storage on a supported Linux host.
@@ -100,6 +109,123 @@ The detailed dependency and operation boundaries remain in
 [implementation-architecture.md](./implementation-architecture.md).
 
 ## Retained Runtime Evidence
+
+The D1 local finance evidence is retained outside Git at
+`/Users/huangrende/Documents/ChatGPT/d1-delivery-20260908/VALIDATION.md` and its
+`logs/` and `sub2api/` artifacts. The business chains use real Control Plane,
+HTTP clients, PostgreSQL and Ledger, with explicit Sub2API/Fabric fixtures.
+They exercise concurrent partial refunds, account/amount conflicts, response
+loss, restart and receipt-only recovery. Isolated real Sub2API evidence is a
+separate layer; its applied-amount patch must precede Cloud adoption. Historical
+transactions without a verified applied amount remain unverified. The actual
+production Gateway image identity and adoption are still an Instance obligation.
+
+D2 local source evidence is retained separately at
+`/Users/huangrende/Documents/ChatGPT/d2-delivery-20260908/VALIDATION.md`, with
+`cloud.patch`, `source-manifest.json` and `logs/`. Its snapshot includes the
+retained D1 changes; it does not overwrite the D1 snapshot. Tests prove two
+purchases plus partial refunds, all paid renewal periods after Workspace
+removal, missing/conflicting/duplicate receipts, normal receipt progress without
+blocking new buyers, manual-review refund recovery, automatic refund accounting,
+and schema-2 historical readback. Ledger migration and exact lookup pass with
+10,005 retained receipts. The final full local run passes PostgreSQL and Docker
+integration with no required skips. Tests use separate local stores and fixtures;
+engineering evidence is not written into the production business Ledger.
+
+D3 evidence is retained separately at
+`/Users/huangrende/Documents/ChatGPT/d3-delivery-20260908/VALIDATION.md` and its
+source manifest, patch and logs. The source baseline is local commit
+`0a1a78d6aa2caf4898c1e35c08c30c2a906f371b`, which preserves the verified D1/D2
+work before D3. Tests include fifty concurrent PostgreSQL admissions, the 51st
+rejection, 10,001 unrelated retained operations, keyset ties, one slow account
+while 49 others advance, first-dispatch CAS competition, and late exact debit
+confirmation after restart on both provider profiles. Real typed HTTP tests
+cover long queue wait, original dispatch, provisioning, ownership and stage
+advance. Actual Tencent adapter tests use isolated provider fixtures and
+PostgreSQL, not live Tencent resources. The full local gate passes with zero required PostgreSQL skips. After the final
+Control Plane recovery edits, its complete suite passes again (2,380 test events
+plus the explicitly rerun opt-in 1,000-user data-scale case); focused recovery
+and concurrency tests pass under race. Browser tests cover desktop/mobile
+original-order return and ordinary administrator recovery without technical
+budgets. Test stores and evidence remain outside production state.
+
+D3 local failed-Launch closure is complete. The original operation is frozen by
+CAS, exact Key identity is revoked through the Sub2API service boundary, all
+five owner resources must read back absent, the original-account refund shares
+the existing reservation budget, and Ledger records the append-only closeout
+receipt. Unknown money, Key, or provider ownership remains pending. The
+existing Tencent Instance explicitly enables the Launch worker and still
+overrides admission to one; adopting this source does not silently change that
+setting. Tencent capacity and Instance adoption remain external obligations.
+
+The final D3 closeout evidence is retained separately at
+`/Users/huangrende/Documents/ChatGPT/d3-closeout-delivery-20260909/VALIDATION.md`
+with its logs, replay-verified patch and source manifest, based on local commit
+`72e52e7dfeee86cd7ac37128ad14968e1f9de742`. Real Control Plane HTTP,
+PostgreSQL, financial HTTP clients and Ledger exercise response loss, restart,
+partial/manual refunds, historical paid orders, ready-before-freeze protection
+and new purchase after closure. Resource and Key physical owners in those
+orchestration tests are explicit local fixtures. Actual Tencent adapter tests
+separately cover delayed Machine ownership, partial CBS binding, independent
+Gateway Secret cleanup and queued-order cancellation without releasing an
+unknown head. The real isolated patched Sub2API proves exact revocation,
+disabled-Key identity lookup, cache-failure recovery, service restart and
+fifty-user creation/revocation races. Its D1+D3 patch must be adopted before
+the Cloud consumer. These tests do not certify production Gateway multi-node
+cache convergence or actual Tencent resource capacity.
+
+D4 local lifecycle evidence is retained at
+`/Users/huangrende/Documents/ChatGPT/d4-delivery-20260909/VALIDATION.md`, based on
+Cloud `4aeb239146165b8612bfcf0300dfc0629992fafd` and Instance
+`a30d9ebeb775b6d566758a8909960838be6f7791`. Original-period renewal/recovery uses
+real Control Plane HTTP and PostgreSQL with explicit local wallet/provider
+fixtures. Focused tests cover response loss, competing processes, repaired
+Runtime identity, historical expiry, precise worker wakeup, and existing
+WebSocket termination. Delete tests cover no-session background continuation,
+late compute absence beyond the old read limit, exact disabled-Key revocation,
+partial Runtime objects, owner isolation and receipt-only recovery. Independent
+HTTP tests validate the new Fabric power capability and exact Sub2API deletion
+read. Tencent adapter tests use isolated Kubernetes/Tencent IO and persisted
+owner journals; they do not access the real provider.
+
+The final `verify:local:full` passes all source/browser/build checks and all four
+PostgreSQL owners, including capacity and real Local-Docker integration, with
+zero required skips. Fabric's independently retained final whole-module run
+contains 1,842 passing test events and no skips. The real Docker path preserves
+the original container ID and data in both mounted directories across stop/start.
+The final renewal race suite passes 275 cases, including new and existing
+connections after a real confirmed renewal. Initial failed verification logs
+are retained separately and are not counted as passing evidence.
+
+The Console browser evidence includes expiry/recovery, top-up without automatic
+recovery, unknown-response reentry, Runtime readiness, and one-submit deletion
+on desktop and mobile. The local Workspace overlay enables the existing monthly
+worker; Instance source defaults its interval to 60 seconds while retaining
+Bootstrap's disabled workers. Protected environment overrides and actual
+adoption require Instance readback. Test accounts, charges, resources and
+receipts remain isolated; none is deployment input.
+
+D5 local image lifecycle evidence is retained at
+`/Users/huangrende/Documents/ChatGPT/d5-delivery-20260909/VALIDATION.md`, with
+source manifests and patches based on Cloud `30ccd1a31e9bc0f9308782798fc6c51ca856ad79`
+and Instance `c11001a3c9ab312930fb42919be77548049a0b68`. The final
+`verify:local:full` passes all four PostgreSQL owners with zero required skips;
+Instance passes 345 tests and 18 workflow validations. Focused business tests
+cover fixed catalog targets, current paid renewal, stopped/deleting exclusion,
+response-loss recovery, Runtime locking, exact Pod digest and rollback without
+changing the global default. Tencent/Kubernetes mutation boundaries use isolated
+fixtures; Local-Docker image replacement was not added.
+
+The real isolated containerd run uses the compiled CRI maintenance command and
+proves preview without removal, protected alias retention, exact old-image
+removal, absence readback and idempotent replay. Its reported image filesystem
+usage remains unchanged immediately after removal, so this evidence proves
+cache-reference absence, not reclaimed bytes. All test resources are disposable
+and outside production. The delivery manifest binds the exact source, executable
+and logs. Instance must adopt that Cloud image, configure its read-only Cloud
+qualification-evidence credential, qualify the same linux/amd64 Workspace
+manifest and execute protected rollout/node retirement before claiming actual
+CVM results. TCR deletion is optional and unchanged.
 
 The 2026-08-19 Local-Docker runs covered two ownership modes:
 
@@ -148,6 +274,6 @@ proven.
 "Basically usable" describes the presently demonstrated administrator-operated
 surface. Public Beta requires the Cloud and Instance evidence named by the A-N
 work packages in [roadmap.md](./roadmap.md). In particular, current evidence
-does not yet close public registration, complete lifecycle recovery, data
+does not yet close public registration, production lifecycle qualification, data
 restore and alert operations, clean exact-Candidate qualification, rollback,
 or same-byte publication.

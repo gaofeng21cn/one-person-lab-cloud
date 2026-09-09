@@ -139,12 +139,28 @@ export interface WorkspaceLaunchResponse {
   checks?: RuntimeCheck[];
   createdAt?: string;
   updatedAt?: string;
+  closeout?: WorkspaceLaunchCloseoutDTO;
+}
+
+export interface WorkspaceLaunchCloseoutDTO {
+  status: "confirming" | "closing" | "refunding" | "recording" | "closed" | "fulfilled";
+  refundedUsdMicros: number;
+  receiptId?: string;
+  pendingConfirmation?: boolean;
 }
 
 export interface WorkspaceDeleteResponse {
   workspaceId: string;
   status: string;
   operationId?: string;
+}
+
+export interface WorkspaceDeletionDTO {
+  workspaceId: string;
+  operationId: string;
+  status: "pending" | "manual_review" | "deleted";
+  phase: string;
+  receiptId?: string;
 }
 
 export type WorkspaceDeleteCommandResult =
@@ -169,6 +185,13 @@ export interface WorkspaceRenewalResponse {
   nextRenewalAt: string;
   paidThrough: string;
   renewalStatus: string;
+}
+
+export interface WorkspaceRenewalReadDTO extends WorkspaceRenewalResponse {
+  recovery: {
+    state: "not_required" | "recoverable" | "pending" | "unavailable" | "reclaimed";
+    reason: string;
+  };
 }
 
 export type WorkspaceAutoRenewRequest = WorkspaceRenewalRequest;
@@ -497,6 +520,9 @@ export interface GatewayBalanceHistoryPageDTO {
 
 export interface BillingReceipt {
   receiptId: string;
+  operationId?: string;
+  relatedOperationId?: string;
+  kind?: "business_refund";
   type: string;
   status: string;
   workspaceId: string;
@@ -816,6 +842,21 @@ export interface OperatorReconciliationPageDTO {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface WorkspaceLaunchRecoveryDTO {
+  operationId: string;
+  launchVersion: number;
+  status: string;
+  stage: string;
+  allowedActions: Array<"check_result" | "close_unfulfilled">;
+  closeout?: WorkspaceLaunchCloseoutDTO;
+}
+
+export interface WorkspaceLaunchRecoveryRequest {
+  action: "check_result" | "close_unfulfilled";
+  launchVersion: number;
+  reason: string;
 }
 
 export interface BillingReviewResolutionRequest {

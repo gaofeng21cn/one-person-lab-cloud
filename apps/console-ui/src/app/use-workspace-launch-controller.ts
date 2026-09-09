@@ -288,6 +288,13 @@ export function useWorkspaceLaunchController({
     reviewWorkspaceLaunch,
     submitWorkspaceLaunch,
     openLaunchedWorkspace,
+    openLaunchBilling: () => navigate("/console/billing"),
+    prepareNewWorkspaceLaunch: () => {
+      if (!launchOperation || !["failed", "refunded"].includes(launchOperation.status) || launchOperation.closeout?.status !== "closed") return;
+      intent.current = null;
+      setLaunchStep("configure");
+      setLaunchConfirmed(false);
+    },
     loadCatalog,
     recover,
     reset

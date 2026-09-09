@@ -22,7 +22,7 @@ import (
 const (
 	controlledBasicPilotEnabledEnv                 = "OPL_CONTROLLED_BASIC_PILOT_ENABLED"
 	controlledBasicPilotMaxInFlightEnv             = "OPL_CONTROLLED_BASIC_PILOT_MAX_IN_FLIGHT"
-	controlledBasicPilotDefaultLimit               = 1
+	controlledBasicPilotDefaultLimit               = 50
 	productionAcceptanceBApprovalEnv               = "OPL_PRODUCTION_BASIC_ACCEPTANCE_B_APPROVAL_JSON"
 	productionAcceptanceBResumeExistingApprovalEnv = "OPL_PRODUCTION_BASIC_ACCEPTANCE_B_RESUME_EXISTING_APPROVAL_JSON"
 	productionAcceptanceBCapability                = "x-opl-acceptance-b-capability"

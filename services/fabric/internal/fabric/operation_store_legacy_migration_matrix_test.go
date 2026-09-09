@@ -33,6 +33,7 @@ func TestPostgresOperationStoreLegacyMigrationMatrix(t *testing.T) {
 			"202607120001_machine_ownership",
 			"202607260001_compute_pool_admission",
 			"202607290001_compute_claim_pending_pool_head",
+			"202609080001_launch_compute_pool_admission",
 		})
 		assertFabricCurrentSchema(t, db)
 	})
@@ -57,6 +58,7 @@ func TestPostgresOperationStoreLegacyMigrationMatrix(t *testing.T) {
 			"202607120001_machine_ownership",
 			"202607260001_compute_pool_admission",
 			"202607290001_compute_claim_pending_pool_head",
+			"202609080001_launch_compute_pool_admission",
 		})
 		assertFabricCurrentSchema(t, db)
 	})
@@ -83,6 +85,7 @@ func TestPostgresOperationStoreLegacyMigrationMatrix(t *testing.T) {
 			"202607120001_machine_ownership",
 			"202607260001_compute_pool_admission",
 			"202607290001_compute_claim_pending_pool_head",
+			"202609080001_launch_compute_pool_admission",
 		})
 		assertFabricCurrentSchema(t, db)
 		assertInsertedCurrentFabricOperation(t, store)
@@ -218,6 +221,7 @@ func TestPostgresOperationStoreLegacyMigrationMatrix(t *testing.T) {
 				"202607120001_machine_ownership",
 				"202607260001_compute_pool_admission",
 				"202607290001_compute_claim_pending_pool_head",
+				"202609080001_launch_compute_pool_admission",
 			})
 		})
 	}

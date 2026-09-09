@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { BillingReceipt } from "../../apps/console-ui/src/api/dtos.ts";
 
 import {
   presentAccountStatus,
@@ -7,6 +8,7 @@ import {
   presentBalanceHistoryType,
   presentBillingStatus,
   presentBillingReceiptType,
+  presentBillingReceiptAmount,
   presentGatewayKeyStatus
 } from "../../apps/console-ui/src/app/customer-experience-model.ts";
 
@@ -44,6 +46,7 @@ test("billing receipt type and status use exact current values", () => {
     ["billing.workspace_purchased.v1", "工作空间开通"],
     ["billing.workspace_renewed.v1", "工作空间续费"],
     ["billing.workspace_expired.v1", "工作空间到期"],
+    ["billing.workspace_closed.v1", "开通未完成，已结案"],
     ["billing.workspace_refunded.v1", "工作空间退款"]
   ] as const;
   for (const [type, label] of typeCases) {
@@ -98,4 +101,24 @@ test("missing values are unavailable without raw evidence", () => {
   ]) {
     assert.deepEqual(presentation, { kind: "unavailable", label: "暂不可用" });
   }
+});
+
+test("customer receipts distinguish monthly charges, partial refunds and expiry without a new charge", () => {
+  const base: BillingReceipt = {
+    receiptId: "local-receipt", type: "billing.workspace_purchased.v1", status: "completed", workspaceId: "local-workspace",
+    createdAt: "2026-09-08T00:00:00Z", resourceType: "workspace", resourceId: "local-workspace", priceVersion: "local-price",
+    currency: "USD", periodStart: "2026-09-01T00:00:00Z", paidThrough: "2026-10-01T00:00:00Z", totalUsdMicros: 52_580_000
+  };
+  assert.equal(presentBillingReceiptAmount(base), "扣款 $52.58");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_renewed.v1" }), "扣款 $52.58");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_refunded.v1", refundUsdMicros: 3_000_000 }), "退款 $3.00");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_expired.v1" }), "未扣款");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1", chargeUsdMicros: 52_580_000 }), "原扣款 $52.58（退款另列）");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1", chargeUsdMicros: 0 }), "未扣款");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_closed.v1" }), "原扣款金额暂不可用");
+  assert.equal(presentBillingReceiptAmount({ ...base, status: "pending" }), "金额待确认");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "gateway.wallet_adjustment.v1", kind: "business_refund", refundUsdMicros: 3_000_000 }), "退款 $3.00");
+  assert.equal(presentBillingReceiptType("gateway.wallet_adjustment.v1", "business_refund").label, "工作空间退款");
+  assert.equal(presentBillingReceiptType("gateway.wallet_adjustment.v1").kind, "unknown");
+  assert.equal(presentBillingReceiptAmount({ ...base, type: "billing.workspace_refunded.v1" }), "退款金额暂不可用");
 });

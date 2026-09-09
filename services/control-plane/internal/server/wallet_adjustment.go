@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,7 +46,24 @@ type walletAdjustmentUpstreamFailure struct {
 	RequestID  string `json:"requestId,omitempty"`
 }
 
+type walletAdjustmentAuditIdentity struct {
+	Actor     auditActor
+	IPAddress string
+	UserAgent string
+}
+
+func (app *controlPlaneServer) walletAdjustmentAuditIdentity(r *http.Request) walletAdjustmentAuditIdentity {
+	user, _ := app.sessionUserContext(r)
+	actor := auditActor{UserID: stringValue(user["id"]), Role: stringValue(user["role"]), AccountID: stringValue(user["accountId"])}
+	if systemActor, ok := r.Context().Value(auditActorContextKey{}).(auditActor); ok {
+		actor = systemActor
+	}
+	return walletAdjustmentAuditIdentity{Actor: actor, IPAddress: boundedAuditText(requestIP(r), maxAuditIPAddressBytes), UserAgent: boundedAuditText(r.UserAgent(), maxAuditUserAgentBytes)}
+}
+
 type walletAdjustmentOperation struct {
+	PersistedResult      string                           `json:"-"`
+	PersistedStatus      string                           `json:"-"`
 	RequestHash          string                           `json:"requestHash"`
 	Phase                string                           `json:"phase"`
 	AccountID            string                           `json:"accountId"`
@@ -104,7 +120,7 @@ func (app *controlPlaneServer) createWalletAdjustment(w http.ResponseWriter, r *
 	operationID := "wallet-adjustment-" + stableID(accountID, key)[:18]
 	requestHash := stableID("wallet-adjustment-v1", accountID, actorID, input.Kind, strconv.FormatInt(amountMicros, 10), strings.TrimSpace(input.Reason), strings.TrimSpace(input.RelatedOperationID))
 
-	// ponytail: Pilot is a single Control Plane pod; serialize the few operator wallet writes per account.
+	// Avoid redundant work within this process; the store owns cross-process admission and CAS.
 	unlock := app.lockResource("sub2api-wallet", accountID)
 	defer unlock()
 
@@ -120,12 +136,6 @@ func (app *controlPlaneServer) createWalletAdjustment(w http.ResponseWriter, r *
 			writeWalletAdjustmentError(w, accountErr)
 			return
 		}
-		if input.Kind == "business_refund" {
-			if err := app.validateWalletRefundLimit(r.Context(), accountID, input.RelatedOperationID, amountMicros); err != nil {
-				writeWalletAdjustmentError(w, err)
-				return
-			}
-		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		operation = walletAdjustmentOperation{
 			RequestHash: requestHash, Phase: "before_balance", AccountID: accountID, Sub2APIUserID: remoteUserID,
@@ -133,8 +143,12 @@ func (app *controlPlaneServer) createWalletAdjustment(w http.ResponseWriter, r *
 			RelatedOperationID: strings.TrimSpace(input.RelatedOperationID), ActorUserID: actorID,
 			CanonicalRedeemCode: walletAdjustmentRedeemCode(operationID), RedeemCodeVersion: "v2", CreatedAt: now, UpdatedAt: now, Status: "pending",
 		}
-		if stringValue(account["ownerUserId"]) == "" || app.persistWalletAdjustment(r.Context(), operationID, &operation) != nil {
-			writeError(w, http.StatusInternalServerError, "state_persist_failed")
+		if stringValue(account["ownerUserId"]) == "" {
+			writeWalletAdjustmentError(w, errWalletAdjustmentAccount)
+			return
+		}
+		if err := app.persistWalletAdjustment(r.Context(), operationID, &operation); err != nil {
+			writeWalletAdjustmentError(w, err)
 			return
 		}
 	}
@@ -144,7 +158,7 @@ func (app *controlPlaneServer) createWalletAdjustment(w http.ResponseWriter, r *
 	}
 
 	if operation.Status != "succeeded" && operation.Status != "manual_review" {
-		operation, err = app.runWalletAdjustment(r, service, operationID, operation)
+		operation, err = app.runWalletAdjustment(r.Context(), service, operationID, operation, app.walletAdjustmentAuditIdentity(r))
 		if err != nil {
 			writeWalletAdjustmentError(w, err)
 			return
@@ -222,7 +236,7 @@ func (app *controlPlaneServer) recoverWalletAdjustment(w http.ResponseWriter, r 
 		}
 	}
 	if operation.Status == "pending" {
-		operation, err = app.runWalletAdjustment(r, service, operationID, operation)
+		operation, err = app.runWalletAdjustment(r.Context(), service, operationID, operation, app.walletAdjustmentAuditIdentity(r))
 		if err != nil {
 			writeWalletAdjustmentError(w, err)
 			return
@@ -251,7 +265,7 @@ func (app *controlPlaneServer) prepareWalletAdjustmentRecovery(ctx context.Conte
 			return operation, errWalletAdjustmentState
 		}
 	}
-	if operation.ErrorCode == "wallet_adjustment_recovery_history_conflict" || operation.ErrorCode == "wallet_adjustment_recovery_balance_changed" {
+	if operation.ErrorCode == "wallet_adjustment_recovery_history_conflict" {
 		return operation, errWalletAdjustmentConflict
 	}
 	legacyCode, v2Code := legacyWalletAdjustmentRedeemCode(operationID), walletAdjustmentRedeemCode(operationID)
@@ -321,8 +335,18 @@ func (app *controlPlaneServer) prepareWalletAdjustmentRecovery(ctx context.Conte
 		}
 		return operation, nil
 	}
-	if balance.UserID != operation.Sub2APIUserID || balance.Status != "active" || balance.USDMicros != operation.BeforeBalanceMicros {
-		operation.ErrorCode = "wallet_adjustment_recovery_balance_changed"
+	if balance.UserID != operation.Sub2APIUserID || balance.Status != "active" || balance.USDMicros < 0 {
+		operation.ErrorCode = "wallet_adjustment_recovery_balance_invalid"
+		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
+			return operation, errWalletAdjustmentState
+		}
+		return operation, errWalletAdjustmentConflict
+	}
+	if operation.Kind == "debit" && balance.USDMicros < operation.AmountUSDMicros || operation.Kind != "debit" && balance.USDMicros > math.MaxInt64-operation.AmountUSDMicros {
+		operation.ErrorCode = "wallet_adjustment_recovery_balance_insufficient"
+		if operation.Kind != "debit" {
+			operation.ErrorCode = "wallet_adjustment_recovery_balance_overflow"
+		}
 		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
 			return operation, errWalletAdjustmentState
 		}
@@ -410,6 +434,7 @@ func decodeWalletAdjustment(row map[string]any) (walletAdjustmentOperation, erro
 		return walletAdjustmentOperation{}, errWalletAdjustmentState
 	}
 	operation.Status = stringValue(row["status"])
+	operation.PersistedResult, operation.PersistedStatus = stringValue(row["result"]), operation.Status
 	operationID := stringValue(row["id"])
 	v2Identity := operation.RedeemCodeVersion == "v2" && operation.CanonicalRedeemCode == walletAdjustmentRedeemCode(operationID)
 	legacyReadOnly := operation.RedeemCodeVersion == "" && operation.CanonicalRedeemCode == "" &&
@@ -434,19 +459,27 @@ func (app *controlPlaneServer) persistWalletAdjustment(ctx context.Context, oper
 		operation.CanonicalRedeemCode, operation.RedeemCodeVersion = walletAdjustmentRedeemCode(operationID), "v2"
 	}
 	operation.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	payload, err := json.Marshal(operation)
-	if err != nil {
-		return err
+	saved, err := app.tables.SaveWalletAdjustment(ctx, operationID, *operation)
+	if err == nil {
+		*operation = saved
 	}
-	return app.tables.SaveRuntimeOperation(ctx, map[string]any{
-		"id": operationID, "operationId": operationID, "accountId": operation.AccountID, "resourceId": operation.AccountID,
-		"resourceKind": "gateway_wallet", "action": "gateway.wallet_adjustment.v1", "status": operation.Status,
-		"result": string(payload), "createdAt": operation.CreatedAt,
-	})
+	return err
 }
 
-func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *controlplane.Service, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
-	ctx := r.Context()
+func walletAdjustmentRow(operationID string, operation walletAdjustmentOperation) map[string]any {
+	return map[string]any{
+		"id": operationID, "operationId": operationID, "accountId": operation.AccountID, "resourceId": operation.AccountID,
+		"resourceKind": "gateway_wallet", "action": "gateway.wallet_adjustment.v1", "status": operation.Status,
+		"result": string(mustJSON(operation)), "createdAt": operation.CreatedAt,
+	}
+}
+
+func (app *controlPlaneServer) runWalletAdjustment(ctx context.Context, service *controlplane.Service, operationID string, operation walletAdjustmentOperation, audit walletAdjustmentAuditIdentity) (walletAdjustmentOperation, error) {
+	if operation.Kind == "business_refund" && !operation.AdjustmentAttempted {
+		if err := app.confirmWalletRefundSource(ctx, service, operation); err != nil {
+			return operation, err
+		}
+	}
 	for range 8 {
 		switch operation.Phase {
 		case "before_balance":
@@ -491,7 +524,7 @@ func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *con
 					recordWalletAdjustmentUpstreamFailure(&operation, "adjustment", err, "adjustment_unconfirmed")
 				}
 				if err != nil && !errors.Is(err, clients.ErrSub2APIChargeUnknown) && !errors.Is(err, clients.ErrSub2APIChargeConflict) {
-					return app.manualReviewWalletAdjustment(r, operationID, operation, "adjustment_unconfirmed")
+					return app.manualReviewWalletAdjustment(ctx, operationID, operation, "adjustment_unconfirmed", audit)
 				}
 			} else {
 				operation.Phase = "authoritative_readback"
@@ -504,7 +537,7 @@ func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *con
 			entry, confirmErr := confirmWalletAdjustmentHistory(history, operation.CanonicalRedeemCode, operation)
 			if err != nil || confirmErr != nil {
 				recordWalletAdjustmentUpstreamFailure(&operation, "authoritative_readback", err, "balance_history_unavailable")
-				return app.manualReviewWalletAdjustment(r, operationID, operation, "authoritative_readback_unavailable")
+				return app.manualReviewWalletAdjustment(ctx, operationID, operation, "authoritative_readback_unavailable", audit)
 			}
 			operation.BalanceHistoryUsedAt = entry.UsedAt.UTC().Format(time.RFC3339Nano)
 			operation.BalanceHistoryRef = walletAdjustmentBalanceHistoryRef(operation.Sub2APIUserID, entry)
@@ -514,16 +547,12 @@ func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *con
 			}
 		case "after_balance":
 			balance, err := service.Sub2APIBalance(ctx, operation.Sub2APIUserID)
-			expected := operation.BeforeBalanceMicros + operation.AmountUSDMicros
-			if operation.Kind == "debit" {
-				expected = operation.BeforeBalanceMicros - operation.AmountUSDMicros
+			// This is an optional current-wallet display, not proof of the confirmed transaction.
+			if err == nil && balance.UserID == operation.Sub2APIUserID && balance.Status == "active" && balance.USDMicros >= 0 {
+				operation.AfterBalanceKnown, operation.AfterBalanceMicros = true, balance.USDMicros
+				operation.AfterBalanceReadAt = time.Now().UTC().Format(time.RFC3339Nano)
 			}
-			if err != nil || balance.UserID != operation.Sub2APIUserID || balance.Status != "active" || balance.USDMicros != expected {
-				recordWalletAdjustmentUpstreamFailure(&operation, "after_balance", err, "balance_readback_mismatch")
-				return app.manualReviewWalletAdjustment(r, operationID, operation, "balance_readback_mismatch")
-			}
-			operation.AfterBalanceKnown, operation.AfterBalanceMicros = true, balance.USDMicros
-			operation.AfterBalanceReadAt, operation.Phase = time.Now().UTC().Format(time.RFC3339Nano), "ledger"
+			operation.Phase = "ledger"
 			if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
 				return operation, errWalletAdjustmentState
 			}
@@ -537,7 +566,7 @@ func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *con
 				return operation, errWalletAdjustmentState
 			}
 		case "audit":
-			if err := app.saveWalletAdjustmentAudit(r, operationID, operation, "succeeded"); err != nil {
+			if err := app.saveWalletAdjustmentAudit(ctx, operationID, operation, "succeeded", audit); err != nil {
 				return operation, errWalletAdjustmentState
 			}
 			operation.Status, operation.Phase, operation.ErrorCode = "succeeded", "complete", ""
@@ -545,7 +574,7 @@ func (app *controlPlaneServer) runWalletAdjustment(r *http.Request, service *con
 				return operation, errWalletAdjustmentState
 			}
 		case "manual_review_audit":
-			return app.manualReviewWalletAdjustment(r, operationID, operation, operation.ErrorCode)
+			return app.manualReviewWalletAdjustment(ctx, operationID, operation, operation.ErrorCode, audit)
 		case "complete":
 			return operation, nil
 		default:
@@ -572,7 +601,7 @@ func inspectWalletAdjustmentHistory(history map[string]clients.Sub2APIBalanceHis
 	if !found {
 		return clients.Sub2APIBalanceHistoryEntry{}, "absent", nil
 	}
-	if match.Type != "balance" || match.Status != "used" || match.UsedBy == nil || *match.UsedBy != operation.Sub2APIUserID || match.UsedAt == nil || match.ValueUSDMicros != signed {
+	if match.Code != code || match.Type != "balance" || match.Status != "used" || match.UsedBy == nil || *match.UsedBy != operation.Sub2APIUserID || match.UsedAt == nil || match.UsedAt.IsZero() || match.ValueUSDMicros != signed {
 		return clients.Sub2APIBalanceHistoryEntry{}, "conflict", errWalletAdjustmentConflict
 	}
 	return match, "confirmed", nil
@@ -598,18 +627,18 @@ func recordWalletAdjustmentUpstreamFailure(operation *walletAdjustmentOperation,
 	}
 }
 
-func (app *controlPlaneServer) manualReviewWalletAdjustment(r *http.Request, operationID string, operation walletAdjustmentOperation, errorCode string) (walletAdjustmentOperation, error) {
+func (app *controlPlaneServer) manualReviewWalletAdjustment(ctx context.Context, operationID string, operation walletAdjustmentOperation, errorCode string, audit walletAdjustmentAuditIdentity) (walletAdjustmentOperation, error) {
 	if operation.Phase != "manual_review_audit" {
 		operation.Status, operation.Phase, operation.ErrorCode = "pending", "manual_review_audit", errorCode
-		if err := app.persistWalletAdjustment(r.Context(), operationID, &operation); err != nil {
+		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
 			return operation, errWalletAdjustmentState
 		}
 	}
-	if err := app.saveWalletAdjustmentAudit(r, operationID, operation, "manual_review"); err != nil {
+	if err := app.saveWalletAdjustmentAudit(ctx, operationID, operation, "manual_review", audit); err != nil {
 		return operation, errWalletAdjustmentState
 	}
 	operation.Status, operation.Phase = "manual_review", "authoritative_readback"
-	if err := app.persistWalletAdjustment(r.Context(), operationID, &operation); err != nil {
+	if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
 		return operation, errWalletAdjustmentState
 	}
 	return operation, nil
@@ -628,7 +657,7 @@ func walletAdjustmentReceipt(operationID string, operation walletAdjustmentOpera
 	}
 }
 
-func (app *controlPlaneServer) saveWalletAdjustmentAudit(r *http.Request, operationID string, operation walletAdjustmentOperation, result string) error {
+func (app *controlPlaneServer) saveWalletAdjustmentAudit(ctx context.Context, operationID string, operation walletAdjustmentOperation, result string, identity walletAdjustmentAuditIdentity) error {
 	before := map[string]any{"balance": walletBalanceEnvelope(operation.BeforeBalanceKnown, operation.BeforeBalanceMicros, operation.BeforeBalanceReadAt)}
 	after := map[string]any{
 		"kind": operation.Kind, "amountUsd": operation.AmountUSD, "reason": operation.Reason, "status": result,
@@ -640,66 +669,314 @@ func (app *controlPlaneServer) saveWalletAdjustmentAudit(r *http.Request, operat
 	if operation.BalanceHistoryRef != "" {
 		after["balanceHistoryRef"] = operation.BalanceHistoryRef
 	}
-	event := app.auditEvent(r, "gateway.wallet_adjustment", "gateway_wallet", operation.AccountID, operation.AccountID, before, after, result)
-	event["id"] = "audit-" + stableID("gateway.wallet_adjustment", operationID)[:12]
-	event["createdAt"] = operation.UpdatedAt
-	return app.tables.SaveAuditEvent(r.Context(), event)
+	return app.tables.SaveAuditEvent(ctx, map[string]any{
+		"id": "audit-" + stableID("gateway.wallet_adjustment", operationID)[:12], "createdAt": operation.UpdatedAt,
+		"actorUserId": identity.Actor.UserID, "actorRole": identity.Actor.Role, "actorAccountId": identity.Actor.AccountID,
+		"targetAccountId": operation.AccountID, "action": "gateway.wallet_adjustment", "resourceKind": "gateway_wallet", "resourceId": operation.AccountID,
+		"ipAddress": identity.IPAddress, "userAgent": identity.UserAgent, "before": before, "after": after, "result": result,
+	})
 }
 
-func (app *controlPlaneServer) validateWalletRefundLimit(ctx context.Context, accountID, relatedOperationID string, amount int64) error {
-	originalRow, found, err := app.tables.GetRuntimeOperation(ctx, relatedOperationID)
-	if err != nil {
-		return errWalletAdjustmentState
+// walletRefundChargeFacts reads the financial facts retained by the purchase owner.
+// It intentionally does not infer a charge from the current Workspace or wallet.
+type walletRefundChargeFacts struct {
+	AccountID            string              `json:"accountId"`
+	Sub2APIUserID        int64               `json:"sub2apiUserId"`
+	RedeemCode           string              `json:"sub2apiRedeemCode"`
+	TotalChargeUSDMicros int64               `json:"totalChargeUsdMicros"`
+	TotalUSDMicros       int64               `json:"totalUsdMicros"`
+	Phase                string              `json:"phase"`
+	ChargeConfirmation   *walletRefundCharge `json:"chargeConfirmation"`
+}
+
+type walletRefundCharge struct {
+	Code            string `json:"code"`
+	UserID          int64  `json:"userId"`
+	AmountUSDMicros int64  `json:"chargeUsdMicros"`
+	Status          string `json:"status"`
+}
+
+func refundableWalletOperationCharge(row map[string]any) (walletRefundCharge, error) {
+	var facts walletRefundChargeFacts
+	if json.Unmarshal([]byte(stringValue(row["result"])), &facts) != nil || facts.ChargeConfirmation == nil {
+		return walletRefundCharge{}, errWalletAdjustmentConflict
 	}
-	original, found := refundableWalletOperationAmount(originalRow)
-	if !found {
+	var amount int64
+	switch stringValue(row["action"]) {
+	case "workspace.launch", "workspace.launch.v2":
+		if stringValue(row["status"]) != "succeeded" {
+			operation, err := decodeWorkspaceLaunchReconcileOperation(row)
+			if err != nil || !workspaceLaunchRefundAuthorized(operation) || !validSettlementPeriod(operation.stringFact("periodStart"), operation.stringFact("paidThrough")) {
+				return walletRefundCharge{}, errWalletAdjustmentConflict
+			}
+		}
+		amount = facts.TotalChargeUSDMicros
+	case "workspace.renewal":
+		if stringValue(row["status"]) != "active" || facts.Phase != "complete" {
+			return walletRefundCharge{}, errWalletAdjustmentConflict
+		}
+		amount = facts.TotalUSDMicros
+	default:
+		return walletRefundCharge{}, errWalletAdjustmentConflict
+	}
+	charge := *facts.ChargeConfirmation
+	if facts.AccountID == "" || facts.AccountID != stringValue(row["accountId"]) || amount <= 0 ||
+		charge.AmountUSDMicros != amount || charge.Code == "" || charge.Code != facts.RedeemCode || charge.UserID <= 0 || charge.Status != "used" ||
+		(isWorkspaceLaunchAction(stringValue(row["action"])) && charge.UserID != facts.Sub2APIUserID) {
+		return walletRefundCharge{}, errWalletAdjustmentConflict
+	}
+	return charge, nil
+}
+
+func validateWalletRefundReservation(original map[string]any, rows []map[string]any, operation walletAdjustmentOperation) error {
+	charge, err := refundableWalletOperationCharge(original)
+	if err != nil || stringValue(original["id"]) != operation.RelatedOperationID ||
+		stringValue(original["accountId"]) != operation.AccountID || charge.UserID != operation.Sub2APIUserID {
 		return errWalletAdjustmentConflict
 	}
-	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{AccountID: accountID, Action: "gateway.wallet_adjustment.v1"})
+	remaining, err := walletRefundRemaining(charge.AmountUSDMicros, operation.RelatedOperationID, rows)
 	if err != nil {
-		return errWalletAdjustmentState
+		return err
 	}
-	var refunded int64
-	for _, row := range rows {
-		operation, decodeErr := decodeWalletAdjustment(row)
-		if decodeErr != nil {
-			return errWalletAdjustmentState
-		}
-		if operation.Kind != "business_refund" || operation.RelatedOperationID != relatedOperationID {
-			continue
-		}
-		if operation.Status == "manual_review" || operation.Status != "succeeded" || operation.AmountUSDMicros > math.MaxInt64-refunded {
-			return errWalletAdjustmentConflict
-		}
-		refunded += operation.AmountUSDMicros
-	}
-	if original <= 0 || amount > original || refunded > original-amount {
+	if operation.AmountUSDMicros <= 0 || operation.AmountUSDMicros > remaining {
 		return errWalletAdjustmentConflict
 	}
 	return nil
 }
 
-func refundableWalletOperationAmount(row map[string]any) (int64, bool) {
-	if stringValue(row["status"]) != "succeeded" {
-		return 0, false
+func walletRefundRemaining(charged int64, originalID string, rows []map[string]any) (int64, error) {
+	remaining := charged
+	for _, row := range rows {
+		existing, decodeErr := decodeWalletAdjustment(row)
+		if decodeErr != nil {
+			return 0, errWalletAdjustmentState
+		}
+		if existing.Kind != "business_refund" || existing.RelatedOperationID != originalID {
+			continue
+		}
+		// Only a proven rejection before any dispatch releases its reservation.
+		if existing.Status == "failed" && !existing.AdjustmentAttempted {
+			continue
+		}
+		if existing.AmountUSDMicros > remaining {
+			return 0, errWalletAdjustmentConflict
+		}
+		remaining -= existing.AmountUSDMicros
 	}
-	decoder := json.NewDecoder(bytes.NewBufferString(stringValue(row["result"])))
-	decoder.UseNumber()
-	var result map[string]any
-	if decoder.Decode(&result) != nil {
-		return 0, false
+	return remaining, nil
+}
+
+type walletRefundOperation struct {
+	ID        string
+	Operation walletAdjustmentOperation
+}
+
+func workspaceLaunchRefundOperationID(operationID string) string {
+	return "wallet-adjustment-closeout-" + stableID(operationID)[:24]
+}
+
+func workspaceLaunchRefundAuthorized(operation workspaceLaunchReconcileOperation) bool {
+	closeout := operation.Closeout
+	return closeout != nil && closeout.AuthorizationID != "" && closeout.AuthorizedBy != "" &&
+		(closeout.Phase == "refund" || closeout.Phase == "receipt" || closeout.Phase == "complete") &&
+		closeout.FrozenAt != "" && closeout.KeyRevokedAt != "" && closeout.ResourcesAbsentAt != "" && closeout.DebitState == "confirmed"
+}
+
+// Called while the original Launch is locked. Unresolved manual refunds retain
+// their reservation and must settle before the closing remainder is fixed.
+func prepareWorkspaceLaunchCloseoutRefund(original map[string]any, rows []map[string]any, requested workspaceLaunchReconcileOperation) ([]walletRefundOperation, *walletRefundOperation, error) {
+	operation, err := decodeWorkspaceLaunchReconcileOperation(original)
+	if err != nil || operation.ID != requested.ID || operation.PersistedResult != requested.PersistedResult || !workspaceLaunchRefundAuthorized(operation) {
+		return nil, nil, errWalletAdjustmentConflict
 	}
-	var field string
-	switch stringValue(row["action"]) {
-	case "workspace.launch", "workspace.launch.v2":
-		field = "totalChargeUsdMicros"
-	case "workspace.renewal":
-		field = "totalUsdMicros"
-	default:
-		return 0, false
+	charge, err := refundableWalletOperationCharge(original)
+	if err != nil {
+		return nil, nil, err
 	}
-	amount, ok := requiredNonNegativeInteger(result, field)
-	return amount, ok && amount > 0
+	remaining, err := walletRefundRemaining(charge.AmountUSDMicros, operation.ID, rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	refunds := make([]walletRefundOperation, 0, len(rows)+1)
+	refundID := workspaceLaunchRefundOperationID(operation.ID)
+	if operation.Closeout.RefundOperationID != "" && operation.Closeout.RefundOperationID != refundID {
+		return nil, nil, errWalletAdjustmentConflict
+	}
+	requestHash := stableID("workspace-launch-closeout-refund-v1", operation.ID, operation.Closeout.AuthorizationID, operation.Closeout.AuthorizedBy)
+	existing, unresolved := false, false
+	for _, row := range rows {
+		refund, decodeErr := decodeWalletAdjustment(row)
+		if decodeErr != nil {
+			return nil, nil, decodeErr
+		}
+		if refund.Kind != "business_refund" || refund.RelatedOperationID != operation.ID {
+			continue
+		}
+		id := stringValue(row["id"])
+		if id == refundID {
+			if refund.RequestHash != requestHash {
+				return nil, nil, errWalletAdjustmentConflict
+			}
+			existing = true
+		}
+		refunds = append(refunds, walletRefundOperation{ID: id, Operation: refund})
+		if refund.Status == "failed" && !refund.AdjustmentAttempted {
+			continue
+		}
+		if refund.AccountID != operation.stringFact("accountId") || refund.Sub2APIUserID != charge.UserID {
+			return nil, nil, errWalletAdjustmentConflict
+		}
+		if refund.Status != "succeeded" || refund.ReceiptID == "" || refund.BalanceHistoryRef == "" {
+			unresolved = true
+		}
+	}
+	if existing || unresolved || remaining == 0 {
+		return refunds, nil, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	refund := walletRefundOperation{ID: refundID, Operation: walletAdjustmentOperation{
+		RequestHash: requestHash, Phase: "before_balance", AccountID: operation.stringFact("accountId"), Sub2APIUserID: charge.UserID,
+		Kind: "business_refund", AmountUSDMicros: remaining, AmountUSD: formatWalletUSD(remaining), Reason: operation.Closeout.Reason,
+		RelatedOperationID: operation.ID, ActorUserID: operation.Closeout.AuthorizedBy,
+		CanonicalRedeemCode: walletAdjustmentRedeemCode(refundID), RedeemCodeVersion: "v2", CreatedAt: now, UpdatedAt: now, Status: "pending",
+	}}
+	refunds = append(refunds, refund)
+	return refunds, &refund, nil
+}
+
+func (app *controlPlaneServer) confirmWalletRefundSource(ctx context.Context, service *controlplane.Service, operation walletAdjustmentOperation) error {
+	row, found, err := app.tables.GetRuntimeOperation(ctx, operation.RelatedOperationID)
+	if err != nil {
+		return errWalletAdjustmentState
+	}
+	if !found || stringValue(row["accountId"]) != operation.AccountID {
+		return errWalletAdjustmentConflict
+	}
+	charge, err := refundableWalletOperationCharge(row)
+	if err != nil || charge.UserID != operation.Sub2APIUserID {
+		return errWalletAdjustmentConflict
+	}
+	history, err := service.FinancialBalanceHistoryByCodes(ctx, charge.UserID, []string{charge.Code})
+	if err != nil {
+		return errWalletAdjustmentUpstream
+	}
+	_, err = confirmWalletAdjustmentHistory(history, charge.Code, walletAdjustmentOperation{Kind: "debit", Sub2APIUserID: charge.UserID, AmountUSDMicros: charge.AmountUSDMicros})
+	return err
+}
+
+func (app *controlPlaneServer) refundWorkspaceLaunchCloseout(ctx context.Context, service *controlplane.Service, operation workspaceLaunchReconcileOperation) (string, int64, bool, error) {
+	if !workspaceLaunchRefundAuthorized(operation) {
+		return "", 0, false, errWalletAdjustmentConflict
+	}
+	original, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		return "", 0, false, err
+	}
+	charge, err := refundableWalletOperationCharge(original)
+	if err != nil {
+		return "", 0, false, err
+	}
+	history, err := service.FinancialBalanceHistoryByCodes(ctx, charge.UserID, []string{charge.Code})
+	if err != nil {
+		return "", 0, false, err
+	}
+	if _, err := confirmWalletAdjustmentHistory(history, charge.Code, walletAdjustmentOperation{Kind: "debit", Sub2APIUserID: charge.UserID, AmountUSDMicros: charge.AmountUSDMicros}); err != nil {
+		return "", 0, false, err
+	}
+	refunds, err := app.tables.ReserveWorkspaceLaunchCloseoutRefund(ctx, operation)
+	if err != nil {
+		return "", 0, false, err
+	}
+	refundID := workspaceLaunchRefundOperationID(operation.ID)
+	var own *walletRefundOperation
+	var confirmed int64
+	priorComplete := true
+	for _, refund := range refunds {
+		if refund.Operation.Status == "failed" && !refund.Operation.AdjustmentAttempted {
+			continue
+		}
+		if refund.ID == refundID {
+			copy := refund
+			own = &copy
+			continue
+		}
+		// Only finish an already-dispatched manual payment. A pending manual
+		// reservation is never authority for this worker to send another payment.
+		if refund.Operation.Status != "succeeded" && refund.Operation.AdjustmentAttempted && refund.Operation.RedeemCodeVersion == "v2" {
+			audit := walletAdjustmentAuditIdentity{Actor: auditActor{UserID: operation.Closeout.AuthorizedBy, Role: "operator"}}
+			refund.Operation, err = app.runWalletAdjustment(ctx, service, refund.ID, refund.Operation, audit)
+			if err != nil {
+				return "", confirmed, false, err
+			}
+		}
+		ok, err := confirmWorkspaceLaunchRefund(ctx, service, refund, operation.stringFact("accountId"), charge.UserID)
+		if err != nil {
+			return "", confirmed, false, err
+		}
+		if !ok {
+			priorComplete = false
+			continue
+		}
+		if refund.Operation.AmountUSDMicros > charge.AmountUSDMicros-confirmed {
+			return "", confirmed, false, errWalletAdjustmentConflict
+		}
+		confirmed += refund.Operation.AmountUSDMicros
+	}
+	if !priorComplete {
+		return "", confirmed, false, nil
+	}
+	if own != nil {
+		if own.Operation.Status != "succeeded" {
+			audit := walletAdjustmentAuditIdentity{Actor: auditActor{UserID: operation.Closeout.AuthorizedBy, Role: "operator"}}
+			own.Operation, err = app.runWalletAdjustment(ctx, service, own.ID, own.Operation, audit)
+			if err != nil {
+				return refundID, confirmed, false, err
+			}
+		}
+		ok, err := confirmWorkspaceLaunchRefund(ctx, service, *own, operation.stringFact("accountId"), charge.UserID)
+		if err != nil || !ok {
+			return refundID, confirmed, false, err
+		}
+		if own.Operation.AmountUSDMicros > charge.AmountUSDMicros-confirmed {
+			return refundID, confirmed, false, errWalletAdjustmentConflict
+		}
+		confirmed += own.Operation.AmountUSDMicros
+		return refundID, confirmed, confirmed == charge.AmountUSDMicros, nil
+	}
+	return "", confirmed, confirmed == charge.AmountUSDMicros, nil
+}
+
+func confirmWorkspaceLaunchRefund(ctx context.Context, service *controlplane.Service, refund walletRefundOperation, accountID string, userID int64) (bool, error) {
+	operation := refund.Operation
+	if operation.Kind != "business_refund" || operation.AccountID != accountID || operation.Sub2APIUserID != userID {
+		return false, errWalletAdjustmentConflict
+	}
+	if operation.Status != "succeeded" || operation.ReceiptID == "" || operation.BalanceHistoryRef == "" {
+		return false, nil
+	}
+	code := operation.CanonicalRedeemCode
+	if operation.LegacySupersession == "legacy_history_confirmed" {
+		code = legacyWalletAdjustmentRedeemCode(refund.ID)
+	}
+	history, err := service.FinancialBalanceHistoryByCodes(ctx, userID, []string{code})
+	if err != nil {
+		return false, err
+	}
+	entry, err := confirmWalletAdjustmentHistory(history, code, operation)
+	if err != nil {
+		return false, err
+	}
+	if operation.BalanceHistoryRef != walletAdjustmentBalanceHistoryRef(userID, entry) || operation.BalanceHistoryUsedAt != entry.UsedAt.UTC().Format(time.RFC3339Nano) {
+		return false, errWalletAdjustmentConflict
+	}
+	receipt, err := service.BillingReceiptForAccount(ctx, accountID, "", operation.ReceiptID)
+	if err != nil {
+		return false, err
+	}
+	if receipt.ReceiptID != operation.ReceiptID || !workspaceLaunchReceiptInputMatches(receipt.ReceiptInput, walletAdjustmentReceipt(refund.ID, operation)) {
+		return false, errWalletAdjustmentConflict
+	}
+	return true, nil
 }
 
 func walletAdjustmentDTO(operationID string, operation walletAdjustmentOperation) map[string]any {

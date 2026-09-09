@@ -69,9 +69,22 @@ purchase Receipt. Compute and storage never debit the customer independently.
 ## Workspace And Storage
 
 A Workspace is a stable URL backed by one independently owned StorageVolume and
-the current runtime pointer. The Pilot Console does not expose customer backup,
-recovery, transfer, provider-resource replacement, or storage deletion. Unpaid
-expiry denies access and performs zero Fabric or Tencent resource mutation.
+the current runtime pointer. Purchase confirmation and Workspace details explain
+that customers must download and back up their data before expiry. The platform
+does not promise data retention or restoration after expiry.
+
+An unpaid Workspace stops providing access and its Runtime is stopped. Details
+show whether the original resources can be recovered, need verification, or
+have been reclaimed. “续费并恢复” states the monthly charge and that it enables
+subsequent auto-renewal; it requires explicit confirmation. Recharging alone
+never submits a recovery. The entry opens only after entitlement and Runtime
+readiness are both confirmed; uncertain results continue the same operation.
+
+Permanent deletion confirms the customer's intent once and continues in the
+background. Reopening details reads the original deletion progress. Removing a
+Workspace from the list is insufficient to show success while its deletion
+Receipt is pending. Normal deletion has no refund. There is no new customer
+backup platform, resource replacement or free retention capability.
 
 ## Availability
 

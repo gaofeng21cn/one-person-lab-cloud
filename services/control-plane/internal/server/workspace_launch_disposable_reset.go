@@ -517,7 +517,7 @@ func readWorkspaceLaunchDisposableDebit(ctx context.Context, service *controlpla
 }
 
 func readWorkspaceLaunchDisposableLedger(ctx context.Context, service *controlplane.Service, operation workspaceLaunchReconcileOperation) workspaceLaunchDisposableInventoryResult {
-	receipts, err := reconciliationLedgerReceipts(ctx, service, operation.stringFact("accountId"))
+	receipts, err := reconciliationLedgerReceipts(ctx, service, clients.ReceiptQuery{AccountID: operation.stringFact("accountId"), WorkspaceID: operation.stringFact("workspaceId")})
 	if err != nil {
 		return disposableInventoryResult("ledgerReceipts", workspaceLaunchDisposableObservation(workspaceLaunchDisposableOwnerUnknown, 0), "ledger_receipts_unavailable")
 	}

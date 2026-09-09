@@ -71,7 +71,7 @@ func (app *controlPlaneServer) previewWorkspaceRuntimeImageReplacement(w http.Re
 		return
 	}
 	workspaceStatus := firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))
-	if !workspaceLaunchStableProjectionMatches(launch, workspace) || workspaceStatus != "running" {
+	if err := app.workspaceRuntimeImageReplacementEligibility(r.Context(), launch, workspace); err != nil {
 		writeError(w, http.StatusConflict, errWorkspaceRuntimeImageReplacementConflict.Error())
 		return
 	}
@@ -80,12 +80,19 @@ func (app *controlPlaneServer) previewWorkspaceRuntimeImageReplacement(w http.Re
 		writeError(w, http.StatusBadGateway, "workspace_runtime_readback_unavailable")
 		return
 	}
-	policy, _, _, err := app.currentWorkspaceImageReleasePolicy(r.Context())
+	policy, catalog, _, err := app.currentWorkspaceImageReleasePolicy(r.Context())
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "workspace_image_not_current_protected_release")
 		return
 	}
-	target := policy.ActiveImage
+	target := r.URL.Query().Get("replacementImageDigest")
+	if target == "" {
+		target = policy.ActiveImage
+	}
+	if !catalog.ContainsImage(target) {
+		writeError(w, http.StatusConflict, "workspace_image_not_current_protected_release")
+		return
+	}
 	replaceableRuntimeStatus := runtime.Status == "running" || runtime.Status == "unready"
 	preview := contracts.WorkspaceRuntimeImageReplacementPreview{
 		WorkspaceID: workspaceID, WorkspaceStatus: workspaceStatus, RuntimeID: runtime.ID,
@@ -115,6 +122,27 @@ func (app *controlPlaneServer) createWorkspaceRuntimeImageReplacement(w http.Res
 		return
 	}
 	workspaceID := strings.TrimSpace(r.PathValue("workspaceId"))
+	operationID := workspaceRuntimeImageReplacementOperationID(workspaceID, key)
+	unlock, err := app.lockResourceContext(r.Context(), "workspace-runtime-image-replacement", operationID)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "workspace_runtime_image_replacement_unavailable")
+		return
+	}
+	defer unlock()
+	row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "state_read_failed")
+		return
+	}
+	if found {
+		operation, status, decodeErr := decodeWorkspaceRuntimeImageReplacementOperation(row, stringValue(row["accountId"]), workspaceID)
+		if decodeErr != nil || operation.Reason != request.Reason || operation.Input.ReplacementImageDigest != request.ReplacementImageDigest {
+			writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, workspaceRuntimeImageReplacementResponse(row, operation, status))
+		return
+	}
 	workspace, found, err := app.tables.GetWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "state_read_failed")
@@ -129,24 +157,9 @@ func (app *controlPlaneServer) createWorkspaceRuntimeImageReplacement(w http.Res
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	if !workspaceLaunchStableProjectionMatches(launch, workspace) || firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) != "running" {
-		writeError(w, http.StatusConflict, errWorkspaceRuntimeImageReplacementConflict.Error())
-		return
-	}
 	accountID := launch.stringFact("accountId")
-	operationID := workspaceRuntimeImageReplacementOperationID(workspaceID, key)
-	row, found, err := app.tables.GetRuntimeOperation(r.Context(), operationID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "state_read_failed")
-		return
-	}
-	if found {
-		operation, status, decodeErr := decodeWorkspaceRuntimeImageReplacementOperation(row, accountID, workspaceID)
-		if decodeErr != nil || operation.Reason != request.Reason || operation.Input.ReplacementImageDigest != request.ReplacementImageDigest {
-			writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
-			return
-		}
-		writeJSON(w, http.StatusAccepted, workspaceRuntimeImageReplacementResponse(row, operation, status))
+	if err := app.workspaceRuntimeImageReplacementEligibility(r.Context(), launch, workspace); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	runtime, err := service.WorkspaceRuntimeStatus(r.Context(), workspaceID)
@@ -161,12 +174,13 @@ func (app *controlPlaneServer) createWorkspaceRuntimeImageReplacement(w http.Res
 		PreviousImageDigest: runtime.ImageID, ReplacementImageDigest: request.ReplacementImageDigest,
 	}
 	if runtime.ID != replacement.RuntimeID || runtime.OperationID != replacement.RuntimeOperationID || runtime.ServiceName != replacement.RuntimeServiceName ||
-		runtime.WorkspaceID != workspaceID || runtime.ImageID == "" || runtime.ImageID == request.ReplacementImageDigest {
+		runtime.WorkspaceID != workspaceID || runtime.ImageID == "" || runtime.ImageID == request.ReplacementImageDigest ||
+		(runtime.Status != "running" && runtime.Status != "unready") {
 		writeError(w, http.StatusConflict, errWorkspaceRuntimeImageReplacementConflict.Error())
 		return
 	}
-	policy, catalog, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
-	if policyErr != nil || request.ReplacementImageDigest != policy.ActiveImage || !catalog.ContainsImage(request.ReplacementImageDigest) {
+	catalog, _, policyErr := configuredWorkspaceImageReleaseCatalog()
+	if policyErr != nil || !catalog.ContainsImage(request.ReplacementImageDigest) {
 		writeError(w, http.StatusConflict, "workspace_image_not_current_protected_release")
 		return
 	}
@@ -215,8 +229,35 @@ func (app *controlPlaneServer) getWorkspaceRuntimeImageReplacement(w http.Respon
 	writeJSON(w, http.StatusOK, workspaceRuntimeImageReplacementResponse(row, operation, status))
 }
 
+// Image updates never grant access or restart an unpaid Workspace. Renewal
+// proof comes from the existing entitlement owner, independently of image policy.
+func (app *controlPlaneServer) workspaceRuntimeImageReplacementEligibility(ctx context.Context, launch workspaceLaunchReconcileOperation, workspace map[string]any) error {
+	if launch.Status != contracts.StatusSucceeded || firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) != "running" {
+		return errWorkspaceRuntimeImageReplacementConflict
+	}
+	if _, found, err := app.workspaceDeleteOperation(ctx, stringValue(workspace["id"])); err != nil {
+		return err
+	} else if found {
+		return errors.New("workspace_delete_in_progress")
+	}
+	state, present, err := normalizeWorkspaceBillingStateForWorkspace(workspace, workspace)
+	if err != nil || !present {
+		return errors.New("workspace_billing_state_invalid")
+	}
+	if state.ResourceBillingEnabled == nil || *state.ResourceBillingEnabled {
+		paidThrough, _ := time.Parse(time.RFC3339, state.PaidThrough)
+		if state.RenewalStatus != "active" || !time.Now().Before(paidThrough) {
+			return errors.New("workspace_billing_period_expired")
+		}
+	}
+	if !workspaceLaunchStableProjectionMatches(launch, app.workspaceLaunchProjectionWithCurrentEntitlement(ctx, launch, workspace)) {
+		return errWorkspaceRuntimeImageReplacementConflict
+	}
+	return nil
+}
+
 func successfulWorkspaceLaunchForReplacement(ctx context.Context, store controlPlaneTableStore, workspaceID string) (workspaceLaunchReconcileOperation, error) {
-	rows, err := queryRuntimeOperations(ctx, store, runtimeOperationQuery{Action: workspaceLaunchAction})
+	rows, err := queryRuntimeOperations(ctx, store, runtimeOperationQuery{WorkspaceID: workspaceID, Action: workspaceLaunchAction, Statuses: []string{string(contracts.StatusSucceeded)}})
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, errWorkspaceRuntimeImageReplacementState
 	}
@@ -313,8 +354,20 @@ func (app *controlPlaneServer) runWorkspaceRuntimeImageReplacement(ctx context.C
 	if err != nil || status != "started" {
 		return err
 	}
+	// Fabric separately serializes Runtime mutation across replicas. These CP
+	// locks prevent local deletion or expiry from racing the eligibility read.
+	unlockDelete, err := app.lockResourceContext(ctx, "workspace-delete", operation.Input.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	defer unlockDelete()
+	unlockRenewal, err := app.lockResourceContext(ctx, "workspace-renewal", operation.Input.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	defer unlockRenewal()
 	operation.Input.IdempotencyKey = operationID
-	result, callErr := service.ReplaceWorkspaceRuntimeImage(ctx, operation.Input, operationID)
+	result, callErr := app.dispatchWorkspaceRuntimeImageReplacement(ctx, service, operation, operationID)
 	if callErr != nil {
 		if result.Runtime.ID != "" {
 			operation.Runtime = result.Runtime
@@ -330,6 +383,7 @@ func (app *controlPlaneServer) runWorkspaceRuntimeImageReplacement(ctx context.C
 		operation.AuditEvent = cloneMap(operation.AuditEvent)
 		operation.AuditEvent["errorCode"] = operation.ErrorCode
 		operation.AuditEvent["result"] = "failed"
+		operation.AuditEvent["id"] = "audit-" + stableID(workspaceRuntimeImageReplacementAction, operationID, "failed")[:12]
 		if err := app.saveWorkspaceRuntimeImageReplacementAudit(ctx, operation); err != nil {
 			return err
 		}
@@ -338,14 +392,36 @@ func (app *controlPlaneServer) runWorkspaceRuntimeImageReplacement(ctx context.C
 		}
 		return callErr
 	}
-	operation.Runtime = result.Runtime
+	operation.Runtime, operation.ErrorCode = result.Runtime, ""
 	operation.AuditEvent = cloneMap(operation.AuditEvent)
 	operation.AuditEvent["after"] = map[string]any{"imageDigest": operation.Input.ReplacementImageDigest, "reason": operation.Reason, "runtimeReady": result.Runtime.Ready}
 	operation.AuditEvent["result"] = "succeeded"
+	operation.AuditEvent["id"] = "audit-" + stableID(workspaceRuntimeImageReplacementAction, operationID, "succeeded")[:12]
 	if err := app.saveWorkspaceRuntimeImageReplacementAudit(ctx, operation); err != nil {
 		return err
 	}
 	return app.saveWorkspaceRuntimeImageReplacementOperation(ctx, operationID, operation.Input.AccountID, operation.Input.WorkspaceID, "succeeded", operation)
+}
+
+func (app *controlPlaneServer) dispatchWorkspaceRuntimeImageReplacement(ctx context.Context, service *controlplane.Service, operation workspaceRuntimeImageReplacementOperation, operationID string) (clients.WorkspaceRuntimeImageReplacementResult, error) {
+	workspace, found, err := app.tables.GetWorkspace(ctx, operation.Input.WorkspaceID)
+	if err != nil {
+		return clients.WorkspaceRuntimeImageReplacementResult{}, err
+	}
+	if !found {
+		return clients.WorkspaceRuntimeImageReplacementResult{}, errWorkspaceRuntimeImageReplacementConflict
+	}
+	launch, err := successfulWorkspaceLaunchForReplacement(ctx, app.tables, operation.Input.WorkspaceID)
+	if err != nil {
+		return clients.WorkspaceRuntimeImageReplacementResult{}, err
+	}
+	if launch.ID != operation.Input.LaunchOperationID {
+		return clients.WorkspaceRuntimeImageReplacementResult{}, errWorkspaceRuntimeImageReplacementConflict
+	}
+	if err := app.workspaceRuntimeImageReplacementEligibility(ctx, launch, workspace); err != nil {
+		return clients.WorkspaceRuntimeImageReplacementResult{}, err
+	}
+	return service.ReplaceWorkspaceRuntimeImage(ctx, operation.Input, operationID)
 }
 
 func (app *controlPlaneServer) saveWorkspaceRuntimeImageReplacementAudit(ctx context.Context, operation workspaceRuntimeImageReplacementOperation) error {
@@ -381,6 +457,9 @@ func workspaceRuntimeImageReplacementFailure(err error) (string, bool) {
 		}
 	}
 	knownCodes := []string{
+		"workspace_delete_in_progress",
+		"workspace_billing_state_invalid",
+		"workspace_billing_period_expired",
 		"workspace_runtime_image_replacement_input_invalid",
 		"workspace_runtime_image_replacement_conflict",
 		"workspace_runtime_image_replacement_unavailable",
