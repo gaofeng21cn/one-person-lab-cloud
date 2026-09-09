@@ -7,8 +7,8 @@ durable facts remain in Control Plane, Fabric, Ledger and Sub2API.
 ## Composition
 
 `console-router.ts` owns the typed `ConsoleRoute`: route kind, normalized path,
-surface, title, Session requirement, sensitivity and navigation identity. The
-root loader and page dispatch switch exhaustively on that fact; navigation
+surface, title, Session requirement and navigation identity. The root loader
+and page dispatch switch exhaustively on that fact; navigation
 consumes its identity. Unknown paths and malformed Workspace IDs remain
 unknown. Route aliases resolve through the same parser rather than maintaining
 another route list. `/admin/announcements` composes the existing announcement
@@ -52,8 +52,9 @@ may commit only through the current detail lease; Budget may commit only through
 its budget lease. `findWorkspaceInPages` remains a thin API adapter used by each
 owning command, not another Workspace state owner.
 
-Gateway Usage Key search and pagination only choose candidates; they cannot
-change the active Usage range. Explicit Key selection or period changes hide
+Gateway Usage derives the selected identity from its current Key object. Key
+search and pagination only choose candidates; they cannot change the active
+Usage range. Explicit Key selection or period changes hide
 the old range and load Summary and Usage separately. Page refresh confirms the
 selected Key through single-Key readback, then loads Summary and Usage page 1.
 An authoritative `404` clears the selection; transient failure retains its

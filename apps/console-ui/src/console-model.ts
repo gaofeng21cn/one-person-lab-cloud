@@ -1,4 +1,4 @@
-import type { GatewayKeySecretDTO, GatewayWallet, ReadinessFact, WorkspaceRuntimeDTO } from "./api/dtos.ts";
+import type { ReadinessFact } from "./api/dtos.ts";
 import type { ConsoleNavigationId, CustomerConsoleRoute } from "./app/console-router.ts";
 
 type ConsoleMenuItem = {
@@ -38,10 +38,6 @@ export const adminMenu = Object.freeze([
   { id: "admin.announcements", label: "公告管理", path: "/admin/announcements", icon: "Megaphone" }
 ] as const satisfies readonly ConsoleMenuItem[]);
 
-export function defaultAuthenticatedRoute(_isOperator = false): string {
-  return "/console/overview";
-}
-
 export function formatUsdMicros(value: unknown): string {
   let micros: bigint;
   if (typeof value === "string" && /^-?(0|[1-9][0-9]*)$/.test(value)) {
@@ -65,10 +61,6 @@ export function formatCount(value: unknown): string {
     : "-";
 }
 
-export function formatAvailableBalance(balance: Partial<GatewayWallet> & { available?: boolean } = {}): string {
-  return balance.available === false ? "暂不可用" : formatUsdMicros(balance.usdMicros);
-}
-
 export function hasSufficientWorkspaceLaunchBalance(balanceUsdMicros: string, quoteUsdMicros: number): boolean {
   return /^\d+$/.test(balanceUsdMicros)
     && Number.isSafeInteger(quoteUsdMicros)
@@ -85,12 +77,6 @@ export function formatDate(value: unknown, includeTime = false): string {
     : { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-export function workspaceStatusLabel(runtime: Partial<WorkspaceRuntimeDTO> = {}): string {
-  if (runtime.status === "running" && runtime.ready === true) return "运行中";
-  if (runtime.status === "unready" || runtime.status === "not_found" || runtime.status === "destroyed") return "暂不可用";
-  return "暂不可用";
-}
-
 export function readinessRows(runtime: ReadinessFact | null, production: ReadinessFact | null) {
   const row = (label: string, value: ReadinessFact | null) => ({
     label,
@@ -98,9 +84,4 @@ export function readinessRows(runtime: ReadinessFact | null, production: Readine
     updatedAt: value?.generatedAt || value?.updatedAt || "-"
   });
   return [row("运行依赖", runtime), row("生产依赖", production)];
-}
-
-export function maskGatewayKey(key: GatewayKeySecretDTO | null): GatewayKeySecretDTO | null {
-  if (!key) return null;
-  return { ...key, value: "" };
 }

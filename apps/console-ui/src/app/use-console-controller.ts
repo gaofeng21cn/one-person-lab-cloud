@@ -13,7 +13,6 @@ import type {
 import {
   getWorkspaceGatewayBudget
 } from "../api/workspaces-api.ts";
-import { defaultAuthenticatedRoute } from "../console-model.ts";
 import { parseConsoleRoute, useConsoleRouter, type ConsoleRoute } from "./console-router.ts";
 import type {
   AuthStatus,
@@ -611,7 +610,7 @@ export function useConsoleController() {
       replaceSession(next);
       setAuthStatus("ready");
       const requested = new URLSearchParams(window.location.search).get("redirect");
-      navigate(authenticatedRedirect(requested, next.isOperator === true) || defaultAuthenticatedRoute(next.isOperator));
+      navigate(authenticatedRedirect(requested, next.isOperator === true) || "/console/overview");
     } catch (error) {
       if (attempt !== loginAttemptGeneration.current || abortController.signal.aborted) return;
       setAuthStatus("public");
@@ -688,7 +687,6 @@ export function useConsoleController() {
     pageTitle,
     isAdminRoute,
     isKnownRoute,
-    isSensitiveRoute: route?.sensitive ?? false,
     sidebarOpen,
     setSidebarOpen,
     globalSlide,

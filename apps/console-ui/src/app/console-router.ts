@@ -20,7 +20,6 @@ type ConsoleRouteDefinition = {
   surface: ConsoleRouteSurface;
   title: string;
   requiresSession: boolean;
-  sensitive: boolean;
   navigationId: ConsoleNavigationId | null;
 };
 
@@ -30,7 +29,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "public",
     title: "OPL Cloud",
     requiresSession: false,
-    sensitive: false,
     navigationId: null
   },
   "/login": {
@@ -38,7 +36,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "public",
     title: "登录",
     requiresSession: false,
-    sensitive: false,
     navigationId: null
   },
   "/403": {
@@ -46,7 +43,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "public",
     title: "无权访问",
     requiresSession: false,
-    sensitive: false,
     navigationId: null
   },
   "/console/overview": {
@@ -54,7 +50,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "概览",
     requiresSession: true,
-    sensitive: false,
     navigationId: "customer.overview"
   },
   "/console/workspaces": {
@@ -62,7 +57,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "工作空间",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.workspaces"
   },
   "/console/workspaces/new": {
@@ -70,7 +64,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "工作空间",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.workspaces"
   },
   "/console/api": {
@@ -78,7 +71,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "OPL Gateway",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.api"
   },
   "/console/api/usage": {
@@ -86,7 +78,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "OPL Gateway",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.api"
   },
   "/console/api/keys": {
@@ -94,7 +85,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "OPL Gateway",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.api"
   },
   "/console/billing": {
@@ -102,7 +92,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "费用",
     requiresSession: true,
-    sensitive: false,
     navigationId: "customer.billing"
   },
   "/console/announcements": {
@@ -110,7 +99,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "customer",
     title: "消息",
     requiresSession: true,
-    sensitive: false,
     navigationId: "customer.announcements"
   },
   "/admin/overview": {
@@ -118,7 +106,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "运维概览",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.overview"
   },
   "/admin/accounts": {
@@ -126,7 +113,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "客户与计费账户",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.accounts"
   },
   "/admin/billing": {
@@ -134,7 +120,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "计费复核",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.billing"
   },
   "/admin/resources": {
@@ -142,7 +127,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "资源状态",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.resources"
   },
   "/admin/system": {
@@ -150,7 +134,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "系统状态",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.system"
   },
   "/admin/announcements": {
@@ -158,7 +141,6 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     surface: "admin",
     title: "公告管理",
     requiresSession: true,
-    sensitive: false,
     navigationId: "admin.announcements"
   }
 } as const satisfies Record<string, ConsoleRouteDefinition>;
@@ -185,7 +167,6 @@ type WorkspaceDetailRoute = {
   surface: "customer";
   title: "工作空间";
   requiresSession: true;
-  sensitive: true;
   navigationId: "customer.workspaces";
   workspaceId: string;
 };
@@ -232,7 +213,6 @@ export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
     surface: "customer",
     title: "工作空间",
     requiresSession: true,
-    sensitive: true,
     navigationId: "customer.workspaces",
     workspaceId
   };
@@ -255,12 +235,4 @@ export function useConsoleRouter() {
   }, []);
 
   return { path, route: parseConsoleRoute(path), navigate };
-}
-
-export function isKnownConsoleRoute(path: string) {
-  return parseConsoleRoute(path) !== null;
-}
-
-export function isSensitiveConsoleRoute(path: string) {
-  return parseConsoleRoute(path)?.sensitive ?? false;
 }

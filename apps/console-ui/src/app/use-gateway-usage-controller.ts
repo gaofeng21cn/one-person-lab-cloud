@@ -60,7 +60,6 @@ export function useGatewayUsageController({
   const usageGeneration = useRef(0);
   const summaryGeneration = useRef(0);
   const selectedKeyRef = useRef<GatewayKeySummaryDTO | null>(null);
-  const selectedKeyIdRef = useRef("");
   const periodRef = useRef<GatewayUsagePeriod>("month");
   const keyQueryRef = useRef({ page: 1, search: "" });
   const usageTargetPageRef = useRef(1);
@@ -84,7 +83,6 @@ export function useGatewayUsageController({
 
   const clearSelection = useCallback((status: KeySelectionStatus = "idle") => {
     selectedKeyRef.current = null;
-    selectedKeyIdRef.current = "";
     setSelection({ key: null, status });
     clearResults();
   }, [clearResults]);
@@ -115,7 +113,7 @@ export function useGatewayUsageController({
     keyId: string,
     requestedPeriod: GatewayUsagePeriod
   ) => requestOwnsScope(userId, csrfToken)
-    && selectedKeyIdRef.current === keyId
+    && selectedKeyRef.current?.id === keyId
     && periodRef.current === requestedPeriod, [requestOwnsScope]);
 
   const loadSummary = useCallback(async (
@@ -228,7 +226,6 @@ export function useGatewayUsageController({
       }
       const firstKey = result.data.items[0];
       selectedKeyRef.current = firstKey;
-      selectedKeyIdRef.current = firstKey.id;
       setSelection({ key: firstKey, status: "ready" });
       await loadScope(session, firstKey.id, periodRef.current);
       return;
@@ -242,7 +239,7 @@ export function useGatewayUsageController({
     try {
       const result = await getGatewayKey(selectedKey.id);
       if (generation !== selectionGeneration.current
-        || selectedKeyIdRef.current !== selectedKey.id
+        || selectedKeyRef.current?.id !== selectedKey.id
         || !requestOwnsScope(userId, csrfToken)) return;
       if (!result.available || result.data.id !== selectedKey.id) {
         setSelection({ key: selectedKey, status: "unavailable" });
@@ -253,7 +250,7 @@ export function useGatewayUsageController({
       await loadScope(session, result.data.id, periodRef.current);
     } catch (error) {
       if (generation !== selectionGeneration.current
-        || selectedKeyIdRef.current !== selectedKey.id
+        || selectedKeyRef.current?.id !== selectedKey.id
         || !requestOwnsScope(userId, csrfToken)) return;
       if (apiErrorCode(error) === "gateway_key_not_found") {
         clearSelection("missing");
@@ -271,14 +268,13 @@ export function useGatewayUsageController({
     if (!activeRef.current || !session || !selectedKey) return;
     selectionGeneration.current += 1;
     selectedKeyRef.current = selectedKey;
-    selectedKeyIdRef.current = keyId;
     setSelection({ key: selectedKey, status: "ready" });
     await loadScope(session, keyId, periodRef.current);
   }, [currentSession, keys.value, loadScope]);
 
   const selectPeriod = useCallback(async (nextPeriod: GatewayUsagePeriod) => {
     const session = currentSession();
-    const keyId = selectedKeyIdRef.current;
+    const keyId = selectedKeyRef.current?.id;
     if (!activeRef.current || !session || !keyId || nextPeriod === periodRef.current) return;
     periodRef.current = nextPeriod;
     setPeriod(nextPeriod);
@@ -287,7 +283,7 @@ export function useGatewayUsageController({
 
   const changePage = useCallback(async (nextPage: number) => {
     const session = currentSession();
-    const keyId = selectedKeyIdRef.current;
+    const keyId = selectedKeyRef.current?.id;
     if (!activeRef.current || !session || !keyId || nextPage < 1) return;
     await loadUsage(session, keyId, nextPage, periodRef.current);
   }, [currentSession, loadUsage]);
@@ -314,14 +310,14 @@ export function useGatewayUsageController({
 
   const retrySummary = useCallback(async () => {
     const session = currentSession();
-    const keyId = selectedKeyIdRef.current;
+    const keyId = selectedKeyRef.current?.id;
     if (!activeRef.current || !session || !keyId) return;
     await loadSummary(session, keyId, periodRef.current);
   }, [currentSession, loadSummary]);
 
   const retryUsage = useCallback(async () => {
     const session = currentSession();
-    const keyId = selectedKeyIdRef.current;
+    const keyId = selectedKeyRef.current?.id;
     if (!activeRef.current || !session || !keyId) return;
     await loadUsage(session, keyId, usageTargetPageRef.current, periodRef.current);
   }, [currentSession, loadUsage]);

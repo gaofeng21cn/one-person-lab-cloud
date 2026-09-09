@@ -3,8 +3,6 @@ import { afterEach, test } from "node:test";
 
 import * as authApi from "../../apps/console-ui/src/api/auth-api.ts";
 import * as readApi from "../../apps/console-ui/src/api/console-read-api.ts";
-import { isSensitiveConsoleRoute } from "../../apps/console-ui/src/app/console-router.ts";
-import { maskGatewayKey } from "../../apps/console-ui/src/console-model.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -120,22 +118,6 @@ test("logout remains unconfirmed when readback is unavailable", async () => {
     reason: "readback_unavailable",
     session: null
   });
-});
-
-test("API Key cleanup removes the raw value", () => {
-  const revealed = { id: "41", name: "personal", status: "active" as const, value: "sk-raw" };
-  assert.deepEqual(maskGatewayKey(revealed), { ...revealed, value: "" });
-});
-
-test("sensitive routes are classified by their public route behavior", () => {
-  assert.equal(isSensitiveConsoleRoute("/console/api"), true);
-  assert.equal(isSensitiveConsoleRoute("/console/api/keys"), true);
-  assert.equal(isSensitiveConsoleRoute("/console/workspaces/ws-1"), true);
-  assert.equal(isSensitiveConsoleRoute("/console/gateway/keys/"), true);
-  assert.equal(isSensitiveConsoleRoute("/console/billing"), false);
-  assert.equal(isSensitiveConsoleRoute("/console/api/unknown"), false);
-  assert.equal(isSensitiveConsoleRoute("/console/workspaces/ws-1/extra"), false);
-  assert.equal(isSensitiveConsoleRoute("/console/workspaces/%E0%A4%A"), false);
 });
 
 test("balance history requests one explicit page", async () => {
