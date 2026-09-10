@@ -32,7 +32,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 | D2 local reconciliation and customer billing | The retained 2026-09-08 cumulative worktree passes `verify:local:full` with zero PostgreSQL skips; original purchase/renewal/refund HTTP chains, pending and recovery, exact receipt lookup beyond 10k history, historical schema-2 financial readback, race checks and desktop/mobile billing tests pass | Canonical merge, actual Gateway adoption, a deployed Candidate or Tencent/TKE production qualification |
 | D3 local Launch recovery and capacity | Provider-neutral original-result recovery, bounded scheduling, and failed-Launch closure are implemented. Focused business, HTTP, restart and race tests plus `verify:local:full` pass; exact Key identity, five resource absence facts, original-account refund budget, and Ledger closeout receipt are covered | Actual Tencent cloud capacity, Instance adoption or deployment |
 | D4 local lifecycle | Expiry stops original Runtime use; explicit recovery preserves original period, transaction and resources; service-authorized Delete continues after restart and confirms residual absence plus Receipt. Focused PostgreSQL, race, HTTP and desktop/mobile business tests plus `verify:local:full` pass with zero required PostgreSQL skips | Actual Tencent/TKE lifecycle, production Gateway adoption or deployment |
-| D1 isolated Sub2API | Cloud's real HTTP client and isolated patched Sub2API pass original-transaction lookup, atomic insufficient-balance rejection, concurrent debit/refund, response-loss recovery and historical unverified-debit rejection | Production Gateway byte identity or adoption; a local patched image is not a published upstream release |
+| Native Sub2API 0.2.4 integration | The unmodified official image passes isolated debit/refund/history, lost-refund-response recovery, historical unverified-debit rejection and concurrent full-amount debit checks. Focused PostgreSQL business and race checks cover Key retention and once-only monetary dispatch; the exact source snapshot and full-check results are retained below | Production adoption, real customer-money or provider qualification; older patched-Gateway evidence is historical |
 | Public endpoint | On 2026-08-31, `https://cloud.medopl.com/` and `/api/healthz` both returned HTTP `200` | Login, purchase, Workspace lifecycle, provider health, or billing correctness |
 | Local runtime | Retained 2026-08-19 Linux/arm64 runs exercised customer-owned and platform-owned Local-Docker Workspace paths, including real model use and restart | One exact-current clean-host create/read/use/delete journey |
 | Public Product Release | `v0.1.7`, product SHA `a59bde68397528186a5220f73195fa1f3eda311b`, GHCR digest `sha256:e64504731f8b61c0864cf59faa647a1150e8a2a5eada34b26faf3a5487d28e8f`, five public assets | Current `main`, the current ten-asset Candidate format, or current Instance qualification |
@@ -110,13 +110,36 @@ The detailed dependency and operation boundaries remain in
 
 ## Retained Runtime Evidence
 
+Native Sub2API 0.2.4 integration evidence is retained at
+`/Users/huangrende/Documents/ChatGPT/native-sub2api-024-20260910/VALIDATION.md`,
+with `cloud.patch`, `source-manifest.json`, exact official image identity and
+verification logs. The source baseline is
+`8c52625d98fffc06e944efccb539e923ba9f2001`. Four tests against the unmodified
+official image cover native debit/refund/history, lost refund response with
+read-only recovery, unverified historical debit rejection and concurrent
+insufficient-funds full-debit rejection. Focused HTTP/PostgreSQL and race tests
+cover retained dispatch reservations, crash/restart, positive audit recovery,
+unknown-money non-replay, original-account refund limits, retained Keys and
+current Rotation-bound Fabric cleanup. Native amount checks reproduce the
+official float64/lib-pq/numeric conversion and reject precision loss before
+HTTP. Full source/browser/PostgreSQL/Docker results are recorded against that
+source snapshot; failed attempts remain separate from passing logs.
+
+All tests run in isolated local stores and containers. The Candidate archive
+and runtime image contain no test account, database, credential or runtime
+volume. Instance PR #263 supplies the native read-only capability and audit
+checks; production settings, deployment, technical health and any paid
+Workspace qualification require their own protected Instance receipts.
+Historical patched-Gateway and Key-revocation tests below do not require
+modifying the current Gateway or cleaning its Keys.
+
 The D1 local finance evidence is retained outside Git at
 `/Users/huangrende/Documents/ChatGPT/d1-delivery-20260908/VALIDATION.md` and its
 `logs/` and `sub2api/` artifacts. The business chains use real Control Plane,
 HTTP clients, PostgreSQL and Ledger, with explicit Sub2API/Fabric fixtures.
 They exercise concurrent partial refunds, account/amount conflicts, response
 loss, restart and receipt-only recovery. Isolated real Sub2API evidence is a
-separate layer; its applied-amount patch must precede Cloud adoption. Historical
+historical patched-Gateway layer, superseded by the native 0.2.4 integration decision. Historical
 transactions without a verified applied amount remain unverified. The actual
 production Gateway image identity and adoption are still an Instance obligation.
 
@@ -150,7 +173,8 @@ original-order return and ordinary administrator recovery without technical
 budgets. Test stores and evidence remain outside production state.
 
 D3 local failed-Launch closure is complete. The original operation is frozen by
-CAS, exact Key identity is revoked through the Sub2API service boundary, all
+CAS; the historical implementation revoked exact Key identity. The current
+closeout retains Gateway Keys while all
 five owner resources must read back absent, the original-account refund shares
 the existing reservation budget, and Ledger records the append-only closeout
 receipt. Unknown money, Key, or provider ownership remains pending. The
@@ -170,8 +194,8 @@ separately cover delayed Machine ownership, partial CBS binding, independent
 Gateway Secret cleanup and queued-order cancellation without releasing an
 unknown head. The real isolated patched Sub2API proves exact revocation,
 disabled-Key identity lookup, cache-failure recovery, service restart and
-fifty-user creation/revocation races. Its D1+D3 patch must be adopted before
-the Cloud consumer. These tests do not certify production Gateway multi-node
+fifty-user creation/revocation races. That patched-Gateway evidence is historical;
+the current adoption target keeps Gateway unmodified and retains Keys. These tests do not certify production Gateway multi-node
 cache convergence or actual Tencent resource capacity.
 
 D4 local lifecycle evidence is retained at
@@ -182,10 +206,11 @@ real Control Plane HTTP and PostgreSQL with explicit local wallet/provider
 fixtures. Focused tests cover response loss, competing processes, repaired
 Runtime identity, historical expiry, precise worker wakeup, and existing
 WebSocket termination. Delete tests cover no-session background continuation,
-late compute absence beyond the old read limit, exact disabled-Key revocation,
-partial Runtime objects, owner isolation and receipt-only recovery. Independent
-HTTP tests validate the new Fabric power capability and exact Sub2API deletion
-read. Tencent adapter tests use isolated Kubernetes/Tencent IO and persisted
+late compute absence beyond the old read limit, the historical disabled-Key
+revocation path, partial Runtime objects, owner isolation and receipt-only
+recovery. The native 0.2.4 decision supersedes that Key cleanup requirement.
+Independent HTTP tests validated the Fabric power capability and historical
+Sub2API deletion read. Tencent adapter tests use isolated Kubernetes/Tencent IO and persisted
 owner journals; they do not access the real provider.
 
 The final `verify:local:full` passes all source/browser/build checks and all four

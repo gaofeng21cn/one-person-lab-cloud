@@ -258,7 +258,7 @@ func validWorkspaceLaunchReceipt(input ReceiptInput) bool {
 }
 
 func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
-	if !validCanonicalWorkspaceResourceReceiptIdentity(input) || input.IdempotencyKey != input.RequestID+":deletion-receipt" || len(input.InputRefs) != 1 || len(input.OutputRefs) != 7 || len(input.Cost) != 0 || input.SupersedesReceiptID != "" ||
+	if !validCanonicalWorkspaceResourceReceiptIdentity(input) || input.IdempotencyKey != input.RequestID+":deletion-receipt" || len(input.InputRefs) != 1 || len(input.OutputRefs) != 6 && !(len(input.OutputRefs) == 7 && input.OutputRefs["workspaceKeyStatus"] == "absent") || len(input.Cost) != 0 || input.SupersedesReceiptID != "" ||
 		len(input.Actor) != 0 || len(input.Plan) != 0 || len(input.Environment) != 0 || len(input.ReviewerChecks) != 0 || len(input.Continuation) != 0 {
 		return false
 	}
@@ -266,7 +266,7 @@ func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
 	if !launchReceiptOK || !isOpaqueReference(launchReceiptID) {
 		return false
 	}
-	for _, field := range []string{"runtimeStatus", "gatewaySecretStatus", "attachmentStatus", "storageStatus", "computeStatus", "workspaceKeyStatus", "workspaceStatus"} {
+	for _, field := range []string{"runtimeStatus", "gatewaySecretStatus", "attachmentStatus", "storageStatus", "computeStatus", "workspaceStatus"} {
 		if input.OutputRefs[field] != "absent" {
 			return false
 		}

@@ -102,8 +102,8 @@ test("Workspace launch statuses produce exact customer outcomes", () => {
       status: "manual_review",
       expected: {
         kind: "manual_review",
-        title: "需要人工处理",
-        summary: "订单已保留，工作人员正在处理，请稍后刷新状态。",
+        title: "订单待核验",
+        summary: "原订单已保留，请勿重复购买。核验结果后再继续处理，可稍后刷新查看。",
         tone: "warning",
         canOpenWorkspace: false
       }

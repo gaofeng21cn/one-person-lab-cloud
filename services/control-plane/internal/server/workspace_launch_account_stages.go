@@ -170,8 +170,13 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchDebit(ctx c
 	}
 	entry, found := history[code]
 	if !found {
+		// The native Gateway can commit a debit without retaining its audit row.
+		// Once dispatch is reserved, missing history never authorizes another debit.
 		if workspaceLaunchDebitReadbackCanConverge(operation) {
 			return workspaceLaunchStageObservation{State: workspaceLaunchStagePending}, nil
+		}
+		if operation.Attempts[contracts.StageDebit].Attempted > 0 || operation.boolFact("chargeAttempted") {
+			return workspaceLaunchStageObservation{State: workspaceLaunchStageUnknown}, nil
 		}
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
 	}

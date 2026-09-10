@@ -1444,7 +1444,7 @@ func (s *workspaceAdjustmentHistorySub2API) FinancialBalanceHistoryByCodes(ctx c
 	return matches, err
 }
 
-func TestWorkspaceRenewalRetriesStableRefundCodeWhenAttemptHistoryMissing(t *testing.T) {
+func TestWorkspaceRenewalMissingRefundHistoryRequiresReviewWithoutAnotherRefund(t *testing.T) {
 	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
 	fixture.fabric.computeRenewErr = errors.New("provider response lost")
 	fixture.fabric.computeSync = clients.ComputeAllocation{ID: stringValue(fixture.compute["id"]), AccountID: "acct-monthly", WorkspaceID: "workspace-monthly", Status: "external_deleted"}
@@ -1458,9 +1458,10 @@ func TestWorkspaceRenewalRetriesStableRefundCodeWhenAttemptHistoryMissing(t *tes
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
 		t.Fatal(err)
 	}
-	if len(fixture.sub2API.refunds) != 2 || fixture.sub2API.refunds[0].Code != fixture.sub2API.refunds[1].Code || gateway.historyCalls != 3 ||
-		len(fixture.sub2API.charges) != 1 || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.ledger.receipts) != 1 {
-		t.Fatalf("refund replay history=%d refunds=%#v charges=%#v compute=%#v receipts=%#v", gateway.historyCalls, fixture.sub2API.refunds, fixture.sub2API.charges, fixture.fabric.computeRenewKeys, fixture.ledger.receipts)
+	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
+	if err != nil || operation.Status != "manual_review" || operation.ErrorCode != "sub2api_refund_unconfirmed" ||
+		len(fixture.sub2API.refunds) != 1 || len(fixture.sub2API.charges) != 1 || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.ledger.receipts) != 0 {
+		t.Fatalf("unconfirmed refund was replayed: operation=%#v refunds=%#v receipts=%#v err=%v", operation, fixture.sub2API.refunds, fixture.ledger.receipts, err)
 	}
 }
 
@@ -1636,6 +1637,13 @@ func TestWorkspaceRenewalRestartsFromEveryPersistedPhase(t *testing.T) {
 				t.Fatal(err)
 			}
 			completed := replay.operation(t)
+			if operation.ChargeAttempted && operation.ChargeConfirmation == nil {
+				if completed["status"] != "manual_review" || len(replay.sub2API.charges) != 0 || len(replay.fabric.computeRenewKeys) != 0 || len(replay.fabric.storageRenewKeys) != 0 || len(replay.ledger.receipts) != 0 {
+					t.Fatalf("reserved debit without evidence was replayed: %#v", completed)
+				}
+				return
+			}
+
 			if completed["status"] != "active" {
 				t.Fatalf("restart did not complete: %#v", completed)
 			}
@@ -1673,7 +1681,7 @@ func TestWorkspaceRenewalRecoversLostDebitResponseFromBalanceHistoryBeforeBalanc
 	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now); err != nil {
 		t.Fatal(err)
 	}
-	if len(gateway.codes) != 1 || gateway.historyCalls != 1 || fixture.operation(t)["status"] != "active" || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.fabric.storageRenewKeys) != 1 || len(fixture.ledger.receipts) != 1 {
+	if len(gateway.codes) != 1 || gateway.historyCalls == 0 || fixture.operation(t)["status"] != "active" || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.fabric.storageRenewKeys) != 1 || len(fixture.ledger.receipts) != 1 {
 		t.Fatalf("lost-response recovery codes=%#v history=%d operation=%#v compute=%#v storage=%#v receipts=%#v", gateway.codes, gateway.historyCalls, fixture.operation(t), fixture.fabric.computeRenewKeys, fixture.fabric.storageRenewKeys, fixture.ledger.receipts)
 	}
 }

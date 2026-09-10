@@ -831,7 +831,7 @@ func TestWorkspaceLaunchAutomaticComputeOwnershipAuthorizationClassifiesIneligib
 
 func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
-		t.Run(string(stage)+"/absent replays one logical claim", func(t *testing.T) {
+		t.Run(string(stage)+"/absence follows owner replay policy", func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 			authorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-"+string(stage))
 			store := &workspaceLaunchUnitStore{row: row}
@@ -841,6 +841,12 @@ func TestWorkspaceLaunchReservedStageReplayMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			attempt := got.Attempts[stage]
+			if stage == contracts.StageDebit {
+				if got.Status != contracts.StatusManualReview || got.Stage != stage || attempt.Attempted != 1 || attempt.Confirmed != 0 || adapter.mutations != 0 || len(got.IdempotentReplayClaims) != 0 {
+					t.Fatalf("unconfirmed debit was replayed: operation=%s mutations=%d", workspaceLaunchReconcileResultSummary(got), adapter.mutations)
+				}
+				return
+			}
 			if attempt.Attempted != 1 || attempt.Max != 1 || attempt.Confirmed != 1 || attempt.Unknown != 0 || attempt.Status != "confirmed" ||
 				adapter.mutationsByStage[string(stage)] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey ||
 				got.IdempotentReplayClaims[stage].AuthorizationID != authorization.AuthorizationID {
@@ -3246,30 +3252,30 @@ func TestWorkspaceLaunchFreshTypedPendingStateAndClaimDriftIsRejected(t *testing
 }
 
 func TestWorkspaceLaunchReservedStageReplayCannotBeAuthorizedTwice(t *testing.T) {
-	row := workspaceLaunchReservedStageManualReviewRow(t, "debit")
-	store, adapter := &workspaceLaunchUnitStore{row: row}, &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"debit": true}}
+	row := workspaceLaunchReservedStageManualReviewRow(t, "storage")
+	store, adapter := &workspaceLaunchUnitStore{row: row}, &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"storage": true}}
 	reconciler := NewWorkspaceLaunchReconciler(store, adapter)
-	firstAuthorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-debit-first")
+	firstAuthorization := workspaceLaunchReservedStageAuthorization(t, row, "resume-storage-first")
 	first, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, firstAuthorization)
 	if err != nil || adapter.mutations != 1 {
 		t.Fatalf("first recovery failed: operation=%s mutations=%d err=%v", workspaceLaunchReconcileResultSummary(first), adapter.mutations, err)
 	}
 
-	first.Stage = "debit"
+	first.Stage = "storage"
 	first.Status = "manual_review"
-	attempt := first.Attempts["debit"]
+	attempt := first.Attempts["storage"]
 	attempt.Attempted, attempt.Confirmed, attempt.Unknown, attempt.Status = 1, 0, 0, "reserved"
-	first.Attempts["debit"] = attempt
-	first.Observations["debit"] = workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}
+	first.Attempts["storage"] = attempt
+	first.Observations["storage"] = workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}
 	store.row, err = workspaceLaunchReconcileOperationRow(first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter.readyStages["debit"] = false
-	secondAuthorization := workspaceLaunchReservedStageAuthorization(t, store.row, "resume-debit-second")
+	adapter.readyStages["storage"] = false
+	secondAuthorization := workspaceLaunchReservedStageAuthorization(t, store.row, "resume-storage-second")
 	persistedBefore := stringValue(store.row["result"])
 	if _, err = reconciler.Resume(context.Background(), first.ID, secondAuthorization); !errors.Is(err, errWorkspaceLaunchGrantConflict) || adapter.mutations != 1 || stringValue(store.row["result"]) != persistedBefore {
-		t.Fatalf("second recovery authorization changed debit: mutations=%d err=%v", adapter.mutations, err)
+		t.Fatalf("second recovery authorization changed storage: mutations=%d err=%v", adapter.mutations, err)
 	}
 }
 
@@ -3302,7 +3308,11 @@ func TestWorkspaceLaunchReservedStageReplayCASAllowsOneWriter(t *testing.T) {
 					t.Fatalf("unexpected concurrent recovery error: %v", err)
 				}
 			}
-			if successes != 1 || conflicts != 1 || adapter.mutationsByStage[string(stage)] != 1 {
+			wantMutations := 1
+			if stage == contracts.StageDebit {
+				wantMutations = 0
+			}
+			if successes != 1 || conflicts != 1 || adapter.mutationsByStage[string(stage)] != wantMutations {
 				t.Fatalf("successes=%d conflicts=%d %s mutations=%d", successes, conflicts, stage, adapter.mutationsByStage[string(stage)])
 			}
 		})
@@ -3311,6 +3321,9 @@ func TestWorkspaceLaunchReservedStageReplayCASAllowsOneWriter(t *testing.T) {
 
 func TestWorkspaceLaunchReservedStageReplaySurvivesCrashBeforeTransportSend(t *testing.T) {
 	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+		if stage == contracts.StageDebit {
+			continue
+		}
 		t.Run(string(stage), func(t *testing.T) {
 			row := workspaceLaunchReservedStageManualReviewRow(t, stage)
 			store := &workspaceLaunchUnitStore{row: row}
@@ -3350,6 +3363,9 @@ func TestWorkspaceLaunchReservedStageReplaySurvivesCrashBeforeTransportSend(t *t
 func TestWorkspaceLaunchReservedStageReplayPostReadMatrix(t *testing.T) {
 	mutationErr := errors.New("transport response lost")
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+		if stage == contracts.StageDebit {
+			continue
+		}
 		nextStage := workspaceLaunchReconcileStages[stageIndex+1]
 		readyStatus := contracts.StatusPending
 		if nextStage == contracts.StageSucceeded {
@@ -3395,6 +3411,9 @@ func TestWorkspaceLaunchReservedStageReplayPostReadMatrix(t *testing.T) {
 
 func TestWorkspaceLaunchPendingReadbackIsBoundedAndCanConvergeReadOnly(t *testing.T) {
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+		if stage == contracts.StageDebit {
+			continue
+		}
 		nextStage := workspaceLaunchReconcileStages[stageIndex+1]
 		readyStatus := contracts.StatusPending
 		if nextStage == contracts.StageSucceeded {
@@ -3504,6 +3523,11 @@ func TestWorkspaceLaunchRecoveryAtEveryStageContinuesOriginalOperationToSucceede
 			row := workspaceLaunchReservedStageManualReviewRow(t, failedStage)
 			store := &workspaceLaunchUnitStore{row: row}
 			adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{string(failedStage): true}}
+			if failedStage == contracts.StageDebit {
+				// The existing debit audit is sufficient to resume the same purchase;
+				// recovery must not dispatch another wallet mutation.
+				adapter.readyStages = map[string]bool{string(contracts.StageDebit): true}
+			}
 			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
 			got, err := reconciler.Resume(context.Background(), workspaceLaunchUnitCommand().OperationID, workspaceLaunchReservedStageAuthorization(t, row, "resume-terminal-"+string(failedStage)))
 			for err == nil && got.Status == "pending" {
@@ -3511,6 +3535,9 @@ func TestWorkspaceLaunchRecoveryAtEveryStageContinuesOriginalOperationToSucceede
 			}
 			if err != nil || got.Status != "succeeded" || got.Stage != "succeeded" || got.ID != workspaceLaunchUnitCommand().OperationID || got.stringFact("workspaceId") != workspaceLaunchUnitCommand().WorkspaceID {
 				t.Fatalf("recovery did not reach terminal: operation=%s mutations=%#v err=%v", workspaceLaunchReconcileResultSummary(got), adapter.mutationsByStage, err)
+			}
+			if failedStage == contracts.StageDebit && adapter.mutationsByStage[string(contracts.StageDebit)] != 0 {
+				t.Fatal("debit audit recovery wrote the wallet")
 			}
 			for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
 				if adapter.mutationsByStage[string(stage)] > 1 {
@@ -4596,5 +4623,79 @@ func TestWorkspaceLaunchResumeAuthorizationDigestBindsImmutableAuthorization(t *
 	authorization.Reason = "different authorization"
 	if second := workspaceLaunchResumeAuthorizationDigest(authorization); second == first {
 		t.Fatalf("authorization drift retained digest=%q", second)
+	}
+}
+
+func TestWorkspaceLaunchDebitDispatchReservationSurvivesCrashWithoutReplay(t *testing.T) {
+	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Stage, operation.Status = contracts.StageDebit, contracts.StatusPending
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+	adapter := &workspaceLaunchUnitAdapter{replayableStages: map[string]bool{"debit": true}, panicBeforeMutations: map[string]int{"debit": 1}}
+	startedAt := time.Date(2026, 9, 10, 4, 0, 0, 0, time.UTC)
+	first := NewWorkspaceLaunchReconciler(store, adapter)
+	first.now = func() time.Time { return startedAt }
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected crash after durable initial debit reservation")
+			}
+		}()
+		_, _ = first.Reconcile(context.Background(), operation.ID)
+	}()
+	reserved, err := decodeWorkspaceLaunchReconcileOperation(store.row)
+	if err != nil || reserved.Attempts[contracts.StageDebit].Attempted != 1 || reserved.Attempts[contracts.StageDebit].Status != "reserved" || adapter.mutations != 0 {
+		t.Fatalf("reservation=%s err=%v", workspaceLaunchReconcileResultSummary(reserved), err)
+	}
+	restarted := NewWorkspaceLaunchReconciler(store, adapter)
+	restarted.now = func() time.Time { return startedAt.Add(workspaceLaunchIdempotentReplayLease + time.Second) }
+	stopped, err := restarted.Reconcile(context.Background(), operation.ID)
+	if err != nil || stopped.Status != contracts.StatusManualReview || stopped.Stage != contracts.StageDebit || adapter.mutations != 0 || stopped.Attempts[contracts.StageDebit].IdempotencyKey != reserved.Attempts[contracts.StageDebit].IdempotencyKey {
+		t.Fatalf("restart replayed uncertain debit: operation=%s writes=%d err=%v", workspaceLaunchReconcileResultSummary(stopped), adapter.mutations, err)
+	}
+	for range 3 {
+		if _, err := restarted.Reconcile(context.Background(), operation.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if adapter.mutations != 0 {
+		t.Fatal("worker repeated reserved debit without authoritative evidence")
+	}
+}
+
+func TestWorkspaceLaunchDebitResultCheckRequiresPositiveAuditAndNeverMutates(t *testing.T) {
+	for _, state := range []contracts.StageState{workspaceLaunchStageAbsent, workspaceLaunchStagePending, workspaceLaunchStageUnknown, workspaceLaunchStageReady} {
+		t.Run(string(state), func(t *testing.T) {
+			row := workspaceLaunchReservedStageManualReviewRow(t, contracts.StageDebit)
+			observation := workspaceLaunchStageObservation{State: state}
+			if state == workspaceLaunchStageReady {
+				observation.Facts = workspaceLaunchReadyFacts(contracts.StageDebit)
+			}
+			adapter := &workspaceLaunchUnitAdapter{stageObservations: map[string]workspaceLaunchStageObservation{"debit": observation}, replayableStages: map[string]bool{"debit": true}}
+			store := &workspaceLaunchValidatingUnitStore{workspaceLaunchUnitStore: &workspaceLaunchUnitStore{row: row}}
+			authorization := workspaceLaunchReservedStageAuthorization(t, row, "check-debit-"+string(state))
+			authorization.IdempotentReplayBudget = 0
+			reconciler := NewWorkspaceLaunchReconciler(store, adapter)
+			checked, err := reconciler.CheckResult(context.Background(), workspaceLaunchUnitCommand().OperationID, authorization)
+			if err != nil || adapter.mutations != 0 || adapter.reads != 1 || len(checked.ResultChecks) != 1 || checked.Attempts[contracts.StageDebit].Attempted != 1 {
+				t.Fatalf("check=%s reads=%d writes=%d err=%v", workspaceLaunchReconcileResultSummary(checked), adapter.reads, adapter.mutations, err)
+			}
+			if state == workspaceLaunchStageReady {
+				if checked.Stage != contracts.StageCompute || checked.Attempts[contracts.StageDebit].Confirmed != 1 {
+					t.Fatal("positive debit audit did not resume purchase")
+				}
+			} else if checked.Status != contracts.StatusManualReview || checked.Stage != contracts.StageDebit || checked.Attempts[contracts.StageDebit].Confirmed != 0 {
+				t.Fatal("missing audit was treated as a confirmed or retryable debit")
+			}
+			if _, err := reconciler.CheckResult(context.Background(), checked.ID, authorization); err != nil || adapter.reads != 1 || adapter.mutations != 0 {
+				t.Fatalf("replayed result check repeated owner work: %v", err)
+			}
+		})
 	}
 }

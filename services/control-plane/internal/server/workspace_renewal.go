@@ -937,12 +937,7 @@ func (app *controlPlaneServer) debitWorkspaceRenewal(ctx context.Context, servic
 			row := map[string]any{"sub2apiRedeemCode": operation.RedeemCode, "chargeUsdMicros": operation.TotalUSDMicros}
 			switch code := sub2APIReconciliationCode(row, userID, history); {
 			case code == "sub2api_charge_missing":
-				if err := app.workspaceRenewalDebitEligible(ctx, service, operation, now); err != nil {
-					return err
-				}
-				charge, err = service.ChargeSub2API(ctx, clients.Sub2APIChargeInput{
-					UserID: userID, Code: operation.RedeemCode, ChargeUSDMicros: operation.TotalUSDMicros, Notes: "OPL Workspace monthly " + operation.WorkspaceID,
-				})
+				return app.manualReviewWorkspaceRenewal(ctx, operation, "sub2api_charge_unconfirmed")
 			case code != "":
 				return app.manualReviewWorkspaceRenewal(ctx, operation, code)
 			default:
@@ -1129,6 +1124,12 @@ func (app *controlPlaneServer) refundWorkspaceRenewal(ctx context.Context, servi
 	}
 	recoverAttempt := operation.RefundAttempted
 	if !operation.RefundAttempted {
+		if sourceErr := confirmWorkspaceRenewalOriginalCharge(ctx, service, *operation, userID); sourceErr != nil {
+			if errors.Is(sourceErr, clients.ErrSub2APIChargeConflict) {
+				return app.manualReviewWorkspaceRenewal(ctx, operation, "sub2api_refund_source_mismatch")
+			}
+			return app.retryWorkspaceRenewal(ctx, operation, "sub2api_refund_source_unavailable", sourceErr)
+		}
 		operation.Status, operation.Phase, operation.RefundAttempted, operation.RefundReason, operation.ErrorCode = "refund_pending", "refund", true, reason, ""
 		if err := app.persistWorkspaceRenewal(ctx, operation, nil); err != nil {
 			return err
@@ -1147,13 +1148,10 @@ func (app *controlPlaneServer) refundWorkspaceRenewal(ctx context.Context, servi
 			refund = clients.Sub2APIRefund{Code: operation.RefundCode, UserID: userID, RefundUSDMicros: operation.TotalUSDMicros, Status: "used"}
 		}
 	}
+	if recoverAttempt && refund.Code == "" {
+		return app.manualReviewWorkspaceRenewal(ctx, operation, "sub2api_refund_unconfirmed")
+	}
 	if refund.Code == "" {
-		if sourceErr := confirmWorkspaceRenewalOriginalCharge(ctx, service, *operation, userID); sourceErr != nil {
-			if errors.Is(sourceErr, clients.ErrSub2APIChargeConflict) {
-				return app.manualReviewWorkspaceRenewal(ctx, operation, "sub2api_refund_source_mismatch")
-			}
-			return app.retryWorkspaceRenewal(ctx, operation, "sub2api_refund_source_unavailable", sourceErr)
-		}
 		refund, err = service.RefundSub2API(ctx, clients.Sub2APIRefundInput{
 			UserID: userID, Code: operation.RefundCode, RefundUSDMicros: operation.TotalUSDMicros, Notes: "OPL Workspace renewal refund " + operation.WorkspaceID,
 		})

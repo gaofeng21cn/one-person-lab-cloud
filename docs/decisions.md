@@ -4,6 +4,25 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-10: Integrate The Unmodified Gateway Through Its Native APIs
+
+Cloud integrates official Sub2API 0.2.4 without modifying Gateway source, images,
+database schema, or settings. Workspace deletion and failed-Launch closeout
+retain Gateway Keys; they remove Cloud/Fabric resources and injected Secrets.
+A retained Key remains managed and metered by the Gateway account owner.
+Unpaid expiry still closes Cloud access and stops the original Runtime.
+
+Cloud reserves each wallet dispatch on its existing durable operation and uses
+the native atomic admin balance adjustment. Recovery reads the original audit
+record; a missing record after reservation remains pending or manual review and
+never authorizes another debit or refund. Operator recovery also remains read-only.
+Refunds preserve the original account and reserved refund limit and require
+readback that native admin adjustments cannot award an affiliate rebate.
+
+The previous patched-Gateway approach is historical test evidence, not an
+Instance adoption requirement. The native API wire binding belongs to
+[implementation architecture](./implementation-architecture.md).
+
 ## 2026-08-20: Cloud Owns The Product; Instances Own Installations
 
 `one-person-lab-cloud` is the single product and implementation repository for

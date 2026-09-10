@@ -49,9 +49,9 @@ type authoritativeReplayConfig struct {
 
 func authoritativeHistoryEntry(code, value string) map[string]any {
 	return map[string]any{
-		"code": code, "type": "balance", "value": json.RawMessage(value), "status": "used", "used_by": 41,
-		"balance_applied_value": json.RawMessage(value),
-		"used_at":               "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
+		"code": "admin-audit-" + code, "type": "admin_balance", "notes": "OPL Cloud balance adjustment: " + code,
+		"value": json.RawMessage(value), "status": "used", "used_by": 41,
+		"used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z",
 	}
 }
 
@@ -88,40 +88,48 @@ func newAuthoritativeReplaySub2API(t *testing.T, config authoritativeReplayConfi
 				"id": 9, "user_id": 41, "name": workspaceReservedKeyName("workspace-monthly"), "key": "workspace-key-secret", "status": "active",
 				"quota": 0, "quota_used": 0, "usage_5h": 0, "usage_1d": 0, "usage_7d": 0,
 			}}, "total": 1, "page": 1, "page_size": 1, "pages": 1})
-		case "/api/v1/admin/redeem-codes/create-and-redeem":
+		case "/api/v1/admin/settings":
+			success(w, map[string]any{"affiliate_enabled": false, "affiliate_admin_recharge_enabled": false})
+		case "/api/v1/admin/users/41/balance":
 			var input struct {
-				Code   string      `json:"code"`
-				Type   string      `json:"type"`
-				Value  json.Number `json:"value"`
-				UserID int64       `json:"user_id"`
+				Balance   json.Number `json:"balance"`
+				Operation string      `json:"operation"`
+				Notes     string      `json:"notes"`
 			}
 			decoder := json.NewDecoder(r.Body)
 			decoder.UseNumber()
-			if err := decoder.Decode(&input); err != nil || input.Code == "" || input.Type != "balance" || input.UserID != 41 || input.Value.String() != config.chargeValue {
+			code := r.Header.Get("Idempotency-Key")
+			err := decoder.Decode(&input)
+			value := input.Balance.String()
+			if input.Operation == "subtract" {
+				value = "-" + value
+			}
+			if err != nil || code == "" || input.Notes != "OPL Cloud balance adjustment: "+code || value != config.chargeValue || (input.Operation != "add" && input.Operation != "subtract") {
 				t.Fatalf("balance adjustment = %#v err=%v", input, err)
 			}
-			fixture.codes = append(fixture.codes, input.Code)
-			fixture.values = append(fixture.values, input.Value.String())
+			fixture.codes = append(fixture.codes, code)
+			fixture.values = append(fixture.values, value)
 			if config.loseFirstResponse && len(fixture.codes) == 1 {
 				fixture.adjusted = true
 				http.Error(w, "response lost after adjustment", http.StatusInternalServerError)
 				return
 			}
-			http.Error(w, "redeem code exists", http.StatusConflict)
-		case "/api/v1/admin/redeem-codes/by-code":
+			success(w, map[string]any{"id": 41})
+		case "/api/v1/admin/users/41/balance-history":
 			fixture.historyCalls++
-			if r.Method != http.MethodGet || len(fixture.codes) == 0 || r.URL.Query().Get("user_id") != "41" || r.URL.Query().Get("code") != fixture.codes[len(fixture.codes)-1] {
-				t.Fatalf("exact transaction request without matching adjustment: %s", r.URL.String())
+			if r.Method != http.MethodGet || r.URL.Query().Get("page") != "1" || r.URL.Query().Get("page_size") != "100" {
+				t.Fatalf("balance history request: %s", r.URL.String())
 			}
 			if config.historyStatus != 0 {
 				http.Error(w, "history unavailable", config.historyStatus)
 				return
 			}
-			code, value := fixture.codes[len(fixture.codes)-1], fixture.values[len(fixture.values)-1]
-			success(w, struct {
-				Lookup     string          `json:"lookup"`
-				RedeemCode json.RawMessage `json:"redeem_code"`
-			}{Lookup: "exact_code_v1", RedeemCode: mustJSON(authoritativeHistoryEntry(code, value))})
+			items := []any{}
+			if len(fixture.codes) > 0 && r.URL.Query().Get("type") == "admin_balance" {
+				code, value := fixture.codes[len(fixture.codes)-1], fixture.values[len(fixture.values)-1]
+				items = append(items, authoritativeHistoryEntry(code, value))
+			}
+			success(w, map[string]any{"items": items, "total": len(items), "page": 1, "page_size": 100, "pages": 1})
 		default:
 			t.Fatalf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
 		}

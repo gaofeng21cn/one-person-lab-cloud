@@ -472,7 +472,7 @@ func TestLedgerHTTPClientValidatesWorkspaceLifecycleReceiptResponse(t *testing.T
 			RequestID: "workspace-operation-alpha", InputRefs: map[string]any{"launchReceiptId": "receipt-launch-alpha"}, Execution: baseExecution,
 			OutputRefs: map[string]any{
 				"runtimeStatus": "absent", "gatewaySecretStatus": "absent", "attachmentStatus": "absent", "storageStatus": "absent",
-				"computeStatus": "absent", "workspaceKeyStatus": "absent", "workspaceStatus": "absent",
+				"computeStatus": "absent", "workspaceStatus": "absent",
 			},
 			Owner: map[string]any{"accountId": "acct-alpha", "workspaceId": "workspace-alpha", "ownerUserId": "usr-alpha"},
 		},

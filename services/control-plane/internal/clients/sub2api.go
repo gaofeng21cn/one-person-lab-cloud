@@ -1820,6 +1820,7 @@ func (c *Sub2APIHTTPClient) BalanceHistoryPage(ctx context.Context, userID int64
 
 type sub2APIBalanceHistoryRecord struct {
 	Code                string       `json:"code"`
+	Notes               string       `json:"notes"`
 	Type                string       `json:"type"`
 	Value               *json.Number `json:"value"`
 	BalanceAppliedValue *json.Number `json:"balance_applied_value"`
@@ -1829,64 +1830,74 @@ type sub2APIBalanceHistoryRecord struct {
 	CreatedAt           *time.Time   `json:"created_at"`
 }
 
-type sub2APIExactBalanceHistoryResponse struct {
-	Lookup     string          `json:"lookup"`
-	RedeemCode json.RawMessage `json:"redeem_code"`
-}
+const sub2APIBalanceAdjustmentNotePrefix = "OPL Cloud balance adjustment: "
 
+// FinancialBalanceHistoryByCodes returns positive owner evidence only. An empty
+// result is never proof that an attempted adjustment did not change the wallet:
+// upstream writes its admin audit record after the atomic balance update.
 func (c *Sub2APIHTTPClient) FinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (map[string]Sub2APIBalanceHistoryEntry, error) {
 	if userID <= 0 || len(codes) == 0 {
-		return nil, errors.New("sub2api user ID and redeem codes are required")
+		return nil, errors.New("sub2api user ID and adjustment codes are required")
 	}
 	targets := make(map[string]struct{}, len(codes))
 	for _, code := range codes {
 		if code == "" || len(code) > 200 || strings.TrimSpace(code) != code {
-			return nil, errors.New("invalid sub2api redeem code")
+			return nil, errors.New("invalid sub2api adjustment code")
 		}
 		targets[code] = struct{}{}
 	}
 	lookupCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	matches := make(map[string]Sub2APIBalanceHistoryEntry, len(targets))
-	for _, code := range codes {
-		if _, wanted := targets[code]; !wanted {
-			continue
-		}
-		delete(targets, code)
-		values := url.Values{"code": {code}, "user_id": {strconv.FormatInt(userID, 10)}}
-		body, err := c.doAuthenticated(lookupCtx, http.MethodGet, "/api/v1/admin/redeem-codes/by-code?"+values.Encode(), nil, "")
-		if err != nil {
-			var httpErr *Sub2APIHTTPError
-			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusConflict {
-				return nil, fmt.Errorf("%w: exact balance adjustment identity differs: %w", ErrSub2APIChargeConflict, err)
+	remoteCodes := make(map[string]string, len(targets))
+	for _, recordType := range []string{"admin_balance", "balance"} {
+		for page := 1; ; page++ {
+			data, err := c.balanceHistoryRecordsPage(lookupCtx, userID, page, 100, recordType)
+			if err != nil {
+				return nil, fmt.Errorf("sub2api balance adjustment history unavailable: %w", err)
 			}
-			return nil, fmt.Errorf("sub2api exact balance adjustment lookup unavailable: %w", err)
+			for _, item := range data.Items {
+				code := item.Code
+				if recordType == "admin_balance" {
+					if !strings.HasPrefix(item.Notes, sub2APIBalanceAdjustmentNotePrefix) {
+						continue
+					}
+					code = strings.TrimPrefix(item.Notes, sub2APIBalanceAdjustmentNotePrefix)
+				}
+				if _, wanted := targets[code]; !wanted {
+					continue
+				}
+				if item.Type != recordType || item.Code == "" || item.Status != "used" || item.UsedBy == nil || *item.UsedBy != userID || item.UsedAt == nil || item.UsedAt.IsZero() {
+					return nil, fmt.Errorf("%w: balance adjustment identity or state differs", ErrSub2APIChargeConflict)
+				}
+				// Normalize the upstream admin adjustment into the existing owner DTO.
+				// Retained redeem records require their original applied-money fact;
+				// official records without it cannot prove a historical full debit.
+				normalized := item
+				normalized.Code, normalized.Type = code, "balance"
+				entry, err := sub2APIBalanceHistoryEntry(normalized, userID)
+				if err != nil || entry.ValueUSDMicros == 0 {
+					return nil, fmt.Errorf("%w: invalid balance adjustment amount", ErrSub2APIChargeConflict)
+				}
+				if recordType == "balance" {
+					if err := confirmSub2APIAppliedValue(item.BalanceAppliedValue, entry.ValueUSDMicros); err != nil {
+						return nil, err
+					}
+				}
+				if previous, exists := matches[code]; exists {
+					// Concurrent insertions can repeat a row across offset pages.
+					// A second actual adjustment with the same operation is a conflict.
+					if remoteCodes[code] != item.Code || previous.ValueUSDMicros != entry.ValueUSDMicros || !previous.CreatedAt.Equal(entry.CreatedAt) || !previous.UsedAt.Equal(*entry.UsedAt) {
+						return nil, fmt.Errorf("%w: duplicate balance adjustment evidence", ErrSub2APIChargeConflict)
+					}
+					continue
+				}
+				matches[code], remoteCodes[code] = entry, item.Code
+			}
+			if page >= data.Pages {
+				break
+			}
 		}
-		var data sub2APIExactBalanceHistoryResponse
-		if err := decodeSub2APIEnvelope(body, &data); err != nil {
-			return nil, err
-		}
-		if data.Lookup != "exact_code_v1" || len(data.RedeemCode) == 0 {
-			return nil, errors.New("sub2api exact balance adjustment lookup contract unavailable")
-		}
-		if bytes.Equal(bytes.TrimSpace(data.RedeemCode), []byte("null")) {
-			continue
-		}
-		var item sub2APIBalanceHistoryRecord
-		if err := json.Unmarshal(data.RedeemCode, &item); err != nil {
-			return nil, fmt.Errorf("%w: invalid exact balance adjustment record", ErrSub2APIChargeConflict)
-		}
-		if item.Code != code || item.Type != "balance" || item.Status != "used" || item.UsedBy == nil || *item.UsedBy != userID || item.UsedAt == nil || item.UsedAt.IsZero() {
-			return nil, fmt.Errorf("%w: exact balance adjustment identity or state differs", ErrSub2APIChargeConflict)
-		}
-		entry, err := sub2APIBalanceHistoryEntry(item, userID)
-		if err != nil {
-			return nil, err
-		}
-		if err := confirmSub2APIAppliedValue(item.BalanceAppliedValue, entry.ValueUSDMicros); err != nil {
-			return nil, err
-		}
-		matches[code] = entry
 	}
 	return matches, nil
 }
@@ -1905,21 +1916,23 @@ func sub2APIBalanceHistoryEntry(item sub2APIBalanceHistoryRecord, userID int64) 
 	return Sub2APIBalanceHistoryEntry{Code: item.Code, Type: item.Type, ValueUSDMicros: value, Status: item.Status, UsedBy: item.UsedBy, UsedAt: item.UsedAt, CreatedAt: *item.CreatedAt}, nil
 }
 
-func (c *Sub2APIHTTPClient) balanceHistoryPage(ctx context.Context, userID int64, page, pageSize int) (Sub2APIBalanceHistoryPage, error) {
-	values := url.Values{"page": {strconv.Itoa(page)}, "page_size": {strconv.Itoa(pageSize)}, "type": {"balance"}}
+type sub2APIBalanceHistoryRecordsPage struct {
+	Items    []sub2APIBalanceHistoryRecord `json:"items"`
+	Total    int64                         `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"page_size"`
+	Pages    int                           `json:"pages"`
+}
+
+func (c *Sub2APIHTTPClient) balanceHistoryRecordsPage(ctx context.Context, userID int64, page, pageSize int, recordType string) (sub2APIBalanceHistoryRecordsPage, error) {
+	values := url.Values{"page": {strconv.Itoa(page)}, "page_size": {strconv.Itoa(pageSize)}, "type": {recordType}}
 	body, err := c.doAuthenticated(ctx, http.MethodGet, "/api/v1/admin/users/"+strconv.FormatInt(userID, 10)+"/balance-history?"+values.Encode(), nil, "")
 	if err != nil {
-		return Sub2APIBalanceHistoryPage{}, err
+		return sub2APIBalanceHistoryRecordsPage{}, err
 	}
-	var data struct {
-		Items    []sub2APIBalanceHistoryRecord `json:"items"`
-		Total    int64                         `json:"total"`
-		Page     int                           `json:"page"`
-		PageSize int                           `json:"page_size"`
-		Pages    int                           `json:"pages"`
-	}
+	var data sub2APIBalanceHistoryRecordsPage
 	if err := decodeSub2APIEnvelope(body, &data); err != nil {
-		return Sub2APIBalanceHistoryPage{}, err
+		return sub2APIBalanceHistoryRecordsPage{}, err
 	}
 	expectedPages := 1
 	expectedItems := 0
@@ -1933,17 +1946,71 @@ func (c *Sub2APIHTTPClient) balanceHistoryPage(ctx context.Context, userID int64
 		}
 	}
 	if data.Total < 0 || data.Page != page || data.PageSize != pageSize || data.Pages != expectedPages || page > data.Pages || len(data.Items) != expectedItems {
+		return sub2APIBalanceHistoryRecordsPage{}, errors.New("invalid sub2api balance history pagination")
+	}
+	return data, nil
+}
+
+func (c *Sub2APIHTTPClient) balanceHistoryPage(ctx context.Context, userID int64, page, pageSize int) (Sub2APIBalanceHistoryPage, error) {
+	if page > maxSub2APIUsagePage {
+		return Sub2APIBalanceHistoryPage{}, errors.New("sub2api balance history page exceeds supported range")
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	needed := page * pageSize
+	upstreamPageSize := min(needed, 100)
+	entries := make([]Sub2APIBalanceHistoryEntry, 0)
+	var total int64
+	// The official endpoint accepts one exact type, not a union. Read only the
+	// prefix needed for this display page from the two monetary record streams.
+	// An unfiltered upstream read would mix subscriptions and concurrency into USD.
+	for _, recordType := range []string{"balance", "admin_balance"} {
+		read := 0
+		for upstreamPage := 1; ; upstreamPage++ {
+			data, err := c.balanceHistoryRecordsPage(lookupCtx, userID, upstreamPage, upstreamPageSize, recordType)
+			if err != nil {
+				return Sub2APIBalanceHistoryPage{}, err
+			}
+			if upstreamPage == 1 {
+				total += data.Total
+			}
+			for _, item := range data.Items {
+				if item.Type != recordType {
+					return Sub2APIBalanceHistoryPage{}, errors.New("invalid sub2api balance history record type")
+				}
+				item.Type = "balance"
+				entry, err := sub2APIBalanceHistoryEntry(item, userID)
+				if err != nil {
+					return Sub2APIBalanceHistoryPage{}, err
+				}
+				entries = append(entries, entry)
+			}
+			read += len(data.Items)
+			if read >= needed || upstreamPage >= data.Pages {
+				break
+			}
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i].CreatedAt, entries[j].CreatedAt
+		if entries[i].UsedAt != nil {
+			left = *entries[i].UsedAt
+		}
+		if entries[j].UsedAt != nil {
+			right = *entries[j].UsedAt
+		}
+		if left.Equal(right) {
+			return entries[i].Code < entries[j].Code
+		}
+		return left.After(right)
+	})
+	pages := max(1, int((total+int64(pageSize)-1)/int64(pageSize)))
+	if page > pages {
 		return Sub2APIBalanceHistoryPage{}, errors.New("invalid sub2api balance history pagination")
 	}
-	result := Sub2APIBalanceHistoryPage{Items: make([]Sub2APIBalanceHistoryEntry, 0, len(data.Items)), Total: data.Total, Page: data.Page, PageSize: data.PageSize, Pages: data.Pages}
-	for _, item := range data.Items {
-		entry, err := sub2APIBalanceHistoryEntry(item, userID)
-		if err != nil {
-			return Sub2APIBalanceHistoryPage{}, err
-		}
-		result.Items = append(result.Items, entry)
-	}
-	return result, nil
+	start := min((page-1)*pageSize, len(entries))
+	end := min(start+pageSize, len(entries))
+	return Sub2APIBalanceHistoryPage{Items: entries[start:end], Total: total, Page: page, PageSize: pageSize, Pages: pages}, nil
 }
 
 func validUsageCounts(values ...*int64) bool {
@@ -1959,76 +2026,78 @@ func (c *Sub2APIHTTPClient) Charge(ctx context.Context, input Sub2APIChargeInput
 	if input.UserID <= 0 || strings.TrimSpace(input.Code) == "" || input.ChargeUSDMicros <= 0 {
 		return Sub2APICharge{}, errors.New("sub2api charge identity and positive amount are required")
 	}
-	status, err := c.redeemBalance(ctx, input.UserID, input.Code, -input.ChargeUSDMicros, input.Notes)
-	if err != nil {
+	if err := c.adjustBalanceOnce(ctx, input.UserID, input.Code, input.ChargeUSDMicros, "subtract"); err != nil {
 		return Sub2APICharge{}, err
 	}
-	return Sub2APICharge{Code: input.Code, UserID: input.UserID, ChargeUSDMicros: input.ChargeUSDMicros, Status: status}, nil
+	return Sub2APICharge{Code: input.Code, UserID: input.UserID, ChargeUSDMicros: input.ChargeUSDMicros, Status: "used"}, nil
 }
 
 func (c *Sub2APIHTTPClient) Refund(ctx context.Context, input Sub2APIRefundInput) (Sub2APIRefund, error) {
 	if input.UserID <= 0 || strings.TrimSpace(input.Code) == "" || input.RefundUSDMicros <= 0 {
 		return Sub2APIRefund{}, errors.New("sub2api refund identity and positive amount are required")
 	}
-	status, err := c.redeemBalance(ctx, input.UserID, input.Code, input.RefundUSDMicros, input.Notes)
-	if err != nil {
+	if err := c.adjustBalanceOnce(ctx, input.UserID, input.Code, input.RefundUSDMicros, "add"); err != nil {
 		return Sub2APIRefund{}, err
 	}
-	return Sub2APIRefund{Code: input.Code, UserID: input.UserID, RefundUSDMicros: input.RefundUSDMicros, Status: status}, nil
+	return Sub2APIRefund{Code: input.Code, UserID: input.UserID, RefundUSDMicros: input.RefundUSDMicros, Status: "used"}, nil
 }
 
-func (c *Sub2APIHTTPClient) redeemBalance(ctx context.Context, userID int64, code string, valueUSDMicros int64, notes string) (string, error) {
-	if len(code) > 32 {
-		return "", errors.New("sub2api redeem code exceeds 32 characters")
+func (c *Sub2APIHTTPClient) adjustBalanceOnce(ctx context.Context, userID int64, code string, amountUSDMicros int64, operation string) error {
+	if len(code) > 32 || strings.TrimSpace(code) != code {
+		return errors.New("sub2api adjustment code must contain at most 32 characters without outer whitespace")
+	}
+	balance := usdMicrosJSON(amountUSDMicros)
+	// Official Sub2API decodes float64; lib/pq sends its shortest decimal with
+	// FormatFloat('f', -1, 64) into numeric(20,8). Compare that actual parameter
+	// with our exact micros before dispatch; binary representability alone would
+	// incorrectly reject ordinary decimal prices such as 52.58.
+	nativeBalance, parseErr := strconv.ParseFloat(string(balance), 64)
+	nativeMicros, amountErr := decimalUSDMicros(json.Number(strconv.FormatFloat(nativeBalance, 'f', -1, 64)))
+	// numeric(20,8) allows fewer than 10^12 whole USD, or 10^18 micros.
+	if parseErr != nil || amountErr != nil || nativeMicros != amountUSDMicros || amountUSDMicros >= 1_000_000_000_000_000_000 {
+		return errors.New("sub2api adjustment amount is not exactly representable by the native balance API")
+	}
+	if operation == "add" {
+		// A refund must not be interpreted as a new affiliate-eligible recharge.
+		// This reads the official settings without changing Gateway configuration.
+		body, err := c.doAuthenticated(ctx, http.MethodGet, "/api/v1/admin/settings", nil, "")
+		if err != nil {
+			return fmt.Errorf("sub2api refund rebate policy unavailable: %w", err)
+		}
+		var settings struct {
+			AffiliateEnabled     *bool `json:"affiliate_enabled"`
+			AdminRechargeEnabled *bool `json:"affiliate_admin_recharge_enabled"`
+		}
+		if err := decodeSub2APIEnvelope(body, &settings); err != nil || settings.AffiliateEnabled == nil || settings.AdminRechargeEnabled == nil {
+			return errors.New("sub2api refund rebate policy unavailable")
+		}
+		if *settings.AffiliateEnabled && *settings.AdminRechargeEnabled {
+			return errors.New("sub2api refund would accrue an affiliate rebate")
+		}
+	}
+	token, err := c.token(ctx)
+	if err != nil {
+		return err
 	}
 	payload := struct {
-		Code   string          `json:"code"`
-		Type   string          `json:"type"`
-		Value  json.RawMessage `json:"value"`
-		UserID int64           `json:"user_id"`
-		Notes  string          `json:"notes,omitempty"`
-	}{
-		Code: code, Type: "balance", Value: usdMicrosJSON(valueUSDMicros), UserID: userID, Notes: notes,
-	}
-	body, err := c.doAuthenticated(ctx, http.MethodPost, "/api/v1/admin/redeem-codes/create-and-redeem", payload, code)
+		Balance   json.RawMessage `json:"balance"`
+		Operation string          `json:"operation"`
+		Notes     string          `json:"notes"`
+	}{Balance: balance, Operation: operation, Notes: sub2APIBalanceAdjustmentNotePrefix + code}
+	// The owner reserves dispatch durably. Even a 401 is returned without a
+	// second balance POST: upstream audit/idempotency writes are not atomic
+	// with its balance write, so request repetition is not a recovery protocol.
+	body, err := c.requestWithPolicy(ctx, http.MethodPost, "/api/v1/admin/users/"+strconv.FormatInt(userID, 10)+"/balance", payload, token, code, true)
 	if err != nil {
-		var httpErr *Sub2APIHTTPError
-		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusConflict {
-			status, replayErr := c.confirmAdjustmentReplay(ctx, userID, code, valueUSDMicros)
-			if replayErr != nil {
-				return "", fmt.Errorf("%w: replay confirmation failed: %w", replayErr, httpErr)
-			}
-			return status, nil
-		}
-		if !errors.As(err, &httpErr) || httpErr.StatusCode >= http.StatusInternalServerError || errors.Is(err, ErrSub2APIResponseTooLarge) {
-			return "", fmt.Errorf("%w: request did not produce a confirmed response: %w", ErrSub2APIChargeUnknown, err)
-		}
-		return "", err
+		return fmt.Errorf("%w: balance adjustment response is unconfirmed: %w", ErrSub2APIChargeUnknown, err)
 	}
-	var data struct {
-		RedeemCode struct {
-			Code                string       `json:"code"`
-			Type                string       `json:"type"`
-			Value               json.Number  `json:"value"`
-			BalanceAppliedValue *json.Number `json:"balance_applied_value"`
-			Status              string       `json:"status"`
-			UsedBy              *int64       `json:"used_by"`
-		} `json:"redeem_code"`
+	var user struct {
+		ID int64 `json:"id"`
 	}
-	if err := decodeSub2APIEnvelope(body, &data); err != nil {
-		return "", fmt.Errorf("%w: response could not be confirmed", ErrSub2APIChargeUnknown)
+	if err := decodeSub2APIEnvelope(body, &user); err != nil || user.ID != userID {
+		return fmt.Errorf("%w: balance adjustment response identity is unconfirmed", ErrSub2APIChargeUnknown)
 	}
-	valueMicros, err := decimalUSDMicros(data.RedeemCode.Value)
-	if err != nil {
-		return "", fmt.Errorf("%w: response amount could not be confirmed", ErrSub2APIChargeUnknown)
-	}
-	if data.RedeemCode.Code != code || data.RedeemCode.Type != "balance" || data.RedeemCode.Status != "used" || data.RedeemCode.UsedBy == nil || *data.RedeemCode.UsedBy != userID || valueMicros != valueUSDMicros {
-		return "", fmt.Errorf("%w: redeem record differs from requested balance adjustment", ErrSub2APIChargeConflict)
-	}
-	if err := confirmSub2APIAppliedValue(data.RedeemCode.BalanceAppliedValue, valueUSDMicros); err != nil {
-		return "", err
-	}
-	return data.RedeemCode.Status, nil
+	return nil
 }
 
 func confirmSub2APIAppliedValue(value *json.Number, expectedUSDMicros int64) error {
@@ -2043,21 +2112,6 @@ func confirmSub2APIAppliedValue(value *json.Number, expectedUSDMicros int64) err
 		return fmt.Errorf("%w: balance adjustment applied amount differs", ErrSub2APIChargeConflict)
 	}
 	return nil
-}
-
-func (c *Sub2APIHTTPClient) confirmAdjustmentReplay(ctx context.Context, userID int64, code string, valueUSDMicros int64) (string, error) {
-	history, err := c.FinancialBalanceHistoryByCodes(ctx, userID, []string{code})
-	if err != nil {
-		return "", fmt.Errorf("%w: balance history unavailable: %w", ErrSub2APIChargeUnknown, err)
-	}
-	match, found := history[code]
-	if !found {
-		return "", fmt.Errorf("%w: balance history evidence missing", ErrSub2APIChargeUnknown)
-	}
-	if match.Type != "balance" || match.Status != "used" || match.UsedBy == nil || *match.UsedBy != userID || match.UsedAt == nil || match.ValueUSDMicros != valueUSDMicros {
-		return "", fmt.Errorf("%w: balance history evidence differs", ErrSub2APIChargeConflict)
-	}
-	return "used", nil
 }
 
 func (c *Sub2APIHTTPClient) doAuthenticated(ctx context.Context, method, path string, input any, idempotencyKey string) ([]byte, error) {
@@ -2131,6 +2185,10 @@ func (c *Sub2APIHTTPClient) refreshAfterUnauthorized(ctx context.Context, reject
 }
 
 func (c *Sub2APIHTTPClient) request(ctx context.Context, method, path string, input any, token, idempotencyKey string) ([]byte, error) {
+	return c.requestWithPolicy(ctx, method, path, input, token, idempotencyKey, false)
+}
+
+func (c *Sub2APIHTTPClient) requestWithPolicy(ctx context.Context, method, path string, input any, token, idempotencyKey string, once bool) ([]byte, error) {
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
@@ -2154,7 +2212,16 @@ func (c *Sub2APIHTTPClient) request(ctx context.Context, method, path string, in
 	if idempotencyKey != "" {
 		req.Header.Set("Idempotency-Key", idempotencyKey)
 	}
-	res, err := c.client.Do(req)
+	client := c.client
+	if once {
+		// GetBody would let net/http replay this Idempotency-Key POST after a
+		// connection failure. Redirects must not repeat it either.
+		req.GetBody = nil
+		singleRequestClient := *c.client
+		singleRequestClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &singleRequestClient
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		code := "transport_failure"
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(requestCtx.Err(), context.DeadlineExceeded) {

@@ -314,49 +314,9 @@ func (app *controlPlaneServer) prepareWalletAdjustmentRecovery(ctx context.Conte
 		}
 		return operation, nil
 	}
-	legacyIdentity := operation.CanonicalRedeemCode == "" && operation.RedeemCodeVersion == "" && operation.LegacySupersession == ""
-	v2Identity := operation.CanonicalRedeemCode == v2Code && operation.RedeemCodeVersion == "v2" && operation.LegacySupersession == ""
-	recoveryEligible := (legacyIdentity || v2Identity) && len(legacyCode) > 32 &&
-		operation.AdjustmentAttempted && operation.BeforeBalanceKnown && !operation.RecoveryAttempted &&
-		operation.ReceiptID == "" && operation.BalanceHistoryRef == "" && operation.BalanceHistoryUsedAt == ""
-	if !recoveryEligible {
-		operation.ErrorCode = "wallet_adjustment_recovery_exhausted"
-		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
-			return operation, errWalletAdjustmentState
-		}
-		return operation, errWalletAdjustmentConflict
-	}
-	balance, err := service.Sub2APIBalance(ctx, operation.Sub2APIUserID)
-	if err != nil {
-		recordWalletAdjustmentUpstreamFailure(&operation, "recovery_balance", err, "balance_readback_unavailable")
-		operation.ErrorCode = "wallet_adjustment_recovery_balance_unavailable"
-		if persistErr := app.persistWalletAdjustment(ctx, operationID, &operation); persistErr != nil {
-			return operation, errWalletAdjustmentState
-		}
-		return operation, nil
-	}
-	if balance.UserID != operation.Sub2APIUserID || balance.Status != "active" || balance.USDMicros < 0 {
-		operation.ErrorCode = "wallet_adjustment_recovery_balance_invalid"
-		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
-			return operation, errWalletAdjustmentState
-		}
-		return operation, errWalletAdjustmentConflict
-	}
-	if operation.Kind == "debit" && balance.USDMicros < operation.AmountUSDMicros || operation.Kind != "debit" && balance.USDMicros > math.MaxInt64-operation.AmountUSDMicros {
-		operation.ErrorCode = "wallet_adjustment_recovery_balance_insufficient"
-		if operation.Kind != "debit" {
-			operation.ErrorCode = "wallet_adjustment_recovery_balance_overflow"
-		}
-		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
-			return operation, errWalletAdjustmentState
-		}
-		return operation, errWalletAdjustmentConflict
-	}
-	if legacyIdentity {
-		operation.CanonicalRedeemCode, operation.RedeemCodeVersion, operation.LegacySupersession = v2Code, "v2", "v2_adopted"
-	}
-	operation.RecoveryAttempted, operation.AdjustmentAttempted = true, false
-	operation.Status, operation.Phase = "pending", "adjustment"
+	// An absent audit row cannot prove an earlier wallet write did not happen.
+	// Recovery is read-only even with fresh operator authorization.
+	operation.ErrorCode = "wallet_adjustment_recovery_readback_unavailable"
 	if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
 		return operation, errWalletAdjustmentState
 	}
@@ -475,6 +435,18 @@ func walletAdjustmentRow(operationID string, operation walletAdjustmentOperation
 }
 
 func (app *controlPlaneServer) runWalletAdjustment(ctx context.Context, service *controlplane.Service, operationID string, operation walletAdjustmentOperation, audit walletAdjustmentAuditIdentity) (walletAdjustmentOperation, error) {
+	// Older recovery rows could reset AdjustmentAttempted before replaying a
+	// write. Their retained recovery attempt is also an uncertain dispatch;
+	// upgrading must not turn that row into a new native wallet adjustment.
+	if operation.RecoveryAttempted && !operation.AdjustmentAttempted {
+		operation.AdjustmentAttempted = true
+		if operation.Phase == "adjustment" {
+			operation.Phase = "authoritative_readback"
+		}
+		if err := app.persistWalletAdjustment(ctx, operationID, &operation); err != nil {
+			return operation, errWalletAdjustmentState
+		}
+	}
 	if operation.Kind == "business_refund" && !operation.AdjustmentAttempted {
 		if err := app.confirmWalletRefundSource(ctx, service, operation); err != nil {
 			return operation, err
@@ -779,7 +751,7 @@ func workspaceLaunchRefundAuthorized(operation workspaceLaunchReconcileOperation
 	closeout := operation.Closeout
 	return closeout != nil && closeout.AuthorizationID != "" && closeout.AuthorizedBy != "" &&
 		(closeout.Phase == "refund" || closeout.Phase == "receipt" || closeout.Phase == "complete") &&
-		closeout.FrozenAt != "" && closeout.KeyRevokedAt != "" && closeout.ResourcesAbsentAt != "" && closeout.DebitState == "confirmed"
+		closeout.FrozenAt != "" && closeout.ResourcesAbsentAt != "" && closeout.DebitState == "confirmed"
 }
 
 // Called while the original Launch is locked. Unresolved manual refunds retain

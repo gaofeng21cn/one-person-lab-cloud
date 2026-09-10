@@ -508,6 +508,9 @@ func readWorkspaceLaunchDisposableDebit(ctx context.Context, service *controlpla
 	}
 	entry, found := history[code]
 	if !found {
+		if operation.Attempts[contracts.StageDebit].Attempted > 0 || operation.boolFact("chargeAttempted") {
+			return disposableInventoryResult("debit", workspaceLaunchDisposableObservation(workspaceLaunchDisposableOwnerUnknown, amount), "debit_history_unavailable")
+		}
 		return disposableInventoryResult("debit", workspaceLaunchDisposableObservation(workspaceLaunchDisposableOwnerAbsent, 0))
 	}
 	if reason := sub2APIReconciliationCode(map[string]any{"sub2apiRedeemCode": code, "chargeUsdMicros": amount}, userID, history); reason != "" || entry.UsedAt == nil || entry.UsedAt.IsZero() {

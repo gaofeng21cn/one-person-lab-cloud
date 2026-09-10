@@ -60,47 +60,67 @@ func newD4RenewalWalletHTTP(t *testing.T, balance int64) *d4RenewalWalletHTTP {
 			success(map[string]any{"items": []any{map[string]any{"id": 9, "user_id": 41, "name": workspaceReservedKeyName("workspace-monthly"), "key": "local-workspace-key", "status": "active", "quota": 0, "quota_used": 0, "usage_5h": 0, "usage_1d": 0, "usage_7d": 0}}, "total": 1, "page": 1, "page_size": 1, "pages": 1})
 		case "/api/v1/admin/usage/search-api-keys":
 			success([]any{map[string]any{"id": 9, "user_id": 41, "name": workspaceReservedKeyName("workspace-monthly")}})
-		case "/api/v1/admin/redeem-codes/create-and-redeem":
+		case "/api/v1/admin/users/41/balance":
 			var input struct {
-				Code   string      `json:"code"`
-				Type   string      `json:"type"`
-				Value  json.Number `json:"value"`
-				UserID int64       `json:"user_id"`
+				Balance   json.Number `json:"balance"`
+				Operation string      `json:"operation"`
+				Notes     string      `json:"notes"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&input); err != nil || r.Method != http.MethodPost || input.UserID != 41 || input.Type != "balance" || input.Value.String() != "-52.580000" || r.Header.Get("Idempotency-Key") != input.Code {
+			code := r.Header.Get("Idempotency-Key")
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil || r.Method != http.MethodPost || input.Operation != "subtract" || input.Balance.String() != "52.580000" || code == "" || input.Notes != "OPL Cloud balance adjustment: "+code {
 				t.Errorf("invalid renewal money boundary: input=%#v err=%v", input, err)
 				http.Error(w, "invalid", 400)
 				return
 			}
-			wallet.writes = append(wallet.writes, input.Code)
-			if _, exists := wallet.history[input.Code]; exists {
-				http.Error(w, "already redeemed", http.StatusConflict)
+			wallet.writes = append(wallet.writes, code)
+			if _, exists := wallet.history[code]; exists {
+				http.Error(w, "already adjusted", http.StatusConflict)
 				return
 			}
 			if wallet.balance < 52_580_000 {
-				http.Error(w, "insufficient", http.StatusBadRequest)
+				http.Error(w, "insufficient", http.StatusInternalServerError)
 				return
 			}
 			wallet.balance -= 52_580_000
-			wallet.history[input.Code] = clients.Sub2APICharge{Code: input.Code, UserID: 41, ChargeUSDMicros: 52_580_000, Status: "used"}
+			wallet.history[code] = clients.Sub2APICharge{Code: code, UserID: 41, ChargeUSDMicros: 52_580_000, Status: "used"}
 			if wallet.loseResponse {
 				wallet.loseResponse = false
 				http.Error(w, "response lost after applied debit", http.StatusServiceUnavailable)
 				return
 			}
-			success(map[string]any{"redeem_code": authoritativeHistoryEntry(input.Code, "-52.580000")})
-		case "/api/v1/admin/redeem-codes/by-code":
-			if r.Method != http.MethodGet || r.URL.Query().Get("user_id") != "41" {
-				t.Errorf("invalid exact lookup: %s", r.URL.String())
+			success(struct {
+				ID int64 `json:"id"`
+			}{41})
+		case "/api/v1/admin/users/41/balance-history":
+			if r.Method != http.MethodGet || r.URL.Query().Get("page") != "1" || r.URL.Query().Get("page_size") != "100" {
+				t.Errorf("invalid history lookup: %s", r.URL.String())
 				http.Error(w, "invalid", 400)
 				return
 			}
-			code := r.URL.Query().Get("code")
-			var record any
-			if _, ok := wallet.history[code]; ok {
-				record = authoritativeHistoryEntry(code, "-52.580000")
+			type nativeRecord struct {
+				Code      string      `json:"code"`
+				Notes     string      `json:"notes"`
+				Type      string      `json:"type"`
+				Value     json.Number `json:"value"`
+				Status    string      `json:"status"`
+				UsedBy    int64       `json:"used_by"`
+				UsedAt    time.Time   `json:"used_at"`
+				CreatedAt time.Time   `json:"created_at"`
 			}
-			success(map[string]any{"lookup": "exact_code_v1", "redeem_code": record})
+			records := []nativeRecord{}
+			if r.URL.Query().Get("type") == "admin_balance" {
+				for code := range wallet.history {
+					records = append(records, nativeRecord{Code: "audit-" + code, Notes: "OPL Cloud balance adjustment: " + code, Type: "admin_balance", Value: "-52.580000", Status: "used", UsedBy: 41, UsedAt: time.Date(2026, 7, 16, 0, 1, 0, 0, time.UTC), CreatedAt: time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)})
+				}
+			}
+			success(struct {
+				Items    []nativeRecord `json:"items"`
+				Total    int            `json:"total"`
+				Page     int            `json:"page"`
+				PageSize int            `json:"page_size"`
+				Pages    int            `json:"pages"`
+			}{records, len(records), 1, 100, 1})
+
 		default:
 			t.Errorf("unexpected wallet HTTP request %s %s", r.Method, r.URL.String())
 			http.Error(w, "unexpected", 400)
@@ -214,7 +234,7 @@ func TestD4ExpiredWorkspaceRequiresExplicitOriginalRenewalAfterTopUp(t *testing.
 	}
 }
 
-func TestD4RenewalRechecksReclaimedResourcesBeforeRetryDebit(t *testing.T) {
+func TestD4RenewalRechecksResourcesAndNeverRetriesUnknownDebit(t *testing.T) {
 	for _, lostResponse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("attempted_%t", lostResponse), func(t *testing.T) {
 			fixture := newWorkspaceRenewalWorkerFixture(t, []int64{1_000_000, 100_000_000})
@@ -231,7 +251,11 @@ func TestD4RenewalRechecksReclaimedResourcesBeforeRetryDebit(t *testing.T) {
 			fixture.fabric.storageRenew.Status = "external_deleted"
 			_ = fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(time.Second))
 			operation := d1RenewalOperation(t, fixture)
-			if operation.Status != "manual_review" || operation.ErrorCode != "workspace_renewal_resources_reclaimed" || len(fixture.sub2API.charges) != before || len(fixture.sub2API.refunds) != 0 || len(fixture.fabric.computeRenewKeys) != 0 || len(fixture.ledger.receipts) != 0 {
+			expectedReason := "workspace_renewal_resources_reclaimed"
+			if lostResponse {
+				expectedReason = "sub2api_charge_unconfirmed"
+			}
+			if operation.Status != "manual_review" || operation.ErrorCode != expectedReason || len(fixture.sub2API.charges) != before || len(fixture.sub2API.refunds) != 0 || len(fixture.fabric.computeRenewKeys) != 0 || len(fixture.ledger.receipts) != 0 {
 				t.Fatalf("reclaimed resources were charged or replaced: %#v charges=%#v", operation, fixture.sub2API.charges)
 			}
 		})

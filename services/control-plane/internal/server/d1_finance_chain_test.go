@@ -11,7 +11,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -55,7 +54,7 @@ func TestD1FinanceBusinessChain(t *testing.T) {
 		chain := newD1FinanceChain(t, ledger)
 		chain.remote.mu.Lock()
 		for i := range chain.remote.transactions {
-			if chain.remote.transactions[i].Code == chain.purchase.stringFact("sub2apiRedeemCode") {
+			if chain.remote.transactions[i].Notes == "OPL Cloud balance adjustment: "+chain.purchase.stringFact("sub2apiRedeemCode") {
 				chain.remote.transactions[i].Value = json.Number("-1.00")
 			}
 		}
@@ -401,12 +400,12 @@ type d1FinancialTransaction struct {
 	Code         string      `json:"code"`
 	Type         string      `json:"type"`
 	Value        json.Number `json:"value"`
-	AppliedValue json.Number `json:"balance_applied_value"`
+	AppliedValue json.Number `json:"balance_applied_value,omitempty"`
 	Status       string      `json:"status"`
 	UsedBy       int64       `json:"used_by"`
 	UsedAt       time.Time   `json:"used_at"`
 	CreatedAt    time.Time   `json:"created_at"`
-	Notes        string      `json:"-"`
+	Notes        string      `json:"notes"`
 }
 
 type d1FinancialState struct {
@@ -453,43 +452,16 @@ func (f *d1FinancialHTTPFixture) snapshot() d1FinancialState {
 }
 
 func (f *d1FinancialHTTPFixture) serveFinancial(w http.ResponseWriter, r *http.Request) bool {
-	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/redeem-codes/by-code" {
-		userID, err := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
-		code := r.URL.Query().Get("code")
-		if err != nil || userID <= 0 || code == "" {
-			writeError(w, http.StatusBadRequest, "invalid_exact_lookup")
-			return true
-		}
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		if f.historyUnavailable {
-			writeError(w, http.StatusServiceUnavailable, "d1_injected_history_unavailable")
-			return true
-		}
-		var matched *d1FinancialTransaction
-		for _, entry := range f.transactions {
-			if entry.Code != code {
-				continue
-			}
-			if entry.UsedBy != userID || entry.Type != "balance" {
-				writeError(w, http.StatusConflict, "exact_lookup_identity_conflict")
-				return true
-			}
-			matched = &entry
-			break
-		}
-		d1Sub2APISuccess(w, struct {
-			Lookup     string                  `json:"lookup"`
-			RedeemCode *d1FinancialTransaction `json:"redeem_code"`
-		}{"exact_code_v1", matched})
-		return true
-	}
-	if r.Method == http.MethodPost && r.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem" {
-		f.redeem(w, r)
+	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/settings" {
+		d1Sub2APISuccess(w, map[string]any{"affiliate_enabled": false, "affiliate_admin_recharge_enabled": false})
 		return true
 	}
 	for _, userID := range []int64{41, 42} {
 		userPath := "/api/v1/admin/users/" + strconv.FormatInt(userID, 10)
+		if r.Method == http.MethodPost && r.URL.Path == userPath+"/balance" {
+			f.adjustBalance(w, r, userID)
+			return true
+		}
 		if r.Method == http.MethodGet && r.URL.Path == userPath {
 			f.mu.Lock()
 			balance := f.balances[userID]
@@ -515,7 +487,7 @@ func (f *d1FinancialHTTPFixture) serveFinancial(w http.ResponseWriter, r *http.R
 			}
 			items := make([]d1FinancialTransaction, 0)
 			for _, entry := range f.transactions {
-				if entry.UsedBy == userID {
+				if entry.UsedBy == userID && (r.URL.Query().Get("type") == "" || entry.Type == r.URL.Query().Get("type")) {
 					items = append(items, entry)
 				}
 			}
@@ -542,59 +514,58 @@ func (f *d1FinancialHTTPFixture) serveFinancial(w http.ResponseWriter, r *http.R
 	return false
 }
 
-func (f *d1FinancialHTTPFixture) redeem(w http.ResponseWriter, r *http.Request) {
+func (f *d1FinancialHTTPFixture) adjustBalance(w http.ResponseWriter, r *http.Request, userID int64) {
 	var input struct {
-		Code   string      `json:"code"`
-		Type   string      `json:"type"`
-		Value  json.Number `json:"value"`
-		UserID int64       `json:"user_id"`
-		Notes  string      `json:"notes"`
+		Balance   json.Number `json:"balance"`
+		Operation string      `json:"operation"`
+		Notes     string      `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json")
 		return
 	}
-	amount, err := clients.ParseUSDDecimalMicros(strings.TrimPrefix(string(input.Value), "-"))
-	if strings.HasPrefix(string(input.Value), "-") {
-		amount = -amount
-	}
-	if err != nil || amount == 0 || input.Code == "" || input.Code != r.Header.Get("Idempotency-Key") || input.Type != "balance" {
+	amount, err := clients.ParseUSDDecimalMicros(input.Balance.String())
+	code := r.Header.Get("Idempotency-Key")
+	if err != nil || amount <= 0 || code == "" || input.Notes != "OPL Cloud balance adjustment: "+code || (input.Operation != "add" && input.Operation != "subtract") {
 		writeError(w, http.StatusBadRequest, "invalid_adjustment")
 		return
+	}
+	value := formatWalletUSD(amount)
+	if input.Operation == "subtract" {
+		amount = -amount
+		value = "-" + value
 	}
 	f.mu.Lock()
 	if amount > 0 {
 		f.refundRequests++
 	}
 	for _, entry := range f.transactions {
-		if entry.Code != input.Code {
+		if entry.Notes != input.Notes {
 			continue
 		}
 		f.mu.Unlock()
-		if entry.Value != input.Value || entry.UsedBy != input.UserID || entry.Notes != input.Notes {
-			writeError(w, http.StatusConflict, "redeem_conflict")
+		if entry.Value.String() != value || entry.UsedBy != userID {
+			writeError(w, http.StatusConflict, "balance_adjustment_conflict")
 			return
 		}
-		d1Sub2APISuccess(w, struct {
-			RedeemCode d1FinancialTransaction `json:"redeem_code"`
-		}{entry})
+		d1Sub2APISuccess(w, map[string]any{"id": userID})
 		return
 	}
-	balance, found := f.balances[input.UserID]
+	balance, found := f.balances[userID]
 	if !found || balance+amount < 0 {
 		f.mu.Unlock()
 		writeError(w, http.StatusConflict, "insufficient_balance")
 		return
 	}
 	now := time.Now().UTC()
-	entry := d1FinancialTransaction{Code: input.Code, Type: input.Type, Value: input.Value, AppliedValue: input.Value, UsedBy: input.UserID, Status: "used", UsedAt: now, CreatedAt: now, Notes: input.Notes}
+	entry := d1FinancialTransaction{Code: "admin-audit-" + strconv.FormatInt(now.UnixNano(), 10), Type: "admin_balance", Value: json.Number(value), UsedBy: userID, Status: "used", UsedAt: now, CreatedAt: now, Notes: input.Notes}
 	f.transactions = append(f.transactions, entry)
-	f.balances[input.UserID] += amount
+	f.balances[userID] += amount
 	var drop bool
 	var arrived, release chan struct{}
 	if amount > 0 {
 		f.refundWrites++
-		f.balances[input.UserID] -= f.consumeAfterRefund
+		f.balances[userID] -= f.consumeAfterRefund
 		f.consumeAfterRefund = 0
 		drop, f.dropRefundResponse = f.dropRefundResponse, false
 		if drop {
@@ -615,9 +586,7 @@ func (f *d1FinancialHTTPFixture) redeem(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	d1Sub2APISuccess(w, struct {
-		RedeemCode d1FinancialTransaction `json:"redeem_code"`
-	}{entry})
+	d1Sub2APISuccess(w, map[string]any{"id": userID})
 }
 
 func d1Sub2APISuccess(w http.ResponseWriter, data any) {

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -61,7 +60,7 @@ func d1RealUser(t *testing.T, client *Sub2APIHTTPClient, balance int64) int64 {
 	return user.ID
 }
 
-func TestD1RealSub2APIChargeRefundAndExactHistory(t *testing.T) {
+func TestD1RealSub2APIChargeRefundAndNativeHistory(t *testing.T) {
 	client := d1RealSub2API(t, nil)
 	userID := d1RealUser(t, client, 30)
 	chargeCode := fmt.Sprintf("d1-go-%d-charge", userID)
@@ -71,15 +70,9 @@ func TestD1RealSub2APIChargeRefundAndExactHistory(t *testing.T) {
 	}
 	refundCode := fmt.Sprintf("d1-go-%d-refund", userID)
 	refund := Sub2APIRefundInput{UserID: userID, Code: refundCode, RefundUSDMicros: 3_000_000}
-	var workers sync.WaitGroup
-	for range 10 {
-		workers.Add(1)
-		go func() { defer workers.Done(); _, _ = client.Refund(context.Background(), refund) }()
-	}
-	workers.Wait()
 	result, err := client.Refund(context.Background(), refund)
 	if err != nil || result.Status != "used" {
-		t.Fatalf("refund replay=%#v err=%v", result, err)
+		t.Fatalf("refund=%#v err=%v", result, err)
 	}
 	evidence, err := client.FinancialBalanceHistoryByCodes(context.Background(), userID, []string{chargeCode, refundCode, "opl:wallet-adjustment:" + strings.Repeat("a", 24) + ":v1"})
 	if err != nil || len(evidence) != 2 || evidence[chargeCode].ValueUSDMicros != -10_000_000 || evidence[refundCode].ValueUSDMicros != 3_000_000 {
@@ -90,8 +83,8 @@ func TestD1RealSub2APIChargeRefundAndExactHistory(t *testing.T) {
 		t.Fatalf("wallet=%#v err=%v", balance, err)
 	}
 	otherID := d1RealUser(t, client, 5)
-	if _, err := client.FinancialBalanceHistoryByCodes(context.Background(), otherID, []string{refundCode}); !errors.Is(err, ErrSub2APIChargeConflict) {
-		t.Fatalf("wrong owner lookup err=%v", err)
+	if other, err := client.FinancialBalanceHistoryByCodes(context.Background(), otherID, []string{refundCode}); err != nil || len(other) != 0 {
+		t.Fatalf("wrong owner lookup facts=%#v err=%v", other, err)
 	}
 }
 
@@ -107,7 +100,7 @@ func (d *d1DropCommittedResponse) RoundTrip(request *http.Request) (*http.Respon
 		return response, err
 	}
 	drop := false
-	if request.Method == http.MethodPost && request.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem" && request.Header.Get("Idempotency-Key") == d.code {
+	if request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/balance") && request.Header.Get("Idempotency-Key") == d.code {
 		d.once.Do(func() { drop = true })
 	}
 	if !drop {
@@ -132,26 +125,56 @@ func TestD1RealSub2APILostRefundResponseRecoversWithoutSecondCredit(t *testing.T
 	if err != nil || len(facts) != 1 || facts[code].ValueUSDMicros != 3_000_000 {
 		t.Fatalf("restarted exact facts=%#v err=%v", facts, err)
 	}
-	if _, err := restarted.Refund(context.Background(), input); err != nil {
-		t.Fatalf("same-code replay: %v", err)
-	}
 	balance, err := restarted.Balance(context.Background(), userID)
 	if err != nil || balance.USDMicros != 13_000_000 {
-		t.Fatalf("wallet after replay=%#v err=%v", balance, err)
+		t.Fatalf("wallet after read-only recovery=%#v err=%v", balance, err)
 	}
 }
 
-func TestD1RealSub2APIRejectsHistoricalUnverifiedDebit(t *testing.T) {
+func TestD1RealSub2APIRejectsOfficialHistoricalUnverifiedDebit(t *testing.T) {
 	client := d1RealSub2API(t, nil)
-	code := os.Getenv("OPL_D1_REAL_SUB2API_LEGACY_CODE")
-	userID, err := strconv.ParseInt(os.Getenv("OPL_D1_REAL_SUB2API_LEGACY_USER_ID"), 10, 64)
-	if code == "" || err != nil || userID <= 0 {
-		t.Fatal("a pre-upgrade unverified debit is required")
+	userID := d1RealUser(t, client, 7)
+	code := fmt.Sprintf("d1-old-%d", userID)
+	// Exercise the official retained redeem path in the isolated wallet. Its
+	// used record does not prove that this requested ten-dollar debit applied.
+	input := struct {
+		Code   string `json:"code"`
+		Type   string `json:"type"`
+		Value  int64  `json:"value"`
+		UserID int64  `json:"user_id"`
+	}{code, "balance", -10, userID}
+	if _, err := client.doAuthenticated(context.Background(), http.MethodPost, "/api/v1/admin/redeem-codes/create-and-redeem", input, code); err != nil {
+		t.Fatalf("create isolated legacy record: %v", err)
 	}
-	if _, err := client.FinancialBalanceHistoryByCodes(context.Background(), userID, []string{code}); !errors.Is(err, ErrSub2APIChargeConflict) {
+	if _, err := client.FinancialBalanceHistoryByCodes(context.Background(), userID, []string{code}); !errors.Is(err, ErrSub2APIChargeUnknown) {
 		t.Fatalf("historical unverified debit accepted: %v", err)
 	}
-	if _, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: userID, Code: code, ChargeUSDMicros: 50_000_000, Notes: "isolated D1 verification"}); !errors.Is(err, ErrSub2APIChargeUnknown) {
-		t.Fatalf("historical code replay accepted: %v", err)
+}
+
+func TestD1RealSub2APIConcurrentDebitsApplyOnlyWholeAmounts(t *testing.T) {
+	client := d1RealSub2API(t, nil)
+	userID := d1RealUser(t, client, 10)
+	codes := []string{fmt.Sprintf("d1-%d-one", userID), fmt.Sprintf("d1-%d-two", userID)}
+	var workers sync.WaitGroup
+	for _, code := range codes {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			_, _ = client.Charge(context.Background(), Sub2APIChargeInput{UserID: userID, Code: code, ChargeUSDMicros: 7_000_000})
+		}()
+	}
+	workers.Wait()
+	balance, err := client.Balance(context.Background(), userID)
+	if err != nil || balance.USDMicros != 3_000_000 {
+		t.Fatalf("wallet=%#v err=%v", balance, err)
+	}
+	facts, err := client.FinancialBalanceHistoryByCodes(context.Background(), userID, codes)
+	if err != nil || len(facts) != 1 {
+		t.Fatalf("whole debit facts=%#v err=%v", facts, err)
+	}
+	for _, fact := range facts {
+		if fact.ValueUSDMicros != -7_000_000 {
+			t.Fatalf("partial debit=%#v", fact)
+		}
 	}
 }

@@ -28,8 +28,11 @@ sole missing canonical fact is `specDigest`.
 ## Authorization And Owner Readback
 
 The current recovery row keeps `Max=1` and does not reset `Attempted`. An
-operator may CAS-persist one exact-idempotency replay budget plus a finite typed
-continuation-read budget; the server binds the starting readback count. Fabric
+operator may CAS-persist one exact-idempotency replay budget for an eligible
+Fabric stage plus a finite typed continuation-read budget; the server binds the
+starting readback count. Debit never admits replay after dispatch reservation;
+missing native audit evidence remains unknown and only positive owner evidence
+can confirm the original debit. Fabric
 reports only `ready/none`, `pending/provider_provisioning`, compute-only
 `pending/ownership_pending`, `pending/compute_pool_queued` and
 `pending/compute_dispatch_pending`, the three explicit absent reasons, or the two
@@ -149,7 +152,7 @@ current original operation and Fabric's read-only preview admit closure. The
 POST accepts the same version, reason and idempotency key as result checking.
 It records the authorization in `closeout` on the schema-3 Launch using the
 existing original-row CAS. The single Launch worker continues the same record:
-`freeze -> key -> resources -> refund -> receipt -> complete`. An authorized
+`freeze -> resources -> refund -> receipt -> complete`. An authorized
 closing order remains visible in operator reconciliation and customer Launch
 readback. Repeated commands return its current progress; they do not issue a
 new order or a second refund.
@@ -159,21 +162,16 @@ proven never dispatched. Fabric's typed `closeout/read`, `closeout/freeze` and
 `closeout` endpoints bind the original preflight, account, Workspace and provider
 profile. Freeze and Ensure share the original Launch resource lock; a durable
 freeze rejects late Ensure after restart. Ready before the freeze means
-`fulfilled`: no Key revocation, resource deletion or refund, and ordinary
+`fulfilled`: no resource deletion or refund, and ordinary
 successful-result recovery continues. Resources that become ready only after
 a valid freeze belong to the cancelled, never-activated order and are cleaned
 through their original owner identities.
 
-Sub2API service authorization revokes only the original account and exact
-Workspace Key name/ID, fences late creation into that name and independently
-reads back the revocation. A Key creation that was dispatched but lost its ID
-must first resolve a unique original Key and persist that ID. Name absence alone
-cannot prove an unknown earlier Key was never renamed; such a case stays pending.
-Revocation reads only the exact identity and does not require an active Key;
-ordinary successful Key convergence retains its active-status requirement.
-The separately retained Sub2API patch and replay evidence in [status](../status.md)
-are an Instance adoption requirement, not proof that the deployed Gateway has
-this capability.
+Gateway Keys may remain after closeout. The operation neither reads nor mutates
+Gateway Key state and never manufactures revocation/absence evidence. Fabric
+still proves removal of injected Secrets and all owned resources. Historical
+operations paused at the old `key` phase continue on the same closeout through
+resource cleanup; previously retained revocation facts remain historical only.
 
 Fabric reuses provider adapters and existing resource destruction owners. It
 confirms Runtime/Secret, attachment, storage and compute absence before releasing

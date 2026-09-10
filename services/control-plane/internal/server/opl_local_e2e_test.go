@@ -12,7 +12,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,25 +65,25 @@ type localE2EFaultTransport struct {
 	fault   string
 
 	mu                   sync.Mutex
-	redeemFaulted        bool
+	adjustmentFaulted    bool
 	failNextHistoryRead  bool
-	redeemIdempotencyIDs []string
+	adjustmentIdentities []string
 }
 
 func (t *localE2EFaultTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err := t.traffic.record(request); err != nil {
 		return nil, err
 	}
-	isRedeem := request.Method == http.MethodPost && request.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem"
-	isHistory := request.Method == http.MethodGet && request.URL.Path == "/api/v1/admin/redeem-codes/by-code"
+	isAdjustment := request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/api/v1/admin/users/") && strings.HasSuffix(request.URL.Path, "/balance")
+	isHistory := request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/admin/users/") && strings.HasSuffix(request.URL.Path, "/balance-history")
 
 	t.mu.Lock()
-	if isRedeem {
-		t.redeemIdempotencyIDs = append(t.redeemIdempotencyIDs, request.Header.Get("Idempotency-Key"))
+	if isAdjustment {
+		t.adjustmentIdentities = append(t.adjustmentIdentities, request.Header.Get("Idempotency-Key"))
 	}
 	fault := ""
-	if isRedeem && !t.redeemFaulted && t.fault != "" {
-		t.redeemFaulted = true
+	if isAdjustment && !t.adjustmentFaulted && t.fault != "" {
+		t.adjustmentFaulted = true
 		fault = t.fault
 		if fault == "response_loss" {
 			t.failNextHistoryRead = true
@@ -97,7 +96,7 @@ func (t *localE2EFaultTransport) RoundTrip(request *http.Request) (*http.Respons
 
 	switch fault {
 	case "409":
-		return localE2EHTTPFailure(request, http.StatusConflict, "redeem_conflict", "req-local-409"), nil
+		return localE2EHTTPFailure(request, http.StatusConflict, "balance_adjustment_conflict", "req-local-409"), nil
 	case "503":
 		return localE2EHTTPFailure(request, http.StatusServiceUnavailable, "gateway_busy", "req-local-503"), nil
 	case "timeout":
@@ -117,19 +116,19 @@ func (t *localE2EFaultTransport) RoundTrip(request *http.Request) (*http.Respons
 	}
 }
 
-func (t *localE2EFaultTransport) redeemIdentities() []string {
+func (t *localE2EFaultTransport) moneyIdentities() []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]string(nil), t.redeemIdempotencyIDs...)
+	return append([]string(nil), t.adjustmentIdentities...)
 }
 
 func (t *localE2EFaultTransport) configureFault(fault string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.fault = fault
-	t.redeemFaulted = false
+	t.adjustmentFaulted = false
 	t.failNextHistoryRead = false
-	t.redeemIdempotencyIDs = nil
+	t.adjustmentIdentities = nil
 }
 
 func TestLocalE2EFaultTransportCanSwitchScenariosWithoutNewClient(t *testing.T) {
@@ -140,14 +139,14 @@ func TestLocalE2EFaultTransportCanSwitchScenariosWithoutNewClient(t *testing.T) 
 		status int
 	}{{"409", http.StatusConflict}, {"503", http.StatusServiceUnavailable}} {
 		transport.configureFault(scenario.fault)
-		request := httptest.NewRequest(http.MethodPost, localE2ESub2APIBaseURL+"/api/v1/admin/redeem-codes/create-and-redeem", nil)
+		request := httptest.NewRequest(http.MethodPost, localE2ESub2APIBaseURL+"/api/v1/admin/users/41/balance", nil)
 		request.Header.Set("Idempotency-Key", "wallet-recovery-test")
 		response, err := transport.RoundTrip(request)
 		if err != nil || response.StatusCode != scenario.status {
 			t.Fatalf("fault=%s status=%v err=%v", scenario.fault, response, err)
 		}
 		_ = response.Body.Close()
-		if identities := transport.redeemIdentities(); len(identities) != 1 || identities[0] != "wallet-recovery-test" {
+		if identities := transport.moneyIdentities(); len(identities) != 1 || identities[0] != "wallet-recovery-test" {
 			t.Fatalf("fault=%s identities=%#v", scenario.fault, identities)
 		}
 	}

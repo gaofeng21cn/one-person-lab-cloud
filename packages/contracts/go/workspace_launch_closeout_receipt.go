@@ -21,9 +21,10 @@ type WorkspaceLaunchCloseoutReceiptExecution struct {
 	RefundedUSDMicros  int64                          `json:"refundedUsdMicros"`
 	RefundOperationID  string                         `json:"refundOperationId"`
 	FrozenAt           string                         `json:"frozenAt"`
-	KeyRevokedAt       string                         `json:"keyRevokedAt"`
-	ResourcesAbsentAt  string                         `json:"resourcesAbsentAt"`
-	CompletedAt        string                         `json:"completedAt"`
+	// Historical receipts may attest an actual revocation; new closeouts do not revoke Gateway keys.
+	KeyRevokedAt      string `json:"keyRevokedAt,omitempty"`
+	ResourcesAbsentAt string `json:"resourcesAbsentAt"`
+	CompletedAt       string `json:"completedAt"`
 }
 
 type WorkspaceLaunchCloseoutReceiptCost struct {

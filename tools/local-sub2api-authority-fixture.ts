@@ -567,25 +567,32 @@ export async function startQualificationAuthority(input) {
         return;
       }
 
-      if (method === "POST" && url.pathname === "/api/v1/admin/redeem-codes/create-and-redeem") {
+      if (method === "GET" && url.pathname === "/api/v1/admin/settings") {
+        success(response, { affiliate_enabled: false, affiliate_admin_recharge_enabled: false });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === `/api/v1/admin/users/${qualificationUserID}/balance`) {
         const idempotencyKey = String(request.headers["idempotency-key"] || "").trim();
         const input = await readJSON(request);
         let valueUsdMicros;
         try {
-          valueUsdMicros = usdMicrosFromDecimal(input.value);
+          const amount = usdMicrosFromDecimal(input.balance);
+          if (BigInt(amount) <= 0n || !["subtract", "add"].includes(input.operation)) throw new Error("invalid adjustment");
+          valueUsdMicros = input.operation === "subtract" ? String(-BigInt(amount)) : amount;
         } catch {
-          failure(response, 400, "invalid_redeem_value");
+          failure(response, 400, "invalid_balance_amount");
           return;
         }
         const normalized = {
-          code: String(input.code || ""),
-          type: input.type,
+          code: idempotencyKey,
+          operation: input.operation,
           valueUsdMicros,
-          userId: input.user_id,
+          userId: qualificationUserID,
           notes: String(input.notes || "")
         };
-        if (!normalized.code || normalized.code !== idempotencyKey || normalized.type !== "balance" || normalized.userId !== qualificationUserID || BigInt(valueUsdMicros) === 0n) {
-          failure(response, 400, "invalid_redeem");
+        if (!normalized.code || normalized.notes !== `OPL Cloud balance adjustment: ${idempotencyKey}`) {
+          failure(response, 400, "invalid_balance_adjustment");
           return;
         }
         const hash = requestHash(normalized);
@@ -604,9 +611,9 @@ export async function startQualificationAuthority(input) {
           const usedAt = now();
           const created = {
             code: normalized.code,
+            auditCode: randomUUID(),
             userId: qualificationUserID,
             valueUsdMicros,
-            balanceAppliedValueUsdMicros: valueUsdMicros,
             notes: normalized.notes,
             status: "used",
             usedAt,
@@ -620,59 +627,25 @@ export async function startQualificationAuthority(input) {
           return { status: "created", adjustment: created };
         });
         if (adjustmentResult.status === "payload_conflict" || adjustmentResult.status === "identity_conflict") {
-          failure(response, 409, adjustmentResult.status === "payload_conflict" ? "redeem_conflict" : (adjustmentResult.code || "adjustment_identity_conflict"));
+          failure(response, 409, adjustmentResult.status === "payload_conflict" ? "IDEMPOTENCY_KEY_CONFLICT" : (adjustmentResult.code || "adjustment_identity_conflict"));
           return;
         }
         if (adjustmentResult.status === "insufficient_balance") {
-          failure(response, 409, "insufficient_balance");
+          failure(response, 500, "INTERNAL_SERVER_ERROR");
           return;
         }
-        const debit = adjustmentResult.adjustment;
-        success(response, { redeem_code: {
-          code: debit.code,
-          type: "balance",
-          value: usdNumber(debit.valueUsdMicros),
-          balance_applied_value: debit.balanceAppliedValueUsdMicros === undefined ? null : usdNumber(debit.balanceAppliedValueUsdMicros),
-          status: debit.status,
-          used_by: debit.userId
-        } });
-        return;
-      }
-
-      if (method === "GET" && url.pathname === "/api/v1/admin/redeem-codes/by-code") {
-        const code = url.searchParams.get("code");
-        const userID = Number(url.searchParams.get("user_id"));
-        if (!code || !Number.isSafeInteger(userID) || userID <= 0) {
-          failure(response, 400, "invalid_financial_lookup");
-          return;
-        }
-        const debit = state.adjustments.find((candidate) => candidate.code === code);
-        if (debit && debit.userId !== userID) {
-          failure(response, 409, "financial_owner_conflict");
-          return;
-        }
-        if (debit && debit.balanceAppliedValueUsdMicros === undefined) {
-          failure(response, 409, "BALANCE_ADJUSTMENT_UNVERIFIED");
-          return;
-        }
-        success(response, {
-          lookup: "exact_code_v1",
-          redeem_code: debit ? {
-            code: debit.code, type: "balance", value: usdNumber(debit.valueUsdMicros), status: debit.status,
-            balance_applied_value: usdNumber(debit.balanceAppliedValueUsdMicros),
-            used_by: debit.userId, used_at: debit.usedAt, created_at: debit.createdAt
-          } : null
-        });
+        success(response, userPayload(state));
         return;
       }
 
       if (method === "GET" && url.pathname === `/api/v1/admin/users/${qualificationUserID}/balance-history`) {
         const { page: pageNumber, pageSize } = pagination(url);
-        const history = state.adjustments.slice().reverse().map((debit) => ({
-          code: debit.code,
-          type: "balance",
+        const recordType = url.searchParams.get("type");
+        const history = state.adjustments.filter(() => !recordType || recordType === "admin_balance").slice().reverse().map((debit) => ({
+          code: debit.auditCode,
+          type: "admin_balance",
+          notes: debit.notes,
           value: usdNumber(debit.valueUsdMicros),
-          balance_applied_value: debit.balanceAppliedValueUsdMicros === undefined ? null : usdNumber(debit.balanceAppliedValueUsdMicros),
           status: debit.status,
           used_by: debit.userId,
           used_at: debit.usedAt,
