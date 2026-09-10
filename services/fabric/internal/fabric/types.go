@@ -395,21 +395,22 @@ type WorkspaceRuntimeGatewayNetworkRecoveryResult struct {
 }
 
 type WorkspaceRuntime struct {
-	ID                string            `json:"id"`
-	OperationID       string            `json:"operationId,omitempty"`
-	WorkspaceID       string            `json:"workspaceId"`
-	URL               string            `json:"url"`
-	Status            string            `json:"status"`
-	ServiceName       string            `json:"serviceName,omitempty"`
-	ImageID           string            `json:"imageId,omitempty"`
-	ProviderRequestID string            `json:"providerRequestId"`
-	Access            RuntimeAccess     `json:"access,omitempty"`
-	Ready             bool              `json:"ready,omitempty"`
-	Checks            []Check           `json:"checks,omitempty"`
-	CostTags          map[string]string `json:"costTags,omitempty"`
-	CreatedAt         time.Time         `json:"createdAt"`
-	ComputeID         string            `json:"-"`
-	NodeName          string            `json:"-"`
+	Observation       *contracts.ResourceObservation `json:"-"`
+	ID                string                         `json:"id"`
+	OperationID       string                         `json:"operationId,omitempty"`
+	WorkspaceID       string                         `json:"workspaceId"`
+	URL               string                         `json:"url"`
+	Status            string                         `json:"status"`
+	ServiceName       string                         `json:"serviceName,omitempty"`
+	ImageID           string                         `json:"imageId,omitempty"`
+	ProviderRequestID string                         `json:"providerRequestId"`
+	Access            RuntimeAccess                  `json:"access,omitempty"`
+	Ready             bool                           `json:"ready,omitempty"`
+	Checks            []Check                        `json:"checks,omitempty"`
+	CostTags          map[string]string              `json:"costTags,omitempty"`
+	CreatedAt         time.Time                      `json:"createdAt"`
+	ComputeID         string                         `json:"-"`
+	NodeName          string                         `json:"-"`
 }
 
 type RuntimeAccess struct {
@@ -504,6 +505,8 @@ type ProviderFactsBatchInput struct {
 }
 
 type ProviderResourceFacts struct {
+	// Observation is an adapter read projection, never retained as validation facts.
+	Observation           *contracts.ResourceObservation            `json:"-"`
 	PackageOrSpec         string                                    `json:"packageOrSpec,omitempty"`
 	ProviderID            string                                    `json:"providerId,omitempty"`
 	Zone                  string                                    `json:"zone,omitempty"`
@@ -515,14 +518,17 @@ type ProviderResourceFacts struct {
 }
 
 type ProviderFact struct {
-	AccountID    string                `json:"accountId"`
-	WorkspaceID  string                `json:"workspaceId"`
-	ResourceType string                `json:"resourceType"`
-	ResourceID   string                `json:"resourceId"`
-	Available    bool                  `json:"available"`
-	Facts        ProviderResourceFacts `json:"facts,omitempty"`
-	ErrorCode    string                `json:"errorCode,omitempty"`
+	AccountID    string                         `json:"accountId"`
+	WorkspaceID  string                         `json:"workspaceId"`
+	ResourceType string                         `json:"resourceType"`
+	ResourceID   string                         `json:"resourceId"`
+	Available    bool                           `json:"available"`
+	Facts        ProviderResourceFacts          `json:"facts,omitempty"`
+	ErrorCode    string                         `json:"errorCode,omitempty"`
+	Observation  *contracts.ResourceObservation `json:"observation,omitempty"`
 }
+
+type FabricReadiness = contracts.FabricReadiness
 
 type ProviderFactsBatch struct {
 	Items []ProviderFact `json:"items"`

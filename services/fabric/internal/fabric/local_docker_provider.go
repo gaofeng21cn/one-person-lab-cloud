@@ -562,6 +562,9 @@ func (p *LocalDockerProvider) ReadComputeAllocation(ctx context.Context, allocat
 func (p *LocalDockerProvider) ReadComputeProviderFacts(ctx context.Context, allocation ComputeAllocation) (ProviderResourceFacts, error) {
 	readback, err := p.ReadComputeAllocation(ctx, allocation)
 	if err != nil {
+		if err.Error() == "local_docker_compute_not_found" {
+			return ProviderResourceFacts{Observation: observationFromFacts(ProviderResourceFacts{Status: "external_deleted"})}, err
+		}
 		return ProviderResourceFacts{}, err
 	}
 	return ProviderResourceFacts{
@@ -688,6 +691,9 @@ func (p *LocalDockerProvider) ReadStorageVolume(ctx context.Context, volume Stor
 func (p *LocalDockerProvider) ReadStorageProviderFacts(ctx context.Context, volume StorageVolume) (ProviderResourceFacts, error) {
 	readback, err := p.ReadStorageVolume(ctx, volume)
 	if err != nil {
+		if errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+			return ProviderResourceFacts{Observation: observationFromFacts(ProviderResourceFacts{Status: "external_deleted"})}, err
+		}
 		return ProviderResourceFacts{}, err
 	}
 	return ProviderResourceFacts{
@@ -814,25 +820,31 @@ func (*LocalDockerProvider) DetachStorageAttachment(_ context.Context, attachmen
 	return attachment, nil
 }
 
-func (p *LocalDockerProvider) Readiness(ctx context.Context) (map[string]any, error) {
+func (p *LocalDockerProvider) Readiness(ctx context.Context) (FabricReadiness, error) {
 	if p.profileErr != nil {
-		return nil, p.profileErr
+		return FabricReadiness{}, p.profileErr
 	}
 	if p.gatewaySecretRootErr != nil {
-		return nil, p.gatewaySecretRootErr
+		return FabricReadiness{}, p.gatewaySecretRootErr
 	}
 	if p.hostStorageRootErr != nil {
-		return nil, p.hostStorageRootErr
+		return FabricReadiness{}, p.hostStorageRootErr
 	}
 	if err := p.storageQuota.Preflight(p.hostStorageRoot); err != nil {
-		return nil, err
+		return FabricReadiness{}, err
 	}
-	if err := p.prepareStorageRoot(ctx); err != nil {
-		return nil, err
-	}
-	output, err := p.runner.Run(ctx, nil, "info", "--format", "{{.ServerVersion}}")
+	root, err := p.openStorageRoot()
 	if err != nil {
-		return nil, err
+		return FabricReadiness{}, err
 	}
-	return map[string]any{"status": "ready", "provider": "local-docker", "dockerVersion": strings.TrimSpace(string(output))}, nil
+	inventoryErr := p.validateStorageMetadataInventoryLocked(root)
+	closeErr := root.Close()
+	if inventoryErr != nil || closeErr != nil {
+		return FabricReadiness{}, firstNonNil(inventoryErr, closeErr)
+	}
+	_, err = p.runner.Run(ctx, nil, "info", "--format", "{{.ServerVersion}}")
+	if err != nil {
+		return FabricReadiness{}, err
+	}
+	return FabricReadiness{Provider: "local-docker", ServiceReady: true, MissingEnv: []string{}, MissingTools: []string{}, FailedChecks: []string{}}, nil
 }

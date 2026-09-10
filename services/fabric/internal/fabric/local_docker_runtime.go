@@ -1023,7 +1023,11 @@ func (p *LocalDockerProvider) runtimeFromContainer(container dockerContainerInsp
 	if ready {
 		status = "running"
 	}
-	return WorkspaceRuntime{
+	observation := observationFromFacts(ProviderResourceFacts{ProviderID: container.Name, Status: status})
+	if !container.State.Running && (container.State.Status == "exited" || container.State.Status == "created") {
+		observation = observationFromFacts(ProviderResourceFacts{ProviderID: container.Name, Status: "suspended"})
+	}
+	return WorkspaceRuntime{Observation: observation,
 		ID: runtimeID, OperationID: labels["opl.operation.id"], WorkspaceID: workspaceID, URL: url, Status: status,
 		ServiceName: container.Name, ImageID: labels["opl.image.ref"], ProviderRequestID: providerRequestID("docker-runtime-read", runtimeID), Ready: ready,
 		Checks: []Check{{Name: "docker_container_running", OK: container.State.Running}, {Name: "runtime_port_published", OK: url != ""}}, CreatedAt: p.now(),
@@ -1046,7 +1050,18 @@ func (p *LocalDockerProvider) WorkspaceRuntimeStatus(ctx context.Context, worksp
 		if rootErr != nil {
 			return rootErr
 		}
-		reservation, reconcileErr := p.reconcileLocalDockerRuntimeReservation(root, container)
+		expected, valid := p.localDockerRuntimeReservationFromContainer(container)
+		if !valid {
+			_ = root.Close()
+			return fmt.Errorf("local_docker_runtime_readback_mismatch")
+		}
+		reservation, reconcileErr := readLocalDockerRuntimeReservation(root, localDockerRuntimeReservationName(expected.ResourceID))
+		if errors.Is(reconcileErr, ErrWorkspaceLaunchResourceAbsent) {
+			reconcileErr = fmt.Errorf("local_docker_runtime_reservation_missing")
+		}
+		if reconcileErr == nil && reservation != expected {
+			reconcileErr = fmt.Errorf(localDockerRuntimeReservationInventoryError)
+		}
 		closeErr := root.Close()
 		if reconcileErr != nil || closeErr != nil {
 			if reconcileErr != nil && reconcileErr.Error() == localDockerRuntimeReservationInventoryError {
@@ -1059,7 +1074,7 @@ func (p *LocalDockerProvider) WorkspaceRuntimeStatus(ctx context.Context, worksp
 			return fmt.Errorf("local_docker_runtime_readback_mismatch")
 		}
 		var statusErr error
-		result, statusErr = p.workspaceRuntimeStatusWithLimits(ctx, workspaceID, limits)
+		result, statusErr = p.workspaceRuntimeStatusFromContainer(ctx, workspaceID, limits, container)
 		return statusErr
 	})
 	if err != nil {
@@ -1163,6 +1178,10 @@ func (p *LocalDockerProvider) workspaceRuntimeStatusWithLimits(ctx context.Conte
 	if !exists {
 		return WorkspaceRuntime{WorkspaceID: workspaceID}, ErrWorkspaceLaunchResourceAbsent
 	}
+	return p.workspaceRuntimeStatusFromContainer(ctx, workspaceID, limits, container)
+}
+
+func (p *LocalDockerProvider) workspaceRuntimeStatusFromContainer(ctx context.Context, workspaceID string, limits localDockerRuntimeCgroupLimits, container dockerContainerInspect) (WorkspaceRuntime, error) {
 	if !p.validRuntimeCgroupLimits(container, limits) {
 		return WorkspaceRuntime{}, fmt.Errorf("local_docker_runtime_readback_mismatch")
 	}
@@ -1213,7 +1232,7 @@ func (p *LocalDockerProvider) workspaceRuntimeStatusWithLimits(ctx context.Conte
 }
 
 func (*LocalDockerProvider) WorkspaceRuntimeProviderFacts(runtime WorkspaceRuntime) ProviderResourceFacts {
-	return ProviderResourceFacts{ProviderID: runtime.ServiceName, Status: runtime.Status}
+	return ProviderResourceFacts{ProviderID: runtime.ServiceName, Status: runtime.Status, Observation: runtime.Observation}
 }
 
 func (p *LocalDockerProvider) DestroyWorkspaceRuntime(ctx context.Context, workspaceID string) (WorkspaceRuntime, error) {
@@ -1344,22 +1363,9 @@ func (p *LocalDockerProvider) WorkspaceRuntimeGatewaySecret(ctx context.Context,
 }
 
 func (p *LocalDockerProvider) RuntimeHealthSummary(ctx context.Context) (RuntimeHealthSummary, error) {
-	output, err := p.runner.Run(ctx, nil, "container", "ls", "-a", "--filter", "label=opl.fabric.kind=runtime", "--format", "{{.Names}}")
+	items, err := p.readRuntimeObservations(ctx)
 	if err != nil {
 		return RuntimeHealthSummary{}, err
 	}
-	result := RuntimeHealthSummary{}
-	for _, name := range strings.Fields(string(output)) {
-		container, exists, inspectErr := p.inspectContainer(ctx, name)
-		if inspectErr != nil || !exists {
-			return RuntimeHealthSummary{}, firstNonNil(inspectErr, fmt.Errorf("local_docker_runtime_readback_invalid"))
-		}
-		result.Total++
-		if container.State.Running {
-			result.Ready++
-		} else {
-			result.Unready++
-		}
-	}
-	return result, nil
+	return runtimeInventoryLegacySummary(items)
 }

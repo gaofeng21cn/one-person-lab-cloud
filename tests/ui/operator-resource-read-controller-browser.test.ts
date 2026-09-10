@@ -5,6 +5,9 @@ import { chromium, type Page, type Route } from "playwright";
 
 import type {
   OperatorResourceDTO,
+  OperatorHealthDTO,
+  OperatorOverviewDTO,
+  OperatorRuntimeObservationsDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
   OperatorWorkspaceRuntimeImagePolicyDTO,
@@ -119,7 +122,7 @@ function operatorWorkspace(id: string, name: string, version = "current"): Opera
     packageOrSpec: source(`spec-${version}`, "fabric"),
     providerId: source(`provider-${id}-${version}`, "fabric"),
     zone: source("zone-fixture", "fabric"),
-    status: source("RUNNING", "fabric"),
+    status: source("running", "fabric"),
     createdAt: source(fetchedAt, "fabric"),
     expiresAt: source("2026-09-27T00:00:00Z", "fabric"),
     lastReadAt: source(fetchedAt, "fabric"),
@@ -713,6 +716,177 @@ test("Admin activates an approved rollback for new launches and applies it to an
     assert.equal(activationWrites, 1);
     assert.equal(replacementWrites, 1);
     assert.equal(currentImage, rollbackImage);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Resource refresh updates an expanded Workspace and rejects its late response after selection changes", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const held = deferred();
+  const release = deferred();
+  const settled = deferred();
+  let version = 1;
+  let alphaReads = 0;
+  const writes: string[] = [];
+  const alpha = () => {
+    const item = operatorWorkspace("workspace-refresh", "Refresh");
+    item.resources[0].status = source(version === 1 ? "running" : "stopped", "fabric");
+    item.resources[0].lastReadAt = source(`2026-09-10T0${version}:00:00Z`, "fabric");
+    return item;
+  };
+  const beta = operatorWorkspace("workspace-current", "Current");
+  beta.resources[0].status = unavailable("fabric", "resource_identity_conflict");
+  beta.resources[0].providerErrorCode = source("resource_identity_conflict", "fabric");
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on("request", (request) => { if (request.url().includes("/api/operator/") && request.method() !== "GET") writes.push(request.url()); });
+    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alpha(), beta], 1)));
+    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
+    await page.route("**/api/operator/workspaces/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const id = path.split("/")[4];
+      if (path.endsWith("/preview")) return fulfill(route, source(preview(id), "control-plane+fabric"));
+      if (id === "workspace-refresh") {
+        alphaReads += 1;
+        if (alphaReads === 3) {
+          held.resolve();
+          await release.promise;
+          const stale = alpha();
+          stale.resources[0].providerId = source("late-previous-workspace", "fabric");
+          await fulfill(route, source(stale, "control-plane+fabric+ledger"));
+          settled.resolve();
+          return;
+        }
+        return fulfill(route, source(alpha(), "control-plane+fabric+ledger"));
+      }
+      return fulfill(route, source(beta, "control-plane+fabric+ledger"));
+    });
+    await login(page, demo.origin);
+    await openResources(page, demo.origin);
+    await selectWorkspace(page, "workspace-refresh");
+    await page.locator(".operator-resource-detail-table").getByText("运行中", { exact: true }).waitFor();
+    version = 2;
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await workspaceRow(page, "workspace-refresh").getByText("已停止", { exact: true }).waitFor();
+    await page.locator(".operator-resource-detail-table").getByText("已停止", { exact: true }).waitFor();
+    assert.equal(alphaReads, 2);
+    assert.match(await workspaceRow(page, "workspace-refresh").innerText(), /运行中/);
+    assert.match(await workspaceRow(page, "workspace-refresh").innerText(), /读取时间/);
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await held.promise;
+    await selectWorkspace(page, "workspace-current");
+    await page.locator(".operator-resource-detail-table").getByText("provider-workspace-current-current", { exact: true }).waitFor();
+    release.resolve();
+    await settled.promise;
+    await settle(page);
+    assert.equal(await page.getByText("late-previous-workspace", { exact: true }).count(), 0);
+    assert.match(await page.locator(".operator-resource-detail-table").innerText(), /resource_identity_conflict/);
+    assert.deepEqual(writes, []);
+  } finally {
+    release.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});
+
+function observedRuntime(): OperatorRuntimeObservationsDTO {
+  return {
+    observedAt: fetchedAt, ready: true, businessTotal: 1, observedTotal: 1,
+    runningCount: 0, suspendedCount: 1, pendingCount: 0, attentionCount: 0, unmatchedCount: 0,
+    items: [{ workspaceId: "workspace-paused", runtimeId: "runtime-paused", objectRef: "object-paused", businessState: "suspended", desiredState: "suspended", observedState: "suspended", ownership: "verified", status: "suspended" }]
+  };
+}
+
+function observedHealth(): OperatorHealthDTO {
+  const { items: _items, ...runtime } = observedRuntime();
+  return {
+    controlPlane: source({ ready: true }), gateway: source({ ready: true }, "sub2api"), ledger: source({ ready: true }, "ledger"),
+    fabric: source({ ready: true, serviceReady: true, releaseReady: false, cloudImagesReady: true, workspaceImagesReady: false, immutableImagesReady: false, failedChecks: ["workspace_image_id"] }, "fabric"),
+    runtime: source(runtime, "control-plane+fabric")
+  };
+}
+
+test("System health separates Fabric service from release and opens a read-only Runtime reconciliation", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  let observationReads = 0;
+  let includeUnmatched = false;
+  const writes: string[] = [];
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    page.on("request", (request) => { if (request.url().includes("/api/operator/") && request.method() !== "GET") writes.push(request.url()); });
+    await page.route("**/api/operator/health", (route) => fulfill(route, source(observedHealth())));
+    await page.route("**/api/operator/runtime-observations", (route) => {
+      observationReads += 1;
+      const data = observedRuntime();
+      if (includeUnmatched) {
+        data.ready = false;
+        data.observedTotal = 2;
+        data.attentionCount = 1;
+        data.unmatchedCount = 1;
+        data.items.push({ workspaceId: "workspace-unmatched", objectRef: "object-unmatched", desiredState: "running", observedState: "pending", ownership: "unregistered", status: "attention", reasonCode: "runtime_unmatched_workspace" });
+      }
+      return fulfill(route, source(data, "control-plane+fabric"));
+    });
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/admin/system`, { waitUntil: "domcontentloaded" });
+    const fabric = page.locator(".operator-health-table tbody tr").filter({ hasText: "Fabric 资源服务" });
+    await fabric.getByText("正常", { exact: true }).waitFor();
+    await fabric.getByText("未通过", { exact: true }).waitFor();
+    assert.match(await fabric.innerText(), /单个 Workspace 的目标与运行镜像请在资源详情核对/);
+    const runtime = page.locator(".operator-health-table tbody tr").filter({ hasText: "Workspace Runtime 服务" });
+    await runtime.getByText("正常", { exact: true }).waitFor();
+    assert.match(await runtime.innerText(), /正常暂停 1/);
+    await runtime.getByRole("button", { name: "查看 Runtime 明细", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Workspace Runtime 观测", exact: true });
+    await dialog.getByText("当前没有需要处理的 Runtime 对象。", { exact: true }).waitFor();
+    await dialog.getByRole("button", { name: "全部", exact: true }).click();
+    await dialog.getByText("workspace-paused", { exact: true }).waitFor();
+    await dialog.getByRole("button", { name: "需处理", exact: true }).click();
+    const initialReads = observationReads;
+    includeUnmatched = true;
+    await dialog.getByRole("button", { name: "刷新观测", exact: true }).click();
+    await dialog.getByText("workspace-unmatched", { exact: true }).waitFor();
+    assert.match(await dialog.innerText(), /实物没有对应的当前 Workspace 记录/);
+    assert.match(await dialog.innerText(), /来源：control-plane\+fabric/);
+    assert.equal(await dialog.getByText("workspace-paused", { exact: true }).count(), 0);
+    assert.equal(observationReads, initialReads + 1);
+    assert.deepEqual(writes, []);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Gateway overview displays real zero OPL account totals separately from unavailable balances", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  let failBalance = false;
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/operator/overview", (route) => {
+      const overview: OperatorOverviewDTO = {
+        accounts: source({ total: 1, active: 0, disabled: 1 }),
+        wallet: failBalance ? unavailable("sub2api", "sub2api_wallet_unavailable") : source({ currency: "USD", usdMicros: "0" }, "sub2api"),
+        keys: source({ total: 0 }, "sub2api"), usage: source({ todayActualCostUsdMicros: 0, totalActualCostUsdMicros: 0 }, "sub2api"),
+        workspaces: source({ total: 0 }), resources: source({ total: 0 }, "fabric"), reconciliation: source({ total: 0 }), health: source(observedHealth())
+      };
+      return fulfill(route, source(overview));
+    });
+    await login(page, demo.origin);
+    await page.goto(`${demo.origin}/admin/overview`, { waitUntil: "domcontentloaded" });
+    const balance = page.locator(".metric-row article").filter({ hasText: "汇总余额" });
+    await balance.getByText("OPL 账户 · Gateway 权威余额", { exact: true }).waitFor();
+    assert.match(await balance.locator("strong").innerText(), /0/);
+    assert.doesNotMatch(await balance.innerText(), /暂不可用/);
+    failBalance = true;
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await balance.getByText("暂不可用", { exact: true }).waitFor();
+    assert.match(await balance.innerText(), /sub2api_wallet_unavailable/);
+    assert.equal(await page.locator(".metric-row article").filter({ hasText: "Key 总数" }).locator("strong").innerText(), "0");
   } finally {
     await browser.close();
     await demo.close();

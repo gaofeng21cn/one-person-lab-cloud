@@ -710,7 +710,7 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 			}
 
 			result, err := provider.Readiness(context.Background())
-			if err != nil || result["ready"] != tc.wantReady || result["immutableImagesReady"] != tc.wantReady || result["cloudImagesReady"] != tc.wantCloud || result["workspaceImagesReady"] != tc.wantWorkspace {
+			if err != nil || result.ServiceReady != tc.wantCloud || result.Ready != tc.wantReady || result.ImmutableImagesReady != tc.wantReady || result.CloudImagesReady != tc.wantCloud || result.WorkspaceImagesReady != tc.wantWorkspace {
 				t.Fatalf("readiness = %#v, err=%v, want ready=%t", result, err, tc.wantReady)
 			}
 		})
@@ -718,21 +718,14 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 }
 
 func TestTencentProviderRuntimeHealthSummaryUsesOneAggregateRead(t *testing.T) {
-	provider := NewTencentProvider()
+	items := append(observationWorkload("ws-ready", 1, true), observationWorkload("ws-unready", 1, false)...)
+	provider := inventoryProvider(t, items)
 	calls := 0
-	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+	read := provider.kubectl
+	provider.kubectl = func(ctx context.Context, args []string, input []byte) ([]byte, error) {
 		calls++
-		if !slices.Equal(args, []string{"get", "deployment,pod", "-l", "oplcloud.cn/workspace-id", "-o", "json"}) {
-			t.Fatalf("kubectl args = %#v", args)
-		}
-		return mustJSON(map[string]any{"kind": "List", "items": []any{
-			map[string]any{"kind": "Deployment", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-ready"}}, "status": map[string]any{"readyReplicas": 1, "availableReplicas": 1}},
-			map[string]any{"kind": "Pod", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-ready"}}, "status": map[string]any{"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
-			map[string]any{"kind": "Deployment", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-unready"}}, "status": map[string]any{"readyReplicas": 0, "availableReplicas": 0}},
-			map[string]any{"kind": "Pod", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-unready"}}, "status": map[string]any{"phase": "Pending"}},
-		}}), nil
+		return read(ctx, args, input)
 	}
-
 	summary, err := provider.RuntimeHealthSummary(context.Background())
 	if err != nil || summary.Total != 2 || summary.Ready != 1 || summary.Unready != 1 || calls != 1 {
 		t.Fatalf("summary=%#v err=%v calls=%d", summary, err, calls)

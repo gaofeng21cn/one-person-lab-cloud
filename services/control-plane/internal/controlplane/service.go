@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/domain"
@@ -385,7 +388,7 @@ func (s *Service) RevealWorkspaceRuntimeCredentials(ctx context.Context, account
 	return client.RevealWorkspaceRuntimeCredentials(ctx, accountID, workspaceID, idempotencyKey)
 }
 
-func (s *Service) RuntimeReadiness(ctx context.Context) (map[string]any, error) {
+func (s *Service) RuntimeReadiness(ctx context.Context) (contracts.FabricReadiness, error) {
 	return s.fabric.Readiness(ctx)
 }
 
@@ -395,6 +398,33 @@ func (s *Service) ProviderFactsBatch(ctx context.Context, input clients.Provider
 		return clients.ProviderFactsBatch{}, errors.New("fabric_provider_facts_unavailable")
 	}
 	return client.ProviderFactsBatch(ctx, input)
+}
+
+func (s *Service) RuntimeObservations(ctx context.Context) (contracts.RuntimeObservations, error) {
+	client, ok := s.fabric.(clients.FabricRuntimeObservationClient)
+	if !ok {
+		return contracts.RuntimeObservations{}, errors.New("fabric_runtime_observations_unavailable")
+	}
+	result, err := client.RuntimeObservations(ctx)
+	if err != nil {
+		return contracts.RuntimeObservations{}, err
+	}
+	observedAt, err := time.Parse(time.RFC3339Nano, result.ObservedAt)
+	if err != nil || observedAt.IsZero() || result.Items == nil {
+		return contracts.RuntimeObservations{}, errors.New("fabric_runtime_observations_invalid")
+	}
+	seen := make(map[string]bool, len(result.Items))
+	for _, item := range result.Items {
+		validOwnership := item.Ownership == contracts.RuntimeOwnershipVerified || item.Ownership == contracts.RuntimeOwnershipUnregistered || item.Ownership == contracts.RuntimeOwnershipConflict
+		validDesired := item.DesiredState == contracts.ResourceObservedRunning || item.DesiredState == contracts.ResourceObservedSuspended || item.DesiredState == contracts.ResourceObservedUnknown
+		validObserved := item.ObservedState == contracts.ResourceObservedRunning || item.ObservedState == contracts.ResourceObservedSuspended || item.ObservedState == contracts.ResourceObservedPending || item.ObservedState == contracts.ResourceObservedUnknown
+		if strings.TrimSpace(item.ObjectRef) == "" || seen[item.ObjectRef] || !validOwnership || !validDesired || !validObserved ||
+			item.Ownership == contracts.RuntimeOwnershipVerified && (item.AccountID == "" || item.WorkspaceID == "" || item.RuntimeID == "") {
+			return contracts.RuntimeObservations{}, errors.New("fabric_runtime_observations_invalid")
+		}
+		seen[item.ObjectRef] = true
+	}
+	return result, nil
 }
 
 func (s *Service) RuntimeHealthSummary(ctx context.Context) (clients.RuntimeHealthSummary, error) {

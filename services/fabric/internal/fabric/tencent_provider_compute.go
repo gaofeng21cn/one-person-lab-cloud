@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	contracts "opl-cloud/packages/contracts/go"
 	"reflect"
 	"strconv"
 	"strings"
@@ -787,12 +788,17 @@ func (p *TencentProvider) ClaimComputeNode(ctx context.Context, allocation Compu
 }
 
 func (p *TencentProvider) SyncComputeAllocation(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
+	readback, _, err := p.syncComputeAllocationReadback(ctx, allocation)
+	return readback, err
+}
+
+func (p *TencentProvider) syncComputeAllocationReadback(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, *contracts.ResourceObservation, error) {
 	if allocation.ID == "" {
-		return ComputeAllocation{}, fmt.Errorf("compute_allocation_id_required")
+		return ComputeAllocation{}, nil, fmt.Errorf("compute_allocation_id_required")
 	}
 	plan, err := p.computePlanForAllocation(ctx, allocation)
 	if err != nil {
-		return allocation, err
+		return allocation, nil, err
 	}
 	response, err := p.provision(ctx, provisionerRequest{
 		Action:    "sync_compute_allocation",
@@ -814,11 +820,11 @@ func (p *TencentProvider) SyncComputeAllocation(ctx context.Context, allocation 
 		},
 	})
 	if err != nil {
-		return allocation, err
+		return allocation, response.Observation, err
 	}
 	if response.OK && response.Status == "external_deleted" {
 		if !validTencentComputeSyncAbsenceResponse(response, allocation) {
-			return allocation, fmt.Errorf("compute_sync_absence_readback_mismatch")
+			return allocation, nil, fmt.Errorf("compute_sync_absence_readback_mismatch")
 		}
 		allocation.Status = response.Status
 		allocation.Provider = firstNonEmpty(allocation.Provider, "tencent-tke")
@@ -832,7 +838,7 @@ func (p *TencentProvider) SyncComputeAllocation(ctx context.Context, allocation 
 				allocation.ProviderData[key] = value
 			}
 		}
-		return allocation, nil
+		return allocation, response.Observation, nil
 	}
 	allocation.Status = firstNonEmpty(response.Status, allocation.Status)
 	allocation.Provider = firstNonEmpty(allocation.Provider, "tencent-tke")
@@ -856,15 +862,15 @@ func (p *TencentProvider) SyncComputeAllocation(ctx context.Context, allocation 
 	allocation.Deadline = firstNonEmpty(response.ProviderData["deadline"], allocation.Deadline)
 	allocation.NodeSelector = tkeNodeSelector(allocation.ProviderData, allocation.NodeName)
 	if !response.OK {
-		return allocation, provisionerError(response)
+		return allocation, response.Observation, provisionerError(response)
 	}
 	if response.InstanceType != plan.InstanceType || response.ProviderData["instanceType"] != plan.InstanceType {
-		return allocation, fmt.Errorf("compute_instance_type_mismatch")
+		return allocation, nil, fmt.Errorf("compute_instance_type_mismatch")
 	}
 	if response.ProviderData["cpu"] != strconv.Itoa(plan.CPU) || response.ProviderData["memoryGb"] != strconv.Itoa(plan.MemoryGB) {
-		return allocation, fmt.Errorf("compute_resource_shape_mismatch")
+		return allocation, nil, fmt.Errorf("compute_resource_shape_mismatch")
 	}
-	return allocation, nil
+	return allocation, response.Observation, nil
 }
 
 func (p *TencentProvider) computePlanForAllocation(ctx context.Context, allocation ComputeAllocation) (ComputePlan, error) {
@@ -889,11 +895,12 @@ func (p *TencentProvider) ReadComputeAllocation(ctx context.Context, allocation 
 }
 
 func (p *TencentProvider) ReadComputeProviderFacts(ctx context.Context, allocation ComputeAllocation) (ProviderResourceFacts, error) {
-	readback, err := p.ReadComputeAllocation(ctx, allocation)
+	readback, observation, err := p.syncComputeAllocationReadback(ctx, cloneComputeAllocation(allocation))
 	if err != nil {
-		return ProviderResourceFacts{}, err
+		return ProviderResourceFacts{Observation: observation}, err
 	}
 	return ProviderResourceFacts{
+		Observation:   observation,
 		PackageOrSpec: firstNonEmpty(readback.InstanceType, readback.ProviderData["instanceType"]),
 		ProviderID:    firstNonEmpty(readback.ProviderResourceID, readback.InstanceID, readback.CVMInstanceID),
 		Zone:          firstNonEmpty(readback.Zone, readback.ProviderData["zone"]),

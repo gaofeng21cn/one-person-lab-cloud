@@ -243,6 +243,15 @@ func TestLocalDockerStorageCreateResumesDurableStagingAfterRestart(t *testing.T)
 	}
 	rootHandle.Close()
 	provider := newLocalDockerProvider(localDockerStorageTestConfig(root), &recordingDockerRunner{})
+	if readiness, err := provider.Readiness(context.Background()); err == nil || readiness.ServiceReady {
+		t.Fatalf("incomplete staging was declared ready: %#v %v", readiness, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, workspaceName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("readiness completed pending creation: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, stagingName)); err != nil {
+		t.Fatalf("readiness changed staging: %v", err)
+	}
 	volume, err := provider.CreateStorageVolume(context.Background(), input)
 	if err != nil || volume.Status != "ready" {
 		t.Fatalf("resumed volume=%#v err=%v", volume, err)

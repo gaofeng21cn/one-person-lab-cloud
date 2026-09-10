@@ -533,8 +533,8 @@ func TestOperatorOverviewUsesControlPlaneAggregatesInsteadOfCurrentPageProjectio
 	account["status"] = "disabled"
 	mustStore(t, store.SaveAccount(context.Background(), account))
 
-	fabric := &runtimeHealthSummaryFabric{summary: clients.RuntimeHealthSummary{Total: 17, Ready: 16, Unready: 1}}
-	data, err := (&controlPlaneServer{tables: store}).operatorOverview(context.Background(), controlplane.NewService(fakeLedgerClient{}, fabric, newOperatorProjectionClient()))
+	fabric := &runtimeHealthSummaryFabric{observations: operatorRuntimeFixtureObservations(17)}
+	data, err := (&controlPlaneServer{tables: store}).operatorOverview(context.Background(), controlplane.NewService(fakeLedgerClient{}, fabric, newOperatorProjectionClient(operatorProjectionUser(1, "admin@opl.local", "active", 0), operatorProjectionUser(41, "alpha@example.com", "active", 2), operatorProjectionUser(42, "beta@example.com", "disabled", 3))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,15 +545,15 @@ func TestOperatorOverviewUsesControlPlaneAggregatesInsteadOfCurrentPageProjectio
 	if store.pageAccountCalls != 0 || store.aggregateCalls != 1 {
 		t.Fatalf("overview must not derive totals from paged accounts: page=%d aggregate=%d", store.pageAccountCalls, store.aggregateCalls)
 	}
-	if wallet := mapField(data, "wallet"); wallet["available"] != false || wallet["status"] != "unavailable" {
-		t.Fatalf("untrusted global wallet must remain unavailable: %#v", wallet)
+	if wallet := mapField(data, "wallet"); wallet["available"] != true || mapField(wallet, "data")["usdMicros"] != "5" {
+		t.Fatalf("complete OPL wallet must be available: %#v", wallet)
 	}
 	resources := mapField(data, "resources")
-	if resources["available"] != true || mapField(resources, "data")["total"] != 17 {
+	if resources["available"] != true || mapField(resources, "data")["total"] != float64(17) {
 		t.Fatalf("overview Fabric resources = %#v", resources)
 	}
 	fabric.mu.Lock()
-	statusCalls, summaryCalls := fabric.calls, fabric.summaryCalls
+	statusCalls, summaryCalls := fabric.calls, fabric.observationCalls
 	fabric.mu.Unlock()
 	if statusCalls != 0 || summaryCalls != 1 {
 		t.Fatalf("overview Runtime reads status=%d summary=%d", statusCalls, summaryCalls)
@@ -781,9 +781,11 @@ func TestOperatorOverviewRejectsMoneyAggregationOverflow(t *testing.T) {
 	seedOperatorProjectionAccount(t, store, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
 	seedOperatorProjectionAccount(t, store, "acct-beta", "usr-beta", "beta@example.com", 42)
 	client := newOperatorProjectionClient(
+		operatorProjectionUser(1, "admin@opl.local", "active", 0),
 		operatorProjectionUser(41, "alpha@example.com", "active", math.MaxInt64),
 		operatorProjectionUser(42, "beta@example.com", "active", 1),
 	)
+	client.userUsage[1] = clients.Sub2APIBatchUserUsage{UserID: 1}
 	client.userUsage[41] = clients.Sub2APIBatchUserUsage{UserID: 41, TodayActualCostUSDMicros: math.MaxInt64, TotalActualCostUSDMicros: math.MaxInt64}
 	client.userUsage[42] = clients.Sub2APIBatchUserUsage{UserID: 42, TodayActualCostUSDMicros: 1, TotalActualCostUSDMicros: 1}
 	server, err := NewPersistentServer(controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, client), store)
@@ -795,6 +797,9 @@ func TestOperatorOverviewRejectsMoneyAggregationOverflow(t *testing.T) {
 		t.Fatalf("operator overview = %d: %s", response.Code, response.Body.String())
 	}
 	data := mapField(decodeOperatorEnvelope(t, response), "data")
+	if mapField(data, "keys")["available"] != true || client.adminUserCalls != 3 {
+		t.Fatal("overflow test did not reach complete validated aggregation")
+	}
 	for _, field := range []string{"wallet", "usage"} {
 		envelope := mapField(data, field)
 		if envelope["status"] != "unavailable" || envelope["available"] != false {
@@ -1101,10 +1106,12 @@ func TestOperatorResourceOwnerFields(t *testing.T) {
 	fabric := &operatorProjectionFactsFabric{facts: map[string]clients.ProviderFact{
 		"compute:compute-alpha": {
 			AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ResourceType: "compute", ResourceID: "compute-alpha", Available: true,
-			Facts: clients.ProviderResourceFacts{PackageOrSpec: "S5.MEDIUM4", ProviderID: "ins-alpha", Zone: "ap-shanghai-2", Status: "running", ExpiresAt: "2026-08-18T00:00:00Z", LastReadAt: "2026-07-19T03:00:00Z"},
+			Facts:       clients.ProviderResourceFacts{PackageOrSpec: "S5.MEDIUM4", ProviderID: "ins-alpha", Zone: "ap-shanghai-2", Status: "running", ExpiresAt: "2026-08-18T00:00:00Z", LastReadAt: "2026-07-19T03:00:00Z"},
+			Observation: &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedRunning, PackageOrSpec: "S5.MEDIUM4", ProviderID: "ins-alpha", Zone: "ap-shanghai-2", ExpiresAt: "2026-08-18T00:00:00Z", ObservedAt: "2026-07-19T03:00:00Z"},
 		},
 		"runtime:runtime-alpha": {
 			AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ResourceType: "runtime", ResourceID: "runtime-alpha", Available: true,
+			Observation: &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedRunning, ProviderID: "runtime-service-alpha", ObservedAt: "2026-07-19T03:01:00Z", ComputeRuntimeBinding: &contracts.WorkspaceComputeRuntimeBinding{Status: contracts.WorkspaceComputeRuntimeBindingMatched}},
 			Facts: clients.ProviderResourceFacts{
 				ProviderID: "runtime-service-alpha", Status: "running", LastReadAt: "2026-07-19T03:01:00Z",
 				ComputeRuntimeBinding: &contracts.WorkspaceComputeRuntimeBinding{Status: contracts.WorkspaceComputeRuntimeBindingMatched},

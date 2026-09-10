@@ -24,7 +24,7 @@ const (
 	sub2APIKeyPageSize             = 100
 	sub2APIWorkspaceKeySearchLimit = 30
 	maxSub2APIUsagePage            = 1_000_000
-	maxSub2APIBatchIDs             = 50
+	MaxSub2APIBatchIDs             = 50
 	sub2APIUsageTimezone           = "Asia/Shanghai"
 )
 
@@ -947,7 +947,7 @@ func (c *Sub2APIHTTPClient) BatchKeysUsage(ctx context.Context, apiKeyIDs []int6
 }
 
 func normalizeSub2APIBatchIDs(input []int64) ([]int64, error) {
-	if len(input) > maxSub2APIBatchIDs {
+	if len(input) > MaxSub2APIBatchIDs {
 		return nil, errors.New("sub2api batch exceeds limit")
 	}
 	seen := make(map[int64]struct{}, len(input))

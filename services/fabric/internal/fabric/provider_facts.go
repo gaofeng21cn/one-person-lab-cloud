@@ -2,6 +2,7 @@ package fabric
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -53,6 +54,9 @@ func (s *Service) ProviderFactsBatch(ctx context.Context, input ProviderFactsBat
 		for index := range result.Items {
 			if !result.Items[index].Available && result.Items[index].ErrorCode == "" {
 				result.Items[index].ErrorCode = "provider_facts_timeout"
+				result.Items[index].Observation = &contracts.ResourceObservation{
+					State: contracts.ResourceObservedUnknown, ReasonCode: "provider_facts_timeout", ObservedAt: s.now().Format(time.RFC3339Nano),
+				}
 			}
 		}
 	}
@@ -76,8 +80,14 @@ func (s *Service) RuntimeHealthSummary(ctx context.Context) (RuntimeHealthSummar
 	return summary, nil
 }
 
-func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) ProviderFact {
-	result := ProviderFact{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceType: input.ResourceType, ResourceID: input.ResourceID}
+func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) (result ProviderFact) {
+	result = ProviderFact{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceType: input.ResourceType, ResourceID: input.ResourceID}
+	defer func() {
+		if result.Observation == nil {
+			result.Observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: result.ErrorCode}
+		}
+		result.Observation.ObservedAt = s.now().Format(time.RFC3339Nano)
+	}()
 	if input.AccountID == "" || input.WorkspaceID == "" || input.ResourceID == "" {
 		result.ErrorCode = "provider_fact_identity_required"
 		return result
@@ -122,20 +132,44 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) Pro
 		facts, err = provider.ReadStorageAttachmentProviderFacts(ctx, attachment, attachmentCompute, attachmentStorage)
 	case "runtime":
 		var runtime WorkspaceRuntime
-		runtime, err = s.WorkspaceRuntimeStatus(ctx, input.WorkspaceID)
+		var owner FabricOperation
+		runtime, owner, err = s.runtimeRead.readStatusWithOwner(ctx, input.WorkspaceID)
+		runtime.Access.Password = ""
 		if err == nil && (runtime.ID != input.ResourceID || runtime.WorkspaceID != input.WorkspaceID) {
 			result.ErrorCode = "provider_fact_identity_mismatch"
 			return result
 		}
 		facts = provider.WorkspaceRuntimeProviderFacts(runtime)
+		if err != nil || owner.AccountID != input.AccountID {
+			facts.Observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "provider_fact_identity_mismatch"}
+			if err != nil {
+				facts.Observation.ReasonCode = errorCode(err)
+			}
+		}
+		if errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+			owners, ownerErr := s.runtimeRead.operations.WorkspaceRuntimeIdentityCandidates(ctx, input.WorkspaceID)
+			var created WorkspaceRuntime
+			if ownerErr == nil && len(owners) == 1 && owners[0].AccountID == input.AccountID && decodeOperationResource(owners[0], &created) &&
+				created.WorkspaceID == input.WorkspaceID && created.ID == input.ResourceID {
+				facts.Observation = &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedAbsent, ProviderID: created.ServiceName}
+			}
+		}
 		if err == nil {
 			facts.ComputeRuntimeBinding = s.workspaceComputeRuntimeBinding(ctx, provider, input, runtime)
 		}
 	}
+	result.Observation = facts.Observation
 	if err != nil {
 		result.ErrorCode = errorCode(err)
 		return result
 	}
+	if result.Observation == nil {
+		result.Observation = observationFromFacts(facts)
+	}
+	if result.Observation.Available {
+		result.Observation.ComputeRuntimeBinding = facts.ComputeRuntimeBinding
+	}
+	facts.Observation = nil
 	facts.LastReadAt = s.now().Format(time.RFC3339Nano)
 	result.Available, result.Facts = true, facts
 	return result
