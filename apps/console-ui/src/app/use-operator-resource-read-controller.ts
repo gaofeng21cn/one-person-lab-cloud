@@ -386,11 +386,13 @@ export function useOperatorResourceReadController({
     const session = currentSession();
     if (!session || !activeRef.current) return;
     syncSessionBoundary(session);
+    const selected = selectedWorkspaceIdRef.current;
     await Promise.allSettled([
       loadList(pageRef.current),
-      loadPolicy()
+      loadPolicy(),
+      ...(selected ? [loadDetail(selected), loadPreview(selected)] : [])
     ]);
-  }, [currentSession, loadList, loadPolicy, syncSessionBoundary]);
+  }, [currentSession, loadDetail, loadList, loadPolicy, loadPreview, syncSessionBoundary]);
 
   const changePage = useCallback(async (nextPage: number) => {
     const session = currentSession();

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -152,4 +153,16 @@ func projectProviderFact(row map[string]any, fact clients.ProviderFact) map[stri
 	result["lastProviderSyncAt"] = fact.Facts.LastReadAt
 	result["lastProviderSyncError"] = ""
 	return result
+}
+
+func validOperatorResourceObservation(observation contracts.ResourceObservation) bool {
+	if at, err := time.Parse(time.RFC3339Nano, observation.ObservedAt); err != nil || at.IsZero() {
+		return false
+	}
+	switch observation.State {
+	case contracts.ResourceObservedReady, contracts.ResourceObservedRunning, contracts.ResourceObservedStopped, contracts.ResourceObservedSuspended, contracts.ResourceObservedAttached, contracts.ResourceObservedDetached, contracts.ResourceObservedPending, contracts.ResourceObservedAbsent:
+		return true
+	default:
+		return false
+	}
 }

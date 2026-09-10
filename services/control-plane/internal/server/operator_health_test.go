@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
@@ -29,8 +31,9 @@ func (f *noRuntimeFanoutFabric) WorkspaceRuntimeStatus(_ context.Context, worksp
 
 type runtimeHealthSummaryFabric struct {
 	noRuntimeFanoutFabric
-	summary      clients.RuntimeHealthSummary
-	summaryCalls int
+	observations     contracts.RuntimeObservations
+	observationErr   error
+	observationCalls int
 }
 
 type readinessLedger struct {
@@ -60,60 +63,51 @@ func (s *boundedOperatorHealthStore) PageWorkspaces(ctx context.Context, account
 	return s.memoryTableStore.PageWorkspaces(ctx, accountID, query)
 }
 
-func (f *runtimeHealthSummaryFabric) RuntimeHealthSummary(context.Context) (clients.RuntimeHealthSummary, error) {
+func (f *runtimeHealthSummaryFabric) RuntimeObservations(context.Context) (contracts.RuntimeObservations, error) {
 	f.mu.Lock()
-	f.summaryCalls++
-	f.mu.Unlock()
-	return f.summary, nil
+	defer f.mu.Unlock()
+	f.observationCalls++
+	return f.observations, f.observationErr
 }
 
-func TestOperatorHealthUsesSingleFabricRuntimeSummary(t *testing.T) {
-	store := &boundedOperatorHealthStore{memoryTableStore: newMemoryTableStore()}
-	for _, workspaceID := range []string{"ws-a", "ws-b", "ws-c", "ws-d", "ws-e"} {
-		mustStore(t, store.SaveWorkspace(context.Background(), map[string]any{
-			"id": workspaceID, "ownerAccountId": "acct-alpha", "ownerUserId": "usr-alpha", "accountId": "acct-alpha", "state": "active",
-			"createdAt": "2026-07-18T00:00:00Z", "updatedAt": "2026-07-19T00:00:00Z",
-		}))
+func operatorRuntimeFixtureObservations(count int) contracts.RuntimeObservations {
+	result := contracts.RuntimeObservations{ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Items: []contracts.RuntimeObservation{}}
+	for i := 0; i < count; i++ {
+		result.Items = append(result.Items, contracts.RuntimeObservation{ObjectRef: fmt.Sprintf("object-%d", i), WorkspaceID: fmt.Sprintf("ws-%d", i), Ownership: contracts.RuntimeOwnershipUnregistered, DesiredState: contracts.ResourceObservedRunning, ObservedState: contracts.ResourceObservedPending})
 	}
-	fabric := &runtimeHealthSummaryFabric{summary: clients.RuntimeHealthSummary{Total: 5, Ready: 4, Unready: 1}}
+	return result
+}
+
+func TestOperatorHealthUsesSingleFabricRuntimeObservationAndLocalSet(t *testing.T) {
+	store := &boundedOperatorHealthStore{memoryTableStore: newMemoryTableStore()}
+	fabric := &runtimeHealthSummaryFabric{observations: operatorRuntimeFixtureObservations(5)}
+	for _, workspaceID := range []string{"ws-0", "ws-1"} {
+		workspace := workspaceLaunchUnitActivationProjectionRow(t, workspaceID, "acct-alpha", "usr-alpha")
+		mustStore(t, store.SaveWorkspace(context.Background(), workspace))
+	}
 	ledger := &readinessLedger{}
 	server, err := NewPersistentServer(controlplane.NewService(ledger, fabric, newOperatorProjectionClient()), store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator := reservedOperatorSessionForTest(t, server)
-	req := httptest.NewRequest(http.MethodGet, "/api/operator/health", nil)
-	addAuth(req, operator)
-	response := httptest.NewRecorder()
-	server.ServeHTTP(response, req)
+	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/health", "")
 	if response.Code != http.StatusOK {
-		t.Fatalf("operator health = %d: %s", response.Code, response.Body.String())
+		t.Fatalf("health = %d: %s", response.Code, response.Body.String())
 	}
-	fabric.mu.Lock()
-	statusCalls, summaryCalls := fabric.calls, fabric.summaryCalls
-	fabric.mu.Unlock()
-	if statusCalls != 0 || summaryCalls != 1 {
-		t.Fatalf("runtime health calls status=%d summary=%d", statusCalls, summaryCalls)
+	if fabric.calls != 0 || fabric.observationCalls != 1 || store.listWorkspaceCalls != 1 || store.pageWorkspaceCalls != 0 {
+		t.Fatalf("reads status=%d observations=%d lists=%d pages=%d", fabric.calls, fabric.observationCalls, store.listWorkspaceCalls, store.pageWorkspaceCalls)
 	}
-	if store.listWorkspaceCalls != 0 || store.pageWorkspaceCalls != 0 {
-		t.Fatalf("Workspace health reads list=%d page=%d", store.listWorkspaceCalls, store.pageWorkspaceCalls)
+	health := mapField(decodeOperatorEnvelope(t, response), "data")
+	runtime := mapField(health, "runtime")
+	data := mapField(runtime, "data")
+	if runtime["available"] != true || runtime["source"] != "runtime" || data["ready"] != false || data["businessTotal"] != float64(2) || data["observedTotal"] != float64(5) || data["unmatchedCount"] != float64(3) || data["attentionCount"] != float64(5) {
+		t.Fatalf("runtime=%#v", runtime)
 	}
-	envelope := decodeOperatorEnvelope(t, response)
-	health := mapField(envelope, "data")
-	runtimeEnvelope := mapField(health, "runtime")
-	if runtimeEnvelope["available"] != true {
-		t.Fatalf("Runtime health = %#v", runtimeEnvelope)
+	if _, exists := data["items"]; exists {
+		t.Fatal("health leaks per-workspace items")
 	}
-	runtimeData := mapField(runtimeEnvelope, "data")
-	if runtimeData["ready"] != false || runtimeData["total"] != float64(5) || runtimeData["available"] != float64(5) || runtimeData["unready"] != float64(1) {
-		t.Fatalf("Runtime health data = %#v", runtimeData)
-	}
-	if _, ok := runtimeData["items"]; ok {
-		t.Fatalf("Runtime health must not return per-Workspace items: %#v", runtimeData)
-	}
-	ledgerEnvelope := mapField(health, "ledger")
-	if ledger.calls != 1 || ledgerEnvelope["available"] != true || mapField(ledgerEnvelope, "data")["ready"] != true {
-		t.Fatalf("Ledger readiness calls=%d envelope=%#v", ledger.calls, ledgerEnvelope)
+	if ledger.calls != 1 || mapField(mapField(health, "ledger"), "data")["ready"] != true {
+		t.Fatalf("ledger=%#v", health["ledger"])
 	}
 }
 

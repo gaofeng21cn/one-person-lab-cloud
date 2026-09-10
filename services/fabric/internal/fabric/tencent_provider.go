@@ -1027,6 +1027,7 @@ type provisionerStorage struct {
 }
 
 type provisionerResponse struct {
+	Observation             *contracts.ResourceObservation       `json:"observation,omitempty"`
 	OK                      bool                                 `json:"ok"`
 	OperationID             string                               `json:"operationId,omitempty"`
 	PoolID                  string                               `json:"poolId,omitempty"`

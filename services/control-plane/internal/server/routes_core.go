@@ -27,11 +27,11 @@ func registerCoreRoutes(mux *http.ServeMux, app *controlPlaneServer, service *co
 			writeUpstreamError(w)
 			return
 		}
-		cloudImagesReady := readiness["cloudImagesReady"] == true
-		workspaceImagesReady := readiness["workspaceImagesReady"] == true
-		immutableImagesReady := readiness["immutableImagesReady"] == true
+		cloudImagesReady := readiness.CloudImagesReady
+		workspaceImagesReady := readiness.WorkspaceImagesReady
+		immutableImagesReady := readiness.ImmutableImagesReady
 		writeJSON(w, http.StatusOK, map[string]any{
-			"provider": readiness["provider"], "ready": readiness["ready"] == true && cloudImagesReady && workspaceImagesReady && immutableImagesReady,
+			"provider": readiness.Provider, "ready": readiness.Ready && cloudImagesReady && workspaceImagesReady && immutableImagesReady,
 			"cloudImagesReady": cloudImagesReady, "workspaceImagesReady": workspaceImagesReady, "immutableImagesReady": immutableImagesReady, "checks": []any{},
 		})
 	})

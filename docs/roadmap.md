@@ -74,6 +74,15 @@ F is not a preliminary global rewrite. Each live capability tightens its own
 types while implementing the business outcome. D3 activated H through the real concurrent Launch caller. Its Cloud-side
 serialization is verified locally; Instance concurrency qualification remains external.
 
+The current operator-observation repair under F/J connects Gateway totals and
+provider-neutral resource/Runtime read models without adding a recovery action.
+Acceptance requires complete mapped-account totals, stopped/absent/unknown
+resource distinctions, normal suspension, missing and unmatched Runtime
+visibility, and unchanged financial/procurement behavior. Cloud source verification is complete; exact-Candidate Instance readback
+remains an external evidence obligation in
+[status](status.md). Unmatched production objects require an owner-reviewed
+disposition; their visibility does not authorize deletion or shared-pool scale.
+
 ## Execution And Test Policy
 
 - Independent Account, Commerce, and Lifecycle owners may develop in parallel

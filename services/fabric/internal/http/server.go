@@ -280,6 +280,14 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
+	mux.HandleFunc("GET /fabric/runtime-observations", func(w http.ResponseWriter, r *http.Request) {
+		result, err := service.RuntimeObservations(r.Context())
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, "runtime_observations_unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
 	mux.HandleFunc("GET /fabric/runtime-health-summary", func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.RuntimeHealthSummary(r.Context())
 		if err != nil {

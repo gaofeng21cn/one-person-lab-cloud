@@ -30,6 +30,7 @@ import type {
   OperatorAnnouncementPageDTO,
   OperatorHealthDTO,
   OperatorOverviewDTO,
+  OperatorRuntimeObservationsDTO,
   OperatorReconciliationPageDTO,
   OperatorWorkspaceDTO,
   OperatorWorkspacePageDTO,
@@ -267,6 +268,10 @@ export function getOperatorReconciliation(page = 1, pageSize = 20, signal?: Abor
 
 export function getOperatorHealth(signal?: AbortSignal): Promise<SourceEnvelope<OperatorHealthDTO>> {
   return sourceGet<OperatorHealthDTO>("/api/operator/health", signal);
+}
+
+export function getOperatorRuntimeObservations(signal?: AbortSignal): Promise<SourceEnvelope<OperatorRuntimeObservationsDTO>> {
+  return sourceGet<OperatorRuntimeObservationsDTO>("/api/operator/runtime-observations", signal);
 }
 
 export function getOperatorAnnouncements(page = 1, pageSize = 20, signal?: AbortSignal): Promise<SourceEnvelope<OperatorAnnouncementPageDTO>> {

@@ -282,6 +282,37 @@ failed binding read leaves this observation absent; it does not imply a match.
 Control Plane projects only the bounded provider error code prefix; provider
 messages and response bodies are excluded from the operator fact projection.
 
+Operator resource reads consume the typed `ResourceObservation` attached by
+Fabric to the same provider read. Its current state, observation time and
+bounded reason are separate from retained `ProviderFact.Available/Facts`
+validation used by financial and lifecycle operations. An observed stopped or
+absent resource does not change those operations' validation rules. Missing
+observation evidence is unavailable, never inferred from a historical status.
+
+`GET /fabric/runtime-observations` inventories physical Runtime controllers
+before matching persisted Fabric ownership. Binding claims remain visible for
+unregistered or conflicting objects. Control Plane reconciles this inventory
+against its complete current Workspace set and lifecycle intent through
+`GET /api/operator/runtime-observations`; the operator health card uses the same
+query. Running, normal suspension, pending transitions, missing and unmatched
+objects remain distinct. Incomplete discovery cannot prove absence. The older
+physical summary retains `ready + unready = total`; a suspended controller is
+physically unready without necessarily being a business fault.
+
+Fabric readiness separates `serviceReady` from strict `ready` and retains all
+image qualification fields. Operator service health uses the former and
+exposes the latter as `releaseReady`; Launch preflight keeps strict admission.
+Neither field proves Tencent balance or authorizes procurement.
+
+Gateway operator totals use one complete Control Plane Account collection,
+validate each current Sub2API identity, and read native balance, Key count and
+batched usage through the existing bounded client concurrency. Disabled mapped
+Accounts are included; Gateway-only users are outside this scope. Duplicate
+identity mappings or failed identity reads invalidate all three totals.
+An independently unavailable balance, Key count or usage invalidates only that
+metric after identity validation. No partial sum, wallet replica or raw Key is
+returned to the Console.
+
 The Local Docker adapter validates an immutable Workspace image against its
 trusted repository or exact release-manifest source before Docker access or
 Fabric operation persistence. Its running container ID, service identity, and

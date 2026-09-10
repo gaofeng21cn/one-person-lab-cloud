@@ -30,10 +30,10 @@ type readinessRecordingProvider struct {
 	calls        atomic.Int32
 	entered      chan int32
 	releaseFirst chan struct{}
-	probe        func(context.Context, int32) (map[string]any, error)
+	probe        func(context.Context, int32) (FabricReadiness, error)
 }
 
-func (p *readinessRecordingProvider) Readiness(ctx context.Context) (map[string]any, error) {
+func (p *readinessRecordingProvider) Readiness(ctx context.Context) (FabricReadiness, error) {
 	call := p.calls.Add(1)
 	if p.entered != nil {
 		p.entered <- call
@@ -42,13 +42,13 @@ func (p *readinessRecordingProvider) Readiness(ctx context.Context) (map[string]
 		select {
 		case <-p.releaseFirst:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return FabricReadiness{}, ctx.Err()
 		}
 	}
 	if p.probe != nil {
 		return p.probe(ctx, call)
 	}
-	return map[string]any{"provider": "test", "ready": true, "generation": call}, nil
+	return FabricReadiness{Provider: fmt.Sprint(call), Ready: true, ServiceReady: true}, nil
 }
 
 func TestReadinessCachesSuccessfulResultAndSingleflightsRefresh(t *testing.T) {
@@ -62,7 +62,7 @@ func TestReadinessCachesSuccessfulResultAndSingleflightsRefresh(t *testing.T) {
 	service.now = func() time.Time { return now }
 
 	start := make(chan struct{})
-	results := make(chan map[string]any, callers)
+	results := make(chan FabricReadiness, callers)
 	errors := make(chan error, callers)
 	var ready sync.WaitGroup
 	var finished sync.WaitGroup
@@ -95,37 +95,37 @@ func TestReadinessCachesSuccessfulResultAndSingleflightsRefresh(t *testing.T) {
 		if err := <-errors; err != nil {
 			t.Fatalf("concurrent readiness error = %v", err)
 		}
-		if result := <-results; result["generation"] != int32(1) || result["ready"] != true {
+		if result := <-results; result.Provider != "1" || !result.Ready {
 			t.Fatalf("concurrent readiness result = %#v", result)
 		}
 	}
-	if result, err := service.Readiness(context.Background()); err != nil || result["generation"] != int32(1) || provider.calls.Load() != 1 {
+	if result, err := service.Readiness(context.Background()); err != nil || result.Provider != "1" || provider.calls.Load() != 1 {
 		t.Fatalf("cached readiness = %#v, err=%v, provider calls=%d", result, err, provider.calls.Load())
 	}
 
 	now = now.Add(time.Minute)
 	result, err := service.Readiness(context.Background())
-	if err != nil || result["generation"] != int32(2) || provider.calls.Load() != 2 {
+	if err != nil || result.Provider != "2" || provider.calls.Load() != 2 {
 		t.Fatalf("expired readiness = %#v, err=%v, provider calls=%d", result, err, provider.calls.Load())
 	}
 }
 
 func TestReadinessDoesNotCacheErrors(t *testing.T) {
 	provider := &readinessRecordingProvider{
-		probe: func(_ context.Context, call int32) (map[string]any, error) {
+		probe: func(_ context.Context, call int32) (FabricReadiness, error) {
 			if call == 1 {
-				return nil, errors.New("provider readiness failed")
+				return FabricReadiness{}, errors.New("provider readiness failed")
 			}
-			return map[string]any{"provider": "test", "ready": true}, nil
+			return FabricReadiness{Provider: "test", Ready: true, ServiceReady: true}, nil
 		},
 	}
 	service := NewService(provider)
 
-	if result, err := service.Readiness(context.Background()); err == nil || err.Error() != "provider readiness failed" || result != nil {
+	if result, err := service.Readiness(context.Background()); err == nil || err.Error() != "provider readiness failed" || result.Ready || result.ServiceReady {
 		t.Fatalf("failed readiness = %#v, err=%v", result, err)
 	}
 	result, err := service.Readiness(context.Background())
-	if err != nil || result["ready"] != true || provider.calls.Load() != 2 {
+	if err != nil || !result.Ready || provider.calls.Load() != 2 {
 		t.Fatalf("retried readiness = %#v, err=%v, provider calls=%d", result, err, provider.calls.Load())
 	}
 	if _, err := service.Readiness(context.Background()); err != nil || provider.calls.Load() != 2 {
@@ -135,9 +135,9 @@ func TestReadinessDoesNotCacheErrors(t *testing.T) {
 
 func TestReadinessBoundsProviderCallWithTimeout(t *testing.T) {
 	provider := &readinessRecordingProvider{
-		probe: func(ctx context.Context, _ int32) (map[string]any, error) {
+		probe: func(ctx context.Context, _ int32) (FabricReadiness, error) {
 			<-ctx.Done()
-			return nil, ctx.Err()
+			return FabricReadiness{}, ctx.Err()
 		},
 	}
 	service := NewService(provider)
@@ -145,7 +145,7 @@ func TestReadinessBoundsProviderCallWithTimeout(t *testing.T) {
 
 	started := time.Now()
 	result, err := service.Readiness(context.Background())
-	if !errors.Is(err, context.DeadlineExceeded) || result != nil {
+	if !errors.Is(err, context.DeadlineExceeded) || result.Ready || result.ServiceReady {
 		t.Fatalf("timed readiness = %#v, err=%v", result, err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
@@ -3822,6 +3822,6 @@ func (testProvider) UpsertGatewaySecret(_ context.Context, input GatewaySecretIn
 	return GatewaySecret{SecretRef: gatewaySecretName(input.WorkspaceID), Version: digest[:16], Fingerprint: "sha256:" + digest}, nil
 }
 
-func (testProvider) Readiness(_ context.Context) (map[string]any, error) {
-	return map[string]any{"provider": "test", "ready": true}, nil
+func (testProvider) Readiness(_ context.Context) (FabricReadiness, error) {
+	return FabricReadiness{Provider: "test", Ready: true, ServiceReady: true}, nil
 }
