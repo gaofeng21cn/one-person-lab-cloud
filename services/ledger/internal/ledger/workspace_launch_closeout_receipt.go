@@ -22,8 +22,13 @@ func validWorkspaceLaunchCloseoutReceipt(input ReceiptInput) bool {
 	if !decodeCloseoutReceiptObject(input.Execution, &execution) || !decodeCloseoutReceiptObject(input.Cost, &cost) || execution.OperationID != input.RequestID || !isOpaqueReference(execution.AuthorizationID) || execution.Reason == "" || cost.Currency != "USD" || cost.PriceVersion == "" {
 		return false
 	}
+	stamps := []string{execution.AuthorizedAt, execution.FrozenAt}
+	if execution.KeyRevokedAt != "" {
+		stamps = append(stamps, execution.KeyRevokedAt)
+	}
+	stamps = append(stamps, execution.ResourcesAbsentAt, execution.CompletedAt)
 	var previous time.Time
-	for _, stamp := range []string{execution.AuthorizedAt, execution.FrozenAt, execution.KeyRevokedAt, execution.ResourcesAbsentAt, execution.CompletedAt} {
+	for _, stamp := range stamps {
 		current, err := time.Parse(time.RFC3339Nano, stamp)
 		if err != nil || current.Before(previous) {
 			return false

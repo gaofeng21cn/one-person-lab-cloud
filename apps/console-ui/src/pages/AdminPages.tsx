@@ -493,7 +493,7 @@ function WalletOperationReadback({ controller }: { controller: ConsoleController
         <div><dt>上游 errorCode / requestId</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "暂不可用"}</dd></div>
         <div><dt>allowedActions</dt><dd>{operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无"}</dd></div>
       </dl>
-      {recoverable ? <div className="page-actions"><span>恢复时会要求 evidenceRef，并复用原 operation。</span><Button busy={controller.walletAdjustmentBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>恢复确认</Button></div> : null}
+      {recoverable ? <div className="page-actions"><span>仅核对原操作结果，不会再次扣款或退款。</span><Button busy={controller.walletAdjustmentBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>重新核验</Button></div> : null}
     </section>
   );
 }

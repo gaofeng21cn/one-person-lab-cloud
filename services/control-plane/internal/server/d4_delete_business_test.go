@@ -20,7 +20,7 @@ func TestD4DeleteContinuesWithoutCustomerCredentialAndOnlyCompletesAfterReceipt(
 		t.Fatalf("unclaimed status=%d body=%s", status.Code, status.Body.String())
 	}
 	response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "d4-delete-once")
-	if response.Code != http.StatusBadGateway || sub2API.keyDeletes != 1 || len(sub2API.refunds) != 0 {
+	if response.Code != http.StatusBadGateway || sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 {
 		t.Fatalf("delete status=%d body=%s keyDeletes=%d", response.Code, response.Body.String(), sub2API.keyDeletes)
 	}
 	status = requestWithSession(t, fixture.server, fixture.session, http.MethodGet, "/api/workspaces/ws-alpha/deletion", "")
@@ -37,7 +37,7 @@ func TestD4DeleteContinuesWithoutCustomerCredentialAndOnlyCompletesAfterReceipt(
 	if err := handler.app.runWorkspaceDeletesOnce(context.Background(), handler.service); err != nil {
 		t.Fatal(err)
 	}
-	if len(fixture.fabric.recordedCalls()) != calls || sub2API.keyDeletes != 1 || len(sub2API.refunds) != 0 || len(ledger.receipts) != 2 || ledger.keys[0] != ledger.keys[1] {
+	if len(fixture.fabric.recordedCalls()) != calls || sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 || len(ledger.receipts) != 2 || ledger.keys[0] != ledger.keys[1] {
 		t.Fatal("receipt recovery repeated physical deletion or changed owner key")
 	}
 	fixture.session = tenantOwnerSessionForTest(t, fixture.server)
@@ -62,7 +62,7 @@ func TestD4DeleteConvergesIndependentlyRemainingRuntimeObjects(t *testing.T) {
 			fabric := &workspaceDeleteFabric{observeState: tc.runtime, secretObserveState: tc.secret, clearObservationsOnDestroy: true}
 			fixture, sub2API, ledger := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
 			result := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "d4-partial-runtime")
-			if result.Code != http.StatusOK || len(ledger.receipts) != 1 || sub2API.keyDeletes != 1 || len(sub2API.refunds) != 0 {
+			if result.Code != http.StatusOK || len(ledger.receipts) != 1 || sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 {
 				t.Fatalf("status=%d body=%s calls=%v", result.Code, result.Body.String(), fabric.recordedCalls())
 			}
 			mutations := 0

@@ -337,7 +337,7 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	completed := d1RenewalOperation(t, fixture)
-	if completed.ID != pending.ID || completed.RedeemCode != pending.RedeemCode || completed.Status != "active" || !completed.EntitlementCommitted || completed.ReceiptID == "" || len(gateway.codes) != 1 || gateway.historyCalls != 1 || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.fabric.storageRenewKeys) != 1 || len(fixture.ledger.receipts) != 1 {
+	if completed.ID != pending.ID || completed.RedeemCode != pending.RedeemCode || completed.Status != "active" || !completed.EntitlementCommitted || completed.ReceiptID == "" || len(gateway.codes) != 1 || gateway.historyCalls == 0 || len(fixture.fabric.computeRenewKeys) != 1 || len(fixture.fabric.storageRenewKeys) != 1 || len(fixture.ledger.receipts) != 1 {
 		t.Fatalf("original HTTP transaction did not fulfill exactly once after PostgreSQL reopen: operation=%#v codes=%#v history=%d receipts=%#v", completed, gateway.codes, gateway.historyCalls, fixture.ledger.receipts)
 	}
 	confirmation := d1RenewalDecode[clients.Sub2APICharge](t, completed.ChargeConfirmation)
@@ -353,7 +353,7 @@ func TestD1RenewalHTTPTransactionRecoversAcrossPostgresReopen(t *testing.T) {
 	if err := fixture.app.runMonthlyBillingOnce(ctx, fixture.service, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if len(gateway.codes) != 1 || gateway.historyCalls != 1 || len(*fixture.events) != before || len(fixture.ledger.receipts) != 1 {
+	if len(gateway.codes) != 1 || gateway.historyCalls == 0 || len(*fixture.events) != before || len(fixture.ledger.receipts) != 1 {
 		t.Fatal("completed PostgreSQL renewal repeated an external effect")
 	}
 }
@@ -496,19 +496,23 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 		name                string
 		mutate              func(map[string]any)
 		absent, unavailable bool
+		sourceUnavailable   bool
 		wantStatus          string
 	}{
 		{name: "confirmed_original", wantStatus: "refunded"},
 		{name: "original_absent", absent: true, wantStatus: "manual_review"},
-		{name: "another_transaction", mutate: func(entry map[string]any) { entry["code"] = "another-order" }, wantStatus: "manual_review"},
+		{name: "another_transaction", mutate: func(entry map[string]any) { entry["notes"] = "OPL Cloud balance adjustment: another-order" }, wantStatus: "manual_review"},
 		{name: "another_account", mutate: func(entry map[string]any) { entry["used_by"] = 42 }, wantStatus: "manual_review"},
 		{name: "different_amount", mutate: func(entry map[string]any) {
-			entry["value"], entry["balance_applied_value"] = json.RawMessage("-50"), json.RawMessage("-50")
+			entry["value"] = json.RawMessage("-50")
 		}, wantStatus: "manual_review"},
-		{name: "clamped_original", mutate: func(entry map[string]any) { entry["balance_applied_value"] = json.RawMessage("-40") }, wantStatus: "manual_review"},
-		{name: "historical_applied_missing", mutate: func(entry map[string]any) { delete(entry, "balance_applied_value") }, wantStatus: "refund_pending"},
-		{name: "historical_applied_null", mutate: func(entry map[string]any) { entry["balance_applied_value"] = nil }, wantStatus: "refund_pending"},
-		{name: "lookup_unavailable", unavailable: true, wantStatus: "refund_pending"},
+		{name: "different_native_debit", mutate: func(entry map[string]any) { entry["value"] = json.RawMessage("-40") }, wantStatus: "manual_review"},
+		{name: "legacy_original_without_applied_amount", mutate: func(entry map[string]any) {
+			entry["type"] = "balance"
+			entry["code"] = strings.TrimPrefix(entry["notes"].(string), "OPL Cloud balance adjustment: ")
+			delete(entry, "notes")
+		}, sourceUnavailable: true, wantStatus: "manual_review"},
+		{name: "lookup_unavailable", unavailable: true, sourceUnavailable: true, wantStatus: "manual_review"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000})
@@ -535,29 +539,31 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 					success(map[string]any{"access_token": "access", "refresh_token": "refresh"})
 					return
 				}
-				code := r.URL.Query().Get("code")
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/redeem-codes/by-code" || r.URL.Query().Get("user_id") != "41" || code != operation.RedeemCode && code != operation.RefundCode {
+				recordType := r.URL.Query().Get("type")
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/41/balance-history" || r.URL.Query().Get("page") != "1" || r.URL.Query().Get("page_size") != "100" || (recordType != "admin_balance" && recordType != "balance") {
 					t.Errorf("unexpected financial request: %s %s", r.Method, r.URL.String())
 					http.Error(w, "unexpected request", http.StatusBadRequest)
 					return
 				}
-				lookups = append(lookups, code)
+				lookups = append(lookups, recordType)
 				if test.unavailable && !resolved {
 					http.Error(w, "lookup unavailable", http.StatusServiceUnavailable)
 					return
 				}
-				var record any
-				if code == operation.RedeemCode && (resolved || !test.absent) {
-					entry := authoritativeHistoryEntry(code, "-52.580000")
+				items := []any{}
+				if resolved || !test.absent {
+					entry := authoritativeHistoryEntry(operation.RedeemCode, "-52.580000")
 					if test.mutate != nil && !resolved {
 						test.mutate(entry)
 					}
-					record = entry
+					if entry["type"] == recordType {
+						items = append(items, entry)
+					}
 				}
-				if code == operation.RefundCode && len(fixture.sub2API.refunds) > 0 {
-					record = authoritativeHistoryEntry(code, "52.580000")
+				if recordType == "admin_balance" && len(fixture.sub2API.refunds) > 0 {
+					items = append(items, authoritativeHistoryEntry(operation.RefundCode, "52.580000"))
 				}
-				success(map[string]any{"lookup": "exact_code_v1", "redeem_code": record})
+				success(map[string]any{"items": items, "total": len(items), "page": 1, "page_size": 100, "pages": 1})
 			}))
 			t.Cleanup(upstream.Close)
 			client, err := clients.NewSub2APIHTTPClient(clients.Sub2APIConfig{BaseURL: upstream.URL, AdminEmail: "admin@example.test", AdminPassword: "test-password", Timeout: time.Second}, upstream.Client())
@@ -566,7 +572,7 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 			}
 			fixture.service = controlplane.NewService(fixture.ledger, fixture.fabric, &d1RenewalRefundSourceGateway{monthlySub2API: fixture.sub2API, lookup: client})
 			err = fixture.app.refundWorkspaceRenewal(context.Background(), fixture.service, &operation, "fabric_compute_confirmed_absent")
-			if operation.Status != test.wantStatus || len(lookups) != 1 || lookups[0] != operation.RedeemCode {
+			if operation.Status != test.wantStatus || len(lookups) == 0 || lookups[0] != "admin_balance" {
 				t.Fatalf("original applied debit was not verified: err=%v operation=%#v lookups=%q", err, operation, lookups)
 			}
 			if test.wantStatus == "refunded" {
@@ -578,13 +584,13 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 			if len(fixture.sub2API.refunds) != 0 || len(fixture.ledger.receipts) != 0 {
 				t.Fatalf("unverified original produced money or receipt: refunds=%#v receipts=%#v", fixture.sub2API.refunds, fixture.ledger.receipts)
 			}
-			if test.wantStatus == "manual_review" {
+			if !test.sourceUnavailable {
 				if err != nil || operation.ErrorCode != "sub2api_refund_source_mismatch" {
 					t.Fatalf("source conflict was not retained: err=%v operation=%#v", err, operation)
 				}
 				return
 			}
-			if err == nil || operation.ErrorCode != "sub2api_refund_source_unavailable" {
+			if err == nil || operation.ErrorCode != "sub2api_refund_source_unavailable" || operation.RefundAttempted {
 				t.Fatalf("unknown source was mistaken for absent: err=%v operation=%#v", err, operation)
 			}
 			resolved = true
@@ -593,12 +599,19 @@ func TestD1RenewalRefundVerifiesOriginalAppliedDebitThroughHTTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			fixture.app = restarted
+			retained := d1RenewalOperation(t, fixture)
+			if retained.RefundAttempted {
+				t.Fatal("unverified source consumed the first refund attempt")
+			}
+			if err := fixture.app.refundWorkspaceRenewal(context.Background(), fixture.service, &retained, "fabric_compute_confirmed_absent"); err != nil {
+				t.Fatal(err)
+			}
 			if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, now.Add(workspaceRenewalLeaseDuration+time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			completed := d1RenewalOperation(t, fixture)
 			if completed.Status != "refunded" || completed.Phase != "complete" || completed.RefundCode != operation.RefundCode || len(fixture.sub2API.refunds) != 1 || len(fixture.sub2API.charges) != 1 || len(fixture.ledger.receipts) != 1 {
-				t.Fatalf("verified source did not resume original refund once: operation=%#v refunds=%#v", completed, fixture.sub2API.refunds)
+				t.Fatalf("verified source did not permit the first refund: operation=%#v refunds=%#v", completed, fixture.sub2API.refunds)
 			}
 		})
 	}
@@ -642,11 +655,20 @@ func TestD1RenewalResumedFulfillmentRequiresAppliedDebit(t *testing.T) {
 					var data any
 					if r.URL.Path == "/api/v1/auth/login" {
 						data = map[string]any{"access_token": "access", "refresh_token": "refresh"}
-					} else if r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/redeem-codes/by-code" && r.URL.Query().Get("user_id") == "41" && r.URL.Query().Get("code") == op.RedeemCode {
+					} else if r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/users/41/balance-history" && r.URL.Query().Get("page") == "1" && r.URL.Query().Get("page_size") == "100" {
 						lookupCount++
 						entry := authoritativeHistoryEntry(op.RedeemCode, "-52.580000")
-						entry["balance_applied_value"] = json.RawMessage(applied)
-						data = map[string]any{"lookup": "exact_code_v1", "redeem_code": entry}
+						if applied == "null" {
+							entry["type"], entry["code"] = "balance", op.RedeemCode
+							delete(entry, "notes")
+						} else {
+							entry["value"] = json.RawMessage(applied)
+						}
+						items := []any{}
+						if entry["type"] == r.URL.Query().Get("type") {
+							items = append(items, entry)
+						}
+						data = map[string]any{"items": items, "total": len(items), "page": 1, "page_size": 100, "pages": 1}
 					} else {
 						t.Errorf("unexpected money request during persisted recovery: %s %s", r.Method, r.URL.String())
 						http.Error(w, "unexpected request", http.StatusBadRequest)
@@ -671,7 +693,7 @@ func TestD1RenewalResumedFulfillmentRequiresAppliedDebit(t *testing.T) {
 				} else if err != nil || current.Status != "manual_review" || current.ErrorCode != "sub2api_charge_mismatch" {
 					t.Fatalf("clamped original must require review: err=%v current=%#v", err, current)
 				}
-				if lookupCount != 1 || len(replay.sub2API.charges) != 0 || len(replay.sub2API.refunds) != 0 || len(replay.fabric.computeRenewKeys) != 0 || len(replay.fabric.storageRenewKeys) != 0 || len(replay.ledger.receipts) != 0 {
+				if lookupCount == 0 || len(replay.sub2API.charges) != 0 || len(replay.sub2API.refunds) != 0 || len(replay.fabric.computeRenewKeys) != 0 || len(replay.fabric.storageRenewKeys) != 0 || len(replay.ledger.receipts) != 0 {
 					t.Fatalf("unverified recovered debit caused new effects: lookups=%d charges=%#v refunds=%#v compute=%#v storage=%#v receipts=%#v", lookupCount, replay.sub2API.charges, replay.sub2API.refunds, replay.fabric.computeRenewKeys, replay.fabric.storageRenewKeys, replay.ledger.receipts)
 				}
 				workspace, _ := replay.app.getWorkspace(op.WorkspaceID)

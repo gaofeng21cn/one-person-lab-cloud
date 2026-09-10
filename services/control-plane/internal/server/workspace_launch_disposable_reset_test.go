@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -507,4 +508,21 @@ func mutateDisposableResetEvidence(t *testing.T, raw map[string]json.RawMessage,
 	}
 	evidence[field] = mustJSON(value)
 	raw["disposableReset"] = mustJSON(evidence)
+}
+
+func TestDisposableResetMissingAuditAfterDebitReservationRemainsUnknown(t *testing.T) {
+	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchUnitCommand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway := &disposableResetSub2API{}
+	service := controlplane.NewService(fakeLedgerClient{}, &fakeFabricClient{}, gateway)
+	before := readWorkspaceLaunchDisposableDebit(context.Background(), service, operation)
+	attempt := operation.Attempts[contracts.StageDebit]
+	attempt.Attempted, attempt.Status = 1, "unknown"
+	operation.Attempts[contracts.StageDebit] = attempt
+	after := readWorkspaceLaunchDisposableDebit(context.Background(), service, operation)
+	if before.observations["debit"].State != workspaceLaunchDisposableOwnerAbsent || after.observations["debit"].State != workspaceLaunchDisposableOwnerUnknown {
+		t.Fatalf("missing audit became disposable payment absence: before=%#v after=%#v", before, after)
+	}
 }

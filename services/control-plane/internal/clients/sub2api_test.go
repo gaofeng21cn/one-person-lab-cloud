@@ -1132,49 +1132,110 @@ func TestSub2APIClientWorkspaceKeyBoundsAndRedactsUpstreamResponses(t *testing.T
 }
 
 func TestSub2APIAdjustmentExactAmount(t *testing.T) {
-	chargeCalls := 0
+	posts := 0
 	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if rejectForbiddenSub2APIRoute(t, w, r) {
-			return
-		}
 		switch r.URL.Path {
 		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/system/version":
-			writeSub2APISuccess(t, w, map[string]any{"version": "0.1.151"})
-		case "/api/v1/admin/redeem-codes/create-and-redeem":
-			chargeCalls++
-			if r.Header.Get("Idempotency-Key") != "opl:production:op-41:charge:v1" {
-				t.Errorf("idempotency key = %q", r.Header.Get("Idempotency-Key"))
+			writeD1Sub2APILogin(t, w)
+		case "/api/v1/admin/settings":
+			writeSub2APISuccess(t, w, struct {
+				Affiliate bool `json:"affiliate_enabled"`
+				Admin     bool `json:"affiliate_admin_recharge_enabled"`
+			}{})
+		case "/api/v1/admin/users/41/balance":
+			posts++
+			var input struct {
+				Balance   json.Number `json:"balance"`
+				Operation string      `json:"operation"`
+				Notes     string      `json:"notes"`
 			}
-			var body map[string]any
-			decoder := json.NewDecoder(r.Body)
-			decoder.UseNumber()
-			if err := decoder.Decode(&body); err != nil {
-				t.Errorf("decode charge request: %v", err)
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				t.Fatal(err)
 			}
-			if body["code"] != "opl:production:op-41:charge:v1" || body["type"] != "balance" || body["user_id"] != json.Number("41") || body["value"] != json.Number("-50.000000") {
-				t.Errorf("charge request = %#v", body)
+			if r.Method != http.MethodPost || r.Header.Get("Idempotency-Key") != "opl:production:op-41:charge:v1" || input.Balance != "50.000001" || input.Operation != "subtract" || input.Notes != "OPL Cloud balance adjustment: opl:production:op-41:charge:v1" {
+				t.Errorf("native request=%#v", input)
 			}
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:charge:v1","type":"balance","value":-50.000000,"balance_applied_value":-50.000000,"status":"used","used_by":41}}`))
+			writeSub2APISuccess(t, w, struct {
+				ID int64 `json:"id"`
+			}{41})
 		default:
-			t.Errorf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected route %s", r.URL)
 			http.NotFound(w, r)
 		}
 	}, time.Second)
-
-	input := Sub2APIChargeInput{UserID: 41, Code: "opl:production:op-41:charge:v1", ChargeUSDMicros: 50_000_000}
-	for i := 0; i < 2; i++ {
-		charge, err := client.Charge(context.Background(), input)
-		if err != nil {
-			t.Fatalf("charge attempt %d: %v", i+1, err)
-		}
-		if charge.Code != input.Code || charge.UserID != 41 || charge.ChargeUSDMicros != 50_000_000 {
-			t.Fatalf("charge = %#v", charge)
-		}
+	result, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:production:op-41:charge:v1", ChargeUSDMicros: 50_000_001})
+	if err != nil || result.ChargeUSDMicros != 50_000_001 || result.Status != "used" || result.UserID != 41 || posts != 1 {
+		t.Fatalf("result=%#v err=%v posts=%d", result, err, posts)
 	}
-	if chargeCalls != 2 {
-		t.Fatalf("charge calls = %d, want 2", chargeCalls)
+}
+
+func TestSub2APIAdjustmentNativeAmountPrecision(t *testing.T) {
+	for _, amount := range []struct {
+		name    string
+		micros  int64
+		decimal string
+	}{
+		{name: "one micro", micros: 1, decimal: "0.000001"},
+		{name: "monthly price", micros: 52_580_000, decimal: "52.580000"},
+		{name: "fractional micro price", micros: 50_000_001, decimal: "50.000001"},
+		{name: "large fractional amount", micros: 4_294_967_296_000_001, decimal: "4294967296.000001"},
+		{name: "large exact whole USD", micros: 100_000_000_000_000_000, decimal: "100000000000.000000"},
+		{name: "lost one micro", micros: 100_000_000_000_000_001},
+		{name: "lost fractional micros", micros: 999_999_999_999_123_456},
+		{name: "rounded above database bound", micros: 999_999_999_999_999_999},
+		{name: "exact float outside database bound", micros: 1_000_000_000_000_000_000},
+		{name: "maximum int64", micros: 9_223_372_036_854_775_807},
+	} {
+		for _, operation := range []string{"subtract", "add"} {
+			t.Run(amount.name+"/"+operation, func(t *testing.T) {
+				httpCalls, balancePosts := 0, 0
+				client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
+					httpCalls++
+					switch r.URL.Path {
+					case "/api/v1/auth/login":
+						writeD1Sub2APILogin(t, w)
+					case "/api/v1/admin/settings":
+						writeSub2APISuccess(t, w, json.RawMessage(`{"affiliate_enabled":false,"affiliate_admin_recharge_enabled":false}`))
+					case "/api/v1/admin/users/41/balance":
+						balancePosts++
+						var input struct {
+							Balance   json.Number `json:"balance"`
+							Operation string      `json:"operation"`
+						}
+						if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+							t.Error(err)
+						}
+						if r.Method != http.MethodPost || input.Balance.String() != amount.decimal || input.Operation != operation {
+							t.Errorf("amount changed before native dispatch: %#v", input)
+						}
+						writeSub2APISuccess(t, w, struct {
+							ID int64 `json:"id"`
+						}{41})
+					default:
+						t.Errorf("unexpected request %s", r.URL)
+						http.NotFound(w, r)
+					}
+				}, time.Second)
+				var err error
+				var confirmedMicros int64
+				if operation == "subtract" {
+					var result Sub2APICharge
+					result, err = client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:precision-charge", ChargeUSDMicros: amount.micros})
+					confirmedMicros = result.ChargeUSDMicros
+				} else {
+					var result Sub2APIRefund
+					result, err = client.Refund(context.Background(), Sub2APIRefundInput{UserID: 41, Code: "opl:precision-refund", RefundUSDMicros: amount.micros})
+					confirmedMicros = result.RefundUSDMicros
+				}
+				if amount.decimal == "" {
+					if err == nil || errors.Is(err, ErrSub2APIChargeUnknown) || !strings.Contains(err.Error(), "not exactly representable") || httpCalls != 0 || confirmedMicros != 0 {
+						t.Fatalf("unrepresentable money was dispatched or confirmed: err=%v httpCalls=%d confirmed=%d", err, httpCalls, confirmedMicros)
+					}
+				} else if err != nil || confirmedMicros != amount.micros || balancePosts != 1 {
+					t.Fatalf("representable money was not dispatched exactly once: err=%v confirmed=%d balancePosts=%d", err, confirmedMicros, balancePosts)
+				}
+			})
+		}
 	}
 }
 
@@ -1212,47 +1273,41 @@ func TestSub2APIAdjustmentRejectsOverlengthCodeBeforeHTTP(t *testing.T) {
 	}
 }
 
-func TestSub2APIClientRefundsWithExactPositiveMicrosAndReplays(t *testing.T) {
-	refundCalls := 0
+func TestSub2APIClientRefundsWithExactPositiveMicrosOnce(t *testing.T) {
+	posts := 0
 	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/system/version":
-			writeSub2APISuccess(t, w, map[string]any{"version": "0.1.155"})
-		case "/api/v1/admin/redeem-codes/create-and-redeem":
-			refundCalls++
-			if r.Header.Get("Idempotency-Key") != "opl:production:op-41:refund:v1" {
-				t.Errorf("idempotency key = %q", r.Header.Get("Idempotency-Key"))
+			writeD1Sub2APILogin(t, w)
+		case "/api/v1/admin/settings":
+			writeSub2APISuccess(t, w, struct {
+				Affiliate bool `json:"affiliate_enabled"`
+				Admin     bool `json:"affiliate_admin_recharge_enabled"`
+			}{})
+		case "/api/v1/admin/users/41/balance":
+			posts++
+			var input struct {
+				Balance   json.Number `json:"balance"`
+				Operation string      `json:"operation"`
+				Notes     string      `json:"notes"`
 			}
-			var body map[string]any
-			decoder := json.NewDecoder(r.Body)
-			decoder.UseNumber()
-			if err := decoder.Decode(&body); err != nil {
-				t.Errorf("decode refund request: %v", err)
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				t.Fatal(err)
 			}
-			if body["code"] != "opl:production:op-41:refund:v1" || body["type"] != "balance" || body["user_id"] != json.Number("41") || body["value"] != json.Number("50.000000") {
-				t.Errorf("refund request = %#v", body)
+			if r.Method != http.MethodPost || r.Header.Get("Idempotency-Key") != "opl:production:op-41:refund:v1" || input.Balance != "50.000001" || input.Operation != "add" || input.Notes != "OPL Cloud balance adjustment: opl:production:op-41:refund:v1" {
+				t.Errorf("native request=%#v", input)
 			}
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:production:op-41:refund:v1","type":"balance","value":50.000000,"balance_applied_value":50.000000,"status":"used","used_by":41}}`))
+			writeSub2APISuccess(t, w, struct {
+				ID int64 `json:"id"`
+			}{41})
 		default:
-			t.Errorf("unexpected Sub2API route %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected route %s", r.URL)
 			http.NotFound(w, r)
 		}
 	}, time.Second)
-
-	input := Sub2APIRefundInput{UserID: 41, Code: "opl:production:op-41:refund:v1", RefundUSDMicros: 50_000_000}
-	for i := 0; i < 2; i++ {
-		refund, err := client.Refund(context.Background(), input)
-		if err != nil {
-			t.Fatalf("refund attempt %d: %v", i+1, err)
-		}
-		if refund.Code != input.Code || refund.UserID != 41 || refund.RefundUSDMicros != 50_000_000 {
-			t.Fatalf("refund = %#v", refund)
-		}
-	}
-	if refundCalls != 2 {
-		t.Fatalf("refund calls = %d, want 2", refundCalls)
+	result, err := client.Refund(context.Background(), Sub2APIRefundInput{UserID: 41, Code: "opl:production:op-41:refund:v1", RefundUSDMicros: 50_000_001})
+	if err != nil || result.RefundUSDMicros != 50_000_001 || result.Status != "used" || result.UserID != 41 || posts != 1 {
+		t.Fatalf("result=%#v err=%v posts=%d", result, err, posts)
 	}
 }
 
@@ -1360,21 +1415,15 @@ func TestSub2APIClientCapabilitiesDoNotRequestVersion(t *testing.T) {
 						}},
 						"total": 1, "page": 1, "page_size": 1, "pages": 1,
 					})
-				case "/api/v1/admin/redeem-codes/create-and-redeem":
-					var input struct {
-						Code   string      `json:"code"`
-						Type   string      `json:"type"`
-						Value  json.Number `json:"value"`
-						UserID int64       `json:"user_id"`
-					}
-					decoder := json.NewDecoder(r.Body)
-					decoder.UseNumber()
-					if err := decoder.Decode(&input); err != nil {
-						t.Fatalf("decode balance adjustment: %v", err)
-					}
+				case "/api/v1/admin/settings":
 					writeSub2APISuccess(t, w, struct {
-						RedeemCode sub2APIBalanceHistoryRecord `json:"redeem_code"`
-					}{RedeemCode: sub2APIBalanceHistoryRecord{Code: input.Code, Type: input.Type, Value: &input.Value, BalanceAppliedValue: &input.Value, Status: "used", UsedBy: &input.UserID}})
+						Affiliate bool `json:"affiliate_enabled"`
+						Admin     bool `json:"affiliate_admin_recharge_enabled"`
+					}{})
+				case "/api/v1/admin/users/41/balance":
+					writeSub2APISuccess(t, w, struct {
+						ID int64 `json:"id"`
+					}{41})
 				default:
 					http.NotFound(w, r)
 				}
@@ -1390,23 +1439,18 @@ func TestSub2APIClientCapabilitiesDoNotRequestVersion(t *testing.T) {
 	}
 }
 
-func TestSub2APIClientDetectsSameCodeDifferentValue(t *testing.T) {
-	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/system/version":
-			writeSub2APISuccess(t, w, map[string]any{"version": "0.1.151"})
-		case "/api/v1/admin/redeem-codes/create-and-redeem":
-			writeSub2APISuccess(t, w, json.RawMessage(`{"redeem_code":{"code":"opl:replay","type":"balance","value":-50.000000,"balance_applied_value":-50.000000,"status":"used","used_by":41}}`))
-		default:
-			http.NotFound(w, r)
+func TestSub2APIClientRejectsUnconfirmedNativeAdjustmentResponse(t *testing.T) {
+	for _, response := range []string{`{"id":42}`, `{}`, `{"redeem_code":{"code":"opl:target","value":-1}}`} {
+		client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/auth/login" {
+				writeD1Sub2APILogin(t, w)
+				return
+			}
+			writeSub2APISuccess(t, w, json.RawMessage(response))
+		}, time.Second)
+		if _, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:target", ChargeUSDMicros: 1_000_000}); !errors.Is(err, ErrSub2APIChargeUnknown) {
+			t.Fatalf("invalid native response accepted: %v", err)
 		}
-	}, time.Second)
-
-	_, err := client.Charge(context.Background(), Sub2APIChargeInput{UserID: 41, Code: "opl:replay", ChargeUSDMicros: 40_000_000})
-	if !errors.Is(err, ErrSub2APIChargeConflict) {
-		t.Fatalf("same code with different value error = %v", err)
 	}
 }
 
@@ -1416,13 +1460,11 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
 				writeD1Sub2APILogin(t, w)
-			case "/api/v1/admin/redeem-codes/create-and-redeem":
+			case "/api/v1/admin/users/41/balance":
 				w.Header().Set("X-Request-ID", "req-upstream-409")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusConflict)
 				_, _ = w.Write([]byte(`{"code":"redeem_conflict","message":"response-secret"}`))
-			case "/api/v1/admin/redeem-codes/by-code":
-				writeSub2APISuccess(t, w, d1ExactHistoryData(t, nil))
 			default:
 				http.NotFound(w, r)
 			}
@@ -1446,7 +1488,7 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 			switch r.URL.Path {
 			case "/api/v1/auth/login":
 				writeD1Sub2APILogin(t, w)
-			case "/api/v1/admin/redeem-codes/create-and-redeem":
+			case "/api/v1/admin/users/41/balance":
 				w.Header().Set("X-Request-ID", "req-upstream-503")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -1500,7 +1542,7 @@ func TestSub2APIAdjustmentUnknown(t *testing.T) {
 				writeSub2APISuccess(t, w, struct {
 					Version string `json:"version"`
 				}{"0.1.151"})
-			case "/api/v1/admin/redeem-codes/create-and-redeem":
+			case "/api/v1/admin/users/41/balance":
 				<-release
 			default:
 				http.NotFound(w, r)
@@ -1833,29 +1875,40 @@ func TestSub2APIFinancialBalanceHistoryByCodesUsesOneAbsoluteDeadline(t *testing
 	}
 }
 
-func TestSub2APIBalanceHistoryPageReadsOnlyRequestedPage(t *testing.T) {
+func TestSub2APIBalanceHistoryPageMergesNativeAdjustmentsAndTopups(t *testing.T) {
 	requests := 0
 	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/login":
-			writeSub2APISuccess(t, w, map[string]any{"access_token": "access", "refresh_token": "refresh"})
-		case "/api/v1/admin/users/41/balance-history":
-			requests++
-			if query := r.URL.Query(); query.Get("page") != "3" || query.Get("page_size") != "20" || query.Get("type") != "balance" {
-				t.Fatalf("history query = %s", r.URL.RawQuery)
-			}
-			writeSub2APISuccess(t, w, map[string]any{
-				"items": []any{map[string]any{"code": "opl:page-three", "type": "balance", "value": -1.25, "status": "used", "used_by": 41, "used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z"}},
-				"total": 41, "page": 3, "page_size": 20, "pages": 3,
-			})
-		default:
-			t.Fatalf("unexpected route %s", r.URL.Path)
+		if r.URL.Path == "/api/v1/auth/login" {
+			writeD1Sub2APILogin(t, w)
+			return
 		}
+		requests++
+		query := r.URL.Query()
+		if r.URL.Path != "/api/v1/admin/users/41/balance-history" || query.Get("page") != "1" || query.Get("page_size") != "60" {
+			t.Fatalf("unbounded display read %s", r.URL)
+		}
+		count := 101
+		if query.Get("type") == "admin_balance" {
+			count = 41
+		}
+		records := make([]sub2APIBalanceHistoryRecord, count)
+		for index := range records {
+			record := d1HistoryRecord(fmt.Sprintf("%s-%03d", query.Get("type"), index), -1_250_000, 41)
+			record.Type = query.Get("type")
+			if record.Type == "admin_balance" {
+				used := record.UsedAt.Add(time.Hour)
+				record.UsedAt = &used
+			}
+			records[index] = record
+		}
+		writeD1HistoryPage(t, w, r, records)
 	}, time.Second)
-
 	page, err := client.BalanceHistoryPage(context.Background(), 41, Sub2APIBalanceHistoryPageQuery{Page: 3, PageSize: 20})
-	if err != nil || requests != 1 || page.Total != 41 || page.Page != 3 || page.PageSize != 20 || page.Pages != 3 || len(page.Items) != 1 || page.Items[0].Code != "opl:page-three" || page.Items[0].ValueUSDMicros != -1_250_000 {
-		t.Fatalf("history page = %#v requests=%d err=%v", page, requests, err)
+	if err != nil || requests != 2 || page.Total != 142 || page.Page != 3 || page.PageSize != 20 || page.Pages != 8 || len(page.Items) != 20 {
+		t.Fatalf("history=%#v requests=%d err=%v", page, requests, err)
+	}
+	if page.Items[0].Code != "upstream-admin_balance-040" || page.Items[1].Code != "upstream-balance-000" || page.Items[0].Type != "balance" {
+		t.Fatalf("native/topup merge=%#v", page.Items)
 	}
 }
 
@@ -1868,6 +1921,11 @@ func TestSub2APIBalanceHistoryPageAllowsDisplayPaginationAcrossTenThousandRows(t
 		if query := r.URL.Query(); r.URL.Path != "/api/v1/admin/users/41/balance-history" || query.Get("page") != "1" || query.Get("page_size") != "20" {
 			t.Fatalf("unexpected history request %s?%s", r.URL.Path, r.URL.RawQuery)
 		}
+		if r.URL.Query().Get("type") == "admin_balance" {
+			writeD1HistoryPage(t, w, r, nil)
+			return
+		}
+
 		items := make([]any, 20)
 		for index := range items {
 			items[index] = map[string]any{"code": fmt.Sprintf("opl:display:%d", index), "type": "balance", "value": -0.000001, "status": "used", "used_by": 41, "used_at": "2026-07-16T00:01:00Z", "created_at": "2026-07-16T00:00:00Z"}

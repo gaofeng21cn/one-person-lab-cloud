@@ -10,7 +10,7 @@ owning Cloud service.
 ```text
 Browser Console
   -> Control Plane product API
-       -> Sub2API management API: live balance, account Key/usage, idempotent debit/refund
+       -> Sub2API management API: live balance, account Key/usage, once-dispatched debit/refund
        -> Fabric API: typed compute, storage, attachment, Secret, and runtime stages
        -> Ledger API: receipts and reconciliation evidence
 ```
@@ -407,25 +407,37 @@ result and status. This reuses RuntimeOperation rows without a second wallet,
 reservation table or workflow engine; legacy operation JSON remains readable.
 Successful Renewal refund sources use their owning `active/complete` state.
 Renewal recovery rechecks the original debit before further fulfillment, and a
-new automatic refund requires that debit's authoritative readback. Once exact
-lookup proves an adjustment absent, authorized recovery uses current account
-admission and the original idempotency identity; intervening consumption or
-top-up does not require restoring an old wallet snapshot.
+new automatic refund requires that debit's authoritative readback. Recovery
+never repeats an attempted wallet adjustment. It reads the original evidence
+and leaves missing or conflicting evidence pending/manual review, including
+when an operator requests recovery after a process restart.
 
-Sub2API financial reads require the exact-code endpoint
-`GET /api/v1/admin/redeem-codes/by-code?code=...&user_id=...` and its
-`exact_code_v1` response identity. Missing capability is an unavailable read,
-not proof that a transaction is absent. Both adjustment responses and exact
-reads require `balance_applied_value` to equal the requested amount. The
-Sub2API owner records this nullable fact in the same transaction as redemption
-and the full wallet write; insufficient funds roll back both. Historical null
-values remain unverified and exact lookup rejects them, including old
-idempotent replays. No historical amount is inferred from today's wallet.
-Lookup accepts historical codes up to 200 bytes; new codes remain limited to
-32 bytes. The Sub2API owner must adopt these semantics before deploying the
-corresponding Cloud change. Public upstream v0.2.2's balance-clamping behavior
-is not sufficient; production source/image identity and adoption remain
-Instance evidence.
+The native Sub2API 0.2.4 wallet integration uses
+`POST /api/v1/admin/users/{userId}/balance` with positive decimal `balance`,
+`operation: subtract` for debits or `add` for credits, and the original Cloud
+code as `Idempotency-Key`. Before any request, the adapter rejects amounts that
+cannot preserve exact USD micros through the native float64/decimal conversion
+or fit its `numeric(20,8)` storage. The exact `notes` value is
+`OPL Cloud balance adjustment: <code>`; descriptive text does not change this
+binding. Cloud persists dispatch before sending and does not replay a monetary
+POST after a lost response, authentication error, process crash, or missing
+history. The upstream idempotency cache is not a durable financial journal.
+
+Readback uses `GET /api/v1/admin/users/{userId}/balance-history` with
+`type=admin_balance`, `page`, and `page_size`. The Gateway `code` identifies its
+random audit record; exact `notes` binds the Cloud operation. Cloud confirms
+one matching record with the original user, successful status, exact signed
+amount and timestamps. Duplicate adjustments conflict; missing history does
+not prove a debit or refund absent. Historical `balance` redeem records remain
+readable only with their original verified `balance_applied_value`; no current
+balance can establish a historical applied amount.
+
+Before a credit, a read of `/api/v1/admin/settings` must establish both typed
+`affiliate_enabled` and `affiliate_admin_recharge_enabled` flags; at least one
+must be false so a refund cannot award recharge commission. Cloud does not
+change Gateway settings. Instance qualification reads the same native history
+and exact notes binding and records only the relevant redacted capability facts.
+The Gateway source, image and database remain unmodified.
 
 The deployed Sub2API has no generic hold/capture API. The launch path validates
 the account and quote, runs read-only provider preflight, confirms balance, and
@@ -461,14 +473,14 @@ Gateway Secret are recovered from the current Workspace projection and the
 strict completed Key Rotation lineage from the Launch Key. It then consumes Fabric's typed
 Runtime and Gateway Secret observations (`ready/absent/pending/conflict/error`)
 and advances only through the same-operation chain `runtime + Secret absence ->
-attachment absence -> storage absence -> compute absence -> Sub2API Key absence
+attachment absence -> storage absence -> compute absence
 -> Control Plane Workspace absence -> Ledger workspace.deleted.v1 Receipt ->
 complete`. The operation binds the same account, Workspace, Launch Receipt,
 Runtime, current Key, and provider-neutral resources throughout. The
 `workspace_absent` transaction deletes the exact matching Control Plane
 compute, storage, attachment, and Workspace projections with its cursor. Fabric owns resource
 mutation and authoritative absence, including Tencent Machine/CVM/CBS readback;
-Sub2API owns exact Key deletion and performs zero Delete wallet mutations.
+Gateway Keys remain in Sub2API. Delete performs no Gateway or wallet mutation.
 Ledger Receipt failure retries only the deletion Receipt. Non-terminal legacy
 v1 Delete and concurrent Renewal fail closed before a v2 mutation. Delete and
 Key Rotation use the same durable Workspace claim order and block each other

@@ -182,7 +182,7 @@ func workspaceLifecycleHTTPReceiptInput(receiptType string) ledger.ReceiptInput 
 		input.InputRefs = map[string]any{"launchReceiptId": "receipt-launch-http"}
 		input.OutputRefs = map[string]any{
 			"runtimeStatus": "absent", "gatewaySecretStatus": "absent", "attachmentStatus": "absent", "storageStatus": "absent",
-			"computeStatus": "absent", "workspaceKeyStatus": "absent", "workspaceStatus": "absent",
+			"computeStatus": "absent", "workspaceStatus": "absent",
 		}
 		input.Cost = nil
 	}

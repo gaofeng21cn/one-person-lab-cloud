@@ -52,7 +52,7 @@ func newD3CloseoutRefundChain(t *testing.T, ledger clients.LedgerClient) *d1Fina
 		t.Fatalf("purchase did not stop after confirmed debit: %s", workspaceLaunchReconcileResultSummary(chain.purchase))
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	chain.purchase.Closeout = &workspaceLaunchCloseout{AuthorizationID: "closeout-" + stableID(t.Name())[:12], LaunchVersion: chain.purchase.Version, AuthorizedBy: "usr-closeout-operator", AuthorizedAt: now, Reason: "confirmed unfulfilled order", Phase: "refund", FrozenAt: now, KeyRevokedAt: now, ResourcesAbsentAt: now, DebitState: "confirmed"}
+	chain.purchase.Closeout = &workspaceLaunchCloseout{AuthorizationID: "closeout-" + stableID(t.Name())[:12], LaunchVersion: chain.purchase.Version, AuthorizedBy: "usr-closeout-operator", AuthorizedAt: now, Reason: "confirmed unfulfilled order", Phase: "refund", FrozenAt: now, ResourcesAbsentAt: now, DebitState: "confirmed"}
 	var err error
 	chain.purchase, err = reconciler.persist(context.Background(), chain.purchase)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestD3CloseoutRefundBusinessChain(t *testing.T) {
 		chain := newD3CloseoutRefundChain(t, ledger)
 		chain.remote.mu.Lock()
 		for i := range chain.remote.transactions {
-			if chain.remote.transactions[i].Code == chain.purchase.stringFact("sub2apiRedeemCode") {
+			if chain.remote.transactions[i].Notes == "OPL Cloud balance adjustment: "+chain.purchase.stringFact("sub2apiRedeemCode") {
 				chain.remote.transactions[i].Value = json.Number("-1.00")
 			}
 		}

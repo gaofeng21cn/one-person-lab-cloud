@@ -74,7 +74,7 @@ func TestD2FinanceBusinessChain(t *testing.T) {
 				chain.remote.mu.Lock()
 				original := append([]d1FinancialTransaction(nil), chain.remote.transactions...)
 				for index, entry := range chain.remote.transactions {
-					if entry.Code == test.transactionCode {
+					if entry.Notes == "OPL Cloud balance adjustment: "+test.transactionCode {
 						chain.remote.transactions = append(chain.remote.transactions[:index], chain.remote.transactions[index+1:]...)
 						break
 					}

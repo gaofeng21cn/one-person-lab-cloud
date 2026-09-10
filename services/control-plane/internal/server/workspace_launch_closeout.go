@@ -15,6 +15,7 @@ import (
 
 // Closeout is part of the original Launch. Its CAS stops every normal continuation;
 // the physical owners fence and confirm their own writes before money is returned.
+// KeyRevokedAt is retained only for exact historical receipt replay; new closeouts leave Gateway keys untouched.
 type workspaceLaunchCloseout struct {
 	AuthorizationID    string `json:"authorizationId"`
 	LaunchVersion      int    `json:"launchVersion"`
@@ -105,7 +106,7 @@ func validWorkspaceLaunchCloseout(operation workspaceLaunchReconcileOperation) b
 	if c.DebitState == "absent" && (c.RefundedUSDMicros != 0 || c.RefundOperationID != "") {
 		return false
 	}
-	if c.KeyRevokedAt != "" && c.FrozenAt == "" || c.ResourcesAbsentAt != "" && c.KeyRevokedAt == "" || c.RefundedUSDMicros > 0 && (c.ResourcesAbsentAt == "" || c.DebitState != "confirmed") {
+	if c.KeyRevokedAt != "" && c.FrozenAt == "" || c.ResourcesAbsentAt != "" && c.FrozenAt == "" || c.RefundedUSDMicros > 0 && (c.ResourcesAbsentAt == "" || c.DebitState != "confirmed") {
 		return false
 	}
 	switch c.Phase {
@@ -116,7 +117,7 @@ func validWorkspaceLaunchCloseout(operation workspaceLaunchReconcileOperation) b
 	case "key":
 		return operation.Status == contracts.StatusPending && c.FrozenAt != "" && c.KeyRevokedAt == "" && c.ResourcesAbsentAt == "" && c.ReceiptID == "" && c.CompletedAt == ""
 	case "resources":
-		return operation.Status == contracts.StatusPending && c.KeyRevokedAt != "" && c.ResourcesAbsentAt == "" && c.ReceiptID == "" && c.CompletedAt == ""
+		return operation.Status == contracts.StatusPending && c.FrozenAt != "" && c.ResourcesAbsentAt == "" && c.ReceiptID == "" && c.CompletedAt == ""
 	case "refund", "receipt", "complete":
 		if c.ResourcesAbsentAt == "" || c.DebitState == "" {
 			return false
@@ -154,10 +155,10 @@ func workspaceLaunchCloseoutTransitionMatches(previous, next *workspaceLaunchClo
 	if previous.Phase == "freeze" && next.Phase == "fulfilled" {
 		return true
 	}
-	phases := map[string]int{"freeze": 0, "key": 1, "resources": 2, "refund": 3, "receipt": 4, "complete": 5}
+	phases := map[string]int{"freeze": 0, "key": 1, "resources": 1, "refund": 2, "receipt": 3, "complete": 4}
 	before, oldOK := phases[previous.Phase]
 	after, newOK := phases[next.Phase]
-	return oldOK && newOK && (after == before || after == before+1)
+	return oldOK && newOK && (after == before && (previous.Phase == next.Phase || previous.Phase == "key" && next.Phase == "resources") || after == before+1)
 }
 
 func workspaceLaunchCloseoutEligible(operation workspaceLaunchReconcileOperation, now time.Time) bool {
@@ -298,27 +299,11 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) ReconcileCloseout(ctx context.
 			stepErr = errors.New("workspace_launch_closeout_freeze_pending")
 			break
 		}
-		c.FrozenAt, c.Phase = now, "key"
+		c.FrozenAt, c.Phase = now, "resources"
 	case "key":
-		if operation.int64Fact("workspaceApiKeyId") == 0 && operation.Attempts[contracts.StageKey].Attempted > 0 {
-			// An old request may have created a Key whose ID was lost. Name absence
-			// cannot prove that Key was never renamed; require a positive owner identity.
-			keys, err := a.service.WorkspaceKeysForRevocation(ctx, operation.int64Fact("sub2apiUserId"), workspaceReservedKeyName(operation.stringFact("workspaceId")))
-			reserved := workspaceKeysNamed(keys, workspaceReservedKeyName(operation.stringFact("workspaceId")))
-			if err != nil || len(reserved) != 1 || reserved[0].ID <= 0 || reserved[0].UserID != operation.int64Fact("sub2apiUserId") {
-				stepErr = errors.New("workspace_launch_closeout_key_unknown")
-				break
-			}
-			// Revocation needs identity, not an active Key or a successful group bind.
-			// Persist only the observed ID; do not fabricate successful Key-stage facts.
-			operation.raw["workspaceApiKeyId"], _ = json.Marshal(reserved[0].ID)
-			c.ErrorCode = ""
-			return reconciler.persist(ctx, operation)
-		}
-		stepErr = a.service.RevokeWorkspaceKey(ctx, clients.Sub2APIWorkspaceKeyRevokeInput{UserID: operation.int64Fact("sub2apiUserId"), KeyID: operation.int64Fact("workspaceApiKeyId"), ExactName: workspaceReservedKeyName(operation.stringFact("workspaceId")), LaunchOperationID: operation.ID})
-		if stepErr == nil {
-			c.KeyRevokedAt, c.Phase = now, "resources"
-		}
+		// Resume the retained cursor under the current policy. Gateway keys remain
+		// customer-owned; advancing this retired step is not revocation evidence.
+		c.Phase, c.ErrorCode = "resources", ""
 	case "resources":
 		result, err := a.service.CloseoutWorkspaceLaunch(ctx, input)
 		if err != nil {

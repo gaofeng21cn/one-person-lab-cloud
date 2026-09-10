@@ -196,74 +196,47 @@ test("qualification authority provides one persistent user, key, and exact debit
   assert.equal(adminKeys.total, 1);
   assert.deepEqual(adminKeys.items, [key]);
 
-  const debitInput = { code: "opl:qualification:debit:1", type: "balance", value: -52.58, user_id: 41, notes: "local qualification" };
-  const debit = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST",
-    token: credentials.userToken,
-    idempotencyKey: debitInput.code,
-    body: debitInput
+  const debitCode = "opl:qualification:debit:1";
+  const debitInput = { balance: 52.58, operation: "subtract", notes: `OPL Cloud balance adjustment: ${debitCode}` };
+  const debit = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/users/41/balance", {
+    method: "POST", token: credentials.userToken, idempotencyKey: debitCode, body: debitInput
   }));
-  assert.deepEqual(debit.redeem_code, {
-    code: debitInput.code,
-    type: "balance",
-    value: -52.58,
-    balance_applied_value: -52.58,
-    status: "used",
-    used_by: 41
-  });
+  assert.equal(debit.id, 41);
+  assert.equal(debit.balance, 47.42);
 
-  const debitReplay = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST",
-    token: credentials.userToken,
-    idempotencyKey: debitInput.code,
-    body: debitInput
-  }));
-  assert.deepEqual(debitReplay, debit);
-
-  const exact = assertSuccess(await jsonRequest(authority.origin,
-    `/api/v1/admin/redeem-codes/by-code?code=${encodeURIComponent(debitInput.code)}&user_id=41`,
-    { token: credentials.userToken }
-  ));
-  assert.equal(exact.lookup, "exact_code_v1");
-  assert.equal(exact.redeem_code.code, debitInput.code);
-  assert.equal(exact.redeem_code.balance_applied_value, -52.58);
-
-  const conflict = await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST",
-    token: credentials.userToken,
-    idempotencyKey: debitInput.code,
-    body: { ...debitInput, value: -1 }
+  const conflict = await jsonRequest(authority.origin, "/api/v1/admin/users/41/balance", {
+    method: "POST", token: credentials.userToken, idempotencyKey: debitCode, body: { ...debitInput, balance: 1 }
   });
   assert.equal(conflict.status, 409);
-  assert.equal(conflict.payload.code, "redeem_conflict");
+  assert.equal(conflict.payload.code, "IDEMPOTENCY_KEY_CONFLICT");
 
-  const secondIdentity = await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST",
-    token: credentials.userToken,
-    idempotencyKey: "opl:qualification:debit:2",
-    body: { ...debitInput, code: "opl:qualification:debit:2" }
+  const secondIdentity = await jsonRequest(authority.origin, "/api/v1/admin/users/41/balance", {
+    method: "POST", token: credentials.userToken, idempotencyKey: "opl:qualification:debit:2",
+    body: { ...debitInput, notes: "OPL Cloud balance adjustment: opl:qualification:debit:2" }
   });
   assert.equal(secondIdentity.status, 409);
   assert.equal(secondIdentity.payload.code, "debit_identity_conflict");
 
-  const history = assertSuccess(await jsonRequest(
-    authority.origin,
-    "/api/v1/admin/users/41/balance-history?page=1&page_size=100&type=balance",
+  const history = assertSuccess(await jsonRequest(authority.origin,
+    "/api/v1/admin/users/41/balance-history?page=1&page_size=100&type=admin_balance",
     { token: credentials.userToken }
   ));
   assert.equal(history.total, 1);
-  assert.equal(history.items[0].code, debitInput.code);
+  assert.notEqual(history.items[0].code, debitCode);
+  assert.equal(history.items[0].notes, debitInput.notes);
+  assert.equal(history.items[0].type, "admin_balance");
   assert.equal(history.items[0].value, -52.58);
 
-  const refundInput = { code: "opl:qualification:refund:1", type: "balance", value: 52.58, user_id: 41, notes: "local qualification cleanup" };
-  const refund = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST", token: credentials.userToken, idempotencyKey: refundInput.code, body: refundInput
+  const settings = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/settings", { token: credentials.userToken }));
+  assert.equal(settings.affiliate_enabled, false);
+  assert.equal(settings.affiliate_admin_recharge_enabled, false);
+  const refundCode = "opl:qualification:refund:1";
+  const refund = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/users/41/balance", {
+    method: "POST", token: credentials.userToken, idempotencyKey: refundCode,
+    body: { balance: 52.58, operation: "add", notes: `OPL Cloud balance adjustment: ${refundCode}` }
   }));
-  assert.equal(refund.redeem_code.value, 52.58);
-  const refundReplay = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/redeem-codes/create-and-redeem", {
-    method: "POST", token: credentials.userToken, idempotencyKey: refundInput.code, body: refundInput
-  }));
-  assert.deepEqual(refundReplay, refund);
+  assert.equal(refund.id, 41);
+  assert.equal(refund.balance, 100);
 
   const unauthorizedState = await jsonRequest(authority.origin, "/qualification/state", {
     token: credentials.userToken

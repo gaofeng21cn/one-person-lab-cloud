@@ -321,13 +321,13 @@ attachment identity remain bound to that Launch; the current Workspace Key and
 Gateway Secret identity come from the current Workspace projection and a strict
 completed Rotation lineage back to the Launch Key. Delete then coordinates
 `runtime + Secret absence -> attachment absence -> storage absence -> compute
-absence -> Sub2API Key absence -> Workspace absence -> workspace.deleted.v1
+absence -> Workspace absence -> workspace.deleted.v1
 Receipt -> complete`. Workspace absence atomically removes its exact Control
 Plane compute, storage, and attachment projections. Every stage preserves the
 same account, operation, Workspace, Launch Receipt, Runtime, current Key, and
 provider-neutral resource identities. Fabric owns resource/Secret observations,
-mutation, and authoritative absence; Sub2API owns only the exact Key deletion
-in this operation and performs no wallet mutation; Ledger records the
+mutation, and authoritative absence; Gateway Keys remain in Sub2API, and this
+operation performs no Gateway or wallet mutation; Ledger records the
 non-financial deletion Receipt. Delete and Key Rotation are durably mutually
 exclusive before either claim can cross an external mutation boundary. Delete,
 Cancel Renewal, and Refund are independent operations. Any typed pending,
@@ -354,11 +354,11 @@ no promised free retention period or post-expiry data recovery.
 
 An operator may end an unfulfilled Launch on its original operation. Control
 Plane first freezes normal continuation by CAS; Fabric then fences the original
-Launch before Sub2API revokes the exact Workspace Key. Fabric confirms partial
-resource absence, the existing wallet settlement owner returns only the original
+Launch. The Gateway Key may remain; cleanup removes its Fabric Secret binding.
+Fabric confirms partial resource absence, the existing wallet settlement owner returns only the original
 account's unrefunded charge, and Ledger records `billing.workspace_closed.v1`.
 A ready Runtime or activated Workspace follows successful-result recovery,
-including missing receipt completion. Unknown money, Key identity or resources
+including missing receipt completion. Unknown money or resources
 cannot authorize terminal failure, refund or pool-claim release. This closure
 path is distinct from normal customer deletion of a succeeded Workspace.
 

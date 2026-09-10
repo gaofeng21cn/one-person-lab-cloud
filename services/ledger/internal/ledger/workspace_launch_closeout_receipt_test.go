@@ -9,7 +9,7 @@ import (
 
 func closeoutReceiptForTest(t *testing.T) ReceiptInput {
 	t.Helper()
-	execution := contracts.WorkspaceLaunchCloseoutReceiptExecution{OperationID: "workspace-launch-closed", AuthorizationID: "operator-close-1", AuthorizedAt: "2026-09-09T01:00:00Z", Reason: "unfulfilled launch", Outcome: "refunded", ChargeConfirmation: &contracts.WorkspaceLaunchCloseoutCharge{Code: "original-debit-code", UserID: 41, ChargeUSDMicros: 52580000, Status: "used"}, RefundedUSDMicros: 52580000, RefundOperationID: "wallet-adjustment-closed", FrozenAt: "2026-09-09T01:00:01Z", KeyRevokedAt: "2026-09-09T01:00:02Z", ResourcesAbsentAt: "2026-09-09T01:00:03Z", CompletedAt: "2026-09-09T01:00:04Z"}
+	execution := contracts.WorkspaceLaunchCloseoutReceiptExecution{OperationID: "workspace-launch-closed", AuthorizationID: "operator-close-1", AuthorizedAt: "2026-09-09T01:00:00Z", Reason: "unfulfilled launch", Outcome: "refunded", ChargeConfirmation: &contracts.WorkspaceLaunchCloseoutCharge{Code: "original-debit-code", UserID: 41, ChargeUSDMicros: 52580000, Status: "used"}, RefundedUSDMicros: 52580000, RefundOperationID: "wallet-adjustment-closed", FrozenAt: "2026-09-09T01:00:01Z", ResourcesAbsentAt: "2026-09-09T01:00:03Z", CompletedAt: "2026-09-09T01:00:04Z"}
 	cost := contracts.WorkspaceLaunchCloseoutReceiptCost{Currency: "USD", PriceVersion: "pilot-usd-2026-07-v1", ChargeUSDMicros: 52580000, PeriodStart: "2026-09-09T00:00:00Z", PaidThrough: "2026-10-09T00:00:00Z"}
 	input := ReceiptInput{Type: string(contracts.ReceiptTypeWorkspaceClosed), Status: "completed", Surface: "control_plane", AccountID: "acct-closed", WorkspaceID: "workspace-closed", RequestID: execution.OperationID, IdempotencyKey: execution.OperationID + ":closeout:ledger", Actor: map[string]any{"userId": "usr-admin"}}
 	encoded, _ := json.Marshal(execution)
@@ -58,5 +58,17 @@ func TestWorkspaceLaunchCloseoutReceiptRejectsUnprovenClosure(t *testing.T) {
 	delete(input.Cost, "paidThrough")
 	if err := validateReceiptInput(input); err != nil {
 		t.Fatalf("uncharged closure needs no invented billing period: %v", err)
+	}
+}
+
+func TestWorkspaceLaunchCloseoutReceiptPreservesHistoricalRevocationEvidence(t *testing.T) {
+	input := closeoutReceiptForTest(t)
+	input.Execution["keyRevokedAt"] = "2026-09-09T01:00:02Z"
+	if err := validateReceiptInput(input); err != nil {
+		t.Fatalf("historical receipt rejected: %v", err)
+	}
+	input.Execution["keyRevokedAt"] = "2026-09-09T00:00:00Z"
+	if err := validateReceiptInput(input); err == nil {
+		t.Fatal("historical revocation before freeze accepted")
 	}
 }

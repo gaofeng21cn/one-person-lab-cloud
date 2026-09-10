@@ -52,15 +52,14 @@ current implementation documentation.
   are reconciliation evidence, not a customer pricing formula.
 - A Workspace purchase or renewal confirms at most one customer debit for the
   accepted period price. Compute and storage are fulfillment of that purchase.
-- Sub2API must atomically reject an insufficient debit without consuming its
-  transaction identity. A used transaction must represent the full requested
-  amount; clamping a debit to the available balance violates settlement.
-- Confirmation binds the original transaction code, account, USD amount and
-  authoritative used status and applied amount committed with the wallet write.
-  Historical transactions without that fact remain unverified; a current
-  balance or a version cutoff cannot certify their original applied amount.
-  Current wallet snapshots are presentation or
-  historical evidence, not proof of one transaction amid other consumption.
+- Sub2API must atomically reject an insufficient debit; clamping a debit to
+  available balance violates settlement.
+- A financial confirmation binds the original operation, account, full USD
+  amount and successful native adjustment evidence. A missing audit row after
+  a reserved dispatch remains unknown: wallet writes and audit persistence are
+  separate upstream operations. Recovery never dispatches that money write again.
+  Current wallet snapshots cannot prove one transaction amid other consumption.
+  Historical redeem records without a verified applied amount remain unverified.
 - Business refunds belong to the original confirmed charge and its account.
   Persist the refund reservation atomically with the operation; completed and
   unresolved refunds together cannot exceed that charge. Only a confirmed
@@ -85,8 +84,8 @@ current implementation documentation.
 ## Workspace Lifecycle
 
 - Ending an unfulfilled Launch preserves its original authorization and order.
-  Freeze and normal dispatch share owner serialization. Key revocation and exact
-  resource absence precede refund; previous and closing refunds share the same
+  Freeze and normal dispatch share owner serialization. Exact Fabric resource
+  absence precedes refund; previous and closing refunds share the same
   original-charge reservation. A ready-before-freeze Workspace is never closed
   as failed. Unknown outcomes cannot become absence or payment confirmation.
 - Launch, renewal, Key rotation, Runtime repair, and deletion are durable
@@ -102,9 +101,10 @@ current implementation documentation.
   idempotency binding. An uncertain result converges through owner-authoritative
   readback before another write is considered.
 - Workspace deletion removes owned Runtime, Secret, attachment, storage,
-  compute, and Key state through their respective owners before removing the
-  Workspace projection. Delete is independent from refund and performs no
-  automatic wallet mutation.
+  and compute state through Fabric before removing the Workspace projection.
+  Gateway Keys may remain; neither deletion nor failed-Launch closeout requires
+  their deletion, disabled state, or permanent revocation. Delete is independent
+  from refund and performs no automatic wallet mutation.
 - Unpaid expiry denies new access, ends existing proxied access, and stops the
   original Runtime through Fabric. It does not authorize new procurement or
   silently extend entitlement. Stop/resume preserves storage and Key identity.

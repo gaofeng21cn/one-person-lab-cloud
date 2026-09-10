@@ -63,7 +63,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) CanReplayStage(operation works
 	switch operation.Stage {
 	case contracts.StageKey:
 		return a.workspaceLaunchKeyMutationCredentialValid(operation)
-	case contracts.StageDebit, contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime, contracts.StageActivation, contracts.StageReceipt:
+	case contracts.StageCompute, contracts.StageStorage, contracts.StageAttachment, contracts.StageSecret, contracts.StageRuntime, contracts.StageActivation, contracts.StageReceipt:
 		return true
 	default:
 		return false

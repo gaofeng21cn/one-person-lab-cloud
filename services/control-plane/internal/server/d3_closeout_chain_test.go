@@ -108,23 +108,12 @@ func (f *d3CloseoutFabric) CloseoutWorkspaceLaunch(_ context.Context, input cont
 
 type d3CloseoutKeys struct {
 	*clients.Sub2APIHTTPClient
-	revoked  bool
-	lose     bool
-	expected clients.Sub2APIWorkspaceKeyRevokeInput
-	calls    int
+	calls int
 }
 
-func (k *d3CloseoutKeys) RevokeWorkspaceKey(_ context.Context, input clients.Sub2APIWorkspaceKeyRevokeInput) error {
-	if input != k.expected {
-		return errors.New("incorrect original key identity")
-	}
+func (k *d3CloseoutKeys) DeleteUserKeyIdempotent(context.Context, clients.SessionDelegatedCredential, int64, int64, string) error {
 	k.calls++
-	k.revoked = true
-	if k.lose {
-		k.lose = false
-		return errors.New("lost revoke response")
-	}
-	return nil
+	return errors.New("closeout must retain customer Gateway keys")
 }
 
 type d3CloseoutLedger struct {
@@ -190,7 +179,6 @@ func newD3CloseoutChain(t *testing.T) *d3CloseoutChain {
 	if op.Status != contracts.StatusManualReview || op.Stage != contracts.StageStorage || !op.boolFact("chargeAttempted") {
 		t.Fatalf("did not reach paid storage failure: %s", workspaceLaunchReconcileResultSummary(op))
 	}
-	c.keys.expected = clients.Sub2APIWorkspaceKeyRevokeInput{UserID: op.int64Fact("sub2apiUserId"), KeyID: op.int64Fact("workspaceApiKeyId"), ExactName: workspaceReservedKeyName(op.stringFact("workspaceId")), LaunchOperationID: op.ID}
 	return c
 }
 func (c *d3CloseoutChain) restart(t *testing.T) {
@@ -245,7 +233,7 @@ func TestPostgresD3CloseoutBusinessChain(t *testing.T) {
 	for _, loss := range []bool{false, true} {
 		t.Run(map[bool]string{false: "original order closes", true: "each owner response can be lost"}[loss], func(t *testing.T) {
 			c := newD3CloseoutChain(t)
-			c.fabric.loseFreeze, c.fabric.loseCleanup, c.keys.lose, c.ledger.lose = loss, loss, loss, loss
+			c.fabric.loseFreeze, c.fabric.loseCleanup, c.ledger.lose = loss, loss, loss
 			op := c.authorize(t)
 			if op.Closeout == nil || op.Closeout.Phase != "freeze" {
 				t.Fatal("authorization did not freeze original continuation")
@@ -260,7 +248,7 @@ func TestPostgresD3CloseoutBusinessChain(t *testing.T) {
 					break
 				}
 			}
-			if op.Status != contracts.StatusRefunded || op.ID != c.finance.purchase.ID || op.Closeout == nil || op.Closeout.ReceiptID == "" || op.Closeout.RefundedUSDMicros != gatewayAccountingChargeMicros || !c.keys.revoked || !c.fabric.absent {
+			if op.Status != contracts.StatusRefunded || op.ID != c.finance.purchase.ID || op.Closeout == nil || op.Closeout.ReceiptID == "" || op.Closeout.RefundedUSDMicros != gatewayAccountingChargeMicros || c.keys.calls != 0 || !c.fabric.absent {
 				_, _, _, refundErr := c.finance.process.handler.app.refundWorkspaceLaunchCloseout(context.Background(), c.finance.process.handler.service, op)
 				t.Fatalf("business closeout incomplete: %s %#v refundErr=%v", workspaceLaunchReconcileResultSummary(op), op.Closeout, refundErr)
 			}
@@ -300,9 +288,10 @@ func TestPostgresD3CloseoutBusinessChain(t *testing.T) {
 func TestPostgresD3CloseoutUnknownResourcesNeverRefund(t *testing.T) {
 	c := newD3CloseoutChain(t)
 	c.authorize(t)
-	c.step(t)
-	c.step(t)
 	c.fabric.unknown = true
+	if op := c.step(t); op.Closeout.Phase != "resources" {
+		t.Fatalf("freeze did not reach resource cleanup: %#v", op.Closeout)
+	}
 	for range 3 {
 		op := c.step(t)
 		if op.Closeout.Phase != "resources" || op.Status != contracts.StatusPending {
@@ -344,13 +333,13 @@ func TestPostgresD3CloseoutRejectsUnknownOriginalDebit(t *testing.T) {
 	c.finance.remote.historyUnavailable = true
 	c.finance.remote.mu.Unlock()
 	op := c.step(t)
-	if op.Closeout.Phase != "freeze" || c.fabric.frozen || c.keys.revoked || c.finance.remote.snapshot().refundWrites != 0 {
+	if op.Closeout.Phase != "freeze" || c.fabric.frozen || c.keys.calls != 0 || c.finance.remote.snapshot().refundWrites != 0 {
 		t.Fatal("unknown money reached destructive work")
 	}
 	c.finance.remote.mu.Lock()
 	c.finance.remote.historyUnavailable = false
 	c.finance.remote.mu.Unlock()
-	if next := c.step(t); next.Closeout.Phase != "key" {
+	if next := c.step(t); next.Closeout.Phase != "resources" {
 		t.Fatal("exact original payment could not recover")
 	}
 }
@@ -452,7 +441,7 @@ func TestD3CloseoutWithoutDebitDoesNotCreateRefund(t *testing.T) {
 	}
 	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
 	fabric := &d3CloseoutFabric{gatewayAccountingFabric: newGatewayAccountingFabric(), absent: true}
-	keys := &d3CloseoutKeys{expected: clients.Sub2APIWorkspaceKeyRevokeInput{UserID: op.int64Fact("sub2apiUserId"), ExactName: workspaceReservedKeyName(op.stringFact("workspaceId")), LaunchOperationID: op.ID}}
+	keys := &d3CloseoutKeys{}
 	ledger := &workspaceLaunchRepairLedger{receipts: map[string]clients.Receipt{}}
 	service := controlplane.NewService(ledger, fabric, keys)
 	app := &controlPlaneServer{tables: store}
@@ -467,7 +456,7 @@ func TestD3CloseoutWithoutDebitDoesNotCreateRefund(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if op.Status != contracts.StatusFailed || op.Closeout.Phase != "complete" || op.Closeout.RefundedUSDMicros != 0 || op.Closeout.RefundOperationID != "" || !keys.revoked || ledger.records != 1 {
+	if op.Status != contracts.StatusFailed || op.Closeout.Phase != "complete" || op.Closeout.RefundedUSDMicros != 0 || op.Closeout.RefundOperationID != "" || keys.calls != 0 || ledger.records != 1 {
 		t.Fatalf("uncharged closeout fabricated a refund: %+v", op.Closeout)
 	}
 	receipt := workspaceLaunchCloseoutReceiptInput(op)
@@ -476,16 +465,7 @@ func TestD3CloseoutWithoutDebitDoesNotCreateRefund(t *testing.T) {
 	}
 }
 
-type d3UnknownIdentityKeys struct {
-	*d3CloseoutKeys
-	identities []clients.Sub2APIWorkspaceKey
-}
-
-func (k *d3UnknownIdentityKeys) WorkspaceKeysForRevocation(context.Context, int64, string) ([]clients.Sub2APIWorkspaceKey, error) {
-	return k.identities, nil
-}
-
-func TestD3CloseoutUnknownKeyIDCannotUseNameAbsenceAsProof(t *testing.T) {
+func TestD3CloseoutRetainedKeyStageResumesWithoutGatewayMutation(t *testing.T) {
 	store := newMemoryTableStore()
 	op, err := decodeWorkspaceLaunchReconcileOperation(workspaceLaunchUnknownStageManualReviewRow(t, contracts.StageKey))
 	if err != nil {
@@ -500,23 +480,22 @@ func TestD3CloseoutUnknownKeyIDCannotUseNameAbsenceAsProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
-	keys := &d3UnknownIdentityKeys{d3CloseoutKeys: &d3CloseoutKeys{}}
-	service := controlplane.NewService(fakeLedgerClient{}, &d3CloseoutFabric{gatewayAccountingFabric: newGatewayAccountingFabric(), frozen: true}, keys)
+	keys := &d3CloseoutKeys{}
+	fabric := &d3CloseoutFabric{gatewayAccountingFabric: newGatewayAccountingFabric(), frozen: true}
+	ledger := &workspaceLaunchRepairLedger{receipts: map[string]clients.Receipt{}}
+	service := controlplane.NewService(ledger, fabric, keys)
 	app := &controlPlaneServer{tables: store}
-	next, err := app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Reconcile(context.Background(), op.ID)
-	if err != nil || next.Closeout.Phase != "key" || next.Closeout.KeyRevokedAt != "" || keys.calls != 0 {
-		t.Fatalf("name absence lost unknown original key: %+v %v", next.Closeout, err)
+	for range 6 {
+		op, err = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Reconcile(context.Background(), op.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	name := workspaceReservedKeyName(op.stringFact("workspaceId"))
-	keys.identities = []clients.Sub2APIWorkspaceKey{{ID: 77, UserID: op.int64Fact("sub2apiUserId"), Name: name}}
-	keys.expected = clients.Sub2APIWorkspaceKeyRevokeInput{UserID: op.int64Fact("sub2apiUserId"), KeyID: 77, ExactName: name, LaunchOperationID: op.ID}
-	next, err = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Reconcile(context.Background(), op.ID)
-	if err != nil || next.int64Fact("workspaceApiKeyId") != 77 || next.stringFact("workspaceKeyStatus") != "" || keys.calls != 0 {
-		t.Fatalf("original key identity was not saved without success facts: %v", err)
+	if op.Status != contracts.StatusFailed || op.Closeout.Phase != "complete" || keys.calls != 0 || op.int64Fact("workspaceApiKeyId") != 0 || op.Closeout.KeyRevokedAt != "" || !fabric.absent || ledger.records != 1 {
+		t.Fatalf("retained key step failed to close resources without fabricating Gateway evidence: %+v", op.Closeout)
 	}
-	next, err = app.workspaceLaunchReconciler(service, clients.SessionDelegatedCredential{}, 0).Reconcile(context.Background(), op.ID)
-	if err != nil || next.Closeout.Phase != "resources" || keys.calls != 1 {
-		t.Fatalf("resolved original key could not revoke after restart: %v", err)
+	if _, present := workspaceLaunchCloseoutReceiptInput(op).Execution["keyRevokedAt"]; present {
+		t.Fatal("new closeout receipt invented Gateway revocation")
 	}
 }
 

@@ -318,11 +318,11 @@ func (t *gatewayAccountingFaultTransport) RoundTrip(request *http.Request) (*htt
 	if err != nil {
 		return response, err
 	}
-	isRedeem := request.Method == http.MethodPost && request.URL.Path == "/api/v1/admin/redeem-codes/create-and-redeem"
-	isHistory := request.Method == http.MethodGet && request.URL.Path == "/api/v1/admin/redeem-codes/by-code"
+	isAdjustment := request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/api/v1/admin/users/") && strings.HasSuffix(request.URL.Path, "/balance")
+	isHistory := request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/admin/users/") && strings.HasSuffix(request.URL.Path, "/balance-history")
 	t.fixture.mu.Lock()
 	loss := false
-	if t.fixture.responseLoss && isRedeem && !t.fixture.lossInjected {
+	if t.fixture.responseLoss && isAdjustment && !t.fixture.lossInjected {
 		t.fixture.lossInjected, t.fixture.historyLoss, loss = true, true, true
 	} else if isHistory && t.fixture.historyLoss {
 		t.fixture.historyLoss, loss = false, true

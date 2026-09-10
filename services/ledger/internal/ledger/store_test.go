@@ -205,7 +205,7 @@ func validWorkspaceDeletionReceiptInput() ReceiptInput {
 		},
 		OutputRefs: map[string]any{
 			"runtimeStatus": "absent", "gatewaySecretStatus": "absent", "attachmentStatus": "absent", "storageStatus": "absent",
-			"computeStatus": "absent", "workspaceKeyStatus": "absent", "workspaceStatus": "absent",
+			"computeStatus": "absent", "workspaceStatus": "absent",
 		},
 		Owner:          map[string]any{"accountId": "acct-alpha", "workspaceId": "workspace-alpha", "ownerUserId": "usr-alpha"},
 		IdempotencyKey: "workspace-delete-alpha:deletion-receipt",
@@ -1054,5 +1054,17 @@ func TestListReceiptsRejectsInvalidBoundsAndCursor(t *testing.T) {
 		if _, err := store.ListReceipts(context.Background(), query); !errors.Is(err, ErrInvalidReceiptQuery) {
 			t.Fatalf("query %#v error = %v, want ErrInvalidReceiptQuery", query, err)
 		}
+	}
+}
+
+func TestWorkspaceDeletionReceiptPreservesHistoricalGatewayEvidence(t *testing.T) {
+	input := validWorkspaceDeletionReceiptInput()
+	input.OutputRefs["workspaceKeyStatus"] = "absent"
+	if _, err := NewMemoryStore().RecordReceipt(context.Background(), input); err != nil {
+		t.Fatalf("historical deletion receipt rejected: %v", err)
+	}
+	input.OutputRefs["workspaceKeyStatus"] = "unknown"
+	if _, err := NewMemoryStore().RecordReceipt(context.Background(), input); !errors.Is(err, ErrInvalidReceiptInput) {
+		t.Fatalf("unproven Gateway evidence accepted: %v", err)
 	}
 }

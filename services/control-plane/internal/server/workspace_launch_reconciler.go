@@ -1136,6 +1136,11 @@ func (r *WorkspaceLaunchReconciler) convergeMutationReadback(ctx context.Context
 }
 
 func workspaceLaunchIdempotentReplayAuthorized(operation workspaceLaunchReconcileOperation, attempt workspaceLaunchStageAttempt) bool {
+	// Native wallet idempotency expires and is not atomic with the balance write.
+	// Debit recovery may read the original outcome, but may never replay a write.
+	if operation.Stage == contracts.StageDebit {
+		return false
+	}
 	authorization := operation.ResumeAuthorization
 	return authorization != nil && operation.ResumeAuthorizationConsumedAt == "" && authorization.AuthorizedStage == operation.Stage &&
 		authorization.MutationBudget == 0 && authorization.IdempotentReplayBudget == 1 &&

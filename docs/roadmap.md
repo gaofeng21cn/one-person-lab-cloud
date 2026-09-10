@@ -24,7 +24,7 @@ source checks and isolated runtime evidence belong in [status.md](./status.md).
 D2 now covers retained original purchases, all renewal periods and refunds,
 exact receipt lookup and the existing customer fees page. D3 additionally
 closes local original-Launch recovery, bounded admission and failed-Launch
-resource/Key/refund obligations. D4 closes expiry, explicit recovery and background deletion with focused and
+resource/refund obligations with retained Gateway Keys. D4 closes expiry, explicit recovery and background deletion with focused and
 full local verification. D5 completes local fixed-image rollout, original-operation
 recovery and explicit CVM cache retirement development; production qualification
 and actual node readback remain external. TCR deletion is optional. Completed development proceeds through PR review, CI,
@@ -34,9 +34,9 @@ existing paths, not a separate D6 development stage.
 
 | ID | State | Owner | Remaining acceptance |
 | --- | --- | --- | --- |
-| `D1-FINANCIAL-INTEGRITY-01` | `cloud_complete` | Control Plane finance and Sub2API; Instance owns adoption | Local source/full regression and isolated real Sub2API validation pass; [owner evidence](./status.md#retained-runtime-evidence) retains the exact worktree and patch identity. Instance must identify its exact Gateway source/image, adopt atomic debit plus exact lookup before Cloud, and retain owner readback. Historical unverified transactions cannot be certified from current balance. |
+| `D1-FINANCIAL-INTEGRITY-01` | `cloud_complete` | Control Plane finance and Sub2API; Instance owns adoption | Local source/full regression and isolated real Sub2API validation pass; [owner evidence](./status.md#retained-runtime-evidence) retains the exact worktree and patch identity. The native official 0.2.4 integration must pass isolated business tests and Instance readback without Gateway changes; missing audit evidence after dispatch remains manual review and cannot authorize another monetary write. Historical unverified transactions cannot be certified from current balance. |
 | `D2-SETTLEMENT-RECONCILIATION-01` | `cloud_complete` | Control Plane finance, Ledger and Console | Original-operation business chains, failure/recovery, historical records, more than 10k unrelated receipts, customer browser tests and full PostgreSQL/Docker regression pass. [Owner evidence](./status.md#retained-runtime-evidence) binds the local source snapshot; Instance adoption remains a separate deployment action. Unverifiable older split-resource records remain explicit review exceptions. |
-| `D3-LAUNCH-RECOVERY-CAPACITY-01` | `cloud_complete` | Control Plane Launch; Fabric and Console | Original late-result recovery, bounded scheduling, and owner-authorized failed-Launch closure are implemented and pass focused plus full local verification. The closeout chain freezes the original operation, revokes exact Key identity, proves five resource absences, refunds only the original account's remaining charge, and records `billing.workspace_closed.v1`. Unknown outcomes retain pending state and pool claims. Tencent adoption and actual provisioning capacity remain Instance obligations; no deployment is part of D3 local development. |
+| `D3-LAUNCH-RECOVERY-CAPACITY-01` | `cloud_complete` | Control Plane Launch; Fabric and Console | Original late-result recovery, bounded scheduling, and owner-authorized failed-Launch closure are implemented and pass focused plus full local verification. The closeout chain freezes the original operation, retains Gateway Keys, proves five Fabric resource absences, refunds only the original account's remaining charge, and records `billing.workspace_closed.v1`. Unknown outcomes retain pending state and pool claims. Tencent adoption and actual provisioning capacity remain Instance obligations; no deployment is part of D3 local development. |
 | `D4-WORKSPACE-LIFECYCLE-01` | `cloud_complete` | Control Plane lifecycle; Fabric, Sub2API and Console | Original-period renewal, unpaid Runtime suspension, explicit recovery and background non-refunding Delete are implemented. Focused business, restart, concurrency and browser tests plus `verify:local:full` pass with zero required PostgreSQL skips. [Owner evidence](./status.md#retained-runtime-evidence) retains the isolated source and tests. Instance must adopt the same bytes and qualify actual Tencent/TKE and Gateway behavior. |
 | `D5-WORKSPACE-IMAGE-LIFECYCLE-01` | `cloud_complete` | Control Plane/Fabric replacement and CRI maintenance command; Instance rollout/node retirement | Fixed approved digest, paid lifecycle preservation, persisted replacement recovery, bounded fleet results and exact node-cache removal pass focused/full local verification. [Owner evidence](./status.md#retained-runtime-evidence) binds source and isolated containerd results. Instance must adopt the same bytes, configure read-only qualification evidence access, qualify the exact linux/amd64 manifest and retain protected node/space readback. TCR deletion is optional, not a completion prerequisite. |
 
@@ -109,8 +109,8 @@ public-beta prerequisites.
 
 The disposable-reset portion of J currently has only a protected read-only
 preview. The source does not provide an apply API. Completion must bind an
-explicitly disposable Launch, regenerate its exact owner-derived plan, converge resource and Key
-absence before exact debit compensation, retain all audit/financial history,
+explicitly disposable Launch, regenerate its exact owner-derived plan, converge owned Fabric resource
+absence before exact debit compensation while retaining Gateway Keys, retain all audit/financial history,
 append the reset Receipt and CAS-terminalize the original operation. Unknown,
 conflicting or unrelated owner facts must prevent mutation. This is distinct
 from normal activated-Workspace Delete. Preview must require schema-valid
@@ -118,9 +118,9 @@ from normal activated-Workspace Delete. Preview must require schema-valid
 no conflicting non-terminal owner operation. Stage position is not absence.
 Apply must reject plan drift and use deterministic step identities for response-
 loss recovery. Confirmed debit compensation equals the original debit exactly;
-unknown debit stops before Key deletion or terminalization. Existing Receipts,
+unknown debit stops before compensation or terminalization. Existing Receipts,
 financial history and the original Launch row are retained. Final redacted
-readback must prove zero remaining owned resources, Keys or unreconciled debit,
+readback must prove zero remaining owned Fabric resources or unreconciled debit,
 with scope matching the plan. Shared infrastructure and unrelated accounts are
 outside this operation.
 

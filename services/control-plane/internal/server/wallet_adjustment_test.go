@@ -520,60 +520,41 @@ func TestWalletAdjustmentRecoveryAfterRestartReconcilesWithoutSecondWrite(t *tes
 	}
 }
 
-func TestWalletAdjustmentV2UnknownAllowsOneExplicitRecoveryWrite(t *testing.T) {
-	requestBody := `{"kind":"recharge","amountUsd":"60.00","reason":"local pilot credit","confirmationAccountId":"acct-alpha"}`
-	t.Run("successful explicit recovery reuses canonical v2 once", func(t *testing.T) {
-		fixture := newWalletAdjustmentFixture(t)
-		fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
-		first := sendWalletAdjustmentRequest(t, fixture, requestBody, "wallet-v2-unknown")
-		operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
-		if first.Code != http.StatusAccepted || fixture.remote.refundCalls != 1 || fixture.remote.balance != 100_000_000 {
-			t.Fatalf("first status=%d calls=%d balance=%d", first.Code, fixture.remote.refundCalls, fixture.remote.balance)
+func TestWalletAdjustmentUnknownRecoveryNeverDispatchesAgain(t *testing.T) {
+	for _, kind := range []string{"debit", "recharge"} {
+		for _, applied := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/applied=%t", kind, applied), func(t *testing.T) {
+				fixture := newWalletAdjustmentFixture(t)
+				fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
+				fixture.remote.applyBeforeErr = applied
+				fixture.remote.historyErr = errors.New("audit unavailable")
+				body, err := json.Marshal(walletAdjustmentRequest{Kind: kind, AmountUSD: "60.00", Reason: "account correction", ConfirmationAccountID: "acct-alpha"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				first := sendWalletAdjustmentRequest(t, fixture, string(body), "wallet-native-unknown")
+				operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
+				if first.Code != http.StatusAccepted {
+					t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
+				}
+				balance := fixture.remote.balance
+				fixture.remote.adjustmentErr, fixture.remote.historyErr = nil, nil
+				fixture.remote.history = nil // The native wallet can commit without an audit row.
+				for range 3 {
+					restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
+					if err != nil {
+						t.Fatal(err)
+					}
+					fixture.server = restarted
+					recovery := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-native-recovery")
+					if recovery.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovery)["status"] != "manual_review" ||
+						fixture.remote.chargeCalls+fixture.remote.refundCalls != 1 || fixture.remote.balance != balance || len(fixture.ledger.receipts) != 0 {
+						t.Fatalf("unknown money was replayed: status=%d calls=%d balance=%d body=%s", recovery.Code, fixture.remote.chargeCalls+fixture.remote.refundCalls, fixture.remote.balance, recovery.Body.String())
+					}
+				}
+			})
 		}
-
-		fixture.remote.adjustmentErr = nil
-		recovered := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-v2-unknown-command")
-		if recovered.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovered)["status"] != "succeeded" || fixture.remote.refundCalls != 2 || fixture.remote.balance != 160_000_000 {
-			t.Fatalf("recovered status=%d calls=%d balance=%d body=%s", recovered.Code, fixture.remote.refundCalls, fixture.remote.balance, recovered.Body.String())
-		}
-		v2Code := walletAdjustmentRedeemCode(operationID)
-		if len(fixture.remote.writeCodes) != 2 || fixture.remote.writeCodes[0] != v2Code || fixture.remote.writeCodes[1] != v2Code || len(fixture.remote.history) != 1 {
-			t.Fatalf("write codes=%q history=%#v", fixture.remote.writeCodes, fixture.remote.history)
-		}
-		operation, found, err := fixture.server.(*controlPlaneHTTPHandler).app.walletAdjustment(context.Background(), operationID, "")
-		if err != nil || !found || operation.CanonicalRedeemCode != v2Code || operation.RedeemCodeVersion != "v2" || operation.LegacySupersession != "" || !operation.RecoveryAttempted {
-			t.Fatalf("recovered canonical operation=%#v found=%t err=%v", operation, found, err)
-		}
-		replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-v2-unknown-command")
-		if replay.Code != http.StatusOK || fixture.remote.refundCalls != 2 || fixture.remote.balance != 160_000_000 || len(fixture.remote.history) != 1 {
-			t.Fatalf("replay status=%d calls=%d balance=%d history=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, len(fixture.remote.history), replay.Body.String())
-		}
-	})
-
-	t.Run("unknown explicit recovery cannot write again after restart", func(t *testing.T) {
-		fixture := newWalletAdjustmentFixture(t)
-		fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
-		first := sendWalletAdjustmentRequest(t, fixture, requestBody, "wallet-v2-recovery-unknown")
-		operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
-		if first.Code != http.StatusAccepted || fixture.remote.refundCalls != 1 || fixture.remote.balance != 100_000_000 {
-			t.Fatalf("first status=%d calls=%d balance=%d", first.Code, fixture.remote.refundCalls, fixture.remote.balance)
-		}
-
-		recovery := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-v2-recovery-unknown-command")
-		if recovery.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovery)["status"] != "manual_review" || fixture.remote.refundCalls != 2 || fixture.remote.balance != 100_000_000 {
-			t.Fatalf("recovery status=%d calls=%d balance=%d body=%s", recovery.Code, fixture.remote.refundCalls, fixture.remote.balance, recovery.Body.String())
-		}
-		fixture.remote.adjustmentErr = nil
-		restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fixture.server = restarted
-		replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-v2-recovery-unknown-command")
-		if replay.Code != http.StatusConflict || fixture.remote.refundCalls != 2 || fixture.remote.balance != 100_000_000 || len(fixture.remote.history) != 0 {
-			t.Fatalf("replay status=%d calls=%d balance=%d history=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, len(fixture.remote.history), replay.Body.String())
-		}
-	})
+	}
 }
 
 func TestWalletAdjustmentRecoveryConflictingTransactionsStopMoneyWrites(t *testing.T) {
@@ -591,129 +572,6 @@ func TestWalletAdjustmentRecoveryConflictingTransactionsStopMoneyWrites(t *testi
 	fixture.remote.balance = 100_000_000
 	replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recovery-stop-command")
 	if replay.Code != http.StatusConflict || fixture.remote.refundCalls != 0 || fixture.remote.balance != 100_000_000 {
-		t.Fatalf("replay status=%d calls=%d balance=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, replay.Body.String())
-	}
-}
-
-func TestWalletAdjustmentRecoveryConfirmedAbsenceAllowsOtherWalletActivity(t *testing.T) {
-	for _, kind := range []string{"debit", "recharge"} {
-		for _, change := range []int64{-20_000_000, 30_000_000} {
-			t.Run(fmt.Sprintf("%s/change_%d", kind, change), func(t *testing.T) {
-				fixture := newWalletAdjustmentFixture(t)
-				fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
-				body, err := json.Marshal(walletAdjustmentRequest{Kind: kind, AmountUSD: "60.00", Reason: "account correction", ConfirmationAccountID: "acct-alpha"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				first := sendWalletAdjustmentRequest(t, fixture, string(body), "wallet-v2-recover-with-activity")
-				operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
-				firstOperation, found, err := fixture.server.(*controlPlaneHTTPHandler).app.walletAdjustment(context.Background(), operationID, "")
-				if err != nil || !found || first.Code != http.StatusAccepted || firstOperation.Status != "manual_review" || len(fixture.remote.history) != 0 || len(fixture.remote.writeCodes) != 1 {
-					t.Fatalf("first request should have no known money effect: status=%d body=%s", first.Code, first.Body.String())
-				}
-				fixture.remote.balance += change
-				fixture.remote.adjustmentErr = nil
-				restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
-				if err != nil {
-					t.Fatal(err)
-				}
-				fixture.server = restarted
-				recovered := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recover-activity-command")
-				wantBalance, wantValue := int64(100_000_000)+change, int64(60_000_000)
-				if kind == "debit" {
-					wantValue = -wantValue
-				}
-				wantBalance += wantValue
-				operation, found, err := fixture.server.(*controlPlaneHTTPHandler).app.walletAdjustment(context.Background(), operationID, "")
-				if err != nil || !found || recovered.Code != http.StatusOK || operation.Status != "succeeded" || operation.BeforeBalanceMicros != 100_000_000 || !operation.RecoveryAttempted || fixture.remote.balance != wantBalance || len(fixture.remote.history) != 1 || fixture.remote.history[0].ValueUSDMicros != wantValue || len(fixture.ledger.receipts) != 1 {
-					t.Fatalf("original order did not recover despite exact absence: status=%d operation=%#v balance=%d history=%#v receipts=%d err=%v", recovered.Code, operation, fixture.remote.balance, fixture.remote.history, len(fixture.ledger.receipts), err)
-				}
-				code := walletAdjustmentRedeemCode(operationID)
-				if len(fixture.remote.writeCodes) != 2 || fixture.remote.writeCodes[0] != code || fixture.remote.writeCodes[1] != code {
-					t.Fatalf("recovery changed original identity: %q", fixture.remote.writeCodes)
-				}
-				replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recover-activity-command")
-				if replay.Code != http.StatusOK || len(fixture.remote.writeCodes) != 2 || fixture.remote.balance != wantBalance || len(fixture.ledger.receipts) != 1 {
-					t.Fatalf("replay repeated money effect: status=%d writes=%q balance=%d", replay.Code, fixture.remote.writeCodes, fixture.remote.balance)
-				}
-			})
-		}
-	}
-}
-
-func TestWalletAdjustmentRecoveryRequiresCurrentAdmissionAndExactAbsence(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		kind       string
-		balance    clients.Sub2APIBalance
-		historyErr error
-		wantCode   string
-		wantHTTP   int
-	}{
-		{name: "insufficient_current_balance", kind: "debit", balance: clients.Sub2APIBalance{UserID: 41, Status: "active", USDMicros: 50_000_000}, wantCode: "wallet_adjustment_recovery_balance_insufficient", wantHTTP: http.StatusConflict},
-		{name: "credit_overflow", kind: "recharge", balance: clients.Sub2APIBalance{UserID: 41, Status: "active", USDMicros: math.MaxInt64}, wantCode: "wallet_adjustment_recovery_balance_overflow", wantHTTP: http.StatusConflict},
-		{name: "another_account", kind: "debit", balance: clients.Sub2APIBalance{UserID: 42, Status: "active", USDMicros: 100_000_000}, wantCode: "wallet_adjustment_recovery_balance_invalid", wantHTTP: http.StatusConflict},
-		{name: "inactive_account", kind: "debit", balance: clients.Sub2APIBalance{UserID: 41, Status: "disabled", USDMicros: 100_000_000}, wantCode: "wallet_adjustment_recovery_balance_invalid", wantHTTP: http.StatusConflict},
-		{name: "negative_balance", kind: "debit", balance: clients.Sub2APIBalance{UserID: 41, Status: "active", USDMicros: -1}, wantCode: "wallet_adjustment_recovery_balance_invalid", wantHTTP: http.StatusConflict},
-		{name: "unknown_is_not_absent", kind: "debit", balance: clients.Sub2APIBalance{UserID: 41, Status: "active", USDMicros: 130_000_000}, historyErr: clients.ErrSub2APIChargeUnknown, wantCode: "wallet_adjustment_recovery_readback_unavailable", wantHTTP: http.StatusOK},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newWalletAdjustmentFixture(t)
-			fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
-			body, err := json.Marshal(walletAdjustmentRequest{Kind: test.kind, AmountUSD: "60.00", Reason: "account correction", ConfirmationAccountID: "acct-alpha"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			first := sendWalletAdjustmentRequest(t, fixture, string(body), "wallet-v2-recover-admission")
-			operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
-			firstOperation, found, err := fixture.server.(*controlPlaneHTTPHandler).app.walletAdjustment(context.Background(), operationID, "")
-			if err != nil || !found || first.Code != http.StatusAccepted || firstOperation.Status != "manual_review" {
-				t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
-			}
-			fixture.remote.adjustmentErr = nil
-			fixture.remote.balanceResult = &test.balance
-			fixture.remote.historyErr = test.historyErr
-			for range 2 {
-				recovered := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recover-admission-command")
-				operation, found, err := fixture.server.(*controlPlaneHTTPHandler).app.walletAdjustment(context.Background(), operationID, "")
-				if err != nil || !found || recovered.Code != test.wantHTTP || operation.ErrorCode != test.wantCode || operation.RecoveryAttempted || len(fixture.remote.writeCodes) != 1 || len(fixture.remote.history) != 0 || len(fixture.ledger.receipts) != 0 {
-					t.Fatalf("unsafe recovery was dispatched: status=%d operation=%#v writes=%q err=%v", recovered.Code, operation, fixture.remote.writeCodes, err)
-				}
-			}
-		})
-	}
-}
-
-func TestWalletAdjustmentLegacyRecoveryAdoptsV2BeforeSingleWrite(t *testing.T) {
-	fixture := newWalletAdjustmentFixture(t)
-	operationID := "wallet-adjustment-legacy-adopt"
-	seedLegacyWalletAdjustment(t, fixture, operationID)
-
-	recovered := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-legacy-adopt-command")
-	if recovered.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovered)["status"] != "succeeded" || fixture.remote.refundCalls != 1 || fixture.remote.balance != 160_000_000 {
-		t.Fatalf("recovered status=%d calls=%d balance=%d body=%s", recovered.Code, fixture.remote.refundCalls, fixture.remote.balance, recovered.Body.String())
-	}
-	v2Code := walletAdjustmentRedeemCode(operationID)
-	legacyCode := "opl:wallet-adjustment:" + stableID(operationID)[:24] + ":v1"
-	if len(fixture.remote.writeCodes) != 1 || fixture.remote.writeCodes[0] != v2Code || fixture.remote.writeCodes[0] == legacyCode {
-		t.Fatalf("write codes=%q", fixture.remote.writeCodes)
-	}
-	rows, _ := fixture.store.ListRuntimeOperations(context.Background())
-	var operation map[string]any
-	if len(rows) != 1 || json.Unmarshal([]byte(stringValue(rows[0]["result"])), &operation) != nil {
-		t.Fatalf("runtime operations=%#v", rows)
-	}
-	if operation["canonicalRedeemCode"] != v2Code || operation["redeemCodeVersion"] != "v2" || operation["legacySupersessionStatus"] != "v2_adopted" ||
-		operation["recoveryAttempted"] != true || operation["recoveryEvidenceRef"] != "case-20260722-local" || operation["recoveryActorUserId"] == "" || operation["recoveryAuthorizedAt"] == "" {
-		t.Fatalf("persisted v2 supersession=%#v", operation)
-	}
-	restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.server = restarted
-	replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-legacy-adopt-command")
-	if replay.Code != http.StatusOK || fixture.remote.refundCalls != 1 || fixture.remote.balance != 160_000_000 {
 		t.Fatalf("replay status=%d calls=%d balance=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, replay.Body.String())
 	}
 }
@@ -747,20 +605,6 @@ func TestWalletAdjustmentLegacyHistoryConvergesReadOnly(t *testing.T) {
 	}
 }
 
-func TestWalletAdjustmentLegacyAdoptionPersistFailureMakesNoMoneyWrite(t *testing.T) {
-	fixture := newWalletAdjustmentFixture(t)
-	store := &walletAdjustmentV2PersistStore{memoryTableStore: fixture.store}
-	fixture.server.(*controlPlaneHTTPHandler).app.tables = store
-	operationID := "wallet-adjustment-persist-failure"
-	seedLegacyWalletAdjustment(t, fixture, operationID)
-	store.rejectSupersession = true
-
-	response := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-persist-failure-command")
-	if response.Code != http.StatusInternalServerError || fixture.remote.refundCalls != 0 || fixture.remote.balance != 100_000_000 {
-		t.Fatalf("status=%d calls=%d balance=%d body=%s", response.Code, fixture.remote.refundCalls, fixture.remote.balance, response.Body.String())
-	}
-}
-
 func TestWalletAdjustmentRecoveryAuditReplayDoesNotRepeatAdjustment(t *testing.T) {
 	store := &walletAdjustmentRecoveryAuditOnceStore{memoryTableStore: newMemoryTableStore(), failRecoveryAudit: true}
 	seedOperatorProjectionAccount(t, store.memoryTableStore, "acct-alpha", "usr-alpha", "alpha@example.com", 41)
@@ -780,13 +624,15 @@ func TestWalletAdjustmentRecoveryAuditReplayDoesNotRepeatAdjustment(t *testing.T
 	fixture := walletAdjustmentFixture{server: server, store: store.memoryTableStore, remote: remote, ledger: ledger}
 	operationID := "wallet-adjustment-recovery-audit"
 	seedLegacyWalletAdjustment(t, fixture, operationID)
+	remote.appendHistory(legacyWalletAdjustmentRedeemCode(operationID), 60_000_000, 41)
+	remote.balance = 160_000_000
 	recovery := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recovery-audit-command")
-	if recovery.Code != http.StatusInternalServerError || remote.refundCalls != 1 || len(ledger.receipts) != 1 {
+	if recovery.Code != http.StatusInternalServerError || remote.refundCalls != 0 || len(ledger.receipts) != 1 {
 		t.Fatalf("recovery status=%d calls=%d receipts=%d body=%s", recovery.Code, remote.refundCalls, len(ledger.receipts), recovery.Body.String())
 	}
 	replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recovery-audit-command")
 	events, _ := store.ListAuditEvents(context.Background(), "acct-alpha")
-	if replay.Code != http.StatusOK || remote.refundCalls != 1 || len(ledger.receipts) != 1 || len(events) != 2 || events[1]["action"] != "gateway.wallet_adjustment.recover" {
+	if replay.Code != http.StatusOK || remote.refundCalls != 0 || len(ledger.receipts) != 1 || len(events) != 2 || events[1]["action"] != "gateway.wallet_adjustment.recover" {
 		t.Fatalf("replay status=%d calls=%d receipts=%d events=%#v body=%s", replay.Code, remote.refundCalls, len(ledger.receipts), events, replay.Body.String())
 	}
 }
@@ -818,7 +664,7 @@ func TestWalletAdjustmentRecoveryBindsIntentBeforeReadback(t *testing.T) {
 	}
 }
 
-func TestWalletAdjustmentRecoveryConcurrentReplayHasOneFundsEffect(t *testing.T) {
+func TestWalletAdjustmentConcurrentRecoveryDoesNotTurnMissingHistoryIntoFunds(t *testing.T) {
 	fixture := newWalletAdjustmentFixture(t)
 	operationID := "wallet-adjustment-recovery-concurrent"
 	seedLegacyWalletAdjustment(t, fixture, operationID)
@@ -855,7 +701,7 @@ func TestWalletAdjustmentRecoveryConcurrentReplayHasOneFundsEffect(t *testing.T)
 			t.Fatalf("concurrent recovery status=%d body=%s", response.Code, response.Body.String())
 		}
 	}
-	if fixture.remote.refundCalls != 1 || fixture.remote.balance != 160_000_000 || len(fixture.ledger.receipts) != 1 {
+	if fixture.remote.refundCalls != 0 || fixture.remote.balance != 100_000_000 || len(fixture.ledger.receipts) != 0 {
 		t.Fatalf("writes=%d balance=%d receipts=%d", fixture.remote.refundCalls, fixture.remote.balance, len(fixture.ledger.receipts))
 	}
 }
@@ -866,7 +712,7 @@ func TestWalletAdjustmentRecoveryUnknownAfterWriteCannotWriteAgainAfterRestart(t
 	operationID := "wallet-adjustment-recovery-unknown"
 	seedLegacyWalletAdjustment(t, fixture, operationID)
 	recovery := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recovery-unknown-command")
-	if recovery.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovery)["status"] != "manual_review" || fixture.remote.refundCalls != 1 || fixture.remote.balance != 100_000_000 || fixture.remote.writeCodes[0] != walletAdjustmentRedeemCode(operationID) {
+	if recovery.Code != http.StatusOK || decodeWalletAdjustmentResponse(t, recovery)["status"] != "manual_review" || fixture.remote.refundCalls != 0 || fixture.remote.balance != 100_000_000 {
 		t.Fatalf("recovery status=%d calls=%d balance=%d body=%s", recovery.Code, fixture.remote.refundCalls, fixture.remote.balance, recovery.Body.String())
 	}
 	restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
@@ -875,7 +721,7 @@ func TestWalletAdjustmentRecoveryUnknownAfterWriteCannotWriteAgainAfterRestart(t
 	}
 	fixture.server = restarted
 	replay := sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-recovery-unknown-command")
-	if replay.Code != http.StatusConflict || fixture.remote.refundCalls != 1 || fixture.remote.balance != 100_000_000 || len(fixture.ledger.receipts) != 0 {
+	if replay.Code != http.StatusOK || fixture.remote.refundCalls != 0 || fixture.remote.balance != 100_000_000 || len(fixture.ledger.receipts) != 0 {
 		t.Fatalf("replay status=%d calls=%d balance=%d receipts=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, len(fixture.ledger.receipts), replay.Body.String())
 	}
 }
@@ -1104,5 +950,34 @@ func TestWalletAdjustmentConfirmedTransactionFinishesWithUnavailableAfterBalance
 				t.Fatalf("restart repeated a confirmed transaction: status=%d writes=%d receipts=%d", replay.Code, fixture.remote.chargeCalls+fixture.remote.refundCalls, len(fixture.ledger.receipts))
 			}
 		})
+	}
+}
+
+func TestWalletAdjustmentRetainedRecoveryReservationCannotDispatchAfterUpgrade(t *testing.T) {
+	fixture := newWalletAdjustmentFixture(t)
+	fixture.remote.adjustmentErr = clients.ErrSub2APIChargeUnknown
+	body := `{"kind":"recharge","amountUsd":"60.00","reason":"account correction","confirmationAccountId":"acct-alpha"}`
+	first := sendWalletAdjustmentRequest(t, fixture, body, "wallet-retained-reservation")
+	operationID := stringValue(decodeWalletAdjustmentResponse(t, first)["operationId"])
+	sendWalletAdjustmentRecoveryRequest(t, fixture, operationID, "wallet-retained-recovery")
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	operation, found, err := app.walletAdjustment(context.Background(), operationID, "")
+	if err != nil || !found {
+		t.Fatalf("load: found=%t err=%v", found, err)
+	}
+	operation.Status, operation.Phase = "pending", "adjustment"
+	operation.RecoveryAttempted, operation.AdjustmentAttempted = true, false
+	if err := app.persistWalletAdjustment(context.Background(), operationID, &operation); err != nil {
+		t.Fatal(err)
+	}
+	fixture.remote.adjustmentErr = nil
+	restarted, err := NewPersistentServer(controlplane.NewService(fixture.ledger, &fakeFabricClient{}, fixture.remote), fixture.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.server = restarted
+	replay := sendWalletAdjustmentRequest(t, fixture, body, "wallet-retained-reservation")
+	if replay.Code != http.StatusAccepted || decodeWalletAdjustmentResponse(t, replay)["status"] != "manual_review" || fixture.remote.refundCalls != 1 || fixture.remote.balance != 100_000_000 || len(fixture.ledger.receipts) != 0 {
+		t.Fatalf("retained unknown adjustment was replayed: status=%d calls=%d balance=%d body=%s", replay.Code, fixture.remote.refundCalls, fixture.remote.balance, replay.Body.String())
 	}
 }

@@ -903,6 +903,9 @@ func TestPostgresWorkspaceLaunchCanonicalOperatorActivationPersistsAuthoritative
 
 func TestPostgresWorkspaceLaunchReplayClaimSurvivesReconcilerRestartWithoutSkip(t *testing.T) {
 	for stageIndex, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+		if stage == contracts.StageDebit {
+			continue
+		}
 		t.Run(string(stage), func(t *testing.T) {
 			ctx := context.Background()
 			store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
@@ -1039,6 +1042,12 @@ func TestPostgresWorkspaceLaunchConcurrentReplayResumeAllowsOneWriter(t *testing
 			}
 			durable, err := decodeWorkspaceLaunchReconcileOperation(durableRow)
 			durableAttempt := durable.Attempts[stage]
+			if stage == contracts.StageDebit {
+				if err != nil || successes != 1 || conflicts != 1 || durable.Status != contracts.StatusManualReview || durable.Stage != stage || durableAttempt.Attempted != 1 || durableAttempt.Confirmed != 0 || adapter.mutations != 0 || len(durable.IdempotentReplayClaims) != 0 {
+					t.Fatalf("concurrent PostgreSQL debit check caused a write: operation=%s successes=%d conflicts=%d mutations=%d err=%v", workspaceLaunchReconcileResultSummary(durable), successes, conflicts, adapter.mutations, err)
+				}
+				return
+			}
 			if err != nil || successes != 1 || conflicts != 1 || durable.Stage != workspaceLaunchReconcileStages[stageIndex+1] || durableAttempt.Attempted != 1 || durableAttempt.Max != 1 ||
 				durableAttempt.Confirmed != 1 || durable.IdempotentReplayClaims[stage].Status != "succeeded" || durable.ResumeAuthorizationConsumedAt == "" ||
 				adapter.mutationsByStage[string(stage)] != 1 || adapter.mutationIdempotencyKey != attempt.IdempotencyKey {
@@ -1166,5 +1175,55 @@ func TestPostgresWorkspaceLaunchLegacyV3MissingFreshContinuationFieldsHasZeroBud
 		len(got.FreshContinuationAuthorizations) != 0 || len(got.ContinuationReadClaims) != 0 {
 		t.Fatalf("PostgreSQL legacy v3 row invented continuation authority: operation=%s reads=%d mutations=%d err=%v",
 			workspaceLaunchReconcileResultSummary(got), adapter.reads, adapter.mutations, err)
+	}
+}
+
+func TestPostgresWorkspaceLaunchReservedDebitRestartsWithReadOnlyEvidence(t *testing.T) {
+	for _, auditPresent := range []bool{false, true} {
+		t.Run(strconv.FormatBool(auditPresent), func(t *testing.T) {
+			ctx := context.Background()
+			store, _ := newPostgresWorkspaceRenewalStoreWithDB(t)
+			account, owner := provisionedAccountRowsFor("acct-debit-restart", "usr-debit-restart", "debit-restart@example.test", 841)
+			mustStore(t, store.CreateProvisionedAccount(ctx, account, owner))
+			command := workspaceLaunchUnitCommand()
+			command.AccountID, command.OwnerUserID, command.Sub2APIUserID = "acct-debit-restart", "usr-debit-restart", 841
+			operation, err := newWorkspaceLaunchReconcileOperation(command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			startedAt := time.Date(2026, 9, 10, 4, 0, 0, 0, time.UTC)
+			operation.Stage, operation.Status = contracts.StageDebit, contracts.StatusPending
+			attempt := operation.Attempts[contracts.StageDebit]
+			attempt.Attempted, attempt.Status, attempt.IdempotencyKey = 1, "reserved", workspaceLaunchStageIdempotencyKey(operation, 1)
+			attempt.DispatchLeaseExpiresAt = startedAt.Add(workspaceLaunchIdempotentReplayLease).Format(time.RFC3339Nano)
+			operation.Attempts[contracts.StageDebit] = attempt
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustStore(t, store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{AccountID: command.AccountID, DesiredOperation: row}))
+			adapter := &workspaceLaunchUnitAdapter{readyStages: map[string]bool{"debit": auditPresent}, replayableStages: map[string]bool{"debit": true}}
+			restarted := NewWorkspaceLaunchReconciler(store, adapter)
+			restarted.now = func() time.Time { return startedAt.Add(workspaceLaunchIdempotentReplayLease + time.Second) }
+			got, err := restarted.Reconcile(ctx, operation.ID)
+			if err != nil || adapter.mutations != 0 || got.Attempts[contracts.StageDebit].Attempted != 1 || got.Attempts[contracts.StageDebit].IdempotencyKey != attempt.IdempotencyKey {
+				t.Fatalf("restart changed wallet dispatch: operation=%s writes=%d err=%v", workspaceLaunchReconcileResultSummary(got), adapter.mutations, err)
+			}
+			if auditPresent {
+				if got.Stage != contracts.StageCompute || got.Attempts[contracts.StageDebit].Confirmed != 1 {
+					t.Fatal("original debit audit did not advance purchase")
+				}
+			} else if got.Status != contracts.StatusManualReview || got.Stage != contracts.StageDebit || got.Attempts[contracts.StageDebit].Confirmed != 0 {
+				t.Fatal("missing debit audit authorized progress")
+			}
+			durableRow, found, err := store.GetRuntimeOperation(ctx, operation.ID)
+			if err != nil || !found {
+				t.Fatalf("read persisted debit result: %v", err)
+			}
+			durable, err := decodeWorkspaceLaunchReconcileOperation(durableRow)
+			if err != nil || durable.Status != got.Status || durable.Stage != got.Stage || durable.Attempts[contracts.StageDebit] != got.Attempts[contracts.StageDebit] {
+				t.Fatalf("debit recovery lost durable state: %v", err)
+			}
+		})
 	}
 }
