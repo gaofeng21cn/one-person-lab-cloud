@@ -44,6 +44,16 @@ func (operation workspaceLaunchReconcileOperation) stagePlan() ([]contracts.Stag
 	return contracts.WorkspaceProvisioningStages(operation.provisioningMode())
 }
 
+// provisioningModeWire returns the mode as transmitted on the wire: full stays
+// the implicit empty default so retained full-Launch wire contracts and request
+// hashes are unchanged.
+func (operation workspaceLaunchReconcileOperation) provisioningModeWire() string {
+	if operation.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		return string(contracts.WorkspaceProvisioningResourceOnly)
+	}
+	return ""
+}
+
 func workspaceLaunchStageInPlan(plan []contracts.Stage, stage contracts.Stage) bool {
 	for _, candidate := range plan {
 		if candidate == stage {

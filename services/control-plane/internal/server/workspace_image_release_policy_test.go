@@ -52,7 +52,7 @@ func TestWorkspaceImageReleaseActivationPersistsDefaultForNewLaunchAndExistingRu
 	if err != nil || policy.ActiveImage != rollbackImage {
 		t.Fatalf("persisted policy=%#v err=%v", policy, err)
 	}
-	descriptor, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Workspace", "basic", 10, true, "price-v1", "launch-key", policy.ActiveImage)
+	descriptor, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Workspace", "basic", 10, true, "price-v1", "launch-key", policy.ActiveImage, "")
 	if err != nil || descriptor.WorkspaceImageDigest != rollbackImage {
 		t.Fatalf("new launch descriptor=%#v err=%v", descriptor, err)
 	}

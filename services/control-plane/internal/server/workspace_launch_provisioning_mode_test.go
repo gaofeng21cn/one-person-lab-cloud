@@ -121,6 +121,27 @@ func TestWorkspaceLaunchFullModeStaysApplicationCoupledByDefault(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLaunchResourceOnlyDescriptorDriftsRequestHashFromFull(t *testing.T) {
+	resourceOnly, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Unit", "basic", 10, true, "price-v1", "launch-key", "", contracts.WorkspaceProvisioningResourceOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resourceOnly.WorkspaceImageDigest != "" {
+		t.Fatalf("resource-only descriptor image digest = %q, want empty", resourceOnly.WorkspaceImageDigest)
+	}
+	full, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Unit", "basic", 10, true, "price-v1", "launch-key", "repo.example/workspace@sha256:"+strings.Repeat("b", 64), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resourceOnly.RequestHash == full.RequestHash {
+		t.Fatal("resource-only request hash must drift from the full Launch request hash")
+	}
+	dirty := "repo.example/workspace@sha256:" + strings.Repeat("b", 64)
+	if _, err := newWorkspaceLaunchDescriptorWithImage("acct-alpha", "usr-alpha", "Unit", "basic", 10, true, "price-v1", "launch-key", dirty, contracts.WorkspaceProvisioningResourceOnly); !errors.Is(err, errInvalidWorkspaceLaunchOperation) {
+		t.Fatalf("resource-only descriptor with an image digest error = %v, want %v", err, errInvalidWorkspaceLaunchOperation)
+	}
+}
+
 func TestWorkspaceLaunchActivationRowResourceOnlyKeepsApplicationBindingEmpty(t *testing.T) {
 	operation, err := newWorkspaceLaunchReconcileOperation(workspaceLaunchResourceOnlyUnitCommand())
 	if err != nil {

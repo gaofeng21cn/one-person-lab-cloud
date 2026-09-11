@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 const WorkspaceLaunchFabricSchemaVersion = 1
@@ -38,6 +40,7 @@ type WorkspaceLaunchPreflightInput struct {
 	PackageID            string `json:"packageId"`
 	SizeGB               int    `json:"sizeGb"`
 	WorkspaceImageDigest string `json:"workspaceImageDigest"`
+	ProvisioningMode     string `json:"provisioningMode,omitempty"`
 	RequestHash          string `json:"requestHash"`
 }
 
@@ -125,6 +128,7 @@ type WorkspaceLaunchStageInput struct {
 	PackageID            string                               `json:"packageId"`
 	SizeGB               int                                  `json:"sizeGb"`
 	WorkspaceImageDigest string                               `json:"workspaceImageDigest"`
+	ProvisioningMode     string                               `json:"provisioningMode,omitempty"`
 	Resources            WorkspaceLaunchResources             `json:"resources"`
 	GatewayCredential    *WorkspaceLaunchGatewayCredential    `json:"gatewayCredential,omitempty"`
 	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
@@ -198,11 +202,34 @@ type workspaceLaunchRuntimeImageRevisionProvider interface {
 	WorkspaceLaunchRuntimeImageRevisionSupported() bool
 }
 
+// provisioningModeOrFull resolves the persisted or transmitted provisioning
+// mode. Inputs that predate the field keep the full Launch contract.
+func provisioningModeOrFull(value string) (contracts.WorkspaceProvisioningMode, error) {
+	mode := contracts.WorkspaceProvisioningMode(value)
+	if mode == "" {
+		return contracts.WorkspaceProvisioningFull, nil
+	}
+	if err := contracts.ValidateWorkspaceProvisioningMode(mode); err != nil {
+		return "", err
+	}
+	return mode, nil
+}
+
 func validWorkspaceLaunchPreflightInput(input WorkspaceLaunchPreflightInput) bool {
 	if input.SchemaVersion != WorkspaceLaunchFabricSchemaVersion || input.SizeGB < 10 || input.SizeGB%10 != 0 {
 		return false
 	}
-	for _, value := range []string{input.LaunchOperationID, input.AccountID, input.WorkspaceID, input.PackageID, input.WorkspaceImageDigest, input.RequestHash} {
+	mode, modeErr := provisioningModeOrFull(input.ProvisioningMode)
+	if modeErr != nil {
+		return false
+	}
+	required := []string{input.LaunchOperationID, input.AccountID, input.WorkspaceID, input.PackageID, input.RequestHash}
+	if mode == contracts.WorkspaceProvisioningFull {
+		required = append(required, input.WorkspaceImageDigest)
+	} else if input.WorkspaceImageDigest != "" {
+		return false
+	}
+	for _, value := range required {
 		if value == "" || value != strings.TrimSpace(value) {
 			return false
 		}
@@ -218,7 +245,9 @@ func (s *Service) PreflightWorkspaceLaunch(ctx context.Context, input WorkspaceL
 	rawPlan, planErr := s.workspaceLaunchPlans.ResolveWorkspacePlan(ctx, WorkspaceLaunchPlanInput{PackageID: input.PackageID, SizeGB: input.SizeGB})
 	canonicalPlan, _, canonicalErr := canonicalProviderPlan(rawPlan)
 	canonicalPlan, specDigest, envelopeErr := canonicalProviderPlanEnvelope(providerProfileRef, input.PackageID, canonicalPlan)
-	if planErr != nil || canonicalErr != nil || envelopeErr != nil || !s.workspaceImagePolicy.ValidateWorkspaceImageReference(input.WorkspaceImageDigest) {
+	mode, modeErr := provisioningModeOrFull(input.ProvisioningMode)
+	imageAdmitted := modeErr == nil && (mode == contracts.WorkspaceProvisioningResourceOnly || s.workspaceImagePolicy.ValidateWorkspaceImageReference(input.WorkspaceImageDigest))
+	if planErr != nil || canonicalErr != nil || envelopeErr != nil || !imageAdmitted {
 		return WorkspaceLaunchPreflight{
 			SchemaVersion: 1, Available: false, Reason: "provider_profile_unavailable", LaunchOperationID: input.LaunchOperationID,
 			RequestHash: input.RequestHash, ProviderProfileRef: providerProfileRef,

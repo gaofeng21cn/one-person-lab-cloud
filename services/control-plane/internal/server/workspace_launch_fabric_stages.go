@@ -77,7 +77,7 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) workspaceLaunchFabricStageInpu
 	input := clients.WorkspaceLaunchStageInput{
 		Binding: binding, ProviderProfileRef: operation.stringFact("providerProfileRef"),
 		PreflightBindingRef: operation.stringFact("preflightBindingRef"), SpecDigest: operation.stringFact("specDigest"), PackageID: operation.stringFact("packageId"),
-		SizeGB: operation.intFact("sizeGb"), WorkspaceImageDigest: operation.stringFact("workspaceImageDigest"), Resources: resources,
+		SizeGB: operation.intFact("sizeGb"), WorkspaceImageDigest: operation.stringFact("workspaceImageDigest"), ProvisioningMode: operation.provisioningModeWire(), Resources: resources,
 	}
 	if operation.Stage == contracts.StageRuntime && operation.ResumeAuthorization != nil && operation.ResumeAuthorizationConsumedAt == "" &&
 		operation.ResumeAuthorization.ReplacementWorkspaceImageDigest != "" {

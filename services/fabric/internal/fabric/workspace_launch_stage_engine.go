@@ -7,6 +7,8 @@ import (
 	"maps"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 type launchStageEngine struct {
@@ -64,9 +66,17 @@ func (e *launchStageEngine) workspaceLaunchPreflight(ctx context.Context, ref st
 }
 
 func (e *launchStageEngine) validateWorkspaceLaunchStageInput(ctx context.Context, input WorkspaceLaunchStageInput) error {
+	mode, modeErr := provisioningModeOrFull(input.ProvisioningMode)
+	if modeErr != nil {
+		return ErrWorkspaceLaunchInputInvalid
+	}
 	if !validWorkspaceLaunchStageBinding(input.Binding) || strings.TrimSpace(input.ProviderProfileRef) == "" ||
 		strings.TrimSpace(input.ProviderBindingRef) == "" || !validWorkspaceLaunchHash(input.SpecDigest) || strings.TrimSpace(input.PackageID) == "" ||
-		input.SizeGB < 10 || input.SizeGB%10 != 0 || !e.imagePolicy.ValidateWorkspaceImageReference(input.WorkspaceImageDigest) {
+		input.SizeGB < 10 || input.SizeGB%10 != 0 {
+		return ErrWorkspaceLaunchInputInvalid
+	}
+	if mode == contracts.WorkspaceProvisioningFull && !e.imagePolicy.ValidateWorkspaceImageReference(input.WorkspaceImageDigest) ||
+		mode == contracts.WorkspaceProvisioningResourceOnly && input.WorkspaceImageDigest != "" {
 		return ErrWorkspaceLaunchInputInvalid
 	}
 	if !validWorkspaceLaunchRuntimeImageRevision(input, e.imagePolicy, e.runtimeImageRevision) {
@@ -81,7 +91,7 @@ func (e *launchStageEngine) validateWorkspaceLaunchStageInput(ctx context.Contex
 		preflight.LaunchOperationID != input.Binding.LaunchOperationID ||
 		preflight.AccountID != input.Binding.AccountID || preflight.WorkspaceID != input.Binding.WorkspaceID ||
 		preflight.PackageID != input.PackageID || preflight.SizeGB != input.SizeGB ||
-		preflight.WorkspaceImageDigest != input.WorkspaceImageDigest {
+		preflight.WorkspaceImageDigest != input.WorkspaceImageDigest || preflight.ProvisioningMode != input.ProvisioningMode {
 		return ErrLaunchStageBindingConflict
 	}
 	if admission.ProviderProfileRef != e.providerDescriptor.Descriptor().Name || input.Binding.RequestHash != workspaceLaunchStageRequestHash(input, preflight.RequestHash) {
