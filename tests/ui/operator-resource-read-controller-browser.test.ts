@@ -6,6 +6,7 @@ import { chromium, type Page, type Route } from "playwright";
 import type {
   OperatorResourceDTO,
   OperatorHealthDTO,
+  OperatorFabricHealthDTO,
   OperatorOverviewDTO,
   OperatorRuntimeObservationsDTO,
   OperatorWorkspaceDTO,
@@ -734,7 +735,8 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
   const alpha = () => {
     const item = operatorWorkspace("workspace-refresh", "Refresh");
     if (version >= 3 && item.workspace.data) item.workspace.data.state = "data_deleted";
-    item.resources[0].status = source(version === 1 ? "running" : "stopped", "fabric");
+    item.resources[0].status = source(version === 1 ? "running" : version === 2 ? "stopped" : version === 3 ? "pending_deletion" : "deleting", "fabric");
+    if (version >= 3) item.resources[0].providerErrorCode = source("compute_provider_partial_identity_machine_missing_tke_instance_missing", "fabric");
     item.resources[0].lastReadAt = source(`2026-09-10T0${version}:00:00Z`, "fabric");
     return item;
   };
@@ -752,7 +754,7 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
       if (path.endsWith("/preview")) return fulfill(route, source(preview(id), "control-plane+fabric"));
       if (id === "workspace-refresh") {
         alphaReads += 1;
-        if (alphaReads === 4) {
+        if (alphaReads === 5) {
           held.resolve();
           await release.promise;
           const stale = alpha();
@@ -779,7 +781,13 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
     version = 3;
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await workspaceRow(page, "workspace-refresh").getByText("数据已删除", { exact: true }).waitFor();
+    await page.locator(".operator-resource-detail-table").getByText("停止待销毁", { exact: true }).waitFor();
+    assert.match(await page.locator(".operator-resource-detail-table").innerText(), /CVM 仍存在，但已无 TKE 节点池 Machine 和集群实例关联/);
     assert.equal(alphaReads, 3);
+    version = 4;
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await page.locator(".operator-resource-detail-table").getByText("销毁中", { exact: true }).waitFor();
+    assert.equal(alphaReads, 4);
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await held.promise;
     await selectWorkspace(page, "workspace-current");
@@ -806,11 +814,11 @@ function observedRuntime(): OperatorRuntimeObservationsDTO {
   };
 }
 
-function observedHealth(): OperatorHealthDTO {
+function observedHealth(workspaceImageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified", releaseReady = workspaceImageStatus === "installed_target_matches"): OperatorHealthDTO {
   const { items: _items, ...runtime } = observedRuntime();
   return {
     controlPlane: source({ ready: true }), gateway: source({ ready: true }, "sub2api"), ledger: source({ ready: true }, "ledger"),
-    fabric: source({ ready: true, serviceReady: true, releaseReady: false, cloudImagesReady: true, workspaceImagesReady: false, immutableImagesReady: false, failedChecks: ["workspace_image_id"] }, "fabric"),
+    fabric: source({ ready: true, serviceReady: true, releaseReady, cloudImagesReady: true, workspaceImagesReady: releaseReady, workspaceImageStatus, immutableImagesReady: releaseReady, failedChecks: releaseReady ? [] : ["workspace_image_id"] }, "fabric"),
     runtime: source(runtime, "control-plane+fabric")
   };
 }
@@ -820,11 +828,13 @@ test("System health separates Fabric service from release and opens a read-only 
   const browser = await chromium.launch({ headless: true });
   let observationReads = 0;
   let includeUnmatched = false;
+  let imageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified";
+  let strictReleaseReady: boolean | undefined;
   const writes: string[] = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.on("request", (request) => { if (request.url().includes("/api/operator/") && request.method() !== "GET") writes.push(request.url()); });
-    await page.route("**/api/operator/health", (route) => fulfill(route, source(observedHealth())));
+    await page.route("**/api/operator/health", (route) => fulfill(route, source(observedHealth(imageStatus, strictReleaseReady))));
     await page.route("**/api/operator/runtime-observations", (route) => {
       observationReads += 1;
       const data = observedRuntime();
@@ -841,8 +851,24 @@ test("System health separates Fabric service from release and opens a read-only 
     await page.goto(`${demo.origin}/admin/system`, { waitUntil: "domcontentloaded" });
     const fabric = page.locator(".operator-health-table tbody tr").filter({ hasText: "Fabric 资源服务" });
     await fabric.getByText("正常", { exact: true }).waitFor();
-    await fabric.getByText("未通过", { exact: true }).waitFor();
-    assert.match(await fabric.innerText(), /单个 Workspace 的目标与运行镜像请在资源详情核对/);
+    await fabric.getByText("存量版本不同", { exact: true }).waitFor();
+    assert.match(await fabric.innerText(), /安装镜像目标一致性/);
+    assert.match(await fabric.innerText(), /各自固定目标与实际运行镜像已核验/);
+    assert.match(await fabric.innerText(), /更改默认不会自动升级存量 Workspace/);
+    assert.doesNotMatch(await fabric.innerText(), /镜像未通过|不可变镜像：未通过/);
+    imageStatus = "no_running_sample";
+    await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
+    await fabric.getByText("暂无可核验的运行 Workspace，安装目标一致性尚未验证。", { exact: true }).waitFor();
+    await fabric.getByText("正常", { exact: true }).waitFor();
+    imageStatus = "identity_unverified";
+    strictReleaseReady = true;
+    await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
+    await fabric.getByText("Workspace 镜像身份尚未核验，需要核对固定目标、实际镜像和控制器归属。", { exact: true }).waitFor();
+    assert.doesNotMatch(await fabric.innerText(), /存量版本不同|全部一致/);
+    imageStatus = "installed_target_matches";
+    strictReleaseReady = undefined;
+    await fabric.getByRole("button", { name: "刷新 Fabric 资源服务", exact: true }).click();
+    await fabric.getByText("全部一致", { exact: true }).waitFor();
     const runtime = page.locator(".operator-health-table tbody tr").filter({ hasText: "Workspace Runtime 服务" });
     await runtime.getByText("正常", { exact: true }).waitFor();
     assert.match(await runtime.innerText(), /正常暂停 1/);

@@ -3813,6 +3813,7 @@ func (client *tencentSDKClient) ReadComputeDestroyStatus(request Request, _ map[
 		}
 		providerData["syncResult"] = "found"
 		providerData["cvmStatus"] = cvmStatus
+		providerData["isolatedSource"] = stringValue(instance.IsolatedSource)
 		return Response{
 			Ok: true, Status: "present", InstanceId: request.Allocation.InstanceId, MachinePresent: &machinePresent, TKEStatus: "NOT_FOUND", CVMStatus: cvmStatus,
 			ProviderRequestId: firstNonEmpty(cvmRequestID, machineRequestID), ProviderData: providerData, MutationCount: 0,
@@ -4053,7 +4054,11 @@ func computeCVMObservation(request Request, cvm Response) *contracts.ResourceObs
 		observation.State = contracts.ResourceObservedRunning
 	case "STOPPED":
 		observation.State = contracts.ResourceObservedStopped
-	case "STARTING", "STOPPING", "REBOOTING", "PENDING", "SHUTDOWN", "CREATING":
+	case "SHUTDOWN":
+		observation.State = contracts.ResourceObservedPendingDeletion
+	case "TERMINATING":
+		observation.State = contracts.ResourceObservedDeleting
+	case "STARTING", "STOPPING", "REBOOTING", "PENDING", "CREATING":
 		observation.State = contracts.ResourceObservedPending
 	}
 	if observation.State != contracts.ResourceObservedUnknown {

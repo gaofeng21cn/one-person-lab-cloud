@@ -878,6 +878,7 @@ export interface OperatorFabricHealthDTO extends ReadinessFact {
   releaseReady: boolean;
   cloudImagesReady: boolean;
   workspaceImagesReady: boolean;
+  workspaceImageStatus?: "installed_target_matches" | "workspace_targets_verified" | "no_running_sample" | "identity_unverified";
   immutableImagesReady: boolean;
   failedChecks: string[];
 }

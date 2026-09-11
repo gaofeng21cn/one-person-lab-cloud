@@ -160,7 +160,7 @@ func validOperatorResourceObservation(observation contracts.ResourceObservation)
 		return false
 	}
 	switch observation.State {
-	case contracts.ResourceObservedReady, contracts.ResourceObservedRunning, contracts.ResourceObservedStopped, contracts.ResourceObservedSuspended, contracts.ResourceObservedAttached, contracts.ResourceObservedDetached, contracts.ResourceObservedPending, contracts.ResourceObservedAbsent:
+	case contracts.ResourceObservedReady, contracts.ResourceObservedRunning, contracts.ResourceObservedStopped, contracts.ResourceObservedSuspended, contracts.ResourceObservedAttached, contracts.ResourceObservedDetached, contracts.ResourceObservedPending, contracts.ResourceObservedPendingDeletion, contracts.ResourceObservedDeleting, contracts.ResourceObservedAbsent:
 		return true
 	default:
 		return false
