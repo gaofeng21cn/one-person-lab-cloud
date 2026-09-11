@@ -287,8 +287,8 @@ func (s *terminalizationHeadReadInterleavingStore) ComputePoolHead(ctx context.C
 }
 
 func TestOperatorTerminalizationReplaysCompletionBetweenReads(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		t.Run(map[bool]string{false: "command", true: "result"}[readOnly], func(t *testing.T) {
+	for _, caller := range []string{"command", "result", "authorization"} {
+		t.Run(caller, func(t *testing.T) {
 			store := NewMemoryOperationStore()
 			provider := &normalLaunchComputeProvider{}
 			input, _, _ := seedOperatorTerminalizationHead(t, store, provider)
@@ -308,8 +308,15 @@ func TestOperatorTerminalizationReplaysCompletionBetweenReads(t *testing.T) {
 				}
 			}
 			reader := NewServiceWithOperationStore(provider, interleaved)
+			if caller == "authorization" {
+				authorization, err := reader.ComputePoolHeadTerminalizationAuthorization(context.Background(), request)
+				if err != nil || !reflect.DeepEqual(&authorization, candidate.AuthorizationScope) {
+					t.Fatalf("interleaved authorization=%#v err=%v", authorization, err)
+				}
+				return
+			}
 			operation := reader.TerminalizeComputePoolHead
-			if readOnly {
+			if caller == "result" {
 				operation = reader.ReadComputePoolHeadTerminalizationResult
 			}
 			result, err := operation(context.Background(), request)

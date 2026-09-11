@@ -97,9 +97,9 @@ conflicting content cannot overwrite it. Domain, HTTP and real PostgreSQL
 admission checks passed. The Fabric deployment path remains the next slice.
 The full local gate also exposed a retained Fabric terminalization race:
 an identical request could finish between the replay and candidate reads.
-The command and result-read paths now re-read the exact approved terminal
-result in that window, without another provider mutation; deterministic
-interleaving checks cover both callers. The delivery
+The command, result-read and HTTP authorization paths now re-read the exact
+approved terminal result in that window, without another provider mutation;
+deterministic interleaving checks cover all three callers. The delivery
 plan follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
 acceptance for these new outcomes remain unverified where stated. This

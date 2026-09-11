@@ -119,24 +119,14 @@ func (s *Service) ComputePoolHeadTerminalizationAuthorization(ctx context.Contex
 		input.IdempotencyKey != input.ApprovalID || !validSHA256Hex(input.ApprovalDigest) {
 		return ComputePoolHeadTerminalizationAuthorization{}, ErrInvalidComputePoolHeadTerminalization
 	}
-	operation, found, err := s.computeClaims.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
-	if err != nil {
-		return ComputePoolHeadTerminalizationAuthorization{}, err
-	}
-	if found {
-		evidence, present, valid := decodeComputeClaimTerminalEvidence(operation)
-		var allocation ComputeAllocation
-		if !present || !valid || !decodeOperationResource(operation, &allocation) || operation.Status != "failed" || operation.ComputePoolKey != input.NodePoolID ||
-			allocation.NodePoolID != input.NodePoolID || evidence.OperatorApprovalID != input.ApprovalID ||
-			evidence.OperatorIdempotencyKey != input.IdempotencyKey || evidence.OperatorApprovalDigest != input.ApprovalDigest {
-			return ComputePoolHeadTerminalizationAuthorization{}, ErrComputePoolHeadTerminalizationConflict
-		}
-		return ComputePoolHeadTerminalizationAuthorization{
-			AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID, NodePoolID: allocation.NodePoolID,
-		}, nil
+	if replay, found, err := s.computePoolHeadTerminalizationAuthorizationReplay(ctx, input); found || err != nil {
+		return replay, err
 	}
 	candidate, err := s.computePoolHeadTerminalizationCandidate(ctx, input.NodePoolID)
 	if err != nil {
+		if replay, found, replayErr := s.computePoolHeadTerminalizationAuthorizationReplay(ctx, input); found || replayErr != nil {
+			return replay, replayErr
+		}
 		return ComputePoolHeadTerminalizationAuthorization{}, err
 	}
 	if subtle.ConstantTimeCompare([]byte(candidate.readback.ApprovalDigest), []byte(input.ApprovalDigest)) != 1 {
@@ -145,6 +135,26 @@ func (s *Service) ComputePoolHeadTerminalizationAuthorization(ctx context.Contex
 	return ComputePoolHeadTerminalizationAuthorization{
 		AccountID: candidate.allocation.AccountID, WorkspaceID: candidate.allocation.WorkspaceID, NodePoolID: candidate.allocation.NodePoolID,
 	}, nil
+}
+
+func (s *Service) computePoolHeadTerminalizationAuthorizationReplay(ctx context.Context, input ComputePoolHeadTerminalizationInput) (ComputePoolHeadTerminalizationAuthorization, bool, error) {
+	operation, found, err := s.computeClaims.ComputeClaimTerminalOperation(ctx, input.ApprovalID, input.IdempotencyKey)
+	if err != nil {
+		return ComputePoolHeadTerminalizationAuthorization{}, false, err
+	}
+	if found {
+		evidence, present, valid := decodeComputeClaimTerminalEvidence(operation)
+		var allocation ComputeAllocation
+		if !present || !valid || !decodeOperationResource(operation, &allocation) || operation.Status != "failed" || operation.ComputePoolKey != input.NodePoolID ||
+			allocation.NodePoolID != input.NodePoolID || evidence.OperatorApprovalID != input.ApprovalID ||
+			evidence.OperatorIdempotencyKey != input.IdempotencyKey || evidence.OperatorApprovalDigest != input.ApprovalDigest {
+			return ComputePoolHeadTerminalizationAuthorization{}, true, ErrComputePoolHeadTerminalizationConflict
+		}
+		return ComputePoolHeadTerminalizationAuthorization{
+			AccountID: allocation.AccountID, WorkspaceID: allocation.WorkspaceID, NodePoolID: allocation.NodePoolID,
+		}, true, nil
+	}
+	return ComputePoolHeadTerminalizationAuthorization{}, false, nil
 }
 
 func (s *Service) computePoolHeadTerminalizationCandidate(ctx context.Context, nodePoolID string) (computePoolHeadTerminalizationCandidate, error) {
