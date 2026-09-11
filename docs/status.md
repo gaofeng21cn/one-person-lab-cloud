@@ -70,7 +70,17 @@ purchase route accepts `provisioningMode: "resource_only"`, skips the image
 catalog and Gateway key-group resolution, and drifts the resource-only request
 hash from the full Launch hash while the retained full Launch hash stays
 byte-stable. Both module regressions passed against a real PostgreSQL
-instance. The resource-only purchase path is now implementable end to end in
+instance. Commit `56d94787` (2026-09-11) completes the empty-Workspace
+lifecycle semantics: renewal skips the Gateway key preflight and the runtime
+power suspend/resume/recovery steps for resource-only Workspaces (falling back
+to the retained behavior whenever the provisioning mode cannot be positively
+determined), and deletion carries the provisioning mode in its identity so a
+resource-only deletion confirms no Gateway identity, skips runtime and secret
+cleanup, and destroys only compute, storage and attachment. An HTTP-level
+lifecycle test buys, activates, deletes and re-verifies a resource-only
+Workspace without any application fact, and the full `internal/server`
+regression passed against a real PostgreSQL instance. The resource-only
+purchase path is now implementable end to end in
 process tests; live Console projection of the empty application binding and
 lifecycle verification of the purchased empty Workspace remain open. These
 preparations are
