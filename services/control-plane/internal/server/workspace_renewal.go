@@ -922,11 +922,17 @@ func (app *controlPlaneServer) debitWorkspaceRenewal(ctx context.Context, servic
 		}
 	}
 	if operation.ChargeConfirmation == nil {
-		workspace, ok := app.getWorkspace(operation.WorkspaceID)
-		keyID := int64(numberField(workspace, "workspaceApiKeyId", 0))
-		key, keyErr := service.WorkspaceKeyByIDForConvergence(ctx, userID, keyID, workspaceReservedKeyName(operation.WorkspaceID))
-		if !ok || keyErr != nil || key.ID != keyID || key.UserID != userID || key.Status != "active" {
-			return app.retryWorkspaceRenewal(ctx, operation, "gateway_key_unavailable", keyErr)
+		resourceOnlyWorkspace := false
+		if mode, modeErr := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); modeErr == nil && mode == contracts.WorkspaceProvisioningResourceOnly {
+			resourceOnlyWorkspace = true
+		}
+		if !resourceOnlyWorkspace {
+			workspace, ok := app.getWorkspace(operation.WorkspaceID)
+			keyID := int64(numberField(workspace, "workspaceApiKeyId", 0))
+			key, keyErr := service.WorkspaceKeyByIDForConvergence(ctx, userID, keyID, workspaceReservedKeyName(operation.WorkspaceID))
+			if !ok || keyErr != nil || key.ID != keyID || key.UserID != userID || key.Status != "active" {
+				return app.retryWorkspaceRenewal(ctx, operation, "gateway_key_unavailable", keyErr)
+			}
 		}
 		var charge clients.Sub2APICharge
 		if operation.ChargeAttempted || operation.ErrorCode == "sub2api_charge_unconfirmed" {
@@ -1556,6 +1562,13 @@ func (app *controlPlaneServer) workspaceRenewalRuntimePowerInput(ctx context.Con
 }
 
 func (app *controlPlaneServer) convergeWorkspaceRenewalRuntimePower(ctx context.Context, service *controlplane.Service, operation *workspaceRenewalOperation, desired string) error {
+	if mode, err := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); err != nil {
+		return err
+	} else if mode == contracts.WorkspaceProvisioningResourceOnly {
+		// A resource-only Workspace owns no application runtime, so there is
+		// nothing to suspend or resume; the runtime power facts stay unset.
+		return nil
+	}
 	input, err := app.workspaceRenewalRuntimePowerInput(ctx, *operation, desired)
 	if err != nil {
 		return err
@@ -1607,6 +1620,13 @@ func (app *controlPlaneServer) convergeWorkspaceRenewalRuntimePower(ctx context.
 }
 
 func (app *controlPlaneServer) workspaceRenewalRuntimeRecoveryEligible(ctx context.Context, service *controlplane.Service, operation workspaceRenewalOperation) error {
+	if mode, err := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); err != nil {
+		return err
+	} else if mode == contracts.WorkspaceProvisioningResourceOnly {
+		// A resource-only Workspace owns no runtime whose recovery could be
+		// verified; resource truth is checked by workspaceRenewalResources.
+		return nil
+	}
 	input, err := app.workspaceRenewalRuntimePowerInput(ctx, operation, "running")
 	if err != nil {
 		return err

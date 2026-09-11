@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
@@ -71,4 +73,22 @@ func workspaceLaunchModeRequiresApplicationFacts(mode contracts.WorkspaceProvisi
 		return true
 	}
 	return requires
+}
+
+// workspaceLaunchProvisioningMode reads the single Launch operation of a
+// workspace and reports its provisioning mode. Lifecycle consumers use it to
+// skip application-coupled steps that a resource-only Workspace does not own.
+func (app *controlPlaneServer) workspaceLaunchProvisioningMode(ctx context.Context, workspaceID string) (contracts.WorkspaceProvisioningMode, error) {
+	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{WorkspaceID: workspaceID, Action: workspaceLaunchAction})
+	if err != nil {
+		return "", err
+	}
+	if len(rows) != 1 {
+		return "", errors.New("workspace_runtime_identity_unavailable")
+	}
+	launch, err := decodeWorkspaceLaunchReconcileOperation(rows[0])
+	if err != nil {
+		return "", err
+	}
+	return launch.provisioningMode(), nil
 }
