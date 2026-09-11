@@ -205,6 +205,10 @@ func (s *Service) TerminalizeComputePoolHead(ctx context.Context, input ComputeP
 	}
 	candidate, err := s.computePoolHeadTerminalizationCandidate(ctx, input.NodePoolID)
 	if err != nil {
+		// The same approved request may have completed after the first replay read.
+		if replay, found, replayErr := s.computePoolHeadTerminalizationReplay(ctx, input); found || replayErr != nil {
+			return replay, replayErr
+		}
 		return ComputePoolHeadTerminalizationReadback{}, err
 	}
 	if subtle.ConstantTimeCompare([]byte(candidate.readback.ApprovalDigest), []byte(input.ApprovalDigest)) != 1 {
@@ -233,6 +237,10 @@ func (s *Service) ReadComputePoolHeadTerminalizationResult(ctx context.Context, 
 	}
 	candidate, err := s.computePoolHeadTerminalizationCandidate(ctx, input.NodePoolID)
 	if err != nil {
+		// The same approved request may have completed after the first replay read.
+		if replay, found, replayErr := s.computePoolHeadTerminalizationReplay(ctx, input); found || replayErr != nil {
+			return replay, replayErr
+		}
 		return ComputePoolHeadTerminalizationReadback{}, err
 	}
 	if subtle.ConstantTimeCompare([]byte(candidate.readback.ApprovalDigest), []byte(input.ApprovalDigest)) != 1 {

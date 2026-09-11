@@ -273,6 +273,57 @@ func TestOperatorTerminalizationFailsClosedOnApprovalBindingAndCASDrift(t *testi
 	}
 }
 
+type terminalizationHeadReadInterleavingStore struct {
+	*MemoryOperationStore
+	beforeHeadRead func()
+}
+
+func (s *terminalizationHeadReadInterleavingStore) ComputePoolHead(ctx context.Context, poolKey string) (FabricOperation, bool, error) {
+	if hook := s.beforeHeadRead; hook != nil {
+		s.beforeHeadRead = nil
+		hook()
+	}
+	return s.MemoryOperationStore.ComputePoolHead(ctx, poolKey)
+}
+
+func TestOperatorTerminalizationReplaysCompletionBetweenReads(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		t.Run(map[bool]string{false: "command", true: "result"}[readOnly], func(t *testing.T) {
+			store := NewMemoryOperationStore()
+			provider := &normalLaunchComputeProvider{}
+			input, _, _ := seedOperatorTerminalizationHead(t, store, provider)
+			winner := NewServiceWithOperationStore(provider, store)
+			candidate, err := winner.ReadComputePoolHeadTerminalization(context.Background(), input.NodePoolID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := ComputePoolHeadTerminalizationInput{
+				NodePoolID: input.NodePoolID, ApprovalID: "interleaved-terminalize-30970000004",
+				ApprovalDigest: candidate.ApprovalDigest, IdempotencyKey: "interleaved-terminalize-30970000004",
+			}
+			interleaved := &terminalizationHeadReadInterleavingStore{MemoryOperationStore: store}
+			interleaved.beforeHeadRead = func() {
+				if _, err := winner.TerminalizeComputePoolHead(context.Background(), request); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reader := NewServiceWithOperationStore(provider, interleaved)
+			operation := reader.TerminalizeComputePoolHead
+			if readOnly {
+				operation = reader.ReadComputePoolHeadTerminalizationResult
+			}
+			result, err := operation(context.Background(), request)
+			if err != nil || !result.Replayed || result.Status != "succeeded" || result.ApprovalDigest != request.ApprovalDigest {
+				t.Fatalf("interleaved result=%#v err=%v", result, err)
+			}
+			prepare, create, proof, cvm, node := provider.automaticContinuationCounts()
+			if prepare != 0 || create != 0 || proof != 0 || cvm != 0 || node != 0 {
+				t.Fatalf("provider calls=%d/%d/%d/%d/%d", prepare, create, proof, cvm, node)
+			}
+		})
+	}
+}
+
 func TestOperatorTerminalizationCASAllowsOneWriterAndReleasesFreshHead(t *testing.T) {
 	store := NewMemoryOperationStore()
 	provider := &normalLaunchComputeProvider{}
