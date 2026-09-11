@@ -7,6 +7,7 @@ import (
 
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/domain"
+	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
 func (a *controlPlaneWorkspaceLaunchStageAdapter) readWorkspaceLaunchActivation(ctx context.Context, operation workspaceLaunchReconcileOperation) (workspaceLaunchStageObservation, error) {
@@ -42,6 +43,9 @@ func (a *controlPlaneWorkspaceLaunchStageAdapter) mutateWorkspaceLaunchActivatio
 }
 
 func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (map[string]any, error) {
+	if err := workspaceLaunchActivationRuntimeFactsAllowed(operation); err != nil {
+		return nil, err
+	}
 	paidThrough, paidThroughErr := time.Parse(time.RFC3339, operation.stringFact("paidThrough"))
 	if paidThroughErr != nil {
 		return nil, errInvalidWorkspaceLaunchOperation
@@ -64,7 +68,7 @@ func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (
 		Name: operation.stringFact("name"), PackageID: operation.stringFact("packageId"), Provider: "fabric", URL: operation.stringFact("url"), Status: "running",
 		ComputeID: operation.stringFact("computeAllocationId"), VolumeID: operation.stringFact("storageId"), AttachmentID: operation.stringFact("attachmentId"),
 		RuntimeID: operation.stringFact("runtimeId"), RuntimeServiceName: operation.stringFact("runtimeServiceName"), WorkspaceAPIKeyID: operation.int64Fact("workspaceApiKeyId"),
-		RuntimeReady: true, RuntimeUsername: operation.stringFact("runtimeUsername"), CredentialStatus: operation.stringFact("credentialStatus"),
+		RuntimeReady: operation.boolFact("runtimeReady"), RuntimeUsername: operation.stringFact("runtimeUsername"), CredentialStatus: operation.stringFact("credentialStatus"),
 		CredentialVersion: operation.stringFact("credentialVersion"), CredentialSecretRef: operation.stringFact("credentialSecretRef"),
 	})
 	for key, value := range map[string]any{
@@ -81,6 +85,19 @@ func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (
 
 func workspaceLaunchProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
 	return len(workspaceLaunchProjectionMismatchFields(operation, workspace)) == 0
+}
+
+// workspaceLaunchActivationRuntimeFactsAllowed applies the domain activation
+// guard: a resource-only activation establishes the resource entitlement with
+// an empty current application binding and must not carry runtime facts.
+func workspaceLaunchActivationRuntimeFactsAllowed(operation workspaceLaunchReconcileOperation) error {
+	runtimeFacts := map[string]any{}
+	for _, key := range []string{"runtimeId", "runtimeReady", "runtimeServiceName", "runtimeBindingRef"} {
+		if _, exists := operation.raw[key]; exists {
+			runtimeFacts[key] = operation.raw[key]
+		}
+	}
+	return provisioning.ValidateActivationWrites(operation.provisioningMode(), runtimeFacts)
 }
 
 func workspaceLaunchProjectionMismatchFields(operation workspaceLaunchReconcileOperation, workspace map[string]any) []string {

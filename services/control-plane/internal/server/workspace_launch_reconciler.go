@@ -335,6 +335,7 @@ type workspaceLaunchReconcileCreate struct {
 	PreChargeBalanceMicros  int64
 	AcceptanceBCapacitySlot bool
 	ResourceBillingEnabled  *bool
+	Mode                    contracts.WorkspaceProvisioningMode
 	CreatedAt               time.Time
 }
 
@@ -2170,22 +2171,35 @@ func newWorkspaceLaunchReconcileOperation(command workspaceLaunchReconcileCreate
 	if command.CreatedAt.IsZero() {
 		command.CreatedAt = time.Now().UTC()
 	}
+	mode := command.Mode
+	if mode == "" {
+		mode = contracts.WorkspaceProvisioningFull
+	}
+	if err := contracts.ValidateWorkspaceProvisioningMode(mode); err != nil {
+		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
+	}
+	plan, err := contracts.WorkspaceProvisioningStages(mode)
+	if err != nil {
+		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
+	}
 	if strings.TrimSpace(command.OperationID) == "" || strings.TrimSpace(command.RequestHash) == "" || strings.TrimSpace(command.AccountID) == "" ||
 		strings.TrimSpace(command.OwnerUserID) == "" || strings.TrimSpace(command.WorkspaceID) == "" || strings.TrimSpace(command.Name) == "" ||
-		command.Sub2APIUserID <= 0 || command.WorkspaceKeyGroupID <= 0 || strings.TrimSpace(command.PackageID) == "" || command.StorageGB <= 0 ||
+		command.Sub2APIUserID <= 0 || strings.TrimSpace(command.PackageID) == "" || command.StorageGB <= 0 ||
 		strings.TrimSpace(command.PriceVersion) == "" || command.TotalChargeUSDMicros < 0 || command.ResourceBillingEnabled != nil && *command.ResourceBillingEnabled && command.TotalChargeUSDMicros <= 0 || strings.TrimSpace(command.ProviderProfileRef) == "" ||
-		strings.TrimSpace(command.PreflightBindingRef) == "" || !workspaceProviderSpecDigestPattern.MatchString(command.SpecDigest) || strings.TrimSpace(command.WorkspaceImageDigest) == "" {
+		strings.TrimSpace(command.PreflightBindingRef) == "" || !workspaceProviderSpecDigestPattern.MatchString(command.SpecDigest) {
+		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
+	}
+	if workspaceLaunchModeRequiresApplicationFacts(mode) && (command.WorkspaceKeyGroupID <= 0 || strings.TrimSpace(command.WorkspaceImageDigest) == "") {
 		return workspaceLaunchReconcileOperation{}, errInvalidWorkspaceLaunchOperation
 	}
 	facts := map[string]any{
 		"schemaVersion":             workspaceLaunchReconcileSchemaVersion,
 		"version":                   1,
-		"stage":                     string(contracts.StageKey),
+		"stage":                     string(plan[0]),
 		"requestHash":               command.RequestHash,
 		"accountId":                 command.AccountID,
 		"ownerUserId":               command.OwnerUserID,
 		"sub2apiUserId":             command.Sub2APIUserID,
-		"workspaceKeyGroupId":       command.WorkspaceKeyGroupID,
 		"workspaceId":               command.WorkspaceID,
 		"name":                      command.Name,
 		"packageId":                 command.PackageID,
@@ -2196,14 +2210,19 @@ func newWorkspaceLaunchReconcileOperation(command workspaceLaunchReconcileCreate
 		"providerProfileRef":        command.ProviderProfileRef,
 		"preflightBindingRef":       command.PreflightBindingRef,
 		"specDigest":                command.SpecDigest,
-		"workspaceImageDigest":      command.WorkspaceImageDigest,
 		"sub2apiRedeemCode":         monthlyRedeemCode(monthlyEnvironment(), command.OperationID),
 		"preChargeBalanceUsdMicros": command.PreChargeBalanceMicros,
 		"acceptanceBCapacitySlot":   command.AcceptanceBCapacitySlot,
 		"resourceBillingEnabled":    command.ResourceBillingEnabled == nil || *command.ResourceBillingEnabled,
 	}
-	attempts := make(map[contracts.Stage]workspaceLaunchStageAttempt, len(workspaceLaunchReconcileStages)-1)
-	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+	if mode == contracts.WorkspaceProvisioningResourceOnly {
+		facts[workspaceLaunchProvisioningModeFact] = string(mode)
+	} else {
+		facts["workspaceKeyGroupId"] = command.WorkspaceKeyGroupID
+		facts["workspaceImageDigest"] = command.WorkspaceImageDigest
+	}
+	attempts := make(map[contracts.Stage]workspaceLaunchStageAttempt, len(plan)-1)
+	for _, stage := range plan[:len(plan)-1] {
 		attempts[stage] = workspaceLaunchStageAttempt{Max: 1, MaxPendingReadbacks: workspaceLaunchLegacyV3AuthoritativeReadBudget}
 	}
 	facts["attempts"] = attempts
@@ -2242,7 +2261,22 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	if json.Unmarshal(raw["version"], &operation.Version) != nil || operation.Version <= 0 {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_version")
 	}
-	if json.Unmarshal(raw["stage"], &operation.Stage) != nil || !workspaceLaunchReconcileStageValid(operation.Stage) {
+	mode, modeErr := workspaceLaunchProvisioningModeFromRaw(raw)
+	if modeErr != nil {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_provisioning_mode")
+	}
+	plan, planErr := contracts.WorkspaceProvisioningStages(mode)
+	if planErr != nil {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_provisioning_mode")
+	}
+	if !workspaceLaunchModeRequiresApplicationFacts(mode) {
+		for _, field := range workspaceLaunchApplicationFactFields {
+			if _, exists := raw[field]; exists {
+				return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_provisioning_mode", field)
+			}
+		}
+	}
+	if json.Unmarshal(raw["stage"], &operation.Stage) != nil || !workspaceLaunchStageInPlan(plan, operation.Stage) {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("invalid_stage")
 	}
 	if len(raw["attempts"]) == 0 {
@@ -2251,7 +2285,7 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 	if json.Unmarshal(raw["attempts"], &operation.Attempts) != nil {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", "attempts_object")
 	}
-	if len(operation.Attempts) != len(workspaceLaunchReconcileStages)-1 {
+	if len(operation.Attempts) != len(plan)-1 {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", "attempts_cardinality")
 	}
 	for stage, attempt := range operation.Attempts {
@@ -2494,11 +2528,14 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 		}
 	}
 	if operation.ID == "" || operation.stringFact("requestHash") == "" || operation.stringFact("accountId") == "" || operation.stringFact("ownerUserId") == "" ||
-		operation.int64Fact("sub2apiUserId") <= 0 || operation.int64Fact("workspaceKeyGroupId") <= 0 ||
+		operation.int64Fact("sub2apiUserId") <= 0 ||
 		operation.stringFact("workspaceId") == "" || operation.stringFact("name") == "" || operation.stringFact("packageId") == "" ||
 		operation.stringFact("priceVersion") == "" || operation.intFact("sizeGb") <= 0 || operation.int64Fact("totalChargeUsdMicros") < 0 || operation.boolFact("resourceBillingEnabled") && operation.int64Fact("totalChargeUsdMicros") <= 0 ||
 		operation.stringFact("providerProfileRef") == "" || operation.stringFact("preflightBindingRef") == "" || !workspaceProviderSpecDigestPattern.MatchString(operation.stringFact("specDigest")) ||
-		operation.stringFact("workspaceImageDigest") == "" || operation.stringFact("sub2apiRedeemCode") == "" {
+		operation.stringFact("sub2apiRedeemCode") == "" {
+		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("missing_canonical_facts")
+	}
+	if workspaceLaunchModeRequiresApplicationFacts(mode) && (operation.int64Fact("workspaceKeyGroupId") <= 0 || operation.stringFact("workspaceImageDigest") == "") {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("missing_canonical_facts")
 	}
 	if stringValue(row["action"]) != "" && stringValue(row["action"]) != workspaceLaunchAction ||
@@ -2506,7 +2543,7 @@ func decodeWorkspaceLaunchReconcileOperation(row map[string]any) (workspaceLaunc
 		stringValue(row["workspaceId"]) != "" && stringValue(row["workspaceId"]) != operation.stringFact("workspaceId") {
 		return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecode("row_identity_mismatch")
 	}
-	for _, stage := range workspaceLaunchReconcileStages[:len(workspaceLaunchReconcileStages)-1] {
+	for _, stage := range plan[:len(plan)-1] {
 		attempt, exists := operation.Attempts[stage]
 		if failedFields := workspaceLaunchAttemptDecodeFailedFields(operation, stage, attempt, exists); len(failedFields) > 0 {
 			return workspaceLaunchReconcileOperation{}, invalidWorkspaceLaunchDecodeFields("invalid_attempts", failedFields...)
@@ -2667,18 +2704,22 @@ func workspaceLaunchReconcileOperationRow(operation workspaceLaunchReconcileOper
 }
 
 func (operation *workspaceLaunchReconcileOperation) advance() {
+	plan, err := operation.stagePlan()
+	if err != nil {
+		return
+	}
 	index := -1
-	for i, stage := range workspaceLaunchReconcileStages {
+	for i, stage := range plan {
 		if stage == operation.Stage {
 			index = i
 			break
 		}
 	}
-	if index < 0 || index == len(workspaceLaunchReconcileStages)-1 {
+	if index < 0 || index == len(plan)-1 {
 		operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
 		return
 	}
-	operation.Stage = workspaceLaunchReconcileStages[index+1]
+	operation.Stage = plan[index+1]
 	if operation.Stage == contracts.StageSucceeded {
 		operation.Status = contracts.StatusSucceeded
 	} else {
@@ -2846,7 +2887,12 @@ func validWorkspaceLaunchResumeAuthorizationConsumedAt(value string) bool {
 }
 
 func workspaceLaunchReconcileSubmissionMatches(operation workspaceLaunchReconcileOperation, command workspaceLaunchReconcileCreate) bool {
+	commandMode := command.Mode
+	if commandMode == "" {
+		commandMode = contracts.WorkspaceProvisioningFull
+	}
 	return operation.ID == command.OperationID && operation.stringFact("requestHash") == command.RequestHash &&
+		operation.provisioningMode() == commandMode &&
 		operation.stringFact("accountId") == command.AccountID && operation.stringFact("ownerUserId") == command.OwnerUserID &&
 		operation.int64Fact("sub2apiUserId") == command.Sub2APIUserID && operation.int64Fact("workspaceKeyGroupId") == command.WorkspaceKeyGroupID &&
 		operation.stringFact("workspaceId") == command.WorkspaceID
