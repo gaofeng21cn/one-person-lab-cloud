@@ -3956,12 +3956,20 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	}
 	if machine == nil || cvm.Status == "external_deleted" {
 		code := "compute_provider_partial_identity_machine_missing"
+		var observation *contracts.ResourceObservation
 		if machine != nil {
 			code = "compute_provider_partial_identity_cvm_missing"
 		} else {
 			code = client.classifyMissingComputeMachine(request)
+			// CVM ownership is verified above even when its TKE binding is gone.
+			observation = computeCVMObservation(request, cvm)
+			observation.ReasonCode = code
 		}
-		return Response{Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
+		return Response{
+			Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.",
+			Observation: observation, InstanceId: cvm.InstanceId, CVMStatus: cvm.CVMStatus, ProviderData: cvm.ProviderData,
+			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true,
+		}
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
@@ -4016,22 +4024,9 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	providerData["describeTkeInstanceReqId"] = tkeRequestID
 	providerData["cpu"] = strconv.FormatUint(request.Pool.CPU, 10)
 	providerData["memoryGb"] = strconv.FormatUint(request.Pool.MemoryGB, 10)
-	observation := &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "provider_state_unrecognized"}
-	switch strings.ToUpper(strings.TrimSpace(cvm.CVMStatus)) {
-	case "RUNNING":
-		observation.State = contracts.ResourceObservedRunning
-	case "STOPPED":
-		observation.State = contracts.ResourceObservedStopped
-	case "STARTING", "STOPPING", "REBOOTING", "PENDING", "SHUTDOWN", "CREATING":
-		observation.State = contracts.ResourceObservedPending
-	}
+	observation := computeCVMObservation(request, cvm)
 	if stringValue(tkeInstance.Native.InstanceId) != request.Allocation.InstanceId {
-		observation.State, observation.ReasonCode = contracts.ResourceObservedUnknown, "compute_cvm_identity_mismatch"
-	}
-	if observation.State != contracts.ResourceObservedUnknown {
-		observation.Available, observation.ReasonCode = true, ""
-		observation.ProviderID, observation.PackageOrSpec, observation.Zone = request.Allocation.InstanceId, request.Pool.InstanceType, request.Zone
-		observation.ExpiresAt = cvm.ProviderData["deadline"]
+		observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "compute_cvm_identity_mismatch"}
 	}
 	return Response{Observation: observation,
 		Ok:                true,
@@ -4049,6 +4044,24 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId),
 		ProviderData:      providerData,
 	}
+}
+
+func computeCVMObservation(request Request, cvm Response) *contracts.ResourceObservation {
+	observation := &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "provider_state_unrecognized"}
+	switch strings.ToUpper(strings.TrimSpace(cvm.CVMStatus)) {
+	case "RUNNING":
+		observation.State = contracts.ResourceObservedRunning
+	case "STOPPED":
+		observation.State = contracts.ResourceObservedStopped
+	case "STARTING", "STOPPING", "REBOOTING", "PENDING", "SHUTDOWN", "CREATING":
+		observation.State = contracts.ResourceObservedPending
+	}
+	if observation.State != contracts.ResourceObservedUnknown {
+		observation.Available, observation.ReasonCode = true, ""
+		observation.ProviderID, observation.PackageOrSpec, observation.Zone = request.Allocation.InstanceId, request.Pool.InstanceType, request.Zone
+		observation.ExpiresAt = cvm.ProviderData["deadline"]
+	}
+	return observation
 }
 
 func (client *tencentSDKClient) ProviderTruth(request Request, _ map[string]string) Response {

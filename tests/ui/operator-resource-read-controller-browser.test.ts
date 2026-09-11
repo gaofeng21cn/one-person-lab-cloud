@@ -794,6 +794,7 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
 
 function observedRuntime(): OperatorRuntimeObservationsDTO {
   return {
+    ownershipScope: "workspaces_and_retained_operations",
     observedAt: fetchedAt, ready: true, businessTotal: 1, observedTotal: 1,
     runningCount: 0, suspendedCount: 1, pendingCount: 0, attentionCount: 0, unmatchedCount: 0,
     items: [{ workspaceId: "workspace-paused", runtimeId: "runtime-paused", objectRef: "object-paused", businessState: "suspended", desiredState: "suspended", observedState: "suspended", ownership: "verified", status: "suspended" }]

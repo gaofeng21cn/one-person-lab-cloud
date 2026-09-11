@@ -304,6 +304,7 @@ func mergeWorkspaceRenewalPatch(current, patch map[string]any) (map[string]any, 
 		}
 		merged[key] = value
 	}
+	preserveWorkspaceStorageLoss(current, merged)
 	if err := validateWorkspaceBillingState(merged); err != nil {
 		return nil, err
 	}

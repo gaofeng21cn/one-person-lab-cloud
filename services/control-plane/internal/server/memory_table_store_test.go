@@ -1265,3 +1265,23 @@ func (s *memoryTableStore) ApplyBillingReconciliation(_ context.Context, mutatio
 	s.auditEvents = append(s.auditEvents, cloneMap(mutation.AuditEvent))
 	return nil
 }
+
+func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mutation workspaceResourceReconcileMutation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	operations := make([]map[string]any, 0)
+	for _, operation := range s.runtimeOps {
+		if stringValue(operation["workspaceId"]) == mutation.WorkspaceID {
+			operations = append(operations, operation)
+		}
+	}
+	desired, audit, err := prepareWorkspaceResourceReconcile(s.workspaces[mutation.WorkspaceID], operations, mutation)
+	if err != nil {
+		return err
+	}
+	if desired != nil {
+		s.workspaces[mutation.WorkspaceID] = desired
+		s.auditEvents = append(s.auditEvents, cloneMap(audit))
+	}
+	return nil
+}

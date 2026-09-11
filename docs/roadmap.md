@@ -83,6 +83,15 @@ remains an external evidence obligation in
 [status](status.md). Unmatched production objects require an owner-reviewed
 disposition; their visibility does not authorize deletion or shared-pool scale.
 
+The external-resource reconciliation under C/F/J now follows successful Workspace
+bindings instead of relying on old resource projections. Cloud implements
+confirmed-loss suspension, closed auto-renew/access, preserved financial identity,
+and retained-operation protection in Runtime observations. Its focused local
+business and persistence evidence is recorded in [status](status.md). Exact-Candidate
+Instance readback must still prove convergence of the affected Workspace and no
+impact to the running control; authorized historical Runtime retirement remains
+an Instance operation with separate immutable evidence.
+
 ## Execution And Test Policy
 
 - Independent Account, Commerce, and Lifecycle owners may develop in parallel

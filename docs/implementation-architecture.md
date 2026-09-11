@@ -288,16 +288,25 @@ bounded reason are separate from retained `ProviderFact.Available/Facts`
 validation used by financial and lifecycle operations. An observed stopped or
 absent resource does not change those operations' validation rules. Missing
 observation evidence is unavailable, never inferred from a historical status.
+When Tencent confirms the persisted CVM identity but its Machine/TKE association
+is missing, Fabric retains that observed CVM state alongside the blocking reason.
+This neither certifies compute readiness nor turns a missing association into
+proof that the CVM was destroyed.
 
 `GET /fabric/runtime-observations` inventories physical Runtime controllers
 before matching persisted Fabric ownership. Binding claims remain visible for
 unregistered or conflicting objects. Control Plane reconciles this inventory
-against its complete current Workspace set and lifecycle intent through
+against its complete current Workspace set, retained operations and lifecycle intent through
 `GET /api/operator/runtime-observations`; the operator health card uses the same
 query. Running, normal suspension, pending transitions, missing and unmatched
 objects remain distinct. Incomplete discovery cannot prove absence. The older
 physical summary retains `ready + unready = total`; a suspended controller is
 physically unready without necessarily being a business fault.
+The response declares `ownershipScope=workspaces_and_retained_operations` only
+after both complete owner reads succeed. A Runtime with a retained operation but
+no Workspace reports `runtime_operation_without_workspace`; it cannot be treated
+as an unowned cleanup target. Instance maintenance consumes this explicit scope
+and performs its own exact-identity and dependency checks before any mutation.
 
 Fabric readiness separates `serviceReady` from strict `ready` and retains all
 image qualification fields. Operator service health uses the former and
@@ -537,6 +546,20 @@ original account, Workspace, Runtime operation and paid-through period. Fabric
 serializes power with destroy and rejects stale periods or deleted Runtimes;
 Tencent scales the exact Deployment to zero and waits for Pod absence, while
 Local-Docker stops the original container. Storage is not deleted by expiry.
+
+The provider-reconcile worker also scans successful Workspace Launch bindings,
+independently of the older compute/storage projections. It runs at startup and
+at the existing configured interval (ten minutes by default). Confirmed absence
+of the original storage atomically records `data_deleted/unrecoverable`; compute
+absence alone records `suspended`. Both close auto-renew and access, retain the
+original paid period, resource and financial identities, and append an audit.
+Unreadable or conflicting facts cannot prove absence. Workspace/operation CAS
+and the existing lifecycle locks defer this change during unfinished operations.
+Fabric verifies the original successful Runtime binding and freshly confirms
+the missing resource inside its Runtime lock before accepting the explicit
+`provider_resource_absent` suspension reason. Unknown responses converge by
+readback; resource loss never purchases a replacement or refunds the wallet.
+Later expiry or stale Workspace projections cannot reverse confirmed storage loss.
 
 The renewal read reports recovery eligibility from original resource, Runtime,
 period and wallet readback. A customer's explicit `autoRenew=true` authorization

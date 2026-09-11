@@ -48,6 +48,16 @@ func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row 
 		response["openable"], response["accessState"] = false, "disabled"
 		return response, "workspace_delete_in_progress"
 	}
+	// Persisted inactive lifecycle is an expected business state, not a failed
+	// comparison with the original successful launch projection.
+	switch firstNonEmpty(stringValue(row["state"]), stringValue(row["status"])) {
+	case "suspended", "stopped":
+		response["openable"], response["accessState"] = false, "disabled"
+		return response, "workspace_suspended"
+	case "data_deleted", "unrecoverable", "storage_missing", "destroyed":
+		response["openable"], response["accessState"] = false, "disabled"
+		return response, "workspace_storage_destroyed"
+	}
 	canonicalComputeID, canonicalStorageID := stringValue(row["currentComputeAllocationId"]), stringValue(row["storageId"])
 	if !providerAcceptanceWorkspaceBillingExempt(row) {
 		state, _, reason := workspaceBillingAccessFacts(row, now)

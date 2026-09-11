@@ -907,6 +907,7 @@ export interface OperatorRuntimeObservationDTO {
 }
 
 export interface OperatorRuntimeObservationsDTO extends OperatorRuntimeHealthDTO {
+  ownershipScope: "workspaces_and_retained_operations";
   items: OperatorRuntimeObservationDTO[];
 }
 
