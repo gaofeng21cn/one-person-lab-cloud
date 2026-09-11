@@ -10,6 +10,7 @@ import type {
 import {
   formatWorkspaceBudgetUsdInput,
   parseWorkspaceBudgetUsdInput,
+  presentWorkspaceApplicationBinding,
   presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
@@ -385,6 +386,13 @@ test("Workspace budget statuses have exact labels and an explicit unknown", () =
     label: "待确认",
     rawValue: "future_budget"
   });
+});
+
+test("Workspace application binding presents the empty state for resource-only workspaces", () => {
+  assert.deepEqual(presentWorkspaceApplicationBinding("empty"), { known: true, label: "未安装应用" });
+  assert.deepEqual(presentWorkspaceApplicationBinding("opl_app"), { known: true, label: "OPL App" });
+  assert.deepEqual(presentWorkspaceApplicationBinding(undefined), { known: false, label: "待确认" });
+  assert.deepEqual(presentWorkspaceApplicationBinding("future_binding"), { known: false, label: "待确认" });
 });
 
 test("Workspace budget inputs convert exact USD decimals without floating point rounding", () => {

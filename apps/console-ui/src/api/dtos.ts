@@ -79,6 +79,7 @@ export interface Workspace {
   updatedAt: string;
   name?: string;
   url?: string;
+  applicationBinding?: string;
   storageId?: string;
   currentComputeAllocationId?: string;
   currentAttachmentId?: string;

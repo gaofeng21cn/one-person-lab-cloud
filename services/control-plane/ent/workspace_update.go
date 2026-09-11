@@ -439,6 +439,20 @@ func (wu *WorkspaceUpdate) SetNillableCustomerProduct(b *bool) *WorkspaceUpdate 
 	return wu
 }
 
+// SetApplicationBinding sets the "application_binding" field.
+func (wu *WorkspaceUpdate) SetApplicationBinding(s string) *WorkspaceUpdate {
+	wu.mutation.SetApplicationBinding(s)
+	return wu
+}
+
+// SetNillableApplicationBinding sets the "application_binding" field if the given value is not nil.
+func (wu *WorkspaceUpdate) SetNillableApplicationBinding(s *string) *WorkspaceUpdate {
+	if s != nil {
+		wu.SetApplicationBinding(*s)
+	}
+	return wu
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wu *WorkspaceUpdate) Mutation() *WorkspaceMutation {
 	return wu.mutation
@@ -594,6 +608,9 @@ func (wu *WorkspaceUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := wu.mutation.CustomerProduct(); ok {
 		_spec.SetField(workspace.FieldCustomerProduct, field.TypeBool, value)
+	}
+	if value, ok := wu.mutation.ApplicationBinding(); ok {
+		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, wu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1026,6 +1043,20 @@ func (wuo *WorkspaceUpdateOne) SetNillableCustomerProduct(b *bool) *WorkspaceUpd
 	return wuo
 }
 
+// SetApplicationBinding sets the "application_binding" field.
+func (wuo *WorkspaceUpdateOne) SetApplicationBinding(s string) *WorkspaceUpdateOne {
+	wuo.mutation.SetApplicationBinding(s)
+	return wuo
+}
+
+// SetNillableApplicationBinding sets the "application_binding" field if the given value is not nil.
+func (wuo *WorkspaceUpdateOne) SetNillableApplicationBinding(s *string) *WorkspaceUpdateOne {
+	if s != nil {
+		wuo.SetApplicationBinding(*s)
+	}
+	return wuo
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wuo *WorkspaceUpdateOne) Mutation() *WorkspaceMutation {
 	return wuo.mutation
@@ -1211,6 +1242,9 @@ func (wuo *WorkspaceUpdateOne) sqlSave(ctx context.Context) (_node *Workspace, e
 	}
 	if value, ok := wuo.mutation.CustomerProduct(); ok {
 		_spec.SetField(workspace.FieldCustomerProduct, field.TypeBool, value)
+	}
+	if value, ok := wuo.mutation.ApplicationBinding(); ok {
+		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
 	}
 	_node = &Workspace{config: wuo.config}
 	_spec.Assign = _node.assignValues

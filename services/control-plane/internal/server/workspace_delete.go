@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -65,6 +66,7 @@ type workspaceDeleteOperation struct {
 	KeyStatus                string                             `json:"keyStatus,omitempty"`
 	KeyDeleteAttempted       bool                               `json:"keyDeleteAttempted,omitempty"`
 	KeyDeleteReplay          workspaceDeleteReplayAuthorization `json:"keyDeleteReplay,omitempty"`
+	ProvisioningMode         string                             `json:"provisioningMode,omitempty"`
 	LastErrorCode            string                             `json:"lastErrorCode,omitempty"`
 	CreatedAt                string                             `json:"createdAt"`
 }
@@ -410,7 +412,8 @@ func (app *controlPlaneServer) newWorkspaceDeleteOperation(ctx context.Context, 
 		RuntimeID: launch.stringFact("runtimeId"), RuntimeServiceName: launch.stringFact("runtimeServiceName"), ComputeID: launch.stringFact("computeAllocationId"),
 		StorageID: launch.stringFact("storageId"), AttachmentID: launch.stringFact("attachmentId"), WorkspaceAPIKeyID: gatewayIdentity.WorkspaceAPIKeyID,
 		GatewaySecretRef: gatewayIdentity.GatewaySecretRef, GatewayFingerprint: gatewayIdentity.GatewayFingerprint,
-		Phase: "claimed", Status: "running", CreatedAt: now.Format(time.RFC3339Nano),
+		ProvisioningMode: launch.provisioningModeWire(),
+		Phase:            "claimed", Status: "running", CreatedAt: now.Format(time.RFC3339Nano),
 	}
 	operation.RequestHash = workspaceDeleteRequestHash(operation)
 	if !validWorkspaceDeleteIdentity(operation) {
@@ -423,6 +426,11 @@ func (app *controlPlaneServer) newWorkspaceDeleteOperation(ctx context.Context, 
 // evidence to bind Fabric cleanup; deletion never reads or mutates Gateway keys.
 func (app *controlPlaneServer) currentWorkspaceDeleteGatewayIdentity(ctx context.Context, workspace map[string]any, launch workspaceLaunchReconcileOperation) (workspaceDeleteGatewayIdentity, error) {
 	workspaceID := stringValue(workspace["id"])
+	if launch.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		// A resource-only Workspace owns no Gateway key or secret binding;
+		// there is no gateway identity to confirm or clean up.
+		return workspaceDeleteGatewayIdentity{}, nil
+	}
 	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
 	currentKeyID, ok := positiveIntegerField(workspace, "workspaceApiKeyId")
 	launchKeyID := launch.int64Fact("workspaceApiKeyId")
@@ -499,9 +507,15 @@ func workspaceDeleteLegacyOperationID(workspaceID string) string {
 }
 
 func workspaceDeleteRequestHash(operation workspaceDeleteOperation) string {
-	return stableID(workspaceDeleteAction, strconv.Itoa(operation.SchemaVersion), operation.AccountID, operation.OwnerUserID, operation.WorkspaceID, operation.ResourceType, operation.ResourceID, operation.LaunchOperationID, operation.LaunchReceiptID,
+	parts := []string{workspaceDeleteAction, strconv.Itoa(operation.SchemaVersion), operation.AccountID, operation.OwnerUserID, operation.WorkspaceID, operation.ResourceType, operation.ResourceID, operation.LaunchOperationID, operation.LaunchReceiptID,
 		operation.RuntimeID, operation.RuntimeServiceName, operation.ComputeID, operation.StorageID, operation.AttachmentID,
-		operation.GatewaySecretRef, operation.GatewayFingerprint, strconv.FormatInt(operation.Sub2APIUserID, 10), strconv.FormatInt(operation.WorkspaceAPIKeyID, 10))
+		operation.GatewaySecretRef, operation.GatewayFingerprint, strconv.FormatInt(operation.Sub2APIUserID, 10), strconv.FormatInt(operation.WorkspaceAPIKeyID, 10)}
+	// The mode stays omitted for retained full-Launch deletions so their
+	// request hashes are byte-stable.
+	if operation.ProvisioningMode != "" {
+		parts = append(parts, operation.ProvisioningMode)
+	}
+	return stableID(parts...)
 }
 
 func workspaceDeleteStageKey(operation workspaceDeleteOperation, stage string) string {
@@ -546,11 +560,22 @@ func workspaceDeleteOperationRow(operation workspaceDeleteOperation) map[string]
 }
 
 func validWorkspaceDeleteBaseIdentity(operation workspaceDeleteOperation) bool {
+	resourceOnly := operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly)
+	if operation.ProvisioningMode != "" && !resourceOnly {
+		return false
+	}
+	if resourceOnly && (operation.RuntimeID != "" || operation.RuntimeServiceName != "" || operation.WorkspaceAPIKeyID > 0 ||
+		operation.GatewaySecretRef != "" || operation.GatewayFingerprint != "") {
+		return false
+	}
+	if !resourceOnly && (operation.RuntimeID == "" || operation.RuntimeServiceName == "" || operation.WorkspaceAPIKeyID <= 0 ||
+		operation.GatewaySecretRef == "" || operation.GatewayFingerprint == "") {
+		return false
+	}
 	return operation.SchemaVersion == 2 && operation.OperationID != "" && operation.OperationID == workspaceDeleteOperationID(operation.WorkspaceID) && operation.AccountID != "" && operation.OwnerUserID != "" &&
-		operation.Sub2APIUserID > 0 && operation.WorkspaceID != "" && operation.LaunchOperationID != "" && operation.LaunchReceiptID != "" && operation.RuntimeID != "" &&
+		operation.Sub2APIUserID > 0 && operation.WorkspaceID != "" && operation.LaunchOperationID != "" && operation.LaunchReceiptID != "" &&
 		operation.ResourceType == "workspace" && operation.ResourceID == operation.WorkspaceID &&
-		operation.RuntimeServiceName != "" && operation.ComputeID != "" && operation.StorageID != "" && operation.AttachmentID != "" && operation.WorkspaceAPIKeyID > 0 &&
-		operation.GatewaySecretRef != "" && operation.GatewayFingerprint != "" && operation.CreatedAt != ""
+		operation.ComputeID != "" && operation.StorageID != "" && operation.AttachmentID != "" && operation.CreatedAt != ""
 }
 
 func validWorkspaceDeleteIdentity(operation workspaceDeleteOperation) bool {
@@ -730,7 +755,9 @@ func workspaceDeleteWorkspaceProjectionMatches(operation workspaceDeleteOperatio
 		firstNonEmpty(stringValue(row["ownerUserId"]), stringValue(row["ownerId"])) != operation.OwnerUserID {
 		return false
 	}
-	if keyID, ok := positiveIntegerField(row, "workspaceApiKeyId"); !ok || keyID != operation.WorkspaceAPIKeyID {
+	resourceOnly := operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly)
+	keyID, hasKey := positiveIntegerField(row, "workspaceApiKeyId")
+	if resourceOnly && hasKey || !resourceOnly && (!hasKey || keyID != operation.WorkspaceAPIKeyID) {
 		return false
 	}
 	return !requireResources ||
@@ -788,42 +815,54 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 		}
 		switch operation.Phase {
 		case "claimed":
-			runtimeObservation, secretObservation, err := observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
-			if err != nil {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_readback_unavailable")
-			}
-			if !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) {
-				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
-			}
-			needsDestroy := !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation)
-			if !needsDestroy {
-				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-				if readErr != nil || residual.SchemaVersion != clients.WorkspaceRuntimeDeleteObservationSchemaVersion || residual.WorkspaceID != operation.WorkspaceID ||
-					!workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) && residual.State != clients.WorkspaceRuntimeDeleteObservationPresent {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
+			if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
+				// A resource-only Workspace owns no runtime or Gateway secret
+				// binding; both are absent by the provisioning mode's own
+				// declaration and need no Fabric observation or destroy.
+				next := operation
+				next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
+				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
+					return operation, err
 				}
-				needsDestroy = !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID)
-			}
-			if needsDestroy {
-				_, destroyErr := service.DestroyWorkspaceRuntime(ctx, operation.AccountID, operation.WorkspaceID, workspaceDeleteStageKey(operation, "runtime"))
-				runtimeObservation, secretObservation, err = observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
-				if err != nil || !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) || !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
-					if destroyErr != nil {
-						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_destroy_unconfirmed")
+				operation = next
+			} else {
+				runtimeObservation, secretObservation, err := observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
+				if err != nil {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_readback_unavailable")
+				}
+				if !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_identity_conflict")
+				}
+				needsDestroy := !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation)
+				if !needsDestroy {
+					residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
+					if readErr != nil || residual.SchemaVersion != clients.WorkspaceRuntimeDeleteObservationSchemaVersion || residual.WorkspaceID != operation.WorkspaceID ||
+						!workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) && residual.State != clients.WorkspaceRuntimeDeleteObservationPresent {
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
 					}
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
+					needsDestroy = !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID)
 				}
-				residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
-				if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
-					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
+				if needsDestroy {
+					_, destroyErr := service.DestroyWorkspaceRuntime(ctx, operation.AccountID, operation.WorkspaceID, workspaceDeleteStageKey(operation, "runtime"))
+					runtimeObservation, secretObservation, err = observeWorkspaceDeleteRuntimeAndSecret(ctx, service, operation)
+					if err != nil || !workspaceDeleteRuntimeAndSecretOwned(operation, runtimeObservation, secretObservation) || !workspaceDeleteRuntimeAndSecretAbsent(runtimeObservation, secretObservation) {
+						if destroyErr != nil {
+							return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_destroy_unconfirmed")
+						}
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
+					}
+					residual, readErr := service.ObserveWorkspaceDeleteRuntimeResiduals(ctx, operation.WorkspaceID)
+					if readErr != nil || !workspaceDeleteRuntimeResidualsAbsent(residual, operation.WorkspaceID) {
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_runtime_absence_unconfirmed")
+					}
 				}
+				next := operation
+				next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
+				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
+					return operation, err
+				}
+				operation = next
 			}
-			next := operation
-			next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
-			if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
-				return operation, err
-			}
-			operation = next
 		case "runtime_secret_absent":
 			attachment, err := service.DetachWorkspaceStorage(ctx, operation.AccountID, operation.WorkspaceID, operation.AttachmentID, workspaceDeleteStageKey(operation, "attachment"))
 			if err != nil || !workspaceDeleteAttachmentMatches(operation, attachment) {

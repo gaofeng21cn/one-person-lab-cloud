@@ -48,6 +48,7 @@ var (
 		textField("CredentialVersion", "SetCredentialVersion", "access", "credentialVersion"),
 		textField("CredentialSecretRef", "SetCredentialSecretRef", "access", "secretRef"),
 		textField("VerificationSlotID", "SetVerificationSlotID", "verificationSlotId"),
+		textField("ApplicationBinding", "SetApplicationBinding", "applicationBinding"),
 		boolField("CustomerProduct", "SetCustomerProduct", "customerProduct"),
 		entRecordField{EntityField: "BillingStateJSON", Setter: "SetBillingStateJSON", Kind: "workspace_billing_json"},
 	}

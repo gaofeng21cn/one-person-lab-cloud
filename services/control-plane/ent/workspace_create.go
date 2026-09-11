@@ -426,6 +426,20 @@ func (wc *WorkspaceCreate) SetNillableCustomerProduct(b *bool) *WorkspaceCreate 
 	return wc
 }
 
+// SetApplicationBinding sets the "application_binding" field.
+func (wc *WorkspaceCreate) SetApplicationBinding(s string) *WorkspaceCreate {
+	wc.mutation.SetApplicationBinding(s)
+	return wc
+}
+
+// SetNillableApplicationBinding sets the "application_binding" field if the given value is not nil.
+func (wc *WorkspaceCreate) SetNillableApplicationBinding(s *string) *WorkspaceCreate {
+	if s != nil {
+		wc.SetApplicationBinding(*s)
+	}
+	return wc
+}
+
 // SetID sets the "id" field.
 func (wc *WorkspaceCreate) SetID(s string) *WorkspaceCreate {
 	wc.mutation.SetID(s)
@@ -579,6 +593,10 @@ func (wc *WorkspaceCreate) defaults() {
 		v := workspace.DefaultCustomerProduct
 		wc.mutation.SetCustomerProduct(v)
 	}
+	if _, ok := wc.mutation.ApplicationBinding(); !ok {
+		v := workspace.DefaultApplicationBinding
+		wc.mutation.SetApplicationBinding(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -671,6 +689,9 @@ func (wc *WorkspaceCreate) check() error {
 	}
 	if _, ok := wc.mutation.CustomerProduct(); !ok {
 		return &ValidationError{Name: "customer_product", err: errors.New(`ent: missing required field "Workspace.customer_product"`)}
+	}
+	if _, ok := wc.mutation.ApplicationBinding(); !ok {
+		return &ValidationError{Name: "application_binding", err: errors.New(`ent: missing required field "Workspace.application_binding"`)}
 	}
 	if v, ok := wc.mutation.ID(); ok {
 		if err := workspace.IDValidator(v); err != nil {
@@ -827,6 +848,10 @@ func (wc *WorkspaceCreate) createSpec() (*Workspace, *sqlgraph.CreateSpec) {
 	if value, ok := wc.mutation.CustomerProduct(); ok {
 		_spec.SetField(workspace.FieldCustomerProduct, field.TypeBool, value)
 		_node.CustomerProduct = value
+	}
+	if value, ok := wc.mutation.ApplicationBinding(); ok {
+		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
+		_node.ApplicationBinding = value
 	}
 	return _node, _spec
 }

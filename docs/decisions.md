@@ -4,6 +4,65 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-11: Control Plane Coordinates Applications And Keeps One Process
+
+Control Plane's application authority is admission and deployment coordination,
+not application business. It admits immutable revisions, selects each
+Workspace's current deployment binding and drives lifecycle operations.
+Application behavior and data formats stay with the publisher; execution and
+authoritative readback stay with Fabric; wallet and gateway-key authority stay
+with Sub2API; evidence stays with Ledger.
+
+Control Plane remains a single process; separation happens through package
+boundaries, typed contracts and owner-local persistence. A process split waits
+for measured scale or isolation need. Its Fabric, Ledger and Sub2API service
+tokens stay process-scoped and are never forwarded to applications, browser
+sessions or application traffic; an application receives only the secrets its
+own deployment declares, and administrator credentials do not reach the
+application runtime.
+
+The boundary details live in
+[Control Plane authority and credential boundary](architecture.md#control-plane-authority-and-credential-boundary).
+
+## 2026-09-10: Separate Workspace Identity From Its Application
+
+A Workspace is an account-owned isolated application environment with stable
+identity, access, resource entitlement and data bindings. OPL App is its default
+application, not the definition of the environment. Other OCI container images
+may be deployed when their declared requirements match the selected provider's
+capabilities and the owner's policy. An application may comprise several
+services; uploading its main image alone does not supply dependencies or data.
+
+The IBD delivery is the concrete second application motivating this decision:
+its existing image uses different ports, application sessions, configuration,
+and external knowledge services. Requiring each application to imitate OPL App
+would preserve the coupling. The target instead admits an immutable application
+description and separates resource provisioning, application deployment and
+data restoration into independent commands. A provisioned Workspace may have
+no installed application. Cloud management requires role-specific authorization;
+application visitors may be anonymous, use application-owned login, or use an
+optional Cloud-private entry according to the selected exposure policy.
+Application business logic, packaging, formats and restore algorithms remain
+with the application owner; several services may run on one CVM or be packaged
+in one image.
+
+The 2026-09-11 refinement makes initial application distribution an administrator
+operation against explicitly selected Workspaces. Each Workspace pins its own
+revision and data bindings; publishing another image or changing a default does
+not update existing installations. Customers use the selected application and
+retain their separately authorized Workspace lifecycle actions. Existing admin
+resource views are extended for deployment, rather than introducing a customer
+application marketplace. Tencent application data uses Workspace-owned CBS via
+explicit mounts; ordinary image updates reuse those bindings and never restore,
+overwrite or delete retained data. This preserves the existing paid retention
+and deletion boundaries and does not promise automatic backups.
+
+The design and ownership are defined in
+[Workspace application boundary](architecture.md#workspace-application-boundary).
+The current fixed Runtime ABI remains an implementation fact until a coordinated
+migration; the open outcomes are in
+[the roadmap](roadmap.md#workspace-application-decoupling).
+
 ## 2026-09-10: Integrate The Unmodified Gateway Through Its Native APIs
 
 Cloud integrates official Sub2API 0.2.4 without modifying Gateway source, images,

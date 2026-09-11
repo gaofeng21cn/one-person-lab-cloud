@@ -55,6 +55,9 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
+- [Workspace application delivery plan](./roadmap.md#workspace-application-decoupling)
+- [Final deliverables and owner handoff](./roadmap.md#required-deliverables)
+- [Workspace current capability baseline](./status.md#current-capability-baseline)
 - [Console Workspace interaction](./product/workspace-experience.md)
 - [Console experience guide](./product/console-experience-guide.md)
 - [Workspace identity and external SaaS boundary](./workspace-identity-and-external-saas-boundary.md)
@@ -68,8 +71,10 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Specialized Owners
 
-`opl-workspace.md` defines the Cloud workbench capability; the Workspace identity
-decision owns account cardinality, and `product/workspace-experience.md` owns its
+`opl-workspace.md` defines the Cloud application environment; the
+[Workspace application architecture](architecture.md#workspace-application-boundary)
+owns its DDD model and context boundaries. The Workspace identity decision owns
+account cardinality, and `product/workspace-experience.md` owns its
 Console interaction. `opl-console.md` defines the wider Console target while
 the experience guide owns presentation principles. The other `opl-*.md` files
 are target capability references, not implementation inventories.

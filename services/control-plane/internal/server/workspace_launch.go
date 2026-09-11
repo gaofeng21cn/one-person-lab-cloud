@@ -38,16 +38,22 @@ type workspaceLaunchDescriptor struct {
 }
 
 func newWorkspaceLaunchDescriptor(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key string) (workspaceLaunchDescriptor, error) {
-	return newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, key, currentWorkspaceImageDigest())
+	return newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, key, currentWorkspaceImageDigest(), "")
 }
 
-func newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key, imageDigest string) (workspaceLaunchDescriptor, error) {
+func newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, key, imageDigest string, mode contracts.WorkspaceProvisioningMode) (workspaceLaunchDescriptor, error) {
+	if mode != "" {
+		if err := contracts.ValidateWorkspaceProvisioningMode(mode); err != nil {
+			return workspaceLaunchDescriptor{}, errInvalidWorkspaceLaunchOperation
+		}
+	}
 	operationID := workspaceLaunchOperationID(accountID, key)
 	workspaceID := "ws-" + stableID("workspace-launch-v2", accountID, operationID)[:18]
-	if operationID == "" || imageDigest == "" {
+	fullMode := mode != contracts.WorkspaceProvisioningResourceOnly
+	if operationID == "" || fullMode && imageDigest == "" || !fullMode && imageDigest != "" {
 		return workspaceLaunchDescriptor{}, errInvalidWorkspaceLaunchOperation
 	}
-	requestHash, err := workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion)
+	requestHash, err := workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID, storageGB, autoRenew, priceVersion, string(mode))
 	if err != nil {
 		return workspaceLaunchDescriptor{}, err
 	}
@@ -58,7 +64,7 @@ func newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, package
 	}, nil
 }
 
-func workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion string) (string, error) {
+func workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID string, storageGB int, autoRenew bool, priceVersion, provisioningMode string) (string, error) {
 	payload, err := json.Marshal(struct {
 		AccountID    string `json:"accountId"`
 		OwnerUserID  string `json:"ownerUserId"`
@@ -67,14 +73,18 @@ func workspaceLaunchRequestHash(accountID, ownerUserID, name, packageID string, 
 		SizeGB       int    `json:"sizeGb"`
 		AutoRenew    bool   `json:"autoRenew"`
 		PriceVersion string `json:"priceVersion"`
+		// The provisioning mode stays omitted for the retained full Launch so
+		// historical request hashes are byte-stable.
+		ProvisioningMode string `json:"provisioningMode,omitempty"`
 	}{
-		AccountID:    accountID,
-		OwnerUserID:  ownerUserID,
-		Name:         name,
-		PackageID:    packageID,
-		SizeGB:       storageGB,
-		AutoRenew:    autoRenew,
-		PriceVersion: priceVersion,
+		AccountID:        accountID,
+		OwnerUserID:      ownerUserID,
+		Name:             name,
+		PackageID:        packageID,
+		SizeGB:           storageGB,
+		AutoRenew:        autoRenew,
+		PriceVersion:     priceVersion,
+		ProvisioningMode: provisioningMode,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal workspace launch request hash payload: %w", err)
@@ -215,10 +225,13 @@ func workspaceLaunchResumeAuthorizationReadback(operation workspaceLaunchReconci
 	}, true
 }
 
-func workspaceLaunchReconcileRequestMatches(operation workspaceLaunchReconcileOperation, accountID, ownerUserID, name, packageID string, autoRenew bool) bool {
+func workspaceLaunchReconcileRequestMatches(operation workspaceLaunchReconcileOperation, accountID, ownerUserID, name, packageID string, autoRenew bool, mode contracts.WorkspaceProvisioningMode) bool {
+	if mode == "" {
+		mode = contracts.WorkspaceProvisioningFull
+	}
 	return operation.stringFact("accountId") == accountID && operation.stringFact("ownerUserId") == ownerUserID &&
 		operation.stringFact("name") == name && operation.stringFact("packageId") == packageID &&
-		operation.boolFact("autoRenew") == autoRenew
+		operation.boolFact("autoRenew") == autoRenew && operation.provisioningMode() == mode
 }
 
 func workspaceLaunchPreflightConfirmed(input clients.WorkspaceLaunchPreflightInput, result clients.WorkspaceLaunchPreflight) bool {

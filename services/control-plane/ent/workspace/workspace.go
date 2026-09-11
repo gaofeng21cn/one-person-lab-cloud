@@ -71,6 +71,8 @@ const (
 	FieldVerificationSlotID = "verification_slot_id"
 	// FieldCustomerProduct holds the string denoting the customer_product field in the database.
 	FieldCustomerProduct = "customer_product"
+	// FieldApplicationBinding holds the string denoting the application_binding field in the database.
+	FieldApplicationBinding = "application_binding"
 	// Table holds the table name of the workspace in the database.
 	Table = "control_plane_workspaces"
 )
@@ -107,6 +109,7 @@ var Columns = []string{
 	FieldAccessRequiresLogin,
 	FieldVerificationSlotID,
 	FieldCustomerProduct,
+	FieldApplicationBinding,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -180,6 +183,8 @@ var (
 	DefaultVerificationSlotID string
 	// DefaultCustomerProduct holds the default value on creation for the "customer_product" field.
 	DefaultCustomerProduct bool
+	// DefaultApplicationBinding holds the default value on creation for the "application_binding" field.
+	DefaultApplicationBinding string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -335,4 +340,9 @@ func ByVerificationSlotID(opts ...sql.OrderTermOption) OrderOption {
 // ByCustomerProduct orders the results by the customer_product field.
 func ByCustomerProduct(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCustomerProduct, opts...).ToFunc()
+}
+
+// ByApplicationBinding orders the results by the application_binding field.
+func ByApplicationBinding(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldApplicationBinding, opts...).ToFunc()
 }

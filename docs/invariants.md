@@ -83,6 +83,10 @@ current implementation documentation.
 
 ## Workspace Lifecycle
 
+References to the original Runtime apply to retained Launch contracts. New
+resource-only provisioning and selected-application behavior follow the
+[application deployment invariants](#application-deployment-and-data) below.
+
 - Ending an unfulfilled Launch preserves its original authorization and order.
   Freeze and normal dispatch share owner serialization. Exact Fabric resource
   absence precedes refund; previous and closing refunds share the same
@@ -121,6 +125,52 @@ current implementation documentation.
   owning durable state.
 - Historical rows needed for current reads or migration validation remain
   readable until their real consumers and data obligations are retired.
+
+## Application Deployment And Data
+
+These target invariants govern the application-decoupling work; current
+implementation and remaining gaps are reported separately in status/roadmap.
+
+- A Workspace's identity, entitlement and financial history are independent of
+  the chosen application. Application replacement within existing resource
+  entitlement does not authorize another charge or resource purchase.
+- New resource provisioning can complete without an application, application
+  login or model Key. Later deployment failure cannot repeat a debit or turn
+  fulfilled resources into an unfulfilled purchase. Retained Launches keep the
+  completion obligations of their original contract.
+- Initial application distribution, update, rollback and deployment settings
+  require administrator authorization. Account ownership alone does not grant
+  deployment permission; other management actions retain their role policies.
+- Each Workspace fixes its own application revision, configuration and data
+  bindings. A registry upload or installation-default change cannot update
+  existing Workspaces; updating Workspace A does not change Workspace B.
+- Cloud management commands require role-specific authorization. Visitor login follows
+  the selected exposure policy: anonymous/application-owned entry is supported,
+  and Cloud-private access is optional. Application and platform credentials
+  remain separate, with per-Workspace browser and network isolation.
+- Every owned application service, restore workload, Secret and volume belongs
+  to the same Workspace lifecycle. External shared dependencies remain under
+  their own owner's deletion and retention policy.
+- Deployment and recovery bind immutable application/restore revisions, exact
+  data inputs and current owner-derived resource bindings. Uncertain execution
+  results require readback before a new side effect.
+- Configuration, Secret rotation and exposure changes preserve old deployment
+  intent and advance a confirmed version through the same Workspace operation
+  and activation rules. The current binding cannot silently claim an old Secret
+  version after its consumers have changed.
+- Retained data bindings are stable across ordinary image updates and are
+  independent of tag/digest/attempt identity. Tencent application persistence
+  uses Workspace-owned CBS via explicit mounts; container layers and tmpfs are
+  excluded. Unrelated application data remains retained but isolated, and data
+  is never implicitly shared across Workspaces. Paid retention and explicit
+  deletion remain separate from an update's authority.
+- Restart and image rollback cannot implicitly restore, overwrite or migrate
+  persistent data. Image compatibility with retained data must be established
+  before rollback; scratch storage does not imply durable application sessions.
+- Unsupported image requirements fail admission explicitly. A provider cannot
+  silently change architecture, process privileges, isolation or data semantics.
+- Existing applications and retained operations preserve their proven data,
+  credentials, financial facts and resource obligations during migration.
 
 ## Provider Resources
 

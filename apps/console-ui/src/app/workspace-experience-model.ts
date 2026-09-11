@@ -466,3 +466,19 @@ export function presentWorkspaceQuote(
     canConfirm: false
   };
 }
+
+export interface WorkspaceApplicationBindingPresentation {
+  known: boolean;
+  label: string;
+}
+
+export function presentWorkspaceApplicationBinding(binding: string | undefined): WorkspaceApplicationBindingPresentation {
+  switch (binding) {
+    case "empty":
+      return { known: true, label: "未安装应用" };
+    case "opl_app":
+      return { known: true, label: "OPL App" };
+    default:
+      return { known: false, label: "待确认" };
+  }
+}

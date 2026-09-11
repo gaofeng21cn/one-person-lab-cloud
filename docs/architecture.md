@@ -70,7 +70,7 @@ For Cloud, the authority surfaces are concrete products and services:
 | Family capability domain | Cloud authority surface | Boundary outside Cloud |
 | --- | --- | --- |
 | Console | Cloud Console and Control Plane own the account/control-plane product, Workspace policy, approval, quota and billing projection | Framework may expose operator/readiness/action projections; App owns local product interaction, neither owns Cloud policy or service state |
-| Workspace | Control Plane owns Cloud Workspace entitlement and Launch coordination; Fabric owns runtime/resource binding and readback | App/Workspace runtime owns project and workbench behavior; Framework owns only shared runtime composition |
+| Workspace | Control Plane owns Cloud Workspace entitlement, Launch and application deployment coordination; Fabric owns runtime/resource binding and readback | The selected application owns its business behavior and data formats; Framework owns only its scoped runtime composition |
 | Fabric | Fabric owns provider-neutral remote resource facts, mutation ports and provider adapters | Framework and App consume typed adapters and cannot acquire provider or deployment authority |
 | Ledger | Cloud Ledger owns Cloud receipts, reconciliation, idempotency, and caller-owned opaque provenance refs | Framework observers and product projections do not become the persistent Cloud Ledger or a review/continuation authority |
 | Remote Companion / OPL Link | `opl-link/service` owns broker, pairing, capacity and provider transport authority | OPL Cloud only hosts Workspace/WebUI delivery and does not own a remote-companion route, provider, persistence or contract |
@@ -82,7 +82,7 @@ directory, service, API, package, or plugin the owner of the whole brand.
 ```text
 OPL Cloud
 ├─ OPL Gateway       user-visible AI access, routing and usage
-├─ OPL Workspace     user-visible cloud workbench
+├─ OPL Workspace     user-visible isolated application environment
 ├─ OPL Serve         Agent API, Embed and Hosted UI publishing
 ├─ OPL Console       account policy, approval, quota and billing
 ├─ OPL Fabric        Connect, Compute, Storage, Environments and adapters
@@ -212,7 +212,7 @@ flowchart TB
 | Surface | Owner responsibility | Explicit non-owner boundary |
 | --- | --- | --- |
 | OPL Gateway | AI access, routing, provider policy and usage signals | Package state and domain quality |
-| OPL Workspace | Cloud workbench, project state, artifacts and user-visible status | Package lifecycle and resource truth |
+| OPL Workspace | Application environment, access, entitlement and selected-deployment lifecycle | Application business state, Package lifecycle and provider resource truth |
 | OPL Serve | Agent Service, immutable Revision, Deployment, endpoint, traffic and Hosted UI projection | Package lifecycle, sandbox internals and domain verdicts |
 | OPL Console | Account onboarding, Workspace lifecycle, quota, approval, account-total billing view and managed-resource policy | Spendable wallet, package install/update/repair and resource execution |
 | OPL Fabric | Provider-neutral connector, compute, storage and environment capabilities; resource binding and execution adapters | Customer balance, package identity, carrier state and domain verdicts |
@@ -222,6 +222,477 @@ flowchart TB
 | OPL Packages | Carrier-neutral discovery, descriptor projection, configured-carrier delegation and fresh state aggregation | Parallel resolver/lock/currentness, account policy and domain truth |
 | OPL Runway | Invocation/session lifecycle and execution-provider routing | Service identity, package lifecycle and domain verdicts |
 | Domain agent | Domain strategy, evidence judgment, quality verdict and delivery authority | Cloud infrastructure truth |
+
+## Workspace Application Boundary
+
+A Workspace is an account-owned isolated application environment. It keeps its
+identity, access entry, paid entitlement and owned data while its application
+changes. OPL App is the default application and retains its own workbench,
+Framework and Package authority. Other applications do not need to embed OPL,
+Codex or an App Shell to run in a Workspace. This is an accepted target; the
+[current Runtime ABI](implementation/workspace-runtime-access.md) still fixes
+the OPL App port, credentials and mounts.
+
+### Provisioning And Application Deployment
+
+Resource provisioning and application installation are separate business
+operations. A new Launch purchases and fulfills compute, storage, attachment
+and the declared infrastructure readiness, then establishes the Workspace's
+resource entitlement and purchase Receipt. It can complete with no application
+installed; application health, an application password and an LLM Key are not
+provisioning completion requirements.
+
+In the initial scope, an authorized administrator selects a target Workspace,
+registry connection, repository and image version, supplies the required
+startup/configuration/data bindings and deploys onto those existing resources.
+Account ownership alone does not grant application distribution authority;
+customer self-service deployment is outside this scope. Deployment can fail or
+be retried without repeating the purchase or reclassifying fulfilled resources
+as an unfulfilled Launch. A convenience action that provisions and installs
+composes two explicit operations; an installation failure does not erase
+provisioning success.
+
+Control Plane owns these independent business commands. Fabric separates
+compute/storage provisioning ports from Runtime deployment/execution ports;
+Runtime is another capability within the existing resource execution owner,
+not logic embedded in resource purchase. No new process is needed to separate
+these paths. Workspace resource readiness, deployment progress and application
+availability are distinct projections, including a valid provisioned Workspace
+with an empty current application binding.
+
+### Control Plane Authority And Credential Boundary
+
+Control Plane's application authority is admission and coordination. It decides
+which application revisions are admitted, which Workspace holds which current
+deployment binding, and how deployment, restore and lifecycle operations
+proceed. Application business behavior and data formats stay with the
+application publisher; execution and authoritative resource readback stay with
+Fabric; wallet and gateway-key authority stay with Sub2API; evidence stays with
+Ledger.
+
+Control Plane stays one process. Separation is enforced by package boundaries,
+typed contracts and owner-local persistence, not by new deployment units. A
+process split is a later decision driven by measured scale or isolation need,
+not a prerequisite for the business loops.
+
+Control Plane's Fabric, Ledger and Sub2API service tokens are process-scoped.
+They are never forwarded to applications, browser sessions or application
+traffic. An application receives only the secrets its own deployment declares,
+and administrator credentials do not reach the application runtime.
+
+### Application And Deployment Identity
+
+The initial scope is zero or one selected application deployment per Workspace;
+that application may contain a primary service and private supporting services.
+Independent applications within the same Workspace are a later product choice.
+A web entry is optional for a worker-only application. An authorized
+administrator may explicitly allow anonymous application access; that alone
+does not create a Serve Service, Agent API revision or traffic-management
+lifecycle. Serve publication remains a separate capability.
+
+| Concept | Owns | Change boundary |
+| --- | --- | --- |
+| Workspace | Account identity, paid resource entitlement, optional current deployment, application exposure policy and stable data bindings | Provisioning can complete before installation; application replacement does not create another purchase or erase retained data |
+| Application revision | Immutable deployment description and exact component image references published by the application owner | A change to images or the description creates a new revision |
+| Application deployment | One Workspace's fixed deployment intent, non-secret configuration, Secret versions and resource/data references | Control Plane owns the operation/current selection; Fabric owns observed execution and physical bindings |
+| Application data | Persistent volumes, restore inputs and their consistency/compatibility facts | Restore, schema migration and deletion have explicit data operations; a process restart has none of these effects |
+
+The description declares executable image digests and platforms, startup,
+service ports/probes, resource requirements, process identity and required
+runtime capabilities, persistent or scratch mounts, configuration/Secret
+inputs, private dependencies and permitted connections. Restore requirements
+reference a versioned application-owned restore artifact and exact input data;
+they do not embed an unbounded workflow language. Fields become machine
+contracts only as the corresponding Control Plane and Fabric consumers are
+implemented together.
+
+OCI registries such as TCR retain the image and, where supported, its versioned
+deployment-description artifact. Data archives use an approved artifact or
+object store. Cloud persists admitted immutable references and installation
+policy, not a second image/package registry. A tag can be a discovery input;
+execution and recovery bind the resolved digest and platform. Upload success
+proves artifact availability, not application readiness. New application revisions
+are registered by an authorized administrator through Control Plane within
+Instance-approved registry and admission policy; they do not require a Cloud
+rebuild, product Release or a new application-specific provider branch. Console's basic input is registry,
+repository and image/tag selection; the selected tag resolves to an immutable
+reference, and required settings are explicitly supplied or taken from a
+publisher's declared description. A simple image does not require a separate
+OPL Package or marketplace publication before use. Selecting one Workspace's
+revision does not change the installation default or another Workspace.
+Each Workspace fixes its own desired revision, configuration and stable data
+bindings. Pushing a new TCR tag/digest or changing an installation default never
+updates an existing Workspace implicitly; every deployment targets an explicit
+Workspace. The same application version may serve several Workspaces with
+separate data, while those Workspaces may advance through versions independently.
+
+Control Plane is the writer of application admission and per-Workspace desired
+selection. Fabric receives the admitted immutable specification through its
+authenticated typed execution boundary and checks the installation's registry,
+resource and runtime capability constraints. Its target selection must not
+remain a second environment-only per-image catalog that requires redeploying
+Cloud whenever an administrator admits a new revision. Installation trust policy,
+application availability, an optional installation default and a Workspace's
+selected revision remain distinct facts. The legacy catalog retains only its
+proven consumers and operations until their coordinated migration.
+
+Admission validates the whole deployment, including supporting services and
+restore peak requirements, against current resource limits, provider
+capabilities and owner policy before side effects. Applications with unsupported
+OS, GPU, kernel, device or host-privilege requirements receive an explicit
+unsupported result; the adapter cannot guess settings or relax isolation.
+Compose can supply application authoring inputs, but its host paths, Docker
+socket access and arbitrary commands are not automatically platform authority.
+An image is executable content and does not by itself describe its deployment.
+
+### Access, Configuration And Network
+
+Control-plane management authorization and application visitor authentication
+are separate decisions. Management commands require their role-specific Cloud
+authorization. Initial application distribution, updates, rollback and deployment
+configuration/exposure changes require an authorized administrator; account
+owners retain their separately authorized purchase and Workspace lifecycle
+operations. Opening an application does not universally require a Cloud account.
+
+An explicitly configured pass-through entry leaves visitor authentication to the
+application: the current IBD UI can be anonymous, while OPL App can require its
+own password. An optional private entry adds Cloud account/Workspace access
+checks. These are exposure policies on a deployment, not requirements to modify
+its image or implement an OPL-specific login. Entitlement, selected deployment
+and runtime availability are still checked for public and private entries.
+An anonymous application must not gain access to Cloud management operations.
+
+Platform credentials are consumed at the management/private-entry boundary and
+never forwarded to an application. Application cookies and declared application
+authorization retain their own semantics, including IBD's anonymous browser
+session. The current hardcoded OPL App cookie filter must therefore change even
+when no new platform login is enabled.
+
+Use an isolated browser origin for each Workspace's binding to an application.
+Root URLs, relative assets, storage, service workers and application sessions
+then retain their normal origin semantics. Compatible updates to that application
+may retain its origin; switching to an unrelated application gets a new origin
+so the old application's service worker or browser storage cannot control the
+replacement. The stable Console entry may redirect to the current origin.
+Instance owns DNS/TLS; the current Control Plane proxy can implement the access
+boundary without first introducing a new routing service. Preserve the
+external Host/scheme through a trusted proxy boundary, constrain cookie scope,
+and isolate application origins from Console authentication. Existing path-based
+entries require a deliberate compatibility migration, not HTML or cookie-name
+rewriting for each application.
+
+An application declares configuration and Secret inputs using its own formats.
+Its publisher or authorized configuration owner supplies the exact contents;
+Fabric binds protected versions as files or environment entries. Fabric does
+not interpret Codex TOML or domain-specific credentials. Gateway use is an
+optional application capability: Sub2API remains the Key/wallet authority and
+Control Plane coordinates an explicitly selected binding. Non-LLM applications
+do not require an OPL Gateway integration. Rotation affects the declared binding
+and its actual consumers, with exact version readback.
+
+Application packaging is the publisher's choice. A single OCI may contain
+several supervised processes and read-only knowledge/model assets; alternatively
+several OCI services may run on the same existing CVM. A component declaration
+does not imply buying another machine. Cloud needs the actual startup, resource,
+mount and lifecycle facts, not a mandatory container count. The currently
+published IBD image omits its knowledge services/data; combining them would
+produce a different application image digest and require new qualification.
+
+Private dependencies are explicitly owned application services or authorized
+external service bindings. Fabric projects service discovery and the admitted
+connection graph through the selected provider. Allowing a RAGFlow dependency
+does not grant general private-network access. Shared services keep their own
+owner, tenant boundary and lifecycle; a Workspace cannot delete them.
+
+### Data And Recovery
+
+Image replacement normally changes program/runtime files while reusing the
+same persistent volume bindings. Database records, uploaded documents, mutable
+knowledge indexes and retained outputs belong on those volumes. Container
+writable layers and tmpfs are not retained data; pushing an image to TCR does
+not continuously capture subsequent application writes. Read-only knowledge
+assets or initial seed data may be included in an image, but initialization must
+not overwrite an existing live volume on upgrade.
+
+For Tencent/TKE, retained application writes use Workspace-owned CBS storage
+through Fabric StorageVolume, PV/PVC and explicit application mount bindings.
+The current adapter already creates a static CBS PV with `Retain` and mounts
+one claim at OPL App's `/data` and `/projects`; general applications need their
+own declared paths. A disk's existence does not persist writes outside those
+mounts. Other providers expose equivalent persistent-volume capabilities
+without putting CBS identities into the provider-neutral domain model.
+
+Logical data identity belongs to the Workspace and its application data set,
+not to an image tag, digest or deployment attempt. Ordinary updates reuse the
+same storage/claim identities and logical directory bindings. Multiple private
+services may use separate data directories on the same CBS disk when the
+provider's attachment, topology and workload constraints permit it; they do
+not each require another purchase. Different Workspaces never share writable
+application data implicitly. Switching to an unrelated application preserves
+but isolates the old data set, with separate bindings for the new application.
+Existing OPL App directories keep their exact bindings during migration.
+
+CBS persistence and PV `Retain` do not provide a backup or override paid
+retention, explicit data deletion or provider reclamation. Image updates have
+no authority to delete/recreate a retained disk or reinitialize its data.
+
+Restore means importing existing data from a delivery backup, another machine
+or a recovery snapshot into explicit targets. Reattaching an existing healthy
+volume during restart/update is normal deployment, not restoration. A genuinely
+empty installation needs initialization, not a fabricated backup-restore step.
+
+Application data outlives a container replacement according to its declared
+retention policy and paid Workspace lifecycle. Initial restoration binds exact
+input checksums, restore-artifact identity and new, empty target volumes. The
+application owner supplies the data-consistency algorithm and validation;
+Fabric runs the bounded restore workload and owns volume/execution readback,
+while Control Plane coordinates the operation and Ledger records evidence refs.
+Database contents or knowledge collections do not become Fabric domain state.
+
+A successful restore is reused by its identity. An uncertain restore result
+requires owner readback before retry; it cannot be inferred from a directory's
+existence. Restart and image-only rollback never replay restoration. Schema
+migration is separate from image identity: reverting an image is allowed only
+with evidence that it can use the retained data, otherwise restoration targets a
+separate volume set before an explicitly authorized binding change. Replacing
+OPL App with an unrelated application preserves the old data and does not mount
+it into the new application without a declared, authorized binding.
+
+Scratch state remains scratch when the application declares it. In particular,
+a persistent mount alone cannot make an in-memory application session durable.
+Importing an application delivery dataset is separate from restoring Cloud's
+Control Plane/Fabric/Ledger databases and does not promise automatic backup or
+post-expiry retention.
+
+### DDD Model And Consistency Boundaries
+
+Bounded contexts follow authority, not a new service for each noun. Control
+Plane owns Workspace management and application admission; Fabric owns resource
+execution; Ledger owns evidence. Application publication and data formats are
+upstream application-owner facts, and Sub2API remains the external wallet/Key
+context. Console is a presentation adapter. Instance is the installation and
+operations owner, not another writer of Workspace business state.
+
+| Model | Kind and owner | Invariant |
+| --- | --- | --- |
+| Workspace | Control Plane aggregate root | Owns account/entitlement, optional current deployment reference, exposure policy, lifecycle version and deployment reservation. Provisioned with no deployment is valid; expired/deleting state cannot admit or activate another runtime. |
+| Application revision | Immutable publisher-owned description admitted by Control Plane | Exact descriptor and component digests are fixed. Cloud registration owns availability/permission to use that revision, not the application's upstream release identity or implementation. |
+| Application deployment | Workspace-scoped entity and durable Control Plane operation | Fixes predecessor, target revision, configuration digest, Secret versions, data references, idempotency identity and expected Workspace version. Its progress does not independently define the Workspace's current application. |
+| Data restore | Separate durable Control Plane operation | Fixes restore artifact, input consistency set and new target bindings; application-owned validation and Fabric execution readback precede successful binding. Restart/update cannot implicitly create this operation. |
+| Runtime group | Fabric evolution of the existing Workspace Runtime model | Binds deployment identity/specification to all required service instances and entrypoints; Fabric alone determines their observed resource identities and readiness. |
+| Volume, attachment and Secret binding | Existing Fabric resource owners, referenced by a runtime or restore operation | Physical ownership, version, allowed consumers and lifecycle remain authoritative here; logical data names are not provider identities. |
+| Image/platform/probe/resource/mount/Secret/data reference | Typed value objects | Validated immutable facts passed only where consumed; none requires its own service, repository or workflow engine. |
+
+The Workspace aggregate is the consistency gate for the current binding. The
+deployment entity uses the existing durable operation/lease/store mechanisms;
+adding it does not justify a parallel business state machine. Domain rules
+operate on typed owner facts, while application services coordinate repositories
+and HTTP ports. Database row shape, Kubernetes objects and Docker responses do
+not become domain models shared across services.
+
+### Independent Facts And Completion
+
+The read model keeps these facts separate; the labels below describe business
+meaning and do not prescribe new wire enums or database columns.
+
+| Fact | Authority | Meaning |
+| --- | --- | --- |
+| Paid entitlement and lifecycle version | Control Plane, anchored to confirmed Sub2API settlement | Whether the Workspace may consume its resources and admit an operation. |
+| Resource fulfillment and current resource condition | Fabric readback; Control Plane records accepted fulfillment | Which compute, storage and attachments were delivered and which exist now. |
+| Selected application and desired specification | Control Plane Workspace aggregate | An optional current deployment and the exact reserved successor, including logical data bindings. |
+| Observed application availability | Fabric execution/entry facts projected through Control Plane access policy | Which components and entry actually work for the selected specification now. |
+| Operation and evidence completion | Owning durable operation and Ledger receipt readback | Whether provisioning, deployment or restore completed and whether its result was recorded. |
+
+Resource provisioning validates resource requirements without an application
+image, application health or Gateway Key at either side of the Control Plane /
+Fabric boundary. Both owners' preflight, command integrity, decoder and readback
+must support that contract; skipping application stages only in Control Plane
+does not establish the separation. Retained operations still validate against
+their own original contract.
+
+A resource-ready Workspace can have no selected application. A failed deployment
+leaves confirmed purchase fulfillment intact. During an interrupted replacement,
+the retained predecessor binding is history/current selection evidence, while
+actual availability may be false. A missing Receipt remains explicit evidence
+work and resumes only that write. These combinations must survive persistence,
+restart and customer/operator reads without a single overloaded `running` flag.
+
+### Engineering Layers Within Existing Owners
+
+These are responsibility boundaries inside the current Go services, not a
+requirement to create a new package or process per row. Control Plane separates
+purchase/fulfillment and Workspace application management as cohesive domain
+capabilities; they share the Workspace entitlement reference while keeping their
+operation identities, results and completion conditions separate. Fabric keeps
+resource provisioning and Runtime execution behind distinct capability ports.
+
+| Layer | Control Plane responsibility | Fabric responsibility |
+| --- | --- | --- |
+| Domain | Typed Workspace rules for entitlement, administrator distribution, expected predecessor, data-binding compatibility, reservation and current selection. A policy consumes declared application compatibility facts; it does not infer database formats. | Resource ownership, attachments, admitted execution identities, capability constraints and valid physical lifecycle transitions. No application-specific business rules. |
+| Application services | Provision, register/preview/deploy, restore, rotate and manage lifecycle by coordinating the domain, repositories and typed HTTP clients. Resume the same durable operation after uncertain results. | Coordinate resource or Runtime operations, Secret/data binding and readback through narrow provider ports and existing operation journals. |
+| Inbound adapters | HTTP authentication/authorization context, request decoding, use-case invocation and response DTOs in `internal/server`; these handlers do not become the owner of new deployment rules. Console only presents those DTOs. | Typed internal HTTP endpoints in `internal/http`; validate the caller and contract before executing the owning use case. |
+| Outbound adapters | Repository implementations over owner-local Ent/PostgreSQL, plus existing Fabric/Ledger/Sub2API clients. No writes to another service's tables. | Owner-local persistence and Tencent/TKE or Local-Docker adapters; translate execution intent to actual provider objects and observed facts. |
+| Contracts | Only current cross-owner command/observation and integrity facts enter `packages/contracts`; local domain models and ORM entities stay private. | Consume the same versioned facts, report actual outcomes, and preserve retained request identities during migration. |
+
+Domain dependencies point inward: domain code does not import HTTP, Ent,
+Kubernetes or Docker adapters. Application services call narrow ports; service
+composition supplies the concrete adapters. Extract the rules on the live paths
+being changed rather than performing an unrelated repository-wide layer rewrite.
+
+The primary migration splits two proofs that current callers combine:
+
+- The original successful Launch proves purchase, accepted price/period,
+  initial resource fulfillment and its Receipt. It remains immutable history.
+- The Workspace's versioned current deployment plus matching Fabric readback
+  proves which application, services, entry and credentials are usable now.
+
+New provisioning operations end at resource fulfillment and Workspace resource
+activation; application installation is a later independent command against
+that entitlement. They do not require an image or model credential. Application
+failure does not trigger a second debit, implicit resource deletion or a failed-
+purchase refund. Application changes append deployment evidence and never
+rewrite the Launch to describe a different historical purchase. Existing
+successful and non-terminal Launches retain the completion obligations of their
+original contract, including their original Runtime binding where applicable;
+introduce the new provisioning contract without silently relaxing old records.
+
+### Commands And Transaction Boundaries
+
+Command names here express proposed use cases, not already published APIs.
+`ProvisionWorkspace` owns purchase and resource fulfillment independently of
+`DeployWorkspaceApplication`. `RegisterApplicationRevision` admits an exact publisher revision;
+`PreviewApplicationDeployment` checks declared configuration, data compatibility,
+provider capabilities, selected exposure policy and resource fit without
+mutation. Registry inspection
+uses the authorized artifact/resource boundary; registry credentials never
+become customer input or application environment by implication.
+
+`DeployWorkspaceApplication` fixes the target and expected predecessor. Within
+the Workspace transaction it checks administrator distribution permission,
+target ownership, current entitlement, conflicting operations and version, then
+reserves a durable operation before dispatch.
+Each external mutation rechecks its applicable authorization and resource
+binding; a preview is not a permanent capacity or entitlement grant.
+
+Fabric prepares only the admitted resource/data/Secret bindings, runs an
+explicit restore when selected, and applies the declared component group.
+Provider capabilities translate that request to Kubernetes or Docker and read
+back the same specification. Application health, data-validation success and
+platform access readiness are distinct facts; all required facts must match
+before Control Plane activates the deployment under its selected exposure
+policy. This activation changes the current application binding, not the
+already completed resource purchase.
+
+Activation uses the Workspace version and operation reservation to atomically
+commit its current deployment reference and the deployment result in the
+Control Plane database. It rechecks entitlement after execution. No database
+transaction spans Fabric HTTP calls. A response loss resumes the same persisted
+identity; observed success from a superseded operation cannot overwrite a later
+binding. Ledger receipt failure retries only evidence recording.
+
+`RollbackWorkspaceApplication` is a new explicitly targeted deployment with a
+data-compatibility check, not replay of an old operation. `RestoreApplicationData`
+fixes new empty targets and application-owned validation independently. A
+schema migration, if required by an actual application revision, has its own
+explicit data action and compatibility proof; restoring an old snapshot never
+silently overwrites the live volume set.
+
+Renewal, expiry, deletion, Secret rotation and recovery use the same Workspace
+serialization and Fabric command fencing. Expiry first closes access and
+fences new creation, start, replacement and activation; authorized suspension,
+cleanup and owner readback remain available. Confirmed renewal obtains the
+current entitlement fence before recovery. Suspension covers owned components,
+including non-active deployment candidates and restore workloads. Delete
+inventories all current, incomplete and retained owned deployment resources,
+not only the selected primary service; external shared dependencies are excluded.
+Key rotation targets only declared Secret consumers. The original financial
+period and Receipt remain the settlement anchor for these commands.
+
+A configuration, Secret-version or exposure change records a successor immutable
+deployment specification through the same Workspace reservation/version rules.
+The owning change operation may reuse the application revision, physical Runtime
+and data bindings; it does not imply recreating containers when the admitted
+capability supports an in-place binding change. The old intent and Receipt stay
+immutable. Fabric confirms the changed consumers/entry before Control Plane
+selects the successor; desired and observed versions remain separately visible
+while the operation is incomplete. Existing rotation uses this same operation
+mechanism instead of mutating a historical deployment's fixed Secret version.
+
+A replacement preview states its interruption strategy and capacity needs.
+Overlapping deployments are not assumed possible on the existing plan or with
+exclusive data mounts. If the old runtime has stopped during a replacement,
+its retained current pointer does not imply availability; owner readback still
+controls access. Persisted operation facts such as activation or restore
+verification are sufficient domain events for current callers; this design
+requires neither event sourcing nor a new global event bus.
+
+### Implementation Seams
+
+These are existing code owners to change during implementation. New model and
+command names above do not claim that corresponding types already exist.
+
+| Owner | Current seams | Required responsibility change |
+| --- | --- | --- |
+| Control Plane domain and repositories | `services/control-plane/internal/domain/`, `internal/controlplane/`, `ent/schema/`, `internal/server/workspace_store.go` and `ent_state_store_workspace.go` | Cohesive owner-local domain rules and application services for the live use case; the current Workspace projection and thin delegates do not themselves establish these layers. Ent/store adapters implement typed persistence and atomic reservation/activation. Keep actual provider state out. |
+| Control Plane current orchestration entrypoints | `workspace_launch_fabric_stages.go`, `workspace_launch_activation.go`, `workspace_runtime_image_replacement.go`, `workspace_image_release_policy.go`, `workspace_renewal.go`, `workspace_delete.go` under `services/control-plane/internal/server/` | Move changed use cases behind typed application services; end new provisioning at resource fulfillment; install/switch/rollback use a separate deployment operation. Preserve old Launch contracts and separate historical purchase proof from current deployment proof; lifecycle covers the entire owned component/data set. |
+| Control Plane access and clients | `services/control-plane/internal/server/workspace_gateway.go`, `routes_workspace.go`, `internal/clients/` | Authenticate management operations; apply the chosen application exposure policy and preserve application login/session behavior. Use current Fabric entry/Secret bindings instead of the original Launch's Runtime; map typed cross-owner results. |
+| Fabric resource fulfillment | `services/fabric/internal/fabric/workspace_launch_stage_engine.go`, `workspace_launch_stage.go`, `internal/http/server.go`, capability ports and owner stores; CP client `services/control-plane/internal/clients/fabric_workspace_launch.go` | Resource-only preflight, typed input/integrity, persistence/decoder and compute/storage/attachment execution/readback move together. Image admission applies to application execution; the new resource contract cannot inherit the old required-image check. |
+| Fabric Runtime | `services/fabric/internal/fabric/provider_port.go`, `workspace_runtime_read_engine.go`, `workspace_runtime_image_replacement.go`, `tencent_provider.go`, `tencent_provider_runtime.go`, `local_docker_runtime.go` and owner stores | Declared component-group creation, readback, power/deletion, general Secret binding and bounded restore execution. Manifest generation and authoritative validation change together; dependency digests participate in retention/cleanup. |
+| Contracts | `packages/contracts/go/`, the current Workspace Runtime ABI and image-release contracts | Versioned deployment/entry/resource observation DTOs and integrity bindings consumed by both services; preserve retained request identities and migrate consumers together. No shared ORM entities or business reducers. |
+| Console | `apps/console-ui/src/api/`, `src/app/`, `src/pages/AdminPages.tsx` and Workspace views | Extend the existing administrator Workspace controls with target registry/image selection, configuration/data inputs, preview and deployment progress. Preserve the resource list; show resource readiness separately from current application/version and availability. Customer views expose current access/status without distribution controls. No provider or application-format policy in the browser. |
+| Ledger | `services/ledger/internal/ledger/` and its existing HTTP receipt surface | Record owner-produced deployment/restore evidence through existing receipts; extend only consumed payload validation where needed, without an application-state model. |
+
+Fabric provider adapters are anti-corruption layers: they translate stable
+runtime/resource requests into provider-specific objects, identifiers and
+errors. Control Plane's Fabric/Sub2API/Ledger clients translate public results
+into their owning domain facts. Application descriptors and restore artifacts
+serve the corresponding boundary to application-specific conventions; generic
+Cloud code must not branch on `opl-app`, IBD, RAGFlow or Codex formats to decide
+how to operate them. OPL App conventions move into its explicit description.
+
+### Existing Owners And Migration
+
+The administrator Console selects an admitted application revision,
+configuration, data source and target Workspace through Control Plane product
+APIs. It presents the exact planned scope, resource fit, restore progress and application readiness.
+Control Plane adds application deployment/data coordination to its existing
+durable Workspace operations. Fabric extends its typed Runtime/resource ports
+and provider adapters for the declared services, volumes, Secrets and network.
+Ledger keeps opaque immutable evidence; no new generic workflow engine, service,
+wallet, Framework Host or provider writer is required by this change.
+
+Every Workspace-owned component and restore workload participates in the same
+ownership, serialization, expiry, renewal and deletion boundaries. Replacing an
+application within existing entitlement is not another resource purchase;
+additional paid capacity needs its own admitted and authorized operation.
+Readback binds the entire desired deployment revision and required services,
+not merely the primary container image or a non-empty HTTP page.
+
+Existing OPL App deployments, successful/non-terminal Launches, credentials,
+data paths and receipts retain their proven bindings. Introduce an explicit OPL
+App application revision and migrate only from exact retained owner facts;
+never rewrite financial history or synthesize a successful new deployment from
+configuration alone. Migration includes the owner-local schema, retained-row
+decoders and evidence format as well as the runtime branch: new resource-only
+operations and purchase Receipts cannot require image/Runtime/application
+credentials, while old operations retain their original version and obligations.
+
+All real consumers must move to the appropriate proof before the split is
+complete:
+
+| Consumer | Proof used after migration |
+| --- | --- |
+| Purchase result, settlement and original resource fulfillment | Retained Launch/purchase Receipt and current entitlement, without using historical application health as current availability. |
+| Resource-ready Workspace query, renewal and deletion | Workspace resource/entitlement references and Fabric resource readback; no application Runtime is required for an empty Workspace. |
+| Application entry, runtime status and replacement | Versioned current deployment and matching Fabric Runtime/entry readback. An initial Launch Runtime is historical evidence. |
+| Credential reveal/rotation, Gateway Secret binding and network recovery | The current deployment's declared capabilities and confirmed binding versions. No implicit OPL App or Gateway requirement. |
+| Expiry/recovery and deletion with installed applications | Current entitlement plus all owned current, incomplete and retained deployment/restore resources. Stop/delete scope cannot be limited to the first Launch container. |
+
+The fixed ABI and image-only operation are retired only
+after their live callers and persisted operations have a verified successor.
+Provider support is declared per capability; Tencent/TKE success does not prove
+Local-Docker parity. Implementation and qualification remain open in
+[the application roadmap](roadmap.md#workspace-application-decoupling).
 
 ## Host, Client, And Cloud Authority Boundary
 
@@ -300,7 +771,14 @@ services/control-plane
                                                  identity/wallet/Key/Usage
 ```
 
-The durable business chain is `preflight -> key -> debit -> ensure compute
+The following Launch, deletion and renewal details describe the current
+implementation and retained Launch contracts. They do not make an application,
+Key or Runtime mandatory for new resource-only provisioning. The target split
+and empty-Workspace lifecycle are owned by
+[Provisioning And Application Deployment](#provisioning-and-application-deployment);
+existing operations retain their original completion and cleanup obligations.
+
+The current durable business chain is `preflight -> key -> debit -> ensure compute
 allocation -> storage -> attachment -> secret -> runtime -> activation ->
 receipt -> succeeded`. Preflight is the read-only admission gate before the
 first external write. Runtime supplies the authoritative Workspace URL as
@@ -428,8 +906,9 @@ policy still govern each creation. Projects, tasks, files, artifacts, and
 continuation entries remain inside their selected Workspace and do not become
 Workspace identity.
 
-The OPL App active shell provides the browser carrier. The complete identity
-decision is recorded in
+When OPL App is selected, its active shell provides the browser carrier. Other
+applications retain their own interfaces under the application boundary above.
+The complete identity decision is recorded in
 [Workspace Identity And External SaaS Boundary](workspace-identity-and-external-saas-boundary.md).
 
 Agent Services do not change this identity. Workspaces and Services can both be

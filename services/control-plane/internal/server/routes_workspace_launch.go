@@ -35,6 +35,18 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			writeError(w, http.StatusBadRequest, "invalid_pricing_input")
 			return
 		}
+		provisioningMode := ""
+		if rawMode, supplied := input["provisioningMode"]; supplied {
+			mode, isText := rawMode.(string)
+			if !isText || mode != "" && mode != string(contracts.WorkspaceProvisioningFull) && mode != string(contracts.WorkspaceProvisioningResourceOnly) {
+				writeError(w, http.StatusBadRequest, "invalid_pricing_input")
+				return
+			}
+			if mode == string(contracts.WorkspaceProvisioningResourceOnly) {
+				provisioningMode = mode
+			}
+		}
+		resourceOnly := provisioningMode == string(contracts.WorkspaceProvisioningResourceOnly)
 		if _, supplied := input["sizeGb"]; supplied {
 			writeError(w, http.StatusBadRequest, "invalid_pricing_input")
 			return
@@ -72,7 +84,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		}
 		if found {
 			persisted, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-			if decodeErr != nil || !workspaceLaunchReconcileRequestMatches(persisted, accountID, ownerUserID, name, packageID, autoRenew) {
+			if decodeErr != nil || !workspaceLaunchReconcileRequestMatches(persisted, accountID, ownerUserID, name, packageID, autoRenew, contracts.WorkspaceProvisioningMode(provisioningMode)) {
 				writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
 				return
 			}
@@ -155,12 +167,16 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		}
 		quote = customerPricingPreviewDTO(quote)
 		quote = app.applyResourceBillingQuote(quote)
-		imagePolicy, _, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
-		if policyErr != nil {
-			writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
-			return
+		imageDigest := ""
+		if !resourceOnly {
+			imagePolicy, _, _, policyErr := app.currentWorkspaceImageReleasePolicy(r.Context())
+			if policyErr != nil {
+				writeError(w, http.StatusServiceUnavailable, errWorkspaceImageReleasePolicyUnavailable.Error())
+				return
+			}
+			imageDigest = imagePolicy.ActiveImage
 		}
-		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, imagePolicy.ActiveImage)
+		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, imageDigest, contracts.WorkspaceProvisioningMode(provisioningMode))
 		if err != nil {
 			writeError(w, http.StatusConflict, "workspace_image_digest_invalid")
 			return
@@ -168,7 +184,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		preflightInput := clients.WorkspaceLaunchPreflightInput{
 			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, LaunchOperationID: descriptor.OperationID,
 			AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, PackageID: packageID, SizeGB: storageGB,
-			WorkspaceImageDigest: descriptor.WorkspaceImageDigest, RequestHash: descriptor.RequestHash,
+			WorkspaceImageDigest: descriptor.WorkspaceImageDigest, ProvisioningMode: provisioningMode, RequestHash: descriptor.RequestHash,
 		}
 		preflight, err := service.PreflightWorkspaceLaunch(r.Context(), preflightInput)
 		if err != nil {
@@ -190,10 +206,13 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			writeError(w, http.StatusForbidden, "account_scope_forbidden")
 			return
 		}
-		workspaceKeyGroupID, err := workspaceCodexGroupID(r.Context(), service, credential, sub2APIUserID)
-		if err != nil {
-			writeUpstreamError(w, err)
-			return
+		workspaceKeyGroupID := int64(0)
+		if !resourceOnly {
+			workspaceKeyGroupID, err = workspaceCodexGroupID(r.Context(), service, credential, sub2APIUserID)
+			if err != nil {
+				writeUpstreamError(w, err)
+				return
+			}
 		}
 		totalCharge := int64(numberField(quote, "totalChargeUsdMicros", 0))
 		preChargeBalance := int64(0)

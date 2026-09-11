@@ -136,6 +136,9 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 		{Version: "202608180001_workspace_purchase_eligibility", Run: func(ctx context.Context) error {
 			return controlplanemigrations.ApplyWorkspacePurchaseEligibility(ctx, driver)
 		}},
+		{Version: "202609120001_workspace_application_binding", Run: func(ctx context.Context) error {
+			return controlplanemigrations.ApplyWorkspaceApplicationBinding(ctx, driver)
+		}},
 	}
 }
 

@@ -1018,6 +1018,10 @@ func init() {
 	workspaceDescCustomerProduct := workspaceFields[29].Descriptor()
 	// workspace.DefaultCustomerProduct holds the default value on creation for the customer_product field.
 	workspace.DefaultCustomerProduct = workspaceDescCustomerProduct.Default.(bool)
+	// workspaceDescApplicationBinding is the schema descriptor for application_binding field.
+	workspaceDescApplicationBinding := workspaceFields[30].Descriptor()
+	// workspace.DefaultApplicationBinding holds the default value on creation for the application_binding field.
+	workspace.DefaultApplicationBinding = workspaceDescApplicationBinding.Default.(string)
 	// workspaceDescID is the schema descriptor for id field.
 	workspaceDescID := workspaceFields[0].Descriptor()
 	// workspace.IDValidator is a validator for the "id" field. It is called by the builders before save.

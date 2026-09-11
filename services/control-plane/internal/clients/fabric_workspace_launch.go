@@ -31,6 +31,7 @@ type WorkspaceLaunchPreflightInput struct {
 	PackageID            string `json:"packageId"`
 	SizeGB               int    `json:"sizeGb"`
 	WorkspaceImageDigest string `json:"workspaceImageDigest"`
+	ProvisioningMode     string `json:"provisioningMode,omitempty"`
 	RequestHash          string `json:"requestHash"`
 }
 
@@ -122,6 +123,7 @@ type WorkspaceLaunchStageInput struct {
 	PackageID            string                               `json:"packageId"`
 	SizeGB               int                                  `json:"sizeGb"`
 	WorkspaceImageDigest string                               `json:"workspaceImageDigest"`
+	ProvisioningMode     string                               `json:"provisioningMode,omitempty"`
 	Resources            WorkspaceLaunchResources             `json:"resources"`
 	GatewayCredential    *WorkspaceLaunchGatewayCredential    `json:"gatewayCredential,omitempty"`
 	RuntimeImageRevision *WorkspaceLaunchRuntimeImageRevision `json:"runtimeImageRevision,omitempty"`
