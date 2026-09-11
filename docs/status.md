@@ -62,9 +62,17 @@ and activate with an honest empty application binding (`RuntimeReady` comes
 from operation facts and the domain activation guard rejects runtime facts);
 retained full-Launch rows keep their original identity, decoding, and
 behavior. The full `internal/server` regression passed against a real
-PostgreSQL instance. The HTTP purchase entry and the Fabric resource-stage
-input still require an application image, so no resource-only Workspace can
-be purchased yet; wiring both sides is the next implementation step. These
+PostgreSQL instance. Commit `9457bc35` (2026-09-11) admits resource-only
+provisioning on both ends of the wire contract: Fabric preflight and stage
+inputs carry an optional provisioning mode, resource-only requests are admitted
+without an application image and reject image facts, and the Control Plane
+purchase route accepts `provisioningMode: "resource_only"`, skips the image
+catalog and Gateway key-group resolution, and drifts the resource-only request
+hash from the full Launch hash while the retained full Launch hash stays
+byte-stable. Both module regressions passed against a real PostgreSQL
+instance. The resource-only purchase path is now implementable end to end in
+process tests; live Console projection of the empty application binding and
+lifecycle verification of the purchased empty Workspace remain open. These
 preparations are
 unintegrated as business capabilities, not a frozen public interface or a
 completed business
