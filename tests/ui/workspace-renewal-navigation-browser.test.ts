@@ -249,7 +249,7 @@ test("expired customers explicitly renew after funding and reopen the original r
         { state: "reclaimed", reason: "workspace_renewal_resources_reclaimed" }
       ];
       for (const recovery of blockedRecoveries) {
-        workspace = { ...workspace, state: "suspended", renewalStatus: "expired_unpaid" };
+        workspace = { ...workspace, state: recovery.state === "reclaimed" ? "data_deleted" : "suspended", renewalStatus: recovery.state === "reclaimed" ? "active" : "expired_unpaid", autoRenew: false };
         renewal = { ...renewal, recovery };
         await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
         await page.locator(".workspace-plan-panel").getByText(recovery.state === "reclaimed" ? "原工作空间无法恢复" : "暂时无法续费恢复", { exact: true }).waitFor({ state: "visible" });
@@ -259,6 +259,7 @@ test("expired customers explicitly renew after funding and reopen the original r
         assert.equal(writes, 2);
       }
       await page.getByRole("button", { name: "重新购买", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("checkbox", { name: "已关闭", exact: true }).count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
       assert.deepEqual(pageErrors, []);
       assert.deepEqual(externalRequests, []);

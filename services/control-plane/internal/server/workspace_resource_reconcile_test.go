@@ -112,6 +112,12 @@ func TestWorkspaceResourceReconcileClosesExternallyDeletedResourceWithoutChildRo
 			if accessReason != wantReason || response["openable"] != false {
 				t.Fatalf("inactive Workspace remains openable: %#v", response)
 			}
+			if kind == "storage" {
+				recovery := fixture.app.workspaceRenewalRecoveryState(context.Background(), fixture.service, after, nil, time.Now().UTC())
+				if recovery.State != "reclaimed" || recovery.Reason != errWorkspaceRenewalResourcesReclaimed.Error() {
+					t.Fatalf("destroyed storage appears usable while its original period remains paid: %#v", recovery)
+				}
+			}
 			if len(fabric.runtimePowerCalls) != 1 || fabric.runtimePowerState != "suspended" || fabric.runtimePowerCalls[0].PaidThrough != before["paidThrough"] || fabric.runtimePowerCalls[0].SuspensionReason != contracts.WorkspaceRuntimeSuspensionProviderResourceAbsent || fabric.runtimePowerCalls[0].MissingResourceType != kind {
 				t.Fatalf("Runtime was not suspended with original paid period and explicit absence: %#v", fabric.runtimePowerCalls)
 			}
