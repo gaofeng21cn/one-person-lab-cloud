@@ -46,6 +46,12 @@ Evidence applies only to the exact identity and layer named in its row. An older
 Candidate or Instance receipt cannot upgrade current source to release or
 production-ready status.
 
+Confirmed `data_deleted` is rendered as a known data-loss state in customer and
+operator Workspace lists. The lifecycle model and browser resource-refresh chain
+verify that the synchronized state replaces the prior running label.
+Renewal readback reports lost storage as reclaimed even before the original paid
+period expires; the customer recovery chain keeps opening and renewal unavailable.
+
 The public Release list was read again through the GitHub API on 2026-09-07 and
 still contained only `v0.1.7`. Endpoint, Local runtime and Instance rows retain
 their original observation dates; this documentation audit did not requalify

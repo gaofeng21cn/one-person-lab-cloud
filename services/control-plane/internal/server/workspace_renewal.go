@@ -1451,6 +1451,9 @@ func (app *controlPlaneServer) workspaceRenewalRecoveryState(ctx context.Context
 	result := func(state, reason string) workspaceRenewalRecovery {
 		return workspaceRenewalRecovery{State: state, Reason: reason}
 	}
+	if stringValue(workspace["state"]) == "data_deleted" {
+		return result("reclaimed", errWorkspaceRenewalResourcesReclaimed.Error())
+	}
 	if workspace["resourceBillingEnabled"] == false || stringValue(workspace["renewalStatus"]) == "not_applicable" {
 		return result("not_required", "workspace_billing_not_applicable")
 	}

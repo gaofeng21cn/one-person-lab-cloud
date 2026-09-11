@@ -331,6 +331,7 @@ test("Workspace lifecycle statuses use only exact current owner values", () => {
   const cases = [
     ["active", "已激活"],
     ["creating", "开通中"],
+    ["data_deleted", "数据已删除"],
     ["expired", "已到期"],
     ["failed", "已失败"],
     ["pending", "待开通"],
