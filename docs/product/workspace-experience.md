@@ -10,14 +10,51 @@ contracts own field-level facts and permissions.
 ```text
 register -> sign in -> observe zero balance -> receive administrator top-up
          -> list Workspaces -> select Basic or Pro -> confirm one Workspace total
-         -> provision -> reveal/copy that Workspace access -> open Workspace
+         -> provision compute/storage -> Workspace ready with no app required
+administrator: select provisioned Workspace -> registry/repository/image
+             -> configure and bind data -> deploy
+customer: inspect application status -> open the assigned app
 ```
 
 The target public beta allows one customer to register one Account and create multiple
 independent Workspaces after an administrator funds its Sub2API wallet. A new
 Account starts at zero balance, and registration performs no purchase or Fabric
-mutation. Each Workspace has its own launch identity, resources, Key, Secret,
-entitlement, Runtime, and Receipt.
+mutation. Each provisioned Workspace has its own launch identity, resources,
+entitlement and purchase Receipt, with an optional current deployment. This is
+the new provisioning/deployment target. Current source still couples OPL App
+Runtime, Gateway Key and Secrets to Launch completion; retained operations keep
+that original contract until their explicit migration boundary.
+
+## Application Selection Target
+
+Workspace identity is independent of its selected application; the
+[architecture boundary](../architecture.md#workspace-application-boundary)
+owns that decision. Resource provisioning and deployment have independent
+progress and success states. A provisioned empty Workspace is usable for later
+installation; an application failure does not make the resource purchase fail.
+An authorized administrator selects the target Workspace, registry connection,
+repository and image/tag,
+resolves the immutable version, then supplies startup/configuration/Secret
+inputs, persistent mounts, exposure policy and optional data restoration.
+Resource-fit preview precedes deployment onto the existing Workspace. One
+application can include several private services. OPL App is the
+default selection, and its Package/task controls appear only when applicable.
+
+Registration of a TCR reference, restoration of data and replacement of an
+application are distinct actions with distinct results. Selecting a revision
+for one Workspace does not change other Workspaces or the installation default.
+A new registry version or default change does not upgrade existing Workspaces.
+Application distribution is an admin capability in this scope; account ownership
+does not grant it, and customer self-service image selection is not introduced.
+The preview explains data compatibility, any planned interruption and whether
+additional capacity would require a separate purchase. Cloud management always
+requires role-specific authorization. Visitor access follows the selected exposure:
+IBD may allow anonymous use, OPL App may use its own password, and a private
+entry may additionally require a Cloud account. Application login is not a
+universal provisioning or deployment requirement.
+Current source still exposes the OPL App credentials and fixed-image controls
+described below; general application selection is an
+[open outcome](../roadmap.md#workspace-application-decoupling).
 
 ## Owner Surface
 
@@ -54,6 +91,15 @@ Zone, status, created and expiry times, last readback, and operation/Receipt
 references. A missing owner source displays unavailable; Fabric or Ledger facts
 are not copied into a new Control Plane truth table.
 
+Keep the existing resource-list and Workspace-detail structure. Extend the
+Workspace's administrator controls with application deployment, image/version
+selection, data bindings, preview, progress and compatible rollback. Show
+resource readiness independently of the selected application/version and its
+availability: a provisioned Workspace can display “待部署”, and an application
+failure does not make its delivered compute/storage failed. Each operation
+shows its explicit target Workspace; changing a default does not imply a fleet
+update. The customer surface presents assigned application status and access.
+
 ## Purchase Confirmation
 
 Workspace confirmation shows the selected package/spec, exact total USD charge,
@@ -68,10 +114,17 @@ purchase Receipt. Compute and storage never debit the customer independently.
 
 ## Workspace And Storage
 
-A Workspace is a stable URL backed by one independently owned StorageVolume and
-the current runtime pointer. Purchase confirmation and Workspace details explain
-that customers must download and back up their data before expiry. The platform
-does not promise data retention or restoration after expiry.
+A Workspace keeps stable identity and access while application and data
+bindings have separate lifecycles. Current source uses one independently owned
+StorageVolume and a current runtime pointer; the application target supports
+explicit data bindings for its component services. On Tencent, retained data
+uses Workspace-owned CBS through the declared application mounts. Compatible
+image updates keep the existing data set and bindings; unrelated applications
+keep separate data sets, and no Workspace's update alters another's data or
+version. Merely running on a CVM does not persist container-local writes.
+Purchase confirmation and Workspace details explain that customers must download and back up their data
+before expiry. The platform does not promise data retention or restoration
+after expiry.
 
 An unpaid Workspace stops providing access and its Runtime is stopped. Details
 show whether the original resources can be recovered, need verification, or

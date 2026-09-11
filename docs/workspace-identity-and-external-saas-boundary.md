@@ -17,8 +17,10 @@ The canonical Cloud identity rule is:
 1 user account -> 0..N independent OPL Workspaces
 ```
 
-- OPL App is the user's local workbench and OPL Workspace is the cloud form of
-  the same workbench model.
+- OPL App is the user's workbench and the default Workspace application.
+  Workspace identity is independent of the selected OCI application; the
+  [application boundary](architecture.md#workspace-application-boundary) owns
+  deployment and data separation.
 - Each Workspace has a stable `workspace_id`, URL, runtime, storage, resource
   binding, credentials, billing period, lifecycle, and receipt chain.
 - OPL Cloud sets no fixed product-level Workspace count limit. Balance,
@@ -35,10 +37,11 @@ The canonical Cloud identity rule is:
   externally callable deployment resource, not another Workspace, browser
   workbench, project container or collaboration account.
 
-The browser carrier for this path is the OPL App WebUI implementation provided
-through the active App shell. It consumes App, Framework and domain-owner
-projections. A browser renderer or transport may not own a second task,
-package, artifact or Workspace state model.
+For the OPL App application, its WebUI carrier is provided through the active
+App shell and consumes App, Framework and domain-owner projections. Other
+applications retain their own browser or worker interfaces. A browser renderer
+or transport does not become a second owner of Workspace identity or its
+resource and entitlement facts.
 
 ## Collaboration And Serve
 

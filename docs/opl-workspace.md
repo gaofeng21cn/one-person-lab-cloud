@@ -6,17 +6,20 @@ State: `active_target_reference`
 Machine boundary: Human-readable target product reference; implementation and
 readiness come from Workspace source, tests, status, and instance readback.
 
-OPL Workspace is the cloud OPL App workbench. It should feel like the same
-project, task, artifact, review and delivery experience in an online deployment,
-not like a container hosting panel.
+OPL Workspace is an account-owned isolated environment for running an admitted
+application with stable access, resource entitlement and data bindings. OPL App
+is the default workbench application; other OCI applications may supply their
+own UI, API or worker behavior. The
+[application boundary](architecture.md#workspace-application-boundary) owns the
+runtime, access and data design.
 
 ## User Model
 
 | Term | Meaning |
 | --- | --- |
-| OPL Workspace | One independently addressable user-visible cloud workbench |
-| Workspace Instance | An OPL App container deployment plus WebUI, with its own stable identity and runtime binding |
-| Workspace Storage | Project files, volumes, buckets, outputs and delivery space attached to an instance |
+| OPL Workspace | One independently addressable, account-owned application environment |
+| Application deployment | The Workspace's selected immutable application revision, potentially containing several cooperating services |
+| Workspace Storage | Independently bound persistent application data; temporary process state is declared separately |
 
 One user account may own zero or more independent OPL Workspaces. The product
 does not impose a fixed count limit; each creation is admitted independently by
@@ -25,7 +28,7 @@ balance, provider capacity, quota, and policy. Workspace state is keyed by
 
 ## MVP Boundary
 
-The first Workspace carrier is an OPL App/WebUI Docker container created and
+The current implemented carrier is an OPL App/WebUI container created and
 managed through the real product chain:
 
 ```text
@@ -42,22 +45,34 @@ exact-current clean-host product journey remains open; see
 
 ```text
 open the account Workspace list
--> create or select one Workspace
--> select resource profile and permitted OPL Package refs
--> provision access, storage and runtime
--> open project workbench
--> run tasks or Agent Instances
--> optionally publish an exact Agent Package revision to OPL Serve
--> inspect artifacts, reviews and receipts
--> suspend, resume or delete according to policy
+-> provision compute/storage or select an existing provisioned Workspace
+-> administrator selects registry/repository/image and checks resource fit
+-> administrator supplies configuration, Secret bindings and optional restore source
+-> provision or bind services and data; restore only when explicitly requested
+-> verify application readiness and open its entry under the chosen access policy
+-> update the application, inspect status, or manage the Workspace lifecycle
 ```
+
+A provisioned Workspace may have no installed application. Provisioning fulfills
+compute/storage and records its own result; later installation, replacement and
+rollback use independent deployment operations on those existing resources.
+The initial application scope is zero or one deployment per Workspace, including
+its supporting services. An authorized administrator selects the registry,
+repository and image version, then supplies the declared startup, configuration,
+mounts and exposure policy. Customers use the assigned application; account
+ownership alone does not grant distribution permission. Each Workspace keeps
+its own revision and stable data bindings; updates reuse persistent data, while
+other Workspaces retain their own versions and data. Uploading an OCI image
+does not automatically deploy it, update existing Workspaces or restore data.
 
 ## Workspace Contents
 
-A Workspace can show projects, task sessions, files, storage, Agent Instances,
-job status, resource use, artifacts, review status, Ledger refs and
-continuation entries. Framework supplies package state and actions from owner
-descriptors and fresh native-carrier readback.
+Console exposes application identity, deployment/data progress, resource use,
+access and owner evidence. The chosen application owns its internal experience.
+When OPL App is selected, it can show projects, task sessions, files, Agent
+Instances, artifacts, reviews and continuation entries. Framework supplies its
+package state and actions from owner descriptors and fresh native-carrier
+readback. Other applications need not implement that workbench model.
 
 Workspace may expose a **Publish to OPL Serve** action after the package,
 entrypoint, policy and owner gates are satisfied. The action calls Serve owner
@@ -70,16 +85,22 @@ traffic state.
   publication revisions.
 - Configured native carriers control physical install, update, remove and fresh
   installed/callable readback; Framework delegates and aggregates.
-- Console owns account availability, quota, and policy across the account's Workspace collection.
+- Control Plane owns account availability, quota and policy across the
+  account's Workspace collection; Console presents and calls those capabilities.
 - Serve owns Agent Service publication, immutable revisions and external endpoints.
 - Fabric binds and runs compute, storage, environment and connector resources.
-- Gateway supplies AI access.
-- Ledger records receipt and opaque provenance refs; Workspace retains project,
-  artifact, review, and continuation authority.
-- Workspace presents the user experience and dispatches owner actions.
+- Gateway supplies AI access when the application requests that binding.
+- Ledger records receipt and opaque provenance refs; the selected application
+  retains its business state, including OPL App projects, artifacts, reviews and
+  continuation when that application is selected.
+- The selected application owns its UI, business data formats and restore
+  validation. Cloud governs its deployment and Workspace access.
+- Console presents Workspace operations and dispatches owner actions.
 
-A Workspace URL serves workbench access; an Agent Service endpoint serves
-external consumers. Both collections have zero-to-many account cardinality and
+A Workspace URL opens the selected application under its exposure policy;
+visitors may be anonymous or use application-owned/optional platform login.
+Management still requires role-specific Cloud authorization. An Agent Service endpoint
+has its separate publication lifecycle for external consumers. Both collections have zero-to-many account cardinality and
 separate product identities and lifecycles.
 
 Package availability, resource availability and domain readiness are different

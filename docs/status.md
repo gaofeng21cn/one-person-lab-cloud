@@ -22,6 +22,47 @@ registration, deployed Renewal/Delete qualification, alert and restore qualifica
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
+## Application Hosting Boundary
+
+The following baseline is source evidence at
+`66dcfcd9a0830e4c987c58df1a30e482b2c0dd66`, inspected on 2026-09-11.
+It is not live resource readback for `ws-609081bc2298edd18e` or qualification of
+the new application model. Target boundaries belong to
+[architecture](architecture.md#workspace-application-boundary); work packages
+and deliverables belong to [roadmap](roadmap.md#workspace-application-decoupling).
+
+### Current Capability Baseline
+
+| Capability | Current source behavior | Remaining gap and owning source |
+| --- | --- | --- |
+| Resource purchase and fulfillment | Launch combines resources, Gateway/Secret binding, OPL App Runtime and activation; Fabric also requires the approved image at its resource-stage input/preflight boundary. | Resource-ready empty Workspace and an independent application operation are absent. Both sides must change: Control Plane [Launch stages](../services/control-plane/internal/server/workspace_launch_fabric_stages.go) and [activation](../services/control-plane/internal/server/workspace_launch_activation.go), plus Fabric [stage validation](../services/fabric/internal/fabric/workspace_launch_stage_engine.go). |
+| Image admission and replacement | An administrator can target one Workspace with an approved catalog digest. CP and Tencent Fabric consume the installation image catalog; replacement patches the existing container image. | Runtime registration and a generic application specification must reach both owners. CP [image policy](../services/control-plane/internal/server/workspace_image_release_policy.go), [replacement API](../services/control-plane/internal/server/workspace_runtime_image_replacement.go), and Fabric [replacement adapter](../services/fabric/internal/fabric/tencent_provider_runtime.go). |
+| Runtime execution | One OPL App-shaped container has fixed port/probes, environment, credentials and mounts. | Declared components and application requirements need corresponding creation and authoritative readback. Fabric [Tencent adapter](../services/fabric/internal/fabric/tencent_provider.go) and [Runtime read engine](../services/fabric/internal/fabric/workspace_runtime_read_engine.go). |
+| Persistent storage | Tencent creates a static CBS PV/PVC with `Retain`; the Runtime mounts one claim at `/data` and `/projects`. | General application paths, stable data-set bindings, explicit import and business-data preservation across different OCI revisions remain unimplemented/unverified. Fabric owns physical storage; CP owns the intended application data binding. |
+| Application entry | The proxy uses paid/lifecycle/runtime checks, relies on application login and preserves only OPL App's specific session cookie. | General application cookies/root URLs, selectable exposure and optional platform-private access need implementation. CP [Workspace gateway](../services/control-plane/internal/server/workspace_gateway.go). |
+| Existing lifecycle consumers | Access, replacement and resource lifecycle still use initial Launch Runtime facts in their ownership/projection checks. | Split retained purchase proof from current deployment proof in CP [renewal](../services/control-plane/internal/server/workspace_renewal.go), [delete](../services/control-plane/internal/server/workspace_delete.go), access and credential consumers. |
+| Administrator UI | Workspace administration and fixed-image update/rollback controls already exist. | Extend those controls with registry/image/configuration/data selection and independent application progress. Console [Admin pages](../apps/console-ui/src/pages/AdminPages.tsx) and [image replacement controller](../apps/console-ui/src/app/use-workspace-runtime-image-replacement-controller.ts). |
+
+The source has useful resource, storage and durable-operation foundations, but
+it does not implement the general application target. Documentation, a pullable
+IBD image or an existing OPL App replacement test cannot establish that target's
+completion; no new Cloud Runtime or Instance qualification is claimed here.
+
+Commit `c288f93d` (2026-09-11) adds the proposed
+`WorkspaceApplicationRevision` / `WorkspaceApplicationDeployment` and
+`WorkspaceProvisioningMode` / `WorkspaceProvisioningStages` types with contract
+tests. These symbols currently have no service or Console consumers. They are
+unintegrated drafts, not a frozen public interface or a completed business
+capability. The delivery plan now follows the five runnable outcomes in
+[roadmap](roadmap.md#implementation-sequence); source, persistence and provider
+acceptance for these new outcomes remain unverified. This preparation is
+distinct from the retained D1-D5 verification below.
+
+The 2026-09-11 plan reconciliation passed `validate:product-boundary`, local
+file/anchor checks across the six changed documents, and `git diff --check`.
+This is documentation validation only; new business, PostgreSQL, Docker and
+Tencent/TKE qualification were not run as part of that reconciliation.
+
 ## Evidence Matrix
 
 | Layer | Current evidence | What it does not prove |

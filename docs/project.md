@@ -37,6 +37,8 @@ automatic instance deployment writer.
 
 - Sub2API, reached only through the server-only configured management origin:
   spendable balance, API keys, models, routing, and request usage.
-- `one-person-lab-app`: Workspace WebUI image and behavior.
+- Application publishers: OCI images, application behavior, configuration
+  formats and data restore algorithms. `one-person-lab-app` supplies the default
+  Workspace workbench application.
 - `one-person-lab`: framework and CLI behavior.
 - Tencent Cloud: current medopl provider resources and internal cost.
