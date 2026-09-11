@@ -3809,6 +3809,7 @@ type fakeNativeCvmAPI struct {
 	privateIPInstanceCount          int
 	instanceChargeType              string
 	instanceState                   string
+	isolatedSource                  string
 	renewFlag                       string
 	expiredTime                     string
 	renewedExpiredTime              string
@@ -5193,7 +5194,7 @@ func (api *fakeNativeCvmAPI) DescribeInstances(request *cvm2017.DescribeInstance
 			InstanceId: common.StringPtr(firstNonEmpty(api.returnedInstanceID, stringValue(request.InstanceIds[0]))), InstanceName: common.StringPtr(firstNonEmpty(api.instanceName, "compute-alpha")), InstanceType: common.StringPtr(firstNonEmpty(api.instanceType, "SA5.MEDIUM4")),
 			CPU: optionalInt64(api.cpu, 2, api.omitCPU, false), Memory: optionalInt64(api.memoryGB, 4, false, api.zeroMemory),
 			PrivateIpAddresses: []*string{common.StringPtr("10.0.0.11")}, InstanceState: common.StringPtr(firstNonEmpty(api.instanceState, "RUNNING")), Placement: &cvm2017.Placement{Zone: common.StringPtr(firstNonEmpty(api.zone, "ap-guangzhou-3"))},
-			InstanceChargeType: common.StringPtr(firstNonEmpty(api.instanceChargeType, "PREPAID")), RenewFlag: common.StringPtr(firstNonEmpty(api.renewFlag, "NOTIFY_AND_MANUAL_RENEW")), ExpiredTime: expiredTime, Tags: tags,
+			InstanceChargeType: common.StringPtr(firstNonEmpty(api.instanceChargeType, "PREPAID")), RenewFlag: common.StringPtr(firstNonEmpty(api.renewFlag, "NOTIFY_AND_MANUAL_RENEW")), ExpiredTime: expiredTime, Tags: tags, IsolatedSource: common.StringPtr(api.isolatedSource),
 		}}, TotalCount: common.Int64Ptr(1), RequestId: common.StringPtr("req-verify-cvm")}}, nil
 	}
 	privateIp := cvmPrivateIpFilterValue(request)
@@ -7332,6 +7333,25 @@ func TestTencentSDKClientReadComputeDestroyStatusNativeCVMRequiresDoubleAbsence(
 	}
 }
 
+func TestTencentSDKClientReadComputeDestroyStatusRetainsIsolationSource(t *testing.T) {
+	for _, source := range []string{"MANMADE", "EXPIRE", "ARREAR", "NOTISOLATED", ""} {
+		t.Run(source, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, deletedMachineNames: map[string]bool{"node-basic-1": true}}
+			cvmAPI := &fakeNativeCvmAPI{instanceState: "SHUTDOWN", isolatedSource: source}
+			client := &tencentSDKClient{region: "ap-guangzhou", clusterId: "cls-123", nativeTkeClient: tkeAPI, nativeCvmClient: cvmAPI}
+			response := client.ReadComputeDestroyStatus(computeDestroyStatusRequest("NativeCVM"), nil)
+			if !response.Ok || response.Status != "present" || response.CVMStatus != "SHUTDOWN" || response.ProviderData["isolatedSource"] != source || response.MachinePresent == nil || *response.MachinePresent {
+				t.Fatalf("pending destruction and provider isolation evidence lost: %#v", response)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			assertProviderTruthReadOnly(t, tkeAPI, cvmAPI)
+			if response.MutationCount != 0 {
+				t.Fatal("readback mutated provider resources")
+			}
+		})
+	}
+}
+
 func TestTencentSDKClientReadComputeDestroyStatusLegacyMachineTypesRemainTKEOnly(t *testing.T) {
 	for _, machineType := range []string{"Native", "CXM"} {
 		t.Run(machineType, func(t *testing.T) {
@@ -7989,7 +8009,9 @@ func TestComputeObservationPreservesOwnedCVMWhenTKEBindingIsMissing(t *testing.T
 	}{
 		{state: "RUNNING", want: contracts.ResourceObservedRunning},
 		{state: "STOPPED", want: contracts.ResourceObservedStopped},
-		{state: "SHUTDOWN", want: contracts.ResourceObservedPending},
+		{state: "STARTING", want: contracts.ResourceObservedPending},
+		{state: "SHUTDOWN", want: contracts.ResourceObservedPendingDeletion},
+		{state: "TERMINATING", want: contracts.ResourceObservedDeleting},
 		{state: "UNRECOGNIZED", want: contracts.ResourceObservedUnknown},
 	} {
 		t.Run(tc.state, func(t *testing.T) {

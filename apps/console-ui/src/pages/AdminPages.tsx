@@ -41,7 +41,7 @@ import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, Field, Modal, SegmentedControl, Select } from "../components/ui/index.ts";
 import { formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
 import { OperatorRuntimeObservations } from "./OperatorRuntimeObservations.tsx";
-import { observationLabel, observationReason } from "./operator-observation-presentation.ts";
+import { observationLabel, observationReason, workspaceImageStatusMessage } from "./operator-observation-presentation.ts";
 
 type BadgeTone = "danger" | "info" | "secondary" | "success" | "warning";
 
@@ -952,11 +952,14 @@ function HealthDiagnostics({ service, serviceKey }: { service: SourceEnvelope<Re
   if (service.status === "unavailable") return <span>{observationReason(service.reasonCode)}</span>;
   if (serviceKey === "fabric") {
     const facts = service.data as OperatorFabricHealthDTO;
+    const targetsMatch = facts.releaseReady === true && (facts.workspaceImageStatus === undefined || facts.workspaceImageStatus === "installed_target_matches");
+    const verifiedVersionDifference = facts.workspaceImageStatus === "workspace_targets_verified" && facts.cloudImagesReady;
     return <div className="operator-health-diagnostics">
-      <span>发布校验：<Badge color={facts.releaseReady === true ? "success" : "warning"}>{facts.releaseReady === true ? "通过" : facts.releaseReady === false ? "未通过" : "暂不可用"}</Badge></span>
-      <small>Cloud 镜像：{facts.cloudImagesReady ? "已核验" : "未通过"} · Workspace 镜像：{facts.workspaceImagesReady ? "已核验" : "未通过"} · 不可变镜像：{facts.immutableImagesReady ? "已核验" : "未通过"}</small>
-      {facts.failedChecks?.map((check) => <small key={check}>{observationReason(check)}</small>)}
-      <small>此项核对安装发布目标；单个 Workspace 的目标与运行镜像请在资源详情核对。</small>
+      <span>安装镜像目标一致性：<Badge color={targetsMatch ? "success" : verifiedVersionDifference ? "info" : "warning"}>{targetsMatch ? "全部一致" : verifiedVersionDifference ? "存量版本不同" : "尚未核验完成"}</Badge></span>
+      <small>Cloud 运行镜像与安装目标：{facts.cloudImagesReady ? "一致" : "尚未确认一致"}</small>
+      {facts.workspaceImageStatus ? <small>{workspaceImageStatusMessage(facts.workspaceImageStatus)}</small> : null}
+      {facts.failedChecks?.filter((check) => check !== "workspace_image_id" || !facts.workspaceImageStatus).map((check) => <small key={check}>{observationReason(check)}</small>)}
+      <small>安装默认与存量目标分别管理；更改默认不会自动升级存量 Workspace。</small>
     </div>;
   }
   if (serviceKey === "runtime") {

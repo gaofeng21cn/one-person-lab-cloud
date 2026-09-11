@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import { chromium } from "playwright";
 
 import * as workspaceApi from "../../apps/console-ui/src/api/workspaces-api.ts";
+import { CUSTOMER_WORKSPACE_LIST_PAGE_SIZE } from "../../apps/console-ui/src/app/customer-workspace-read-controller-model.ts";
 import type { SourceEnvelope, WorkspaceDeleteResponse, WorkspaceDeletionDTO, WorkspaceListData } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -86,6 +87,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   let releaseDelete: (() => void) | undefined;
+  let releaseListRefresh: (() => void) | undefined;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     let workspaceListReads = 0;
@@ -179,6 +181,19 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await page.getByRole("heading", { name: "Pilot Workspace", exact: true }).waitFor({ state: "visible" });
     await openAdvancedSettings(page);
 
+    // Deletion confirmation precedes the list route's own authoritative read.
+    // Hold that response so the assertions cannot race its rendering commit.
+    let observeListRefresh: (() => void) | undefined;
+    const listRefreshHeld = new Promise<void>((resolve) => { observeListRefresh = resolve; });
+    const listRefreshReleased = new Promise<void>((resolve) => { releaseListRefresh = resolve; });
+    await page.route("**/api/workspaces?*", async (route) => {
+      if (new URL(route.request().url()).searchParams.get("pageSize") !== String(CUSTOMER_WORKSPACE_LIST_PAGE_SIZE)) return route.continue();
+      const response = await route.fetch();
+      observeListRefresh?.();
+      await listRefreshReleased;
+      await route.fulfill({ response });
+    });
+
     page.once("dialog", (dialog) => { void dialog.accept(); });
     const retryDelete = page.getByRole("button", { name: "删除工作空间", exact: true });
     assert.equal(await retryDelete.getAttribute("aria-busy"), null);
@@ -187,6 +202,11 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     await retryObserved;
     await page.waitForURL(/\/console\/workspaces$/);
     await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });
+    await listRefreshHeld;
+    await page.getByRole("button", { name: "正在读取", exact: true }).waitFor({ state: "visible" });
+    releaseListRefresh?.();
+    await page.getByRole("button", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
+    await page.locator(".workspace-list-row").filter({ hasText: "Second Workspace" }).waitFor({ state: "visible" });
 
     assert.equal(idempotencyKeys.length, 2);
     assert.match(idempotencyKeys[0], /^workspace-delete:/);
@@ -194,6 +214,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
     assert.equal(await page.locator(".workspace-list-row").filter({ hasText: "Pilot Workspace" }).count(), 0);
   } finally {
     releaseDelete?.();
+    releaseListRefresh?.();
     await browser.close();
     await demo.close();
   }

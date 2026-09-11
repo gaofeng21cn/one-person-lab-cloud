@@ -18,15 +18,17 @@ type ResourceObservation struct {
 type ResourceObservedState string
 
 const (
-	ResourceObservedReady     ResourceObservedState = "ready"
-	ResourceObservedRunning   ResourceObservedState = "running"
-	ResourceObservedStopped   ResourceObservedState = "stopped"
-	ResourceObservedSuspended ResourceObservedState = "suspended"
-	ResourceObservedAttached  ResourceObservedState = "attached"
-	ResourceObservedDetached  ResourceObservedState = "detached"
-	ResourceObservedPending   ResourceObservedState = "pending"
-	ResourceObservedAbsent    ResourceObservedState = "absent"
-	ResourceObservedUnknown   ResourceObservedState = "unknown"
+	ResourceObservedReady           ResourceObservedState = "ready"
+	ResourceObservedRunning         ResourceObservedState = "running"
+	ResourceObservedStopped         ResourceObservedState = "stopped"
+	ResourceObservedSuspended       ResourceObservedState = "suspended"
+	ResourceObservedAttached        ResourceObservedState = "attached"
+	ResourceObservedDetached        ResourceObservedState = "detached"
+	ResourceObservedPending         ResourceObservedState = "pending"
+	ResourceObservedPendingDeletion ResourceObservedState = "pending_deletion"
+	ResourceObservedDeleting        ResourceObservedState = "deleting"
+	ResourceObservedAbsent          ResourceObservedState = "absent"
+	ResourceObservedUnknown         ResourceObservedState = "unknown"
 )
 
 type RuntimeOwnership string
@@ -57,16 +59,28 @@ type RuntimeObservations struct {
 	Items      []RuntimeObservation `json:"items"`
 }
 
+// WorkspaceImageReadinessStatus distinguishes installation-default comparison
+// from proof that a running Workspace uses its own current immutable target.
+type WorkspaceImageReadinessStatus string
+
+const (
+	WorkspaceImageInstalledTargetMatches WorkspaceImageReadinessStatus = "installed_target_matches"
+	WorkspaceImageTargetsVerified        WorkspaceImageReadinessStatus = "workspace_targets_verified"
+	WorkspaceImageNoRunningSample        WorkspaceImageReadinessStatus = "no_running_sample"
+	WorkspaceImageIdentityUnverified     WorkspaceImageReadinessStatus = "identity_unverified"
+)
+
 // FabricReadiness keeps service operation separate from strict image qualification.
 // Neither readiness fact grants purchase or lifecycle authority.
 type FabricReadiness struct {
-	Provider             string   `json:"provider,omitempty"`
-	Ready                bool     `json:"ready"`
-	ServiceReady         bool     `json:"serviceReady"`
-	CloudImagesReady     bool     `json:"cloudImagesReady"`
-	WorkspaceImagesReady bool     `json:"workspaceImagesReady"`
-	ImmutableImagesReady bool     `json:"immutableImagesReady"`
-	MissingEnv           []string `json:"missingEnv"`
-	MissingTools         []string `json:"missingTools"`
-	FailedChecks         []string `json:"failedChecks"`
+	Provider             string                        `json:"provider,omitempty"`
+	Ready                bool                          `json:"ready"`
+	ServiceReady         bool                          `json:"serviceReady"`
+	CloudImagesReady     bool                          `json:"cloudImagesReady"`
+	WorkspaceImagesReady bool                          `json:"workspaceImagesReady"`
+	WorkspaceImageStatus WorkspaceImageReadinessStatus `json:"workspaceImageStatus,omitempty"`
+	ImmutableImagesReady bool                          `json:"immutableImagesReady"`
+	MissingEnv           []string                      `json:"missingEnv"`
+	MissingTools         []string                      `json:"missingTools"`
+	FailedChecks         []string                      `json:"failedChecks"`
 }

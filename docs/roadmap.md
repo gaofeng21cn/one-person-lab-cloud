@@ -83,6 +83,14 @@ remains an external evidence obligation in
 [status](status.md). Unmatched production objects require an owner-reviewed
 disposition; their visibility does not authorize deletion or shared-pool scale.
 
+The same observation lane distinguishes CVM `pending_deletion`/`deleting` from
+ordinary transitions and preserves missing TKE associations independently.
+Installation image consistency now reports verified retained Workspace targets,
+no running sample, and unverifiable identity separately. The source evidence is
+in [status](status.md); the selected Instance owns its scan interval and must
+read back its process configuration, unchanged existing images and cloud
+lifecycle facts from the adopted Candidate.
+
 The external-resource reconciliation under C/F/J now follows successful Workspace
 bindings instead of relying on old resource projections. Cloud implements
 confirmed-loss suspension, closed auto-renew/access, preserved financial identity,

@@ -142,10 +142,10 @@ func TestOperatorResourceReadsObservationWithoutLegacyFallback(t *testing.T) {
 	workspace := map[string]any{"id": "ws", "accountId": "acct-admin", "ownerAccountId": "acct-admin", "ownerUserId": "usr-admin"}
 	account, _, _ := store.GetAccount(context.Background(), "acct-admin")
 	owner, _, _ := store.GetUser(context.Background(), "usr-admin")
-	for _, state := range []contracts.ResourceObservedState{contracts.ResourceObservedStopped, contracts.ResourceObservedAbsent, contracts.ResourceObservedPending, contracts.ResourceObservedRunning} {
+	for _, state := range []contracts.ResourceObservedState{contracts.ResourceObservedStopped, contracts.ResourceObservedAbsent, contracts.ResourceObservedPending, contracts.ResourceObservedPendingDeletion, contracts.ResourceObservedDeleting, contracts.ResourceObservedRunning} {
 		t.Run(string(state), func(t *testing.T) {
 			fact := clients.ProviderFact{AccountID: "acct-admin", WorkspaceID: "ws", ResourceType: "compute", ResourceID: "compute", Available: false, ErrorCode: "old_error", Facts: clients.ProviderResourceFacts{Status: "RUNNING", ProviderID: "old-instance"}, Observation: &contracts.ResourceObservation{Available: true, State: state, ObservedAt: operatorProjectionTime.Format(time.RFC3339Nano), ProviderID: "current-instance"}}
-			if state == contracts.ResourceObservedRunning {
+			if state == contracts.ResourceObservedRunning || state == contracts.ResourceObservedPendingDeletion || state == contracts.ResourceObservedDeleting {
 				fact.Observation.ReasonCode = "compute_provider_partial_identity_machine_missing_tke_instance_missing"
 			}
 			facts := operatorWorkspaceFacts{providerFacts: map[string]clients.ProviderFact{operatorProviderFactKey("acct-admin", "ws", "compute", "compute"): fact}}
@@ -154,7 +154,7 @@ func TestOperatorResourceReadsObservationWithoutLegacyFallback(t *testing.T) {
 			if mapField(result, "status")["data"] != string(state) || mapField(result, "providerId")["data"] != "current-instance" {
 				t.Fatalf("projection=%#v", result)
 			}
-			if state == contracts.ResourceObservedRunning && (mapField(result, "providerErrorCode")["data"] != fact.Observation.ReasonCode || fact.Available) {
+			if fact.Observation.ReasonCode != "" && (mapField(result, "providerErrorCode")["data"] != fact.Observation.ReasonCode || fact.Available) {
 				t.Fatal("CVM observation lost its TKE binding failure or promoted Compute readiness")
 			}
 			fact.Observation = nil
@@ -309,7 +309,7 @@ func TestOperatorRuntimeObservationEndpointIsAdministratorOnly(t *testing.T) {
 type operatorIndependentReadinessFabric struct{ fakeFabricClient }
 
 func (operatorIndependentReadinessFabric) Readiness(context.Context) (contracts.FabricReadiness, error) {
-	return contracts.FabricReadiness{ServiceReady: true, Ready: false, CloudImagesReady: true, FailedChecks: []string{"workspace_image_id"}}, nil
+	return contracts.FabricReadiness{ServiceReady: true, Ready: false, CloudImagesReady: true, WorkspaceImageStatus: contracts.WorkspaceImageTargetsVerified, FailedChecks: []string{"workspace_image_id"}}, nil
 }
 
 func TestOperatorFabricServiceReadyDoesNotPromoteReleaseReadiness(t *testing.T) {
@@ -319,7 +319,7 @@ func TestOperatorFabricServiceReadyDoesNotPromoteReleaseReadiness(t *testing.T) 
 	}
 	response := requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/operator/health", "")
 	fabric := mapField(mapField(mapField(decodeOperatorEnvelope(t, response), "data"), "fabric"), "data")
-	if fabric["ready"] != true || fabric["serviceReady"] != true || fabric["releaseReady"] != false || len(fabric["failedChecks"].([]any)) != 1 {
+	if fabric["ready"] != true || fabric["serviceReady"] != true || fabric["releaseReady"] != false || fabric["workspaceImageStatus"] != string(contracts.WorkspaceImageTargetsVerified) || len(fabric["failedChecks"].([]any)) != 1 {
 		t.Fatalf("fabric=%#v", fabric)
 	}
 	response = requestWithSession(t, server, reservedOperatorSessionForTest(t, server), http.MethodGet, "/api/production/readiness", "")
