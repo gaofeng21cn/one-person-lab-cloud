@@ -54,11 +54,20 @@ Commit `c288f93d` (2026-09-11) adds the proposed
 tests. Commit `b7af3fd7` (2026-09-11) adds the resource-only provisioning
 rules as the pure `internal/domain/provisioning` package (contract-owned stage
 plan, application coupling predicates, debit no-replay and review decisions,
-activation write guards) plus an `internal/arch` import-boundary test. These
-rules have no service consumers yet; wiring them into the Control Plane Launch
-reconciler, the Fabric stage engine and Console is the first implementation
-step of the resource-only loop. They are
-unintegrated drafts, not a frozen public interface or a completed business
+activation write guards) plus an `internal/arch` import-boundary test. Commit
+`8ccbf8b8` (2026-09-11) makes the Launch reconciler provisioning-mode aware:
+resource-only operations follow the contract stage plan without the Gateway
+key, secret, or Runtime stages, reject application-coupled facts at decode,
+and activate with an honest empty application binding (`RuntimeReady` comes
+from operation facts and the domain activation guard rejects runtime facts);
+retained full-Launch rows keep their original identity, decoding, and
+behavior. The full `internal/server` regression passed against a real
+PostgreSQL instance. The HTTP purchase entry and the Fabric resource-stage
+input still require an application image, so no resource-only Workspace can
+be purchased yet; wiring both sides is the next implementation step. These
+preparations are
+unintegrated as business capabilities, not a frozen public interface or a
+completed business
 capability. The delivery plan now follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
 acceptance for these new outcomes remain unverified. This preparation is
