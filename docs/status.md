@@ -51,7 +51,13 @@ completion; no new Cloud Runtime or Instance qualification is claimed here.
 Commit `c288f93d` (2026-09-11) adds the proposed
 `WorkspaceApplicationRevision` / `WorkspaceApplicationDeployment` and
 `WorkspaceProvisioningMode` / `WorkspaceProvisioningStages` types with contract
-tests. These symbols currently have no service or Console consumers. They are
+tests. Commit `b7af3fd7` (2026-09-11) adds the resource-only provisioning
+rules as the pure `internal/domain/provisioning` package (contract-owned stage
+plan, application coupling predicates, debit no-replay and review decisions,
+activation write guards) plus an `internal/arch` import-boundary test. These
+rules have no service consumers yet; wiring them into the Control Plane Launch
+reconciler, the Fabric stage engine and Console is the first implementation
+step of the resource-only loop. They are
 unintegrated drafts, not a frozen public interface or a completed business
 capability. The delivery plan now follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
