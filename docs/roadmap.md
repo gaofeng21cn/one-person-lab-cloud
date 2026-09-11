@@ -266,7 +266,8 @@ Linux Local-Docker 安装/使用资格验证。源码检查和 Candidate 验证�
 ### Handoff Inputs And Parallel Work
 
 这些是对应 owner 的材料/运行事实收集任务，可与 Cloud 实现并行。它们不重新
-定义架构，也不成为等待全部材料齐备才开始闭环 1 的总开关。
+定义架构，也不成为等待全部材料齐备才开始闭环 1 的总开关。IBD 发布者的逐项
+材料清单见 [delivery checklist](./delivery/ibd-delivery-materials-checklist.md)。
 
 | 交接输入 | 提供与核验 owner | 最迟消费点 |
 | --- | --- | --- |

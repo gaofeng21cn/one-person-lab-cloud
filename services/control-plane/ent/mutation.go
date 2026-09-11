@@ -14609,6 +14609,7 @@ type WorkspaceMutation struct {
 	access_requires_login         *bool
 	verification_slot_id          *string
 	customer_product              *bool
+	application_binding           *string
 	clearedFields                 map[string]struct{}
 	done                          bool
 	oldValue                      func(context.Context) (*Workspace, error)
@@ -15797,6 +15798,42 @@ func (m *WorkspaceMutation) ResetCustomerProduct() {
 	m.customer_product = nil
 }
 
+// SetApplicationBinding sets the "application_binding" field.
+func (m *WorkspaceMutation) SetApplicationBinding(s string) {
+	m.application_binding = &s
+}
+
+// ApplicationBinding returns the value of the "application_binding" field in the mutation.
+func (m *WorkspaceMutation) ApplicationBinding() (r string, exists bool) {
+	v := m.application_binding
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationBinding returns the old "application_binding" field's value of the Workspace entity.
+// If the Workspace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkspaceMutation) OldApplicationBinding(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationBinding is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationBinding requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationBinding: %w", err)
+	}
+	return oldValue.ApplicationBinding, nil
+}
+
+// ResetApplicationBinding resets all changes to the "application_binding" field.
+func (m *WorkspaceMutation) ResetApplicationBinding() {
+	m.application_binding = nil
+}
+
 // Where appends a list predicates to the WorkspaceMutation builder.
 func (m *WorkspaceMutation) Where(ps ...predicate.Workspace) {
 	m.predicates = append(m.predicates, ps...)
@@ -15831,7 +15868,7 @@ func (m *WorkspaceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkspaceMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, workspace.FieldCreatedAt)
 	}
@@ -15919,6 +15956,9 @@ func (m *WorkspaceMutation) Fields() []string {
 	if m.customer_product != nil {
 		fields = append(fields, workspace.FieldCustomerProduct)
 	}
+	if m.application_binding != nil {
+		fields = append(fields, workspace.FieldApplicationBinding)
+	}
 	return fields
 }
 
@@ -15985,6 +16025,8 @@ func (m *WorkspaceMutation) Field(name string) (ent.Value, bool) {
 		return m.VerificationSlotID()
 	case workspace.FieldCustomerProduct:
 		return m.CustomerProduct()
+	case workspace.FieldApplicationBinding:
+		return m.ApplicationBinding()
 	}
 	return nil, false
 }
@@ -16052,6 +16094,8 @@ func (m *WorkspaceMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldVerificationSlotID(ctx)
 	case workspace.FieldCustomerProduct:
 		return m.OldCustomerProduct(ctx)
+	case workspace.FieldApplicationBinding:
+		return m.OldApplicationBinding(ctx)
 	}
 	return nil, fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -16264,6 +16308,13 @@ func (m *WorkspaceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCustomerProduct(v)
 		return nil
+	case workspace.FieldApplicationBinding:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationBinding(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -16423,6 +16474,9 @@ func (m *WorkspaceMutation) ResetField(name string) error {
 		return nil
 	case workspace.FieldCustomerProduct:
 		m.ResetCustomerProduct()
+		return nil
+	case workspace.FieldApplicationBinding:
+		m.ResetApplicationBinding()
 		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)

@@ -6,11 +6,63 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
+	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
+
+// seedResourceOnlyRenewalLaunch persists a succeeded resource-only Launch for
+// the monthly billing fixture's Workspace, mirroring seedD4RenewalRuntime
+// without the Gateway key, secret and runtime stages.
+func seedResourceOnlyRenewalLaunch(t *testing.T, store controlPlaneTableStore, workspace map[string]any) {
+	t.Helper()
+	command := workspaceLaunchResourceOnlyUnitCommand()
+	command.OperationID = "workspace-launch-monthly"
+	command.AccountID = stringValue(workspace["accountId"])
+	command.OwnerUserID = stringValue(workspace["ownerUserId"])
+	command.WorkspaceID = stringValue(workspace["id"])
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := operation.stagePlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range plan[:len(plan)-1] {
+		operation.Stage = stage
+		facts := workspaceLaunchReadyFacts(stage)
+		for key, value := range map[string]any{"computeAllocationId": workspace["computeAllocationId"], "storageId": workspace["storageId"], "attachmentId": workspace["currentAttachmentId"]} {
+			if _, ok := facts[key]; ok {
+				facts[key] = value
+			}
+		}
+		if stage == contracts.StageActivation {
+			facts["activationOperationId"] = operation.ID + ":activation"
+		}
+		if stage == contracts.StageReceipt {
+			facts["receiptOperationId"] = operation.ID + ":purchase-receipt"
+		}
+		observation, err := reduceWorkspaceLaunchStageObservation(&operation, workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts})
+		if err != nil {
+			t.Fatalf("seed resource-only renewal stage %s: %v", stage, err)
+		}
+		attempt := operation.Attempts[stage]
+		attempt.Attempted, attempt.Confirmed, attempt.Status = 1, 1, "confirmed"
+		attempt.IdempotencyKey = workspaceLaunchStageIdempotencyKey(operation, 1)
+		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
+	}
+	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
+	operation.Version = len(plan)
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+}
 
 func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixture, *workspaceDeleteSub2API, *workspaceDeleteLedger, *workspaceDeleteEvents) {
 	t.Helper()
@@ -70,6 +122,9 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	}
 	if _, exists := workspace["workspaceApiKeyId"]; exists {
 		t.Fatal("resource-only activation must not carry a workspace API key")
+	}
+	if workspace["applicationBinding"] != provisioning.ApplicationBindingEmpty {
+		t.Fatalf("resource-only activation applicationBinding = %v, want empty", workspace["applicationBinding"])
 	}
 	workspace["purchaseReceiptId"] = "receipt-purchase-alpha"
 	workspace["sub2apiUserId"], workspace["sub2apiRedeemCode"] = int64(41), "opl:workspace-purchase-alpha"
@@ -198,5 +253,52 @@ func TestWorkspaceRenewalRuntimePowerFullModeStillRequiresRuntimeIdentity(t *tes
 	renewal := workspaceRenewalOperation{WorkspaceID: "ws-alpha", AccountID: "acct-alpha"}
 	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), nil, &renewal, "suspended"); err == nil {
 		t.Fatal("full-mode runtime power without runtime identity must fail instead of skipping")
+	}
+}
+
+func TestResourceOnlyWorkspaceAutoRenewsWithoutGatewayKey(t *testing.T) {
+	fixture := newWorkspaceRenewalWorkerFixture(t, []int64{100_000_000, 47_420_000})
+	workspace := cloneMap(fixture.workspace)
+	delete(workspace, "workspaceApiKeyId")
+	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
+	fixture.workspace = workspace
+	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
+	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(-monthlyRenewalLead)); err != nil {
+		t.Fatal(err)
+	}
+	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Status != "active" || len(fixture.sub2API.charges) != 1 || len(fixture.fabric.runtimePowerCalls) != 0 {
+		t.Fatalf("resource-only renewal operation=%#v charges=%#v runtimePower=%#v", operation, fixture.sub2API.charges, fixture.fabric.runtimePowerCalls)
+	}
+	workspaceAfter, _ := fixture.app.getWorkspace("workspace-monthly")
+	if workspaceAfter["renewalStatus"] != "active" || workspaceAfter["state"] != "running" {
+		t.Fatalf("resource-only renewal workspace=%#v", workspaceAfter)
+	}
+}
+
+func TestResourceOnlyWorkspaceExpirySkipsRuntimeSuspension(t *testing.T) {
+	fixture := newWorkspaceRenewalWorkerFixture(t, nil)
+	workspace := cloneMap(fixture.workspace)
+	delete(workspace, "workspaceApiKeyId")
+	workspace["autoRenew"] = false
+	mustStore(t, fixture.app.tables.SaveWorkspace(context.Background(), workspace))
+	fixture.workspace = workspace
+	seedResourceOnlyRenewalLaunch(t, fixture.app.tables, workspace)
+	if err := fixture.app.runMonthlyBillingOnce(context.Background(), fixture.service, fixture.paidThrough.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	operation, err := decodeWorkspaceRenewalOperation(fixture.operation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.ExpiryStatus != "expired_unpaid" || len(fixture.fabric.runtimePowerCalls) != 0 || len(fixture.sub2API.charges) != 0 {
+		t.Fatalf("resource-only expiry operation=%#v runtimePower=%#v charges=%#v", operation, fixture.fabric.runtimePowerCalls, fixture.sub2API.charges)
+	}
+	workspaceAfter, _ := fixture.app.getWorkspace("workspace-monthly")
+	if workspaceAfter["state"] != "suspended" {
+		t.Fatalf("resource-only expiry workspace=%#v", workspaceAfter)
 	}
 }

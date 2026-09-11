@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/domain"
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
@@ -70,6 +71,7 @@ func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (
 		RuntimeID: operation.stringFact("runtimeId"), RuntimeServiceName: operation.stringFact("runtimeServiceName"), WorkspaceAPIKeyID: operation.int64Fact("workspaceApiKeyId"),
 		RuntimeReady: operation.boolFact("runtimeReady"), RuntimeUsername: operation.stringFact("runtimeUsername"), CredentialStatus: operation.stringFact("credentialStatus"),
 		CredentialVersion: operation.stringFact("credentialVersion"), CredentialSecretRef: operation.stringFact("credentialSecretRef"),
+		ApplicationBinding: workspaceLaunchActivationApplicationBinding(operation),
 	})
 	for key, value := range map[string]any{
 		"resourceBillingEnabled": resourceBillingEnabled, "autoRenew": autoRenew, "authorizedBy": authorizedBy, "authorizedAt": authorizedAt, "priceVersion": operation.stringFact("priceVersion"), "currency": pricingCurrency,
@@ -85,6 +87,16 @@ func workspaceLaunchActivationRow(operation workspaceLaunchReconcileOperation) (
 
 func workspaceLaunchProjectionMatches(operation workspaceLaunchReconcileOperation, workspace map[string]any) bool {
 	return len(workspaceLaunchProjectionMismatchFields(operation, workspace)) == 0
+}
+
+// workspaceLaunchActivationApplicationBinding names the application binding a
+// completed activation establishes: the retained fixed OPL App for a full
+// Launch, or the explicit empty binding for resource-only provisioning.
+func workspaceLaunchActivationApplicationBinding(operation workspaceLaunchReconcileOperation) string {
+	if operation.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		return provisioning.ApplicationBindingEmpty
+	}
+	return provisioning.ApplicationBindingOPLApp
 }
 
 // workspaceLaunchActivationRuntimeFactsAllowed applies the domain activation

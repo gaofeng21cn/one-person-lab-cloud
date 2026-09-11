@@ -49,6 +49,9 @@ var legacyIdentityTableCustody string
 //go:embed 202608180001_workspace_purchase_eligibility.sql
 var workspacePurchaseEligibility string
 
+//go:embed 202609120001_workspace_application_binding.sql
+var workspaceApplicationBinding string
+
 func Apply(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, monthlyHardCut, []any{}, nil)
 }
@@ -127,4 +130,8 @@ func ApplyLegacyIdentityTableCustody(ctx context.Context, driver dialect.Driver)
 
 func ApplyWorkspacePurchaseEligibility(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, workspacePurchaseEligibility, []any{}, nil)
+}
+
+func ApplyWorkspaceApplicationBinding(ctx context.Context, driver dialect.Driver) error {
+	return driver.Exec(ctx, workspaceApplicationBinding, []any{}, nil)
 }

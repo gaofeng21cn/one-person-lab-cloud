@@ -209,6 +209,11 @@ func CustomerProduct(v bool) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldCustomerProduct, v))
 }
 
+// ApplicationBinding applies equality check predicate on the "application_binding" field. It's identical to ApplicationBindingEQ.
+func ApplicationBinding(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldApplicationBinding, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldCreatedAt, v))
@@ -1917,6 +1922,71 @@ func CustomerProductEQ(v bool) predicate.Workspace {
 // CustomerProductNEQ applies the NEQ predicate on the "customer_product" field.
 func CustomerProductNEQ(v bool) predicate.Workspace {
 	return predicate.Workspace(sql.FieldNEQ(FieldCustomerProduct, v))
+}
+
+// ApplicationBindingEQ applies the EQ predicate on the "application_binding" field.
+func ApplicationBindingEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingNEQ applies the NEQ predicate on the "application_binding" field.
+func ApplicationBindingNEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNEQ(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingIn applies the In predicate on the "application_binding" field.
+func ApplicationBindingIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldIn(FieldApplicationBinding, vs...))
+}
+
+// ApplicationBindingNotIn applies the NotIn predicate on the "application_binding" field.
+func ApplicationBindingNotIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNotIn(FieldApplicationBinding, vs...))
+}
+
+// ApplicationBindingGT applies the GT predicate on the "application_binding" field.
+func ApplicationBindingGT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGT(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingGTE applies the GTE predicate on the "application_binding" field.
+func ApplicationBindingGTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGTE(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingLT applies the LT predicate on the "application_binding" field.
+func ApplicationBindingLT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLT(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingLTE applies the LTE predicate on the "application_binding" field.
+func ApplicationBindingLTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLTE(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingContains applies the Contains predicate on the "application_binding" field.
+func ApplicationBindingContains(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContains(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingHasPrefix applies the HasPrefix predicate on the "application_binding" field.
+func ApplicationBindingHasPrefix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasPrefix(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingHasSuffix applies the HasSuffix predicate on the "application_binding" field.
+func ApplicationBindingHasSuffix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasSuffix(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingEqualFold applies the EqualFold predicate on the "application_binding" field.
+func ApplicationBindingEqualFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEqualFold(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingContainsFold applies the ContainsFold predicate on the "application_binding" field.
+func ApplicationBindingContainsFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContainsFold(FieldApplicationBinding, v))
 }
 
 // And groups predicates with the AND operator between them.

@@ -173,6 +173,7 @@ func workspaceFields() []ent.Field {
 		field.Bool("access_requires_login").Default(false),
 		field.String("verification_slot_id").Default(""),
 		field.Bool("customer_product").Default(true),
+		field.String("application_binding").Default(""),
 	)
 }
 
