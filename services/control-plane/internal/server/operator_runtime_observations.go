@@ -25,6 +25,7 @@ type operatorRuntimeObservation struct {
 
 type operatorRuntimeObservations struct {
 	ObservedAt     string                       `json:"observedAt"`
+	OwnershipScope string                       `json:"ownershipScope"`
 	Ready          bool                         `json:"ready"`
 	BusinessTotal  int                          `json:"businessTotal"`
 	ObservedTotal  int                          `json:"observedTotal"`
@@ -60,7 +61,7 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 	}
 	for _, operation := range operations {
 		id := stringValue(operation["workspaceId"])
-		if rows[id] != nil {
+		if id != "" {
 			byWorkspace[id] = append(byWorkspace[id], operation)
 		}
 	}
@@ -70,7 +71,7 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 			counts[observation.WorkspaceID]++
 		}
 	}
-	result := operatorRuntimeObservations{ObservedAt: observations.ObservedAt, BusinessTotal: len(workspaces), ObservedTotal: len(observations.Items), Items: make([]operatorRuntimeObservation, 0, max(len(workspaces), len(observations.Items)))}
+	result := operatorRuntimeObservations{ObservedAt: observations.ObservedAt, OwnershipScope: "workspaces_and_retained_operations", BusinessTotal: len(workspaces), ObservedTotal: len(observations.Items), Items: make([]operatorRuntimeObservation, 0, max(len(workspaces), len(observations.Items)))}
 	appendItem := func(item operatorRuntimeObservation) {
 		result.Items = append(result.Items, item)
 		switch item.Status {
@@ -89,6 +90,9 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 		workspace := rows[observation.WorkspaceID]
 		if workspace == nil {
 			item.ReasonCode = "runtime_unmatched_workspace"
+			if len(byWorkspace[observation.WorkspaceID]) != 0 {
+				item.ReasonCode = "runtime_operation_without_workspace"
+			}
 			result.UnmatchedCount++
 			appendItem(item)
 			continue

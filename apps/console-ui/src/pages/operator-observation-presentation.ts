@@ -24,6 +24,7 @@ export function observationLabel(value?: string): string {
 const reasonLabels: Record<string, string> = {
   fabric_resource_observation_unavailable: "资源现态尚未核验",
   runtime_unmatched_workspace: "实物没有对应的当前 Workspace 记录",
+  runtime_operation_without_workspace: "运行对象仍有关联业务操作，需核对 Workspace 记录",
   runtime_ownership_unregistered: "运行对象尚未登记归属",
   runtime_ownership_conflict: "运行对象归属冲突",
   runtime_binding_mismatch: "运行对象与 Workspace 绑定不一致",

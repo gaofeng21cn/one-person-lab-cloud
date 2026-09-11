@@ -7976,3 +7976,84 @@ func TestComputeObservationReportsStoppedWithoutChangingValidation(t *testing.T)
 		})
 	}
 }
+
+func TestComputeObservationPreservesOwnedCVMWhenTKEBindingIsMissing(t *testing.T) {
+	request := Request{
+		AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(),
+		Pool:       ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4},
+		Allocation: ComputeAllocationInput{Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11"},
+	}
+	for _, tc := range []struct {
+		state string
+		want  contracts.ResourceObservedState
+	}{
+		{state: "RUNNING", want: contracts.ResourceObservedRunning},
+		{state: "STOPPED", want: contracts.ResourceObservedStopped},
+		{state: "SHUTDOWN", want: contracts.ResourceObservedPending},
+		{state: "UNRECOGNIZED", want: contracts.ResourceObservedUnknown},
+	} {
+		t.Run(tc.state, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic"}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags(), instanceState: tc.state}
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := client.SyncComputeAllocation(request, nil)
+			code := string(errComputePartialMachineMissingTKEInstanceMissing)
+			if result.Ok || result.Status == "external_deleted" || result.ErrorCode != code || !result.Retryable || result.CVMStatus != tc.state {
+				t.Fatalf("missing TKE binding became ready or absent: %#v", result)
+			}
+			observation := result.Observation
+			if observation == nil || observation.State != tc.want || observation.ReasonCode != code || observation.Available != (tc.want != contracts.ResourceObservedUnknown) {
+				t.Fatalf("owned CVM state or binding failure lost: %#v", result)
+			}
+			if observation.Available && (observation.ProviderID != request.Allocation.InstanceId || observation.PackageOrSpec != request.Pool.InstanceType || observation.Zone != request.Zone || observation.ExpiresAt == "") {
+				t.Fatalf("owned CVM observation identity lost: %#v", observation)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			if result.MutationCount != 0 || len(cvmAPI.modifyInstancesRequest) != 0 || len(cvmAPI.renewInstancesRequests) != 0 {
+				t.Fatal("observation mutated provider resources")
+			}
+		})
+	}
+}
+
+func TestComputeObservationRequiresConfirmedProviderAbsence(t *testing.T) {
+	request := Request{
+		AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(),
+		Pool:       ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4},
+		Allocation: ComputeAllocationInput{Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11"},
+	}
+	for _, tc := range []struct {
+		name      string
+		configure func(*fakeNativeTkeAPI, *fakeNativeCvmAPI)
+		absent    bool
+	}{
+		{name: "CVM and Machine both gone", absent: true, configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.empty = true }},
+		{name: "CVM gone but Machine remains", configure: func(tke *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { tke.replicas, cvm.empty = 1, true }},
+		{name: "CVM provider unavailable", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.err = errors.New("provider unavailable") }},
+		{name: "Machine provider unavailable", configure: func(tke *fakeNativeTkeAPI, _ *fakeNativeCvmAPI) {
+			tke.describeMachineErr = errors.New("provider unavailable")
+		}},
+		{name: "CVM belongs to another resource", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.instanceName = "compute-other" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic"}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags()}
+			tc.configure(tkeAPI, cvmAPI)
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := client.SyncComputeAllocation(request, nil)
+			if tc.absent {
+				if !result.Ok || result.Status != "external_deleted" || result.Observation == nil || !result.Observation.Available || result.Observation.State != contracts.ResourceObservedAbsent {
+					t.Fatalf("confirmed absence lost: %#v", result)
+				}
+			} else if result.Ok || result.Status == "external_deleted" || (result.Observation != nil && result.Observation.Available) {
+				t.Fatalf("unknown or conflicting provider identity became authoritative: %#v", result)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			if result.MutationCount != 0 || len(cvmAPI.modifyInstancesRequest) != 0 || len(cvmAPI.renewInstancesRequests) != 0 {
+				t.Fatal("absence observation mutated provider resources")
+			}
+		})
+	}
+}

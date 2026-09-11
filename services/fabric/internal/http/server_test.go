@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/fabric"
 )
 
@@ -37,6 +38,21 @@ func TestMain(m *testing.M) {
 type runtimeHealthSummaryHTTPProvider struct {
 	testProvider
 	calls int
+}
+
+type providerFactsObservationHTTPProvider struct {
+	testProvider
+	missingTKEBinding bool
+}
+
+func (p *providerFactsObservationHTTPProvider) ReadComputeProviderFacts(ctx context.Context, compute fabric.ComputeAllocation) (fabric.ProviderResourceFacts, error) {
+	if !p.missingTKEBinding {
+		return p.testProvider.ReadComputeProviderFacts(ctx, compute)
+	}
+	const code = "compute_provider_partial_identity_machine_missing_tke_instance_missing"
+	return fabric.ProviderResourceFacts{Observation: &contracts.ResourceObservation{
+		Available: true, State: contracts.ResourceObservedRunning, ReasonCode: code, ProviderID: "ins-owned",
+	}}, errors.New(code)
 }
 
 type workspaceOwnerObservationHTTPProvider struct {
@@ -967,7 +983,8 @@ func TestRuntimeHealthSummaryHTTPIsAuthenticatedAndReadOnly(t *testing.T) {
 }
 
 func TestProviderFactsBatchHTTPPreservesTypedWireShape(t *testing.T) {
-	service := fabric.NewService(testProvider{})
+	provider := &providerFactsObservationHTTPProvider{}
+	service := fabric.NewService(provider)
 	compute, err := service.CreateComputeAllocation(context.Background(), fabric.ComputeAllocationInput{
 		AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", PackageID: "basic", NodePoolID: "np-basic", IdempotencyKey: "provider-facts-http",
 	})
@@ -1006,6 +1023,19 @@ func TestProviderFactsBatchHTTPPreservesTypedWireShape(t *testing.T) {
 		if !strings.Contains(response.Body.String(), field) {
 			t.Fatalf("provider facts response lost %s: %s", field, response.Body.String())
 		}
+	}
+	provider.missingTKEBinding = true
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, testRequest(http.MethodPost, "/fabric/provider-facts/batch", strings.NewReader(body)))
+	batch = fabric.ProviderFactsBatch{}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &batch) != nil || len(batch.Items) != 1 {
+		t.Fatalf("observation response status=%d body=%s", response.Code, response.Body.String())
+	}
+	fact := batch.Items[0]
+	if fact.Available || fact.ErrorCode != "compute_provider_partial_identity_machine_missing_tke_instance_missing" || fact.Facts.Status != "" ||
+		fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != contracts.ResourceObservedRunning ||
+		fact.Observation.ProviderID != "ins-owned" || fact.Observation.ReasonCode != fact.ErrorCode || fact.Observation.ObservedAt == "" {
+		t.Fatalf("HTTP lost current CVM state or TKE blocking reason: %#v", fact)
 	}
 }
 

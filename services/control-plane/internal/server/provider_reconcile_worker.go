@@ -78,6 +78,16 @@ func (app *controlPlaneServer) runProviderReconcileOnce(ctx context.Context, ser
 			errs = append(errs, err)
 		}
 	}
+	workspaces, err := app.tables.ListWorkspaces(ctx, "")
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		for _, workspace := range workspaces {
+			if err := app.reconcileWorkspaceResources(ctx, service, stringValue(workspace["id"]), now); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
 	return errors.Join(errs...)
 }
 

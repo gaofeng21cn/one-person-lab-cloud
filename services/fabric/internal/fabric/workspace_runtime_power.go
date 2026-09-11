@@ -32,6 +32,15 @@ func workspaceRuntimePowerInputPeriod(input WorkspaceRuntimePowerInput) (time.Ti
 			return time.Time{}, ErrWorkspaceRuntimePowerInputInvalid
 		}
 	}
+	if input.SuspensionReason == "" {
+		if input.MissingResourceType != "" || input.MissingResourceID != "" {
+			return time.Time{}, ErrWorkspaceRuntimePowerInputInvalid
+		}
+	} else if input.SuspensionReason != contracts.WorkspaceRuntimeSuspensionProviderResourceAbsent || input.DesiredState != "suspended" ||
+		(input.MissingResourceType != "compute" && input.MissingResourceType != "storage") ||
+		input.MissingResourceID == "" || input.MissingResourceID != strings.TrimSpace(input.MissingResourceID) {
+		return time.Time{}, ErrWorkspaceRuntimePowerInputInvalid
+	}
 	period, err := time.Parse(time.RFC3339Nano, input.PaidThrough)
 	if err != nil {
 		return time.Time{}, ErrWorkspaceRuntimePowerInputInvalid
@@ -58,7 +67,7 @@ func (s *Service) workspaceRuntimePower(ctx context.Context, input WorkspaceRunt
 		return result, ErrWorkspaceRuntimePowerUnavailable
 	}
 	err = s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(input.WorkspaceID), func(ctx context.Context) error {
-		if mutate && (input.DesiredState == "running" && !period.After(s.now()) || input.DesiredState == "suspended" && period.After(s.now())) {
+		if mutate && (input.DesiredState == "running" && !period.After(s.now()) || input.DesiredState == "suspended" && period.After(s.now()) && input.SuspensionReason == "") {
 			return ErrWorkspaceRuntimePowerConflict
 		}
 		owners, err := s.runtimeRead.operations.WorkspaceRuntimeIdentityCandidates(ctx, input.WorkspaceID)
@@ -100,6 +109,13 @@ func (s *Service) workspaceRuntimePower(ctx context.Context, input WorkspaceRunt
 		if !mutate {
 			return nil
 		}
+		var absence ProviderFact
+		if input.SuspensionReason == contracts.WorkspaceRuntimeSuspensionProviderResourceAbsent {
+			absence, err = s.workspaceRuntimeMissingResource(ctx, input)
+			if err != nil {
+				return err
+			}
+		}
 		now := s.now()
 		op := newOperation(workspaceRuntimePowerAction, "workspace_runtime_power", input.WorkspaceID, input.AccountID, input.WorkspaceID, input.IdempotencyKey, hashInput(input), now)
 		op.ID = "fop_runtime_power_" + stableSuffix(input.IdempotencyKey)
@@ -107,6 +123,9 @@ func (s *Service) workspaceRuntimePower(ctx context.Context, input WorkspaceRunt
 		op.Status = "started"
 		op.CreatedAt = now
 		op.RedactedProviderPayload = map[string]any{"power": input}
+		if input.SuspensionReason != "" {
+			op.RedactedProviderPayload["missingResource"] = absence
+		}
 		stored, _, err := s.runtimeOperations.ClaimRuntime(ctx, op)
 		if err != nil {
 			return err
@@ -134,9 +153,47 @@ func (s *Service) workspaceRuntimePower(ctx context.Context, input WorkspaceRunt
 		}
 		stored.Status, stored.FinishedAt = "succeeded", s.now()
 		stored.RedactedProviderPayload = map[string]any{"power": input, "result": result}
+		if input.SuspensionReason != "" {
+			stored.RedactedProviderPayload["missingResource"] = absence
+		}
 		return s.runtimeOperations.SaveRuntime(ctx, stored)
 	})
 	return result, err
+}
+
+func (s *Service) workspaceRuntimeMissingResource(ctx context.Context, input WorkspaceRuntimePowerInput) (ProviderFact, error) {
+	parent, found, err := s.resourceOperations.LatestResourceOperation(ctx, "workspace_launch_stage", input.RuntimeOperationID)
+	if err != nil {
+		return ProviderFact{}, err
+	}
+	binding, bindingOK := decodeLaunchStageBinding(parent)
+	record, recordOK := decodeWorkspaceLaunchStageRecord(parent)
+	if !found || !bindingOK || !recordOK || parent.Status != "succeeded" || parent.Action != "ensure_runtime" ||
+		parent.ID != input.RuntimeOperationID || parent.OperationID != input.RuntimeOperationID || parent.AccountID != input.AccountID || parent.WorkspaceID != input.WorkspaceID ||
+		binding.Stage != "runtime" || binding.Action != "ensure_runtime" || binding.FabricOperationID != input.RuntimeOperationID || binding.AccountID != input.AccountID || binding.WorkspaceID != input.WorkspaceID ||
+		record.Resources.RuntimeID != input.RuntimeID || record.Resources.RuntimeBindingRef != input.RuntimeOperationID {
+		return ProviderFact{}, ErrWorkspaceRuntimePowerConflict
+	}
+	expectedID := record.Resources.ComputeAllocationID
+	if input.MissingResourceType == "storage" {
+		expectedID = record.Resources.StorageID
+	}
+	if expectedID == "" || expectedID != input.MissingResourceID {
+		return ProviderFact{}, ErrWorkspaceRuntimePowerConflict
+	}
+	started := s.now()
+	fact := s.providerFact(ctx, ProviderFactInput{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceType: input.MissingResourceType, ResourceID: input.MissingResourceID})
+	observedAt, timeErr := time.Parse(time.RFC3339Nano, fact.Facts.LastReadAt)
+	if !fact.Available || fact.ErrorCode != "" || fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != contracts.ResourceObservedAbsent ||
+		timeErr != nil || observedAt.Before(started) || observedAt.After(s.now()) {
+		return fact, ErrWorkspaceRuntimePowerConflict
+	}
+	switch strings.ToLower(strings.TrimSpace(fact.Facts.Status)) {
+	case "external_deleted", "deleted", "missing", "not_found":
+		return fact, nil
+	default:
+		return fact, ErrWorkspaceRuntimePowerConflict
+	}
 }
 
 func validWorkspaceRuntimePowerResult(result WorkspaceRuntimePowerResult, input WorkspaceRuntimePowerInput) bool {

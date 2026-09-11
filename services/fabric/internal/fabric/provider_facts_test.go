@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -473,30 +475,49 @@ func TestTencentProviderFactsOwnTencentMappingAndStayReadOnly(t *testing.T) {
 }
 
 func TestProviderFactsObservationDoesNotReclassifyRetainedValidation(t *testing.T) {
-	provider := NewTencentProvider()
-	reads := 0
-	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
-		reads++
-		if request.Action != "sync_compute_allocation" {
-			t.Fatalf("unexpected action %s", request.Action)
-		}
-		return provisionerResponse{OK: false, ErrorCode: "compute_cvm_not_ready", Observation: &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedStopped, ProviderID: "ins-owned", PackageOrSpec: "SA5.MEDIUM4", Zone: "ap-guangzhou-3"}}, nil
-	}
-	service := NewService(provider)
-	service.computes["compute"] = ComputeAllocation{ID: "compute", AccountID: "acct", WorkspaceID: "ws", PackageID: "basic", PoolID: "pool-basic", NodePoolID: "np-basic", InstanceID: "ins-owned", InstanceType: "SA5.MEDIUM4", ProviderData: map[string]string{"cpu": "2", "memoryGb": "4"}}
-	before := service.computes["compute"]
-	result, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: []ProviderFactInput{{AccountID: "acct", WorkspaceID: "ws", ResourceType: "compute", ResourceID: "compute"}}})
-	if err != nil || len(result.Items) != 1 {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	fact := result.Items[0]
-	if fact.Available || fact.ErrorCode != "compute_cvm_not_ready" || fact.Facts.Status != "" {
-		t.Fatalf("retained validation changed: %#v", fact)
-	}
-	if fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != contracts.ResourceObservedStopped || fact.Observation.ObservedAt == "" {
-		t.Fatalf("stopped observation missing: %#v", fact)
-	}
-	if reads != 1 || !reflect.DeepEqual(before, service.computes["compute"]) {
-		t.Fatalf("read count=%d or allocation mutated", reads)
+	for _, tc := range []struct {
+		code  string
+		state contracts.ResourceObservedState
+	}{
+		{code: "compute_cvm_not_ready", state: contracts.ResourceObservedStopped},
+		{code: "compute_provider_partial_identity_machine_missing_tke_instance_missing", state: contracts.ResourceObservedRunning},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			response := provisionerResponse{OK: false, ErrorCode: tc.code, Observation: &contracts.ResourceObservation{Available: true, State: tc.state, ReasonCode: tc.code, ProviderID: "ins-owned", PackageOrSpec: "SA5.MEDIUM4", Zone: "ap-guangzhou-3"}}
+			payload, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(t.TempDir(), "provisioner")
+			script := "#!/bin/sh\ncat > \"$0.request\"\nprintf 'read\\n' >> \"$0.calls\"\ncat <<'RESPONSE'\n" + string(payload) + "\nRESPONSE\nexit 1\n"
+			if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("OPL_TENCENT_PROVISIONER_BIN", bin)
+			provider := NewTencentProvider()
+			service := NewService(provider)
+			service.computes["compute"] = ComputeAllocation{ID: "compute", AccountID: "acct", WorkspaceID: "ws", PackageID: "basic", PoolID: "pool-basic", NodePoolID: "np-basic", InstanceID: "ins-owned", InstanceType: "SA5.MEDIUM4", ProviderData: map[string]string{"cpu": "2", "memoryGb": "4"}}
+			before := service.computes["compute"]
+			result, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: []ProviderFactInput{{AccountID: "acct", WorkspaceID: "ws", ResourceType: "compute", ResourceID: "compute"}}})
+			if err != nil || len(result.Items) != 1 {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			fact := result.Items[0]
+			if fact.Available || fact.ErrorCode != tc.code || fact.Facts.Status != "" {
+				t.Fatalf("retained validation changed: %#v", fact)
+			}
+			if fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != tc.state || fact.Observation.ReasonCode != tc.code || fact.Observation.ObservedAt == "" {
+				t.Fatalf("stopped observation missing: %#v", fact)
+			}
+			requestBody, err := os.ReadFile(bin + ".request")
+			var request provisionerRequest
+			if err != nil || json.Unmarshal(requestBody, &request) != nil || request.Action != "sync_compute_allocation" || request.Allocation.ID != "compute" {
+				t.Fatalf("unexpected process request=%#v err=%v", request, err)
+			}
+			calls, err := os.ReadFile(bin + ".calls")
+			if err != nil || string(calls) != "read\n" || !reflect.DeepEqual(before, service.computes["compute"]) {
+				t.Fatalf("unexpected reads=%q or allocation mutated, err=%v", calls, err)
+			}
+		})
 	}
 }

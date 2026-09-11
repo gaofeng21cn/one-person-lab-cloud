@@ -142,14 +142,20 @@ func TestOperatorResourceReadsObservationWithoutLegacyFallback(t *testing.T) {
 	workspace := map[string]any{"id": "ws", "accountId": "acct-admin", "ownerAccountId": "acct-admin", "ownerUserId": "usr-admin"}
 	account, _, _ := store.GetAccount(context.Background(), "acct-admin")
 	owner, _, _ := store.GetUser(context.Background(), "usr-admin")
-	for _, state := range []contracts.ResourceObservedState{contracts.ResourceObservedStopped, contracts.ResourceObservedAbsent, contracts.ResourceObservedPending} {
+	for _, state := range []contracts.ResourceObservedState{contracts.ResourceObservedStopped, contracts.ResourceObservedAbsent, contracts.ResourceObservedPending, contracts.ResourceObservedRunning} {
 		t.Run(string(state), func(t *testing.T) {
 			fact := clients.ProviderFact{AccountID: "acct-admin", WorkspaceID: "ws", ResourceType: "compute", ResourceID: "compute", Available: false, ErrorCode: "old_error", Facts: clients.ProviderResourceFacts{Status: "RUNNING", ProviderID: "old-instance"}, Observation: &contracts.ResourceObservation{Available: true, State: state, ObservedAt: operatorProjectionTime.Format(time.RFC3339Nano), ProviderID: "current-instance"}}
+			if state == contracts.ResourceObservedRunning {
+				fact.Observation.ReasonCode = "compute_provider_partial_identity_machine_missing_tke_instance_missing"
+			}
 			facts := operatorWorkspaceFacts{providerFacts: map[string]clients.ProviderFact{operatorProviderFactKey("acct-admin", "ws", "compute", "compute"): fact}}
 			app := &controlPlaneServer{tables: store}
 			result := app.operatorResourceDTO(context.Background(), nil, "compute", map[string]any{"id": "compute"}, account, owner, workspace, facts, false)
 			if mapField(result, "status")["data"] != string(state) || mapField(result, "providerId")["data"] != "current-instance" {
 				t.Fatalf("projection=%#v", result)
+			}
+			if state == contracts.ResourceObservedRunning && (mapField(result, "providerErrorCode")["data"] != fact.Observation.ReasonCode || fact.Available) {
+				t.Fatal("CVM observation lost its TKE binding failure or promoted Compute readiness")
 			}
 			fact.Observation = nil
 			facts.providerFacts[operatorProviderFactKey("acct-admin", "ws", "compute", "compute")] = fact
@@ -213,7 +219,7 @@ func TestOperatorRuntimeInventoryKeepsUnmatchedAndDuplicateObjects(t *testing.T)
 		fabric.observations.Items[i] = contracts.RuntimeObservation{ObjectRef: fmt.Sprintf("object-%d", i), AccountID: "acct-admin", WorkspaceID: "ws", RuntimeID: "runtime-fabric", Ownership: contracts.RuntimeOwnershipVerified, DesiredState: contracts.ResourceObservedRunning, ObservedState: contracts.ResourceObservedRunning}
 	}
 	result, err := (&controlPlaneServer{tables: store}).operatorRuntimeObservations(context.Background(), controlplane.NewService(fakeLedgerClient{}, fabric, newOperatorProjectionClient()), operatorProjectionTime)
-	if err != nil || result.ObservedTotal != 24 || result.BusinessTotal != 1 || result.UnmatchedCount != 22 || result.AttentionCount != 24 || len(result.Items) != 24 {
+	if err != nil || result.OwnershipScope != "workspaces_and_retained_operations" || result.ObservedTotal != 24 || result.BusinessTotal != 1 || result.UnmatchedCount != 22 || result.AttentionCount != 24 || len(result.Items) != 24 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	for _, item := range result.Items {
@@ -236,6 +242,48 @@ func TestOperatorRuntimeMissingBeforeLaunchRuntimeStageIsNotMissingMachine(t *te
 	status, reason := operatorRuntimeState(map[string]any{"id": command.WorkspaceID, "accountId": command.AccountID, "state": "creating"}, []map[string]any{row}, nil, time.Now())
 	if status != "pending" || reason != "workspace_runtime_not_created" {
 		t.Fatalf("state=%s reason=%s", status, reason)
+	}
+}
+
+func TestOperatorRuntimeWithoutWorkspacePreservesRetainedLaunchOwnership(t *testing.T) {
+	store := newMemoryTableStore()
+	command := workspaceLaunchUnitCommand()
+	launch, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := workspaceLaunchReconcileOperationRow(launch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+	fabric := &runtimeHealthSummaryFabric{observations: contracts.RuntimeObservations{
+		ObservedAt: operatorProjectionTime.Format(time.RFC3339Nano),
+		Items: []contracts.RuntimeObservation{{ObjectRef: "launch-runtime", AccountID: command.AccountID,
+			WorkspaceID: command.WorkspaceID, RuntimeID: "runtime-fabric", Ownership: contracts.RuntimeOwnershipVerified,
+			DesiredState: contracts.ResourceObservedRunning, ObservedState: contracts.ResourceObservedPending}},
+	}}
+	result, err := (&controlPlaneServer{tables: store}).operatorRuntimeObservations(context.Background(), controlplane.NewService(fakeLedgerClient{}, fabric, newOperatorProjectionClient()), operatorProjectionTime)
+	if err != nil || result.OwnershipScope != "workspaces_and_retained_operations" || len(result.Items) != 1 || result.BusinessTotal != 0 || result.UnmatchedCount != 1 || result.Items[0].ReasonCode != "runtime_operation_without_workspace" {
+		t.Fatalf("retained launch lost its Runtime ownership: result=%#v err=%v", result, err)
+	}
+	if len(store.runtimeOps) != 1 || len(store.workspaces) != 0 || fabric.fakeFabricClient.calls != nil {
+		t.Fatal("ownership observation mutated its sources")
+	}
+}
+
+type operatorRuntimeOperationsUnavailableStore struct{ *memoryTableStore }
+
+func (s *operatorRuntimeOperationsUnavailableStore) ListRuntimeOperations(context.Context) ([]map[string]any, error) {
+	return nil, errors.New("runtime_operations_unavailable")
+}
+
+func TestOperatorRuntimeCannotDeclareUnmatchedWhenBusinessOperationsAreUnreadable(t *testing.T) {
+	store := &operatorRuntimeOperationsUnavailableStore{newMemoryTableStore()}
+	fabric := &runtimeHealthSummaryFabric{observations: operatorRuntimeFixtureObservations(1)}
+	result, err := (&controlPlaneServer{tables: store}).operatorRuntimeObservations(context.Background(), controlplane.NewService(fakeLedgerClient{}, fabric, newOperatorProjectionClient()), operatorProjectionTime)
+	if err == nil || result.Items != nil || result.OwnershipScope != "" {
+		t.Fatalf("unreadable business operations became absence: result=%#v err=%v", result, err)
 	}
 }
 

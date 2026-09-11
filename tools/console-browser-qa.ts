@@ -114,6 +114,7 @@ function source(data, name = "control-plane", status = "available") {
 
 function operatorRuntimeObservations(): OperatorRuntimeObservationsDTO {
   return {
+    ownershipScope: "workspaces_and_retained_operations",
     observedAt: NOW, ready: true, businessTotal: 1, observedTotal: 1,
     runningCount: 1, suspendedCount: 0, pendingCount: 0, attentionCount: 0, unmatchedCount: 0,
     items: [{ workspaceId: "ws-1", runtimeId: "runtime-fixture", objectRef: "object-fixture", businessState: "running", desiredState: "running", observedState: "running", ownership: "verified", status: "running" }]

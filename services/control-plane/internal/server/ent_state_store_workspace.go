@@ -126,6 +126,7 @@ func mergeWorkspaceForSave(existing, incoming map[string]any) (map[string]any, e
 			row[key] = value
 		}
 	}
+	preserveWorkspaceStorageLoss(existing, row)
 	if !workspaceLifecycleInactive(existing) || workspaceLifecycleInactive(row) {
 		return row, nil
 	}
@@ -1399,4 +1400,45 @@ func validateWorkspaceDeleteResourceProjections(ctx context.Context, client *con
 		return err
 	}
 	return nil
+}
+
+// ApplyWorkspaceResourceReconcile commits provider absence and its business
+// consequence together, without touching retained financial operations.
+func (s *postgresEntStateStore) ApplyWorkspaceResourceReconcile(ctx context.Context, mutation workspaceResourceReconcileMutation) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	client := tx.Client()
+	entity, err := client.Workspace.Query().Where(workspace.IDEQ(mutation.WorkspaceID), lockRowForUpdate).Only(ctx)
+	if err != nil {
+		if controlplaneent.IsNotFound(err) {
+			return errWorkspaceResourceReconcileConflict
+		}
+		return err
+	}
+	entities, err := client.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(mutation.WorkspaceID), lockRowForUpdate).All(ctx)
+	if err != nil {
+		return err
+	}
+	operations := make([]map[string]any, 0, len(entities))
+	for _, operation := range entities {
+		operations = append(operations, recordFromEnt(operation, runtimeOpEntFields))
+	}
+	desired, audit, err := prepareWorkspaceResourceReconcile(recordFromEnt(entity, workspaceEntFields), operations, mutation)
+	if err != nil {
+		return err
+	}
+	if desired != nil {
+		builder := client.Workspace.UpdateOneID(mutation.WorkspaceID)
+		setRecordFieldsWithEmptyText(builder, desired, workspaceEntFields, true)
+		if err := execCreate(ctx, builder); err != nil {
+			return err
+		}
+		if err := saveRecord(ctx, stringValue(audit["id"]), controlPlaneRecord(audit), client.AdminAuditEvent.Create(), auditEntFields); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
