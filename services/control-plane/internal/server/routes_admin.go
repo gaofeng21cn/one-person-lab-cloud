@@ -434,6 +434,14 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 		}
 		writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", data)
 	}))
+	mux.HandleFunc("GET /api/operator/runtime-observations", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
+		data, err := app.operatorRuntimeObservations(r.Context(), service, time.Now().UTC())
+		if err != nil {
+			writeSourceEnvelope(w, http.StatusBadGateway, "control-plane+fabric", "unavailable", nil)
+			return
+		}
+		writeSourceEnvelope(w, http.StatusOK, "control-plane+fabric", "available", data)
+	}))
 	mux.HandleFunc("GET /api/operator/workspaces", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		page, pageSize, ok := operatorPagination(w, r)
 		if !ok {
@@ -1235,21 +1243,31 @@ func (app *controlPlaneServer) operatorResourceDTO(ctx context.Context, service 
 		"workspace":    operatorFactEnvelope("control-plane", workspaceData, workspaceID != ""),
 	}
 	resourceID := stringValue(row["id"])
-	fact, factAvailable := facts.providerFacts[operatorProviderFactKey(accountID, workspaceID, kind, resourceID)]
-	factAvailable = factAvailable && fact.Available
-	result["resourceType"] = operatorFactEnvelope("fabric", kind, factAvailable)
-	result["providerErrorCode"] = operatorStringFactEnvelope("fabric", operatorProviderErrorCode(fact.ErrorCode))
-	if !factAvailable {
-		fact.Facts = clients.ProviderResourceFacts{}
+	fact, found := facts.providerFacts[operatorProviderFactKey(accountID, workspaceID, kind, resourceID)]
+	observation := fact.Observation
+	if !found || observation == nil {
+		observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "fabric_resource_observation_unavailable"}
 	}
-	result["packageOrSpec"] = operatorStringFactEnvelope("fabric", fact.Facts.PackageOrSpec)
-	result["providerId"] = operatorStringFactEnvelope("fabric", fact.Facts.ProviderID)
-	result["zone"] = operatorStringFactEnvelope("fabric", fact.Facts.Zone)
-	result["status"] = operatorStringFactEnvelope("fabric", fact.Facts.Status)
-	result["createdAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.CreatedAt)
-	result["expiresAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.ExpiresAt)
-	result["lastReadAt"] = operatorTimestampFactEnvelope("fabric", fact.Facts.LastReadAt)
-	result["computeRuntimeBinding"] = operatorFactEnvelope("fabric", fact.Facts.ComputeRuntimeBinding, fact.Facts.ComputeRuntimeBinding != nil)
+	available := observation.Available && validOperatorResourceObservation(*observation)
+	result["resourceType"] = operatorFactEnvelope("fabric", kind, found)
+	reason := operatorProviderErrorCode(observation.ReasonCode)
+	if !available && reason == "" {
+		reason = "fabric_resource_observation_unavailable"
+	}
+	result["providerErrorCode"] = operatorStringFactEnvelope("fabric", reason)
+	result["lastReadAt"] = operatorTimestampFactEnvelope("fabric", observation.ObservedAt)
+	if available {
+		result["status"] = operatorStringFactEnvelope("fabric", string(observation.State))
+	} else {
+		result["status"] = operatorUnavailableSource("fabric", reason)
+		observation = &contracts.ResourceObservation{}
+	}
+	result["packageOrSpec"] = operatorStringFactEnvelope("fabric", observation.PackageOrSpec)
+	result["providerId"] = operatorStringFactEnvelope("fabric", observation.ProviderID)
+	result["zone"] = operatorStringFactEnvelope("fabric", observation.Zone)
+	result["createdAt"] = operatorTimestampFactEnvelope("fabric", observation.CreatedAt)
+	result["expiresAt"] = operatorTimestampFactEnvelope("fabric", observation.ExpiresAt)
+	result["computeRuntimeBinding"] = operatorFactEnvelope("fabric", observation.ComputeRuntimeBinding, observation.ComputeRuntimeBinding != nil)
 	result["operationRef"] = operatorStringFactEnvelope("control-plane", stringValue(row["operationId"]))
 	result["receiptRef"] = sourceEnvelope("ledger", "unavailable", nil, "")
 	if liveLedger {
@@ -1312,6 +1330,9 @@ func (app *controlPlaneServer) operatorOverview(ctx context.Context, service *co
 		"resources":      sourceEnvelope("fabric", "unavailable", nil, ""),
 		"reconciliation": sourceEnvelope("control-plane", "unavailable", nil, ""),
 	}
+	for field, source := range app.operatorGatewaySummary(ctx, service) {
+		result[field] = source
+	}
 	if counts, err := app.tables.CountAccountStatuses(ctx); err == nil {
 		total := 0
 		for _, count := range counts {
@@ -1329,7 +1350,7 @@ func (app *controlPlaneServer) operatorOverview(ctx context.Context, service *co
 	health := app.operatorHealth(ctx, service)
 	result["health"] = sourceEnvelope("control-plane", "available", health, "")
 	if runtime, ok := availableEnvelopeData(health["runtime"]); ok {
-		result["resources"] = sourceEnvelope("fabric", "available", map[string]any{"total": runtime["total"]}, "")
+		result["resources"] = sourceEnvelope("fabric", "available", map[string]any{"total": runtime["observedTotal"]}, "")
 	}
 	return result, nil
 }
@@ -1454,11 +1475,15 @@ func (app *controlPlaneServer) operatorHealth(ctx context.Context, service *cont
 		result["gateway"] = sourceEnvelope("sub2api", "available", map[string]any{"ready": true, "version": version}, "")
 	}
 	if readiness, err := service.RuntimeReadiness(ctx); err == nil {
-		result["fabric"] = sourceEnvelope("fabric", "available", map[string]any{
-			"ready": readiness["ready"] == true, "provider": readiness["provider"],
-			"cloudImagesReady": readiness["cloudImagesReady"] == true, "workspaceImagesReady": readiness["workspaceImagesReady"] == true,
-			"immutableImagesReady": readiness["immutableImagesReady"] == true,
-		}, "")
+		facts := map[string]any{
+			"ready": readiness.ServiceReady, "serviceReady": readiness.ServiceReady, "releaseReady": readiness.Ready, "provider": readiness.Provider,
+			"cloudImagesReady": readiness.CloudImagesReady, "workspaceImagesReady": readiness.WorkspaceImagesReady,
+			"immutableImagesReady": readiness.ImmutableImagesReady, "failedChecks": readiness.FailedChecks,
+		}
+		if readiness.WorkspaceImageStatus != "" {
+			facts["workspaceImageStatus"] = readiness.WorkspaceImageStatus
+		}
+		result["fabric"] = sourceEnvelope("fabric", "available", facts, "")
 	}
 	if err := service.LedgerReadiness(ctx); err == nil {
 		result["ledger"] = sourceEnvelope("ledger", "available", map[string]any{"ready": true}, "")
@@ -1478,14 +1503,13 @@ func (app *controlPlaneServer) operatorHealth(ctx context.Context, service *cont
 }
 
 func (app *controlPlaneServer) operatorRuntimeHealth(ctx context.Context, service *controlplane.Service) map[string]any {
-	summary, err := service.RuntimeHealthSummary(ctx)
+	observation, err := app.operatorRuntimeObservations(ctx, service, time.Now().UTC())
 	if err != nil {
 		return sourceEnvelope("runtime", "unavailable", nil, "")
 	}
-	return sourceEnvelope("runtime", "available", map[string]any{
-		"ready": summary.Ready == summary.Total && summary.Unready == 0,
-		"total": summary.Total, "available": summary.Total, "readyCount": summary.Ready, "unready": summary.Unready,
-	}, "")
+	data := structToMap(observation)
+	delete(data, "items")
+	return sourceEnvelope("runtime", "available", data, "")
 }
 
 func billingReviewRequestShapeValid(input map[string]any) bool {

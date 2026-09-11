@@ -165,7 +165,7 @@ type monthlyPreflightProvider interface {
 }
 
 type providerReadiness interface {
-	Readiness(context.Context) (map[string]any, error)
+	Readiness(context.Context) (FabricReadiness, error)
 }
 
 // Provider is the infrastructure composition contract implemented by each

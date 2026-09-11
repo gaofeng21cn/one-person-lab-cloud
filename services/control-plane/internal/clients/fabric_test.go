@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 func newFabricHTTPClientForTest(baseURL, token string, client *http.Client) FabricClient {
@@ -607,5 +609,31 @@ func TestFabricClientReturnsErrorOnUpstreamFailure(t *testing.T) {
 	client := newFabricHTTPClientForTest(upstream.URL, "internal-secret", upstream.Client())
 	if _, err := client.Catalog(context.Background()); err == nil || !strings.Contains(err.Error(), "status 503") {
 		t.Fatalf("expected upstream status error, got %v", err)
+	}
+}
+
+func TestFabricHTTPClientReadsTypedObservationsAndReadiness(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer internal-secret" || r.Header.Get("Idempotency-Key") != "" {
+			t.Fatalf("unexpected mutation/request: %s %s", r.Method, r.URL.Path)
+		}
+		switch r.URL.Path {
+		case "/fabric/runtime-observations":
+			_ = json.NewEncoder(w).Encode(contracts.RuntimeObservations{ObservedAt: "2026-09-10T00:00:00Z", Items: []contracts.RuntimeObservation{{ObjectRef: "object", Ownership: contracts.RuntimeOwnershipUnregistered, DesiredState: contracts.ResourceObservedRunning, ObservedState: contracts.ResourceObservedPending}}})
+		case "/fabric/readiness":
+			_ = json.NewEncoder(w).Encode(contracts.FabricReadiness{Provider: "tencent-tke", ServiceReady: true, Ready: false, CloudImagesReady: true, FailedChecks: []string{"workspace_image_id"}})
+		default:
+			t.Fatalf("unexpected route %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+	client := newFabricHTTPClientForTest(upstream.URL, "internal-secret", upstream.Client())
+	observation, err := client.(FabricRuntimeObservationClient).RuntimeObservations(context.Background())
+	if err != nil || len(observation.Items) != 1 || observation.Items[0].Ownership != contracts.RuntimeOwnershipUnregistered {
+		t.Fatalf("observations=%#v err=%v", observation, err)
+	}
+	readiness, err := client.Readiness(context.Background())
+	if err != nil || !readiness.ServiceReady || readiness.Ready || len(readiness.FailedChecks) != 1 {
+		t.Fatalf("readiness=%#v err=%v", readiness, err)
 	}
 }

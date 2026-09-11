@@ -304,6 +304,7 @@ func mergeWorkspaceRenewalPatch(current, patch map[string]any) (map[string]any, 
 		}
 		merged[key] = value
 	}
+	preserveWorkspaceStorageLoss(current, merged)
 	if err := validateWorkspaceBillingState(merged); err != nil {
 		return nil, err
 	}
@@ -1455,6 +1456,9 @@ type workspaceRenewalRecovery struct {
 func (app *controlPlaneServer) workspaceRenewalRecoveryState(ctx context.Context, service *controlplane.Service, workspace map[string]any, operations []map[string]any, now time.Time) workspaceRenewalRecovery {
 	result := func(state, reason string) workspaceRenewalRecovery {
 		return workspaceRenewalRecovery{State: state, Reason: reason}
+	}
+	if stringValue(workspace["state"]) == "data_deleted" {
+		return result("reclaimed", errWorkspaceRenewalResourcesReclaimed.Error())
 	}
 	if workspace["resourceBillingEnabled"] == false || stringValue(workspace["renewalStatus"]) == "not_applicable" {
 		return result("not_required", "workspace_billing_not_applicable")

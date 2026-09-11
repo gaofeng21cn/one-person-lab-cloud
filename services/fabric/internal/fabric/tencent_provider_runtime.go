@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
 )
 
@@ -476,7 +477,11 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 		costTags["opl_workspace_id"] != workspaceID || costTags["opl_resource_id"] != runtimeID || costTags["opl_account_id"] == "" {
 		return WorkspaceRuntime{WorkspaceID: workspaceID, ServiceName: serviceName}, workspaceRuntimeStatusError("readback_mismatch")
 	}
-	return WorkspaceRuntime{
+	observation := observationFromFacts(ProviderResourceFacts{ProviderID: serviceName, Status: status})
+	if replicas, ok := nested(deployment, "spec", "replicas").(float64); ok && replicas == 0 && len(pods) == 0 && generation > 0 && observedGeneration >= generation {
+		observation = observationFromFacts(ProviderResourceFacts{ProviderID: serviceName, Status: "suspended"})
+	}
+	return WorkspaceRuntime{Observation: observation,
 		ID: runtimeID, OperationID: runtimeOperationID, WorkspaceID: workspaceID,
 		URL: fmt.Sprintf("https://%s/w/%s/", p.workspaceDomain, workspaceID), Status: status, ServiceName: serviceName,
 		ImageID: image, Access: access, Ready: ready, Checks: checks, CostTags: costTags,
@@ -508,7 +513,7 @@ func workspaceReadyPodNodeName(pods []any) string {
 }
 
 func (*TencentProvider) WorkspaceRuntimeProviderFacts(runtime WorkspaceRuntime) ProviderResourceFacts {
-	return ProviderResourceFacts{ProviderID: runtime.ServiceName, Status: runtime.Status}
+	return ProviderResourceFacts{ProviderID: runtime.ServiceName, Status: runtime.Status, Observation: runtime.Observation}
 }
 
 func (p *TencentProvider) ReadWorkspaceComputeRuntimeBinding(ctx context.Context, runtime WorkspaceRuntime, allocation ComputeAllocation, ownership MachineOwnership) (bool, error) {
@@ -651,49 +656,14 @@ func (p *TencentProvider) workspacePods(ctx context.Context, workspaceID string)
 }
 
 func (p *TencentProvider) RuntimeHealthSummary(ctx context.Context) (RuntimeHealthSummary, error) {
-	raw, err := p.callKubectl(ctx, []string{"get", "deployment,pod", "-l", "oplcloud.cn/workspace-id", "-o", "json"}, nil, protectedresource.Target{})
+	items, err := p.readRuntimeObservations(ctx)
 	if err != nil {
 		return RuntimeHealthSummary{}, err
 	}
-	var list struct {
-		Kind  string `json:"kind"`
-		Items []any  `json:"items"`
-	}
-	if err := json.Unmarshal(raw, &list); err != nil || list.Kind != "List" || list.Items == nil {
-		return RuntimeHealthSummary{}, fmt.Errorf("workspace_runtime_summary_response_invalid")
-	}
-	deployments := map[string]map[string]any{}
-	readyPods := map[string]bool{}
-	for _, item := range list.Items {
-		resource, _ := item.(map[string]any)
-		workspaceID := stringValue(nested(resource, "metadata", "labels", "oplcloud.cn/workspace-id"))
-		if workspaceID == "" {
-			continue
-		}
-		switch stringValue(resource["kind"]) {
-		case "Deployment":
-			if _, exists := deployments[workspaceID]; exists {
-				return RuntimeHealthSummary{}, fmt.Errorf("workspace_runtime_summary_duplicate_deployment")
-			}
-			deployments[workspaceID] = resource
-		case "Pod":
-			if stringValue(nested(resource, "status", "phase")) == "Running" && conditionStatuses(nested(resource, "status", "conditions"))["Ready"] == "True" {
-				readyPods[workspaceID] = true
-			}
-		}
-	}
-	summary := RuntimeHealthSummary{Total: len(deployments)}
-	for workspaceID, deployment := range deployments {
-		if number(nested(deployment, "status", "readyReplicas")) > 0 && number(nested(deployment, "status", "availableReplicas")) > 0 && readyPods[workspaceID] {
-			summary.Ready++
-		} else {
-			summary.Unready++
-		}
-	}
-	return summary, nil
+	return runtimeInventoryLegacySummary(items)
 }
 
-func (p *TencentProvider) Readiness(ctx context.Context) (map[string]any, error) {
+func (p *TencentProvider) Readiness(ctx context.Context) (FabricReadiness, error) {
 	required := []string{"OPL_WORKSPACE_DOMAIN", "OPL_CLOUD_IMAGE", "OPL_WORKSPACE_IMAGE", "OPL_K8S_NAMESPACE", "OPL_IMAGE_PULL_SECRET_NAME", "OPL_WORKSPACE_STORAGE_CLASS", "OPL_TENCENT_PROVISIONER_BIN", "TENCENT_DEPLOY_KUBECONFIG_REF", "RUN_TENCENT_CREATE_RELEASE_EXECUTION"}
 	missing := []string{}
 	for _, key := range required {
@@ -710,7 +680,7 @@ func (p *TencentProvider) Readiness(ctx context.Context) (map[string]any, error)
 		} else if p.installationErr != nil {
 			missing = append(missing, p.installationErr.Error())
 		}
-		return map[string]any{"provider": "tencent-tke", "ready": false, "cloudImagesReady": false, "workspaceImagesReady": false, "immutableImagesReady": false, "missingEnv": uniqueStrings(missing), "missingTools": []string{}, "failedChecks": []any{"installation_inputs"}}, nil
+		return FabricReadiness{Provider: "tencent-tke", WorkspaceImageStatus: contracts.WorkspaceImageIdentityUnverified, MissingEnv: uniqueStrings(missing), MissingTools: []string{}, FailedChecks: []string{"installation_inputs"}}, nil
 	}
 	missingTools := []string{}
 	if _, err := exec.LookPath("kubectl"); err != nil {
@@ -721,12 +691,16 @@ func (p *TencentProvider) Readiness(ctx context.Context) (map[string]any, error)
 		missing = append(missing, response.MissingEnv...)
 		if response.ErrorCode != "" {
 			missing = append(missing, response.ErrorCode)
-		} else if err != nil {
+		} else {
 			missing = append(missing, "provisioner_failed")
 		}
 	}
-	podRaw, podErr := p.callKubectl(ctx, []string{"get", "pod", "-o", "json"}, nil, protectedresource.Target{})
+	podRaw, podErr := p.callKubectl(ctx, []string{"get", "deployment,replicaset,pod", "-o", "json"}, nil, protectedresource.Target{})
 	pods := kubectlItems(podRaw)
+	workspaceImageStatus := contracts.WorkspaceImageIdentityUnverified
+	if items, decodeErr := strictKubectlItems(podRaw); podErr == nil && decodeErr == nil {
+		workspaceImageStatus = workspaceImageReadiness(items, p.workspaceImage)
+	}
 	imageChecks := map[string]bool{
 		"control_plane_image_id": podImageIDsMatch(pods, "app.kubernetes.io/component", "control-plane", "control-plane", os.Getenv("OPL_CLOUD_IMAGE")),
 		"ledger_image_id":        podImageIDsMatch(pods, "app.kubernetes.io/component", "ledger", "ledger", os.Getenv("OPL_CLOUD_IMAGE")),
@@ -738,7 +712,7 @@ func (p *TencentProvider) Readiness(ctx context.Context) (map[string]any, error)
 			return p.workspaceImage
 		}()),
 	}
-	failedChecks := []any{}
+	failedChecks := []string{}
 	if podErr != nil {
 		failedChecks = append(failedChecks, "ready_pod_image_ids")
 	} else {
@@ -752,7 +726,89 @@ func (p *TencentProvider) Readiness(ctx context.Context) (map[string]any, error)
 	workspaceImagesReady := podErr == nil && imageChecks["workspace_image_id"]
 	immutableImagesReady := cloudImagesReady && workspaceImagesReady
 	uniqueMissing := uniqueStrings(missing)
-	return map[string]any{"provider": "tencent-tke", "ready": len(uniqueMissing) == 0 && len(missingTools) == 0 && immutableImagesReady, "cloudImagesReady": cloudImagesReady, "workspaceImagesReady": workspaceImagesReady, "immutableImagesReady": immutableImagesReady, "missingEnv": uniqueMissing, "missingTools": missingTools, "failedChecks": failedChecks}, nil
+	return FabricReadiness{Provider: "tencent-tke", Ready: len(uniqueMissing) == 0 && len(missingTools) == 0 && immutableImagesReady, ServiceReady: len(uniqueMissing) == 0 && len(missingTools) == 0 && cloudImagesReady, CloudImagesReady: cloudImagesReady, WorkspaceImagesReady: workspaceImagesReady, WorkspaceImageStatus: workspaceImageStatus, ImmutableImagesReady: immutableImagesReady, MissingEnv: uniqueMissing, MissingTools: missingTools, FailedChecks: failedChecks}, nil
+}
+
+// The installed default does not rewrite existing Workspace targets. A version
+// difference is informative only after the current owner chain and each
+// Deployment's immutable target have been verified against its actual Pod.
+func workspaceImageReadiness(items []any, installedImage string) contracts.WorkspaceImageReadinessStatus {
+	installedDigest, validInstalled := immutableImageDigest(installedImage)
+	if !validInstalled {
+		return contracts.WorkspaceImageIdentityUnverified
+	}
+	deployments, replicaSets := map[string]map[string]any{}, map[string]map[string]any{}
+	workspaceDeployments, objectUIDs := map[string]string{}, map[string]bool{}
+	pods := []map[string]any{}
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			return contracts.WorkspaceImageIdentityUnverified
+		}
+		workspaceID := stringValue(nested(object, "metadata", "labels", "oplcloud.cn/workspace-id"))
+		if workspaceID == "" {
+			continue
+		}
+		uid := stringValue(nested(object, "metadata", "uid"))
+		if uid == "" || objectUIDs[uid] {
+			return contracts.WorkspaceImageIdentityUnverified
+		}
+		objectUIDs[uid] = true
+		switch stringValue(object["kind"]) {
+		case "Deployment":
+			if workspaceDeployments[workspaceID] != "" {
+				return contracts.WorkspaceImageIdentityUnverified
+			}
+			workspaceDeployments[workspaceID], deployments[uid] = uid, object
+		case "ReplicaSet":
+			replicaSets[uid] = object
+		case "Pod":
+			pods = append(pods, object)
+		default:
+			return contracts.WorkspaceImageIdentityUnverified
+		}
+	}
+	found, installedMatches := false, true
+	for _, pod := range pods {
+		if stringValue(nested(pod, "status", "phase")) != "Running" || conditionStatuses(nested(pod, "status", "conditions"))["Ready"] != "True" || nested(pod, "metadata", "deletionTimestamp") != nil {
+			continue
+		}
+		workspaceID := stringValue(nested(pod, "metadata", "labels", "oplcloud.cn/workspace-id"))
+		rs := replicaSets[controllerUID(pod, "ReplicaSet")]
+		deployment := deployments[controllerUID(rs, "Deployment")]
+		generation := number(nested(deployment, "metadata", "generation"))
+		if deployment == nil || rs == nil || stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/workspace-id")) != workspaceID ||
+			stringValue(nested(rs, "metadata", "labels", "oplcloud.cn/workspace-id")) != workspaceID ||
+			nested(deployment, "metadata", "deletionTimestamp") != nil || nested(rs, "metadata", "deletionTimestamp") != nil || generation <= 0 || number(nested(deployment, "status", "observedGeneration")) < generation ||
+			!runtimeTemplateMatches(deployment, rs) {
+			return contracts.WorkspaceImageIdentityUnverified
+		}
+		image := stringValue(firstContainerField(deployment, "image"))
+		targetDigest, validTarget := immutableImageDigest(image)
+		podContainers, _ := nested(pod, "spec", "containers").([]any)
+		matchingContainers := 0
+		for _, value := range podContainers {
+			container, _ := value.(map[string]any)
+			if stringValue(container["name"]) == "workspace" {
+				if stringValue(container["image"]) != image {
+					return contracts.WorkspaceImageIdentityUnverified
+				}
+				matchingContainers++
+			}
+		}
+		if stringValue(firstContainerField(deployment, "name")) != "workspace" || matchingContainers != 1 || !validTarget || !podImageIDsMatch([]any{pod}, "oplcloud.cn/workspace-id", workspaceID, "workspace", image) {
+			return contracts.WorkspaceImageIdentityUnverified
+		}
+		found = true
+		installedMatches = installedMatches && targetDigest == installedDigest
+	}
+	if !found {
+		return contracts.WorkspaceImageNoRunningSample
+	}
+	if installedMatches {
+		return contracts.WorkspaceImageInstalledTargetMatches
+	}
+	return contracts.WorkspaceImageTargetsVerified
 }
 
 func podImageIDsMatch(pods []any, labelKey, labelValue, containerName, expected string) bool {

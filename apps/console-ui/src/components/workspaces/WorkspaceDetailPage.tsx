@@ -208,7 +208,7 @@ export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetai
   const renewalPresentation = presentWorkspaceRenewal(detail.renewalStatus);
   const recovery = controller.workspaceRenewalRead?.recovery;
   const recoveryPresentation = recovery ? presentWorkspaceRecovery(recovery) : null;
-  const paidAccess = recovery?.state === "not_required" && detail.renewalStatus !== "expired_unpaid" && !["suspended", "stopped"].includes(detail.state);
+  const paidAccess = recovery?.state === "not_required" && detail.renewalStatus !== "expired_unpaid" && !["suspended", "stopped", "data_deleted"].includes(detail.state);
   const runtimeUnavailable = runtimeRead.runtime.value?.available === false;
   const runtimeLabel = !paidAccess ? recovery?.state === "pending" ? "正在恢复" : recovery ? "暂不可使用" : "正在确认" : runtimePresentation?.label || (runtimeUnavailable ? "入口暂不可用" : "正在确认");
   const runtimeDescription = !paidAccess ? recoveryPresentation?.description || "正在确认工作空间的使用权益，请查看续费状态。" : runtimePresentation?.description || (runtimeUnavailable ? "暂时无法确认工作空间入口，请稍后刷新。" : "正在确认工作空间是否可用。");

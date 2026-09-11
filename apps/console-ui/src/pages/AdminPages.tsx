@@ -26,6 +26,8 @@ import type {
   AnnouncementDraftRequest,
   OperatorAccountDTO,
   OperatorHealthDTO,
+  OperatorFabricHealthDTO,
+  OperatorRuntimeHealthDTO,
   OperatorReconciliationItemDTO,
   OperatorResourceDTO,
   OperatorWorkspaceDTO,
@@ -38,6 +40,8 @@ import type {
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, Field, Modal, SegmentedControl, Select } from "../components/ui/index.ts";
 import { formatCount, formatDate, formatUsdMicros } from "../console-model.ts";
+import { OperatorRuntimeObservations } from "./OperatorRuntimeObservations.tsx";
+import { observationLabel, observationReason, workspaceImageStatusMessage } from "./operator-observation-presentation.ts";
 
 type BadgeTone = "danger" | "info" | "secondary" | "success" | "warning";
 
@@ -69,6 +73,12 @@ function statusLabel(status?: string) {
     processing: "处理中",
     published: "已发布",
     queued: "等待处理",
+    running: "运行中",
+    suspended: "已暂停",
+    data_deleted: "数据已删除",
+    provisioning: "开通中",
+    expired_unpaid: "到期未续费",
+    deleting: "删除中",
     scheduled: "已排期",
     started: "已提交",
     succeeded: "已完成",
@@ -88,7 +98,7 @@ function SourceBadge({ source }: { source: SourceEnvelope<unknown> | null | unde
 }
 
 function SourceValue<T>({ source, children }: { source: SourceEnvelope<T> | null | undefined; children: (data: T) => ReactNode }) {
-  if (!source?.available) return <span className="source-value source-value--unavailable">暂不可用</span>;
+  if (!source?.available) return <span className="source-value source-value--unavailable">暂不可用{source?.status === "unavailable" ? <small>{observationReason(source.reasonCode)}</small> : null}</span>;
   return (
     <span className="source-value">
       <strong>{children(source.data)}</strong>
@@ -112,21 +122,19 @@ function Metric({ label, note, value }: { label: string; note: string; value: st
   return <article className="band-metric"><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
 }
 
-function healthStatus(source: SourceEnvelope<ReadinessFact> | null | undefined) {
+function healthStatus(source: SourceEnvelope<ReadinessFact> | null | undefined, serviceKey?: string) {
   if (!source?.available || source.status === "empty") return { label: "暂不可用", tone: "warning" as BadgeTone };
-  if (source.data.ready === true) return { label: "正常", tone: "success" as BadgeTone };
-  if (source.data.ready === false) return { label: "需处理", tone: "danger" as BadgeTone };
+  const ready = serviceKey === "fabric" ? (source.data as OperatorFabricHealthDTO).serviceReady : source.data.ready;
+  if (ready === true) return { label: "正常", tone: "success" as BadgeTone };
+  if (ready === false) return { label: "需处理", tone: "danger" as BadgeTone };
   return { label: "暂不可用", tone: "warning" as BadgeTone };
 }
 
 function overallHealth(source: SourceEnvelope<OperatorHealthDTO> | null | undefined) {
   if (!source?.available || source.status === "empty") return { label: "暂不可用", tone: "warning" as BadgeTone };
-  const services = [source.data.controlPlane, source.data.gateway, source.data.fabric, source.data.runtime, source.data.ledger];
-  for (const service of services) {
-    if (!service.available || service.status === "empty" || service.data.ready === undefined) {
-      return { label: "暂不可用", tone: "warning" as BadgeTone };
-    }
-    if (service.data.ready === false) return { label: "需处理", tone: "danger" as BadgeTone };
+  for (const key of ["controlPlane", "gateway", "fabric", "runtime", "ledger"] as const) {
+    const status = healthStatus(source.data[key], key);
+    if (status.label !== "正常") return status;
   }
   return { label: "正常", tone: "success" as BadgeTone };
 }
@@ -223,9 +231,9 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
   const attentionPath = reconciliationCount && reconciliationCount > 0 ? "/admin/billing" : health.label !== "正常" ? "/admin/system" : "";
   const rows = overview ? [
     { label: "Control Plane 账户", source: overview.accounts },
-    { label: "Gateway 汇总余额", source: overview.wallet },
-    { label: "Gateway Key", source: overview.keys },
-    { label: "Gateway API 用量", source: overview.usage },
+    { label: "OPL 账户 Gateway 汇总余额", source: overview.wallet },
+    { label: "OPL 账户 Gateway Key", source: overview.keys },
+    { label: "OPL 账户 Gateway API 用量", source: overview.usage },
     { label: "Control Plane Workspace", source: overview.workspaces },
     { label: "Fabric 资源", source: overview.resources },
     { label: "Ledger 计费复核", source: overview.reconciliation },
@@ -248,9 +256,9 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         {(data) => (
           <>
             <section className="metric-row">
-              <article><WalletCards aria-hidden size={22} /><span>汇总余额<strong>{data.wallet.available ? formatUsdMicros(data.wallet.data.usdMicros) : "暂不可用"}</strong><small>Gateway 权威聚合</small></span></article>
-              <article><Server aria-hidden size={22} /><span>Key 总数<strong>{data.keys.available ? formatCount(data.keys.data.total) : "暂不可用"}</strong><small>Gateway 权威聚合</small></span></article>
-              <article><CircleDollarSign aria-hidden size={22} /><span>累计 API 实际费用<strong>{data.usage.available ? formatUsdMicros(data.usage.data.totalActualCostUsdMicros) : "暂不可用"}</strong><small>{data.usage.available ? `今日 ${formatUsdMicros(data.usage.data.todayActualCostUsdMicros)}` : "来源暂不可用"}</small></span></article>
+              <article><WalletCards aria-hidden size={22} /><span>汇总余额<strong>{data.wallet.available ? formatUsdMicros(data.wallet.data.usdMicros) : "暂不可用"}</strong><small>OPL 账户 · Gateway 权威余额</small>{data.wallet.status === "unavailable" ? <small>{observationReason(data.wallet.reasonCode)}</small> : null}</span></article>
+              <article><Server aria-hidden size={22} /><span>Key 总数<strong>{data.keys.available ? formatCount(data.keys.data.total) : "暂不可用"}</strong><small>OPL 账户 · Gateway Key 汇总</small>{data.keys.status === "unavailable" ? <small>{observationReason(data.keys.reasonCode)}</small> : null}</span></article>
+              <article><CircleDollarSign aria-hidden size={22} /><span>累计 API 实际费用<strong>{data.usage.available ? formatUsdMicros(data.usage.data.totalActualCostUsdMicros) : "暂不可用"}</strong><small>OPL 账户 · {data.usage.available ? `今日 ${formatUsdMicros(data.usage.data.todayActualCostUsdMicros)}` : data.usage.status === "unavailable" ? observationReason(data.usage.reasonCode) : "暂不可用"}</small></span></article>
               <article><Activity aria-hidden size={22} /><span>总体健康状态<strong>{health.label}</strong><small>五个服务域的最差真实状态</small></span></article>
             </section>
 
@@ -750,6 +758,22 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
   );
 }
 
+function ResourceObservation({ resource, showReadTime = false }: { resource: OperatorResourceDTO; showReadTime?: boolean }) {
+  const reason = sourceData(resource.providerErrorCode);
+  return <div className="operator-resource-observation">
+    <SourceValue source={resource.status}>{observationLabel}</SourceValue>
+    {resource.status.available && reason ? <small>{observationReason(reason)}</small> : null}
+    {showReadTime ? <small>读取时间：{resource.lastReadAt.available ? formatDate(resource.lastReadAt.data, true) : "暂不可用"}</small> : null}
+  </div>;
+}
+
+function WorkspaceResourceObservations({ resources }: { resources: OperatorResourceDTO[] }) {
+  return resources.length ? <div className="operator-workspace-observations">{resources.map((resource, index) => <div key={index}>
+    <strong>{resource.resourceType.available ? ({ compute: "计算资源", storage: "存储", attachment: "挂载", runtime: "运行环境" } as Record<string, string>)[resource.resourceType.data] || resource.resourceType.data : "资源类型暂不可用"}</strong>
+    <ResourceObservation resource={resource} showReadTime />
+  </div>)}</div> : <span>暂无资源观测</span>;
+}
+
 function ResourceRow({ resource }: { resource: OperatorResourceDTO }) {
   return (
     <tr>
@@ -760,7 +784,7 @@ function ResourceRow({ resource }: { resource: OperatorResourceDTO }) {
       <td><SourceValue source={resource.packageOrSpec}>{(data) => data}</SourceValue></td>
       <td><SourceValue source={resource.providerId}>{(data) => data}</SourceValue></td>
       <td><SourceValue source={resource.zone}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.status}>{(data) => data}</SourceValue></td>
+      <td><ResourceObservation resource={resource} /></td>
       <td><SourceValue source={resource.createdAt}>{(data) => formatDate(data, true)}</SourceValue></td>
       <td><SourceValue source={resource.expiresAt}>{(data) => formatDate(data, true)}</SourceValue></td>
       <td><SourceValue source={resource.lastReadAt}>{(data) => formatDate(data, true)}</SourceValue></td>
@@ -776,7 +800,7 @@ function OperatorResourceMobileCard({ resource }: { resource: OperatorResourceDT
     <article className="operator-object-card operator-resource-mobile-card">
       <header className="operator-object-card__header">
         <span><strong>{workspace?.name || workspace?.id || "Workspace 暂不可用"}</strong><small>{workspace?.id || "身份暂不可用"}</small></span>
-        <SourceValue source={resource.status}>{(value) => statusLabel(value)}</SourceValue>
+        <ResourceObservation resource={resource} />
       </header>
       <dl className="operator-object-card__facts">
         <div><dt>资源类型</dt><dd><SourceValue source={resource.resourceType}>{(data) => data}</SourceValue></dd></div>
@@ -808,6 +832,7 @@ function ResourceDetail({ controller, release, replacement }: { controller: Oper
             <div><dt>owner Account</dt><dd><SourceValue source={detail.ownerAccount}>{(data) => data.id}</SourceValue></dd></div>
             <div><dt>owner User</dt><dd><SourceValue source={detail.ownerUser}>{(data) => `${data.email} · ${data.id}`}</SourceValue></dd></div>
             <div><dt>Workspace</dt><dd><SourceValue source={detail.workspace}>{(data) => `${data.name || data.id} · ${data.id}`}</SourceValue></dd></div>
+            <div><dt>业务状态</dt><dd><SourceValue source={detail.workspace}>{(data) => statusLabel(data.state)}</SourceValue></dd></div>
             <div><dt>Ledger Receipt</dt><dd><SourceValue source={detail.receipt}>{(data) => data.receiptId}</SourceValue></dd></div>
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
@@ -879,7 +904,8 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
         <div><dt>创建时间</dt><dd><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></dd></div>
         <div><dt>权益截止</dt><dd><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></dd></div>
         <div><dt>续费状态</dt><dd><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></dd></div>
-        <div><dt>生命周期状态</dt><dd><SourceValue source={item.workspace}>{(value) => value.state || "暂不可用"}</SourceValue></dd></div>
+        <div><dt>业务状态</dt><dd><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></dd></div>
+        <div className="operator-object-card__wide"><dt>资源现态</dt><dd><WorkspaceResourceObservations resources={item.resources} /></dd></div>
         <div><dt>Receipt ID</dt><dd><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></dd></div>
         <div className="operator-object-card__wide"><dt>Key 累计实际费用</dt><dd><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></dd></div>
       </dl>
@@ -899,10 +925,10 @@ function ResourcesPage({ controller, release, replacement }: { controller: Opera
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table><thead><tr><th>Workspace</th><th>owner Account</th><th>owner User</th><th>套餐 / 月度总价</th><th>创建时间</th><th>paidThrough</th><th>续费状态</th><th>生命周期状态</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div className="table-wrap operator-workspace-table"><table><thead><tr><th>Workspace</th><th>owner Account</th><th>owner User</th><th>套餐 / 月度总价</th><th>创建时间</th><th>paidThrough</th><th>续费状态</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
-              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.state || "暂不可用"}</SourceValue></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}
@@ -922,13 +948,45 @@ const healthServices = [
   { key: "ledger", name: "Ledger 账单记录", icon: CircleDollarSign }
 ] as const;
 
-function OperatorHealthMobileCard({ controller, name, service, icon: Icon }: {
+function HealthDiagnostics({ service, serviceKey }: { service: SourceEnvelope<ReadinessFact>; serviceKey: string }) {
+  if (service.status === "unavailable") return <span>{observationReason(service.reasonCode)}</span>;
+  if (serviceKey === "fabric") {
+    const facts = service.data as OperatorFabricHealthDTO;
+    const targetsMatch = facts.releaseReady === true && (facts.workspaceImageStatus === undefined || facts.workspaceImageStatus === "installed_target_matches");
+    const verifiedVersionDifference = facts.workspaceImageStatus === "workspace_targets_verified" && facts.cloudImagesReady;
+    return <div className="operator-health-diagnostics">
+      <span>安装镜像目标一致性：<Badge color={targetsMatch ? "success" : verifiedVersionDifference ? "info" : "warning"}>{targetsMatch ? "全部一致" : verifiedVersionDifference ? "存量版本不同" : "尚未核验完成"}</Badge></span>
+      <small>Cloud 运行镜像与安装目标：{facts.cloudImagesReady ? "一致" : "尚未确认一致"}</small>
+      {facts.workspaceImageStatus ? <small>{workspaceImageStatusMessage(facts.workspaceImageStatus)}</small> : null}
+      {facts.failedChecks?.filter((check) => check !== "workspace_image_id" || !facts.workspaceImageStatus).map((check) => <small key={check}>{observationReason(check)}</small>)}
+      <small>安装默认与存量目标分别管理；更改默认不会自动升级存量 Workspace。</small>
+    </div>;
+  }
+  if (serviceKey === "runtime") {
+    const facts = service.data as OperatorRuntimeHealthDTO;
+    return <div className="operator-health-diagnostics">
+      <span>业务 Workspace {formatCount(facts.businessTotal)} · 实际运行对象 {formatCount(facts.observedTotal)}</span>
+      <small>运行正常 {formatCount(facts.runningCount)} · 正常暂停 {formatCount(facts.suspendedCount)} · 处理中 {formatCount(facts.pendingCount)}</small>
+      <small>需处理 {formatCount(facts.attentionCount)} · 无当前业务记录对象 {formatCount(facts.unmatchedCount)}</small>
+    </div>;
+  }
+  return <span>{service.data.ready === true ? "服务就绪" : "服务就绪检查未通过"}</span>;
+}
+
+function healthObservedAt(service: SourceEnvelope<ReadinessFact>, key: string): string | undefined {
+  if (!service.available) return undefined;
+  return key === "runtime" ? (service.data as OperatorRuntimeHealthDTO).observedAt : service.data.generatedAt || service.data.updatedAt;
+}
+
+function OperatorHealthMobileCard({ controller, name, service, serviceKey, onRuntimeDetails, icon: Icon }: {
   controller: ConsoleController;
   name: string;
   service: SourceEnvelope<ReadinessFact>;
+  serviceKey: string;
+  onRuntimeDetails: () => void;
   icon: typeof Activity;
 }) {
-  const state = healthStatus(service);
+  const state = healthStatus(service, serviceKey);
   return (
     <article className="operator-object-card operator-health-mobile-card">
       <header className="operator-object-card__header">
@@ -936,16 +994,17 @@ function OperatorHealthMobileCard({ controller, name, service, icon: Icon }: {
         <Badge color={state.tone}>{state.label}</Badge>
       </header>
       <dl className="operator-object-card__facts">
-        <div><dt>readiness 生成时间</dt><dd>{service.available ? formatDate(service.data.generatedAt || service.data.updatedAt, true) : "暂不可用"}</dd></div>
+        <div><dt>来源观测时间</dt><dd>{formatDate(healthObservedAt(service, serviceKey), true)}</dd></div>
         <div><dt>Console 读回时间</dt><dd>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</dd></div>
-        <div className="operator-object-card__wide"><dt>客户影响范围</dt><dd>暂不可用</dd></div>
+        <div className="operator-object-card__wide"><dt>诊断</dt><dd><HealthDiagnostics service={service} serviceKey={serviceKey} /></dd></div>
       </dl>
-      <div className="operator-card-actions"><Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={15} />刷新</Button></div>
+      <div className="operator-card-actions">{serviceKey === "runtime" ? <Button onClick={onRuntimeDetails} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={15} />刷新</Button></div>
     </article>
   );
 }
 
 function SystemPage({ controller }: { controller: ConsoleController }) {
+  const [runtimeDetailsOpen, setRuntimeDetailsOpen] = useState(false);
   const healthSource = controller.sources.operatorHealth.value;
   const summary = overallHealth(healthSource);
   return (
@@ -958,15 +1017,16 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
         <div className="panel-title"><div><h2>服务健康</h2><Badge color={summary.tone}>{summary.label}</Badge></div><Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
         <SourceState error={controller.sources.operatorHealth.error} loading={controller.sources.operatorHealth.loading} onRetry={() => void controller.refreshCurrentPage()} source={healthSource} unavailableTitle="系统状态暂不可用">
           {(health) => <>
-            <div className="table-wrap operator-health-table"><table><thead><tr><th>服务</th><th>状态</th><th>readiness 生成时间</th><th>Console 读回时间</th><th>客户影响范围</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
+            <div className="table-wrap operator-health-table"><table><thead><tr><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
               const service = health[key];
-              const state = healthStatus(service);
-              return <tr key={key}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{service.available ? formatDate(service.data.generatedAt || service.data.updatedAt, true) : "暂不可用"}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td>暂不可用</td><td><Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
+              const state = healthStatus(service, key);
+              return <tr key={key}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{formatDate(healthObservedAt(service, key), true)}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td><HealthDiagnostics service={service} serviceKey={key} /></td><td>{key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
             })}</tbody></table></div>
-            <div className="operator-health-mobile-list">{healthServices.map(({ key, name, icon }) => <OperatorHealthMobileCard controller={controller} icon={icon} key={key} name={name} service={health[key]} />)}</div>
+            <div className="operator-health-mobile-list">{healthServices.map(({ key, name, icon }) => <OperatorHealthMobileCard controller={controller} icon={icon} key={key} name={name} onRuntimeDetails={() => setRuntimeDetailsOpen(true)} service={health[key]} serviceKey={key} />)}</div>
           </>}
         </SourceState>
       </section>
+      {runtimeDetailsOpen && controller.session ? <OperatorRuntimeObservations key={`${controller.session.user.id}:${controller.session.csrfToken}`} onClose={() => setRuntimeDetailsOpen(false)} refreshKey={healthSource?.fetchedAt || ""} sessionIdentity={`${controller.session.user.id}:${controller.session.csrfToken}`} /> : null}
     </section>
   );
 }

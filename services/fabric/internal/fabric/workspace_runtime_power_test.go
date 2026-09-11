@@ -10,7 +10,182 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
+
+type missingResourcePowerProvider struct {
+	*TencentProvider
+	facts ProviderResourceFacts
+	err   error
+	reads int
+}
+
+func (p *missingResourcePowerProvider) ReadComputeProviderFacts(context.Context, ComputeAllocation) (ProviderResourceFacts, error) {
+	p.reads++
+	return p.facts, p.err
+}
+
+func (p *missingResourcePowerProvider) ReadStorageProviderFacts(context.Context, StorageVolume) (ProviderResourceFacts, error) {
+	p.reads++
+	return p.facts, p.err
+}
+
+func missingResourcePowerFixture(t *testing.T, resourceType string, store OperationStore) (*Service, *missingResourcePowerProvider, *d4PowerKubernetes, WorkspaceRuntimePowerInput) {
+	t.Helper()
+	now := time.Now().UTC()
+	if store == nil {
+		store = NewMemoryOperationStore()
+	}
+	parent, child, runtime := canonicalRuntimeOperationGraph(t, "ws-power", "original", now.Add(-time.Hour))
+	record, ok := decodeWorkspaceLaunchStageRecord(parent)
+	if !ok {
+		t.Fatal("missing original launch record")
+	}
+	record.Resources.ComputeAllocationID, record.Resources.StorageID = "compute-owned", "storage-owned"
+	setWorkspaceLaunchStageRecord(&parent, record)
+	for _, op := range []FabricOperation{parent, child} {
+		if err := store.Append(context.Background(), op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	input := WorkspaceRuntimePowerInput{
+		SchemaVersion: 1, AccountID: parent.AccountID, WorkspaceID: runtime.WorkspaceID, RuntimeID: runtime.ID, RuntimeOperationID: runtime.OperationID,
+		PaidThrough: now.Add(24 * time.Hour).Format(time.RFC3339Nano), DesiredState: "suspended", IdempotencyKey: "resource-absent-stop",
+		SuspensionReason: contracts.WorkspaceRuntimeSuspensionProviderResourceAbsent, MissingResourceType: resourceType, MissingResourceID: resourceType + "-owned",
+	}
+	fixture := newD4PowerKubernetes(input)
+	provider := &missingResourcePowerProvider{TencentProvider: NewTencentProvider(), facts: ProviderResourceFacts{Status: "NOT_FOUND"}}
+	provider.kubectl = fixture.run
+	compute := ComputeAllocation{ID: "compute-owned", AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Status: "running"}
+	storage := StorageVolume{ID: "storage-owned", AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, Status: "ready"}
+	for _, resource := range []struct {
+		action, kind, id string
+		value            any
+	}{
+		{"create_compute_allocation", "compute_allocation", compute.ID, compute},
+		{"create_storage_volume", "storage_volume", storage.ID, storage},
+	} {
+		op := newOperation(resource.action, resource.kind, resource.id, input.AccountID, input.WorkspaceID, resource.id, hashInput(resource.value), now.Add(-2*time.Hour))
+		op.ID, op.Status = "initial-"+resource.id, "succeeded"
+		fillOperationResource(&op, resource.value)
+		if err := store.Append(context.Background(), op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := NewServiceWithOperationStore(provider, store)
+	return service, provider, fixture, input
+}
+
+func TestRuntimePowerSuspendsOriginalRuntimeWhenPaidResourceIsConfirmedAbsent(t *testing.T) {
+	for _, resourceType := range []string{"compute", "storage"} {
+		t.Run(resourceType, func(t *testing.T) {
+			service, provider, fixture, input := missingResourcePowerFixture(t, resourceType, nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			result, err := service.SetWorkspaceRuntimePower(ctx, input)
+			if err != nil || result.State != "suspended" || fixture.scales != 1 || provider.reads != 1 || result.Binding.PaidThrough != input.PaidThrough {
+				t.Fatalf("original resource absence did not suspend safely: result=%#v err=%v scales=%d reads=%d", result, err, fixture.scales, provider.reads)
+			}
+			latest, found, err := service.resourceOperations.LatestResourceOperation(ctx, "workspace_runtime_power", input.WorkspaceID)
+			var proof ProviderFact
+			if err != nil || !found || latest.Status != "succeeded" || !decodeWorkspaceLaunchCloseoutPayload(latest.RedactedProviderPayload["missingResource"], &proof) ||
+				!proof.Available || proof.ResourceID != input.MissingResourceID || proof.Observation == nil || proof.Observation.State != contracts.ResourceObservedAbsent {
+				t.Fatalf("missing durable owner absence evidence: %#v err=%v", latest, err)
+			}
+			provider.facts.Status = "RUNNING"
+			if _, err := service.SetWorkspaceRuntimePower(ctx, input); !errors.Is(err, ErrWorkspaceRuntimePowerConflict) || fixture.scales != 1 || provider.reads != 2 {
+				t.Fatalf("old absence proof reused after resource returned: err=%v scales=%d reads=%d", err, fixture.scales, provider.reads)
+			}
+			renewed := input
+			renewed.PaidThrough = time.Now().Add(31 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
+			renewed.DesiredState, renewed.IdempotencyKey = "running", "newer-period-resume"
+			renewed.SuspensionReason, renewed.MissingResourceType, renewed.MissingResourceID = "", "", ""
+			if result, err := service.SetWorkspaceRuntimePower(ctx, renewed); err != nil || result.State != "running" || fixture.scales != 2 {
+				t.Fatalf("explicit newer period resume: result=%#v err=%v", result, err)
+			}
+			provider.facts.Status = "NOT_FOUND"
+			if _, err := service.SetWorkspaceRuntimePower(ctx, input); !errors.Is(err, ErrWorkspaceRuntimePowerConflict) || fixture.scales != 2 || provider.reads != 2 {
+				t.Fatalf("older resource-absence request overrode newer period: err=%v scales=%d reads=%d", err, fixture.scales, provider.reads)
+			}
+		})
+	}
+}
+
+func TestRuntimePowerRejectsUnprovenOrUnboundMissingResource(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(*Service, *missingResourcePowerProvider, *WorkspaceRuntimePowerInput)
+	}{
+		{name: "resource still present", configure: func(_ *Service, p *missingResourcePowerProvider, _ *WorkspaceRuntimePowerInput) {
+			p.facts.Status = "RUNNING"
+		}},
+		{name: "provider unavailable", configure: func(_ *Service, p *missingResourcePowerProvider, _ *WorkspaceRuntimePowerInput) {
+			p.err = errors.New("provider_unavailable")
+		}},
+		{name: "provider unknown", configure: func(_ *Service, p *missingResourcePowerProvider, _ *WorkspaceRuntimePowerInput) {
+			p.facts.Status = "UNKNOWN"
+		}},
+		{name: "observation cannot replace validated facts", configure: func(_ *Service, p *missingResourcePowerProvider, _ *WorkspaceRuntimePowerInput) {
+			p.err = errors.New("provider_partial_identity")
+			p.facts.Observation = &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedAbsent}
+		}},
+		{name: "another resource outside launch", configure: func(_ *Service, _ *missingResourcePowerProvider, input *WorkspaceRuntimePowerInput) {
+			input.MissingResourceID = "storage-other"
+		}},
+		{name: "resource belongs to another account", configure: func(s *Service, _ *missingResourcePowerProvider, _ *WorkspaceRuntimePowerInput) {
+			volume := s.volumes["storage-owned"]
+			volume.AccountID = "acct-other"
+			s.volumes[volume.ID] = volume
+		}},
+		{name: "absence reason cannot start runtime", configure: func(_ *Service, _ *missingResourcePowerProvider, input *WorkspaceRuntimePowerInput) {
+			input.DesiredState = "running"
+		}},
+		{name: "missing resource identity", configure: func(_ *Service, _ *missingResourcePowerProvider, input *WorkspaceRuntimePowerInput) {
+			input.MissingResourceID = ""
+		}},
+		{name: "missing cause", configure: func(_ *Service, _ *missingResourcePowerProvider, input *WorkspaceRuntimePowerInput) {
+			input.SuspensionReason = ""
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, provider, fixture, input := missingResourcePowerFixture(t, "storage", nil)
+			tc.configure(service, provider, &input)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if _, err := service.SetWorkspaceRuntimePower(ctx, input); err == nil || fixture.scales != 0 {
+				t.Fatalf("unproven absence caused a runtime mutation: err=%v scales=%d", err, fixture.scales)
+			}
+		})
+	}
+}
+
+func TestRuntimePowerMissingResourceAuthoritySurvivesRestart(t *testing.T) {
+	for _, postgres := range []bool{false, true} {
+		t.Run(fmt.Sprint(postgres), func(t *testing.T) {
+			var store OperationStore = NewMemoryOperationStore()
+			if postgres {
+				pg, err := newTestPostgresOperationStore(fabricTestDatabaseURL(t))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer pg.client.Close()
+				store = pg
+			}
+			service, provider, fixture, input := missingResourcePowerFixture(t, "storage", store)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if result, err := service.SetWorkspaceRuntimePower(ctx, input); err != nil || result.State != "suspended" {
+				t.Fatalf("initial suspend result=%#v err=%v", result, err)
+			}
+			restarted := NewServiceWithOperationStore(provider, store)
+			result, err := restarted.SetWorkspaceRuntimePower(ctx, input)
+			if err != nil || result.State != "suspended" || result.Binding != input || fixture.scales != 1 || provider.reads != 2 {
+				t.Fatalf("restart lost binding or skipped fresh absence: result=%#v err=%v scales=%d reads=%d", result, err, fixture.scales, provider.reads)
+			}
+		})
+	}
+}
 
 func appendD4RuntimeOwner(t *testing.T, store OperationStore, input WorkspaceRuntimePowerInput, provider string) {
 	t.Helper()

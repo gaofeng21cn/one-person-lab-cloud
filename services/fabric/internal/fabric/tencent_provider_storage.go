@@ -559,7 +559,7 @@ func (p *TencentProvider) tencentStoragePlanForContext(ctx context.Context, inpu
 }
 
 func (p *TencentProvider) ReadStorageProviderFacts(ctx context.Context, volume StorageVolume) (ProviderResourceFacts, error) {
-	readback, err := p.ReadStorageVolume(ctx, volume)
+	readback, err := p.ReadStorageVolume(ctx, cloneStorageVolume(volume))
 	if err != nil {
 		return ProviderResourceFacts{}, err
 	}

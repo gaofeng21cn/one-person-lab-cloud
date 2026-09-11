@@ -48,24 +48,24 @@ func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row 
 		response["openable"], response["accessState"] = false, "disabled"
 		return response, "workspace_delete_in_progress"
 	}
+	// Persisted inactive lifecycle is an expected business state, not a failed
+	// comparison with the original successful launch projection.
+	switch firstNonEmpty(stringValue(row["state"]), stringValue(row["status"])) {
+	case "suspended", "stopped":
+		response["openable"], response["accessState"] = false, "disabled"
+		return response, "workspace_suspended"
+	case "data_deleted", "unrecoverable", "storage_missing", "destroyed":
+		response["openable"], response["accessState"] = false, "disabled"
+		return response, "workspace_storage_destroyed"
+	}
 	canonicalComputeID, canonicalStorageID := stringValue(row["currentComputeAllocationId"]), stringValue(row["storageId"])
 	if !providerAcceptanceWorkspaceBillingExempt(row) {
-		state, present, err := normalizeWorkspaceBillingStateForWorkspace(row, row)
-		if err != nil || !present {
+		state, _, reason := workspaceBillingAccessFacts(row, now)
+		if reason != "" {
 			response["openable"], response["accessState"] = false, "disabled"
-			return response, "workspace_billing_state_invalid"
+			return response, reason
 		}
-		paid := state.ResourceBillingEnabled == nil || *state.ResourceBillingEnabled
-		if paid && state.RenewalStatus != "active" {
-			response["openable"], response["accessState"] = false, "disabled"
-			return response, "workspace_billing_manual_review"
-		}
-		canonicalPaidThrough, _ := time.Parse(time.RFC3339, state.PaidThrough)
 		canonicalComputeID, canonicalStorageID = state.ComputeAllocationID, state.StorageID
-		if paid && !now.UTC().Before(canonicalPaidThrough) {
-			response["openable"], response["accessState"] = false, "disabled"
-			return response, "workspace_billing_period_expired"
-		}
 	}
 	if _, canonical, err := app.canonicalWorkspaceLaunchForAccess(ctx, row); err != nil {
 		response["openable"], response["accessState"] = false, "disabled"
@@ -131,6 +131,24 @@ func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row 
 		return response, "workspace_attachment_inactive"
 	}
 	return response, ""
+}
+
+// workspaceBillingAccessFacts is shared by access admission and operator reads.
+func workspaceBillingAccessFacts(row map[string]any, now time.Time) (workspaceBillingState, bool, string) {
+	state, present, err := normalizeWorkspaceBillingStateForWorkspace(row, row)
+	if err != nil || !present {
+		return state, false, "workspace_billing_state_invalid"
+	}
+	paid := state.ResourceBillingEnabled == nil || *state.ResourceBillingEnabled
+	paidThrough, _ := time.Parse(time.RFC3339, state.PaidThrough)
+	expired := paid && !now.UTC().Before(paidThrough)
+	if paid && state.RenewalStatus != "active" {
+		return state, expired, "workspace_billing_manual_review"
+	}
+	if expired {
+		return state, true, "workspace_billing_period_expired"
+	}
+	return state, false, ""
 }
 
 func providerAcceptanceWorkspaceBillingExempt(row map[string]any) bool {

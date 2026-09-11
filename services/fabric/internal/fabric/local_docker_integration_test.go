@@ -2234,6 +2234,9 @@ func TestLocalDockerRuntimeFailsClosedOnCgroupReadbackDrift(t *testing.T) {
 	}
 
 	setLocalDockerRuntimeHostConfigLimits(t, &runner.container, "2", "4294967296")
+	if runtime, err := provider.CreateWorkspaceRuntime(ctx, input, compute, volume); err != nil || !runtime.Ready {
+		t.Fatalf("baseline create runtime=%#v err=%v", runtime, err)
+	}
 	if runtime, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err != nil || !runtime.Ready {
 		t.Fatalf("baseline status runtime=%#v err=%v", runtime, err)
 	}
@@ -2281,6 +2284,27 @@ func TestLocalDockerProviderReadsExplicitRuntimeCompatibilityConfig(t *testing.T
 	provider = NewLocalDockerProvider()
 	if !provider.allowUnboundedSwap {
 		t.Fatal("exact unbounded swap opt-in was not enabled")
+	}
+}
+
+func TestLocalDockerRuntimeStatusDoesNotCreateMissingReservation(t *testing.T) {
+	provider, runner, _, _, input, _, _ := localDockerRuntimeReplayFixture(t, 1)
+	for attempt := 0; attempt < 2; attempt++ {
+		if runtime, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err == nil || err.Error() != "local_docker_runtime_reservation_missing" || runtime.Ready {
+			t.Fatalf("unregistered runtime=%#v err=%v", runtime, err)
+		}
+		root, err := provider.openStorageRoot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, readErr := readLocalDockerRuntimeReservation(root, localDockerRuntimeReservationName(localRuntimeID(input.WorkspaceID)))
+		closeErr := root.Close()
+		if !errors.Is(readErr, ErrWorkspaceLaunchResourceAbsent) || closeErr != nil {
+			t.Fatalf("status changed reservation: read=%v close=%v", readErr, closeErr)
+		}
+	}
+	if runner.containerReads != 2 || runner.runCalls != 0 {
+		t.Fatalf("read-only status calls: reads=%d creates=%d", runner.containerReads, runner.runCalls)
 	}
 }
 
@@ -2363,7 +2387,10 @@ func TestLocalDockerRuntimeCreateKeepsStartingHealthPendingUntilAuthoritativeRea
 }
 
 func TestLocalDockerRuntimeStatusFailsClosedOnSecretIdentityOrMountDrift(t *testing.T) {
-	provider, runner, _, _, input, _, _ := localDockerRuntimeReplayFixture(t, 1)
+	provider, runner, ctx, _, input, compute, volume := localDockerRuntimeReplayFixture(t, 1)
+	if runtime, err := provider.CreateWorkspaceRuntime(ctx, input, compute, volume); err != nil || !runtime.Ready {
+		t.Fatalf("baseline create runtime=%#v err=%v", runtime, err)
+	}
 	if runtime, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err != nil || !runtime.Ready ||
 		runtime.Access.Username != webuiUsername || runtime.Access.Password != deriveAionUIAdminPassword(localDockerTestWebUISeed, input.WorkspaceID, runner.container.Config.Labels["opl.secret.version"]) ||
 		runtime.Access.CredentialStatus != "configured" || runtime.Access.CredentialVersion != runner.container.Config.Labels["opl.secret.version"] || runtime.Access.SecretRef != input.GatewaySecretRef {

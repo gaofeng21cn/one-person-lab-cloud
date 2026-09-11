@@ -1,3 +1,25 @@
+.operator-health-diagnostics,
+.operator-resource-observation,
+.operator-workspace-observations,
+.operator-runtime-observation-list {
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.operator-health-diagnostics small,
+.operator-resource-observation > small {
+  color: var(--color-text-secondary);
+}
+
+.console-modal.operator-runtime-observations {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.operator-runtime-observation-list {
+  margin-top: 16px;
+}
+
 :root {
   color: #142536;
   background: #f7fafc;

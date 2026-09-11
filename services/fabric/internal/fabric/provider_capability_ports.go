@@ -12,6 +12,7 @@ type optionalProviderPorts struct {
 	computeDestroyFinalizer             computeDestroyAbsenceFinalizer
 	storageVolumeStatus                 storageVolumeStatusReader
 	runtimeHealth                       runtimeHealthSummaryProvider
+	runtimeObservations                 runtimeObservationsProvider
 	workspaceLaunch                     workspaceLaunchProvider
 	workspaceLaunchComputePool          workspaceLaunchComputePoolProvider
 	workspaceLaunchRuntimeImageRevision workspaceLaunchRuntimeImageRevisionProvider
@@ -33,6 +34,7 @@ func optionalProviderPortsFrom(provider Provider) optionalProviderPorts {
 	ports.computeDestroyFinalizer, _ = provider.(computeDestroyAbsenceFinalizer)
 	ports.storageVolumeStatus, _ = provider.(storageVolumeStatusReader)
 	ports.runtimeHealth, _ = provider.(runtimeHealthSummaryProvider)
+	ports.runtimeObservations, _ = provider.(runtimeObservationsProvider)
 	ports.workspaceLaunch, _ = provider.(workspaceLaunchProvider)
 	ports.workspaceLaunchComputePool, _ = provider.(workspaceLaunchComputePoolProvider)
 	ports.workspaceLaunchRuntimeImageRevision, _ = provider.(workspaceLaunchRuntimeImageRevisionProvider)

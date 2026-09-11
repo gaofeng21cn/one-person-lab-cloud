@@ -265,6 +265,7 @@ export function presentWorkspaceRuntime(runtime: WorkspaceRuntimeDTO): Workspace
 type KnownWorkspaceLifecycle =
   | "active"
   | "creating"
+  | "data_deleted"
   | "expired"
   | "failed"
   | "pending"
@@ -284,6 +285,8 @@ export function presentWorkspaceLifecycle(
       return { known: true, kind: "active", label: "已激活" };
     case "creating":
       return { known: true, kind: "creating", label: "开通中" };
+    case "data_deleted":
+      return { known: true, kind: "data_deleted", label: "数据已删除" };
     case "expired":
       return { known: true, kind: "expired", label: "已到期" };
     case "failed":

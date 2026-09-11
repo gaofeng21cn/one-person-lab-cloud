@@ -24,7 +24,7 @@ const (
 
 type readinessRefresh struct {
 	done   chan struct{}
-	result map[string]any
+	result FabricReadiness
 	err    error
 }
 
@@ -44,7 +44,7 @@ type Service struct {
 	jobMu                            sync.Mutex
 	readinessMu                      sync.Mutex
 	readinessCached                  bool
-	readinessResult                  map[string]any
+	readinessResult                  FabricReadiness
 	readinessExpiresAt               time.Time
 	readinessRefresh                 *readinessRefresh
 	readinessTTL                     time.Duration
@@ -147,7 +147,7 @@ func (s *Service) MonthlyPreflight(ctx context.Context, input MonthlyPreflightIn
 	return result, nil
 }
 
-func (s *Service) Readiness(ctx context.Context) (map[string]any, error) {
+func (s *Service) Readiness(ctx context.Context) (FabricReadiness, error) {
 	s.readinessMu.Lock()
 	if s.readinessCached && s.now().Before(s.readinessExpiresAt) {
 		result := s.readinessResult
@@ -164,7 +164,7 @@ func (s *Service) Readiness(ctx context.Context) (map[string]any, error) {
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return FabricReadiness{}, ctx.Err()
 	case <-refresh.done:
 		return refresh.result, refresh.err
 	}

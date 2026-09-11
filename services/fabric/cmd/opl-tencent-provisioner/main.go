@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	fabricstore "opl-cloud/services/fabric/internal/fabric"
 	"opl-cloud/services/fabric/internal/protectedresource"
 
@@ -211,58 +212,59 @@ type StorageInput struct {
 }
 
 type Response struct {
-	Ok                       bool                      `json:"ok"`
-	OperationId              string                    `json:"operationId,omitempty"`
-	PoolId                   string                    `json:"poolId,omitempty"`
-	NodePoolId               string                    `json:"nodePoolId,omitempty"`
-	InstanceId               string                    `json:"instanceId,omitempty"`
-	NodeName                 string                    `json:"nodeName,omitempty"`
-	PrivateIp                string                    `json:"privateIp,omitempty"`
-	MachinePresent           *bool                     `json:"machinePresent,omitempty"`
-	StoragePresent           *bool                     `json:"storagePresent,omitempty"`
-	CVMStatus                string                    `json:"cvmStatus,omitempty"`
-	TKEStatus                string                    `json:"tkeStatus,omitempty"`
-	CBSStatus                string                    `json:"cbsStatus,omitempty"`
-	StorageVolumeId          string                    `json:"storageVolumeId,omitempty"`
-	StorageState             string                    `json:"storageState,omitempty"`
-	PublicIp                 string                    `json:"publicIp,omitempty"`
-	Status                   string                    `json:"status,omitempty"`
-	ProviderRequestId        string                    `json:"providerRequestId,omitempty"`
-	ProviderRequestIDs       map[string]string         `json:"providerRequestIds,omitempty"`
-	ProviderPriceCNY         float64                   `json:"providerPriceCny,omitempty"`
-	ProviderData             map[string]string         `json:"providerData,omitempty"`
-	ErrorCode                string                    `json:"errorCode,omitempty"`
-	Message                  string                    `json:"message,omitempty"`
-	Retryable                bool                      `json:"retryable,omitempty"`
-	MissingEnv               []string                  `json:"missingEnv,omitempty"`
-	Machines                 []MachineOutput           `json:"machines,omitempty"`
-	InstanceType             string                    `json:"instanceType,omitempty"`
-	InstanceAvailable        bool                      `json:"instanceAvailable,omitempty"`
-	RequiredCapacity         int64                     `json:"requiredCapacity,omitempty"`
-	RemainingQuota           uint64                    `json:"remainingQuota,omitempty"`
-	CurrentReplicas          int64                     `json:"currentReplicas,omitempty"`
-	ReadyReplicas            int64                     `json:"readyReplicas,omitempty"`
-	MaxReplicas              int64                     `json:"maxReplicas,omitempty"`
-	TargetReplicas           int64                     `json:"targetReplicas,omitempty"`
-	MachineType              string                    `json:"machineType,omitempty"`
-	Zones                    []string                  `json:"zones,omitempty"`
-	PreflightStages          []PreflightStage          `json:"preflightStages,omitempty"`
-	NodePools                []NodePoolBootstrapResult `json:"nodePools,omitempty"`
-	NodePoolImageGC          []NodePoolImageGCResult   `json:"nodePoolImageGc,omitempty"`
-	SKUPackages              []WorkspaceSKUPackage     `json:"skuPackages,omitempty"`
-	PrepaidQuotaRemaining    uint64                    `json:"prepaidQuotaRemaining,omitempty"`
-	Subnets                  []WorkspaceSubnetFact     `json:"subnets,omitempty"`
-	TKEClusterNodeLimit      uint64                    `json:"tkeClusterNodeLimit,omitempty"`
-	TKECurrentNodeCount      uint64                    `json:"tkeCurrentNodeCount,omitempty"`
-	TKEAvailableNodeCapacity uint64                    `json:"tkeAvailableNodeCapacity,omitempty"`
-	TKECapacity              *TKEClusterCapacityFacts  `json:"tkeCapacity,omitempty"`
-	ProtectedSystem          ProtectedSystemFacts      `json:"protectedSystem,omitempty"`
-	NodePoolInventory        []string                  `json:"nodePoolInventoryBeforeMutation,omitempty"`
-	MutationCount            int                       `json:"mutationCount"`
-	FailureStage             string                    `json:"failureStage,omitempty"`
-	ProviderErrorClass       string                    `json:"providerErrorClass,omitempty"`
-	ProviderIdentityFailure  *ProviderIdentityFailure  `json:"providerIdentityFailure,omitempty"`
-	MutationEvidence         *MutationEvidence         `json:"mutationEvidence,omitempty"`
+	Observation              *contracts.ResourceObservation `json:"observation,omitempty"`
+	Ok                       bool                           `json:"ok"`
+	OperationId              string                         `json:"operationId,omitempty"`
+	PoolId                   string                         `json:"poolId,omitempty"`
+	NodePoolId               string                         `json:"nodePoolId,omitempty"`
+	InstanceId               string                         `json:"instanceId,omitempty"`
+	NodeName                 string                         `json:"nodeName,omitempty"`
+	PrivateIp                string                         `json:"privateIp,omitempty"`
+	MachinePresent           *bool                          `json:"machinePresent,omitempty"`
+	StoragePresent           *bool                          `json:"storagePresent,omitempty"`
+	CVMStatus                string                         `json:"cvmStatus,omitempty"`
+	TKEStatus                string                         `json:"tkeStatus,omitempty"`
+	CBSStatus                string                         `json:"cbsStatus,omitempty"`
+	StorageVolumeId          string                         `json:"storageVolumeId,omitempty"`
+	StorageState             string                         `json:"storageState,omitempty"`
+	PublicIp                 string                         `json:"publicIp,omitempty"`
+	Status                   string                         `json:"status,omitempty"`
+	ProviderRequestId        string                         `json:"providerRequestId,omitempty"`
+	ProviderRequestIDs       map[string]string              `json:"providerRequestIds,omitempty"`
+	ProviderPriceCNY         float64                        `json:"providerPriceCny,omitempty"`
+	ProviderData             map[string]string              `json:"providerData,omitempty"`
+	ErrorCode                string                         `json:"errorCode,omitempty"`
+	Message                  string                         `json:"message,omitempty"`
+	Retryable                bool                           `json:"retryable,omitempty"`
+	MissingEnv               []string                       `json:"missingEnv,omitempty"`
+	Machines                 []MachineOutput                `json:"machines,omitempty"`
+	InstanceType             string                         `json:"instanceType,omitempty"`
+	InstanceAvailable        bool                           `json:"instanceAvailable,omitempty"`
+	RequiredCapacity         int64                          `json:"requiredCapacity,omitempty"`
+	RemainingQuota           uint64                         `json:"remainingQuota,omitempty"`
+	CurrentReplicas          int64                          `json:"currentReplicas,omitempty"`
+	ReadyReplicas            int64                          `json:"readyReplicas,omitempty"`
+	MaxReplicas              int64                          `json:"maxReplicas,omitempty"`
+	TargetReplicas           int64                          `json:"targetReplicas,omitempty"`
+	MachineType              string                         `json:"machineType,omitempty"`
+	Zones                    []string                       `json:"zones,omitempty"`
+	PreflightStages          []PreflightStage               `json:"preflightStages,omitempty"`
+	NodePools                []NodePoolBootstrapResult      `json:"nodePools,omitempty"`
+	NodePoolImageGC          []NodePoolImageGCResult        `json:"nodePoolImageGc,omitempty"`
+	SKUPackages              []WorkspaceSKUPackage          `json:"skuPackages,omitempty"`
+	PrepaidQuotaRemaining    uint64                         `json:"prepaidQuotaRemaining,omitempty"`
+	Subnets                  []WorkspaceSubnetFact          `json:"subnets,omitempty"`
+	TKEClusterNodeLimit      uint64                         `json:"tkeClusterNodeLimit,omitempty"`
+	TKECurrentNodeCount      uint64                         `json:"tkeCurrentNodeCount,omitempty"`
+	TKEAvailableNodeCapacity uint64                         `json:"tkeAvailableNodeCapacity,omitempty"`
+	TKECapacity              *TKEClusterCapacityFacts       `json:"tkeCapacity,omitempty"`
+	ProtectedSystem          ProtectedSystemFacts           `json:"protectedSystem,omitempty"`
+	NodePoolInventory        []string                       `json:"nodePoolInventoryBeforeMutation,omitempty"`
+	MutationCount            int                            `json:"mutationCount"`
+	FailureStage             string                         `json:"failureStage,omitempty"`
+	ProviderErrorClass       string                         `json:"providerErrorClass,omitempty"`
+	ProviderIdentityFailure  *ProviderIdentityFailure       `json:"providerIdentityFailure,omitempty"`
+	MutationEvidence         *MutationEvidence              `json:"mutationEvidence,omitempty"`
 }
 
 type ProviderIdentityFailure struct {
@@ -3309,6 +3311,16 @@ func explicitReadyState(state string) bool {
 }
 
 func validateNativeTkeAllocationIdentity(instance *tke2022.Instance, machine *tke2022.Machine, request Request) *Response {
+	if failure := validateNativeTkeAllocationBinding(instance, machine, request); failure != nil {
+		return failure
+	}
+	if !strings.EqualFold(strings.TrimSpace(stringValue(instance.InstanceState)), "running") || !explicitReadyState(stringValue(instance.Native.MachineState)) {
+		return &Response{Ok: false, ErrorCode: "compute_tke_identity_mismatch", Message: "Tencent TKE instance does not match the exact Ready NativeCVM Machine identity.", Retryable: true}
+	}
+	return nil
+}
+
+func validateNativeTkeAllocationBinding(instance *tke2022.Instance, machine *tke2022.Machine, request Request) *Response {
 	machineName := stringValue(machine.MachineName)
 	privateIP := stringValue(machine.LanIP)
 	if instance == nil {
@@ -3317,8 +3329,8 @@ func validateNativeTkeAllocationIdentity(instance *tke2022.Instance, machine *tk
 	native := instance.Native
 	valid := instance != nil && native != nil && stringValue(instance.InstanceId) == machineName &&
 		stringValue(instance.NodePoolId) == request.Pool.NodePoolId && strings.EqualFold(stringValue(instance.NodeType), "Native") &&
-		strings.EqualFold(strings.TrimSpace(stringValue(instance.InstanceState)), "running") && stringValue(instance.LanIP) == privateIP &&
-		stringValue(native.MachineName) == machineName && explicitReadyState(stringValue(native.MachineState)) &&
+		stringValue(instance.LanIP) == privateIP &&
+		stringValue(native.MachineName) == machineName &&
 		stringValue(native.LanIp) == privateIP && stringValue(native.InstanceType) == request.Pool.InstanceType &&
 		strings.EqualFold(stringValue(native.MachineType), "NativeCVM") && strings.HasPrefix(stringValue(native.InstanceId), "ins-") &&
 		strings.TrimSpace(stringValue(native.VpcId)) != "" && strings.TrimSpace(stringValue(native.SubnetId)) != ""
@@ -3801,6 +3813,7 @@ func (client *tencentSDKClient) ReadComputeDestroyStatus(request Request, _ map[
 		}
 		providerData["syncResult"] = "found"
 		providerData["cvmStatus"] = cvmStatus
+		providerData["isolatedSource"] = stringValue(instance.IsolatedSource)
 		return Response{
 			Ok: true, Status: "present", InstanceId: request.Allocation.InstanceId, MachinePresent: &machinePresent, TKEStatus: "NOT_FOUND", CVMStatus: cvmStatus,
 			ProviderRequestId: firstNonEmpty(cvmRequestID, machineRequestID), ProviderData: providerData, MutationCount: 0,
@@ -3869,7 +3882,17 @@ func (client *tencentSDKClient) classifyMissingComputeMachine(request Request) s
 	return base + "_machine_inventory_missing"
 }
 
-func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[string]string) Response {
+func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[string]string) (result Response) {
+	var legacyReadinessFailure *Response
+	defer func() {
+		if legacyReadinessFailure != nil {
+			if result.Observation == nil {
+				result.Observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: result.ErrorCode}
+			}
+			legacyReadinessFailure.Observation = result.Observation
+			result = *legacyReadinessFailure
+		}
+	}()
 	if client == nil || client.nativeTkeClient == nil || client.nativeCvmClient == nil {
 		return Response{Ok: false, ErrorCode: "tencent_sdk_client_missing", Message: "Tencent TKE and CVM SDK clients are required.", Retryable: false}
 	}
@@ -3913,6 +3936,7 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 			PrivateIp:         request.Allocation.PrivateIp,
 			PublicIp:          request.Allocation.PublicIp,
 			Status:            "external_deleted",
+			Observation:       &contracts.ResourceObservation{Available: true, State: contracts.ResourceObservedAbsent},
 			CVMStatus:         "NOT_FOUND",
 			TKEStatus:         "NOT_FOUND",
 			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId),
@@ -3933,19 +3957,27 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	}
 	if machine == nil || cvm.Status == "external_deleted" {
 		code := "compute_provider_partial_identity_machine_missing"
+		var observation *contracts.ResourceObservation
 		if machine != nil {
 			code = "compute_provider_partial_identity_cvm_missing"
 		} else {
 			code = client.classifyMissingComputeMachine(request)
+			// CVM ownership is verified above even when its TKE binding is gone.
+			observation = computeCVMObservation(request, cvm)
+			observation.ReasonCode = code
 		}
-		return Response{Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
+		return Response{
+			Ok: false, ErrorCode: code, Message: "Tencent compute identity is only partially present.",
+			Observation: observation, InstanceId: cvm.InstanceId, CVMStatus: cvm.CVMStatus, ProviderData: cvm.ProviderData,
+			ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true,
+		}
 	}
 	privateIP := firstNonEmpty(stringValue(machine.LanIP), request.Allocation.PrivateIp)
 	nodeName := firstNonEmpty(kubernetesNodeName(machine), request.Allocation.NodeName)
 	machineName := firstNonEmpty(stringValue(machine.MachineName), request.Allocation.MachineName)
 	status := strings.ToLower(strings.TrimSpace(stringValue(machine.MachineState)))
 	if !explicitReadyState(status) {
-		return Response{Ok: false, ErrorCode: "compute_machine_state_unready", Message: "Tencent Machine has not explicitly reported Ready or Running.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
+		legacyReadinessFailure = &Response{Ok: false, ErrorCode: "compute_machine_state_unready", Message: "Tencent Machine has not explicitly reported Ready or Running.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID), Retryable: true}
 	}
 	if !machineResourceShapeMatches(machine, request.Pool) {
 		response := computeResourceShapeFailure(firstNonEmpty(cvm.ProviderRequestId, requestId, poolRequestID))
@@ -3958,16 +3990,20 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		response.Retryable = true
 		return response
 	}
-	if failure := validateNativeTkeAllocationIdentity(tkeInstance, machine, request); failure != nil {
+	if failure := validateNativeTkeAllocationBinding(tkeInstance, machine, request); failure != nil {
 		failure.ProviderRequestId = firstNonEmpty(tkeRequestID, cvm.ProviderRequestId, requestId, poolRequestID)
 		return *failure
+	}
+	if failure := validateNativeTkeAllocationIdentity(tkeInstance, machine, request); failure != nil && legacyReadinessFailure == nil {
+		failure.ProviderRequestId = firstNonEmpty(tkeRequestID, cvm.ProviderRequestId, requestId, poolRequestID)
+		legacyReadinessFailure = failure
 	}
 	if !nativeResourceShapeMatches(tkeInstance.Native, request.Pool) {
 		response := computeResourceShapeFailure(firstNonEmpty(tkeRequestID, cvm.ProviderRequestId, requestId, poolRequestID))
 		return response
 	}
-	if !strings.EqualFold(strings.TrimSpace(cvm.CVMStatus), "running") {
-		return Response{Ok: false, ErrorCode: "compute_cvm_not_ready", Message: "Tencent CVM has not explicitly reported RUNNING.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId), Retryable: true}
+	if !strings.EqualFold(strings.TrimSpace(cvm.CVMStatus), "running") && legacyReadinessFailure == nil {
+		legacyReadinessFailure = &Response{Ok: false, ErrorCode: "compute_cvm_not_ready", Message: "Tencent CVM has not explicitly reported RUNNING.", ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId), Retryable: true}
 	}
 	if stringValue(machine.InstanceType) != request.Pool.InstanceType || cvm.ProviderData["instanceType"] != request.Pool.InstanceType {
 		cvm.ProviderData["tkeInstanceType"] = stringValue(machine.InstanceType)
@@ -3989,7 +4025,11 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 	providerData["describeTkeInstanceReqId"] = tkeRequestID
 	providerData["cpu"] = strconv.FormatUint(request.Pool.CPU, 10)
 	providerData["memoryGb"] = strconv.FormatUint(request.Pool.MemoryGB, 10)
-	return Response{
+	observation := computeCVMObservation(request, cvm)
+	if stringValue(tkeInstance.Native.InstanceId) != request.Allocation.InstanceId {
+		observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "compute_cvm_identity_mismatch"}
+	}
+	return Response{Observation: observation,
 		Ok:                true,
 		OperationId:       "op-sync-compute-" + stableSuffix(request.AccountId, request.Allocation.Id, request.Pool.NodePoolId, machineName, privateIP)[:12],
 		PoolId:            request.Pool.Id,
@@ -4005,6 +4045,28 @@ func (client *tencentSDKClient) SyncComputeAllocation(request Request, _ map[str
 		ProviderRequestId: firstNonEmpty(cvm.ProviderRequestId, requestId),
 		ProviderData:      providerData,
 	}
+}
+
+func computeCVMObservation(request Request, cvm Response) *contracts.ResourceObservation {
+	observation := &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "provider_state_unrecognized"}
+	switch strings.ToUpper(strings.TrimSpace(cvm.CVMStatus)) {
+	case "RUNNING":
+		observation.State = contracts.ResourceObservedRunning
+	case "STOPPED":
+		observation.State = contracts.ResourceObservedStopped
+	case "SHUTDOWN":
+		observation.State = contracts.ResourceObservedPendingDeletion
+	case "TERMINATING":
+		observation.State = contracts.ResourceObservedDeleting
+	case "STARTING", "STOPPING", "REBOOTING", "PENDING", "CREATING":
+		observation.State = contracts.ResourceObservedPending
+	}
+	if observation.State != contracts.ResourceObservedUnknown {
+		observation.Available, observation.ReasonCode = true, ""
+		observation.ProviderID, observation.PackageOrSpec, observation.Zone = request.Allocation.InstanceId, request.Pool.InstanceType, request.Zone
+		observation.ExpiresAt = cvm.ProviderData["deadline"]
+	}
+	return observation
 }
 
 func (client *tencentSDKClient) ProviderTruth(request Request, _ map[string]string) Response {

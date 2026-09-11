@@ -74,6 +74,31 @@ F is not a preliminary global rewrite. Each live capability tightens its own
 types while implementing the business outcome. D3 activated H through the real concurrent Launch caller. Its Cloud-side
 serialization is verified locally; Instance concurrency qualification remains external.
 
+The current operator-observation repair under F/J connects Gateway totals and
+provider-neutral resource/Runtime read models without adding a recovery action.
+Acceptance requires complete mapped-account totals, stopped/absent/unknown
+resource distinctions, normal suspension, missing and unmatched Runtime
+visibility, and unchanged financial/procurement behavior. Cloud source verification is complete; exact-Candidate Instance readback
+remains an external evidence obligation in
+[status](status.md). Unmatched production objects require an owner-reviewed
+disposition; their visibility does not authorize deletion or shared-pool scale.
+
+The same observation lane distinguishes CVM `pending_deletion`/`deleting` from
+ordinary transitions and preserves missing TKE associations independently.
+Installation image consistency now reports verified retained Workspace targets,
+no running sample, and unverifiable identity separately. The source evidence is
+in [status](status.md); the selected Instance owns its scan interval and must
+read back its process configuration, unchanged existing images and cloud
+lifecycle facts from the adopted Candidate.
+
+The external-resource reconciliation under C/F/J now follows successful Workspace
+bindings instead of relying on old resource projections. Cloud implements
+confirmed-loss suspension, closed auto-renew/access, preserved financial identity,
+and retained-operation protection in Runtime observations. Its focused local
+business and persistence evidence is recorded in [status](status.md). Exact-Candidate
+Instance readback must still prove convergence of the affected Workspace and no
+impact to the running control; authorized historical Runtime retirement remains
+an Instance operation with separate immutable evidence.
 ## Workspace Application Decoupling
 
 最终用户结果是：管理员在现有 Console 中选择一个已开通的 Workspace，

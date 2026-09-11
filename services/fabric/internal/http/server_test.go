@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/fabric"
 )
 
@@ -37,6 +38,21 @@ func TestMain(m *testing.M) {
 type runtimeHealthSummaryHTTPProvider struct {
 	testProvider
 	calls int
+}
+
+type providerFactsObservationHTTPProvider struct {
+	testProvider
+	missingTKEBinding bool
+}
+
+func (p *providerFactsObservationHTTPProvider) ReadComputeProviderFacts(ctx context.Context, compute fabric.ComputeAllocation) (fabric.ProviderResourceFacts, error) {
+	if !p.missingTKEBinding {
+		return p.testProvider.ReadComputeProviderFacts(ctx, compute)
+	}
+	const code = "compute_provider_partial_identity_machine_missing_tke_instance_missing"
+	return fabric.ProviderResourceFacts{Observation: &contracts.ResourceObservation{
+		Available: true, State: contracts.ResourceObservedRunning, ReasonCode: code, ProviderID: "ins-owned",
+	}}, errors.New(code)
 }
 
 type workspaceOwnerObservationHTTPProvider struct {
@@ -720,21 +736,21 @@ func TestServerAuthenticatesEverythingExceptGetHealthz(t *testing.T) {
 
 type readinessHTTPProvider struct {
 	testProvider
-	result map[string]any
+	result fabric.FabricReadiness
 	err    error
 }
 
-func (p readinessHTTPProvider) Readiness(context.Context) (map[string]any, error) {
+func (p readinessHTTPProvider) Readiness(context.Context) (fabric.FabricReadiness, error) {
 	return p.result, p.err
 }
 
 func TestServerReadinessPreservesPublicResponseContract(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		want := map[string]any{"provider": "test", "ready": true, "status": "ready"}
+		want := fabric.FabricReadiness{Provider: "test", Ready: true, ServiceReady: true}
 		server := newTestServer(fabric.NewService(readinessHTTPProvider{result: want}), "internal-secret")
 		recorder := httptest.NewRecorder()
 		server.ServeHTTP(recorder, testRequest(http.MethodGet, "/fabric/readiness", nil))
-		var got map[string]any
+		var got fabric.FabricReadiness
 		if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil || recorder.Code != http.StatusOK || !reflect.DeepEqual(got, want) {
 			t.Fatalf("status=%d readiness=%#v err=%v body=%s", recorder.Code, got, err, recorder.Body.String())
 		}
@@ -967,7 +983,8 @@ func TestRuntimeHealthSummaryHTTPIsAuthenticatedAndReadOnly(t *testing.T) {
 }
 
 func TestProviderFactsBatchHTTPPreservesTypedWireShape(t *testing.T) {
-	service := fabric.NewService(testProvider{})
+	provider := &providerFactsObservationHTTPProvider{}
+	service := fabric.NewService(provider)
 	compute, err := service.CreateComputeAllocation(context.Background(), fabric.ComputeAllocationInput{
 		AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", PackageID: "basic", NodePoolID: "np-basic", IdempotencyKey: "provider-facts-http",
 	})
@@ -1006,6 +1023,19 @@ func TestProviderFactsBatchHTTPPreservesTypedWireShape(t *testing.T) {
 		if !strings.Contains(response.Body.String(), field) {
 			t.Fatalf("provider facts response lost %s: %s", field, response.Body.String())
 		}
+	}
+	provider.missingTKEBinding = true
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, testRequest(http.MethodPost, "/fabric/provider-facts/batch", strings.NewReader(body)))
+	batch = fabric.ProviderFactsBatch{}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &batch) != nil || len(batch.Items) != 1 {
+		t.Fatalf("observation response status=%d body=%s", response.Code, response.Body.String())
+	}
+	fact := batch.Items[0]
+	if fact.Available || fact.ErrorCode != "compute_provider_partial_identity_machine_missing_tke_instance_missing" || fact.Facts.Status != "" ||
+		fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != contracts.ResourceObservedRunning ||
+		fact.Observation.ProviderID != "ins-owned" || fact.Observation.ReasonCode != fact.ErrorCode || fact.Observation.ObservedAt == "" {
+		t.Fatalf("HTTP lost current CVM state or TKE blocking reason: %#v", fact)
 	}
 }
 
@@ -1990,6 +2020,30 @@ func (testProvider) UpsertGatewaySecret(_ context.Context, input fabric.GatewayS
 	return fabric.GatewaySecret{SecretRef: "opl-gateway-ws-alpha", Version: digest[:16], Fingerprint: "sha256:" + digest}, nil
 }
 
-func (testProvider) Readiness(_ context.Context) (map[string]any, error) {
-	return map[string]any{"provider": "test", "ready": true}, nil
+func (testProvider) Readiness(_ context.Context) (fabric.FabricReadiness, error) {
+	return fabric.FabricReadiness{Provider: "test", Ready: true, ServiceReady: true}, nil
+}
+
+func TestRuntimeObservationsRequireControlPlaneReadIdentity(t *testing.T) {
+	service := fabric.NewService(testProvider{})
+	server := NewServerWithAuth(service, ServerAuthConfig{ControlPlaneToken: "internal-secret", RunnerToken: "runner-secret", CapabilityKey: testFabricCapabilityKey})
+	for _, tc := range []struct {
+		name, token string
+		want        int
+	}{{"anonymous", "", http.StatusUnauthorized}, {"runner", "runner-secret", http.StatusForbidden}, {"control plane", "internal-secret", http.StatusServiceUnavailable}} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/fabric/runtime-observations", nil)
+			if tc.token != "" {
+				request.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if tc.token == "internal-secret" && !strings.Contains(response.Body.String(), "runtime_observations_unavailable") {
+				t.Fatal("authenticated route did not reach observation owner")
+			}
+		})
+	}
 }

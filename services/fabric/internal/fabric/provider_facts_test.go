@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -36,6 +38,7 @@ type computeOwnershipTagProviderFactsSpy struct {
 type workspaceRuntimeBindingProvider struct {
 	testProvider
 	runtime    WorkspaceRuntime
+	runtimeErr error
 	computeErr error
 }
 
@@ -44,7 +47,7 @@ func (p *workspaceRuntimeBindingProvider) ReadComputeProviderFacts(context.Conte
 }
 
 func (p *workspaceRuntimeBindingProvider) WorkspaceRuntimeStatus(context.Context, string) (WorkspaceRuntime, error) {
-	return p.runtime, nil
+	return p.runtime, p.runtimeErr
 }
 
 func (*workspaceRuntimeBindingProvider) ReadWorkspaceComputeRuntimeBinding(_ context.Context, runtime WorkspaceRuntime, compute ComputeAllocation, ownership MachineOwnership) (bool, error) {
@@ -60,6 +63,35 @@ func (p *computeOwnershipTagProviderFactsSpy) Descriptor() ProviderDescriptor {
 func (p *computeOwnershipTagProviderFactsSpy) ReadComputeProviderFacts(_ context.Context, input ComputeAllocation) (ProviderResourceFacts, error) {
 	p.inputs <- input
 	return ProviderResourceFacts{Status: "running"}, nil
+}
+
+func TestProviderRuntimeObservationDistinguishesAbsenceFromReadFailure(t *testing.T) {
+	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	store := NewMemoryOperationStore()
+	parent, child, runtime := canonicalRuntimeOperationGraph(t, "workspace-alpha", "provider-absence", now)
+	for _, operation := range []FabricOperation{parent, child} {
+		if err := store.Append(context.Background(), operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	provider := &workspaceRuntimeBindingProvider{runtimeErr: ErrWorkspaceLaunchResourceAbsent}
+	service := NewServiceWithOperationStore(provider, store)
+	input := ProviderFactInput{AccountID: parent.AccountID, WorkspaceID: runtime.WorkspaceID, ResourceType: "runtime", ResourceID: runtime.ID}
+	absent := service.providerFact(context.Background(), input)
+	if absent.Available || absent.ErrorCode != errorCode(ErrWorkspaceLaunchResourceAbsent) || absent.Observation == nil || !absent.Observation.Available || absent.Observation.State != contracts.ResourceObservedAbsent {
+		t.Fatalf("absence=%#v", absent)
+	}
+	provider.runtimeErr = errors.New("runtime_provider_read_failed")
+	failed := service.providerFact(context.Background(), input)
+	if failed.Observation == nil || failed.Observation.Available || failed.Observation.State != contracts.ResourceObservedUnknown {
+		t.Fatalf("read error proved absence: %#v", failed)
+	}
+	provider.runtimeErr = ErrWorkspaceLaunchResourceAbsent
+	input.AccountID = "foreign-account"
+	foreign := service.providerFact(context.Background(), input)
+	if foreign.Observation == nil || foreign.Observation.Available || foreign.Observation.State != contracts.ResourceObservedUnknown {
+		t.Fatalf("foreign owner proved absence: %#v", foreign)
+	}
 }
 
 func TestProviderFactsBatchDelegatesMappingAndPreservesWireShape(t *testing.T) {
@@ -82,13 +114,14 @@ func TestProviderFactsBatchDelegatesMappingAndPreservesWireShape(t *testing.T) {
 	if err != nil || len(batch.Items) != 1 || !batch.Items[0].Available || batch.Items[0].ErrorCode != "" || provider.computeReads.Load() != 1 {
 		t.Fatalf("batch=%#v err=%v reads=%d", batch, err, provider.computeReads.Load())
 	}
-	payload, err := json.Marshal(batch)
-	if err != nil {
-		t.Fatal(err)
+	observation := batch.Items[0].Observation
+	if observation == nil || observation.Available || observation.State != contracts.ResourceObservedUnknown || observation.ObservedAt != now.Format(time.RFC3339Nano) {
+		t.Fatalf("unknown adapter state must be explicit: %#v", observation)
 	}
-	want := `{"items":[{"accountId":"acct-alpha","workspaceId":"workspace-alpha","resourceType":"compute","resourceId":"compute-alpha","available":true,"facts":{"packageOrSpec":"adapter-spec","providerId":"adapter-provider-id","zone":"adapter-zone","status":"adapter-status","expiresAt":"2026-09-12T00:00:00Z","lastReadAt":"2026-08-12T04:05:06.000000007Z"}}]}`
-	if string(payload) != want {
-		t.Fatalf("provider facts wire=%s want=%s", payload, want)
+	wantFacts := provider.computeFacts
+	wantFacts.LastReadAt = now.Format(time.RFC3339Nano)
+	if !reflect.DeepEqual(batch.Items[0].Facts, wantFacts) {
+		t.Fatalf("legacy facts changed: %#v", batch.Items[0].Facts)
 	}
 	operations, listErr := service.ListOperations(context.Background())
 	if listErr != nil || len(operations) != 0 {
@@ -365,6 +398,7 @@ func TestTencentProviderFactsOwnTencentMappingAndStayReadOnly(t *testing.T) {
 			}
 			return provisionerResponse{
 				OK: true, Status: "running", CVMStatus: "RUNNING", NodePoolID: "np-basic", InstanceID: "ins-tencent", InstanceType: "SA5.MEDIUM4", ProviderRequestID: "req-compute-read",
+				Observation:  &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "compute_cvm_identity_mismatch"},
 				ProviderData: map[string]string{"instanceType": "SA5.MEDIUM4", "cpu": "2", "memoryGb": "4", "zone": "ap-guangzhou-3", "deadline": "2026-09-12T00:00:00Z"},
 			}, nil
 		case "sync_storage_volume":
@@ -390,15 +424,20 @@ func TestTencentProviderFactsOwnTencentMappingAndStayReadOnly(t *testing.T) {
 		Provider: "tencent-tke", ProviderResourceID: "disk-tencent", SizeGB: 10, DiskType: "CLOUD_BSSD", Zone: "ap-guangzhou-3", Deadline: "2026-09-12T00:00:00Z",
 		ProviderData: map[string]string{"pvName": "opl-storage-tencent-pv", "pvcName": "opl-storage-tencent-data", "region": "ap-guangzhou"}, CostTags: storageTags,
 	}
+	computeBefore, storageBefore := cloneComputeAllocation(compute), cloneStorageVolume(volume)
 	computeFacts, computeErr := provider.ReadComputeProviderFacts(context.Background(), compute)
 	storageFacts, storageErr := provider.ReadStorageProviderFacts(context.Background(), volume)
 	if computeErr != nil || storageErr != nil {
 		t.Fatalf("Tencent facts errors: compute=%v storage=%v", computeErr, storageErr)
 	}
 	wantCompute := ProviderResourceFacts{PackageOrSpec: "SA5.MEDIUM4", ProviderID: "machine/tke-node", Zone: "ap-guangzhou-3", Status: "RUNNING", ExpiresAt: compute.Deadline}
+	wantCompute.Observation = &contracts.ResourceObservation{State: contracts.ResourceObservedUnknown, ReasonCode: "compute_cvm_identity_mismatch"}
 	wantStorage := ProviderResourceFacts{PackageOrSpec: "CLOUD_BSSD", ProviderID: "disk-tencent", Zone: "ap-guangzhou-3", Status: "ATTACHED", ExpiresAt: volume.Deadline}
 	if !reflect.DeepEqual(computeFacts, wantCompute) || !reflect.DeepEqual(storageFacts, wantStorage) || !reflect.DeepEqual(provisionActions, []string{"sync_compute_allocation", "sync_storage_volume"}) {
 		t.Fatalf("Tencent facts: compute=%#v storage=%#v actions=%#v", computeFacts, storageFacts, provisionActions)
+	}
+	if !reflect.DeepEqual(compute, computeBefore) || !reflect.DeepEqual(volume, storageBefore) {
+		t.Fatal("provider facts changed retained resource maps")
 	}
 
 	manifest := map[string]any{}
@@ -432,5 +471,53 @@ func TestTencentProviderFactsOwnTencentMappingAndStayReadOnly(t *testing.T) {
 		if !strings.HasPrefix(action, "sync_") {
 			t.Fatalf("Tencent provider facts issued provider mutation: %#v", provisionActions)
 		}
+	}
+}
+
+func TestProviderFactsObservationDoesNotReclassifyRetainedValidation(t *testing.T) {
+	for _, tc := range []struct {
+		code  string
+		state contracts.ResourceObservedState
+	}{
+		{code: "compute_cvm_not_ready", state: contracts.ResourceObservedStopped},
+		{code: "compute_provider_partial_identity_machine_missing_tke_instance_missing", state: contracts.ResourceObservedRunning},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			response := provisionerResponse{OK: false, ErrorCode: tc.code, Observation: &contracts.ResourceObservation{Available: true, State: tc.state, ReasonCode: tc.code, ProviderID: "ins-owned", PackageOrSpec: "SA5.MEDIUM4", Zone: "ap-guangzhou-3"}}
+			payload, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(t.TempDir(), "provisioner")
+			script := "#!/bin/sh\ncat > \"$0.request\"\nprintf 'read\\n' >> \"$0.calls\"\ncat <<'RESPONSE'\n" + string(payload) + "\nRESPONSE\nexit 1\n"
+			if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("OPL_TENCENT_PROVISIONER_BIN", bin)
+			provider := NewTencentProvider()
+			service := NewService(provider)
+			service.computes["compute"] = ComputeAllocation{ID: "compute", AccountID: "acct", WorkspaceID: "ws", PackageID: "basic", PoolID: "pool-basic", NodePoolID: "np-basic", InstanceID: "ins-owned", InstanceType: "SA5.MEDIUM4", ProviderData: map[string]string{"cpu": "2", "memoryGb": "4"}}
+			before := service.computes["compute"]
+			result, err := service.ProviderFactsBatch(context.Background(), ProviderFactsBatchInput{Items: []ProviderFactInput{{AccountID: "acct", WorkspaceID: "ws", ResourceType: "compute", ResourceID: "compute"}}})
+			if err != nil || len(result.Items) != 1 {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			fact := result.Items[0]
+			if fact.Available || fact.ErrorCode != tc.code || fact.Facts.Status != "" {
+				t.Fatalf("retained validation changed: %#v", fact)
+			}
+			if fact.Observation == nil || !fact.Observation.Available || fact.Observation.State != tc.state || fact.Observation.ReasonCode != tc.code || fact.Observation.ObservedAt == "" {
+				t.Fatalf("stopped observation missing: %#v", fact)
+			}
+			requestBody, err := os.ReadFile(bin + ".request")
+			var request provisionerRequest
+			if err != nil || json.Unmarshal(requestBody, &request) != nil || request.Action != "sync_compute_allocation" || request.Allocation.ID != "compute" {
+				t.Fatalf("unexpected process request=%#v err=%v", request, err)
+			}
+			calls, err := os.ReadFile(bin + ".calls")
+			if err != nil || string(calls) != "read\n" || !reflect.DeepEqual(before, service.computes["compute"]) {
+				t.Fatalf("unexpected reads=%q or allocation mutated, err=%v", calls, err)
+			}
+		})
 	}
 }

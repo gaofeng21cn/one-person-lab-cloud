@@ -29,7 +29,7 @@ type FabricClient interface {
 	WriteGatewaySecret(ctx context.Context, input GatewaySecretWriteInput, idempotencyKey string) (GatewaySecretWriteResult, error)
 	CreateWorkspaceRuntime(ctx context.Context, input WorkspaceRuntimeInput, idempotencyKey string) (WorkspaceRuntime, error)
 	WorkspaceRuntimeStatus(ctx context.Context, workspaceID string) (WorkspaceRuntime, error)
-	Readiness(ctx context.Context) (map[string]any, error)
+	Readiness(ctx context.Context) (contracts.FabricReadiness, error)
 }
 
 type FabricWorkspaceRuntimeGatewaySecretClient interface {
@@ -45,6 +45,10 @@ type FabricWorkspaceRuntimeRepairClient interface {
 
 type FabricWorkspaceRuntimeCredentialClient interface {
 	RevealWorkspaceRuntimeCredentials(context.Context, string, string, string) (WorkspaceRuntime, error)
+}
+
+type FabricRuntimeObservationClient interface {
+	RuntimeObservations(context.Context) (contracts.RuntimeObservations, error)
 }
 
 type FabricProviderFactsClient interface {
@@ -320,13 +324,14 @@ type ProviderResourceFacts struct {
 }
 
 type ProviderFact struct {
-	AccountID    string                `json:"accountId"`
-	WorkspaceID  string                `json:"workspaceId"`
-	ResourceType string                `json:"resourceType"`
-	ResourceID   string                `json:"resourceId"`
-	Available    bool                  `json:"available"`
-	Facts        ProviderResourceFacts `json:"facts,omitempty"`
-	ErrorCode    string                `json:"errorCode,omitempty"`
+	Observation  *contracts.ResourceObservation `json:"observation,omitempty"`
+	AccountID    string                         `json:"accountId"`
+	WorkspaceID  string                         `json:"workspaceId"`
+	ResourceType string                         `json:"resourceType"`
+	ResourceID   string                         `json:"resourceId"`
+	Available    bool                           `json:"available"`
+	Facts        ProviderResourceFacts          `json:"facts,omitempty"`
+	ErrorCode    string                         `json:"errorCode,omitempty"`
 }
 
 type ProviderFactsBatch struct {
@@ -648,6 +653,12 @@ func (c *fabricHTTPClient) ProviderFactsBatch(ctx context.Context, input Provide
 	return result, err
 }
 
+func (c *fabricHTTPClient) RuntimeObservations(ctx context.Context) (contracts.RuntimeObservations, error) {
+	var result contracts.RuntimeObservations
+	err := c.get(ctx, "/fabric/runtime-observations", &result)
+	return result, err
+}
+
 func (c *fabricHTTPClient) RuntimeHealthSummary(ctx context.Context) (RuntimeHealthSummary, error) {
 	var result RuntimeHealthSummary
 	err := c.get(ctx, "/fabric/runtime-health-summary", &result)
@@ -714,8 +725,8 @@ func (c *fabricHTTPClient) RevealWorkspaceRuntimeCredentials(ctx context.Context
 	return result, err
 }
 
-func (c *fabricHTTPClient) Readiness(ctx context.Context) (map[string]any, error) {
-	result := map[string]any{}
+func (c *fabricHTTPClient) Readiness(ctx context.Context) (contracts.FabricReadiness, error) {
+	var result contracts.FabricReadiness
 	err := c.get(ctx, "/fabric/readiness", &result)
 	return result, err
 }

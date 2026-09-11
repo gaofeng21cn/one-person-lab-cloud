@@ -3809,6 +3809,7 @@ type fakeNativeCvmAPI struct {
 	privateIPInstanceCount          int
 	instanceChargeType              string
 	instanceState                   string
+	isolatedSource                  string
 	renewFlag                       string
 	expiredTime                     string
 	renewedExpiredTime              string
@@ -5192,8 +5193,8 @@ func (api *fakeNativeCvmAPI) DescribeInstances(request *cvm2017.DescribeInstance
 		return &cvm2017.DescribeInstancesResponse{Response: &cvm2017.DescribeInstancesResponseParams{InstanceSet: []*cvm2017.Instance{{
 			InstanceId: common.StringPtr(firstNonEmpty(api.returnedInstanceID, stringValue(request.InstanceIds[0]))), InstanceName: common.StringPtr(firstNonEmpty(api.instanceName, "compute-alpha")), InstanceType: common.StringPtr(firstNonEmpty(api.instanceType, "SA5.MEDIUM4")),
 			CPU: optionalInt64(api.cpu, 2, api.omitCPU, false), Memory: optionalInt64(api.memoryGB, 4, false, api.zeroMemory),
-			PrivateIpAddresses: []*string{common.StringPtr("10.0.0.11")}, InstanceState: common.StringPtr("RUNNING"), Placement: &cvm2017.Placement{Zone: common.StringPtr(firstNonEmpty(api.zone, "ap-guangzhou-3"))},
-			InstanceChargeType: common.StringPtr(firstNonEmpty(api.instanceChargeType, "PREPAID")), RenewFlag: common.StringPtr(firstNonEmpty(api.renewFlag, "NOTIFY_AND_MANUAL_RENEW")), ExpiredTime: expiredTime, Tags: tags,
+			PrivateIpAddresses: []*string{common.StringPtr("10.0.0.11")}, InstanceState: common.StringPtr(firstNonEmpty(api.instanceState, "RUNNING")), Placement: &cvm2017.Placement{Zone: common.StringPtr(firstNonEmpty(api.zone, "ap-guangzhou-3"))},
+			InstanceChargeType: common.StringPtr(firstNonEmpty(api.instanceChargeType, "PREPAID")), RenewFlag: common.StringPtr(firstNonEmpty(api.renewFlag, "NOTIFY_AND_MANUAL_RENEW")), ExpiredTime: expiredTime, Tags: tags, IsolatedSource: common.StringPtr(api.isolatedSource),
 		}}, TotalCount: common.Int64Ptr(1), RequestId: common.StringPtr("req-verify-cvm")}}, nil
 	}
 	privateIp := cvmPrivateIpFilterValue(request)
@@ -7332,6 +7333,25 @@ func TestTencentSDKClientReadComputeDestroyStatusNativeCVMRequiresDoubleAbsence(
 	}
 }
 
+func TestTencentSDKClientReadComputeDestroyStatusRetainsIsolationSource(t *testing.T) {
+	for _, source := range []string{"MANMADE", "EXPIRE", "ARREAR", "NOTISOLATED", ""} {
+		t.Run(source, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, deletedMachineNames: map[string]bool{"node-basic-1": true}}
+			cvmAPI := &fakeNativeCvmAPI{instanceState: "SHUTDOWN", isolatedSource: source}
+			client := &tencentSDKClient{region: "ap-guangzhou", clusterId: "cls-123", nativeTkeClient: tkeAPI, nativeCvmClient: cvmAPI}
+			response := client.ReadComputeDestroyStatus(computeDestroyStatusRequest("NativeCVM"), nil)
+			if !response.Ok || response.Status != "present" || response.CVMStatus != "SHUTDOWN" || response.ProviderData["isolatedSource"] != source || response.MachinePresent == nil || *response.MachinePresent {
+				t.Fatalf("pending destruction and provider isolation evidence lost: %#v", response)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			assertProviderTruthReadOnly(t, tkeAPI, cvmAPI)
+			if response.MutationCount != 0 {
+				t.Fatal("readback mutated provider resources")
+			}
+		})
+	}
+}
+
 func TestTencentSDKClientReadComputeDestroyStatusLegacyMachineTypesRemainTKEOnly(t *testing.T) {
 	for _, machineType := range []string{"Native", "CXM"} {
 		t.Run(machineType, func(t *testing.T) {
@@ -7927,5 +7947,135 @@ func assertProviderTruthDescribeOnly(t *testing.T, calls []string) {
 		if !allowed[call] {
 			t.Fatalf("provider truth used a non-Describe TKE call: %#v", calls)
 		}
+	}
+}
+
+func TestComputeObservationReportsStoppedWithoutChangingValidation(t *testing.T) {
+	request := Request{AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(), Pool: ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4}, Allocation: ComputeAllocationInput{Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11"}}
+	for _, tc := range []struct {
+		name, state, machineState string
+		nativeInstanceID          string
+		wrongOwner                bool
+		observable                bool
+	}{
+		{name: "stopped", state: "STOPPED", observable: true},
+		{name: "starting", state: "STARTING", observable: true},
+		{name: "machine not ready", state: "STOPPED", machineState: "NotReady", observable: true},
+		{name: "owner mismatch", state: "STOPPED", wrongOwner: true},
+		{name: "native CVM identity mismatch", state: "STOPPED", nativeInstanceID: "ins-foreign"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic", replicas: 1, machineState: tc.machineState, clusterNativeInstanceID: tc.nativeInstanceID}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags(), instanceState: tc.state}
+			if tc.wrongOwner {
+				cvmAPI.instanceName = "compute-other"
+			}
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := client.SyncComputeAllocation(request, nil)
+			if result.Ok {
+				t.Fatalf("stopped compute became valid for lifecycle: %#v", result)
+			}
+			if tc.observable {
+				if result.Observation == nil || !result.Observation.Available || result.Observation.ProviderID != request.Allocation.InstanceId {
+					t.Fatalf("owned current state unavailable: %#v", result)
+				}
+				expected := "stopped"
+				if tc.state == "STARTING" {
+					expected = "pending"
+				}
+				if string(result.Observation.State) != expected {
+					t.Fatalf("observation=%#v", result.Observation)
+				}
+			} else if result.Observation != nil && result.Observation.Available {
+				t.Fatalf("foreign identity became observable: %#v", result)
+			}
+			if len(tkeAPI.scaleNodePoolRequests) != 0 {
+				t.Fatal("read issued scale")
+			}
+		})
+	}
+}
+
+func TestComputeObservationPreservesOwnedCVMWhenTKEBindingIsMissing(t *testing.T) {
+	request := Request{
+		AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(),
+		Pool:       ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4},
+		Allocation: ComputeAllocationInput{Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11"},
+	}
+	for _, tc := range []struct {
+		state string
+		want  contracts.ResourceObservedState
+	}{
+		{state: "RUNNING", want: contracts.ResourceObservedRunning},
+		{state: "STOPPED", want: contracts.ResourceObservedStopped},
+		{state: "STARTING", want: contracts.ResourceObservedPending},
+		{state: "SHUTDOWN", want: contracts.ResourceObservedPendingDeletion},
+		{state: "TERMINATING", want: contracts.ResourceObservedDeleting},
+		{state: "UNRECOGNIZED", want: contracts.ResourceObservedUnknown},
+	} {
+		t.Run(tc.state, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic"}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags(), instanceState: tc.state}
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := client.SyncComputeAllocation(request, nil)
+			code := string(errComputePartialMachineMissingTKEInstanceMissing)
+			if result.Ok || result.Status == "external_deleted" || result.ErrorCode != code || !result.Retryable || result.CVMStatus != tc.state {
+				t.Fatalf("missing TKE binding became ready or absent: %#v", result)
+			}
+			observation := result.Observation
+			if observation == nil || observation.State != tc.want || observation.ReasonCode != code || observation.Available != (tc.want != contracts.ResourceObservedUnknown) {
+				t.Fatalf("owned CVM state or binding failure lost: %#v", result)
+			}
+			if observation.Available && (observation.ProviderID != request.Allocation.InstanceId || observation.PackageOrSpec != request.Pool.InstanceType || observation.Zone != request.Zone || observation.ExpiresAt == "") {
+				t.Fatalf("owned CVM observation identity lost: %#v", observation)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			if result.MutationCount != 0 || len(cvmAPI.modifyInstancesRequest) != 0 || len(cvmAPI.renewInstancesRequests) != 0 {
+				t.Fatal("observation mutated provider resources")
+			}
+		})
+	}
+}
+
+func TestComputeObservationRequiresConfirmedProviderAbsence(t *testing.T) {
+	request := Request{
+		AccountId: "acct-alpha", PackageId: "basic", Zone: "ap-guangzhou-3", Tags: computeOwnershipTags(),
+		Pool:       ComputePoolInput{Id: "pool-basic-2c4g", NodePoolId: "np-basic", InstanceType: "SA5.MEDIUM4", CPU: 2, MemoryGB: 4},
+		Allocation: ComputeAllocationInput{Id: "compute-alpha", InstanceId: "ins-basic-1", MachineName: "node-basic-1", NodeName: "10.0.0.11", PrivateIp: "10.0.0.11"},
+	}
+	for _, tc := range []struct {
+		name      string
+		configure func(*fakeNativeTkeAPI, *fakeNativeCvmAPI)
+		absent    bool
+	}{
+		{name: "CVM and Machine both gone", absent: true, configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.empty = true }},
+		{name: "CVM gone but Machine remains", configure: func(tke *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { tke.replicas, cvm.empty = 1, true }},
+		{name: "CVM provider unavailable", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.err = errors.New("provider unavailable") }},
+		{name: "Machine provider unavailable", configure: func(tke *fakeNativeTkeAPI, _ *fakeNativeCvmAPI) {
+			tke.describeMachineErr = errors.New("provider unavailable")
+		}},
+		{name: "CVM belongs to another resource", configure: func(_ *fakeNativeTkeAPI, cvm *fakeNativeCvmAPI) { cvm.instanceName = "compute-other" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tkeAPI := &fakeNativeTkeAPI{nodePoolId: "np-basic"}
+			cvmAPI := &fakeNativeCvmAPI{instanceName: "compute-alpha", tags: computeOwnershipTags()}
+			tc.configure(tkeAPI, cvmAPI)
+			client := newFakeTencentSDKClient(tkeAPI)
+			client.nativeCvmClient = cvmAPI
+			result := client.SyncComputeAllocation(request, nil)
+			if tc.absent {
+				if !result.Ok || result.Status != "external_deleted" || result.Observation == nil || !result.Observation.Available || result.Observation.State != contracts.ResourceObservedAbsent {
+					t.Fatalf("confirmed absence lost: %#v", result)
+				}
+			} else if result.Ok || result.Status == "external_deleted" || (result.Observation != nil && result.Observation.Available) {
+				t.Fatalf("unknown or conflicting provider identity became authoritative: %#v", result)
+			}
+			assertProviderTruthDescribeOnly(t, tkeAPI.calls)
+			if result.MutationCount != 0 || len(cvmAPI.modifyInstancesRequest) != 0 || len(cvmAPI.renewInstancesRequests) != 0 {
+				t.Fatal("absence observation mutated provider resources")
+			}
+		})
 	}
 }

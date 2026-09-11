@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserContext, Page } from "playwright";
-import type { WorkspaceLaunchRecoveryDTO } from "../apps/console-ui/src/api/dtos.ts";
+import type { OperatorRuntimeObservationsDTO, WorkspaceLaunchRecoveryDTO } from "../apps/console-ui/src/api/dtos.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = "2026-07-19T12:00:00Z";
@@ -56,6 +56,7 @@ const OPERATOR_PAGE_READS = new Set([
   "/api/operator/reconciliation",
   "/api/operator/workspace-launches/launch-resume-fixture/recovery",
   "/api/operator/health",
+  "/api/operator/runtime-observations",
   "/api/operator/announcements"
 ]);
 const VIEWPORTS = Object.freeze({
@@ -109,6 +110,25 @@ function clearFixtureSession(session) {
 
 function source(data, name = "control-plane", status = "available") {
   return { source: name, status, available: true, fetchedAt: NOW, data };
+}
+
+function operatorRuntimeObservations(): OperatorRuntimeObservationsDTO {
+  return {
+    ownershipScope: "workspaces_and_retained_operations",
+    observedAt: NOW, ready: true, businessTotal: 1, observedTotal: 1,
+    runningCount: 1, suspendedCount: 0, pendingCount: 0, attentionCount: 0, unmatchedCount: 0,
+    items: [{ workspaceId: "ws-1", runtimeId: "runtime-fixture", objectRef: "object-fixture", businessState: "running", desiredState: "running", observedState: "running", ownership: "verified", status: "running" }]
+  };
+}
+
+function operatorHealth() {
+  const ready = source({ ready: true });
+  const { items: _items, ...runtime } = operatorRuntimeObservations();
+  return {
+    controlPlane: ready, gateway: source({ ready: true }, "sub2api"), ledger: source({ ready: true }, "ledger"),
+    fabric: source({ ready: true, serviceReady: true, releaseReady: true, cloudImagesReady: true, workspaceImagesReady: true, immutableImagesReady: true, failedChecks: [] }, "fabric"),
+    runtime: source(runtime, "control-plane+fabric")
+  };
 }
 
 function unavailable(name) {
@@ -213,7 +233,7 @@ function operatorWorkspace() {
     ownerAccount, ownerUser, workspace: source({ id: "ws-1", name: "Pilot Workspace" }),
     resourceType: source("compute", "fabric"), packageOrSpec: source("SA5.MEDIUM4", "fabric"),
     providerId: source("ins-fixture", "fabric"), zone: source("ap-guangzhou-6", "fabric"),
-    status: source("RUNNING", "fabric"), createdAt: source("2026-07-01T00:00:00Z", "fabric"),
+    status: source("running", "fabric"), createdAt: source("2026-07-01T00:00:00Z", "fabric"),
     expiresAt: source("2026-08-01T00:00:00Z", "fabric"), lastReadAt: source(NOW, "fabric"),
     operationRef: source("workspace-launch:fixture"), receiptRef: source("receipt-fixture", "ledger")
   };
@@ -695,12 +715,11 @@ export async function apiFixture(route, state, session = state) {
   }
 
   if (path === "/api/operator/overview") {
-    const ready = source({ ready: true }, "control-plane");
     return fulfillJson(route, source({
       accounts: source({ total: 1, active: 1, disabled: 0 }), wallet: source({ currency: "USD", usdMicros: "50000000" }, "sub2api"),
       keys: source({ total: 2 }, "sub2api"), usage: source({ todayActualCostUsdMicros: 10_000, totalActualCostUsdMicros: 25_000 }, "sub2api"),
       workspaces: source({ total: 1 }), resources: source({ total: 1 }, "fabric"), reconciliation: source({ total: 0 }),
-      health: source({ controlPlane: ready, gateway: ready, fabric: ready, runtime: ready, ledger: ready })
+      health: source(operatorHealth())
     }));
   }
   if (path === "/api/operator/accounts" && method === "GET") {
@@ -872,8 +891,10 @@ export async function apiFixture(route, state, session = state) {
     return fulfillJson(route, result);
   }
   if (path === "/api/operator/health") {
-    const ready = source({ ready: true }, "control-plane");
-    return fulfillJson(route, source({ controlPlane: ready, gateway: ready, fabric: ready, runtime: ready, ledger: ready }));
+    return fulfillJson(route, source(operatorHealth()));
+  }
+  if (path === "/api/operator/runtime-observations" && method === "GET") {
+    return fulfillJson(route, source(operatorRuntimeObservations(), "control-plane+fabric"));
   }
   const operatorDisableMatch = path.match(/^\/api\/operator\/accounts\/(acct-\d+)\/disable$/);
   if (operatorDisableMatch && method === "POST") {

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -970,19 +971,16 @@ type failingFabricClient struct {
 	fakeFabricClient
 }
 
-func (failingFabricClient) Readiness(_ context.Context) (map[string]any, error) {
-	return nil, errors.New("provider secret leaked in raw error")
+func (failingFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
+	return contracts.FabricReadiness{}, errors.New("provider secret leaked in raw error")
 }
 
 type internalReadinessFabricClient struct {
 	fakeFabricClient
 }
 
-func (internalReadinessFabricClient) Readiness(_ context.Context) (map[string]any, error) {
-	return map[string]any{
-		"provider": "fabric", "ready": true, "cloudImagesReady": true, "workspaceImagesReady": true, "immutableImagesReady": true,
-		"checks": []any{map[string]any{"detail": "internal secret"}}, "missingEnv": []string{"INTERNAL_SECRET"}, "internalCredential": "secret-value",
-	}, nil
+func (internalReadinessFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
+	return contracts.FabricReadiness{Provider: "fabric", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{"INTERNAL_SECRET"}}, nil
 }
 
 type catalogFabricClient struct {
@@ -1229,9 +1227,9 @@ func (f *fakeFabricClient) RevealWorkspaceRuntimeCredentials(ctx context.Context
 	return runtime, err
 }
 
-func (f *fakeFabricClient) Readiness(_ context.Context) (map[string]any, error) {
+func (f *fakeFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
 	f.record("fabric.readiness")
-	return map[string]any{"provider": "fabric", "ready": true, "cloudImagesReady": true, "workspaceImagesReady": true, "immutableImagesReady": true, "missingEnv": []string{}, "missingTools": []string{}}, nil
+	return contracts.FabricReadiness{Provider: "fabric", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{}, MissingTools: []string{}, FailedChecks: []string{}}, nil
 }
 
 func explicitOperatorTestPath(path string) bool {

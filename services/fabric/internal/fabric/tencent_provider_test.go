@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
 
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
@@ -682,6 +683,10 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 		}, wantWorkspace: true},
 		{name: "tag only expected image", cloudImage: "registry.example.com/opl/cloud:latest", workspaceImage: workspaceImage, pods: matchingPods, wantWorkspace: true},
 		{name: "workspace pod missing", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any { return matchingPods()[:3] }, wantCloud: true},
+		{name: "existing workspace has another fixed version", cloudImage: cloudImage, workspaceImage: workspaceImage, pods: func() []any {
+			pods := matchingPods()[:3]
+			return append(pods, readyPod("workspace", "workspace", "docker-pullable://registry.example.com/opl/workspace@sha256:"+strings.Repeat("c", 64)))
+		}, wantCloud: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("OPL_CLOUD_IMAGE", tc.cloudImage)
@@ -703,36 +708,103 @@ func TestTencentProviderReadinessRequiresExpectedImagesOnEveryReadyPod(t *testin
 				return provisionerResponse{OK: true}, nil
 			}
 			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
-				if !slices.Equal(args, []string{"get", "pod", "-o", "json"}) {
+				if !slices.Equal(args, []string{"get", "deployment,replicaset,pod", "-o", "json"}) {
 					t.Fatalf("kubectl args = %#v", args)
 				}
 				return json.Marshal(map[string]any{"items": tc.pods()})
 			}
 
 			result, err := provider.Readiness(context.Background())
-			if err != nil || result["ready"] != tc.wantReady || result["immutableImagesReady"] != tc.wantReady || result["cloudImagesReady"] != tc.wantCloud || result["workspaceImagesReady"] != tc.wantWorkspace {
+			if err != nil || result.ServiceReady != tc.wantCloud || result.Ready != tc.wantReady || result.ImmutableImagesReady != tc.wantReady || result.CloudImagesReady != tc.wantCloud || result.WorkspaceImagesReady != tc.wantWorkspace {
 				t.Fatalf("readiness = %#v, err=%v, want ready=%t", result, err, tc.wantReady)
 			}
 		})
 	}
 }
 
-func TestTencentProviderRuntimeHealthSummaryUsesOneAggregateRead(t *testing.T) {
-	provider := NewTencentProvider()
-	calls := 0
-	provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
-		calls++
-		if !slices.Equal(args, []string{"get", "deployment,pod", "-l", "oplcloud.cn/workspace-id", "-o", "json"}) {
-			t.Fatalf("kubectl args = %#v", args)
-		}
-		return mustJSON(map[string]any{"kind": "List", "items": []any{
-			map[string]any{"kind": "Deployment", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-ready"}}, "status": map[string]any{"readyReplicas": 1, "availableReplicas": 1}},
-			map[string]any{"kind": "Pod", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-ready"}}, "status": map[string]any{"phase": "Running", "conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
-			map[string]any{"kind": "Deployment", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-unready"}}, "status": map[string]any{"readyReplicas": 0, "availableReplicas": 0}},
-			map[string]any{"kind": "Pod", "metadata": map[string]any{"labels": map[string]any{"oplcloud.cn/workspace-id": "ws-unready"}}, "status": map[string]any{"phase": "Pending"}},
-		}}), nil
+func TestWorkspaceImageReadinessVerifiesEachCurrentTargetBeforeExplainingVersionDifference(t *testing.T) {
+	installed := "example/image@sha256:" + strings.Repeat("b", 64)
+	existing := "example/image@sha256:" + strings.Repeat("a", 64)
+	fixture := func(workspaceID string) []any {
+		items := observationWorkload(workspaceID, 1, true)
+		pod := items[2].(map[string]any)
+		pod["spec"] = map[string]any{"containers": []any{map[string]any{"name": "workspace", "image": existing}}}
+		pod["status"].(map[string]any)["containerStatuses"] = []any{map[string]any{"name": "workspace", "ready": true, "imageID": "docker-pullable://" + existing}}
+		return items
 	}
+	for _, tc := range []struct {
+		name      string
+		installed string
+		change    func([]any) []any
+		want      contracts.WorkspaceImageReadinessStatus
+	}{
+		{name: "current target is installed default", installed: existing, want: contracts.WorkspaceImageInstalledTargetMatches},
+		{name: "malformed inventory item", change: func(items []any) []any { return append(items, nil) }, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "existing fixed target remains verified after default changes", want: contracts.WorkspaceImageTargetsVerified},
+		{name: "suspended fleet has no running sample", change: func([]any) []any { return observationWorkload("paused", 0, false) }, want: contracts.WorkspaceImageNoRunningSample},
+		{name: "pending workspace has no running sample", change: func([]any) []any { return observationWorkload("pending", 1, false) }, want: contracts.WorkspaceImageNoRunningSample},
+		{name: "image actually differs from its own target", change: func(items []any) []any {
+			items[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = installed
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "missing runtime image ID", change: func(items []any) []any {
+			items[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = ""
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "mutable target cannot establish version difference", change: func(items []any) []any {
+			items[0].(map[string]any)["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["image"] = "example/image:latest"
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "old Ready Pod cannot prove new generation", change: func(items []any) []any {
+			items[0].(map[string]any)["status"].(map[string]any)["observedGeneration"] = float64(1)
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "old ReplicaSet template cannot prove current target", change: func(items []any) []any {
+			items[1].(map[string]any)["spec"].(map[string]any)["template"] = map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "workspace", "image": installed}}}}
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "Pod spec differs from controller target", change: func(items []any) []any {
+			items[2].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["image"] = installed
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "missing Pod controller", change: func(items []any) []any {
+			delete(items[2].(map[string]any)["metadata"].(map[string]any), "ownerReferences")
+			return items
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "missing ReplicaSet", change: func(items []any) []any { return []any{items[0], items[2]} }, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "missing Deployment", change: func(items []any) []any { return items[1:] }, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "duplicate object identity", change: func(items []any) []any { return append(items, items[0]) }, want: contracts.WorkspaceImageIdentityUnverified},
+		{name: "one unverified Workspace prevents verified fleet claim", change: func(items []any) []any {
+			other := fixture("other")
+			other[2].(map[string]any)["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)["imageID"] = installed
+			return append(items, other...)
+		}, want: contracts.WorkspaceImageIdentityUnverified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			items := fixture("ws")
+			if tc.change != nil {
+				items = tc.change(items)
+			}
+			target := tc.installed
+			if target == "" {
+				target = installed
+			}
+			if got := workspaceImageReadiness(items, target); got != tc.want {
+				t.Fatalf("status=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
 
+func TestTencentProviderRuntimeHealthSummaryUsesOneAggregateRead(t *testing.T) {
+	items := append(observationWorkload("ws-ready", 1, true), observationWorkload("ws-unready", 1, false)...)
+	provider := inventoryProvider(t, items)
+	calls := 0
+	read := provider.kubectl
+	provider.kubectl = func(ctx context.Context, args []string, input []byte) ([]byte, error) {
+		calls++
+		return read(ctx, args, input)
+	}
 	summary, err := provider.RuntimeHealthSummary(context.Background())
 	if err != nil || summary.Total != 2 || summary.Ready != 1 || summary.Unready != 1 || calls != 1 {
 		t.Fatalf("summary=%#v err=%v calls=%d", summary, err, calls)

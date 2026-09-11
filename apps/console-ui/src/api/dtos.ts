@@ -873,11 +873,51 @@ export interface ReadinessFact {
   updatedAt?: string;
 }
 
+export interface OperatorFabricHealthDTO extends ReadinessFact {
+  ready: boolean;
+  serviceReady: boolean;
+  releaseReady: boolean;
+  cloudImagesReady: boolean;
+  workspaceImagesReady: boolean;
+  workspaceImageStatus?: "installed_target_matches" | "workspace_targets_verified" | "no_running_sample" | "identity_unverified";
+  immutableImagesReady: boolean;
+  failedChecks: string[];
+}
+
+export interface OperatorRuntimeHealthDTO extends ReadinessFact {
+  observedAt: string;
+  ready: boolean;
+  businessTotal: number;
+  observedTotal: number;
+  runningCount: number;
+  suspendedCount: number;
+  pendingCount: number;
+  attentionCount: number;
+  unmatchedCount: number;
+}
+
+export interface OperatorRuntimeObservationDTO {
+  objectRef?: string;
+  workspaceId?: string;
+  runtimeId?: string;
+  businessState?: string;
+  desiredState?: string;
+  observedState?: string;
+  ownership?: string;
+  status: "running" | "suspended" | "pending" | "attention";
+  reasonCode?: string;
+}
+
+export interface OperatorRuntimeObservationsDTO extends OperatorRuntimeHealthDTO {
+  ownershipScope: "workspaces_and_retained_operations";
+  items: OperatorRuntimeObservationDTO[];
+}
+
 export interface OperatorHealthDTO {
   controlPlane: SourceEnvelope<ReadinessFact>;
   gateway: SourceEnvelope<ReadinessFact>;
-  fabric: SourceEnvelope<ReadinessFact>;
-  runtime: SourceEnvelope<ReadinessFact>;
+  fabric: SourceEnvelope<OperatorFabricHealthDTO>;
+  runtime: SourceEnvelope<OperatorRuntimeHealthDTO>;
   ledger: SourceEnvelope<ReadinessFact>;
 }
 

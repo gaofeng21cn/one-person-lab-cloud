@@ -282,6 +282,66 @@ failed binding read leaves this observation absent; it does not imply a match.
 Control Plane projects only the bounded provider error code prefix; provider
 messages and response bodies are excluded from the operator fact projection.
 
+Operator resource reads consume the typed `ResourceObservation` attached by
+Fabric to the same provider read. Its current state, observation time and
+bounded reason are separate from retained `ProviderFact.Available/Facts`
+validation used by financial and lifecycle operations. An observed stopped or
+absent resource does not change those operations' validation rules. Missing
+observation evidence is unavailable, never inferred from a historical status.
+When Tencent confirms the persisted CVM identity but its Machine/TKE association
+is missing, Fabric retains that observed CVM state alongside the blocking reason.
+This neither certifies compute readiness nor turns a missing association into
+proof that the CVM was destroyed.
+Tencent `STOPPED` means an ordinary stopped CVM; `SHUTDOWN` is normalized to
+`pending_deletion` (stopped awaiting destruction), and `TERMINATING` to
+`deleting`. Startup/restart transitions remain `pending`. The association
+reason is independent of that lifecycle state: a verified CVM can still exist
+after its Machine and TKE cluster-instance membership disappear. Neither that
+combination nor an expired timestamp proves a completed refund. The read-only
+destroy-status readback retains Tencent's `IsolatedSource` for Instance
+diagnostics: `MANMADE` is manual retirement, `EXPIRE` expiry isolation, `ARREAR`
+arrears isolation, and `NOTISOLATED` no isolation. Missing evidence remains
+unknown. Reads never recreate membership, buy replacement compute, or destroy
+the remaining CVM.
+
+`GET /fabric/runtime-observations` inventories physical Runtime controllers
+before matching persisted Fabric ownership. Binding claims remain visible for
+unregistered or conflicting objects. Control Plane reconciles this inventory
+against its complete current Workspace set, retained operations and lifecycle intent through
+`GET /api/operator/runtime-observations`; the operator health card uses the same
+query. Running, normal suspension, pending transitions, missing and unmatched
+objects remain distinct. Incomplete discovery cannot prove absence. The older
+physical summary retains `ready + unready = total`; a suspended controller is
+physically unready without necessarily being a business fault.
+The response declares `ownershipScope=workspaces_and_retained_operations` only
+after both complete owner reads succeed. A Runtime with a retained operation but
+no Workspace reports `runtime_operation_without_workspace`; it cannot be treated
+as an unowned cleanup target. Instance maintenance consumes this explicit scope
+and performs its own exact-identity and dependency checks before any mutation.
+
+Fabric readiness separates `serviceReady` from strict `ready` and retains all
+image qualification fields. Operator service health uses the former and
+exposes the latter as `releaseReady`, labelled installation image-target
+consistency. `workspaceImageStatus` distinguishes matching the installed target,
+verified per-Workspace targets that differ from it, no running sample, and
+unverifiable identity. Verification follows Deployment/ReplicaSet/Pod ownership
+and the current immutable Workspace target. A different installed default does
+not change a retained Workspace target or imply a broken running Workspace.
+`workspace_image_id` names a container image-digest check, not the Workspace
+business ID or a CVM system image. The current Launch preflight propagates a
+Readiness call error but does not gate on its strict `ready` boolean; subsequent
+owner-specific admission and Runtime readback remain separate. Neither
+readiness field proves Tencent balance or authorizes procurement.
+
+Gateway operator totals use one complete Control Plane Account collection,
+validate each current Sub2API identity, and read native balance, Key count and
+batched usage through the existing bounded client concurrency. Disabled mapped
+Accounts are included; Gateway-only users are outside this scope. Duplicate
+identity mappings or failed identity reads invalidate all three totals.
+An independently unavailable balance, Key count or usage invalidates only that
+metric after identity validation. No partial sum, wallet replica or raw Key is
+returned to the Console.
+
 The Local Docker adapter validates an immutable Workspace image against its
 trusted repository or exact release-manifest source before Docker access or
 Fabric operation persistence. Its running container ID, service identity, and
@@ -506,6 +566,26 @@ original account, Workspace, Runtime operation and paid-through period. Fabric
 serializes power with destroy and rejects stale periods or deleted Runtimes;
 Tencent scales the exact Deployment to zero and waits for Pod absence, while
 Local-Docker stops the original container. Storage is not deleted by expiry.
+
+The provider-reconcile worker also scans successful Workspace Launch bindings,
+independently of the older compute/storage projections. It runs at startup and
+at the existing configured interval (ten minutes by default). Confirmed absence
+of the original storage atomically records `data_deleted/unrecoverable`; compute
+absence alone records `suspended`. Both close auto-renew and access, retain the
+original paid period, resource and financial identities, and append an audit.
+Unreadable or conflicting facts cannot prove absence. Workspace/operation CAS
+and the existing lifecycle locks defer this change during unfinished operations.
+Fabric verifies the original successful Runtime binding and freshly confirms
+the missing resource inside its Runtime lock before accepting the explicit
+`provider_resource_absent` suspension reason. Unknown responses converge by
+readback; resource loss never purchases a replacement or refunds the wallet.
+Later expiry or stale Workspace projections cannot reverse confirmed storage loss.
+An Instance can set `OPL_PROVIDER_RECONCILE_INTERVAL_MS` to its operational
+interval. Resource-list refresh immediately requests fresh Fabric observations
+alongside the committed Workspace business state; the GET does not run this
+business-state reconciliation. The independent monthly lifecycle worker still
+enforces expiry and renewal on its own schedule. Changing the resource scan
+interval does not extend paid entitlement or authorize autoscaling.
 
 The renewal read reports recovery eligibility from original resource, Runtime,
 period and wallet readback. A customer's explicit `autoRenew=true` authorization
