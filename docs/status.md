@@ -78,18 +78,20 @@ determined), and deletion carries the provisioning mode in its identity so a
 resource-only deletion confirms no Gateway identity, skips runtime and secret
 cleanup, and destroys only compute, storage and attachment. An HTTP-level
 lifecycle test buys, activates, deletes and re-verifies a resource-only
-Workspace without any application fact, and the full `internal/server`
-regression passed against a real PostgreSQL instance. The resource-only
-purchase path is now implementable end to end in
-process tests; live Console projection of the empty application binding and
-lifecycle verification of the purchased empty Workspace remain open. These
-preparations are
-unintegrated as business capabilities, not a frozen public interface or a
-completed business
-capability. The delivery plan now follows the five runnable outcomes in
+Workspace without any application fact. Commit `d93cd313` (2026-09-12) adds
+the workspace application binding projection — an ent column with a
+backfilling migration (`opl_app` for retained workspaces, `empty` for
+resource-only activations), activation wiring and a Console display — plus
+resource-only auto-renewal and expiry sagas proving renewal completes without
+a Gateway key and expiry proceeds without runtime suspension. The full
+`npm run verify:local:full` pipeline passed on this snapshot with PostgreSQL
+and Docker integration. Open for business loop 1: a live purchase against the
+running Compose stack and the Console launch of a resource-only purchase;
+application deployment onto the empty binding is business loop 2. The delivery
+plan follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
-acceptance for these new outcomes remain unverified. This preparation is
-distinct from the retained D1-D5 verification below.
+acceptance for these new outcomes remain unverified where stated. This
+preparation is distinct from the retained D1-D5 verification below.
 
 The 2026-09-11 plan reconciliation passed `validate:product-boundary`, local
 file/anchor checks across the six changed documents, and `git diff --check`.
