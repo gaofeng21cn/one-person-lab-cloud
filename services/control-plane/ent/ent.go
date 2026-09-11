@@ -10,6 +10,7 @@ import (
 	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/ent/announcementread"
+	"opl-cloud/services/control-plane/ent/applicationrevision"
 	"opl-cloud/services/control-plane/ent/archivedadminauditevent"
 	"opl-cloud/services/control-plane/ent/authattempt"
 	"opl-cloud/services/control-plane/ent/billingreconciliation"
@@ -93,6 +94,7 @@ func checkColumn(table, column string) error {
 			adminauditevent.Table:         adminauditevent.ValidColumn,
 			announcement.Table:            announcement.ValidColumn,
 			announcementread.Table:        announcementread.ValidColumn,
+			applicationrevision.Table:     applicationrevision.ValidColumn,
 			archivedadminauditevent.Table: archivedadminauditevent.ValidColumn,
 			authattempt.Table:             authattempt.ValidColumn,
 			billingreconciliation.Table:   billingreconciliation.ValidColumn,

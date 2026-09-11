@@ -15,6 +15,7 @@ import (
 	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/ent/announcementread"
+	"opl-cloud/services/control-plane/ent/applicationrevision"
 	"opl-cloud/services/control-plane/ent/archivedadminauditevent"
 	"opl-cloud/services/control-plane/ent/authattempt"
 	"opl-cloud/services/control-plane/ent/billingreconciliation"
@@ -47,6 +48,8 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// ApplicationRevision is the client for interacting with the ApplicationRevision builders.
+	ApplicationRevision *ApplicationRevisionClient
 	// ArchivedAdminAuditEvent is the client for interacting with the ArchivedAdminAuditEvent builders.
 	ArchivedAdminAuditEvent *ArchivedAdminAuditEventClient
 	// AuthAttempt is the client for interacting with the AuthAttempt builders.
@@ -88,6 +91,7 @@ func (c *Client) init() {
 	c.AdminAuditEvent = NewAdminAuditEventClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.ApplicationRevision = NewApplicationRevisionClient(c.config)
 	c.ArchivedAdminAuditEvent = NewArchivedAdminAuditEventClient(c.config)
 	c.AuthAttempt = NewAuthAttemptClient(c.config)
 	c.BillingReconciliation = NewBillingReconciliationClient(c.config)
@@ -197,6 +201,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AdminAuditEvent:         NewAdminAuditEventClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ApplicationRevision:     NewApplicationRevisionClient(cfg),
 		ArchivedAdminAuditEvent: NewArchivedAdminAuditEventClient(cfg),
 		AuthAttempt:             NewAuthAttemptClient(cfg),
 		BillingReconciliation:   NewBillingReconciliationClient(cfg),
@@ -233,6 +238,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AdminAuditEvent:         NewAdminAuditEventClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ApplicationRevision:     NewApplicationRevisionClient(cfg),
 		ArchivedAdminAuditEvent: NewArchivedAdminAuditEventClient(cfg),
 		AuthAttempt:             NewAuthAttemptClient(cfg),
 		BillingReconciliation:   NewBillingReconciliationClient(cfg),
@@ -276,10 +282,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
-		c.ArchivedAdminAuditEvent, c.AuthAttempt, c.BillingReconciliation,
-		c.ComputeAllocation, c.ProductionE2ERecord, c.ProjectTaskSyncHead,
-		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume, c.User,
-		c.Workspace, c.WorkspaceSyncEvent,
+		c.ApplicationRevision, c.ArchivedAdminAuditEvent, c.AuthAttempt,
+		c.BillingReconciliation, c.ComputeAllocation, c.ProductionE2ERecord,
+		c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session, c.StorageAttachment,
+		c.StorageVolume, c.User, c.Workspace, c.WorkspaceSyncEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -290,10 +296,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
-		c.ArchivedAdminAuditEvent, c.AuthAttempt, c.BillingReconciliation,
-		c.ComputeAllocation, c.ProductionE2ERecord, c.ProjectTaskSyncHead,
-		c.RuntimeOperation, c.Session, c.StorageAttachment, c.StorageVolume, c.User,
-		c.Workspace, c.WorkspaceSyncEvent,
+		c.ApplicationRevision, c.ArchivedAdminAuditEvent, c.AuthAttempt,
+		c.BillingReconciliation, c.ComputeAllocation, c.ProductionE2ERecord,
+		c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session, c.StorageAttachment,
+		c.StorageVolume, c.User, c.Workspace, c.WorkspaceSyncEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -310,6 +316,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *ApplicationRevisionMutation:
+		return c.ApplicationRevision.mutate(ctx, m)
 	case *ArchivedAdminAuditEventMutation:
 		return c.ArchivedAdminAuditEvent.mutate(ctx, m)
 	case *AuthAttemptMutation:
@@ -870,6 +878,139 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
+	}
+}
+
+// ApplicationRevisionClient is a client for the ApplicationRevision schema.
+type ApplicationRevisionClient struct {
+	config
+}
+
+// NewApplicationRevisionClient returns a client for the ApplicationRevision from the given config.
+func NewApplicationRevisionClient(c config) *ApplicationRevisionClient {
+	return &ApplicationRevisionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `applicationrevision.Hooks(f(g(h())))`.
+func (c *ApplicationRevisionClient) Use(hooks ...Hook) {
+	c.hooks.ApplicationRevision = append(c.hooks.ApplicationRevision, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `applicationrevision.Intercept(f(g(h())))`.
+func (c *ApplicationRevisionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ApplicationRevision = append(c.inters.ApplicationRevision, interceptors...)
+}
+
+// Create returns a builder for creating a ApplicationRevision entity.
+func (c *ApplicationRevisionClient) Create() *ApplicationRevisionCreate {
+	mutation := newApplicationRevisionMutation(c.config, OpCreate)
+	return &ApplicationRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ApplicationRevision entities.
+func (c *ApplicationRevisionClient) CreateBulk(builders ...*ApplicationRevisionCreate) *ApplicationRevisionCreateBulk {
+	return &ApplicationRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApplicationRevisionClient) MapCreateBulk(slice any, setFunc func(*ApplicationRevisionCreate, int)) *ApplicationRevisionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApplicationRevisionCreateBulk{err: fmt.Errorf("calling to ApplicationRevisionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApplicationRevisionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApplicationRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ApplicationRevision.
+func (c *ApplicationRevisionClient) Update() *ApplicationRevisionUpdate {
+	mutation := newApplicationRevisionMutation(c.config, OpUpdate)
+	return &ApplicationRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApplicationRevisionClient) UpdateOne(ar *ApplicationRevision) *ApplicationRevisionUpdateOne {
+	mutation := newApplicationRevisionMutation(c.config, OpUpdateOne, withApplicationRevision(ar))
+	return &ApplicationRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApplicationRevisionClient) UpdateOneID(id string) *ApplicationRevisionUpdateOne {
+	mutation := newApplicationRevisionMutation(c.config, OpUpdateOne, withApplicationRevisionID(id))
+	return &ApplicationRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ApplicationRevision.
+func (c *ApplicationRevisionClient) Delete() *ApplicationRevisionDelete {
+	mutation := newApplicationRevisionMutation(c.config, OpDelete)
+	return &ApplicationRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApplicationRevisionClient) DeleteOne(ar *ApplicationRevision) *ApplicationRevisionDeleteOne {
+	return c.DeleteOneID(ar.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApplicationRevisionClient) DeleteOneID(id string) *ApplicationRevisionDeleteOne {
+	builder := c.Delete().Where(applicationrevision.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApplicationRevisionDeleteOne{builder}
+}
+
+// Query returns a query builder for ApplicationRevision.
+func (c *ApplicationRevisionClient) Query() *ApplicationRevisionQuery {
+	return &ApplicationRevisionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApplicationRevision},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ApplicationRevision entity by its id.
+func (c *ApplicationRevisionClient) Get(ctx context.Context, id string) (*ApplicationRevision, error) {
+	return c.Query().Where(applicationrevision.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApplicationRevisionClient) GetX(ctx context.Context, id string) *ApplicationRevision {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ApplicationRevisionClient) Hooks() []Hook {
+	return c.hooks.ApplicationRevision
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApplicationRevisionClient) Interceptors() []Interceptor {
+	return c.inters.ApplicationRevision
+}
+
+func (c *ApplicationRevisionClient) mutate(ctx context.Context, m *ApplicationRevisionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApplicationRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApplicationRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApplicationRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApplicationRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ApplicationRevision mutation op: %q", m.Op())
 	}
 }
 
@@ -2605,14 +2746,14 @@ func (c *WorkspaceSyncEventClient) mutate(ctx context.Context, m *WorkspaceSyncE
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Account, AdminAuditEvent, Announcement, AnnouncementRead,
+		Account, AdminAuditEvent, Announcement, AnnouncementRead, ApplicationRevision,
 		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
 		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
 		StorageAttachment, StorageVolume, User, Workspace,
 		WorkspaceSyncEvent []ent.Hook
 	}
 	inters struct {
-		Account, AdminAuditEvent, Announcement, AnnouncementRead,
+		Account, AdminAuditEvent, Announcement, AnnouncementRead, ApplicationRevision,
 		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
 		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
 		StorageAttachment, StorageVolume, User, Workspace,

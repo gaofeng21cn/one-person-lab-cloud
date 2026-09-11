@@ -29,4 +29,6 @@ type SharedStore interface {
 	CompleteProductionE2EAttempt(ctx context.Context, id, binding string) (map[string]any, error)
 	BillingReconciliation(ctx context.Context) (map[string]any, bool, error)
 	ApplyBillingReconciliation(ctx context.Context, mutation billingReconciliationMutation) error
+	AdmittedApplicationRevision(ctx context.Context, applicationID, version string) (map[string]any, bool, error)
+	ApplyApplicationRevisionAdmission(ctx context.Context, mutation applicationRevisionMutation) (map[string]any, error)
 }

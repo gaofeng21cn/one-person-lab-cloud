@@ -52,6 +52,9 @@ var workspacePurchaseEligibility string
 //go:embed 202609120001_workspace_application_binding.sql
 var workspaceApplicationBinding string
 
+//go:embed 202609120002_application_revisions.sql
+var applicationRevisions string
+
 func Apply(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, monthlyHardCut, []any{}, nil)
 }
@@ -134,4 +137,8 @@ func ApplyWorkspacePurchaseEligibility(ctx context.Context, driver dialect.Drive
 
 func ApplyWorkspaceApplicationBinding(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, workspaceApplicationBinding, []any{}, nil)
+}
+
+func ApplyApplicationRevisions(ctx context.Context, driver dialect.Driver) error {
+	return driver.Exec(ctx, applicationRevisions, []any{}, nil)
 }

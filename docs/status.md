@@ -86,8 +86,20 @@ resource-only auto-renewal and expiry sagas proving renewal completes without
 a Gateway key and expiry proceeds without runtime suspension. The full
 `npm run verify:local:full` pipeline passed on this snapshot with PostgreSQL
 and Docker integration. Open for business loop 1: a live purchase against the
-running Compose stack and the Console launch of a resource-only purchase;
-application deployment onto the empty binding is business loop 2. The delivery
+running Compose stack and the Console launch of a resource-only purchase.
+Business loop 2 is open: commit `217bb904` (2026-09-12) adds the
+`internal/domain/application` admission rules — immutable revision identity
+with canonical content digests, idempotent re-admission, conflict detection
+and deployment transition checks against the Workspace's current binding —
+and commit `722f2ee7` adds the administrator-only admission/read routes and
+PostgreSQL revision persistence. Identical content replays the stored revision;
+conflicting content cannot overwrite it. Domain, HTTP and real PostgreSQL
+admission checks passed. The Fabric deployment path remains the next slice.
+The full local gate also exposed a retained Fabric terminalization race:
+an identical request could finish between the replay and candidate reads.
+The command, result-read and HTTP authorization paths now re-read the exact
+approved terminal result in that window, without another provider mutation;
+deterministic interleaving checks cover all three callers. The delivery
 plan follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
 acceptance for these new outcomes remain unverified where stated. This

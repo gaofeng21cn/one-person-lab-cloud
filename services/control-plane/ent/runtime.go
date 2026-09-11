@@ -7,6 +7,7 @@ import (
 	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/ent/announcementread"
+	"opl-cloud/services/control-plane/ent/applicationrevision"
 	"opl-cloud/services/control-plane/ent/archivedadminauditevent"
 	"opl-cloud/services/control-plane/ent/authattempt"
 	"opl-cloud/services/control-plane/ent/billingreconciliation"
@@ -204,6 +205,42 @@ func init() {
 	announcementreadDescID := announcementreadFields[0].Descriptor()
 	// announcementread.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	announcementread.IDValidator = announcementreadDescID.Validators[0].(func(string) error)
+	applicationrevisionFields := schema.ApplicationRevision{}.Fields()
+	_ = applicationrevisionFields
+	// applicationrevisionDescCreatedAt is the schema descriptor for created_at field.
+	applicationrevisionDescCreatedAt := applicationrevisionFields[1].Descriptor()
+	// applicationrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	applicationrevision.DefaultCreatedAt = applicationrevisionDescCreatedAt.Default.(func() time.Time)
+	// applicationrevisionDescUpdatedAt is the schema descriptor for updated_at field.
+	applicationrevisionDescUpdatedAt := applicationrevisionFields[2].Descriptor()
+	// applicationrevision.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	applicationrevision.DefaultUpdatedAt = applicationrevisionDescUpdatedAt.Default.(func() time.Time)
+	// applicationrevision.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	applicationrevision.UpdateDefaultUpdatedAt = applicationrevisionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// applicationrevisionDescApplicationID is the schema descriptor for application_id field.
+	applicationrevisionDescApplicationID := applicationrevisionFields[3].Descriptor()
+	// applicationrevision.ApplicationIDValidator is a validator for the "application_id" field. It is called by the builders before save.
+	applicationrevision.ApplicationIDValidator = applicationrevisionDescApplicationID.Validators[0].(func(string) error)
+	// applicationrevisionDescVersion is the schema descriptor for version field.
+	applicationrevisionDescVersion := applicationrevisionFields[4].Descriptor()
+	// applicationrevision.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	applicationrevision.VersionValidator = applicationrevisionDescVersion.Validators[0].(func(string) error)
+	// applicationrevisionDescDigest is the schema descriptor for digest field.
+	applicationrevisionDescDigest := applicationrevisionFields[5].Descriptor()
+	// applicationrevision.DigestValidator is a validator for the "digest" field. It is called by the builders before save.
+	applicationrevision.DigestValidator = applicationrevisionDescDigest.Validators[0].(func(string) error)
+	// applicationrevisionDescPayload is the schema descriptor for payload field.
+	applicationrevisionDescPayload := applicationrevisionFields[6].Descriptor()
+	// applicationrevision.PayloadValidator is a validator for the "payload" field. It is called by the builders before save.
+	applicationrevision.PayloadValidator = applicationrevisionDescPayload.Validators[0].(func(string) error)
+	// applicationrevisionDescAdmittedByUserID is the schema descriptor for admitted_by_user_id field.
+	applicationrevisionDescAdmittedByUserID := applicationrevisionFields[7].Descriptor()
+	// applicationrevision.AdmittedByUserIDValidator is a validator for the "admitted_by_user_id" field. It is called by the builders before save.
+	applicationrevision.AdmittedByUserIDValidator = applicationrevisionDescAdmittedByUserID.Validators[0].(func(string) error)
+	// applicationrevisionDescID is the schema descriptor for id field.
+	applicationrevisionDescID := applicationrevisionFields[0].Descriptor()
+	// applicationrevision.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	applicationrevision.IDValidator = applicationrevisionDescID.Validators[0].(func(string) error)
 	archivedadminauditeventFields := schema.ArchivedAdminAuditEvent{}.Fields()
 	_ = archivedadminauditeventFields
 	// archivedadminauditeventDescCreatedAt is the schema descriptor for created_at field.

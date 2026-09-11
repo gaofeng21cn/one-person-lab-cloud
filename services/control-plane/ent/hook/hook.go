@@ -56,6 +56,18 @@ func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 }
 
+// The ApplicationRevisionFunc type is an adapter to allow the use of ordinary
+// function as ApplicationRevision mutator.
+type ApplicationRevisionFunc func(context.Context, *ent.ApplicationRevisionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApplicationRevisionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApplicationRevisionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApplicationRevisionMutation", m)
+}
+
 // The ArchivedAdminAuditEventFunc type is an adapter to allow the use of ordinary
 // function as ArchivedAdminAuditEvent mutator.
 type ArchivedAdminAuditEventFunc func(context.Context, *ent.ArchivedAdminAuditEventMutation) (ent.Value, error)
