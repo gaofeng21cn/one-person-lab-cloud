@@ -75,6 +75,7 @@ function statusLabel(status?: string) {
     queued: "等待处理",
     running: "运行中",
     suspended: "已暂停",
+    data_deleted: "数据已删除",
     provisioning: "开通中",
     expired_unpaid: "到期未续费",
     deleting: "删除中",

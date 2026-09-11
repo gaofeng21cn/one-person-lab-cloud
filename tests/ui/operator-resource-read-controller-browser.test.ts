@@ -733,6 +733,7 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
   const writes: string[] = [];
   const alpha = () => {
     const item = operatorWorkspace("workspace-refresh", "Refresh");
+    if (version >= 3 && item.workspace.data) item.workspace.data.state = "data_deleted";
     item.resources[0].status = source(version === 1 ? "running" : "stopped", "fabric");
     item.resources[0].lastReadAt = source(`2026-09-10T0${version}:00:00Z`, "fabric");
     return item;
@@ -751,7 +752,7 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
       if (path.endsWith("/preview")) return fulfill(route, source(preview(id), "control-plane+fabric"));
       if (id === "workspace-refresh") {
         alphaReads += 1;
-        if (alphaReads === 3) {
+        if (alphaReads === 4) {
           held.resolve();
           await release.promise;
           const stale = alpha();
@@ -775,6 +776,10 @@ test("Resource refresh updates an expanded Workspace and rejects its late respon
     assert.equal(alphaReads, 2);
     assert.match(await workspaceRow(page, "workspace-refresh").innerText(), /运行中/);
     assert.match(await workspaceRow(page, "workspace-refresh").innerText(), /读取时间/);
+    version = 3;
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await workspaceRow(page, "workspace-refresh").getByText("数据已删除", { exact: true }).waitFor();
+    assert.equal(alphaReads, 3);
     await page.getByRole("button", { name: "刷新", exact: true }).click();
     await held.promise;
     await selectWorkspace(page, "workspace-current");
