@@ -97,3 +97,16 @@ func decodeApplicationRevisionPayload(payload string) (contracts.WorkspaceApplic
 	}
 	return revision, true
 }
+
+// ClaimWorkspaceApplicationDeploymentIntent creates the deployment intent's
+// runtime-operation row if the identity is free. An existing row means a
+// concurrent claim won; the caller compares the persisted request hash for the
+// idempotent replay decision.
+func (s *postgresEntStateStore) ClaimWorkspaceApplicationDeploymentIntent(ctx context.Context, row map[string]any) error {
+	if err := saveRecord(ctx, stringValue(row["id"]), row, s.client.RuntimeOperation.Create(), runtimeOpEntFields); controlplaneent.IsConstraintError(err) {
+		return errWorkspaceApplicationIntentConflict
+	} else if err != nil {
+		return err
+	}
+	return nil
+}

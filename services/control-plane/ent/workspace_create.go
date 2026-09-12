@@ -440,6 +440,20 @@ func (wc *WorkspaceCreate) SetNillableApplicationBinding(s *string) *WorkspaceCr
 	return wc
 }
 
+// SetApplicationBindingVersion sets the "application_binding_version" field.
+func (wc *WorkspaceCreate) SetApplicationBindingVersion(i int64) *WorkspaceCreate {
+	wc.mutation.SetApplicationBindingVersion(i)
+	return wc
+}
+
+// SetNillableApplicationBindingVersion sets the "application_binding_version" field if the given value is not nil.
+func (wc *WorkspaceCreate) SetNillableApplicationBindingVersion(i *int64) *WorkspaceCreate {
+	if i != nil {
+		wc.SetApplicationBindingVersion(*i)
+	}
+	return wc
+}
+
 // SetID sets the "id" field.
 func (wc *WorkspaceCreate) SetID(s string) *WorkspaceCreate {
 	wc.mutation.SetID(s)
@@ -597,6 +611,10 @@ func (wc *WorkspaceCreate) defaults() {
 		v := workspace.DefaultApplicationBinding
 		wc.mutation.SetApplicationBinding(v)
 	}
+	if _, ok := wc.mutation.ApplicationBindingVersion(); !ok {
+		v := workspace.DefaultApplicationBindingVersion
+		wc.mutation.SetApplicationBindingVersion(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -692,6 +710,9 @@ func (wc *WorkspaceCreate) check() error {
 	}
 	if _, ok := wc.mutation.ApplicationBinding(); !ok {
 		return &ValidationError{Name: "application_binding", err: errors.New(`ent: missing required field "Workspace.application_binding"`)}
+	}
+	if _, ok := wc.mutation.ApplicationBindingVersion(); !ok {
+		return &ValidationError{Name: "application_binding_version", err: errors.New(`ent: missing required field "Workspace.application_binding_version"`)}
 	}
 	if v, ok := wc.mutation.ID(); ok {
 		if err := workspace.IDValidator(v); err != nil {
@@ -852,6 +873,10 @@ func (wc *WorkspaceCreate) createSpec() (*Workspace, *sqlgraph.CreateSpec) {
 	if value, ok := wc.mutation.ApplicationBinding(); ok {
 		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
 		_node.ApplicationBinding = value
+	}
+	if value, ok := wc.mutation.ApplicationBindingVersion(); ok {
+		_spec.SetField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
+		_node.ApplicationBindingVersion = value
 	}
 	return _node, _spec
 }

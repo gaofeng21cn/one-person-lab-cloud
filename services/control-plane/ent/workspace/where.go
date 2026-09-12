@@ -214,6 +214,11 @@ func ApplicationBinding(v string) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldApplicationBinding, v))
 }
 
+// ApplicationBindingVersion applies equality check predicate on the "application_binding_version" field. It's identical to ApplicationBindingVersionEQ.
+func ApplicationBindingVersion(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldApplicationBindingVersion, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldCreatedAt, v))
@@ -1987,6 +1992,46 @@ func ApplicationBindingEqualFold(v string) predicate.Workspace {
 // ApplicationBindingContainsFold applies the ContainsFold predicate on the "application_binding" field.
 func ApplicationBindingContainsFold(v string) predicate.Workspace {
 	return predicate.Workspace(sql.FieldContainsFold(FieldApplicationBinding, v))
+}
+
+// ApplicationBindingVersionEQ applies the EQ predicate on the "application_binding_version" field.
+func ApplicationBindingVersionEQ(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldApplicationBindingVersion, v))
+}
+
+// ApplicationBindingVersionNEQ applies the NEQ predicate on the "application_binding_version" field.
+func ApplicationBindingVersionNEQ(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNEQ(FieldApplicationBindingVersion, v))
+}
+
+// ApplicationBindingVersionIn applies the In predicate on the "application_binding_version" field.
+func ApplicationBindingVersionIn(vs ...int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldIn(FieldApplicationBindingVersion, vs...))
+}
+
+// ApplicationBindingVersionNotIn applies the NotIn predicate on the "application_binding_version" field.
+func ApplicationBindingVersionNotIn(vs ...int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNotIn(FieldApplicationBindingVersion, vs...))
+}
+
+// ApplicationBindingVersionGT applies the GT predicate on the "application_binding_version" field.
+func ApplicationBindingVersionGT(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGT(FieldApplicationBindingVersion, v))
+}
+
+// ApplicationBindingVersionGTE applies the GTE predicate on the "application_binding_version" field.
+func ApplicationBindingVersionGTE(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGTE(FieldApplicationBindingVersion, v))
+}
+
+// ApplicationBindingVersionLT applies the LT predicate on the "application_binding_version" field.
+func ApplicationBindingVersionLT(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLT(FieldApplicationBindingVersion, v))
+}
+
+// ApplicationBindingVersionLTE applies the LTE predicate on the "application_binding_version" field.
+func ApplicationBindingVersionLTE(v int64) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLTE(FieldApplicationBindingVersion, v))
 }
 
 // And groups predicates with the AND operator between them.

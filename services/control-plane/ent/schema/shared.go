@@ -174,6 +174,7 @@ func workspaceFields() []ent.Field {
 		field.String("verification_slot_id").Default(""),
 		field.Bool("customer_product").Default(true),
 		field.String("application_binding").Default(""),
+		field.Int64("application_binding_version").Default(0),
 	)
 }
 

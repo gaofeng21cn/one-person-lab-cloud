@@ -1321,3 +1321,13 @@ func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mu
 	}
 	return nil
 }
+
+func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.Context, row map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if findRecord(s.runtimeOps, stringValue(row["id"])) != nil {
+		return errWorkspaceApplicationIntentConflict
+	}
+	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
+	return nil
+}

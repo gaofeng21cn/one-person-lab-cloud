@@ -219,6 +219,7 @@ func workspaceProjectionRow(workspace domain.WorkspaceProjection) map[string]any
 		"runtime":                    map[string]any{"serviceName": workspace.RuntimeServiceName, "status": workspace.Status, "ready": workspace.RuntimeReady},
 		"receiptId":                  workspace.ReceiptID,
 		"applicationBinding":         workspace.ApplicationBinding,
+		"applicationBindingVersion":  workspace.ApplicationBindingVersion,
 		"access":                     access,
 	}
 	if workspace.WorkspaceAPIKeyID > 0 {
