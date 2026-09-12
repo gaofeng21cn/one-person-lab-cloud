@@ -53,6 +53,35 @@ func WorkspaceApplicationRuntimeComponents(revision WorkspaceApplicationRevision
 	return components
 }
 
+// WorkspaceApplicationRuntimeOverallStatus derives the runtime status from
+// its components: any failed component fails the runtime, an all-absent
+// runtime is absent, any pending component keeps it pending, and only an
+// all-ready runtime is ready.
+func WorkspaceApplicationRuntimeOverallStatus(components []WorkspaceApplicationRuntimeComponentState) string {
+	absent, pending, ready := 0, 0, 0
+	for _, component := range components {
+		switch component.State {
+		case "failed":
+			return "failed"
+		case "absent":
+			absent++
+		case "pending":
+			pending++
+		case "ready":
+			ready++
+		}
+	}
+	switch {
+	case absent == len(components):
+		return "absent"
+	case pending > 0 || ready < len(components):
+		return "pending"
+	case ready == len(components):
+		return "ready"
+	}
+	return "pending"
+}
+
 // ValidateWorkspaceApplicationRuntimeObservation checks one observation
 // against the revision it claims to observe: every declared component appears
 // exactly once with the declared image, and states use the runtime vocabulary.

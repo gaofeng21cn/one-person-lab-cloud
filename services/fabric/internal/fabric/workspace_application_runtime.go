@@ -116,6 +116,12 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 		return s.replayWorkspaceApplicationRuntime(ctx, stored, input)
 	}
 	observation, record, ensureErr := s.ensureWorkspaceApplicationRuntime(ctx, input, stored, compute, volume)
+	if errors.Is(ensureErr, ErrWorkspaceLaunchPending) {
+		// Components are still coming up; the claim stays started so the next
+		// replay resolves by readback.
+		_ = s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "started", record, nil)
+		return observation, ensureErr
+	}
 	if ensureErr != nil {
 		_ = s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "failed", record, ensureErr)
 		return observation, ensureErr
@@ -172,6 +178,11 @@ func (s *Service) convergeWorkspaceApplicationRuntime(ctx context.Context, store
 	}
 	observation, err := provider.ReadWorkspaceApplicationRuntime(ctx, input)
 	if err != nil || contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, observation) != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
+	}
+	if observation.Status == "absent" {
+		// Nothing the mutation would have created exists; the readback proves
+		// the claim never landed, so it must not converge to success.
 		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
 	}
 	if observation.RuntimeID == "" {
