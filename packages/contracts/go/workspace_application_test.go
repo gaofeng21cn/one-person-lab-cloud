@@ -8,7 +8,6 @@ func validWorkspaceApplicationRevision() WorkspaceApplicationRevision {
 		Platform: "linux/amd64", Image: "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:2fcfa6cd799ada43f6977621da9d7e2595a0b608c9207b9eaf06dd150f6fcf64",
 		Ports:            []WorkspaceApplicationPort{{Name: "http", Port: 8082, Protocol: "TCP"}},
 		HealthChecks:     []WorkspaceApplicationHealthCheck{{Port: 8082, Path: "/api/health"}},
-		Resources:        WorkspaceApplicationResources{CPU: 2, MemoryGB: 16},
 		PersistentMounts: []WorkspaceApplicationMount{{Name: "knowledge", MountPath: "/data/knowledge"}},
 		ExposurePolicy:   "anonymous",
 	}

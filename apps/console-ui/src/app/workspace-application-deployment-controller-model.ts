@@ -21,8 +21,6 @@ export interface WorkspaceApplicationRevisionDraft {
   exposurePolicy: string;
   healthCheckPath: string;
   healthCheckPort: string;
-  cpu: string;
-  memoryGb: string;
   persistentMounts: WorkspaceApplicationRevisionMountDraft[];
   scratchMounts: WorkspaceApplicationRevisionMountDraft[];
   dependencies: WorkspaceApplicationRevisionDependencyDraft[];
@@ -32,7 +30,6 @@ export function emptyWorkspaceApplicationRevisionDraft(): WorkspaceApplicationRe
   return {
     applicationId: "", version: "", platform: "linux/amd64", image: "",
     exposurePolicy: "application", healthCheckPath: "/healthz", healthCheckPort: "8080",
-    cpu: "2", memoryGb: "4",
     persistentMounts: [{ name: "data", mountPath: "/data" }],
     scratchMounts: [], dependencies: []
   };
@@ -49,7 +46,7 @@ const mountPathPattern = /^\/[A-Za-z0-9._/-]+$/;
 
 export type WorkspaceApplicationRevisionField = keyof Pick<
   WorkspaceApplicationRevisionDraft,
-  "applicationId" | "version" | "platform" | "image" | "exposurePolicy" | "healthCheckPort" | "cpu" | "memoryGb"
+  "applicationId" | "version" | "platform" | "image" | "exposurePolicy" | "healthCheckPort"
 >;
 
 export interface WorkspaceApplicationRevisionDraftValidation {
@@ -87,8 +84,6 @@ export function validateWorkspaceApplicationRevisionDraft(draft: WorkspaceApplic
   if (!exposurePolicies.includes(draft.exposurePolicy)) fieldErrors.exposurePolicy = "选择一种暴露策略";
   if (draft.healthCheckPath !== "" && !mountPathPattern.test(draft.healthCheckPath)) fieldErrors.healthCheckPort = "健康检查路径需以 / 开头";
   if (draft.healthCheckPort !== "" && !/^[0-9]{1,5}$/.test(draft.healthCheckPort)) fieldErrors.healthCheckPort = "端口为 1-65535 的数字";
-  if (!/^[1-9][0-9]*$/.test(draft.cpu)) fieldErrors.cpu = "CPU 为正整数核数";
-  if (!/^[1-9][0-9]*$/.test(draft.memoryGb)) fieldErrors.memoryGb = "内存为正整数 GB";
   const mountErrors = validateMountDrafts(draft.persistentMounts);
   const scratchMountErrors = validateMountDrafts(draft.scratchMounts);
   const dependencyErrors: Record<number, string> = {};
@@ -114,8 +109,7 @@ export function composeWorkspaceApplicationRevision(draft: WorkspaceApplicationR
     version: draft.version,
     platform: draft.platform,
     image: draft.image,
-    exposurePolicy: draft.exposurePolicy,
-    resources: { cpu: Number(draft.cpu), memoryGb: Number(draft.memoryGb) }
+    exposurePolicy: draft.exposurePolicy
   };
   if (draft.healthCheckPath !== "" && draft.healthCheckPort !== "") {
     revision.healthChecks = [{ port: Number(draft.healthCheckPort), path: draft.healthCheckPath, initialDelaySeconds: 5 }];

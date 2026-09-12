@@ -25,7 +25,6 @@ type WorkspaceApplicationRevision struct {
 	Entrypoint       []string                          `json:"entrypoint,omitempty"`
 	Ports            []WorkspaceApplicationPort        `json:"ports,omitempty"`
 	HealthChecks     []WorkspaceApplicationHealthCheck `json:"healthChecks,omitempty"`
-	Resources        WorkspaceApplicationResources     `json:"resources"`
 	PersistentMounts []WorkspaceApplicationMount       `json:"persistentMounts,omitempty"`
 	ScratchMounts    []WorkspaceApplicationMount       `json:"scratchMounts,omitempty"`
 	SecretInputs     []WorkspaceApplicationSecretInput `json:"secretInputs,omitempty"`
@@ -43,11 +42,6 @@ type WorkspaceApplicationHealthCheck struct {
 	Port                int    `json:"port"`
 	Path                string `json:"path"`
 	InitialDelaySeconds int    `json:"initialDelaySeconds,omitempty"`
-}
-
-type WorkspaceApplicationResources struct {
-	CPU      int `json:"cpu"`
-	MemoryGB int `json:"memoryGb"`
 }
 
 type WorkspaceApplicationMount struct {
@@ -116,7 +110,7 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 	if revision.SchemaVersion != 1 || !workspaceApplicationIDPattern.MatchString(strings.TrimSpace(revision.ApplicationID)) ||
 		!workspaceApplicationVersionPattern.MatchString(strings.TrimSpace(revision.Version)) ||
 		!workspaceApplicationPlatformPattern.MatchString(strings.TrimSpace(revision.Platform)) ||
-		!ValidWorkspaceImageReference(revision.Image) || revision.Resources.CPU <= 0 || revision.Resources.MemoryGB <= 0 {
+		!ValidWorkspaceImageReference(revision.Image) {
 		return errors.New("workspace_application_revision_invalid")
 	}
 	if revision.ExposurePolicy != "anonymous" && revision.ExposurePolicy != "application" && revision.ExposurePolicy != "cloud_private" {

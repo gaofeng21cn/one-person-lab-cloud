@@ -1071,10 +1071,6 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
         <Field label="健康检查路径" optional value={draft.healthCheckPath} onChange={(event) => deployment.setDraftField("healthCheckPath", event.target.value)} />
         <Field label="健康检查端口" optional value={draft.healthCheckPort} onChange={(event) => deployment.setDraftField("healthCheckPort", event.target.value)} />
       </div>
-      <div className="application-form-pair">
-        <Field label="CPU（核）" value={draft.cpu} onChange={(event) => deployment.setDraftField("cpu", event.target.value)} />
-        <Field label="内存（GB）" value={draft.memoryGb} onChange={(event) => deployment.setDraftField("memoryGb", event.target.value)} />
-      </div>
     </div>
     <div className="application-form-section"><h3>持久挂载（写入 CBS 数据盘）</h3>
       {draft.persistentMounts.map((mount, index) => <div className="application-form-row" key={index}>
