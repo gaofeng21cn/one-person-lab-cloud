@@ -1322,6 +1322,21 @@ func (s *memoryTableStore) ApplyWorkspaceResourceReconcile(_ context.Context, mu
 	return nil
 }
 
+func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context, mutation workspaceApplicationActivationMutation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row := s.workspaces[mutation.WorkspaceID]
+	if row == nil {
+		return errWorkspaceApplicationWorkspaceGone
+	}
+	if stringValue(row["applicationBinding"]) != mutation.ExpectedBinding || int64(numberField(row, "applicationBindingVersion", 0)) != mutation.ExpectedVersion {
+		return errWorkspaceApplicationActivationConflict
+	}
+	row["applicationBinding"] = mutation.NextBinding
+	row["applicationBindingVersion"] = mutation.NextVersion
+	return nil
+}
+
 func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.Context, row map[string]any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

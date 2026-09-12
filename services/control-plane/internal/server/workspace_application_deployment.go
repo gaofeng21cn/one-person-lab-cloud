@@ -11,6 +11,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -32,22 +33,29 @@ var (
 // Fabric runtime creation and the atomic activation consume it in later
 // slices; neither can bypass or rewrite it.
 type workspaceApplicationDeploymentIntent struct {
-	SchemaVersion            int      `json:"schemaVersion"`
-	Version                  int      `json:"version"`
-	RequestHash              string   `json:"requestHash"`
-	OperationID              string   `json:"operationId"`
-	AccountID                string   `json:"accountId"`
-	WorkspaceID              string   `json:"workspaceId"`
-	ApplicationID            string   `json:"applicationId"`
-	TargetRevision           string   `json:"targetRevision"`
-	RevisionDigest           string   `json:"revisionDigest"`
-	ConfigurationDigest      string   `json:"configurationDigest"`
-	SecretBindingVersions    []string `json:"secretBindingVersions,omitempty"`
-	DataBindingIDs           []string `json:"dataBindingIds,omitempty"`
-	ExpectedWorkspaceVersion int64    `json:"expectedWorkspaceVersion"`
-	CurrentBinding           string   `json:"currentBinding"`
-	Phase                    string   `json:"phase"`
-	CreatedAt                string   `json:"createdAt"`
+	SchemaVersion            int                                               `json:"schemaVersion"`
+	Version                  int                                               `json:"version"`
+	RequestHash              string                                            `json:"requestHash"`
+	OperationID              string                                            `json:"operationId"`
+	AccountID                string                                            `json:"accountId"`
+	WorkspaceID              string                                            `json:"workspaceId"`
+	ComputeID                string                                            `json:"computeId"`
+	StorageID                string                                            `json:"storageId"`
+	AttachmentID             string                                            `json:"attachmentId"`
+	ApplicationID            string                                            `json:"applicationId"`
+	TargetRevision           string                                            `json:"targetRevision"`
+	RevisionDigest           string                                            `json:"revisionDigest"`
+	ConfigurationDigest      string                                            `json:"configurationDigest"`
+	SecretBindingVersions    []string                                          `json:"secretBindingVersions,omitempty"`
+	DataBindingIDs           []string                                          `json:"dataBindingIds,omitempty"`
+	ExpectedWorkspaceVersion int64                                             `json:"expectedWorkspaceVersion"`
+	CurrentBinding           string                                            `json:"currentBinding"`
+	Phase                    string                                            `json:"phase"`
+	CreatedAt                string                                            `json:"createdAt"`
+	RuntimeObservation       *contracts.WorkspaceApplicationRuntimeObservation `json:"runtimeObservation,omitempty"`
+	ActivationAt             string                                            `json:"activationAt,omitempty"`
+	ReceiptID                string                                            `json:"receiptId,omitempty"`
+	LastError                string                                            `json:"lastError,omitempty"`
 }
 
 func workspaceApplicationDeploymentOperationID(workspaceID, key string) string {
@@ -57,6 +65,9 @@ func workspaceApplicationDeploymentOperationID(workspaceID, key string) string {
 func workspaceApplicationDeploymentRequestHash(intent workspaceApplicationDeploymentIntent) string {
 	payload, err := json.Marshal(struct {
 		WorkspaceID              string   `json:"workspaceId"`
+		ComputeID                string   `json:"computeId"`
+		StorageID                string   `json:"storageId"`
+		AttachmentID             string   `json:"attachmentId"`
 		ApplicationID            string   `json:"applicationId"`
 		TargetRevision           string   `json:"targetRevision"`
 		RevisionDigest           string   `json:"revisionDigest"`
@@ -66,7 +77,8 @@ func workspaceApplicationDeploymentRequestHash(intent workspaceApplicationDeploy
 		ExpectedWorkspaceVersion int64    `json:"expectedWorkspaceVersion"`
 		CurrentBinding           string   `json:"currentBinding"`
 	}{
-		WorkspaceID: intent.WorkspaceID, ApplicationID: intent.ApplicationID, TargetRevision: intent.TargetRevision,
+		WorkspaceID: intent.WorkspaceID, ComputeID: intent.ComputeID, StorageID: intent.StorageID,
+		AttachmentID: intent.AttachmentID, ApplicationID: intent.ApplicationID, TargetRevision: intent.TargetRevision,
 		RevisionDigest: intent.RevisionDigest, ConfigurationDigest: intent.ConfigurationDigest,
 		SecretBindingVersions: intent.SecretBindingVersions, DataBindingIDs: intent.DataBindingIDs,
 		ExpectedWorkspaceVersion: intent.ExpectedWorkspaceVersion, CurrentBinding: intent.CurrentBinding,
@@ -148,8 +160,13 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 	now := time.Now().UTC()
 	intent := workspaceApplicationDeploymentIntent{
 		SchemaVersion: workspaceApplicationDeploymentSchemaVersion, Version: 1,
-		OperationID: operationID, AccountID: firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
-		WorkspaceID: workspaceID, ApplicationID: applicationID, TargetRevision: targetRevision,
+		OperationID:   operationID,
+		AccountID:     firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
+		WorkspaceID:   workspaceID,
+		ComputeID:     firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])),
+		StorageID:     stringValue(workspace["storageId"]),
+		AttachmentID:  firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])),
+		ApplicationID: applicationID, TargetRevision: targetRevision,
 		RevisionDigest: revisionDigest, ConfigurationDigest: configurationDigest,
 		SecretBindingVersions: secretBindingVersions, DataBindingIDs: dataBindingIDs,
 		ExpectedWorkspaceVersion: bindingVersion, CurrentBinding: currentBinding,
@@ -197,7 +214,7 @@ func decodeStringList(value any) []string {
 	return list
 }
 
-func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneServer) {
+func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
 	mux.HandleFunc("POST /api/operator/application-deployments", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		input := decodeJSON(r)
 		key, ok := requiredMutationKey(w, r)
@@ -236,6 +253,11 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 				writeError(w, http.StatusInternalServerError, "state_persist_failed")
 			}
 			return
+		}
+		if workspaceApplicationDeploymentWorkerEnabled() && intent.Phase == workspaceApplicationDeploymentIntentPhase {
+			go func() {
+				_ = app.runWorkspaceApplicationDeployment(context.Background(), service, intent.OperationID)
+			}()
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"intent": intent})
 	}))
