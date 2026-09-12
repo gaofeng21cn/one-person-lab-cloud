@@ -40,6 +40,7 @@ func TestRevisionDigestIsStableAndContentSensitive(t *testing.T) {
 		t.Fatalf("identical revisions produced digests %q and %q (err=%v)", digest, same, err)
 	}
 	changed := revision
+	changed.Image = "repo.example/apps/knowledge@sha256:" + repeat('b', 64)
 	other, err := RevisionDigest(changed)
 	if err != nil {
 		t.Fatal(err)
