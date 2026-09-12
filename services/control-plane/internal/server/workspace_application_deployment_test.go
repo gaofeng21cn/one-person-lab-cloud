@@ -11,6 +11,7 @@ import (
 	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
+	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
@@ -31,6 +32,7 @@ func deployIntentBody(configurationDigest string) string {
 }
 
 func TestApplicationDeploymentIntentHTTP(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	operator := operatorSessionForTest(t, fixture.server)
 	admitKnowledgeRevisionForTest(t, fixture.server, operator)
@@ -98,6 +100,7 @@ func TestApplicationDeploymentIntentHTTP(t *testing.T) {
 }
 
 func TestApplicationDeploymentIntentPostgres(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	admin := openControlPlaneTestPostgres(t)
 	database := fmt.Sprintf("control_plane_application_deploy_%d", time.Now().UnixNano())
 	if _, err := admin.Exec(`CREATE DATABASE ` + database); err != nil {
@@ -182,5 +185,160 @@ func TestApplicationDeploymentIntentPostgres(t *testing.T) {
 	read := requestWithSession(t, restarted, operatorSessionForTest(t, restarted), http.MethodGet, "/api/operator/application-deployments/"+admitted.Intent.OperationID, "")
 	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), admitted.Intent.OperationID) {
 		t.Fatalf("postgres restart readback status=%d body=%s", read.Code, read.Body.String())
+	}
+}
+
+// seedResourceOnlyActivatedWorkspace prepares a memory store whose workspace
+// was activated through a succeeded resource-only launch: live resources, an
+// empty application binding and binding version zero.
+func seedResourceOnlyActivatedWorkspace(t *testing.T, store *memoryTableStore, operationID, workspaceID string) {
+	t.Helper()
+	command := workspaceLaunchResourceOnlyUnitCommand()
+	command.OperationID, command.AccountID, command.WorkspaceID = operationID, "acct-alpha", workspaceID
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := operation.stagePlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range plan[:len(plan)-1] {
+		operation.Stage = stage
+		facts := workspaceLaunchReadyFacts(stage)
+		for key, value := range map[string]any{"computeAllocationId": "compute-alpha", "storageId": "storage-alpha", "attachmentId": "attachment-alpha"} {
+			if _, ok := facts[key]; ok {
+				facts[key] = value
+			}
+		}
+		observation, err := reduceWorkspaceLaunchStageObservation(&operation, workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: facts})
+		if err != nil {
+			t.Fatalf("seed stage %s: %v", stage, err)
+		}
+		attempt := operation.Attempts[stage]
+		attempt.Attempted, attempt.Confirmed, attempt.Status = 1, 1, "confirmed"
+		attempt.IdempotencyKey = workspaceLaunchStageIdempotencyKey(operation, 1)
+		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
+	}
+	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
+	for key, value := range map[string]any{
+		"paidThrough": "2026-10-12T00:00:00Z", "periodStart": "2026-09-12T00:00:00Z", "billingAnchorDay": 12,
+	} {
+		operation.raw[key], _ = json.Marshal(value)
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
+	workspace, err := workspaceLaunchActivationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveWorkspace(context.Background(), workspace))
+}
+
+func runDeploymentToCompletion(t *testing.T, app *controlPlaneServer, service *controlplane.Service, operationID string) {
+	t.Helper()
+	for range 6 {
+		if err := app.runWorkspaceApplicationDeployment(context.Background(), service, operationID); err != nil {
+			t.Fatalf("deployment drive: %v", err)
+		}
+		row, found, err := app.tables.GetRuntimeOperation(context.Background(), operationID)
+		if err != nil || !found {
+			t.Fatalf("intent row found=%v err=%v", found, err)
+		}
+		if stringValue(row["status"]) == "succeeded" || stringValue(row["status"]) == "manual_review" {
+			return
+		}
+	}
+	t.Fatal("deployment did not reach a terminal state")
+}
+
+func TestWorkspaceApplicationDeploymentFullChain(t *testing.T) {
+	store := newMemoryTableStore()
+	fabric := &fakeFabricClient{}
+	service := newTestService(&fakeLedgerClient{}, fabric)
+	server, err := NewPersistentServer(service, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
+	operator := operatorSessionForTest(t, server)
+	admitKnowledgeRevisionForTest(t, server, operator)
+
+	created := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-chain-first")
+	if created.Code != http.StatusAccepted {
+		t.Fatalf("intent status=%d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody struct {
+		Intent struct {
+			OperationID string `json:"operationId"`
+		} `json:"intent"`
+	}
+	if json.Unmarshal(created.Body.Bytes(), &createdBody) != nil || createdBody.Intent.OperationID == "" {
+		t.Fatalf("intent body=%s", created.Body.String())
+	}
+	handler := server.(*controlPlaneHTTPHandler)
+	runDeploymentToCompletion(t, handler.app, service, createdBody.Intent.OperationID)
+
+	row, found, err := store.GetRuntimeOperation(context.Background(), createdBody.Intent.OperationID)
+	if err != nil || !found || stringValue(row["status"]) != "succeeded" {
+		t.Fatalf("intent row status=%v found=%v err=%v", stringValue(row["status"]), found, err)
+	}
+	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
+	if err != nil || intent.Phase != workspaceApplicationDeploymentActivePhase || intent.ReceiptID != "receipt-from-ledger" {
+		t.Fatalf("active intent=%#v err=%v", intent, err)
+	}
+	workspace, _ := handler.app.getWorkspace("ws-alpha")
+	if workspace["applicationBinding"] != "knowledge-app@1.0.0" || int64(numberField(workspace, "applicationBindingVersion", 0)) != 1 {
+		t.Fatalf("activated workspace=%#v", workspace)
+	}
+	if len(fabric.applicationRuntimeInputs) != 1 || fabric.applicationRuntimeInputs[0].Revision.ApplicationID != "knowledge-app" {
+		t.Fatalf("fabric ensure inputs=%#v", fabric.applicationRuntimeInputs)
+	}
+}
+
+func TestWorkspaceApplicationDeploymentActivationConflictGoesManualReview(t *testing.T) {
+	store := newMemoryTableStore()
+	fabric := &fakeFabricClient{}
+	service := newTestService(&fakeLedgerClient{}, fabric)
+	server, err := NewPersistentServer(service, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedResourceOnlyActivatedWorkspace(t, store, "workspace-launch-alpha", "ws-alpha")
+	operator := operatorSessionForTest(t, server)
+	admitKnowledgeRevisionForTest(t, server, operator)
+	handler := server.(*controlPlaneHTTPHandler)
+	created := requestWithMutationKeyForTest(t, handler, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-chain-conflict")
+	if created.Code != http.StatusAccepted {
+		t.Fatalf("intent status=%d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody struct {
+		Intent struct {
+			OperationID string `json:"operationId"`
+		} `json:"intent"`
+	}
+	if json.Unmarshal(created.Body.Bytes(), &createdBody) != nil {
+		t.Fatal(created.Body.String())
+	}
+	// The binding moves after the intent reserved version zero: the activation
+	// must fail closed into manual review instead of overwriting.
+	workspace, _ := handler.app.getWorkspace("ws-alpha")
+	workspace["applicationBindingVersion"] = int64(5)
+	mustStore(t, store.SaveWorkspace(context.Background(), workspace))
+	runDeploymentToCompletion(t, handler.app, service, createdBody.Intent.OperationID)
+
+	row, found, readErr := store.GetRuntimeOperation(context.Background(), createdBody.Intent.OperationID)
+	if readErr != nil || !found {
+		t.Fatalf("intent found=%v err=%v", found, readErr)
+	}
+	if stringValue(row["status"]) != "manual_review" {
+		t.Fatalf("status=%q, want manual_review", stringValue(row["status"]))
+	}
+	result := stringValue(row["result"])
+	if !strings.Contains(result, "workspace_application_activation_conflict") {
+		t.Fatalf("intent result=%s", result)
 	}
 }

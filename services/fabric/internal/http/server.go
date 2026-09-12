@@ -537,6 +537,32 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		result, err := service.ReplaceWorkspaceRuntimeImage(r.Context(), input)
 		writeResult(w, result, err)
 	})
+	mux.HandleFunc("POST /fabric/workspace-application-runtimes", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.WorkspaceApplicationRuntimeInput
+		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+			return
+		}
+		observation, err := service.CreateWorkspaceApplicationRuntime(r.Context(), input)
+		if errors.Is(err, fabric.ErrWorkspaceLaunchPending) {
+			// Pending is not a failure: the components are converging and the
+			// observation carries the live state.
+			writeJSON(w, http.StatusAccepted, observation)
+			return
+		}
+		writeResult(w, observation, err)
+	})
+	mux.HandleFunc("POST /fabric/workspace-application-runtimes/{workspaceId}/readback", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.WorkspaceApplicationRuntimeInput
+		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+			return
+		}
+		if input.WorkspaceID != strings.TrimSpace(r.PathValue("workspaceId")) {
+			writeError(w, http.StatusBadRequest, "workspace_application_runtime_identity_required")
+			return
+		}
+		observation, err := service.WorkspaceApplicationRuntimeReadback(r.Context(), input)
+		writeResult(w, observation, err)
+	})
 	mux.HandleFunc("POST /fabric/workspace-runtimes/{workspaceId}/gateway-network/recover", func(w http.ResponseWriter, r *http.Request) {
 		var input fabric.WorkspaceRuntimeGatewayNetworkRecoveryInput
 		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {

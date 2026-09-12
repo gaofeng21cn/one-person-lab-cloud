@@ -1057,6 +1057,32 @@ type fakeFabricClient struct {
 	attachmentErr        error
 	gatewaySecretInputs  []clients.GatewaySecretWriteInput
 	runtimeInputs        []clients.WorkspaceRuntimeInput
+
+	applicationRuntimeObservation contracts.WorkspaceApplicationRuntimeObservation
+	applicationRuntimeErr         error
+	applicationRuntimeInputs      []clients.WorkspaceApplicationRuntimeInput
+}
+
+func (f *fakeFabricClient) EnsureWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput, _ string) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	f.applicationRuntimeInputs = append(f.applicationRuntimeInputs, input)
+	if f.applicationRuntimeErr != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, f.applicationRuntimeErr
+	}
+	if f.applicationRuntimeObservation.RuntimeID != "" {
+		return f.applicationRuntimeObservation, nil
+	}
+	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
+	for index := range components {
+		components[index].State = "ready"
+	}
+	return contracts.WorkspaceApplicationRuntimeObservation{
+		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: "rt_app_fake",
+		Status: "ready", Components: components,
+	}, nil
+}
+
+func (f *fakeFabricClient) ReadWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	return f.EnsureWorkspaceApplicationRuntime(context.Background(), input, "readback")
 }
 
 type providerReconcileFabricClient struct {
