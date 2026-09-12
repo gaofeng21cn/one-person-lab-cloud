@@ -142,6 +142,9 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 		{Version: "202609120002_application_revisions", Run: func(ctx context.Context) error {
 			return controlplanemigrations.ApplyApplicationRevisions(ctx, driver)
 		}},
+		{Version: "202609120003_workspace_application_binding_version", Run: func(ctx context.Context) error {
+			return controlplanemigrations.ApplyWorkspaceApplicationBindingVersion(ctx, driver)
+		}},
 	}
 }
 

@@ -453,6 +453,27 @@ func (wu *WorkspaceUpdate) SetNillableApplicationBinding(s *string) *WorkspaceUp
 	return wu
 }
 
+// SetApplicationBindingVersion sets the "application_binding_version" field.
+func (wu *WorkspaceUpdate) SetApplicationBindingVersion(i int64) *WorkspaceUpdate {
+	wu.mutation.ResetApplicationBindingVersion()
+	wu.mutation.SetApplicationBindingVersion(i)
+	return wu
+}
+
+// SetNillableApplicationBindingVersion sets the "application_binding_version" field if the given value is not nil.
+func (wu *WorkspaceUpdate) SetNillableApplicationBindingVersion(i *int64) *WorkspaceUpdate {
+	if i != nil {
+		wu.SetApplicationBindingVersion(*i)
+	}
+	return wu
+}
+
+// AddApplicationBindingVersion adds i to the "application_binding_version" field.
+func (wu *WorkspaceUpdate) AddApplicationBindingVersion(i int64) *WorkspaceUpdate {
+	wu.mutation.AddApplicationBindingVersion(i)
+	return wu
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wu *WorkspaceUpdate) Mutation() *WorkspaceMutation {
 	return wu.mutation
@@ -611,6 +632,12 @@ func (wu *WorkspaceUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := wu.mutation.ApplicationBinding(); ok {
 		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
+	}
+	if value, ok := wu.mutation.ApplicationBindingVersion(); ok {
+		_spec.SetField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
+	}
+	if value, ok := wu.mutation.AddedApplicationBindingVersion(); ok {
+		_spec.AddField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, wu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1057,6 +1084,27 @@ func (wuo *WorkspaceUpdateOne) SetNillableApplicationBinding(s *string) *Workspa
 	return wuo
 }
 
+// SetApplicationBindingVersion sets the "application_binding_version" field.
+func (wuo *WorkspaceUpdateOne) SetApplicationBindingVersion(i int64) *WorkspaceUpdateOne {
+	wuo.mutation.ResetApplicationBindingVersion()
+	wuo.mutation.SetApplicationBindingVersion(i)
+	return wuo
+}
+
+// SetNillableApplicationBindingVersion sets the "application_binding_version" field if the given value is not nil.
+func (wuo *WorkspaceUpdateOne) SetNillableApplicationBindingVersion(i *int64) *WorkspaceUpdateOne {
+	if i != nil {
+		wuo.SetApplicationBindingVersion(*i)
+	}
+	return wuo
+}
+
+// AddApplicationBindingVersion adds i to the "application_binding_version" field.
+func (wuo *WorkspaceUpdateOne) AddApplicationBindingVersion(i int64) *WorkspaceUpdateOne {
+	wuo.mutation.AddApplicationBindingVersion(i)
+	return wuo
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wuo *WorkspaceUpdateOne) Mutation() *WorkspaceMutation {
 	return wuo.mutation
@@ -1245,6 +1293,12 @@ func (wuo *WorkspaceUpdateOne) sqlSave(ctx context.Context) (_node *Workspace, e
 	}
 	if value, ok := wuo.mutation.ApplicationBinding(); ok {
 		_spec.SetField(workspace.FieldApplicationBinding, field.TypeString, value)
+	}
+	if value, ok := wuo.mutation.ApplicationBindingVersion(); ok {
+		_spec.SetField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
+	}
+	if value, ok := wuo.mutation.AddedApplicationBindingVersion(); ok {
+		_spec.AddField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
 	}
 	_node = &Workspace{config: wuo.config}
 	_spec.Assign = _node.assignValues

@@ -427,6 +427,7 @@ var (
 		{Name: "verification_slot_id", Type: field.TypeString, Default: ""},
 		{Name: "customer_product", Type: field.TypeBool, Default: true},
 		{Name: "application_binding", Type: field.TypeString, Default: ""},
+		{Name: "application_binding_version", Type: field.TypeInt64, Default: 0},
 	}
 	// ControlPlaneWorkspacesTable holds the schema information for the "control_plane_workspaces" table.
 	ControlPlaneWorkspacesTable = &schema.Table{

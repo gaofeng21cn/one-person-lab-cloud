@@ -77,7 +77,9 @@ type Workspace struct {
 	CustomerProduct bool `json:"customer_product,omitempty"`
 	// ApplicationBinding holds the value of the "application_binding" field.
 	ApplicationBinding string `json:"application_binding,omitempty"`
-	selectValues       sql.SelectValues
+	// ApplicationBindingVersion holds the value of the "application_binding_version" field.
+	ApplicationBindingVersion int64 `json:"application_binding_version,omitempty"`
+	selectValues              sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -87,7 +89,7 @@ func (*Workspace) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case workspace.FieldAccessRequiresLogin, workspace.FieldCustomerProduct:
 			values[i] = new(sql.NullBool)
-		case workspace.FieldWorkspaceAPIKeyID:
+		case workspace.FieldWorkspaceAPIKeyID, workspace.FieldApplicationBindingVersion:
 			values[i] = new(sql.NullInt64)
 		case workspace.FieldID, workspace.FieldAccountID, workspace.FieldOwnerAccountID, workspace.FieldOwnerUserID, workspace.FieldUserID, workspace.FieldName, workspace.FieldURL, workspace.FieldState, workspace.FieldStatus, workspace.FieldPurchaseReceiptID, workspace.FieldBillingStateJSON, workspace.FieldStorageID, workspace.FieldCurrentComputeAllocationID, workspace.FieldCurrentAttachmentID, workspace.FieldRuntimeID, workspace.FieldRuntimeServiceName, workspace.FieldRuntimeServiceNameRoot, workspace.FieldServiceName, workspace.FieldAccessTokenStatus, workspace.FieldAccessAccount, workspace.FieldAccessUsername, workspace.FieldCredentialStatus, workspace.FieldCredentialVersion, workspace.FieldCredentialSecretRef, workspace.FieldVerificationSlotID, workspace.FieldApplicationBinding:
 			values[i] = new(sql.NullString)
@@ -294,6 +296,12 @@ func (w *Workspace) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				w.ApplicationBinding = value.String
 			}
+		case workspace.FieldApplicationBindingVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field application_binding_version", values[i])
+			} else if value.Valid {
+				w.ApplicationBindingVersion = value.Int64
+			}
 		default:
 			w.selectValues.Set(columns[i], values[i])
 		}
@@ -419,6 +427,9 @@ func (w *Workspace) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("application_binding=")
 	builder.WriteString(w.ApplicationBinding)
+	builder.WriteString(", ")
+	builder.WriteString("application_binding_version=")
+	builder.WriteString(fmt.Sprintf("%v", w.ApplicationBindingVersion))
 	builder.WriteByte(')')
 	return builder.String()
 }

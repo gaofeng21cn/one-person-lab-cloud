@@ -15234,44 +15234,46 @@ func (m *UserMutation) ResetEdge(name string) error {
 // WorkspaceMutation represents an operation that mutates the Workspace nodes in the graph.
 type WorkspaceMutation struct {
 	config
-	op                            Op
-	typ                           string
-	id                            *string
-	created_at                    *time.Time
-	updated_at                    *time.Time
-	account_id                    *string
-	owner_account_id              *string
-	owner_user_id                 *string
-	user_id                       *string
-	name                          *string
-	url                           *string
-	state                         *string
-	status                        *string
-	purchase_receipt_id           *string
-	billing_state_json            *string
-	storage_id                    *string
-	current_compute_allocation_id *string
-	current_attachment_id         *string
-	runtime_id                    *string
-	runtime_service_name          *string
-	runtime_service_name_root     *string
-	service_name                  *string
-	workspace_api_key_id          *int64
-	addworkspace_api_key_id       *int64
-	access_token_status           *string
-	access_account                *string
-	access_username               *string
-	credential_status             *string
-	credential_version            *string
-	credential_secret_ref         *string
-	access_requires_login         *bool
-	verification_slot_id          *string
-	customer_product              *bool
-	application_binding           *string
-	clearedFields                 map[string]struct{}
-	done                          bool
-	oldValue                      func(context.Context) (*Workspace, error)
-	predicates                    []predicate.Workspace
+	op                             Op
+	typ                            string
+	id                             *string
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	account_id                     *string
+	owner_account_id               *string
+	owner_user_id                  *string
+	user_id                        *string
+	name                           *string
+	url                            *string
+	state                          *string
+	status                         *string
+	purchase_receipt_id            *string
+	billing_state_json             *string
+	storage_id                     *string
+	current_compute_allocation_id  *string
+	current_attachment_id          *string
+	runtime_id                     *string
+	runtime_service_name           *string
+	runtime_service_name_root      *string
+	service_name                   *string
+	workspace_api_key_id           *int64
+	addworkspace_api_key_id        *int64
+	access_token_status            *string
+	access_account                 *string
+	access_username                *string
+	credential_status              *string
+	credential_version             *string
+	credential_secret_ref          *string
+	access_requires_login          *bool
+	verification_slot_id           *string
+	customer_product               *bool
+	application_binding            *string
+	application_binding_version    *int64
+	addapplication_binding_version *int64
+	clearedFields                  map[string]struct{}
+	done                           bool
+	oldValue                       func(context.Context) (*Workspace, error)
+	predicates                     []predicate.Workspace
 }
 
 var _ ent.Mutation = (*WorkspaceMutation)(nil)
@@ -16492,6 +16494,62 @@ func (m *WorkspaceMutation) ResetApplicationBinding() {
 	m.application_binding = nil
 }
 
+// SetApplicationBindingVersion sets the "application_binding_version" field.
+func (m *WorkspaceMutation) SetApplicationBindingVersion(i int64) {
+	m.application_binding_version = &i
+	m.addapplication_binding_version = nil
+}
+
+// ApplicationBindingVersion returns the value of the "application_binding_version" field in the mutation.
+func (m *WorkspaceMutation) ApplicationBindingVersion() (r int64, exists bool) {
+	v := m.application_binding_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationBindingVersion returns the old "application_binding_version" field's value of the Workspace entity.
+// If the Workspace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkspaceMutation) OldApplicationBindingVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationBindingVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationBindingVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationBindingVersion: %w", err)
+	}
+	return oldValue.ApplicationBindingVersion, nil
+}
+
+// AddApplicationBindingVersion adds i to the "application_binding_version" field.
+func (m *WorkspaceMutation) AddApplicationBindingVersion(i int64) {
+	if m.addapplication_binding_version != nil {
+		*m.addapplication_binding_version += i
+	} else {
+		m.addapplication_binding_version = &i
+	}
+}
+
+// AddedApplicationBindingVersion returns the value that was added to the "application_binding_version" field in this mutation.
+func (m *WorkspaceMutation) AddedApplicationBindingVersion() (r int64, exists bool) {
+	v := m.addapplication_binding_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetApplicationBindingVersion resets all changes to the "application_binding_version" field.
+func (m *WorkspaceMutation) ResetApplicationBindingVersion() {
+	m.application_binding_version = nil
+	m.addapplication_binding_version = nil
+}
+
 // Where appends a list predicates to the WorkspaceMutation builder.
 func (m *WorkspaceMutation) Where(ps ...predicate.Workspace) {
 	m.predicates = append(m.predicates, ps...)
@@ -16526,7 +16584,7 @@ func (m *WorkspaceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkspaceMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, workspace.FieldCreatedAt)
 	}
@@ -16617,6 +16675,9 @@ func (m *WorkspaceMutation) Fields() []string {
 	if m.application_binding != nil {
 		fields = append(fields, workspace.FieldApplicationBinding)
 	}
+	if m.application_binding_version != nil {
+		fields = append(fields, workspace.FieldApplicationBindingVersion)
+	}
 	return fields
 }
 
@@ -16685,6 +16746,8 @@ func (m *WorkspaceMutation) Field(name string) (ent.Value, bool) {
 		return m.CustomerProduct()
 	case workspace.FieldApplicationBinding:
 		return m.ApplicationBinding()
+	case workspace.FieldApplicationBindingVersion:
+		return m.ApplicationBindingVersion()
 	}
 	return nil, false
 }
@@ -16754,6 +16817,8 @@ func (m *WorkspaceMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldCustomerProduct(ctx)
 	case workspace.FieldApplicationBinding:
 		return m.OldApplicationBinding(ctx)
+	case workspace.FieldApplicationBindingVersion:
+		return m.OldApplicationBindingVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -16973,6 +17038,13 @@ func (m *WorkspaceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetApplicationBinding(v)
 		return nil
+	case workspace.FieldApplicationBindingVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationBindingVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -16984,6 +17056,9 @@ func (m *WorkspaceMutation) AddedFields() []string {
 	if m.addworkspace_api_key_id != nil {
 		fields = append(fields, workspace.FieldWorkspaceAPIKeyID)
 	}
+	if m.addapplication_binding_version != nil {
+		fields = append(fields, workspace.FieldApplicationBindingVersion)
+	}
 	return fields
 }
 
@@ -16994,6 +17069,8 @@ func (m *WorkspaceMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case workspace.FieldWorkspaceAPIKeyID:
 		return m.AddedWorkspaceAPIKeyID()
+	case workspace.FieldApplicationBindingVersion:
+		return m.AddedApplicationBindingVersion()
 	}
 	return nil, false
 }
@@ -17009,6 +17086,13 @@ func (m *WorkspaceMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddWorkspaceAPIKeyID(v)
+		return nil
+	case workspace.FieldApplicationBindingVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddApplicationBindingVersion(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Workspace numeric field %s", name)
@@ -17135,6 +17219,9 @@ func (m *WorkspaceMutation) ResetField(name string) error {
 		return nil
 	case workspace.FieldApplicationBinding:
 		m.ResetApplicationBinding()
+		return nil
+	case workspace.FieldApplicationBindingVersion:
+		m.ResetApplicationBindingVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)

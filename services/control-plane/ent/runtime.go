@@ -1059,6 +1059,10 @@ func init() {
 	workspaceDescApplicationBinding := workspaceFields[30].Descriptor()
 	// workspace.DefaultApplicationBinding holds the default value on creation for the application_binding field.
 	workspace.DefaultApplicationBinding = workspaceDescApplicationBinding.Default.(string)
+	// workspaceDescApplicationBindingVersion is the schema descriptor for application_binding_version field.
+	workspaceDescApplicationBindingVersion := workspaceFields[31].Descriptor()
+	// workspace.DefaultApplicationBindingVersion holds the default value on creation for the application_binding_version field.
+	workspace.DefaultApplicationBindingVersion = workspaceDescApplicationBindingVersion.Default.(int64)
 	// workspaceDescID is the schema descriptor for id field.
 	workspaceDescID := workspaceFields[0].Descriptor()
 	// workspace.IDValidator is a validator for the "id" field. It is called by the builders before save.

@@ -31,4 +31,5 @@ type SharedStore interface {
 	ApplyBillingReconciliation(ctx context.Context, mutation billingReconciliationMutation) error
 	AdmittedApplicationRevision(ctx context.Context, applicationID, version string) (map[string]any, bool, error)
 	ApplyApplicationRevisionAdmission(ctx context.Context, mutation applicationRevisionMutation) (map[string]any, error)
+	ClaimWorkspaceApplicationDeploymentIntent(ctx context.Context, row map[string]any) error
 }
