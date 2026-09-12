@@ -25,7 +25,11 @@ type WorkspaceApplicationRuntimeObservation struct {
 	WorkspaceID   string                                     `json:"workspaceId"`
 	RuntimeID     string                                     `json:"runtimeId"`
 	Status        string                                     `json:"status"`
-	Components    []WorkspaceApplicationRuntimeComponentState `json:"components"`
+	// EntryURL is the user-facing web entry of the main component. It is set
+	// when the exposure policy and declared ports allow a published entry and
+	// stays empty for cloud-private or worker-only applications.
+	EntryURL   string                                     `json:"entryUrl,omitempty"`
+	Components []WorkspaceApplicationRuntimeComponentState `json:"components"`
 }
 
 const (

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 // fakeTencentKubectl records applies and materialises Deployments so the
@@ -113,14 +115,14 @@ func TestTencentApplicationRuntimeEnsureAppliesAndReportsPending(t *testing.T) {
 		t.Fatalf("apply calls=%d", fake.applyCount())
 	}
 	manifest := fake.applies[0]
-	if len(manifest) != 5 {
-		t.Fatalf("manifest items=%d, want two deployments, two services and one network policy", len(manifest))
+	if len(manifest) != 6 {
+		t.Fatalf("manifest items=%d, want two deployments, two services, one network policy and one ingress", len(manifest))
 	}
 	kinds := map[string]int{}
 	for _, item := range manifest {
 		kinds[item["kind"].(string)]++
 	}
-	if kinds["Deployment"] != 2 || kinds["Service"] != 2 || kinds["NetworkPolicy"] != 1 {
+	if kinds["Deployment"] != 2 || kinds["Service"] != 2 || kinds["NetworkPolicy"] != 1 || kinds["Ingress"] != 1 {
 		t.Fatalf("manifest kinds=%v", kinds)
 	}
 }
@@ -181,5 +183,38 @@ func TestTencentApplicationRuntimeManifestBindsWorkspaceData(t *testing.T) {
 	}
 	if !strings.Contains(manifest, "kubernetes.io/hostname") {
 		t.Fatalf("manifest must pin components to the workspace node: %s", manifest)
+	}
+}
+
+func TestTencentApplicationRuntimeIngressHonorsExposurePolicy(t *testing.T) {
+	provider, fake, input := tencentApplicationRuntimeFixture(t)
+	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+		t.Fatalf("first ensure err=%v", err)
+	}
+	encoded, err := json.Marshal(fake.applies[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := string(encoded)
+	if !strings.Contains(manifest, `"kind":"Ingress"`) {
+		t.Fatalf("application exposure must create the entry ingress: %s", manifest)
+	}
+	host := workspaceApplicationIngressHost(input)
+	if !strings.Contains(manifest, host) || !strings.Contains(manifest, `"name":"`+workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)+`"`) {
+		t.Fatalf("ingress must route the application host to the main component service: %s", manifest)
+	}
+
+	fake.applies = nil
+	private := input
+	private.Revision.ExposurePolicy = "cloud_private"
+	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), private, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+		t.Fatalf("private ensure err=%v", err)
+	}
+	encodedPrivate, err := json.Marshal(fake.applies[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedPrivate), `"kind":"Ingress"`) {
+		t.Fatalf("cloud-private application must stay cluster-internal: %s", encodedPrivate)
 	}
 }

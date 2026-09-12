@@ -972,6 +972,7 @@ export interface WorkspaceApplicationComponentStateDTO {
 export interface WorkspaceApplicationRuntimeObservationDTO {
   runtimeId: string;
   status: string;
+  entryUrl?: string;
   components: WorkspaceApplicationComponentStateDTO[];
 }
 

@@ -109,10 +109,14 @@ func workspaceApplicationObservationFromDeployments(input WorkspaceApplicationRu
 			Ports: workspaceApplicationComponentPorts(input.Revision, component.Name),
 		})
 	}
-	return contracts.WorkspaceApplicationRuntimeObservation{
+	observation := contracts.WorkspaceApplicationRuntimeObservation{
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: workspaceApplicationRuntimeID(input.WorkspaceID),
 		Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed,
 	}
+	if observation.Status == "ready" && input.Revision.ExposurePolicy != "cloud_private" && len(input.Revision.Ports) > 0 {
+		observation.EntryURL = fmt.Sprintf("https://%s/", workspaceApplicationIngressHost(input))
+	}
+	return observation
 }
 
 func workspaceApplicationComponentPorts(revision contracts.WorkspaceApplicationRevision, componentName string) []int {
@@ -157,6 +161,9 @@ func workspaceApplicationManifest(input WorkspaceApplicationRuntimeInput, comput
 		)
 	}
 	items = append(items, workspaceApplicationNetworkPolicy(input, tags))
+	if ingress := workspaceApplicationIngress(input, compute, tags); ingress != nil {
+		items = append(items, ingress)
+	}
 	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": items})
 }
 
@@ -279,4 +286,43 @@ func workspaceApplicationNetworkPolicy(input WorkspaceApplicationRuntimeInput, t
 	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": map[string]any{
 		"name": k8sName(input.ComputeID + "-application"), "annotations": tags,
 	}, "spec": map[string]any{"podSelector": workspaceSelector, "policyTypes": []any{"Ingress", "Egress"}, "ingress": ingress, "egress": workspaceEgressRules()}}
+}
+
+// workspaceApplicationIngressHost derives the dedicated subdomain origin of
+// one application deployment. Apps keep their own root path and cookies, so
+// they never share the workspace domain's cookie scope; wildcard DNS and
+// certificate coverage for this subdomain are installation prerequisites.
+func workspaceApplicationIngressHost(input WorkspaceApplicationRuntimeInput) string {
+	return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), workspaceDomain())
+}
+
+// workspaceApplicationIngress renders the public entry of one application
+// deployment. cloud-private applications and applications without declared
+// web ports stay cluster-internal: no Ingress is created for them.
+func workspaceApplicationIngress(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, tags map[string]string) map[string]any {
+	if input.Revision.ExposurePolicy == "cloud_private" || len(input.Revision.Ports) == 0 {
+		return nil
+	}
+	runtimeID := workspaceApplicationRuntimeID(input.WorkspaceID)
+	labels := mergeStringMaps(map[string]string{
+		"oplcloud.cn/account-id":            compute.AccountID,
+		"oplcloud.cn/workspace-id":          k8sCostLabelValue(input.WorkspaceID),
+		"oplcloud.cn/runtime-id":            k8sCostLabelValue(runtimeID),
+		"oplcloud.cn/compute-allocation-id": k8sCostLabelValue(compute.ID),
+		"app.kubernetes.io/name":            "opl-workspace-application",
+		"app.kubernetes.io/instance":        workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain),
+	}, k8sCostLabels(tags))
+	paths := []any{}
+	for _, port := range input.Revision.Ports {
+		paths = append(paths, map[string]any{
+			"pathType": "Prefix",
+			"backend":  map[string]any{"service": map[string]any{"name": workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), "port": map[string]any{"number": port.Port}}},
+		})
+	}
+	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": map[string]any{
+		"name": k8sName(input.ComputeID + "-" + input.Revision.ApplicationID + "-entry"), "labels": labels, "annotations": tags,
+	}, "spec": map[string]any{"rules": []any{map[string]any{
+		"host": workspaceApplicationIngressHost(input),
+		"http": map[string]any{"paths": paths},
+	}}}}
 }
