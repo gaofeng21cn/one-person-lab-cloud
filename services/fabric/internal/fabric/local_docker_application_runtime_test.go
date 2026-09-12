@@ -52,6 +52,7 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 	case "run":
 		r.runs = append(r.runs, args)
 		name, image, labels := "", args[len(args)-1], map[string]string{}
+		published := map[string]any{}
 		for index := 0; index < len(args)-1; index++ {
 			switch args[index] {
 			case "--name":
@@ -60,6 +61,10 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 				if pair := strings.SplitN(args[index+1], "=", 2); len(pair) == 2 {
 					labels[pair[0]] = pair[1]
 				}
+			case "-p":
+				if parts := strings.Split(args[index+1], "::"); len(parts) == 2 {
+					published[parts[1]+"/tcp"] = []map[string]any{{"HostIP": "127.0.0.1", "HostPort": "31080"}}
+				}
 			}
 		}
 		if name == "" {
@@ -67,8 +72,9 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		}
 		inspect := []map[string]any{{
 			"Id": "cid-" + name, "Name": "/" + name,
-			"Config": map[string]any{"Image": image, "Labels": labels},
-			"State":  map[string]any{"Status": "running", "Running": true},
+			"Config":          map[string]any{"Image": image, "Labels": labels},
+			"State":           map[string]any{"Status": "running", "Running": true},
+			"NetworkSettings": map[string]any{"Ports": published},
 		}}
 		body, err := json.Marshal(inspect)
 		if err != nil {
@@ -270,5 +276,25 @@ func TestWorkspaceApplicationRuntimeEngineDrivesLocalDockerProvider(t *testing.T
 	replayed, err := service.CreateWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || replayed.RuntimeID != observation.RuntimeID || runner.runCount() != 2 {
 		t.Fatalf("engine replay observation=%#v err=%v runCalls=%d", replayed, err, runner.runCount())
+	}
+}
+
+func TestLocalDockerApplicationRuntimePublishesDeclaredPortsAndEntryURL(t *testing.T) {
+	revision := applicationRevisionForTest()
+	provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	input := applicationRuntimeInput("app-runtime-entry", revision)
+
+	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, ComputeAllocation{
+		ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running",
+	}, StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	mainArgs := strings.Join(runner.runArgs(0), " ")
+	if !strings.Contains(mainArgs, "-p 127.0.0.1::8080") {
+		t.Fatalf("main run args must publish the declared port: %s", mainArgs)
+	}
+	if observation.EntryURL == "" || !strings.HasPrefix(observation.EntryURL, "http://127.0.0.1:") {
+		t.Fatalf("entry URL=%q, want the published host port", observation.EntryURL)
 	}
 }

@@ -1116,6 +1116,7 @@ function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId }:
       <dl className="data-list">
         <div><dt>当前状态</dt><dd>{presentation.phase.label}</dd></div>
         {presentation.components.map((component) => <div key={component.name}><dt>{component.name}（{component.role === "main" ? "主组件" : "依赖服务"}）</dt><dd><Badge color={component.tone === "info" ? "secondary" : component.tone}>{component.label}</Badge>{component.ports?.length ? <code> 端口 {component.ports.join(", ")}</code> : null}</dd></div>)}
+        {deployment.intent?.runtimeObservation?.entryUrl ? <div><dt>应用入口</dt><dd><a href={deployment.intent.runtimeObservation.entryUrl} rel="noreferrer" target="_blank">{deployment.intent.runtimeObservation.entryUrl}<ExternalLink aria-hidden size={14} /></a></dd></div> : null}
         {deployment.intent?.receiptId ? <div><dt>部署证据</dt><dd><code>{deployment.intent.receiptId}</code></dd></div> : null}
         {deployment.intent?.lastError ? <div><dt>最近错误</dt><dd><code>{deployment.intent.lastError}</code></dd></div> : null}
       </dl>

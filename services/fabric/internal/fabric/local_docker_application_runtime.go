@@ -3,9 +3,11 @@ package fabric
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
@@ -30,10 +32,16 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 	runtimeID := workspaceApplicationRuntimeID(input.WorkspaceID)
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
 	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(components))
+	entryURL := ""
 	ensureErr := error(nil)
 	for _, component := range components {
 		state, componentErr := p.ensureWorkspaceApplicationComponent(ctx, input, compute, network, storagePaths, component)
 		observed = append(observed, state)
+		if componentErr == nil && component.Role == contracts.WorkspaceApplicationComponentMain && entryURL == "" {
+			if url, urlErr := p.localDockerApplicationEntryURL(ctx, input, component); urlErr == nil {
+				entryURL = url
+			}
+		}
 		if componentErr != nil && ensureErr == nil {
 			ensureErr = componentErr
 		}
@@ -52,7 +60,31 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID,
 		Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed,
 	}
+	if ensureErr == nil && input.Revision.ExposurePolicy != "cloud_private" {
+		observation.EntryURL = entryURL
+	}
 	return observation, ensureErr
+}
+
+// localDockerApplicationEntryURL reads back the host port docker assigned to
+// the main component's first declared port and forms the local entry URL.
+func (p *LocalDockerProvider) localDockerApplicationEntryURL(ctx context.Context, input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) (string, error) {
+	if len(input.Revision.Ports) == 0 {
+		return "", nil
+	}
+	name, nameErr := localDockerApplicationComponentName(input.WorkspaceID, component.Name)
+	if nameErr != nil {
+		return "", nameErr
+	}
+	container, exists, inspectErr := p.inspectContainer(ctx, name)
+	if inspectErr != nil || !exists {
+		return "", firstNonNil(inspectErr, fmt.Errorf("local_docker_application_component_readback_missing"))
+	}
+	bindings := container.NetworkSettings.Ports[strconv.Itoa(input.Revision.Ports[0].Port)+"/tcp"]
+	if len(bindings) == 0 || bindings[0].HostPort == "" {
+		return "", nil
+	}
+	return "http://" + net.JoinHostPort(p.publishHost, bindings[0].HostPort) + "/", nil
 }
 
 // ReadWorkspaceApplicationRuntime observes the declared components without
@@ -122,6 +154,11 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 	}
 	args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
 	args = append(args, "--network", network)
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		for _, port := range input.Revision.Ports {
+			args = append(args, "-p", p.publishHost+"::"+strconv.Itoa(port.Port))
+		}
+	}
 	for _, mount := range input.Revision.PersistentMounts {
 		source := filepath.Join(storagePaths.Data, mount.Name)
 		if err := os.MkdirAll(source, 0755); err != nil {
