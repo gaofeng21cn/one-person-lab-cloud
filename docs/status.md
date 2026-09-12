@@ -91,8 +91,15 @@ Business loop 2 is open: commit `217bb904` (2026-09-12) adds the
 `internal/domain/application` admission rules — immutable revision identity
 with canonical content digests, idempotent re-admission, conflict detection
 and deployment transition checks against the Workspace's current binding —
-with no service consumers yet; the administrator admission route, revision
-persistence and the Fabric deployment path are its next slices. The delivery
+and commit `722f2ee7` adds the administrator-only admission/read routes and
+PostgreSQL revision persistence. Identical content replays the stored revision;
+conflicting content cannot overwrite it. Domain, HTTP and real PostgreSQL
+admission checks passed. The Fabric deployment path remains the next slice.
+The full local gate also exposed a retained Fabric terminalization race:
+an identical request could finish between the replay and candidate reads.
+The command, result-read and HTTP authorization paths now re-read the exact
+approved terminal result in that window, without another provider mutation;
+deterministic interleaving checks cover all three callers. The delivery
 plan follows the five runnable outcomes in
 [roadmap](roadmap.md#implementation-sequence); source, persistence and provider
 acceptance for these new outcomes remain unverified where stated. This
