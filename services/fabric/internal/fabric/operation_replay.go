@@ -520,6 +520,10 @@ func fillOperationResource(operation *FabricOperation, resource any) {
 	providerReplayEpoch := operation.RedactedProviderPayload[providerMutationReplayEpochPayloadKey]
 	providerChildResourceID := operation.ResourceID
 	switch value := resource.(type) {
+	case workspaceApplicationRuntimeRecord:
+		operation.ResourceID = firstNonEmpty(value.RuntimeID, operation.ResourceID)
+		operation.WorkspaceID = firstNonEmpty(value.WorkspaceID, operation.WorkspaceID)
+		operation.RedactedProviderPayload = map[string]any{"resource": value, "providerResourceId": value.RuntimeID, "components": len(value.Observation.Components)}
 	case ComputeAllocation:
 		operation.ResourceID = firstNonEmpty(value.ID, operation.ResourceID)
 		operation.AccountID = firstNonEmpty(value.AccountID, operation.AccountID)
