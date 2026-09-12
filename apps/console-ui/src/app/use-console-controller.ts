@@ -31,6 +31,7 @@ import type {
   WalletAdjustmentController,
   WorkspaceBudgetController,
   WorkspaceDeleteController,
+  WorkspaceApplicationDeploymentController,
   WorkspaceImageReleaseController,
   WorkspaceLaunchController,
   WorkspaceRenewalController,
@@ -51,6 +52,7 @@ import { useOperatorAnnouncementController } from "./use-operator-announcement-c
 import { useOperatorResourceReadController } from "./use-operator-resource-read-controller.ts";
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
+import { useWorkspaceApplicationDeploymentController } from "./use-workspace-application-deployment-controller.ts";
 import { useWorkspaceImageReleaseController } from "./use-workspace-image-release-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
@@ -387,6 +389,13 @@ export function useConsoleController() {
   });
   const walletAdjustment: WalletAdjustmentController = walletAdjustmentCapability;
 
+  const workspaceApplicationDeploymentCapability = useWorkspaceApplicationDeploymentController({
+    session,
+    flash,
+    mutationError,
+    currentMutationRequest
+  });
+  const workspaceApplicationDeployment: WorkspaceApplicationDeploymentController = workspaceApplicationDeploymentCapability;
   const workspaceImageReleaseCapability = useWorkspaceImageReleaseController({
     session,
     workspaceId: operatorResourceRead.selectedWorkspaceId,
@@ -721,6 +730,7 @@ export function useConsoleController() {
     operatorAccounts,
     operatorAnnouncements,
     operatorResourceRead,
+    workspaceApplicationDeployment,
     workspaceImageRelease,
     workspaceRuntimeImageReplacement,
     walletAdjustmentOperation: walletAdjustment.operation,

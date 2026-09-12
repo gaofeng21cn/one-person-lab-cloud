@@ -15,7 +15,6 @@ func applicationRevisionForTest() contracts.WorkspaceApplicationRevision {
 		SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
 		Image:            "repo.example/apps/knowledge@sha256:" + strings.Repeat("a", 64),
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
-		Resources:        contracts.WorkspaceApplicationResources{CPU: 2, MemoryGB: 4},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
 		ScratchMounts:    []contracts.WorkspaceApplicationMount{{Name: "tmp", MountPath: "/tmp"}},
 		HealthChecks:     []contracts.WorkspaceApplicationHealthCheck{{Port: 8080, Path: "/healthz", InitialDelaySeconds: 5}},

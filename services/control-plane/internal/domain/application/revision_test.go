@@ -13,7 +13,6 @@ func validRevision() contracts.WorkspaceApplicationRevision {
 		SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
 		Image:            "repo.example/apps/knowledge@sha256:" + repeat('a', 64),
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
-		Resources:        contracts.WorkspaceApplicationResources{CPU: 2, MemoryGB: 4},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
 		ExposurePolicy:   "application",
 	}
@@ -41,7 +40,7 @@ func TestRevisionDigestIsStableAndContentSensitive(t *testing.T) {
 		t.Fatalf("identical revisions produced digests %q and %q (err=%v)", digest, same, err)
 	}
 	changed := revision
-	changed.Resources.MemoryGB = 8
+	changed.Image = "repo.example/apps/knowledge@sha256:" + repeat('b', 64)
 	other, err := RevisionDigest(changed)
 	if err != nil {
 		t.Fatal(err)

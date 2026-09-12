@@ -287,3 +287,30 @@ export interface CustomerAnnouncementController {
   refresh: () => Promise<void>;
   markRead: (announcementId: string) => Promise<void>;
 }
+
+export interface WorkspaceApplicationDeploymentController {
+  applicationId: string;
+  targetRevision: string;
+  setApplicationId: (value: string) => void;
+  setTargetRevision: (value: string) => void;
+  configurationDigest: string;
+  setConfigurationDigest: (value: string) => void;
+  draft: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft;
+  validation: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraftValidation;
+  setDraftField: <K extends keyof import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft>(
+    field: K, value: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft[K]
+  ) => void;
+  addPersistentMount: () => void;
+  removePersistentMount: (index: number) => void;
+  addScratchMount: () => void;
+  removeScratchMount: (index: number) => void;
+  addDependency: () => void;
+  removeDependency: (index: number) => void;
+  setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
+  setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
+  intent: import("../api/dtos.ts").WorkspaceApplicationIntentDTO | null;
+  busy: boolean;
+  admitRevision: () => Promise<boolean>;
+  deploy: (workspaceId: string) => Promise<boolean>;
+  reset: () => void;
+}

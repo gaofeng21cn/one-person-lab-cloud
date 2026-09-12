@@ -959,3 +959,37 @@ export function decodeSource<T>(value: unknown): SourceEnvelope<T> {
     data: dto.data as T
   };
 }
+
+export interface WorkspaceApplicationComponentStateDTO {
+  name: string;
+  role: string;
+  image: string;
+  state: string;
+  ports?: number[];
+  lastError?: string;
+}
+
+export interface WorkspaceApplicationRuntimeObservationDTO {
+  runtimeId: string;
+  status: string;
+  components: WorkspaceApplicationComponentStateDTO[];
+}
+
+export interface WorkspaceApplicationIntentDTO {
+  operationId: string;
+  phase: string;
+  applicationId: string;
+  targetRevision: string;
+  currentBinding: string;
+  expectedWorkspaceVersion: number;
+  createdAt: string;
+  runtimeObservation?: WorkspaceApplicationRuntimeObservationDTO;
+  activationAt?: string;
+  receiptId?: string;
+  lastError?: string;
+}
+
+export interface WorkspaceApplicationRevisionAdmissionDTO {
+  decision: string;
+  revision: { id: string; applicationId: string; version: string; digest: string };
+}

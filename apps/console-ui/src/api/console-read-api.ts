@@ -3,6 +3,8 @@ import type {
   AnnouncementPageDTO,
   AnnouncementDTO,
   AnnouncementReadDTO,
+  WorkspaceApplicationIntentDTO,
+  WorkspaceApplicationRevisionAdmissionDTO,
   BillingReceipt,
   BillingReceiptPage,
   CreateGatewayKeyRequest,
@@ -356,4 +358,32 @@ export function getRuntimeReadiness(): Promise<ReadinessFact> {
 
 export function getProductionReadiness(): Promise<ReadinessFact> {
   return getJson<unknown>("/api/production/readiness").then(decodeDto<ReadinessFact>);
+}
+
+export function admitOperatorApplicationRevision(
+  revision: unknown,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceApplicationRevisionAdmissionDTO> {
+  return postJson<unknown>(
+    "/api/operator/application-revisions", revision, csrfToken, idempotencyKey
+  ).then(decodeDto<WorkspaceApplicationRevisionAdmissionDTO>);
+}
+
+export function createOperatorWorkspaceApplicationDeployment(
+  workspaceId: string,
+  applicationId: string,
+  targetRevision: string,
+  configurationDigest: string,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
+  return postJson<unknown>(
+    "/api/operator/application-deployments",
+    { workspaceId, applicationId, targetRevision, configurationDigest }, csrfToken, idempotencyKey
+  ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
+}
+
+export function getOperatorWorkspaceApplicationDeployment(operationId: string, signal?: AbortSignal): Promise<SourceEnvelope<{ status: string; intent: WorkspaceApplicationIntentDTO }>> {
+  return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}`, signal);
 }
