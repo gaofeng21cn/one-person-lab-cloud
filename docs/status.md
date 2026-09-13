@@ -24,9 +24,10 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 ## Application Hosting Boundary
 
-The baseline below combines canonical source at
-`a0430b099cc787a8931e54f0bda4a1424f376eb1` and the default installation,
-replacement and lifecycle changes under local verification on 2026-09-13. It is not live resource readback for `ws-609081bc2298edd18e`,
+The baseline below combines canonical main
+`a0430b099cc787a8931e54f0bda4a1424f376eb1` with the default installation,
+replacement and lifecycle implementation at `46f1eb3938c602dbcee9825eb3c4686425fface0`,
+verified locally on 2026-09-14 (Asia/Shanghai). It is not live resource readback,
 Candidate qualification, or an Instance deployment. Target boundaries belong
 to [architecture](architecture.md#workspace-application-boundary); sequencing
 and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
@@ -58,24 +59,36 @@ without stopping the predecessor, entitlement fencing and immutable purchase
 readback. Ledger boundary tests accept explicit resource-only evidence and
 reject incomplete cleanup or runtime fields inserted into that resource contract.
 Retained full Launch recovery and monthly preflight checks continue to pass.
-The integrated tree at `a0430b09` passes focused CP default/replacement,
-credential preservation and rotation, lineage, recovery, HTTP replay, and the
-new application-data material HTTP checks, plus shared Go contract tests.
-Browser, TypeScript, lint and build checks passed before the main integration;
-their source files are unchanged by that integration.
+The final implementation passes `verify:local:full`: 311 source/browser
+tests, TypeScript typecheck and lint, Console build, Go compilation and
+non-database checks, plus all 18 required PostgreSQL/Docker test packages
+with zero skips. The full run includes the corrected PostgreSQL baseline restore,
+ready-recovery concurrency barrier, initial pending/ready readback and
+queue-clock fixture assertions;
+production recovery, health and cleanup acceptance remains enforced.
 
-Required full verification is not complete. The latest retained full run exposed
-a recovery test that failed to restore omitted PostgreSQL zero fields, a Docker
-test using a stale entry after restart, and two retained checks hitting resource
-or migration-lock deadlines. The recovery fixture now restores each baseline
-explicitly; production recovery checks remain unchanged. Docker already proved
-same-application data/session retention, cross-application isolation and exact
-old-image absence. Its resume test now consumes current lifecycle entry readback.
-After the idle local IBD verification stack was stopped with its data retained,
-the unchanged Docker core scenario passed in 40.16 seconds. Review also repaired
-unactivated historical reservations during lifecycle inventory and separated
-CP-owned ABI keys from user environment updates. Focused checks pass; the final
-integrated PostgreSQL/Docker run remains required.
+The real Docker fixture verifies OPL-profile login/session/Gateway Secret-file
+ABI, same-application data/password/session retention, unrelated-application data
+and Secret isolation, exact predecessor Runtime/image absence, and stop/resume/
+delete with current-entry HTTP readback. The complete focused Docker run also
+passed on `9c42f228`; the later source delta only repairs queue test setup to
+use authoritative admission timestamps with a skewed proposed queue timestamp.
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Implementation SHA | `46f1eb3938c602dbcee9825eb3c4686425fface0` |
+| Implementation tree | `02210787b660ed6479ffc05fdf12e9fbd19c876a` |
+| Command | `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` |
+| Completed at (UTC) | `2026-09-13T17:05:27.619110+00:00` |
+| Full log SHA-256 | `6a5e2a7b97544f95d483a2958b996a89917257896220c75bf77c25f0b0e29491` |
+| Source consistency | Before/after HEAD, tree and clean tracked worktree match. Subsequent closeout changes only update documentation evidence. |
+| Focused Docker source | `9c42f228334a031da4bc3c10ac31f36960850853` |
+| Focused Docker log SHA-256 | `28f3a358edc8676a840688ef46188bc8805d223fa99b19a63b2fc9a31eb96632` |
+
+The retained artifacts are `verify-local-full-sixth.log`,
+`verify-local-full-sixth-result.json`, `docker-application-ninth.log` and its
+result JSON. Earlier failed attempts and local environment recovery records
+remain separate and do not qualify the final source.
 
 The owning checks are the CP `workspace_default_application_test.go`,
 `workspace_application_recovery_test.go`,
