@@ -7,23 +7,27 @@ import (
 )
 
 var (
-	workspaceApplicationIDPattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-	workspaceApplicationVersionPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
-	workspaceApplicationPlatformPattern = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9._-]+$`)
-	workspaceApplicationPortNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
+	workspaceApplicationIDPattern            = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	workspaceApplicationVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+	workspaceApplicationPlatformPattern      = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9._-]+$`)
+	workspaceApplicationPortNamePattern      = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
+	workspaceApplicationComponentNamePattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 // WorkspaceApplicationRevision is the immutable, provider-neutral description
 // admitted before a Workspace deployment. Image references are digest-pinned;
 // tags are discovery input and are not persisted here.
 type WorkspaceApplicationRevision struct {
-	SchemaVersion    int                               `json:"schemaVersion"`
-	ApplicationID    string                            `json:"applicationId"`
-	Version          string                            `json:"version"`
-	Platform         string                            `json:"platform"`
-	Image            string                            `json:"image"`
-	Entrypoint       []string                          `json:"entrypoint,omitempty"`
-	Ports            []WorkspaceApplicationPort        `json:"ports,omitempty"`
+	SchemaVersion int                        `json:"schemaVersion"`
+	ApplicationID string                     `json:"applicationId"`
+	Version       string                     `json:"version"`
+	Platform      string                     `json:"platform"`
+	Image         string                     `json:"image"`
+	Entrypoint    []string                   `json:"entrypoint,omitempty"`
+	Ports         []WorkspaceApplicationPort `json:"ports,omitempty"`
+	// EntryPort names the declared TCP port serving the application's HTTP root.
+	// An empty name declares no web entry; health probes do not publish a port.
+	EntryPort        string                            `json:"entryPort,omitempty"`
 	HealthChecks     []WorkspaceApplicationHealthCheck `json:"healthChecks,omitempty"`
 	PersistentMounts []WorkspaceApplicationMount       `json:"persistentMounts,omitempty"`
 	ScratchMounts    []WorkspaceApplicationMount       `json:"scratchMounts,omitempty"`
@@ -36,6 +40,17 @@ type WorkspaceApplicationPort struct {
 	Name     string `json:"name"`
 	Port     int    `json:"port"`
 	Protocol string `json:"protocol"`
+}
+
+// WorkspaceApplicationEntryPort resolves the explicitly selected HTTP port.
+// Exposure policy is enforced by the provider at its publication boundary.
+func WorkspaceApplicationEntryPort(revision WorkspaceApplicationRevision) (WorkspaceApplicationPort, bool) {
+	for _, port := range revision.Ports {
+		if revision.EntryPort != "" && port.Name == revision.EntryPort && port.Protocol == "TCP" {
+			return port, true
+		}
+	}
+	return WorkspaceApplicationPort{}, false
 }
 
 type WorkspaceApplicationHealthCheck struct {
@@ -127,6 +142,11 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 		}
 		seenPorts[port.Name] = struct{}{}
 	}
+	if revision.EntryPort != "" {
+		if _, found := WorkspaceApplicationEntryPort(revision); !found {
+			return errors.New("workspace_application_entry_port_invalid")
+		}
+	}
 	seenMounts := map[string]struct{}{}
 	for _, mount := range append(append([]WorkspaceApplicationMount{}, revision.PersistentMounts...), revision.ScratchMounts...) {
 		if strings.TrimSpace(mount.Name) == "" || !strings.HasPrefix(mount.MountPath, "/") || strings.Contains(mount.MountPath, "..") {
@@ -138,7 +158,7 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 		seenMounts[mount.Name] = struct{}{}
 	}
 	for _, check := range revision.HealthChecks {
-		if check.Port < 1 || check.Port > 65535 || !strings.HasPrefix(check.Path, "/") {
+		if check.Port < 1 || check.Port > 65535 || !strings.HasPrefix(check.Path, "/") || check.InitialDelaySeconds < 0 {
 			return errors.New("workspace_application_health_check_invalid")
 		}
 	}
@@ -147,10 +167,15 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 			return errors.New("workspace_application_secret_input_invalid")
 		}
 	}
+	seenComponents := map[string]struct{}{WorkspaceApplicationComponentMain: {}}
 	for _, dependency := range revision.Dependencies {
-		if strings.TrimSpace(dependency.Name) == "" || !ValidWorkspaceImageReference(dependency.Image) {
+		if !workspaceApplicationComponentNamePattern.MatchString(dependency.Name) || !ValidWorkspaceImageReference(dependency.Image) {
 			return errors.New("workspace_application_dependency_invalid")
 		}
+		if _, found := seenComponents[dependency.Name]; found {
+			return errors.New("workspace_application_dependency_duplicate")
+		}
+		seenComponents[dependency.Name] = struct{}{}
 	}
 	return nil
 }

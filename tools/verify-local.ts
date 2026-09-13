@@ -298,10 +298,17 @@ async function runPostgresVerification(env) {
     const result = await runGoJSONWithoutSkips(args, { cwd, env });
     return { cwd: spec.cwd, command: "go", args: [...args], packages: [...packages], ...result };
   };
-  const settled = await Promise.allSettled(postgresVerificationSpecs.map((spec) => verifyModule(spec)));
-  const failures = settled.flatMap((result, index) => result.status === "rejected"
-    ? [`${postgresVerificationSpecs[index].cwd}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
-    : []);
+  // These suites share one PostgreSQL instance and Docker daemon. Serialize
+  // module setup/teardown so migration I/O cannot starve runtime readback;
+  // each suite retains its own concurrency checks and original deadlines.
+  const failures = [];
+  for (const spec of postgresVerificationSpecs) {
+    try {
+      await verifyModule(spec);
+    } catch (error) {
+      failures.push(`${spec.cwd}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   if (failures.length > 0) throw new Error(`PostgreSQL module verification failed:\n${failures.join("\n")}`);
 }
 

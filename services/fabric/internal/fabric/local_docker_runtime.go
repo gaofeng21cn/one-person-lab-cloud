@@ -206,9 +206,10 @@ type dockerContainerInspect struct {
 		} `json:"Healthcheck"`
 	} `json:"Config"`
 	State struct {
-		Status  string `json:"Status"`
-		Running bool   `json:"Running"`
-		Health  *struct {
+		Status    string `json:"Status"`
+		Running   bool   `json:"Running"`
+		StartedAt string `json:"StartedAt"`
+		Health    *struct {
 			Status string `json:"Status"`
 		} `json:"Health"`
 	} `json:"State"`

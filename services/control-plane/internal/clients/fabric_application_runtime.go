@@ -11,6 +11,7 @@ import (
 // Fabric from an admitted revision. Secret values never travel here; the
 // configuration digest only names the operator-supplied configuration.
 type WorkspaceApplicationRuntimeInput struct {
+	AccountID             string                                 `json:"accountId"`
 	WorkspaceID           string                                 `json:"workspaceId"`
 	ComputeID             string                                 `json:"computeId"`
 	VolumeID              string                                 `json:"volumeId"`
@@ -32,7 +33,7 @@ type FabricWorkspaceApplicationRuntimeClient interface {
 func (c *fabricHTTPClient) EnsureWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput, idempotencyKey string) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var result contracts.WorkspaceApplicationRuntimeObservation
 	err := c.postMutation(ctx, "/fabric/workspace-application-runtimes", input, idempotencyKey, fabricMutationScope{
-		WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_application_runtime", ResourceID: input.WorkspaceID, Action: "create_workspace_application_runtime",
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_application_runtime", ResourceID: input.WorkspaceID, Action: "create_workspace_application_runtime",
 	}, &result)
 	return result, err
 }
@@ -40,7 +41,7 @@ func (c *fabricHTTPClient) EnsureWorkspaceApplicationRuntime(ctx context.Context
 func (c *fabricHTTPClient) ReadWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var result contracts.WorkspaceApplicationRuntimeObservation
 	err := c.postMutation(ctx, "/fabric/workspace-application-runtimes/"+url.PathEscape(input.WorkspaceID)+"/readback", input, input.RuntimeOperationID, fabricMutationScope{
-		WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_application_runtime", ResourceID: input.WorkspaceID, Action: "read_workspace_application_runtime",
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_application_runtime", ResourceID: input.WorkspaceID, Action: "read_workspace_application_runtime",
 	}, &result)
 	return result, err
 }

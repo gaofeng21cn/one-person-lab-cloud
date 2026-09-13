@@ -216,6 +216,51 @@ Missing/ambiguous identities, provider errors and conflicts cannot become ready.
 Its ports cannot claim or mutate operations. Runtime mutation, credential reveal,
 Gateway Secret and deletion-residue observations retain their separate owners.
 
+### Workspace Application Deployment
+
+The independent application worker consumes admitted immutable revisions and
+the Workspace's existing resources. It scans both pending and running intents;
+each retry keeps the same Runtime operation identity and the original successful
+Launch's attachment binding. The typed CP/Fabric requests carry the account,
+Workspace and operation identities through the existing scoped capability
+authorization. Invalid requests remain client errors and pending observations
+remain structured HTTP 202 responses. CP commits the selected revision binding
+and receipt-phase intent in one PostgreSQL transaction before recording the
+Ledger receipt. A lost commit response resumes from that persisted phase.
+Execution is enabled with `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1`.
+The base Compose forwards this installation setting; the local Workspace overlay
+enables it together with the existing Workspace workers. With the switch off,
+requests only persist deployment intent and do not execute it.
+
+`WorkspaceApplicationRevision.entryPort` explicitly selects a named TCP port
+for the HTTP root. An omitted entry declares no web endpoint; `healthChecks`
+does not publish a port. Dependencies have unique component names, with `main`
+reserved. Current top-level entrypoint, ports, mounts and probes belong only to
+the main component; dependency-specific configuration is an open capability.
+
+Fabric claims creation once and resumes a returned pending observation by live
+provider readback. Both providers compare observed account labels with the
+authorized request account. Provider read errors or mismatched observations
+cannot replay a historical ready value. Local-Docker publishes only the selected external
+HTTP port and executes declared HTTP probes from a temporary restricted container
+sharing the main container's network, without customer mounts. The portable
+overlay reuses the pinned Cloud image, which contains Node, as
+`OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE`; native installations must set this explicitly
+when declaring HTTP probes. Probe startup errors remain errors and failed HTTP
+checks remain pending.
+
+Tencent emits valid per-component Service/Deployment and application network
+policies. It verifies the current Deployment generation, controller ownership
+through ReplicaSet and Pod, Pod readiness and actual image digest. A declared
+public entry also waits for the selected Ingress controller's address and the
+exact host/path/Service binding. `OPL_INGRESS_CLASS` selects an explicit class;
+otherwise Kubernetes admission and the installation's default controller own
+selection. Its returned HTTP URL does not prove DNS/TLS or
+business availability. Tencent supports one native readiness probe and rejects
+multiple required checks before mutation. `cloud_private` creates no external
+entry; authenticated private access, Registry browsing, replacement/retirement
+and complete application lifecycle migration remain roadmap work.
+
 ## Provider Port
 
 Fabric exposes one Go `Provider` port paid by both `local-docker` and

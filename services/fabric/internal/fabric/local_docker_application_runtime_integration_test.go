@@ -2,6 +2,8 @@ package fabric
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,6 +63,11 @@ try { visits = parseInt(fs.readFileSync(file, 'utf8'), 10) || 0; } catch {}
 visits += 1;
 fs.writeFileSync(file, String(visits));
 require('node:http').createServer((request, response) => {
+  if (request.url === '/healthz') {
+    response.writeHead(fs.existsSync('/data/ready') ? 200 : 503);
+    response.end();
+    return;
+  }
   response.writeHead(200, { 'content-type': 'text/plain' });
   response.end('visits: ' + visits + '\n');
 }).listen(8080, '0.0.0.0');
@@ -104,11 +111,31 @@ require('node:http').createServer((request, response) => {
 	if output, err := push.CombinedOutput(); err != nil {
 		t.Fatalf("push application image: %v: %s", err, output)
 	}
-	digestOutput, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", repo+":e2e").Output()
+	digestOutput, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{json .RepoDigests}}", repo+":e2e").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	imageID := strings.TrimSpace(string(digestOutput))
+	var repoDigests []string
+	if err := json.Unmarshal(digestOutput, &repoDigests); err != nil {
+		t.Fatal(err)
+	}
+	imageID := ""
+	for _, digest := range repoDigests {
+		if strings.HasPrefix(digest, repo+"@sha256:") {
+			if imageID != "" {
+				t.Fatalf("multiple digests for pushed repository %s", repo)
+			}
+			imageID = digest
+		}
+	}
+	if imageID == "" {
+		t.Fatalf("pushed repository %s has no digest: %s", repo, digestOutput)
+	}
+	platformOutput, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", repo+":e2e").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	applicationPlatform := strings.TrimSpace(string(platformOutput))
 	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", "-f", repo+":e2e").Run() })
 
 	launchID := "local-app-" + stableSuffix(t.Name(), time.Now().String())[:12]
@@ -118,6 +145,7 @@ require('node:http').createServer((request, response) => {
 	provider := newLocalDockerProvider(LocalDockerProviderConfig{
 		GatewaySecretRoot: localDockerSecretTestRoot(t), HostStorageRoot: storageRoot, RuntimeHost: "127.0.0.1",
 		PublishHost:                  "127.0.0.1",
+		ApplicationProbeImage:        base,
 		StorageQuotaBackend:          localDockerStorageTestQuota(storageRoot),
 		TrustedWorkspaceImageSources: []string{imageID},
 	}, runner)
@@ -178,32 +206,63 @@ require('node:http').createServer((request, response) => {
 	// replay the provisioned compute, storage and attachment.
 	service = NewServiceWithOperationStore(provider, store)
 	revision := contracts.WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "visit-counter", Version: "1.0.0", Platform: "linux/amd64",
+		SchemaVersion: 1, ApplicationID: "visit-counter", Version: "1.0.0", Platform: applicationPlatform,
 		Image:            imageID,
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
-		ExposurePolicy:   "application",
+		ExposurePolicy:   "application", EntryPort: "http",
+		HealthChecks: []contracts.WorkspaceApplicationHealthCheck{{Port: 8080, Path: "/healthz"}},
 	}
 	runtimeInput := WorkspaceApplicationRuntimeInput{
-		WorkspaceID: workspaceID, ComputeID: compute.Resources.ComputeAllocationID, VolumeID: storage.Resources.StorageID,
+		AccountID: accountID, WorkspaceID: workspaceID, ComputeID: compute.Resources.ComputeAllocationID, VolumeID: storage.Resources.StorageID,
 		AttachmentID: attachment.Resources.AttachmentID, AttachmentOperationID: attachment.Resources.AttachmentBindingRef,
-		RuntimeOperationID: launchID + ":application-runtime", Revision: revision,
+		Revision:            revision,
 		ConfigurationDigest: strings.Repeat("c", 64),
 	}
 	ensure := func(key string) contracts.WorkspaceApplicationRuntimeObservation {
 		t.Helper()
-		observation, ensureErr := service.CreateWorkspaceApplicationRuntime(ctx, func() WorkspaceApplicationRuntimeInput {
-			copied := runtimeInput
-			copied.IdempotencyKey = key
-			return copied
-		}())
-		if ensureErr != nil {
-			t.Fatalf("ensure %q: %v", key, ensureErr)
+		copied := runtimeInput
+		copied.IdempotencyKey, copied.RuntimeOperationID = key, key
+		for {
+			observation, ensureErr := service.CreateWorkspaceApplicationRuntime(ctx, copied)
+			if ensureErr == nil && observation.Status == "ready" {
+				return observation
+			}
+			if !errors.Is(ensureErr, ErrWorkspaceLaunchPending) {
+				t.Fatalf("ensure %q: observation=%#v err=%v test_context=%v", key, observation, ensureErr, ctx.Err())
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
-		return observation
 	}
 
-	first := ensure(launchID + ":app-1")
+	firstInput := runtimeInput
+	firstInput.IdempotencyKey = launchID + ":app-1"
+	firstInput.RuntimeOperationID = firstInput.IdempotencyKey
+	pending, pendingErr := service.CreateWorkspaceApplicationRuntime(ctx, firstInput)
+	if !errors.Is(pendingErr, ErrWorkspaceLaunchPending) || pending.Status != "pending" || pending.EntryURL != "" {
+		t.Fatalf("running HTTP server with failing declared health check must stay pending: observation=%#v err=%v", pending, pendingErr)
+	}
+	containerName, nameErr := localDockerApplicationComponentName(workspaceID, "main")
+	if nameErr != nil {
+		t.Fatal(nameErr)
+	}
+	beforeID, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Id}}", containerName).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "exec", containerName, "node", "-e", "require('fs').writeFileSync('/data/ready', 'ready')").CombinedOutput(); err != nil {
+		t.Fatalf("make declared health check ready: %v: %s", err, output)
+	}
+	first := ensure(firstInput.IdempotencyKey)
+	afterID, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Id}}", containerName).Output()
+	if err != nil || string(beforeID) != string(afterID) {
+		t.Fatalf("pending replay recreated main: before=%s after=%s err=%v", beforeID, afterID, err)
+	}
+
 	if first.Status != "ready" || first.EntryURL == "" {
 		t.Fatalf("first observation=%#v", first)
 	}
@@ -216,10 +275,6 @@ require('node:http').createServer((request, response) => {
 	}
 
 	// Replace the whole main container: the local workspace mount must survive.
-	containerName, nameErr := localDockerApplicationComponentName(workspaceID, "main")
-	if nameErr != nil {
-		t.Fatal(nameErr)
-	}
 	if output, err := exec.CommandContext(ctx, "docker", "container", "rm", "-f", containerName).CombinedOutput(); err != nil {
 		t.Fatalf("remove container: %v: %s", err, output)
 	}
@@ -234,7 +289,10 @@ require('node:http').createServer((request, response) => {
 	if !strings.Contains(body, "visits: 2") {
 		t.Fatalf("visit counter did not persist across replacement: %q", body)
 	}
-	t.Log("non-OPL application deployed, served over HTTP, and its local workspace data survived full container replacement")
+	if output, err := exec.CommandContext(ctx, "docker", "container", "ls", "-a", "--filter", "label=opl.fabric.kind=application_probe", "--filter", "label=opl.workspace.id="+workspaceID, "--format", "{{.ID}}").Output(); err != nil || strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("application health probes leaked: %s err=%v", output, err)
+	}
+	t.Log("non-OPL application stayed pending on HTTP 503, converged on HTTP 200 without recreating main, served over HTTP, and retained local data across full container replacement; no probe containers remain")
 }
 
 func httpGetBody(t *testing.T, url string) string {

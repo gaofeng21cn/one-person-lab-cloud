@@ -102,7 +102,8 @@ an Instance operation with separate immutable evidence.
 ## Workspace Application Decoupling
 
 最终用户结果是：管理员在现有 Console 中选择一个已开通的 Workspace，
-登记受支持的 OCI 应用、配置和数据输入，完成预检查后部署；用户打开该应用，
+从 `uswccr.ccs.tencentyun.com/oplcloud` 命名空间先选择 repository，再选择
+tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入后部署；用户打开该应用，
 其真实业务可用，后续更新、重启和兼容回滚保持已声明的持久数据。
 首个实际投放目标是 `ws-609081bc2298edd18e`：将 OPL App 切换为完整 IBD，
 保留原计算/存储身份、购买历史和隔离的 OPL App 数据。
@@ -124,8 +125,9 @@ an Instance operation with separate immutable evidence.
 - [管理员与客户体验](product/workspace-experience.md#application-selection-target)
   维护用户交互；[发行操作](runtime/release.md)维护 Candidate 与 Product Release 机制。
 
-已有固定镜像更新能力是实现基础。新增合同目前仍是未接入业务消费者的草稿，
-以下工作包均为 `planned / P1`；本方案整理不改变既有 P0 Release 的验收状态。
+资源独立开通、应用登记和独立部署已有源码消费者；当前先修通既有部署路径。
+这些进展不代表默认安装、应用替换或 IBD 实际投放完成，具体证据由
+[status](status.md#current-capability-baseline) 维护。
 
 ### Required Deliverables
 
@@ -163,12 +165,24 @@ an Instance operation with separate immutable evidence.
 
 ### Implementation Sequence
 
-按下面五个闭环推进。每个闭环同时包含必要的领域规则、应用编排、持久化、
-真实 HTTP/worker 调用、Provider 执行/读回、UI 投影和验证。
-合同随当前两端消费者实现；领域分层随正在修改的能力落实。
-单独的合同测试、文件分层或文档整理不作为一个业务闭环的完成结果。
+按 2026-09-13 的用户决定，实施顺序如下。每阶段交付当前调用链及相应验证，
+合同随两端消费者一并更新；本地检查、Candidate 与 Instance 结果分别记录。
 
-#### 1. Resource-only Workspace
+| 阶段 | 本阶段交付 | 完成条件与当前状态 |
+| --- | --- | --- |
+| 1. 修通现有部署链路 | CP→Fabric 账号/资源/操作身份与授权、后台继续推进、原子激活、声明入口及真实健康读回、必要 Console 字段。 | 2026-09-13 本地修复与验证完成：全量检查的 18 个 PostgreSQL/Docker 包零跳过；最终 provider/HTTP 回归含真实 Docker，68 个测试及子用例通过、零跳过。[源码与验证证据](status.md#stage-1-source-verification)分别绑定全量检查和最后账户读回修正。待 PR 审核与合并；未部署腾讯实例。 |
+| 2. 统一默认安装与替换 | OPL App 作为默认应用走独立部署操作；同一 Workspace 保持一个选定应用；按预检查确定中断/替换方式，清理旧实例及无引用镜像，保留隔离持久数据。 | 默认安装、同应用更新和 OPL App→另一应用切换可恢复，无重复采购；生命周期消费者正确使用当前部署。未完成。 |
+| 3. 补齐仓库与镜像选择 | 在指定命名空间列 repository，再选 tag/版本，解析固定 digest/platform，连接现有登记、预检查和部署操作。 | `one-person-lab-app` 与 `chaokang_agent_ibd` 从同一选择入口使用；不把命名空间当作单个镜像仓库。未完成。 |
+| 4. 补齐 IBD 材料与依赖 | 主 OCI、六个知识服务或明确外部绑定、配置/Secret 接口、挂载、健康检查和必需的数据/恢复材料。 | 隔离环境中真实检索、问答、SSE 与引用可用，所需通用能力由当前 owner 实现。未完成。 |
+| 5. 指定 Workspace 切换 IBD | Instance owner 安装准确 Candidate，在既有资源上替换 OPL App，完成真实访问、数据与恢复读回并保存不可变 receipt。 | IBD 实际可用，旧实例/无引用镜像清理，资源和原应用数据保持。未完成，属于受保护 Instance 工作流。 |
+
+独立的数据材料目录/登记功能（#550）不是阶段 1 的前置。
+后续按 IBD 的实际数据输入与恢复消费者确定必要范围。
+
+下面五项是覆盖上述阶段的业务验收场景，保留完整交付条件；其编号不是
+本轮实施阶段编号。阶段 1 的本地源码修复不将这些完整场景标为已交付。
+
+#### 验收场景 1. Resource-only Workspace
 
 **可交付结果：** 用户购买一个没有应用的 Workspace，资源已开通；可查询、
 续费、处理到期并删除。无需应用镜像、应用密码、Gateway Key 或 Runtime。
@@ -192,7 +206,7 @@ Fabric 同时修改 typed HTTP 输入、preflight、完整性绑定、资源 sta
 
 **依赖：** 无需 IBD 数据、生产 Secret、DNS 或目标生产资源，即可开始本地实现。
 
-#### 2. Administrator Application Deployment
+#### 验收场景 2. Administrator Application Deployment
 
 **可交付结果：** 管理员通过现有 Console 在空 Workspace 上独立安装 OPL App，
 并可只更新所选 Workspace。默认安装也组合“资源开通”和“应用部署”两个操作。
@@ -215,7 +229,7 @@ revision 不需要重建/重部署 Cloud；A 更新不改 B 和安装默认值�
 
 **依赖：** 闭环 1。复用现有操作/store/provider 基础，扩展实际消费路径。
 
-#### 3. General Application Access And Data
+#### 验收场景 3. General Application Access And Data
 
 **可交付结果：** 一个简单非 OPL HTTP 应用证明通用托管；完整 IBD 在隔离环境中
 通过同一套入口、依赖、配置和数据机制运行。
@@ -247,7 +261,7 @@ OPL App 的旧数据保留并隔离，所有依赖与恢复 workload 纳入各�
 数据工作可按独立写集并行；IBD 材料准备可从闭环 1 开始。缺少 IBD 材料时，
 继续不依赖该材料的实现和非 OPL 验证，只将 IBD 对应验收保留为未完成。
 
-#### 4. Retained State And Lifecycle Completion
+#### 验收场景 4. Retained State And Lifecycle Completion
 
 **可交付结果：** 现有 Workspace 和未完成操作完成 owner-local 迁移；所有当前
 消费者在并发、失联和重启后仍正确，原购买历史可核对。
@@ -270,7 +284,7 @@ Sub2API Key 的既定 authority。验证无重复扣款、保留数据、原财�
 **依赖：** 闭环 2、3；通过所需 PostgreSQL 和 Linux Local-Docker 全量验证后，
 才进入通用应用的实际 Instance 投放。
 
-#### 5. Exact Artifacts And Instance Adoption
+#### 验收场景 5. Exact Artifacts And Instance Adoption
 
 **Cloud 交付链路：** 完成前四项 Cloud 实现与应用隔离验证 → 所需源码/跨模块/
 PostgreSQL/Local-Docker 检查 → 通过既有 PR/CI/main 流程形成确定 canonical SHA

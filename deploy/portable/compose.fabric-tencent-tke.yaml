@@ -4,6 +4,7 @@ services:
       opl.cloud.fabric-provider: tencent-tke
     environment:
       OPL_FABRIC_PROVIDER: tencent-tke
+      OPL_INGRESS_CLASS: ${OPL_INGRESS_CLASS:-}
       OPL_WORKSPACE_IMAGE: ${OPL_WORKSPACE_IMAGE:?Set OPL_WORKSPACE_IMAGE to an immutable Workspace image digest}
       OPL_WORKSPACE_IMAGE_RELEASES_JSON: ${OPL_WORKSPACE_IMAGE_RELEASES_JSON:?Set the approved immutable Workspace image release catalog}
       OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON: ${OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON:?Set the deployment-owned Tencent/TKE provider profile JSON}

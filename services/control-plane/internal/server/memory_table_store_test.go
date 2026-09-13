@@ -1329,11 +1329,27 @@ func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context
 	if row == nil {
 		return errWorkspaceApplicationWorkspaceGone
 	}
+	operation := findRecord(s.runtimeOps, mutation.Intent.OperationID)
+	current, err := decodeWorkspaceApplicationDeploymentIntent(operation)
+	if err != nil || current.RequestHash != mutation.Intent.RequestHash {
+		return errWorkspaceApplicationActivationConflict
+	}
+	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
+		return nil
+	}
+	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(row, mutation.Intent) {
+		return errWorkspaceApplicationActivationConflict
+	}
 	if stringValue(row["applicationBinding"]) != mutation.ExpectedBinding || int64(numberField(row, "applicationBindingVersion", 0)) != mutation.ExpectedVersion {
 		return errWorkspaceApplicationActivationConflict
 	}
+	encoded, err := json.Marshal(mutation.Intent)
+	if err != nil {
+		return err
+	}
 	row["applicationBinding"] = mutation.NextBinding
 	row["applicationBindingVersion"] = mutation.NextVersion
+	operation["result"], operation["status"] = string(encoded), "running"
 	return nil
 }
 
