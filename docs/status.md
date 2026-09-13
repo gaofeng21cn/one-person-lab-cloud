@@ -25,7 +25,7 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 ## Application Hosting Boundary
 
 The baseline below combines canonical source at
-`573d7bc91d6b283de429557fdd3d216c69911894` and the local stage-1 repair on
+`573d7bc91d6b283de429557fdd3d216c69911894` and the independent application deployment repair on
 2026-09-13. It is not live resource readback for `ws-609081bc2298edd18e`,
 Candidate qualification, or an Instance deployment. Target boundaries belong
 to [architecture](architecture.md#workspace-application-boundary); sequencing
@@ -43,10 +43,10 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Existing lifecycle consumers | Retained OPL App access, image replacement and lifecycle paths remain available. | Access, renewal, expiry, deletion and credential consumers still need migration from initial Launch Runtime facts to the current application deployment. |
 | Administrator UI | Structured revision registration and independent deployment progress exist. HTTP service port and health-check port are separate; invalid input is blocked and manual review no longer invents a completed phase. | Namespace → repository → version selection, default installation and full replacement controls remain open. |
 
-### Stage 1 Source Verification
+### Independent Application Deployment Verification
 
-The stage-1 repair follows the existing deployment path rather than introducing
-a second orchestrator. CP sends the account and original successful Launch's
+The application deployment repair follows the existing owner path. CP sends
+the account and original successful Launch's
 `attachmentBindingRef` through the typed Fabric client. Both application
 create/readback routes use the existing scoped capability check. Invalid input
 is rejected as a client error; pending create and readback return structured
@@ -105,8 +105,9 @@ commit and `source.patch` SHA-256
 `0781c8ce4239cc97947f363f784809974693fa5dda5983722ad8d7c7110e01b3`.
 The preceding full-check snapshot and log are retained separately from the
 final provider amendment and its `provider-final.jsonl`; the manifest records
-which source each check proves. These are local review artifacts, not a merged
-Cloud revision or an Instance receipt.
+which source each check proves. These are local verification artifacts. Cloud
+source integration is tracked by [PR #551](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/551);
+Instance qualification requires its own deployment and runtime receipts.
 
 These checks prove their respective source and local-runtime layers. The
 non-OPL Docker fixture is not OPL App or IBD business qualification. Application
