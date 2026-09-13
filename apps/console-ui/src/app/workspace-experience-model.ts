@@ -1,4 +1,6 @@
 import type {
+  WorkspaceCurrentApplicationDTO,
+  WorkspaceApplicationInstallationDTO,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceLaunchCloseoutDTO,
@@ -47,7 +49,7 @@ export function presentWorkspaceLaunchCloseout(closeout: WorkspaceLaunchCloseout
     case "closed":
       return { title: "开通未完成，已结案", summary: launchStatus === "refunded" ? `已退回原账户余额 ${formatUsdMicros(closeout.refundedUsdMicros)}。可查看费用记录或重新购买。` : launchStatus === "failed" ? "本次开通未扣款。可查看费用记录或重新购买。" : "正在确认结案后的订单状态，请稍后刷新。" };
     case "fulfilled":
-      return { title: launchStatus === "succeeded" ? "工作空间已可使用" : "正在完成开通记录", summary: launchStatus === "succeeded" ? "原订单已完成开通，工作空间可继续使用。" : "工作空间已就绪，正在完成原订单的开通记录。" };
+      return { title: launchStatus === "succeeded" ? "工作空间资源已开通" : "正在完成开通记录", summary: launchStatus === "succeeded" ? "原订单的资源已开通，可进入详情查看应用安装与运行状态。" : "资源已就绪，正在完成原订单的开通记录。" };
   }
 }
 
@@ -90,8 +92,8 @@ export function presentWorkspaceLaunch(
       if (!operation.workspaceId?.trim()) break;
       return {
         kind: "succeeded",
-        title: "工作空间已可使用",
-        summary: "工作空间已完成开通，可以继续查看并进入。",
+        title: "工作空间资源已开通",
+        summary: "计算与存储资源已开通，可进入详情查看应用安装与运行状态。",
         tone: "success",
         canOpenWorkspace: true
       };
@@ -183,7 +185,7 @@ export function presentWorkspaceLaunchStage(stage: string): WorkspaceLaunchStage
 
 export type WorkspaceRuntimePresentation =
   | {
-      kind: "ready" | "unready" | "not_found" | "destroyed";
+      kind: "ready" | "unready" | "not_found" | "destroyed" | "failed";
       label: string;
       description: string;
       canOpen: boolean;
@@ -198,7 +200,30 @@ export type WorkspaceRuntimePresentation =
       rawValue?: string;
     };
 
-export function presentWorkspaceRuntime(runtime: WorkspaceRuntimeDTO): WorkspaceRuntimePresentation {
+export function presentWorkspaceRuntime(runtime: WorkspaceRuntimeDTO, expectedApplication?: WorkspaceCurrentApplicationDTO | null): WorkspaceRuntimePresentation {
+  const application = runtime.currentApplication;
+  if (expectedApplication !== undefined && application?.operationId !== expectedApplication?.operationId) {
+    return { kind: "unconfirmed", label: "状态待确认", description: "正在确认当前应用的运行状态，请刷新。", canOpen: false, url: null };
+  }
+  if (application) {
+    switch (application.status) {
+      case "ready":
+        if (!runtime.ready) return { kind: "unready", label: "正在准备", description: "应用尚未完成就绪检查，请稍后刷新。", canOpen: false, url: null };
+        return application.entryUrl
+          ? { kind: "ready", label: "可使用", description: "当前应用已就绪，可以打开。", canOpen: true, url: application.entryUrl }
+          : { kind: "ready", label: "运行中", description: "应用已运行，未配置网页入口。", canOpen: false, url: null };
+      case "pending":
+        return { kind: "unready", label: "应用正在部署", description: "计算与存储资源已保留，应用正在准备中。", canOpen: false, url: null };
+      case "absent":
+        return { kind: "not_found", label: "应用尚未运行", description: "尚未发现当前应用的运行实例，计算与存储资源仍独立保留。", canOpen: false, url: null };
+      case "failed":
+        return { kind: "failed", label: "应用运行失败", description: "请联系管理员查看应用部署记录，无需重新购买资源。", canOpen: false, url: null };
+      case "suspended":
+        return { kind: "destroyed", label: "应用已暂停", description: "当前应用已暂停运行，暂时无法打开。", canOpen: false, url: null };
+      default:
+        return { kind: "unconfirmed", label: "状态待确认", description: "当前应用状态尚未确认，请刷新状态。", canOpen: false, url: null };
+    }
+  }
   switch (runtime.status) {
     case "running":
       if (runtime.ready !== true) {
@@ -472,13 +497,28 @@ export interface WorkspaceApplicationBindingPresentation {
   label: string;
 }
 
-export function presentWorkspaceApplicationBinding(binding: string | undefined): WorkspaceApplicationBindingPresentation {
+export function presentWorkspaceApplicationInstallation(installation: WorkspaceApplicationInstallationDTO): { title: string; description: string; tone: "info" | "warning" } {
+  const target = `${installation.applicationId} · ${installation.revision}`;
+  switch (installation.status) {
+    case "pending": return { title: "应用等待安装", description: `${target} 已提交安装，计算与存储资源独立保留。`, tone: "info" };
+    case "running": return { title: "应用安装中", description: `${target} 正在安装，可以稍后刷新查看。无需重新购买资源。`, tone: "info" };
+    case "manual_review": return { title: "应用安装需要处理", description: `${target} 的安装需要管理员处理，已开通的资源和原购买记录保留。`, tone: "warning" };
+    default: return { title: "应用安装状态待确认", description: "暂时无法确认安装结果，请刷新查看。", tone: "warning" };
+  }
+}
+
+export function presentWorkspaceApplicationBinding(binding: string | undefined, application?: WorkspaceCurrentApplicationDTO): WorkspaceApplicationBindingPresentation {
+  if (application) return { known: true, label: `${application.applicationId} · ${application.revision}` };
   switch (binding) {
     case "empty":
       return { known: true, label: "未安装应用" };
     case "opl_app":
       return { known: true, label: "OPL App" };
     default:
+      if (binding && /^[a-z][a-z0-9-]{0,62}@[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(binding)) {
+        const [applicationId, revision] = binding.split("@");
+        return { known: true, label: `${applicationId} · ${revision}` };
+      }
       return { known: false, label: "待确认" };
   }
 }

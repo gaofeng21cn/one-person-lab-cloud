@@ -7,7 +7,6 @@ import {
   presentWorkspaceApplicationComponentState,
   presentWorkspaceApplicationDeploymentPhase,
   validateWorkspaceApplicationRevisionDraft,
-  workspaceApplicationDeploymentConfigurationDigestValid,
   workspaceApplicationDeploymentPhaseSteps
 } from "../../apps/console-ui/src/app/workspace-application-deployment-controller-model.ts";
 
@@ -102,20 +101,23 @@ test("Manual review does not claim that an unknown failed stage reached receipt"
   assert.deepEqual(workspaceApplicationDeploymentPhaseSteps("manual_review"), []);
 });
 
-test("Deployment configuration digest requires 64 hex characters", () => {
-  assert.equal(workspaceApplicationDeploymentConfigurationDigestValid("a".repeat(64)), true);
-  assert.equal(workspaceApplicationDeploymentConfigurationDigestValid("a".repeat(63)), false);
-  assert.equal(workspaceApplicationDeploymentConfigurationDigestValid("A".repeat(64)), false);
-});
-
 test("Deployment phases present in the operator's language", () => {
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("intent"), { label: "准备部署", tone: "info" });
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("runtime"), { label: "创建组件", tone: "info" });
-  assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("activating"), { label: "原子切换应用绑定", tone: "info" });
+  assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("predecessor_suspending"), { label: "暂停原应用", tone: "info" });
+  assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("activating"), { label: "切换当前应用", tone: "info" });
+  assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("retiring"), { label: "清理原应用实例", tone: "info" });
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("receipt"), { label: "记录部署证据", tone: "info" });
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("active"), { label: "部署完成", tone: "success" });
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("manual_review"), { label: "待人工处理", tone: "danger" });
   assert.deepEqual(presentWorkspaceApplicationDeploymentPhase("mystery"), { label: "状态待确认", tone: "warning" });
+});
+
+test("Replacement progress does not report completion before previous instances are retired", () => {
+  const steps = workspaceApplicationDeploymentPhaseSteps("retiring");
+  assert.equal(steps.find((step) => step.label === "切换当前应用")?.state, "done");
+  assert.equal(steps.find((step) => step.label === "清理原应用实例")?.state, "current");
+  assert.equal(steps.find((step) => step.label === "部署完成")?.state, "upcoming");
 });
 
 test("Component states present with the operator's vocabulary", () => {

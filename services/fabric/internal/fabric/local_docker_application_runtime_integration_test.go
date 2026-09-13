@@ -1,10 +1,10 @@
 package fabric
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -17,16 +17,20 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 )
 
-// TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication deploys a
-// genuinely non-OPL application (a node HTTP visit counter) through the
-// application runtime engine onto real Docker resources, then proves over
-// HTTP that it serves traffic and that its data on the workspace storage
-// survives full container replacement.
+// TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication exercises the OPL
+// credential ABI and replacement by an unrelated application using qualification
+// fixtures on real Docker. It does not qualify either upstream product image.
 func TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication(t *testing.T) {
 	if os.Getenv("OPL_FABRIC_LOCAL_DOCKER_INTEGRATION") != "1" {
 		t.Skip("set OPL_FABRIC_LOCAL_DOCKER_INTEGRATION=1 to run against the local Docker daemon")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	t.Setenv("OPL_AIONUI_ADMIN_PASSWORD_SEED", "application-integration-synthetic-credential-seed")
+	// The full three-generation lifecycle performs about sixteen real probes.
+	// On Docker Desktop a measured successful probe takes ~35 seconds including
+	// container startup/teardown. Budget the whole scenario accordingly; the
+	// five-second HTTP, thirty-second execution and one-minute cleanup deadlines
+	// stay independently bounded.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	if output, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").CombinedOutput(); err != nil {
 		t.Fatalf("docker daemon unavailable: %v: %s", err, output)
@@ -52,11 +56,22 @@ func TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication(t *testing.T) {
 		t.Fatal("qualification workspace dockerfile has no FROM line")
 	}
 	buildDir := t.TempDir()
-	dockerfile := "FROM " + base + "\nWORKDIR /app\nCOPY server.js .\nCMD [\"node\", \"server.js\"]\n"
+	dockerfile := "FROM " + base + "\nARG APP_FLAVOR=counter\nENV APP_FLAVOR=$APP_FLAVOR\nWORKDIR /app\nCOPY server.js .\nCMD [\"node\", \"server.js\"]\n"
 	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0644); err != nil {
 		t.Fatal(err)
 	}
 	serverSource := `const fs = require('fs');
+const crypto = require('crypto');
+const profile = process.env.OPL_WEBUI_DEPLOYMENT_MODE === 'cloud';
+let password = '', session = '';
+if (profile) {
+  if (process.env.OPL_WEBUI_USERNAME !== 'opl' || process.env.OPL_WEBUI_AUTH_MODE !== 'password') throw new Error('OPL auth ABI mismatch');
+  password = fs.readFileSync(process.env.OPL_WEBUI_PASSWORD_FILE, 'utf8');
+  session = fs.readFileSync(process.env.OPL_WEBUI_SESSION_SECRET_FILE, 'utf8');
+  const gateway = fs.readFileSync(process.env.OPL_GATEWAY_API_KEY_FILE, 'utf8');
+  if (!password || !session || crypto.createHash('sha256').update(gateway).digest('hex') !== process.env.FIXTURE_GATEWAY_DIGEST) throw new Error('OPL Secret ABI mismatch');
+}
+const loginSession = profile ? crypto.createHmac('sha256', session).update('fixture-user:opl').digest('hex') : '';
 const file = '/data/visits';
 let visits = 0;
 try { visits = parseInt(fs.readFileSync(file, 'utf8'), 10) || 0; } catch {}
@@ -68,6 +83,14 @@ require('node:http').createServer((request, response) => {
     response.end();
     return;
   }
+  if (profile && request.url === '/login' && request.method === 'POST') {
+    let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
+      const credentials = JSON.parse(body);
+      if (credentials.username !== 'opl' || credentials.password !== password) { response.writeHead(401); response.end(); return; }
+      response.writeHead(200, { 'set-cookie': 'fixture_session=' + loginSession + '; HttpOnly; SameSite=Strict; Path=/' }); response.end();
+    }); return;
+  }
+  if (profile && request.headers.cookie !== 'fixture_session=' + loginSession) { response.writeHead(401); response.end(); return; }
   response.writeHead(200, { 'content-type': 'text/plain' });
   response.end('visits: ' + visits + '\n');
 }).listen(8080, '0.0.0.0');
@@ -84,18 +107,43 @@ require('node:http').createServer((request, response) => {
 
 	// Push the image into a throwaway local registry so the revision carries a
 	// genuine repo@sha256 reference — the same shape production uses via TCR.
-	registryName := "opl-fabric-application-registry-test"
-	registryPort := 5500 + int(time.Now().UnixNano()%500)
-	registryContainer := fmt.Sprintf("localhost:%d", registryPort)
-	registryRun := exec.CommandContext(ctx, "docker", "run", "-d", "--rm", "--name", registryName, "-p", fmt.Sprintf("127.0.0.1:%d:5000", registryPort), "registry:2")
+	fixtureSuffix := stableSuffix(tag)[:12]
+	registryName := "opl-fabric-application-registry-" + fixtureSuffix
+	// This integration suite is serialized. A daemon-network loopback listener
+	// makes both image push and image pull use the same actual Registry. Docker
+	// Desktop's bridge host-port publishing exposes only the desktop-side socket
+	// and is unreachable from its configured daemon image resolver/proxy.
+	const registryContainer = "127.0.0.1:25557"
+	registryRun := exec.CommandContext(ctx, "docker", "run", "-d", "--name", registryName, "--network", "host", "-e", "REGISTRY_HTTP_ADDR="+registryContainer, "-e", "REGISTRY_LOG_FORMATTER=json", "registry:2")
 	if output, err := registryRun.CombinedOutput(); err != nil {
 		t.Fatalf("start local registry: %v: %s", err, output)
 	}
 	t.Cleanup(func() { _ = exec.Command("docker", "container", "rm", "-f", registryName).Run() })
 	registryReadyBy := time.Now().Add(30 * time.Second)
 	for {
-		check := exec.CommandContext(ctx, "docker", "exec", registryName, "wget", "-q", "-O", "-", "http://localhost:5000/v2/").Run()
-		if check == nil {
+		state, stateErr := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.Status}}", registryName).Output()
+		logs, logErr := exec.CommandContext(ctx, "docker", "logs", registryName).CombinedOutput()
+		if stateErr != nil || strings.TrimSpace(string(state)) != "running" {
+			t.Fatalf("test Registry listener %s failed: state=%s err=%v logs=%s", registryContainer, state, stateErr, logs)
+		}
+		if logErr != nil {
+			t.Fatalf("read own Registry startup: %v", logErr)
+		}
+		ownListener := false
+		decoder := json.NewDecoder(bytes.NewReader(logs))
+		for {
+			var record struct{ Level, Msg string }
+			if err := decoder.Decode(&record); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				t.Fatalf("decode own Registry startup: %v logs=%s", err, logs)
+			}
+			if record.Level == "fatal" || record.Level == "panic" {
+				t.Fatalf("own Registry failed to bind %s: %s", registryContainer, record.Msg)
+			}
+			ownListener = ownListener || record.Msg == "listening on "+registryContainer
+		}
+		if ownListener && exec.CommandContext(ctx, "docker", "exec", registryName, "wget", "-q", "-O", "-", "http://"+registryContainer+"/v2/").Run() == nil {
 			break
 		}
 		if time.Now().After(registryReadyBy) {
@@ -103,7 +151,8 @@ require('node:http').createServer((request, response) => {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	repo := registryContainer + "/visit-counter"
+	repo := registryContainer + "/visit-counter-" + fixtureSuffix
+	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", repo+":e2e").Run() })
 	if output, err := exec.CommandContext(ctx, "docker", "tag", tag, repo+":e2e").CombinedOutput(); err != nil {
 		t.Fatalf("tag application image: %v: %s", err, output)
 	}
@@ -131,13 +180,51 @@ require('node:http').createServer((request, response) => {
 	if imageID == "" {
 		t.Fatalf("pushed repository %s has no digest: %s", repo, digestOutput)
 	}
+	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", imageID).Run() })
 	platformOutput, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", repo+":e2e").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	applicationPlatform := strings.TrimSpace(string(platformOutput))
-	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", "-f", repo+":e2e").Run() })
 
+	alternateTag := tag + "-isolated"
+	alternateRepo := registryContainer + "/isolated-counter-" + fixtureSuffix
+	if output, err := exec.CommandContext(ctx, "docker", "build", "--quiet", "--build-arg", "APP_FLAVOR=isolated", "--file", filepath.Join(buildDir, "Dockerfile"), "--tag", alternateTag, buildDir).CombinedOutput(); err != nil {
+		t.Fatalf("build isolated fixture: %v: %s", err, output)
+	}
+	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", "-f", alternateTag, alternateRepo+":e2e").Run() })
+	if output, err := exec.CommandContext(ctx, "docker", "tag", alternateTag, alternateRepo+":e2e").CombinedOutput(); err != nil {
+		t.Fatalf("tag isolated fixture: %v: %s", err, output)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "push", alternateRepo+":e2e").CombinedOutput(); err != nil {
+		t.Fatalf("push isolated fixture: %v: %s", err, output)
+	}
+	alternateOutput, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{json .RepoDigests}}", alternateRepo+":e2e").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var alternateDigests []string
+	if err := json.Unmarshal(alternateOutput, &alternateDigests); err != nil {
+		t.Fatal(err)
+	}
+	alternateImage := ""
+	for _, digest := range alternateDigests {
+		if strings.HasPrefix(digest, alternateRepo+"@sha256:") {
+			if alternateImage != "" {
+				t.Fatal("ambiguous alternate digest")
+			}
+			alternateImage = digest
+		}
+	}
+	if alternateImage == "" || alternateImage == imageID {
+		t.Fatal("two fixtures must have distinct immutable images")
+	}
+	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", alternateImage).Run() })
+	// Drop build/publishing tags before execution. Runtime pulls only the exact
+	// digest; there are no test-created aliases preventing retirement later.
+	if output, err := exec.CommandContext(ctx, "docker", "image", "rm", tag, repo+":e2e", alternateTag, alternateRepo+":e2e").CombinedOutput(); err != nil {
+		t.Fatalf("remove publication aliases: %v: %s", err, output)
+	}
 	launchID := "local-app-" + stableSuffix(t.Name(), time.Now().String())[:12]
 	accountID, workspaceID := "acct-local", "ws-"+stableSuffix(launchID)[:10]
 	runner := &execDockerRunner{binary: "docker"}
@@ -147,17 +234,25 @@ require('node:http').createServer((request, response) => {
 		PublishHost:                  "127.0.0.1",
 		ApplicationProbeImage:        base,
 		StorageQuotaBackend:          localDockerStorageTestQuota(storageRoot),
-		TrustedWorkspaceImageSources: []string{imageID},
+		TrustedWorkspaceImageSources: []string{repo},
 	}, runner)
 	store := NewMemoryOperationStore()
 	service := NewServiceWithOperationStore(provider, store)
+	computeNetworkName := ""
 	t.Cleanup(func() {
-		for _, componentName := range []string{"main", "retrieval"} {
-			name, nameErr := localDockerApplicationComponentName(workspaceID, componentName)
-			if nameErr != nil {
-				continue
+		if computeNetworkName != "" {
+			_ = exec.Command("docker", "network", "rm", computeNetworkName).Run()
+		}
+	})
+	t.Cleanup(func() {
+		for _, key := range []string{launchID + ":app-1", launchID + ":app-2", launchID + ":app-3"} {
+			for _, componentName := range []string{"main", "retrieval"} {
+				name, nameErr := localDockerApplicationComponentName(key, componentName)
+				if nameErr != nil {
+					continue
+				}
+				_ = exec.Command("docker", "container", "rm", "-f", name).Run()
 			}
-			_ = exec.Command("docker", "container", "rm", "-f", name).Run()
 		}
 	})
 
@@ -187,6 +282,7 @@ require('node:http').createServer((request, response) => {
 	if err != nil || compute.State != "ready" {
 		t.Fatalf("compute=%#v err=%v", compute, err)
 	}
+	computeNetworkName = localDockerName("opl-compute", compute.Resources.ComputeAllocationID)
 	storageInput := stage("storage", "ensure_storage")
 	storageInput.Resources = compute.Resources
 	storageInput.Binding.RequestHash = workspaceLaunchStageRequestHash(storageInput, strings.Repeat("b", 64))
@@ -206,7 +302,7 @@ require('node:http').createServer((request, response) => {
 	// replay the provisioned compute, storage and attachment.
 	service = NewServiceWithOperationStore(provider, store)
 	revision := contracts.WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "visit-counter", Version: "1.0.0", Platform: applicationPlatform,
+		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform, RuntimeProfile: "opl_app", SecretInputs: []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}},
 		Image:            imageID,
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
@@ -214,10 +310,24 @@ require('node:http').createServer((request, response) => {
 		HealthChecks: []contracts.WorkspaceApplicationHealthCheck{{Port: 8080, Path: "/healthz"}},
 	}
 	runtimeInput := WorkspaceApplicationRuntimeInput{
+		SchemaVersion: 2, DataBindingID: "counter-data",
 		AccountID: accountID, WorkspaceID: workspaceID, ComputeID: compute.Resources.ComputeAllocationID, VolumeID: storage.Resources.StorageID,
 		AttachmentID: attachment.Resources.AttachmentID, AttachmentOperationID: attachment.Resources.AttachmentBindingRef,
 		Revision:            revision,
 		ConfigurationDigest: strings.Repeat("c", 64),
+	}
+
+	const fixtureGatewayKey = "integration-synthetic-workspace-gateway-key"
+	gateway, err := service.UpsertGatewaySecret(ctx, GatewaySecretInput{AccountID: accountID, WorkspaceID: workspaceID, WorkspaceAPIKeyID: 7, GatewayAPIKey: fixtureGatewayKey, Fingerprint: "sha256:" + stableSuffix(fixtureGatewayKey), IdempotencyKey: launchID + ":gateway"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeInput.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: gateway.SecretRef, Version: gateway.Version, Key: "opl_gateway_api_key"}}
+	runtimeInput.Configuration.Environment = map[string]string{"OPL_WEBUI_DEPLOYMENT_MODE": "cloud", "OPL_WEBUI_AUTH_MODE": "password", "OPL_WEBUI_USERNAME": "opl", "OPL_WEBUI_PASSWORD_FILE": "/run/secrets/opl_webui_password", "OPL_WEBUI_SESSION_SECRET_FILE": "/run/secrets/webui_session_secret", "OPL_GATEWAY_API_KEY_FILE": "/run/secrets/opl_gateway_api_key", "FIXTURE_GATEWAY_DIGEST": stableSuffix(fixtureGatewayKey)}
+	runtimeInput.Configuration.CredentialVersion = "explicit-integration-credential-v1"
+	runtimeInput.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(runtimeInput.Configuration, runtimeInput.SecretBindings, runtimeInput.DataBindingID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	ensure := func(key string) contracts.WorkspaceApplicationRuntimeObservation {
 		t.Helper()
@@ -239,6 +349,54 @@ require('node:http').createServer((request, response) => {
 		}
 	}
 
+	var establishedSession *http.Cookie
+	authenticatedBody := func(input WorkspaceApplicationRuntimeInput, observation contracts.WorkspaceApplicationRuntimeObservation) string {
+		t.Helper()
+		credentials, err := service.ReadWorkspaceApplicationRuntimeCredentials(ctx, applicationLifecycleInput(input, "running", "credential-read"))
+		if err != nil || credentials.WebUIUsername != "opl" {
+			t.Fatalf("OPL credential ABI: %v", err)
+		}
+		anonymous, err := http.Get(observation.EntryURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		anonymous.Body.Close()
+		if anonymous.StatusCode != http.StatusUnauthorized {
+			t.Fatal("OPL profile entry must require its own login")
+		}
+		body, _ := json.Marshal(map[string]string{"username": credentials.WebUIUsername, "password": credentials.WebUIPassword})
+		login, err := http.Post(observation.EntryURL+"login", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		login.Body.Close()
+		if login.StatusCode != http.StatusOK || len(login.Cookies()) != 1 {
+			t.Fatal("OPL profile credential did not authenticate")
+		}
+		if establishedSession == nil {
+			establishedSession = login.Cookies()[0]
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, observation.EntryURL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Ordinary image replacement must retain the original session signing
+		// secret: the cookie issued by the first generation still authorizes it.
+		request.AddCookie(establishedSession)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		data, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode != http.StatusOK {
+			t.Fatal("OPL profile session did not authorize entry")
+		}
+		return string(data)
+	}
 	firstInput := runtimeInput
 	firstInput.IdempotencyKey = launchID + ":app-1"
 	firstInput.RuntimeOperationID = firstInput.IdempotencyKey
@@ -246,7 +404,7 @@ require('node:http').createServer((request, response) => {
 	if !errors.Is(pendingErr, ErrWorkspaceLaunchPending) || pending.Status != "pending" || pending.EntryURL != "" {
 		t.Fatalf("running HTTP server with failing declared health check must stay pending: observation=%#v err=%v", pending, pendingErr)
 	}
-	containerName, nameErr := localDockerApplicationComponentName(workspaceID, "main")
+	containerName, nameErr := localDockerApplicationComponentName(firstInput.RuntimeOperationID, "main")
 	if nameErr != nil {
 		t.Fatal(nameErr)
 	}
@@ -266,33 +424,123 @@ require('node:http').createServer((request, response) => {
 	if first.Status != "ready" || first.EntryURL == "" {
 		t.Fatalf("first observation=%#v", first)
 	}
-	if err := waitForLocalRuntime(ctx, first.EntryURL); err != nil {
+	if err := waitForLocalRuntime(ctx, first.EntryURL+"healthz"); err != nil {
 		t.Fatalf("entry not reachable: %v", err)
 	}
-	body := httpGetBody(t, first.EntryURL)
+	body := authenticatedBody(firstInput, first)
 	if !strings.Contains(body, "visits: 1") {
 		t.Fatalf("first visit body=%q", body)
 	}
+	t.Log("first OPL fixture is ready; protected entry login and session succeeded")
 
-	// Replace the whole main container: the local workspace mount must survive.
-	if output, err := exec.CommandContext(ctx, "docker", "container", "rm", "-f", containerName).CombinedOutput(); err != nil {
-		t.Fatalf("remove container: %v: %s", err, output)
+	// Suspend the first writer before the same application reuses its data.
+	if result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(firstInput, "suspended", launchID+":pause-1")); err != nil || result.State != "suspended" {
+		t.Fatalf("suspend first writer: %v", err)
 	}
-	second := ensure(launchID + ":app-2")
-	if second.Status != "ready" || second.EntryURL == "" {
-		t.Fatalf("second observation=%#v", second)
+	secondInput := firstInput
+	secondInput.RuntimeOperationID = launchID + ":app-2"
+	secondInput.IdempotencyKey = secondInput.RuntimeOperationID
+	second := ensure(secondInput.RuntimeOperationID)
+	if err := waitForLocalRuntime(ctx, second.EntryURL+"healthz"); err != nil {
+		t.Fatal(err)
 	}
-	if err := waitForLocalRuntime(ctx, second.EntryURL); err != nil {
-		t.Fatalf("recreated entry not reachable: %v", err)
-	}
-	body = httpGetBody(t, second.EntryURL)
+	body = authenticatedBody(secondInput, second)
 	if !strings.Contains(body, "visits: 2") {
-		t.Fatalf("visit counter did not persist across replacement: %q", body)
+		t.Fatalf("same-application data was not retained: %q", body)
+	}
+	firstCredentials, err := provider.ReadWorkspaceApplicationRuntimeCredentials(ctx, firstInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondCredentials, err := provider.ReadWorkspaceApplicationRuntimeCredentials(ctx, secondInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstCredentials.WebUIPassword != secondCredentials.WebUIPassword {
+		t.Fatal("ordinary OPL image generation changed credentials")
+	}
+	t.Log("same-application replacement retained data, password and the original session")
+	if result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(firstInput, "absent", launchID+":retire-1")); err != nil || result.State != "absent" {
+		t.Fatalf("retire predecessor: %v", err)
+	}
+	if _, exists, err := provider.inspectContainer(ctx, containerName); err != nil || exists {
+		t.Fatalf("old OPL component remains: %v", err)
+	}
+	if result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(secondInput, "suspended", launchID+":pause-2")); err != nil || result.State != "suspended" {
+		t.Fatalf("suspend second: %v", err)
+	}
+	// A different application receives neither OPL credentials nor OPL data.
+	runtimeInput = secondInput
+	runtimeInput.Revision = revision
+	runtimeInput.Revision.ApplicationID = "isolated-counter"
+	runtimeInput.Revision.RuntimeProfile = ""
+	runtimeInput.Revision.SecretInputs = nil
+	runtimeInput.Revision.Image = alternateImage
+	runtimeInput.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{}
+	runtimeInput.SecretBindings = nil
+	runtimeInput.DataBindingID = "isolated-counter-data"
+	runtimeInput.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(runtimeInput.Configuration, nil, runtimeInput.DataBindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thirdInput := runtimeInput
+	thirdInput.RuntimeOperationID = launchID + ":app-3"
+	thirdInput.IdempotencyKey = thirdInput.RuntimeOperationID
+	pending, pendingErr = service.CreateWorkspaceApplicationRuntime(ctx, thirdInput)
+	if !errors.Is(pendingErr, ErrWorkspaceLaunchPending) || pending.Status != "pending" {
+		t.Fatalf("fresh isolated data must not contain predecessor ready marker: %v", pendingErr)
+	}
+	thirdName, err := localDockerApplicationComponentName(thirdInput.RuntimeOperationID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "exec", thirdName, "node", "-e", "const fs=require('fs');if(fs.existsSync('/run/secrets/opl_webui_password')||fs.existsSync('/run/secrets/opl_gateway_api_key')||fs.readFileSync('/data/visits','utf8')!=='1')process.exit(1);fs.writeFileSync('/data/ready','ready')").CombinedOutput(); err != nil {
+		t.Fatalf("isolated app inherited data or credentials: %v: %s", err, output)
+	}
+	third := ensure(thirdInput.RuntimeOperationID)
+	body = httpGetBody(t, third.EntryURL)
+	if !strings.Contains(body, "visits: 1") {
+		t.Fatalf("different-application data not isolated: %q", body)
+	}
+	t.Log("unrelated application is ready with isolated data and no OPL secrets")
+	retired, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(secondInput, "absent", launchID+":retire-2"))
+	if err != nil || retired.State != "absent" {
+		t.Fatalf("retire old OPL app: %v", err)
+	}
+	if len(retired.ImageRetirement) != 1 || (retired.ImageRetirement[0].State != "removed" && retired.ImageRetirement[0].State != "absent") {
+		t.Fatalf("unreferenced image not retired: %#v", retired.ImageRetirement)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "image", "inspect", imageID).CombinedOutput(); err == nil || !strings.Contains(string(output), "No such image: "+imageID) {
+		t.Fatalf("old image absence was not confirmed by exact inspect: %v: %s", err, output)
+	}
+	t.Log("old OPL component and its unreferenced image are absent")
+	for _, state := range []string{"suspended", "running", "absent"} {
+		result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(thirdInput, state, launchID+":third-"+state))
+		if err != nil {
+			t.Fatalf("third app %s: %v", state, err)
+		}
+		if state != "running" && result.State != state {
+			t.Fatalf("third app state=%s want=%s", result.State, state)
+		}
+		if state == "running" {
+			if err := waitForLocalRuntime(ctx, third.EntryURL+"healthz"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := service.RemoveWorkspaceApplicationGatewaySecret(ctx, WorkspaceApplicationGatewaySecretCleanupInput{AccountID: accountID, WorkspaceID: workspaceID, SecretRef: gateway.SecretRef, IdempotencyKey: launchID + ":secret-cleanup"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.CommandContext(ctx, "docker", "network", "inspect", localDockerName("opl-compute", firstInput.ComputeID)).Output(); err != nil {
+		t.Fatalf("application cleanup removed compute: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(storageRoot, localDockerName("opl-workspace", workspaceID), "data", contracts.WorkspaceApplicationDataDirectory(firstInput.DataBindingID), "data", "visits")); err != nil || string(data) != "2" {
+		t.Fatalf("old OPL data not preserved: err=%v", err)
 	}
 	if output, err := exec.CommandContext(ctx, "docker", "container", "ls", "-a", "--filter", "label=opl.fabric.kind=application_probe", "--filter", "label=opl.workspace.id="+workspaceID, "--format", "{{.ID}}").Output(); err != nil || strings.TrimSpace(string(output)) != "" {
 		t.Fatalf("application health probes leaked: %s err=%v", output, err)
 	}
-	t.Log("non-OPL application stayed pending on HTTP 503, converged on HTTP 200 without recreating main, served over HTTP, and retained local data across full container replacement; no probe containers remain")
+	t.Log("real Docker verified OPL profile credential/session/Gateway file ABI, same-application data retention, unrelated-application data/Secret isolation, stop/resume/delete and precise predecessor image retirement; workload is a qualification fixture, not upstream OPL App or IBD qualification")
 }
 
 func httpGetBody(t *testing.T, url string) string {

@@ -19,12 +19,14 @@ import (
 // a running container from the command args, `container ls`/`inspect` read it
 // back, and everything else fails loudly.
 type applicationRuntimeDockerRunner struct {
-	mu         sync.Mutex
-	containers map[string][]byte
-	runs       [][]string
-	probes     [][]string
-	probeReady bool
-	probeErr   error
+	mu            sync.Mutex
+	containers    map[string][]byte
+	runs          [][]string
+	probes        [][]string
+	probeReady    bool
+	probeErr      error
+	images        map[string]bool
+	removedImages []string
 }
 
 func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
@@ -33,7 +35,47 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 	switch args[0] {
 	case "container":
 		switch args[1] {
+		case "start", "stop", "rm":
+			name := args[len(args)-1]
+			body, exists := r.containers[name]
+			if !exists {
+				return nil, fmt.Errorf("container missing: %s", name)
+			}
+			if args[1] == "rm" {
+				delete(r.containers, name)
+				delete(r.containers, "cid-"+name)
+				return nil, nil
+			}
+			var objects []map[string]any
+			if err := json.Unmarshal(body, &objects); err != nil {
+				return nil, err
+			}
+			running := args[1] == "start"
+			status := "exited"
+			if running {
+				status = "running"
+			}
+			objects[0]["State"] = map[string]any{"Status": status, "Running": running, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)}
+			encoded, _ := json.Marshal(objects)
+			r.containers[name] = encoded
+			r.containers["cid-"+name] = encoded
+			return nil, nil
 		case "ls":
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "ancestor=") {
+					image := strings.TrimPrefix(arg, "ancestor=")
+					for name, body := range r.containers {
+						if strings.HasPrefix(name, "cid-") {
+							continue
+						}
+						var containers []dockerContainerInspect
+						if json.Unmarshal(body, &containers) == nil && containers[0].Config.Image == image {
+							return []byte("cid-" + name), nil
+						}
+					}
+					return nil, nil
+				}
+			}
 			name := ""
 			for _, arg := range args {
 				if strings.HasPrefix(arg, "name=^/") {
@@ -54,14 +96,47 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 			}
 			return body, nil
 		}
+	case "image":
+		image := args[len(args)-1]
+		if args[1] == "ls" {
+			rows := []string{}
+			for ref, present := range r.images {
+				repository, digest, _ := strings.Cut(ref, "@")
+				if present && repository == image {
+					rows = append(rows, string(mustJSON(map[string]string{"ID": digest, "Digest": digest})))
+				}
+			}
+			return []byte(strings.Join(rows, "\n")), nil
+		}
+		if args[1] == "rm" {
+			delete(r.images, image)
+			r.removedImages = append(r.removedImages, image)
+			return nil, nil
+		}
 	case "run":
-		if len(args) > 1 && args[1] == "--rm" {
+		if strings.Contains(strings.Join(args, " "), "--name opl-app-probe-") {
 			r.probes = append(r.probes, args)
+			name, image := "", ""
+			labels := map[string]string{}
+			for i := 1; i+1 < len(args); i++ {
+				switch args[i] {
+				case "--name":
+					name = args[i+1]
+				case "--label":
+					key, value, _ := strings.Cut(args[i+1], "=")
+					labels[key] = value
+				case "--entrypoint":
+					image = args[i+2]
+				}
+			}
+			r.containers[name] = mustJSON([]any{map[string]any{"ID": "cid-" + name, "Name": "/" + name, "Config": map[string]any{"Image": image, "Labels": labels}, "State": map[string]any{"Running": r.probeErr != nil, "Status": "exited"}}})
 			return []byte(fmt.Sprintf("{\"ready\":%t}", r.probeReady)), r.probeErr
 		}
 		r.runs = append(r.runs, args)
 		name, image, labels := "", "", map[string]string{}
 		published := map[string]any{}
+		env := []string{}
+		mounts := []map[string]any{}
 		for index := 1; index < len(args); index++ {
 			if args[index] == "-d" {
 				continue
@@ -77,6 +152,25 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 				if pair := strings.SplitN(args[index+1], "=", 2); len(pair) == 2 {
 					labels[pair[0]] = pair[1]
 				}
+			case "--env":
+				env = append(env, args[index+1])
+			case "--mount":
+				mount := map[string]any{"RW": true}
+				for _, part := range strings.Split(args[index+1], ",") {
+					key, value, ok := strings.Cut(part, "=")
+					if !ok && part == "readonly" {
+						mount["RW"] = false
+					}
+					switch key {
+					case "type":
+						mount["Type"] = value
+					case "source":
+						mount["Source"] = value
+					case "target":
+						mount["Destination"] = value
+					}
+				}
+				mounts = append(mounts, mount)
 			case "-p":
 				if parts := strings.Split(args[index+1], "::"); len(parts) == 2 {
 					published[strings.TrimSuffix(parts[1], "/tcp")+"/tcp"] = []map[string]any{{"HostIP": "127.0.0.1", "HostPort": "31080"}}
@@ -89,7 +183,8 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		}
 		inspect := []map[string]any{{
 			"Id": "cid-" + name, "Name": "/" + name,
-			"Config":          map[string]any{"Image": image, "Labels": labels},
+			"Config":          map[string]any{"Image": image, "Labels": labels, "Env": env},
+			"Mounts":          mounts,
 			"State":           map[string]any{"Status": "running", "Running": true, "StartedAt": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)},
 			"NetworkSettings": map[string]any{"Ports": published},
 		}}
@@ -99,6 +194,10 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		}
 		r.containers[name] = body
 		r.containers["cid-"+name] = body
+		if r.images == nil {
+			r.images = map[string]bool{}
+		}
+		r.images[image] = true
 		return []byte("cid-" + name), nil
 	}
 	return nil, fmt.Errorf("unexpected docker call: %v", args)
@@ -201,7 +300,7 @@ func TestLocalDockerApplicationRuntimeEnsureCreatesDeclaredComponents(t *testing
 	}
 	mainArgs := strings.Join(runner.runArgs(0), " ")
 	if !strings.Contains(mainArgs, "--network opl-compute-") ||
-		!strings.Contains(mainArgs, "type=bind,source="+filepath.ToSlash(paths.Data)+"/data,target=/data") ||
+		!strings.Contains(mainArgs, "type=bind,source="+filepath.ToSlash(filepath.Join(paths.Data, contracts.WorkspaceApplicationDataDirectory(input.DataBindingID), "data"))+",target=/data") ||
 		!strings.Contains(mainArgs, revision.Image) {
 		t.Fatalf("main run args=%s", mainArgs)
 	}
@@ -262,7 +361,7 @@ func TestLocalDockerApplicationRuntimeReadbackReportsStates(t *testing.T) {
 	if ready.Status != "ready" {
 		t.Fatalf("ready observation=%#v", ready)
 	}
-	mainContainerName, nameErr := localDockerApplicationComponentName(input.WorkspaceID, "main")
+	mainContainerName, nameErr := localDockerApplicationComponentName(input.RuntimeOperationID, "main")
 	if nameErr != nil {
 		t.Fatal(nameErr)
 	}
@@ -344,7 +443,7 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 		t.Fatalf("probe calls=%d", len(runner.probes))
 	}
 	probe := strings.Join(runner.probes[0], " ")
-	for _, required := range []string{"--rm", "--network container:cid-", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--entrypoint node", provider.applicationProbeImage} {
+	for _, required := range []string{"--network container:cid-", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--entrypoint node", provider.applicationProbeImage} {
 		if !strings.Contains(probe, required) {
 			t.Fatalf("missing %s: %s", required, probe)
 		}
@@ -360,6 +459,11 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 	runner.probeErr = errors.New("probe runtime unavailable")
 	if _, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err == nil {
 		t.Fatal("probe execution failure reported ready")
+	}
+	for name := range runner.containers {
+		if strings.HasPrefix(name, "opl-app-probe-") {
+			t.Fatalf("owned probe leaked after execution or failure: %s", name)
+		}
 	}
 }
 
@@ -388,7 +492,7 @@ func TestLocalDockerApplicationRuntimeInitialDelayAndLiveEntryReadback(t *testin
 	if err != nil || observation.Status != "ready" || observation.EntryURL == "" || len(runner.probes) != 1 {
 		t.Fatalf("ready=%#v err=%v probeCalls=%d", observation, err, len(runner.probes))
 	}
-	name, _ := localDockerApplicationComponentName(input.WorkspaceID, "main")
+	name, _ := localDockerApplicationComponentName(input.RuntimeOperationID, "main")
 	var container []map[string]any
 	if err := json.Unmarshal(runner.containers[name], &container); err != nil {
 		t.Fatal(err)
@@ -437,7 +541,7 @@ func TestLocalDockerApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) 
 				if err != nil || observation.Status != "ready" {
 					t.Fatalf("baseline=%#v err=%v", observation, err)
 				}
-				name, err := localDockerApplicationComponentName(input.WorkspaceID, component)
+				name, err := localDockerApplicationComponentName(input.RuntimeOperationID, component)
 				if err != nil {
 					t.Fatal(err)
 				}

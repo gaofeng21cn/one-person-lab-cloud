@@ -823,12 +823,14 @@ function OperatorResourceMobileCard({ resource }: { resource: OperatorResourceDT
 
 function ResourceDetail({ controller, release, replacement, deployment }: { controller: OperatorResourceReadController; release: WorkspaceImageReleaseController; replacement: WorkspaceRuntimeImageReplacementController; deployment: WorkspaceApplicationDeploymentController }) {
   const selected = controller.selectedWorkspaceId;
+  const detail = controller.detail.value?.available ? controller.detail.value.data : null;
+  const installation = detail?.workspace.available && detail.workspace.data.id === selected ? detail.workspace.data.applicationInstallation : undefined;
   if (!selected) return <section className="panel" data-slide="A-RES-02"><div className="panel-title"><div><h2>资源详情</h2></div></div><div className="empty-panel">请选择 Workspace 查看资源详情。</div></section>;
   return (
     <section className="panel" data-slide="A-RES-02">
       <div className="panel-title"><div><h2>资源详情</h2></div><span>{selected}</span></div>
       <WorkspaceRuntimeImageRelease controller={controller} release={release} replacement={replacement} />
-      <WorkspaceApplicationDeploymentCard deployment={deployment} selectedWorkspaceId={selected} />
+      <WorkspaceApplicationDeploymentCard deployment={deployment} selectedWorkspaceId={selected} installation={installation} />
       <SourceState error={controller.detail.error} loading={controller.detail.loading} onRetry={() => void controller.refreshWorkspace(selected)} source={controller.detail.value} unavailableTitle="资源详情暂不可用">
         {(detail) => <>
           <dl className="data-list">
@@ -1103,13 +1105,13 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
   </section>;
 }
 
-function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId }: { deployment: WorkspaceApplicationDeploymentController; selectedWorkspaceId: string }) {
+function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId, installation }: { deployment: WorkspaceApplicationDeploymentController; selectedWorkspaceId: string; installation?: import("../api/dtos.ts").WorkspaceApplicationInstallationDTO }) {
   const presentation = deployment.intent ? presentWorkspaceApplicationIntent(deployment.intent) : null;
+  const retryOperationId = deployment.intent?.phase === "manual_review" && deployment.intent.failurePhase ? deployment.intent.operationId : !deployment.intent && installation?.canRetry ? installation.operationId : "";
   return <section className="panel"><div className="panel-title"><div><h2>应用部署</h2></div><span>把已准入的应用版本部署到选中的工作区</span></div>
     <div className="application-form-grid">
       <Field label="应用 ID" description="已准入的应用标识" value={deployment.applicationId} onChange={(event) => deployment.setApplicationId(event.target.value)} />
       <Field label="目标版本" description="该应用已准入的版本" value={deployment.targetRevision} onChange={(event) => deployment.setTargetRevision(event.target.value)} />
-      <Field label="配置摘要" description="本次部署配置的 64 位十六进制摘要" value={deployment.configurationDigest} onChange={(event) => deployment.setConfigurationDigest(event.target.value)} />
     </div>
     <Button busy={deployment.busy} color="primary" disabled={!selectedWorkspaceId || deployment.busy} onClick={() => void deployment.deploy(selectedWorkspaceId)}>部署到 {selectedWorkspaceId || "…"} 工作区</Button>
     {presentation ? <div className="application-deployment-status">
@@ -1122,5 +1124,6 @@ function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId }:
         {deployment.intent?.lastError ? <div><dt>最近错误</dt><dd><code>{deployment.intent.lastError}</code></dd></div> : null}
       </dl>
     </div> : null}
+    {retryOperationId ? <Button busy={deployment.busy} disabled={deployment.busy} onClick={() => void deployment.retry(selectedWorkspaceId, retryOperationId)} variant="outline">重试此部署</Button> : null}
   </section>;
 }

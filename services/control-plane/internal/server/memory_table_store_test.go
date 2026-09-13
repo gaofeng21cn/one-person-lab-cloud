@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -539,13 +540,25 @@ func (s *memoryTableStore) ClaimWorkspaceKeyRotation(_ context.Context, row map[
 	if workspace == nil || firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])) != accountID || !keyOK || currentKeyID != operation.OldKeyID {
 		return errWorkspaceKeyRotationInProgress
 	}
+	reservedID := stringValue(workspace["reservedApplicationDeploymentId"])
+	reservationConfirmed := reservedID == ""
 	for _, existing := range s.runtimeOps {
 		if stringValue(existing["workspaceId"]) != workspaceID {
 			continue
 		}
-		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) {
+		if stringValue(existing["id"]) == reservedID {
+			intent, err := decodeWorkspaceApplicationDeploymentIntent(existing)
+			if err != nil || intent.Phase != workspaceApplicationDeploymentActivePhase || intent.OperationID != stringValue(workspace["currentApplicationDeploymentId"]) {
+				return errWorkspaceKeyRotationInProgress
+			}
+			reservationConfirmed = true
+		}
+		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) || workspaceDefaultApplicationPreparationBlocks(existing) {
 			return errWorkspaceKeyRotationInProgress
 		}
+	}
+	if !reservationConfirmed {
+		return errWorkspaceKeyRotationInProgress
 	}
 	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
 	return nil
@@ -638,6 +651,13 @@ func (s *memoryTableStore) ClaimWorkspaceLaunchReconcile(_ context.Context, clai
 		}
 	} else if inFlight >= controlledBasicPilotGlobalInFlightLimit() {
 		return errWorkspaceLaunchCapacityReached
+	}
+	if claim.DefaultApplicationOperation != nil {
+		request, err := decodeWorkspaceDefaultApplication(claim.DefaultApplicationOperation)
+		if err != nil || request.AccountID != claim.AccountID || request.WorkspaceID != desired.stringFact("workspaceId") || request.LaunchOperationID != desired.ID || desired.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
+			return errWorkspaceLaunchCASConflict
+		}
+		s.runtimeOps = append(s.runtimeOps, cloneMap(claim.DefaultApplicationOperation))
 	}
 	s.runtimeOps = append(s.runtimeOps, cloneMap(claim.DesiredOperation))
 	return nil
@@ -905,7 +925,7 @@ func (s *memoryTableStore) ApplyWorkspaceDelete(_ context.Context, mutation work
 	}
 	if mutation.Create {
 		for _, row := range s.runtimeOps {
-			if stringValue(row["workspaceId"]) == desired.WorkspaceID && (workspaceRenewalBlocksDelete(row) || workspaceKeyRotationBlocksDelete(row)) {
+			if stringValue(row["workspaceId"]) == desired.WorkspaceID && (workspaceRenewalBlocksDelete(row) || workspaceKeyRotationBlocksDelete(row) || workspaceDefaultApplicationPreparationBlocks(row)) {
 				return errWorkspaceDeleteCASConflict
 			}
 		}
@@ -913,6 +933,9 @@ func (s *memoryTableStore) ApplyWorkspaceDelete(_ context.Context, mutation work
 			return errWorkspaceDeleteCASConflict
 		}
 		s.runtimeOps = append(s.runtimeOps, cloneMap(mutation.DesiredOperation))
+		workspace = cloneMap(workspace)
+		workspace["state"], workspace["status"] = "deleting", "deleting"
+		s.workspaces[desired.WorkspaceID] = workspace
 	} else {
 		if operationIndex < 0 {
 			return errWorkspaceDeleteCASConflict
@@ -1103,6 +1126,43 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	defer s.mu.Unlock()
 	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(row))
 	return nil
+}
+
+func (s *memoryTableStore) PersistWorkspaceApplicationOperation(_ context.Context, expectedResult string, desiredRow map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := findRecord(s.runtimeOps, stringValue(desiredRow["id"]))
+	if stringValue(desiredRow["action"]) == workspaceDefaultApplicationAction {
+		workspaceID := stringValue(desiredRow["workspaceId"])
+		operations := make([]map[string]any, 0)
+		for _, row := range s.runtimeOps {
+			if stringValue(row["workspaceId"]) == workspaceID {
+				operations = append(operations, row)
+			}
+		}
+		if err := validateWorkspaceDefaultApplicationPreparation(s.workspaces[workspaceID], desiredRow, operations); err != nil {
+			return err
+		}
+	}
+	if err := validateWorkspaceApplicationOperationPersistence(current, expectedResult, desiredRow); err != nil {
+		return err
+	}
+	next := cloneMap(current)
+	next["result"], next["status"] = desiredRow["result"], desiredRow["status"]
+	s.runtimeOps = upsertProjectionByID(s.runtimeOps, next)
+	return nil
+}
+
+func (s *memoryTableStore) ResumeWorkspaceApplicationDeployment(_ context.Context, operationID string) (map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row := findRecord(s.runtimeOps, operationID)
+	next, err := workspaceApplicationRecoveryRow(s.workspaces[stringValue(row["workspaceId"])], row, s.runtimeOps)
+	if err != nil {
+		return nil, err
+	}
+	s.runtimeOps = upsertProjectionByID(s.runtimeOps, cloneMap(next))
+	return next, nil
 }
 
 func (s *memoryTableStore) SaveWalletAdjustment(_ context.Context, operationID string, operation walletAdjustmentOperation) (walletAdjustmentOperation, error) {
@@ -1336,13 +1396,13 @@ func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context
 	if err != nil || current.RequestHash != mutation.Intent.RequestHash {
 		return errWorkspaceApplicationActivationConflict
 	}
-	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
+	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentRetiringPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
 		return nil
 	}
 	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(row, mutation.Intent) {
 		return errWorkspaceApplicationActivationConflict
 	}
-	if stringValue(row["applicationBinding"]) != mutation.ExpectedBinding || int64(numberField(row, "applicationBindingVersion", 0)) != mutation.ExpectedVersion {
+	if stringValue(row["applicationBinding"]) != mutation.ExpectedBinding || int64(numberField(row, "applicationBindingVersion", 0)) != mutation.ExpectedVersion || !workspaceApplicationEntitlementOpen(row, time.Now()) || mutation.Intent.Version == 2 && stringValue(row["reservedApplicationDeploymentId"]) != mutation.Intent.OperationID {
 		return errWorkspaceApplicationActivationConflict
 	}
 	encoded, err := json.Marshal(mutation.Intent)
@@ -1351,6 +1411,10 @@ func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context
 	}
 	row["applicationBinding"] = mutation.NextBinding
 	row["applicationBindingVersion"] = mutation.NextVersion
+	row["currentApplicationDeploymentId"] = mutation.Intent.OperationID
+	if mutation.Intent.WorkspaceAPIKeyID > 0 {
+		row["workspaceApiKeyId"] = mutation.Intent.WorkspaceAPIKeyID
+	}
 	operation["result"], operation["status"] = string(encoded), "running"
 	return nil
 }
@@ -1393,6 +1457,26 @@ func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.C
 	if findRecord(s.runtimeOps, stringValue(row["id"])) != nil {
 		return errWorkspaceApplicationIntentConflict
 	}
+	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
+	if err != nil {
+		return err
+	}
+	current := s.workspaces[intent.WorkspaceID]
+	if !workspaceApplicationEntitlementOpen(current, time.Now()) || !workspaceApplicationOwnedResourcesMatch(current, intent) || stringValue(current["applicationBinding"]) != intent.CurrentBinding || int64(numberField(current, "applicationBindingVersion", 0)) != intent.ExpectedWorkspaceVersion || stringValue(current["currentApplicationDeploymentId"]) != intent.PreviousDeploymentID {
+		return errWorkspaceApplicationIntentConflict
+	}
+	for _, other := range s.runtimeOps {
+		if stringValue(other["workspaceId"]) == intent.WorkspaceID && (workspaceKeyRotationBlocksDelete(other) && !(stringValue(other["id"]) == intent.OriginOperationID && stringValue(other["action"]) == "workspace.gateway_key.rotate") || workspaceDeleteBlocksRotation(other)) {
+			return errWorkspaceApplicationIntentConflict
+		}
+	}
+	if reservedID := stringValue(current["reservedApplicationDeploymentId"]); reservedID != "" {
+		reserved, err := decodeWorkspaceApplicationDeploymentIntent(findRecord(s.runtimeOps, reservedID))
+		if err != nil || reserved.Phase != workspaceApplicationDeploymentActivePhase {
+			return errWorkspaceApplicationIntentConflict
+		}
+	}
 	s.runtimeOps = append(s.runtimeOps, cloneMap(row))
+	current["reservedApplicationDeploymentId"] = intent.OperationID
 	return nil
 }

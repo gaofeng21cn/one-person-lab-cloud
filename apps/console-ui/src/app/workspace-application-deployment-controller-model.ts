@@ -40,7 +40,6 @@ const applicationIdPattern = /^[a-z][a-z0-9-]{0,62}$/;
 const applicationVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 const applicationPlatformPattern = /^[a-z0-9]+\/[a-z0-9._-]+$/;
 const imageDigestPattern = /^[^@\s]+@sha256:[0-9a-f]{64}$/;
-const configurationDigestPattern = /^[a-f0-9]{64}$/;
 const exposurePolicies = ["anonymous", "application", "cloud_private"];
 const mountNamePattern = /^[a-z][a-z0-9-]{0,30}$/;
 const componentNamePattern = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -138,25 +137,25 @@ export function composeWorkspaceApplicationRevision(draft: WorkspaceApplicationR
   return revision;
 }
 
-export function workspaceApplicationDeploymentConfigurationDigestValid(configurationDigest: string): boolean {
-  return configurationDigestPattern.test(configurationDigest);
-}
-
 export interface WorkspaceApplicationPhasePresentation {
   label: string;
   tone: "info" | "success" | "warning" | "danger";
 }
 
-const phaseOrder = ["intent", "runtime", "activating", "receipt", "active"];
+const phaseOrder = ["intent", "predecessor_suspending", "runtime", "activating", "retiring", "receipt", "active"];
 
 export function presentWorkspaceApplicationDeploymentPhase(phase: string): WorkspaceApplicationPhasePresentation {
   switch (phase) {
     case "intent":
       return { label: "准备部署", tone: "info" };
+    case "predecessor_suspending":
+      return { label: "暂停原应用", tone: "info" };
     case "runtime":
       return { label: "创建组件", tone: "info" };
     case "activating":
-      return { label: "原子切换应用绑定", tone: "info" };
+      return { label: "切换当前应用", tone: "info" };
+    case "retiring":
+      return { label: "清理原应用实例", tone: "info" };
     case "receipt":
       return { label: "记录部署证据", tone: "info" };
     case "active":

@@ -16,6 +16,7 @@ import type {
   SourceEnvelope,
   WorkspaceBillingReceiptDTO,
   WorkspaceDTO,
+  WorkspaceApplicationIntentDTO,
   WorkspaceRuntimeImageReplacementDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
@@ -228,6 +229,85 @@ async function settle(page: Page) {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   }));
 }
+
+test("Application deployment retries its accepted operation and ignores another Workspace's late completion", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const alphaReadStarted = deferred();
+  const releaseAlphaRead = deferred();
+  const alphaReadFinished = deferred();
+  const detailReads: Record<string, number> = {};
+  const deploymentWrites: unknown[] = [];
+  let retryWrites = 0;
+  const alpha = operatorWorkspace("workspace-alpha", "Alpha");
+  const beta = operatorWorkspace("workspace-beta", "Beta");
+  const intent = (workspaceId: string, phase: string): WorkspaceApplicationIntentDTO => ({
+    operationId: `deployment-${workspaceId}`, workspaceId, phase, failurePhase: phase === "manual_review" ? "runtime" : undefined,
+    applicationId: "knowledge-app", targetRevision: "1.2.3", currentBinding: "opl_app",
+    expectedWorkspaceVersion: 0, createdAt: fetchedAt, receiptId: phase === "active" ? `receipt-deployment-${workspaceId}` : undefined
+  });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([alpha, beta], 1)));
+    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
+    await page.route("**/api/operator/workspaces/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const workspaceId = path.split("/")[4];
+      if (path.endsWith("/preview")) return fulfill(route, source(preview(workspaceId)));
+      detailReads[workspaceId] = (detailReads[workspaceId] || 0) + 1;
+      return fulfill(route, source(operatorWorkspace(workspaceId, workspaceId, `read-${detailReads[workspaceId]}`)));
+    });
+    await page.route("**/api/operator/application-deployments", async (route) => {
+      const body = route.request().postDataJSON();
+      deploymentWrites.push(body);
+      await fulfill(route, { intent: intent(body.workspaceId, "runtime") }, 202);
+    });
+    await page.route("**/api/operator/application-deployments/*", async (route) => {
+      const workspaceId = new URL(route.request().url()).pathname.endsWith("workspace-alpha") ? "workspace-alpha" : "workspace-beta";
+      if (workspaceId === "workspace-alpha") {
+        alphaReadStarted.resolve();
+        await releaseAlphaRead.promise;
+      }
+      const phase = workspaceId === "workspace-beta" && retryWrites === 0 ? "manual_review" : "active";
+      await fulfill(route, source({ status: phase === "active" ? "succeeded" : "manual_review", intent: intent(workspaceId, phase) }));
+      if (workspaceId === "workspace-alpha") alphaReadFinished.resolve();
+    });
+    await page.route("**/api/operator/application-deployments/*/retry", async (route) => {
+      assert.equal(route.request().method(), "POST");
+      assert.equal(new URL(route.request().url()).pathname, "/api/operator/application-deployments/deployment-workspace-beta/retry");
+      assert.deepEqual(route.request().postDataJSON(), {});
+      retryWrites += 1;
+      await fulfill(route, { intent: intent("workspace-beta", "runtime") }, 202);
+    });
+    await login(page, demo.origin);
+    await openResources(page, demo.origin);
+    await selectWorkspace(page, "workspace-alpha");
+    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
+    await deployment.getByLabel("应用 ID").fill("knowledge-app");
+    await deployment.getByLabel("目标版本").fill("1.2.3");
+    assert.equal(await deployment.getByLabel("配置摘要").count(), 0);
+    await deployment.getByRole("button", { name: "部署到 workspace-alpha 工作区", exact: true }).click();
+    await alphaReadStarted.promise;
+    await selectWorkspace(page, "workspace-beta");
+    await deployment.getByRole("button", { name: "部署到 workspace-beta 工作区", exact: true }).click();
+    await deployment.getByRole("button", { name: "重试此部署", exact: true }).click();
+    await deployment.getByText("receipt-deployment-workspace-beta", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("receipt-workspace-beta-read-2", { exact: true }).first().waitFor({ state: "visible" });
+    releaseAlphaRead.resolve();
+    await alphaReadFinished.promise;
+    await settle(page);
+    assert.equal(await deployment.getByText("receipt-deployment-workspace-alpha", { exact: true }).count(), 0);
+    assert.deepEqual(detailReads, { "workspace-alpha": 1, "workspace-beta": 2 });
+    assert.equal(retryWrites, 1);
+    assert.deepEqual(deploymentWrites, ["workspace-alpha", "workspace-beta"].map((workspaceId) => ({
+      workspaceId, applicationId: "knowledge-app", targetRevision: "1.2.3", configuration: { environment: {} }
+    })));
+  } finally {
+    releaseAlphaRead.resolve();
+    await browser.close();
+    await demo.close();
+  }
+});
 
 test("Operator Resource Read loads list and policy and rejects a late page 1 response", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });

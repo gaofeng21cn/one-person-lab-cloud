@@ -221,6 +221,10 @@ func (app *controlPlaneServer) workspaceGatewayBudgetContext(w http.ResponseWrit
 		writeError(w, http.StatusNotFound, "workspace_not_found")
 		return nil, 0, clients.SessionDelegatedCredential{}, 0, false
 	}
+	if err := app.requireWorkspaceGatewayApplication(r.Context(), workspace); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return nil, 0, clients.SessionDelegatedCredential{}, 0, false
+	}
 	keyID, ok := requiredPositiveInteger(workspace, "workspaceApiKeyId")
 	if !ok {
 		writeError(w, http.StatusConflict, "workspace_gateway_key_not_provisioned")

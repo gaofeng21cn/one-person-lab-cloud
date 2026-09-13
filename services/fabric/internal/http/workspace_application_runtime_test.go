@@ -82,6 +82,7 @@ func applicationRuntimeHTTPFixture(t *testing.T) (http.Handler, *applicationRunt
 		t.Fatal(err)
 	}
 	input := fabric.WorkspaceApplicationRuntimeInput{
+		SchemaVersion: 2, DataBindingID: "data-knowledge",
 		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ComputeID: compute.ID, VolumeID: volume.ID,
 		AttachmentID: attachment.ID, AttachmentOperationID: attachment.OperationID, RuntimeOperationID: "deploy-alpha:runtime", ConfigurationDigest: strings.Repeat("c", 64),
 		Revision: contracts.WorkspaceApplicationRevision{
@@ -89,6 +90,10 @@ func applicationRuntimeHTTPFixture(t *testing.T) (http.Handler, *applicationRunt
 			Image: "registry.example/app@sha256:" + strings.Repeat("a", 64), ExposurePolicy: "application", EntryPort: "http",
 			Ports: []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
 		},
+	}
+	input.ConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return NewServerWithAuth(service, ServerAuthConfig{ControlPlaneToken: "internal-secret", RunnerToken: "runner-secret", CapabilityKey: testFabricCapabilityKey}), provider, input
 }
@@ -179,5 +184,76 @@ func TestWorkspaceApplicationRuntimeHTTPPendingLiveReadbackAndFailure(t *testing
 	response := applicationRuntimeHTTPRequest(t, server, input, true, "valid")
 	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), `"status":"ready"`) || !strings.Contains(response.Body.String(), "live application read unavailable") {
 		t.Fatalf("failed live read returned history: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func (p *applicationRuntimeHTTPProvider) PreflightWorkspaceApplicationRuntime(context.Context, fabric.WorkspaceApplicationRuntimeInput, fabric.ComputeAllocation, fabric.StorageVolume) error {
+	return nil
+}
+func (p *applicationRuntimeHTTPProvider) ReadWorkspaceApplicationRuntimeLifecycle(_ context.Context, input fabric.WorkspaceApplicationRuntimeInput) (fabric.WorkspaceApplicationRuntimeLifecycleResult, error) {
+	observation := p.observation(input)
+	observation.RuntimeID = contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID)
+	state := observation.Status
+	if state == "ready" {
+		state = "running"
+	}
+	if state != "running" {
+		observation.EntryURL = ""
+	}
+	return fabric.WorkspaceApplicationRuntimeLifecycleResult{RuntimeID: observation.RuntimeID, WorkspaceID: input.WorkspaceID, State: state, Observation: observation}, nil
+}
+func (p *applicationRuntimeHTTPProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input fabric.WorkspaceApplicationRuntimeInput, state string) (fabric.WorkspaceApplicationRuntimeLifecycleResult, error) {
+	p.state = state
+	if state == "running" {
+		p.state = "ready"
+	}
+	return p.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input)
+}
+func (p *applicationRuntimeHTTPProvider) ReadWorkspaceApplicationRuntimeCredentials(_ context.Context, input fabric.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
+	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID), WorkspaceID: input.WorkspaceID, WebUIUsername: "opl", WebUIPassword: "synthetic-protected-password"}, nil
+}
+
+func TestWorkspaceApplicationRuntimeHTTPNewPortsBindExactCapability(t *testing.T) {
+	server, provider, input := applicationRuntimeHTTPFixture(t)
+	provider.state = "ready"
+	if response := applicationRuntimeHTTPRequest(t, server, input, false, "valid"); response.Code != http.StatusAccepted {
+		t.Fatalf("create status=%d", response.Code)
+	}
+	lifecycle := fabric.WorkspaceApplicationRuntimeLifecycleInput{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, RuntimeID: contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID), RuntimeOperationID: input.RuntimeOperationID, DesiredState: "running"}
+	for _, test := range []struct {
+		endpoint, action, resourceID, key string
+		body                              any
+	}{
+		{"preflight", "preflight_workspace_application_runtime", input.WorkspaceID, input.RuntimeOperationID, input},
+		{"lifecycle-readback", "read_workspace_application_runtime_lifecycle", lifecycle.RuntimeID, input.RuntimeOperationID, lifecycle},
+		{"credentials", "read_workspace_application_runtime_credentials", lifecycle.RuntimeID, input.RuntimeOperationID, lifecycle},
+		{"lifecycle", "set_workspace_application_runtime_lifecycle", lifecycle.RuntimeID, "new-port-resume", lifecycle},
+	} {
+		for _, authorized := range []bool{false, true} {
+			body, err := json.Marshal(test.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := testRequest(http.MethodPost, "/fabric/workspace-application-runtimes/"+input.WorkspaceID+"/"+test.endpoint, bytes.NewReader(body))
+			req.Header.Set("Idempotency-Key", test.key)
+			if authorized {
+				req.Header.Set(fabricCapabilityHeader, fabricCapabilityForTest(t, fabricCapabilityClaimsForTest{Version: 1, Caller: "control-plane", AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, ResourceKind: "workspace_application_runtime", ResourceID: test.resourceID, Action: test.action, OperationID: test.key, ExpiresAt: time.Now().Add(time.Minute).Unix()}, body))
+			}
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, req)
+			expected := http.StatusForbidden
+			if authorized {
+				expected = http.StatusAccepted
+				if test.endpoint == "preflight" {
+					expected = http.StatusOK
+				}
+			}
+			if response.Code != expected {
+				t.Fatalf("endpoint=%s authorized=%t status=%d", test.endpoint, authorized, response.Code)
+			}
+			if authorized && test.endpoint == "credentials" && response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("credential response cacheable")
+			}
+		}
 	}
 }

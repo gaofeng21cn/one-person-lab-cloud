@@ -84,7 +84,22 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		}
 		if found {
 			persisted, decodeErr := decodeWorkspaceLaunchReconcileOperation(row)
-			if decodeErr != nil || !workspaceLaunchReconcileRequestMatches(persisted, accountID, ownerUserID, name, packageID, autoRenew, contracts.WorkspaceProvisioningMode(provisioningMode)) {
+			matchingMode := contracts.WorkspaceProvisioningMode(provisioningMode)
+			defaultRow, defaultFound, defaultErr := app.tables.GetRuntimeOperation(r.Context(), workspaceDefaultApplicationOperationID(operationID))
+			if defaultErr != nil {
+				writeError(w, http.StatusInternalServerError, "state_read_failed")
+				return
+			}
+			if defaultFound {
+				defaultRequest, err := decodeWorkspaceDefaultApplication(defaultRow)
+				if err != nil || resourceOnly || defaultRequest.AccountID != accountID {
+					writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
+					return
+				}
+				matchingMode = contracts.WorkspaceProvisioningResourceOnly
+			}
+
+			if decodeErr != nil || !workspaceLaunchReconcileRequestMatches(persisted, accountID, ownerUserID, name, packageID, autoRenew, matchingMode) {
 				writeError(w, http.StatusConflict, errIdempotencyConflict.Error())
 				return
 			}
@@ -103,6 +118,14 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 					return
 				}
 				persisted = continued
+			}
+			if defaultFound {
+				_, sub2APIUserID, credential, ok := app.gatewayUserContext(w, r)
+				if !ok {
+					return
+				}
+				_ = app.prepareDefaultWorkspaceApplication(r.Context(), service, operationID, credential, sub2APIUserID)
+				_ = app.runWorkspaceDefaultApplication(r.Context(), service, workspaceDefaultApplicationOperationID(operationID))
 			}
 			app.respondWorkspaceLaunchContinuation(w, r, persisted)
 			return
@@ -176,7 +199,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			}
 			imageDigest = imagePolicy.ActiveImage
 		}
-		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, imageDigest, contracts.WorkspaceProvisioningMode(provisioningMode))
+		descriptor, err := newWorkspaceLaunchDescriptorWithImage(accountID, ownerUserID, name, packageID, storageGB, autoRenew, stringValue(quote["priceVersion"]), key, "", contracts.WorkspaceProvisioningResourceOnly)
 		if err != nil {
 			writeError(w, http.StatusConflict, "workspace_image_digest_invalid")
 			return
@@ -184,7 +207,7 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 		preflightInput := clients.WorkspaceLaunchPreflightInput{
 			SchemaVersion: clients.WorkspaceLaunchFabricSchemaVersion, LaunchOperationID: descriptor.OperationID,
 			AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, PackageID: packageID, SizeGB: storageGB,
-			WorkspaceImageDigest: descriptor.WorkspaceImageDigest, ProvisioningMode: provisioningMode, RequestHash: descriptor.RequestHash,
+			WorkspaceImageDigest: "", ProvisioningMode: string(contracts.WorkspaceProvisioningResourceOnly), RequestHash: descriptor.RequestHash,
 		}
 		preflight, err := service.PreflightWorkspaceLaunch(r.Context(), preflightInput)
 		if err != nil {
@@ -228,9 +251,18 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			}
 			preChargeBalance = balance.USDMicros
 		}
+		var defaultOperation map[string]any
+		if !resourceOnly {
+			defaultOperation, err = workspaceDefaultApplicationRow(workspaceDefaultApplicationRequest{SchemaVersion: 1, OperationID: workspaceDefaultApplicationOperationID(descriptor.OperationID), LaunchOperationID: descriptor.OperationID, AccountID: accountID, WorkspaceID: descriptor.WorkspaceID, OwnerUserID: ownerUserID, Sub2APIUserID: sub2APIUserID, WorkspaceKeyGroupID: workspaceKeyGroupID, Revision: defaultOPLApplicationRevision(imageDigest), Phase: "credentials_required"})
+			if err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+		}
 		created, err := app.createWorkspaceLaunch(r.Context(), service, credential, sub2APIUserID, workspaceLaunchReconcileCreate{
+			Mode: contracts.WorkspaceProvisioningResourceOnly, DefaultApplicationOperation: defaultOperation,
 			OperationID: descriptor.OperationID, RequestHash: descriptor.RequestHash, AccountID: accountID, OwnerUserID: ownerUserID,
-			Sub2APIUserID: sub2APIUserID, WorkspaceKeyGroupID: workspaceKeyGroupID, WorkspaceID: descriptor.WorkspaceID,
+			Sub2APIUserID: sub2APIUserID, WorkspaceID: descriptor.WorkspaceID,
 			Name: name, PackageID: packageID, StorageGB: storageGB, AutoRenew: autoRenew,
 			PriceVersion: stringValue(quote["priceVersion"]), TotalChargeUSDMicros: totalCharge,
 			ProviderProfileRef: preflight.ProviderProfileRef, PreflightBindingRef: preflight.BindingRef, SpecDigest: preflight.SpecDigest,
@@ -249,6 +281,10 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 				writeError(w, http.StatusInternalServerError, "state_persist_failed")
 			}
 			return
+		}
+		if defaultOperation != nil {
+			_ = app.prepareDefaultWorkspaceApplication(r.Context(), service, created.ID, credential, sub2APIUserID)
+			_ = app.runWorkspaceDefaultApplication(r.Context(), service, workspaceDefaultApplicationOperationID(created.ID))
 		}
 		persistedRow, found, err := app.tables.GetRuntimeOperation(r.Context(), created.ID)
 		if err != nil || !found {

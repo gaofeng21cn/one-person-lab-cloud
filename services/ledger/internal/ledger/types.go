@@ -258,7 +258,7 @@ func validWorkspaceLaunchReceipt(input ReceiptInput) bool {
 }
 
 func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
-	if !validCanonicalWorkspaceResourceReceiptIdentity(input) || input.IdempotencyKey != input.RequestID+":deletion-receipt" || len(input.InputRefs) != 1 || len(input.OutputRefs) != 6 && !(len(input.OutputRefs) == 7 && input.OutputRefs["workspaceKeyStatus"] == "absent") || len(input.Cost) != 0 || input.SupersedesReceiptID != "" ||
+	if !validCanonicalWorkspaceResourceReceiptIdentity(input) || input.IdempotencyKey != input.RequestID+":deletion-receipt" || len(input.InputRefs) != 1 || !validWorkspaceDeletionOutputShape(input) || len(input.Cost) != 0 || input.SupersedesReceiptID != "" ||
 		len(input.Actor) != 0 || len(input.Plan) != 0 || len(input.Environment) != 0 || len(input.ReviewerChecks) != 0 || len(input.Continuation) != 0 {
 		return false
 	}
@@ -282,7 +282,7 @@ func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
 func validCanonicalWorkspaceResourceReceiptIdentity(input ReceiptInput) bool {
 	if input.Status != "completed" || input.Surface != "control_plane" || !isOpaqueReference(input.AccountID) || !isOpaqueReference(input.WorkspaceID) || !isOpaqueReference(input.RequestID) ||
 		input.OrganizationID != "" || input.ProjectID != "" || input.TaskID != "" || input.ApprovalID != "" || input.JobID != "" || input.ArtifactID != "" || input.ReviewID != "" || input.ContinuationID != "" ||
-		len(input.Execution) != 11 || len(input.Owner) != 3 {
+		len(input.Owner) != 3 {
 		return false
 	}
 	ownerAccountID, accountOK := input.Owner["accountId"].(string)
@@ -295,6 +295,28 @@ func validCanonicalWorkspaceResourceReceiptIdentity(input ReceiptInput) bool {
 	resourceType, resourceTypeOK := input.Execution["resourceType"].(string)
 	resourceID, resourceOK := input.Execution["resourceId"].(string)
 	if !operationOK || operationID != input.RequestID || !resourceTypeOK || resourceType != "workspace" || !resourceOK || resourceID != input.WorkspaceID {
+		return false
+	}
+	identityFields := len(input.Execution)
+	if _, exists := input.Execution["applicationRetirement"]; exists {
+		if input.Type != "workspace.deleted.v1" || !validWorkspaceApplicationRetirementReceipt(input) {
+			return false
+		}
+		identityFields--
+	}
+	if mode, exists := input.Execution["provisioningMode"]; exists {
+		if mode != string(contracts.WorkspaceProvisioningResourceOnly) || identityFields != 7 {
+			return false
+		}
+		for _, field := range []string{"computeAllocationId", "storageId", "attachmentId"} {
+			value, ok := input.Execution[field].(string)
+			if !ok || !isOpaqueReference(value) {
+				return false
+			}
+		}
+		return true
+	}
+	if identityFields != 11 {
 		return false
 	}
 	for _, field := range []string{"computeAllocationId", "storageId", "attachmentId", "runtimeId", "workspaceKeyFingerprint", "runtimeServiceName", "gatewaySecretRef"} {

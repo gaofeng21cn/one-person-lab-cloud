@@ -65,6 +65,10 @@ func (app *controlPlaneServer) recoverWorkspaceRuntimeGatewayNetwork(w http.Resp
 		writeError(w, http.StatusNotFound, "workspace_not_found")
 		return
 	}
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		writeError(w, http.StatusConflict, "workspace_application_deployment_required")
+		return
+	}
 	launch, err := successfulWorkspaceLaunchForReplacement(r.Context(), app.tables, workspaceID)
 	if err != nil || launch.Status != contracts.StatusSucceeded || launch.stringFact("providerProfileRef") != "local-docker" ||
 		!workspaceLaunchStableProjectionMatches(launch, workspace) || firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) != "running" {

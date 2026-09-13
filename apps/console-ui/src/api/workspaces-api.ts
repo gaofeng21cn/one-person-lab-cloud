@@ -2,6 +2,7 @@ import { decodeDto, decodeSource } from "./dtos.ts";
 import type {
   AvailableSource,
   RuntimeCredentialResponse,
+  RuntimeCredentialRotationResponse,
   SourceEnvelope,
   WorkspaceLaunchRequest,
   WorkspaceLaunchListResponse,
@@ -18,9 +19,15 @@ import type {
   WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "./dtos.ts";
+import type { WorkspaceApplicationInstallationDTO } from "./dtos.ts";
 import { deleteJson, postJson, getJson, patchJson, type ApiError } from "./console-api.ts";
 
 const terminalLaunchStatuses = new Set(["succeeded", "failed", "refunded"]);
+
+export function resumeWorkspaceApplicationInstallation(workspaceId: string, operationId: string, csrfToken: string): Promise<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }> {
+  return postJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`, {}, csrfToken, `application-resume:${operationId}`)
+    .then(decodeDto<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }>);
+}
 const workspaceGatewayBudgetStatuses = new Set(["active", "disabled", "quota_exhausted", "expired"]);
 const workspaceGatewayBudgetFields = [
   "workspaceId", "keyId", "status", "quotaUsdMicros", "quotaUsedUsdMicros",
@@ -290,13 +297,13 @@ export function rotateWorkspaceCredentials(
   workspaceId: string,
   csrfToken: string,
   idempotencyKey: string
-): Promise<RuntimeCredentialResponse> {
+): Promise<RuntimeCredentialRotationResponse> {
   return postJson<unknown>(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/runtime-credentials/rotate`,
     {},
     csrfToken,
     idempotencyKey
-  ).then(decodeDto<RuntimeCredentialResponse>);
+  ).then(decodeDto<RuntimeCredentialRotationResponse>);
 }
 
 export function updateWorkspaceRenewal(

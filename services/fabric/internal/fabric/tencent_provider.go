@@ -964,7 +964,7 @@ func (p *TencentProvider) workspaceGatewaySecretIdentity(ctx context.Context, wo
 }
 
 func gatewaySecretName(workspaceID string) string {
-	return "opl-gateway-" + stableSuffix(workspaceID)[:16]
+	return contracts.WorkspaceGatewaySecretRef(workspaceID)
 }
 
 type provisionerRequest struct {

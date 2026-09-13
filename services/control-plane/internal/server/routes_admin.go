@@ -35,6 +35,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	registerApplicationRevisionRoutes(mux, app)
 	registerApplicationDataMaterialRoutes(mux, app)
 	registerApplicationDeploymentRoutes(mux, app, service)
+	registerWorkspaceApplicationRecoveryRoutes(mux, app, service)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		row, found, err := app.tables.GetRuntimeOperation(r.Context(), strings.TrimSpace(r.PathValue("operationId")))
 		if err != nil {
@@ -1163,7 +1164,15 @@ func (app *controlPlaneServer) operatorWorkspaceDTO(ctx context.Context, service
 		"receipt":      sourceEnvelope("ledger", "unavailable", nil, ""),
 	}
 	if projected, ok := workspaceSourceProjection(workspace); ok {
-		result["workspace"] = sourceEnvelope("control-plane", "available", projected, authoritativeSourceTimestamp(workspace["updatedAt"]))
+		if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+			current, _, _ := app.readWorkspaceCurrentApplication(ctx, service, workspace)
+			projectWorkspaceCurrentApplication(workspace, projected, current)
+		}
+		if err := app.projectWorkspaceApplicationInstallation(ctx, workspace, projected); err != nil {
+			result["workspace"] = sourceEnvelope("control-plane", "unavailable", nil, "")
+		} else {
+			result["workspace"] = sourceEnvelope("control-plane", "available", projected, authoritativeSourceTimestamp(workspace["updatedAt"]))
+		}
 	} else {
 		result["workspace"] = sourceEnvelope("control-plane", "unavailable", nil, "")
 	}

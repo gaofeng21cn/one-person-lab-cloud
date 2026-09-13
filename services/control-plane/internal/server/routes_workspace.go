@@ -36,6 +36,18 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 				writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane", "unavailable", nil)
 				return
 			}
+			if stringValue(row["currentApplicationDeploymentId"]) != "" {
+				current, _, readErr := app.readWorkspaceCurrentApplication(r.Context(), service, row)
+				if current == nil || readErr != nil && current.OperationID == "" {
+					writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane", "unavailable", nil)
+					return
+				}
+				projectWorkspaceCurrentApplication(row, item, current)
+			}
+			if err := app.projectWorkspaceApplicationInstallation(r.Context(), row, item); err != nil {
+				writeSourceEnvelope(w, http.StatusInternalServerError, "control-plane", "unavailable", nil)
+				return
+			}
 			items = append(items, item)
 		}
 		status := "available"
@@ -102,6 +114,25 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 			writeError(w, http.StatusGone, "workspace_storage_destroyed")
 			return
 		}
+		if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+			current, observation, err := app.readWorkspaceCurrentApplication(r.Context(), service, workspace)
+			if err != nil || current == nil {
+				writeSourceEnvelope(w, http.StatusBadGateway, "fabric", "unavailable", nil)
+				return
+			}
+			w.Header().Set("Cache-Control", "private, no-store")
+			writeSourceEnvelope(w, http.StatusOK, "fabric", "available", workspaceCurrentApplicationRuntimeResponse(current, observation))
+			return
+		}
+		if stringValue(workspace["applicationBinding"]) == "empty" {
+			if mode, err := app.workspaceLaunchProvisioningMode(r.Context(), workspaceID); err != nil || mode != contracts.WorkspaceProvisioningResourceOnly {
+				writeSourceEnvelope(w, http.StatusBadGateway, "control-plane", "unavailable", nil)
+				return
+			}
+			w.Header().Set("Cache-Control", "private, no-store")
+			writeSourceEnvelope(w, http.StatusOK, "control-plane", "available", map[string]any{"workspaceId": workspaceID, "status": "not_found", "ready": false, "currentApplication": nil, "checks": []any{}})
+			return
+		}
 		runtime, err := service.WorkspaceRuntimeStatus(r.Context(), workspaceID)
 		if err != nil {
 			writeSourceEnvelope(w, http.StatusBadGateway, "fabric", "unavailable", nil)
@@ -123,6 +154,9 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		}
 		key, ok := requiredMutationKey(w, r)
 		if !ok {
+			return
+		}
+		if app.workspaceCurrentApplicationCredentials(w, r, service, workspace) {
 			return
 		}
 		runtime, err := service.RevealWorkspaceRuntimeCredentials(r.Context(), stringValue(workspace["accountId"]), workspaceID, key)
@@ -151,6 +185,9 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 		defer unlock()
 		workspace, ok = app.ownedWorkspaceForCredentialCommand(w, r, workspaceID)
 		if !ok {
+			return
+		}
+		if app.rotateWorkspaceCurrentApplicationCredentials(w, r, service, workspace, key) {
 			return
 		}
 		if response, reason := app.workspaceAccessResponse(r.Context(), cloneMap(workspace), time.Now().UTC()); reason != "" || response["openable"] != true {
@@ -350,6 +387,18 @@ func registerWorkspaceRoutes(mux *http.ServeMux, app *controlPlaneServer, servic
 }
 
 func (app *controlPlaneServer) currentWorkspaceGatewaySecretRef(ctx context.Context, workspace map[string]any) (string, error) {
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		current, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
+		if err != nil || !found || app.requireWorkspaceGatewayApplication(ctx, workspace) != nil {
+			return "", errors.New("workspace_gateway_secret_ref_unavailable")
+		}
+		for _, binding := range current.SecretBindings {
+			if binding.Name == "gateway" && binding.Key == "opl_gateway_api_key" && binding.SecretRef != "" {
+				return binding.SecretRef, nil
+			}
+		}
+		return "", errors.New("workspace_gateway_secret_ref_unavailable")
+	}
 	workspaceID := stringValue(workspace["id"])
 	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
 	keyID, ok := positiveIntegerField(workspace, "workspaceApiKeyId")
@@ -411,7 +460,7 @@ func workspaceSourceProjection(row map[string]any) (map[string]any, bool) {
 	if _, err := time.Parse(time.RFC3339, stringValue(item["updatedAt"])); err != nil {
 		return nil, false
 	}
-	for _, key := range []string{"name", "url", "storageId", "currentComputeAllocationId", "currentAttachmentId", "runtimeId"} {
+	for _, key := range []string{"name", "url", "storageId", "currentComputeAllocationId", "currentAttachmentId", "runtimeId", "applicationBinding"} {
 		if value := stringValue(row[key]); value != "" {
 			item[key] = value
 		}

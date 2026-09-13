@@ -22,10 +22,11 @@ const (
 )
 
 var (
-	errWorkspaceApplicationIntentConflict   = errors.New("workspace_application_deployment_intent_conflict")
-	errWorkspaceApplicationResourcesUnready = errors.New("workspace_application_resources_unready")
-	errWorkspaceApplicationBindingUnknown   = errors.New("workspace_application_binding_unknown")
-	errWorkspaceApplicationWorkspaceGone    = errors.New("workspace_application_workspace_not_found")
+	errWorkspaceApplicationConfigurationInvalid = errors.New("workspace_application_configuration_invalid")
+	errWorkspaceApplicationIntentConflict       = errors.New("workspace_application_deployment_intent_conflict")
+	errWorkspaceApplicationResourcesUnready     = errors.New("workspace_application_resources_unready")
+	errWorkspaceApplicationBindingUnknown       = errors.New("workspace_application_binding_unknown")
+	errWorkspaceApplicationWorkspaceGone        = errors.New("workspace_application_workspace_not_found")
 )
 
 // workspaceApplicationDeploymentIntent is the durable, immutable intent that
@@ -33,29 +34,42 @@ var (
 // Fabric runtime creation and the atomic activation consume it in later
 // slices; neither can bypass or rewrite it.
 type workspaceApplicationDeploymentIntent struct {
-	SchemaVersion            int                                               `json:"schemaVersion"`
-	Version                  int                                               `json:"version"`
-	RequestHash              string                                            `json:"requestHash"`
-	OperationID              string                                            `json:"operationId"`
-	AccountID                string                                            `json:"accountId"`
-	WorkspaceID              string                                            `json:"workspaceId"`
-	ComputeID                string                                            `json:"computeId"`
-	StorageID                string                                            `json:"storageId"`
-	AttachmentID             string                                            `json:"attachmentId"`
-	ApplicationID            string                                            `json:"applicationId"`
-	TargetRevision           string                                            `json:"targetRevision"`
-	RevisionDigest           string                                            `json:"revisionDigest"`
-	ConfigurationDigest      string                                            `json:"configurationDigest"`
-	SecretBindingVersions    []string                                          `json:"secretBindingVersions,omitempty"`
-	DataBindingIDs           []string                                          `json:"dataBindingIds,omitempty"`
-	ExpectedWorkspaceVersion int64                                             `json:"expectedWorkspaceVersion"`
-	CurrentBinding           string                                            `json:"currentBinding"`
-	Phase                    string                                            `json:"phase"`
-	CreatedAt                string                                            `json:"createdAt"`
-	RuntimeObservation       *contracts.WorkspaceApplicationRuntimeObservation `json:"runtimeObservation,omitempty"`
-	ActivationAt             string                                            `json:"activationAt,omitempty"`
-	ReceiptID                string                                            `json:"receiptId,omitempty"`
-	LastError                string                                            `json:"lastError,omitempty"`
+	SchemaVersion                int                                                   `json:"schemaVersion"`
+	Version                      int                                                   `json:"version"`
+	RequestHash                  string                                                `json:"requestHash"`
+	OperationID                  string                                                `json:"operationId"`
+	AccountID                    string                                                `json:"accountId"`
+	WorkspaceID                  string                                                `json:"workspaceId"`
+	ComputeID                    string                                                `json:"computeId"`
+	StorageID                    string                                                `json:"storageId"`
+	AttachmentID                 string                                                `json:"attachmentId"`
+	ApplicationID                string                                                `json:"applicationId"`
+	TargetRevision               string                                                `json:"targetRevision"`
+	RevisionDigest               string                                                `json:"revisionDigest"`
+	ConfigurationDigest          string                                                `json:"configurationDigest"`
+	ClientConfigurationDigest    string                                                `json:"clientConfigurationDigest,omitempty"`
+	SecretBindingVersions        []string                                              `json:"secretBindingVersions,omitempty"`
+	DataBindingIDs               []string                                              `json:"dataBindingIds,omitempty"`
+	ExpectedWorkspaceVersion     int64                                                 `json:"expectedWorkspaceVersion"`
+	CurrentBinding               string                                                `json:"currentBinding"`
+	Configuration                contracts.WorkspaceApplicationRuntimeConfiguration    `json:"configuration,omitempty"`
+	SecretBindings               []contracts.WorkspaceApplicationRuntimeSecretBinding  `json:"secretBindings,omitempty"`
+	DataSourceRuntimeOperationID string                                                `json:"dataSourceRuntimeOperationId,omitempty"`
+	DataLayout                   string                                                `json:"dataLayout,omitempty"`
+	DataBindingID                string                                                `json:"dataBindingId,omitempty"`
+	PreviousDeploymentID         string                                                `json:"previousDeploymentId,omitempty"`
+	LegacyPredecessor            *contracts.WorkspaceRuntimePowerInput                 `json:"legacyPredecessor,omitempty"`
+	PredecessorObservation       *contracts.WorkspaceApplicationRuntimeLifecycleResult `json:"predecessorObservation,omitempty"`
+	WorkspaceAPIKeyID            int64                                                 `json:"workspaceApiKeyId,omitempty"`
+	OriginOperationID            string                                                `json:"originOperationId,omitempty"`
+
+	Phase              string                                            `json:"phase"`
+	FailurePhase       string                                            `json:"failurePhase,omitempty"`
+	CreatedAt          string                                            `json:"createdAt"`
+	RuntimeObservation *contracts.WorkspaceApplicationRuntimeObservation `json:"runtimeObservation,omitempty"`
+	ActivationAt       string                                            `json:"activationAt,omitempty"`
+	ReceiptID          string                                            `json:"receiptId,omitempty"`
+	LastError          string                                            `json:"lastError,omitempty"`
 }
 
 func workspaceApplicationDeploymentOperationID(workspaceID, key string) string {
@@ -63,6 +77,18 @@ func workspaceApplicationDeploymentOperationID(workspaceID, key string) string {
 }
 
 func workspaceApplicationDeploymentRequestHash(intent workspaceApplicationDeploymentIntent) string {
+	if intent.Version == 2 {
+		// Progress and observations are mutable; the reserved command is not.
+		intent.RequestHash, intent.Phase, intent.CreatedAt, intent.ActivationAt, intent.ReceiptID, intent.LastError = "", "", "", "", "", ""
+		intent.RuntimeObservation, intent.PredecessorObservation = nil, nil
+		intent.FailurePhase = ""
+		payload, err := json.Marshal(intent)
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf("%x", sha256.Sum256(payload))
+	}
+
 	payload, err := json.Marshal(struct {
 		WorkspaceID              string   `json:"workspaceId"`
 		ComputeID                string   `json:"computeId"`
@@ -93,7 +119,7 @@ func decodeWorkspaceApplicationDeploymentIntent(row map[string]any) (workspaceAp
 	var intent workspaceApplicationDeploymentIntent
 	if stringValue(row["action"]) != workspaceApplicationDeploymentAction ||
 		json.Unmarshal([]byte(stringValue(row["result"])), &intent) != nil ||
-		intent.SchemaVersion != workspaceApplicationDeploymentSchemaVersion || intent.Version != 1 ||
+		intent.SchemaVersion != workspaceApplicationDeploymentSchemaVersion || (intent.Version != 1 && intent.Version != 2) ||
 		intent.OperationID == "" || intent.OperationID != stringValue(row["id"]) ||
 		intent.OperationID != stringValue(row["operationId"]) || intent.AccountID == "" ||
 		intent.WorkspaceID == "" || intent.WorkspaceID != stringValue(row["workspaceId"]) ||
@@ -112,8 +138,8 @@ func decodeWorkspaceApplicationDeploymentIntent(row map[string]any) (workspaceAp
 // must commit against exactly this reserved version.
 func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 	ctx context.Context,
-	workspaceID, mutationKey, applicationID, targetRevision, configurationDigest string,
-	secretBindingVersions, dataBindingIDs []string,
+	workspaceID, mutationKey, applicationID, targetRevision string,
+	configuration contracts.WorkspaceApplicationRuntimeConfiguration, secretBindings []contracts.WorkspaceApplicationRuntimeSecretBinding, workspaceAPIKeyID int64, originOperationID, clientConfigurationDigest string,
 ) (workspaceApplicationDeploymentIntent, error) {
 	workspace, found, err := app.tables.GetWorkspace(ctx, workspaceID)
 	if err != nil {
@@ -145,7 +171,105 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 		return workspaceApplicationDeploymentIntent{}, errApplicationRevisionPayloadInvalid
 	}
 	revisionDigest := stringValue(existing["digest"])
+
 	operationID := workspaceApplicationDeploymentOperationID(workspaceID, mutationKey)
+	// A replay compares the original command, including its original data
+	// binding; the selected application may already have changed meanwhile.
+	if row, found, err := app.tables.GetRuntimeOperation(ctx, operationID); err != nil {
+		return workspaceApplicationDeploymentIntent{}, err
+	} else if found {
+		prior, err := decodeWorkspaceApplicationDeploymentIntent(row)
+		if err != nil || prior.Version != 2 || prior.ApplicationID != applicationID || prior.TargetRevision != targetRevision || prior.OriginOperationID != originOperationID || prior.ClientConfigurationDigest != clientConfigurationDigest {
+			return workspaceApplicationDeploymentIntent{}, errWorkspaceApplicationIntentConflict
+		}
+		if clientConfigurationDigest == "" {
+			if revision.RuntimeProfile == "opl_app" && configuration.CredentialVersion == "" && configuration.CredentialSourceRuntimeOperationID == "" {
+				configuration.CredentialVersion = prior.Configuration.CredentialVersion
+				configuration.CredentialSourceRuntimeOperationID = prior.Configuration.CredentialSourceRuntimeOperationID
+			}
+			configurationDigest, digestErr := contracts.WorkspaceApplicationConfigurationDigest(configuration, secretBindings, prior.DataBindingID)
+			if digestErr != nil || prior.ConfigurationDigest != configurationDigest || prior.WorkspaceAPIKeyID != workspaceAPIKeyID {
+				return workspaceApplicationDeploymentIntent{}, errWorkspaceApplicationIntentConflict
+			}
+		}
+		return prior, nil
+	}
+	previous, selected, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
+	if err != nil {
+		return workspaceApplicationDeploymentIntent{}, err
+	}
+	dataBindingID, dataLayout, dataSource := "application-data-"+stableID(workspaceID, applicationID), "", ""
+	previousID := ""
+	if selected {
+		previousID = previous.OperationID
+		if previous.ApplicationID == applicationID {
+			if previous.Version == 2 {
+				dataBindingID, dataLayout, dataSource = previous.DataBindingID, previous.DataLayout, previous.DataSourceRuntimeOperationID
+			} else {
+				dataLayout, dataSource = "legacy_application", previous.OperationID+":runtime"
+			}
+		}
+	}
+	// Reinstalling a previously selected application uses the same durable
+	// data namespace, even if a different application is selected now.
+	owned, err := app.ownedWorkspaceApplicationDeployments(ctx, workspace)
+	if err != nil {
+		return workspaceApplicationDeploymentIntent{}, err
+	}
+	bound := false
+	for _, prior := range owned {
+		if prior.Version != 2 || prior.ApplicationID != applicationID {
+			continue
+		}
+		if bound && (dataBindingID != prior.DataBindingID || dataLayout != prior.DataLayout || dataSource != prior.DataSourceRuntimeOperationID) {
+			return workspaceApplicationDeploymentIntent{}, errors.New("workspace_application_data_binding_conflict")
+		}
+		dataBindingID, dataLayout, dataSource = prior.DataBindingID, prior.DataLayout, prior.DataSourceRuntimeOperationID
+		bound = true
+	}
+	if !bound {
+		historicalLayout, historicalSource, err := app.workspaceApplicationHistoricalDataBinding(ctx, workspace, applicationID, revision.RuntimeProfile, previous, selected, owned)
+		if err != nil {
+			return workspaceApplicationDeploymentIntent{}, err
+		}
+		if historicalLayout != "" {
+			dataLayout, dataSource = historicalLayout, historicalSource
+		}
+	}
+	if currentBinding == "opl_app" && revision.RuntimeProfile == "opl_app" && applicationID == "opl-app" {
+		dataLayout = "legacy_opl"
+	}
+	if revision.RuntimeProfile == "opl_app" {
+		configuration, err = app.workspaceApplicationCredentialConfiguration(ctx, workspace, applicationID, operationID, configuration)
+		if err != nil {
+			return workspaceApplicationDeploymentIntent{}, err
+		}
+	}
+	configurationDigest, err := contracts.WorkspaceApplicationConfigurationDigest(configuration, secretBindings, dataBindingID)
+	if err != nil {
+		return workspaceApplicationDeploymentIntent{}, fmt.Errorf("%w: %v", errWorkspaceApplicationConfigurationInvalid, err)
+	}
+	var secretBindingVersions []string
+	for _, binding := range secretBindings {
+		secretBindingVersions = append(secretBindingVersions, binding.Name+":"+binding.SecretRef+":"+binding.Version+":"+binding.Key)
+	}
+	dataBindingIDs := []string{dataBindingID}
+	var legacy *contracts.WorkspaceRuntimePowerInput
+	if currentBinding == "opl_app" {
+		launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchResourceProjectionMismatchFields, nil)
+		if err != nil || !found || launch.stringFact("runtimeId") == "" || launch.stringFact("runtimeBindingRef") == "" {
+			return workspaceApplicationDeploymentIntent{}, errWorkspaceApplicationBindingUnknown
+		}
+		if dataLayout == "legacy_opl" {
+			dataSource = launch.stringFact("runtimeBindingRef")
+		}
+		legacy = &contracts.WorkspaceRuntimePowerInput{SchemaVersion: 1, AccountID: launch.stringFact("accountId"), WorkspaceID: workspaceID, RuntimeID: launch.stringFact("runtimeId"), RuntimeOperationID: launch.stringFact("runtimeBindingRef"), PaidThrough: stringValue(workspace["paidThrough"])}
+	}
+
+	if err := contracts.ValidateWorkspaceApplicationRuntimeConfiguration(contracts.WorkspaceApplicationRuntimeInput{SchemaVersion: 2, Revision: revision, Configuration: configuration, SecretBindings: secretBindings, DataBindingID: dataBindingID, DataLayout: dataLayout, DataSourceRuntimeOperationID: dataSource, ConfigurationDigest: configurationDigest}); err != nil {
+		return workspaceApplicationDeploymentIntent{}, fmt.Errorf("%w: %v", errWorkspaceApplicationConfigurationInvalid, err)
+	}
+
 	deployment := contracts.WorkspaceApplicationDeployment{
 		SchemaVersion: 1, OperationID: operationID, WorkspaceID: workspaceID,
 		ApplicationID: applicationID, TargetRevision: targetRevision,
@@ -154,12 +278,15 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 		ExpectedWorkspaceVersion: bindingVersion,
 		IdempotencyKey:           operationID + ":1",
 	}
+	if selected {
+		deployment.PreviousApplicationID, deployment.PreviousRevision = previous.ApplicationID, previous.TargetRevision
+	}
 	if err := application.ValidateDeploymentTransition(deployment, revision, currentBinding); err != nil {
 		return workspaceApplicationDeploymentIntent{}, err
 	}
 	now := time.Now().UTC()
 	intent := workspaceApplicationDeploymentIntent{
-		SchemaVersion: workspaceApplicationDeploymentSchemaVersion, Version: 1,
+		SchemaVersion: workspaceApplicationDeploymentSchemaVersion, Version: 2,
 		OperationID:   operationID,
 		AccountID:     firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])),
 		WorkspaceID:   workspaceID,
@@ -168,8 +295,10 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 		AttachmentID:  firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])),
 		ApplicationID: applicationID, TargetRevision: targetRevision,
 		RevisionDigest: revisionDigest, ConfigurationDigest: configurationDigest,
-		SecretBindingVersions: secretBindingVersions, DataBindingIDs: dataBindingIDs,
+		ClientConfigurationDigest: clientConfigurationDigest,
+		SecretBindingVersions:     secretBindingVersions, DataBindingIDs: dataBindingIDs,
 		ExpectedWorkspaceVersion: bindingVersion, CurrentBinding: currentBinding,
+		Configuration: configuration, SecretBindings: secretBindings, DataBindingID: dataBindingID, DataLayout: dataLayout, DataSourceRuntimeOperationID: dataSource, PreviousDeploymentID: previousID, LegacyPredecessor: legacy, WorkspaceAPIKeyID: workspaceAPIKeyID, OriginOperationID: originOperationID,
 		Phase: workspaceApplicationDeploymentIntentPhase, CreatedAt: now.Format(time.RFC3339Nano),
 	}
 	intent.RequestHash = workspaceApplicationDeploymentRequestHash(intent)
@@ -221,25 +350,91 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		if !ok {
 			return
 		}
-		if !ok {
-			return
-		}
 		workspaceID, _ := input["workspaceId"].(string)
 		applicationID, _ := input["applicationId"].(string)
 		targetRevision, _ := input["targetRevision"].(string)
-		configurationDigest, _ := input["configurationDigest"].(string)
-		if workspaceID == "" || applicationID == "" || targetRevision == "" || configurationDigest == "" {
+		var configuration contracts.WorkspaceApplicationRuntimeConfiguration
+		rawConfiguration, configErr := json.Marshal(input["configuration"])
+		if configErr != nil || json.Unmarshal(rawConfiguration, &configuration) != nil {
+			writeError(w, http.StatusBadRequest, "invalid_application_configuration")
+			return
+		}
+		if _, supplied := input["configurationDigest"]; supplied {
+			writeError(w, http.StatusBadRequest, "client_configuration_digest_forbidden")
+			return
+		}
+		if _, supplied := input["secretBindingVersions"]; supplied {
+			writeError(w, http.StatusBadRequest, "client_secret_binding_forbidden")
+			return
+		}
+		if _, supplied := input["dataBindingIds"]; supplied {
+			writeError(w, http.StatusBadRequest, "client_data_binding_forbidden")
+			return
+		}
+		if workspaceID == "" || applicationID == "" || targetRevision == "" {
 			writeError(w, http.StatusBadRequest, "invalid_application_deployment")
 			return
 		}
-		secretBindings := decodeStringList(input["secretBindingVersions"])
-		dataBindings := decodeStringList(input["dataBindingIds"])
+		clientConfiguration, err := json.Marshal(configuration)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_application_configuration")
+			return
+		}
+		clientConfigurationDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(clientConfiguration))
+		// Replay the accepted client command before resolving credentials or
+		// configuration from the currently selected application.
+		priorRow, replayed, err := app.tables.GetRuntimeOperation(r.Context(), workspaceApplicationDeploymentOperationID(workspaceID, key))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "state_read_failed")
+			return
+		}
+		if replayed {
+			prior, err := decodeWorkspaceApplicationDeploymentIntent(priorRow)
+			if err != nil || prior.Version != 2 || prior.ApplicationID != applicationID || prior.TargetRevision != targetRevision || prior.ClientConfigurationDigest != clientConfigurationDigest || prior.OriginOperationID != "" {
+				writeError(w, http.StatusConflict, errWorkspaceApplicationIntentConflict.Error())
+				return
+			}
+			writeJSON(w, http.StatusAccepted, map[string]any{"intent": prior})
+			return
+		}
+		var secretBindings []contracts.WorkspaceApplicationRuntimeSecretBinding
+		var workspaceAPIKeyID int64
+		// OPL credentials are resolved by the CP owner, never accepted as arbitrary application input.
+		revisionRow, admitted, revisionErr := app.tables.AdmittedApplicationRevision(r.Context(), applicationID, targetRevision)
+		if revisionErr != nil {
+			writeError(w, http.StatusInternalServerError, "state_read_failed")
+			return
+		}
+		if admitted {
+			revision, valid := decodeApplicationRevisionPayload(stringValue(revisionRow["payload"]))
+			if !valid {
+				writeError(w, http.StatusConflict, "workspace_application_revision_invalid")
+				return
+			}
+			if revision.RuntimeProfile == "opl_app" {
+				requestedEnvironment := configuration.Environment
+				var prepErr error
+				configuration, secretBindings, workspaceAPIKeyID, prepErr = app.workspaceOPLApplicationConfiguration(r.Context(), service, workspaceID, applicationID)
+				if prepErr != nil {
+					writeError(w, http.StatusConflict, prepErr.Error())
+					return
+				}
+				for name, value := range requestedEnvironment {
+					if owned, exists := configuration.Environment[name]; exists && owned != value {
+						writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
+						return
+					}
+					configuration.Environment[name] = value
+				}
+			}
+		}
 		intent, err := app.createWorkspaceApplicationDeploymentIntent(
-			r.Context(), workspaceID, key, applicationID, targetRevision, configurationDigest,
-			secretBindings, dataBindings,
+			r.Context(), workspaceID, key, applicationID, targetRevision, configuration, secretBindings, workspaceAPIKeyID, "", clientConfigurationDigest,
 		)
 		if err != nil {
 			switch {
+			case errors.Is(err, errWorkspaceApplicationConfigurationInvalid):
+				writeError(w, http.StatusBadRequest, err.Error())
 			case errors.Is(err, errWorkspaceApplicationWorkspaceGone):
 				writeError(w, http.StatusNotFound, "workspace_not_found")
 			case errors.Is(err, application.ErrRevisionNotAdmitted):

@@ -33,42 +33,45 @@ var (
 
 // Historical KeyStatus and KeyDelete fields preserve earlier operations; current deletion leaves Gateway keys untouched.
 type workspaceDeleteOperation struct {
-	SchemaVersion            int                                `json:"schemaVersion"`
-	OperationID              string                             `json:"operationId"`
-	RequestHash              string                             `json:"requestHash"`
-	AccountID                string                             `json:"accountId"`
-	OwnerUserID              string                             `json:"ownerUserId"`
-	Sub2APIUserID            int64                              `json:"sub2apiUserId"`
-	WorkspaceID              string                             `json:"workspaceId"`
-	ResourceType             string                             `json:"resourceType"`
-	ResourceID               string                             `json:"resourceId"`
-	LaunchOperationID        string                             `json:"launchOperationId"`
-	LaunchReceiptID          string                             `json:"launchReceiptId"`
-	RuntimeID                string                             `json:"runtimeId"`
-	RuntimeServiceName       string                             `json:"runtimeServiceName"`
-	ComputeID                string                             `json:"computeId"`
-	StorageID                string                             `json:"storageId"`
-	AttachmentID             string                             `json:"attachmentId"`
-	WorkspaceAPIKeyID        int64                              `json:"workspaceApiKeyId"`
-	GatewaySecretRef         string                             `json:"gatewaySecretRef"`
-	GatewayFingerprint       string                             `json:"gatewayFingerprint"`
-	DeletionReceiptID        string                             `json:"deletionReceiptId,omitempty"`
-	Phase                    string                             `json:"phase"`
-	Status                   string                             `json:"status"`
-	RuntimeStatus            string                             `json:"runtimeStatus,omitempty"`
-	SecretStatus             string                             `json:"secretStatus,omitempty"`
-	AttachmentStatus         string                             `json:"attachmentStatus,omitempty"`
-	StorageStatus            string                             `json:"storageStatus,omitempty"`
-	ComputeStatus            string                             `json:"computeStatus,omitempty"`
-	ComputeReadbacks         int                                `json:"computeReadbacks,omitempty"`
-	MaxComputeReadbacks      int                                `json:"maxComputeReadbacks,omitempty"`
-	ComputeReadbackNotBefore string                             `json:"computeReadbackNotBefore,omitempty"`
-	KeyStatus                string                             `json:"keyStatus,omitempty"`
-	KeyDeleteAttempted       bool                               `json:"keyDeleteAttempted,omitempty"`
-	KeyDeleteReplay          workspaceDeleteReplayAuthorization `json:"keyDeleteReplay,omitempty"`
-	ProvisioningMode         string                             `json:"provisioningMode,omitempty"`
-	LastErrorCode            string                             `json:"lastErrorCode,omitempty"`
-	CreatedAt                string                             `json:"createdAt"`
+	SchemaVersion                  int                                     `json:"schemaVersion"`
+	OperationID                    string                                  `json:"operationId"`
+	RequestHash                    string                                  `json:"requestHash"`
+	AccountID                      string                                  `json:"accountId"`
+	OwnerUserID                    string                                  `json:"ownerUserId"`
+	Sub2APIUserID                  int64                                   `json:"sub2apiUserId"`
+	WorkspaceID                    string                                  `json:"workspaceId"`
+	ResourceType                   string                                  `json:"resourceType"`
+	ResourceID                     string                                  `json:"resourceId"`
+	LaunchOperationID              string                                  `json:"launchOperationId"`
+	LaunchReceiptID                string                                  `json:"launchReceiptId"`
+	RuntimeID                      string                                  `json:"runtimeId"`
+	RuntimeServiceName             string                                  `json:"runtimeServiceName"`
+	ComputeID                      string                                  `json:"computeId"`
+	StorageID                      string                                  `json:"storageId"`
+	AttachmentID                   string                                  `json:"attachmentId"`
+	WorkspaceAPIKeyID              int64                                   `json:"workspaceApiKeyId"`
+	GatewaySecretRef               string                                  `json:"gatewaySecretRef"`
+	GatewayFingerprint             string                                  `json:"gatewayFingerprint"`
+	DeletionReceiptID              string                                  `json:"deletionReceiptId,omitempty"`
+	Phase                          string                                  `json:"phase"`
+	Status                         string                                  `json:"status"`
+	RuntimeStatus                  string                                  `json:"runtimeStatus,omitempty"`
+	SecretStatus                   string                                  `json:"secretStatus,omitempty"`
+	AttachmentStatus               string                                  `json:"attachmentStatus,omitempty"`
+	StorageStatus                  string                                  `json:"storageStatus,omitempty"`
+	ComputeStatus                  string                                  `json:"computeStatus,omitempty"`
+	ComputeReadbacks               int                                     `json:"computeReadbacks,omitempty"`
+	MaxComputeReadbacks            int                                     `json:"maxComputeReadbacks,omitempty"`
+	ComputeReadbackNotBefore       string                                  `json:"computeReadbackNotBefore,omitempty"`
+	KeyStatus                      string                                  `json:"keyStatus,omitempty"`
+	KeyDeleteAttempted             bool                                    `json:"keyDeleteAttempted,omitempty"`
+	KeyDeleteReplay                workspaceDeleteReplayAuthorization      `json:"keyDeleteReplay,omitempty"`
+	ProvisioningMode               string                                  `json:"provisioningMode,omitempty"`
+	CurrentApplicationDeploymentID string                                  `json:"currentApplicationDeploymentId,omitempty"`
+	ApplicationCleanup             *workspaceApplicationLifecycleOperation `json:"applicationCleanup,omitempty"`
+	ApplicationSecrets             *workspaceApplicationSecretCleanup      `json:"applicationSecrets,omitempty"`
+	LastErrorCode                  string                                  `json:"lastErrorCode,omitempty"`
+	CreatedAt                      string                                  `json:"createdAt"`
 }
 
 type workspaceDeleteLegacyOperation struct {
@@ -380,7 +383,11 @@ func (app *controlPlaneServer) newWorkspaceDeleteOperation(ctx context.Context, 
 	workspaceID := stringValue(workspace["id"])
 	accountID := firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"]))
 	ownerUserID := firstNonEmpty(stringValue(workspace["ownerUserId"]), stringValue(workspace["ownerId"]))
-	launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchStableProjectionMismatchFields, nil)
+	projection := workspaceLaunchStableProjectionMismatchFields
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		projection = workspaceLaunchResourceProjectionMismatchFields
+	}
+	launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, projection, nil)
 	if err != nil || !found || launch.int64Fact("sub2apiUserId") != sub2APIUserID {
 		return workspaceDeleteOperation{}, errWorkspaceDeleteUnconfirmed
 	}
@@ -412,8 +419,9 @@ func (app *controlPlaneServer) newWorkspaceDeleteOperation(ctx context.Context, 
 		RuntimeID: launch.stringFact("runtimeId"), RuntimeServiceName: launch.stringFact("runtimeServiceName"), ComputeID: launch.stringFact("computeAllocationId"),
 		StorageID: launch.stringFact("storageId"), AttachmentID: launch.stringFact("attachmentId"), WorkspaceAPIKeyID: gatewayIdentity.WorkspaceAPIKeyID,
 		GatewaySecretRef: gatewayIdentity.GatewaySecretRef, GatewayFingerprint: gatewayIdentity.GatewayFingerprint,
-		ProvisioningMode: launch.provisioningModeWire(),
-		Phase:            "claimed", Status: "running", CreatedAt: now.Format(time.RFC3339Nano),
+		ProvisioningMode:               launch.provisioningModeWire(),
+		CurrentApplicationDeploymentID: stringValue(workspace["currentApplicationDeploymentId"]),
+		Phase:                          "claimed", Status: "running", CreatedAt: now.Format(time.RFC3339Nano),
 	}
 	operation.RequestHash = workspaceDeleteRequestHash(operation)
 	if !validWorkspaceDeleteIdentity(operation) {
@@ -515,6 +523,9 @@ func workspaceDeleteRequestHash(operation workspaceDeleteOperation) string {
 	if operation.ProvisioningMode != "" {
 		parts = append(parts, operation.ProvisioningMode)
 	}
+	if operation.CurrentApplicationDeploymentID != "" {
+		parts = append(parts, operation.CurrentApplicationDeploymentID)
+	}
 	return stableID(parts...)
 }
 
@@ -579,7 +590,9 @@ func validWorkspaceDeleteBaseIdentity(operation workspaceDeleteOperation) bool {
 }
 
 func validWorkspaceDeleteIdentity(operation workspaceDeleteOperation) bool {
-	return validWorkspaceDeleteBaseIdentity(operation) && validWorkspaceDeleteReplayAuthorization(operation.KeyDeleteReplay, workspaceDeleteStageKey(operation, "key")) && validWorkspaceDeleteState(operation)
+	return validWorkspaceDeleteBaseIdentity(operation) && validWorkspaceDeleteReplayAuthorization(operation.KeyDeleteReplay, workspaceDeleteStageKey(operation, "key")) &&
+		validWorkspaceApplicationLifecycle(operation.ApplicationCleanup, operation.AccountID, operation.WorkspaceID, operation.OperationID, "absent") &&
+		validWorkspaceApplicationSecretCleanup(operation.ApplicationSecrets) && validWorkspaceDeleteState(operation)
 }
 
 func validWorkspaceDeleteComputeReadbackState(operation workspaceDeleteOperation) bool {
@@ -640,6 +653,15 @@ func validWorkspaceDeleteState(operation workspaceDeleteOperation) bool {
 	}
 
 	runtimeAbsent := operation.RuntimeStatus == "absent" && operation.SecretStatus == "absent"
+	if operation.ApplicationCleanup != nil && rank >= 1 && !workspaceApplicationLifecycleComplete(operation.ApplicationCleanup, "absent") {
+		return false
+	}
+	if operation.CurrentApplicationDeploymentID != "" && rank >= 1 && operation.ApplicationCleanup == nil {
+		return false
+	}
+	if rank >= 2 && (operation.ApplicationSecrets != nil && !workspaceApplicationSecretCleanupComplete(operation.ApplicationSecrets) || operation.CurrentApplicationDeploymentID != "" && operation.ApplicationSecrets == nil) {
+		return false
+	}
 	attachmentAbsent := operation.AttachmentStatus == "absent"
 	storageAbsent := operation.StorageStatus == "absent"
 	computeAbsent := operation.ComputeStatus == "absent" && operation.ComputeReadbacks > 0 && operation.MaxComputeReadbacks == workspaceDeleteComputeReadbackBudget && operation.ComputeReadbackNotBefore == ""
@@ -667,6 +689,10 @@ func validWorkspaceDeleteState(operation workspaceDeleteOperation) bool {
 }
 
 func validWorkspaceDeleteTransition(current, desired workspaceDeleteOperation, mutation workspaceDeleteStoreMutation) bool {
+	if current.CurrentApplicationDeploymentID != desired.CurrentApplicationDeploymentID || !workspaceApplicationLifecycleTargetsMatch(current.ApplicationCleanup, desired.ApplicationCleanup) ||
+		!workspaceApplicationSecretTargetsMatch(current.ApplicationSecrets, desired.ApplicationSecrets) {
+		return false
+	}
 	currentRank, currentOK := workspaceDeletePhaseRank(current.Phase)
 	desiredRank, desiredOK := workspaceDeletePhaseRank(desired.Phase)
 	if !currentOK || !desiredOK || current.Phase == "complete" || desiredRank < currentRank || desiredRank > currentRank+1 || desired.ComputeReadbacks < current.ComputeReadbacks ||
@@ -757,7 +783,10 @@ func workspaceDeleteWorkspaceProjectionMatches(operation workspaceDeleteOperatio
 	}
 	resourceOnly := operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly)
 	keyID, hasKey := positiveIntegerField(row, "workspaceApiKeyId")
-	if resourceOnly && hasKey || !resourceOnly && (!hasKey || keyID != operation.WorkspaceAPIKeyID) {
+	if stringValue(row["currentApplicationDeploymentId"]) != operation.CurrentApplicationDeploymentID {
+		return false
+	}
+	if operation.CurrentApplicationDeploymentID == "" && (resourceOnly && hasKey || !resourceOnly && (!hasKey || keyID != operation.WorkspaceAPIKeyID)) {
 		return false
 	}
 	return !requireResources ||
@@ -815,10 +844,43 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 		}
 		switch operation.Phase {
 		case "claimed":
+			if operation.ApplicationCleanup == nil || operation.ApplicationSecrets == nil {
+				workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
+				if err != nil || !found {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_inventory_unavailable")
+				}
+				next := operation
+				if next.ApplicationCleanup == nil {
+					next.ApplicationCleanup, err = app.workspaceApplicationLifecycleInventory(ctx, service, workspace, "absent", operation.OperationID)
+					if err != nil {
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_inventory_unavailable")
+					}
+				}
+				if next.ApplicationSecrets == nil {
+					next.ApplicationSecrets, err = app.workspaceApplicationSecretInventory(ctx, workspace)
+					if err != nil {
+						return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
+					}
+				}
+				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
+					return operation, err
+				}
+				operation = next
+			}
+			persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
+			if err := app.convergeWorkspaceApplicationLifecycle(ctx, service, operation.ApplicationCleanup, func() error {
+				desired := workspaceDeleteOperationRow(operation)
+				if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
+					return err
+				}
+				persistedResult = stringValue(desired["result"])
+				return nil
+			}); err != nil {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_cleanup_unconfirmed")
+			}
 			if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
-				// A resource-only Workspace owns no runtime or Gateway secret
-				// binding; both are absent by the provisioning mode's own
-				// declaration and need no Fabric observation or destroy.
+				// The owned independent application groups were cleaned above;
+				// this purchase created no additional legacy Runtime or Secret.
 				next := operation
 				next.Phase, next.Status, next.RuntimeStatus, next.SecretStatus, next.LastErrorCode = "runtime_secret_absent", "running", "absent", "absent", ""
 				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
@@ -864,6 +926,32 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 				operation = next
 			}
 		case "runtime_secret_absent":
+			if operation.ApplicationSecrets == nil {
+				workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
+				if err != nil || !found {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
+				}
+				next := operation
+				next.ApplicationSecrets, err = app.workspaceApplicationSecretInventory(ctx, workspace)
+				if err != nil {
+					return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "workspace_delete_secret_inventory_unavailable")
+				}
+				if err := app.persistWorkspaceDelete(ctx, operation, next, false, false); err != nil {
+					return operation, err
+				}
+				operation = next
+			}
+			persistedResult := stringValue(workspaceDeleteOperationRow(operation)["result"])
+			if err := app.convergeWorkspaceApplicationSecretCleanup(ctx, service, operation, func() error {
+				desired := workspaceDeleteOperationRow(operation)
+				if err := app.tables.ApplyWorkspaceDelete(ctx, workspaceDeleteStoreMutation{ExpectedResult: persistedResult, DesiredOperation: desired}); err != nil {
+					return err
+				}
+				persistedResult = stringValue(desired["result"])
+				return nil
+			}); err != nil {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_application_secret_cleanup_unconfirmed")
+			}
 			attachment, err := service.DetachWorkspaceStorage(ctx, operation.AccountID, operation.WorkspaceID, operation.AttachmentID, workspaceDeleteStageKey(operation, "attachment"))
 			if err != nil || !workspaceDeleteAttachmentMatches(operation, attachment) {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_attachment_unconfirmed")
@@ -1041,6 +1129,27 @@ func workspaceDeletionReceiptInput(operation workspaceDeleteOperation) clients.R
 	// Preserve exact payloads for receipts already requested by retained operations.
 	if operation.KeyStatus == "absent" {
 		input.OutputRefs["workspaceKeyStatus"] = "absent"
+	}
+	if operation.ProvisioningMode == string(contracts.WorkspaceProvisioningResourceOnly) {
+		input.Execution = (contracts.WorkspaceResourceReceiptExecution{OperationID: operation.OperationID, ResourceType: "workspace", ResourceID: operation.WorkspaceID, ComputeAllocationID: operation.ComputeID, StorageID: operation.StorageID, AttachmentID: operation.AttachmentID, ProvisioningMode: contracts.WorkspaceProvisioningResourceOnly}).Fields()
+	}
+	retirement := contracts.WorkspaceApplicationRetirementReceipt{CurrentDeploymentID: operation.CurrentApplicationDeploymentID}
+	if operation.ApplicationCleanup != nil {
+		for _, runtime := range operation.ApplicationCleanup.Runtimes {
+			retirement.Runtimes = append(retirement.Runtimes, contracts.WorkspaceApplicationRuntimeRetirementReceipt{RuntimeID: runtime.Input.RuntimeID, RuntimeOperationID: runtime.Input.RuntimeOperationID, State: runtime.Result.State, ImageRetirement: runtime.Result.ImageRetirement})
+		}
+	}
+	if operation.ApplicationSecrets != nil {
+		for _, secret := range operation.ApplicationSecrets.Secrets {
+			retirement.Secrets = append(retirement.Secrets, contracts.WorkspaceApplicationSecretRetirementReceipt{SecretRef: secret.SecretRef, Ownership: secret.Ownership, State: secret.State})
+		}
+		retirement.RetainedGatewayKeyIDs = operation.ApplicationSecrets.RetainedGatewayKeyIDs
+	}
+	if len(retirement.Runtimes)+len(retirement.Secrets)+len(retirement.RetainedGatewayKeyIDs) > 0 {
+		input.Execution["applicationRetirement"] = retirement
+	}
+	if len(retirement.RetainedGatewayKeyIDs) > 0 {
+		input.OutputRefs["applicationGatewayKeysStatus"] = "retained"
 	}
 	return input
 }

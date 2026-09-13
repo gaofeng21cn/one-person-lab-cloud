@@ -202,31 +202,30 @@ func TestWorkspaceDeleteCompletesResourceOnlyWorkspaceWithoutApplicationFacts(t 
 }
 
 func TestWorkspaceRenewalRuntimePowerSkipsResourceOnlyWorkspace(t *testing.T) {
-	store := newMemoryTableStore()
-	command := workspaceLaunchResourceOnlyUnitCommand()
-	command.OperationID, command.AccountID, command.WorkspaceID = "workspace-launch-alpha", "acct-alpha", "ws-alpha"
-	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	handler := fixture.server.(*controlPlaneHTTPHandler)
+	app := handler.app
+	renewal, err := newWorkspaceRenewalOperation(fixture.workspace, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation.Stage, operation.Status = "succeeded", "succeeded"
-	row, err := workspaceLaunchReconcileOperationRow(operation)
+	row := workspaceRenewalOperationRow(renewal)
+	mustStore(t, fixture.store.SaveRuntimeOperation(context.Background(), row))
+	renewal, err = decodeWorkspaceRenewalOperation(row)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveRuntimeOperation(context.Background(), row); err != nil {
-		t.Fatal(err)
-	}
-	app := &controlPlaneServer{tables: store}
-	renewal := workspaceRenewalOperation{WorkspaceID: "ws-alpha", AccountID: "acct-alpha"}
-	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), nil, &renewal, "suspended"); err != nil {
+	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), handler.service, &renewal, "suspended"); err != nil {
 		t.Fatalf("resource-only runtime suspend error = %v, want skipped", err)
 	}
-	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), nil, &renewal, "running"); err != nil {
+	if err := app.convergeWorkspaceRenewalRuntimePower(context.Background(), handler.service, &renewal, "running"); err != nil {
 		t.Fatalf("resource-only runtime resume error = %v, want skipped", err)
 	}
 	if renewal.ExpiryRuntimePower != nil || renewal.ResumeRuntimePower != nil {
 		t.Fatal("runtime power facts must stay unset for a resource-only workspace")
+	}
+	if !workspaceApplicationLifecycleComplete(renewal.ExpiryApplicationPower, "suspended") || !workspaceApplicationLifecycleComplete(renewal.ResumeApplicationPower, "running") {
+		t.Fatal("application inventories must persist absence before skipping runtime power")
 	}
 	if err := app.workspaceRenewalRuntimeRecoveryEligible(context.Background(), nil, renewal); err != nil {
 		t.Fatalf("resource-only runtime recovery eligibility error = %v, want eligible", err)

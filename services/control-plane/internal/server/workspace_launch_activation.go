@@ -285,6 +285,9 @@ func workspaceLaunchAcceptedPriceComponents(operation workspaceLaunchReconcileOp
 }
 
 func workspaceLaunchCanonicalReceiptExecution(operation workspaceLaunchReconcileOperation) map[string]any {
+	if operation.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		return (contracts.WorkspaceResourceReceiptExecution{OperationID: operation.ID, ResourceType: "workspace", ResourceID: operation.stringFact("workspaceId"), ComputeAllocationID: operation.stringFact("computeAllocationId"), StorageID: operation.stringFact("storageId"), AttachmentID: operation.stringFact("attachmentId"), ProvisioningMode: contracts.WorkspaceProvisioningResourceOnly}).Fields()
+	}
 	return map[string]any{
 		"operationId": operation.ID, "resourceType": "workspace", "resourceId": operation.stringFact("workspaceId"),
 		"computeAllocationId": operation.stringFact("computeAllocationId"), "storageId": operation.stringFact("storageId"), "attachmentId": operation.stringFact("attachmentId"),

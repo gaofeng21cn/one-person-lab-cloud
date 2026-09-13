@@ -77,16 +77,15 @@ func TestGatewayAccountingAuthoritativeLocalChain(t *testing.T) {
 			t.Fatalf("terminal Workspace launch HTTP readback = %#v operation=%s", terminal, workspaceLaunchReconcileResultSummary(operation))
 		}
 		runtimeStatus := gatewayAccountingEnvelopeData(t, api.mustRequest(t, http.MethodGet, "/api/workspaces/"+operation.stringFact("workspaceId")+"/runtime-status", nil, "", http.StatusOK))
-		if stringValue(runtimeStatus["workspaceId"]) != operation.stringFact("workspaceId") || stringValue(runtimeStatus["runtimeId"]) != operation.stringFact("runtimeId") ||
-			stringValue(runtimeStatus["url"]) != operation.stringFact("url") || stringValue(runtimeStatus["serviceName"]) != operation.stringFact("runtimeServiceName") || runtimeStatus["ready"] != true {
-			t.Fatalf("terminal Fabric runtime readback = %#v operation=%s", runtimeStatus, workspaceLaunchReconcileResultSummary(operation))
+		if stringValue(runtimeStatus["workspaceId"]) != operation.stringFact("workspaceId") || runtimeStatus["runtimeId"] != nil || runtimeStatus["url"] != nil || runtimeStatus["currentApplication"] != nil || runtimeStatus["ready"] != false || runtimeStatus["status"] != "not_found" {
+			t.Fatalf("resource-only Workspace application readback = %#v operation=%s", runtimeStatus, workspaceLaunchReconcileResultSummary(operation))
 		}
-		if process.fabric.calls == nil || len(*process.fabric.calls) != fabricCallsBeforeTerminalReadback+1 || (*process.fabric.calls)[fabricCallsBeforeTerminalReadback] != "fabric.runtime-status" {
-			t.Fatalf("terminal Fabric runtime calls = %#v", process.fabric.calls)
+		if process.fabric.calls == nil || len(*process.fabric.calls) != fabricCallsBeforeTerminalReadback {
+			t.Fatalf("resource-only Workspace queried retired Fabric runtime: %#v", process.fabric.calls)
 		}
-		assertGatewayAccountingCanonicalWorkspaceOpen(t, api, operation)
-		if len(*process.fabric.calls) != fabricCallsBeforeTerminalReadback+1 {
-			t.Fatalf("canonical Workspace open used legacy or extra Fabric reads: %#v", *process.fabric.calls)
+		workspace, found, err := process.store.GetWorkspace(context.Background(), operation.stringFact("workspaceId"))
+		if err != nil || !found || workspace["applicationBinding"] != "empty" || stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+			t.Fatalf("purchase incorrectly installed an application: %+v err=%v", workspace, err)
 		}
 
 		beforeReplay := fixture.writeCounts(t)

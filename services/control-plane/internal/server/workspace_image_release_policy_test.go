@@ -114,7 +114,7 @@ func TestPostgresWorkspaceImageReleaseActivationPersistsPolicyAndAuditReplay(t *
 	}
 }
 
-func TestWorkspaceImageReleaseActivationPinsNewLaunchPreflightToActiveImage(t *testing.T) {
+func TestWorkspaceImageReleaseActivationPinsDefaultApplicationToActiveImage(t *testing.T) {
 	const currentImage = "registry.example/workspace@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const rollbackImage = "registry.example/workspace@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	catalogJSON, err := json.Marshal(contracts.WorkspaceImageReleaseCatalog{SchemaVersion: 1, Releases: []contracts.WorkspaceImageRelease{
@@ -143,9 +143,18 @@ func TestWorkspaceImageReleaseActivationPinsNewLaunchPreflightToActiveImage(t *t
 	if launch.Code != http.StatusAccepted {
 		t.Fatalf("launch status=%d body=%s", launch.Code, launch.Body.String())
 	}
-	if len(fabric.preflightInputs) != 1 || fabric.preflightInputs[0].WorkspaceImageDigest != rollbackImage {
+	if len(fabric.preflightInputs) != 1 || fabric.preflightInputs[0].WorkspaceImageDigest != "" {
 		t.Fatalf("preflight inputs=%#v", fabric.preflightInputs)
 	}
+	rows, err := queryRuntimeOperations(context.Background(), server.(*controlPlaneHTTPHandler).app.tables, runtimeOperationQuery{Action: workspaceDefaultApplicationAction})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("default installation missing: %v", err)
+	}
+	request, err := decodeWorkspaceDefaultApplication(rows[0])
+	if err != nil || request.Revision.Image != rollbackImage {
+		t.Fatalf("default revision did not freeze active image: %+v %v", request.Revision, err)
+	}
+
 }
 
 func workspaceImageReleaseActivationBodyForTest(t *testing.T, releaseVersion string, expectedRevision int, reason string) string {

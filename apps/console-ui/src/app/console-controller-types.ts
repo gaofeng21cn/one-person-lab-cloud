@@ -293,8 +293,6 @@ export interface WorkspaceApplicationDeploymentController {
   targetRevision: string;
   setApplicationId: (value: string) => void;
   setTargetRevision: (value: string) => void;
-  configurationDigest: string;
-  setConfigurationDigest: (value: string) => void;
   draft: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft;
   validation: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraftValidation;
   setDraftField: <K extends keyof import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft>(
@@ -312,5 +310,6 @@ export interface WorkspaceApplicationDeploymentController {
   busy: boolean;
   admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
+  retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;
 }

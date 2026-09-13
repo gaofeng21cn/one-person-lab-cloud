@@ -93,9 +93,9 @@ export function useWorkspaceSecretController({
   }, [reset, session?.csrfToken, session?.user.id]);
 
   useEffect(() => {
-    clear();
-    return clear;
-  }, [activeWorkspaceId, clear]);
+    reset();
+    return reset;
+  }, [activeWorkspaceId, workspace?.applicationBinding, workspace?.currentApplication?.operationId, reset]);
 
   const armTimeout = () => {
     clearTimer();
@@ -207,6 +207,12 @@ export function useWorkspaceSecretController({
       const response = await rotateWorkspaceCredentials(workspaceId, csrfToken, intent.idempotencyKey);
       if (!requestIsCurrent(generation, requestStillCurrent, userId, csrfToken, workspaceId)) return;
       if (response.workspaceId !== workspaceId) throw new Error("workspace_credentials_unavailable");
+      if ("status" in response) {
+        if (response.status !== "pending" || !response.operationId?.trim() || "access" in response) throw new Error("workspace_credentials_unavailable");
+        flash("密码轮换已提交，应用正在更新；完成后请重新显示密码");
+        await refreshWorkspaceDetail(workspaceId);
+        return;
+      }
       const accepted = acceptWorkspaceSecretCompletion(generation, requestGeneration.current, {
         kind: "runtime-credential",
         response

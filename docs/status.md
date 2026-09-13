@@ -25,8 +25,8 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 ## Application Hosting Boundary
 
 The baseline below combines canonical source at
-`573d7bc91d6b283de429557fdd3d216c69911894` and the independent application deployment repair on
-2026-09-13. It is not live resource readback for `ws-609081bc2298edd18e`,
+`a0430b099cc787a8931e54f0bda4a1424f376eb1` and the default installation,
+replacement and lifecycle changes under local verification on 2026-09-13. It is not live resource readback for `ws-609081bc2298edd18e`,
 Candidate qualification, or an Instance deployment. Target boundaries belong
 to [architecture](architecture.md#workspace-application-boundary); sequencing
 and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
@@ -35,13 +35,56 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 
 | Capability | Current source behavior | Remaining gap and owning source |
 | --- | --- | --- |
-| Resource purchase and fulfillment | Resource-only purchase, activation, renewal, expiry and deletion preserve resource/financial facts without an application Runtime or Gateway Key. Retained full Launch still installs OPL App through its original path. | Default OPL App installation must compose resource provisioning with the independent application operation. The Console resource-only purchase and actual Instance journey remain unqualified. CP owns Launch and Workspace orchestration; Fabric owns resources. |
-| Application admission and deployment | Administrator revision admission, immutable digest references, PostgreSQL intent persistence and an application worker exist. The local repair resumes pending/running operations using the original attachment identity and atomically commits Workspace activation with the next operation phase. | Default OPL App, replacement and old-runtime/image retirement are not unified. Registry repository/tag discovery is absent. CP owns admission and deployment; Fabric owns execution. |
-| Runtime execution | Local-Docker and Tencent adapters consume an explicit HTTP entry port and declared components. Local executes declared HTTP probes; Tencent checks current Deployment/ReplicaSet/Pod identity and image digest. Live read failures no longer replay historical ready observations. | Full dependency configuration, Secret binding, per-component mounts and lifecycle execution are incomplete. Tencent currently supports at most one native readiness probe; additional checks are rejected before apply. |
-| Persistent storage | Resource-only storage and retained OPL App storage exist. The local application test writes through a declared bind mount and reads it after container reconstruction. | General data binding/import and preservation across different applications remain open. Old and new applications must retain isolated data; source fixes do not qualify CBS/TKE data handling. |
-| Application entry | Local publishes only the selected public HTTP port. Tencent publishes a root-path Ingress and waits for its actual controller address and Service binding before reporting a public-entry application ready. `cloud_private` publishes no external entry. | General Cloud access policy, application Cookie/API/SSE/browser behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
-| Existing lifecycle consumers | Retained OPL App access, image replacement and lifecycle paths remain available. | Access, renewal, expiry, deletion and credential consumers still need migration from initial Launch Runtime facts to the current application deployment. |
-| Administrator UI | Structured revision registration and independent deployment progress exist. HTTP service port and health-check port are separate; invalid input is blocked and manual review no longer invents a completed phase. | Namespace → repository → version selection, default installation and full replacement controls remain open. |
+| Resource purchase and fulfillment | New default purchases commit a resource-only Launch and an independent default installation request. Charges advance in the resource worker; application failure does not rewrite purchase success. Explicit resource-only and retained full Launch contracts remain distinct. | Actual Instance adoption is unqualified. CP owns Launch and Workspace orchestration; Fabric owns resources. |
+| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. | Registry repository/tag discovery is absent. Full IBD dependency configuration remains open. |
+| Runtime execution | Local-Docker and Tencent execute declared components and live health/entry readback. OPL App uses an explicit profile and Secret-file ABI; lifecycle targets exact generations and fences late creation after deletion. | Tencent supports at most one native readiness probe. Local Docker fixtures do not qualify the actual upstream OPL App or IBD image. |
+| Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
+| Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; an application without a web entry has no Open action. `cloud_private` publishes no external entry. | Application Cookie/API/SSE behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
+| Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
+| Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Namespace → repository → tag/version selection remains open. |
+
+### Default Application Replacement Verification
+
+The local change combines the resource purchase and default application as
+independent durable operations. It preserves exact resource/financial identity
+through replacement; current and reserved application IDs are persisted on the
+Workspace. Legacy full Launch and generic runtime records remain readable under
+their original contracts. New retirement evidence does not rewrite purchase
+receipts or include CP recovery cursors, credentials or financial mutations.
+
+Focused checks cover default installation, compatible update, switching to an
+unrelated application, reusing original data on reinstall, preflight failure
+without stopping the predecessor, entitlement fencing and immutable purchase
+readback. Ledger boundary tests accept explicit resource-only evidence and
+reject incomplete cleanup or runtime fields inserted into that resource contract.
+Retained full Launch recovery and monthly preflight checks continue to pass.
+The integrated tree at `a0430b09` passes focused CP default/replacement,
+credential preservation and rotation, lineage, recovery, HTTP replay, and the
+new application-data material HTTP checks, plus shared Go contract tests.
+Browser, TypeScript, lint and build checks passed before the main integration;
+their source files are unchanged by that integration.
+
+Required full verification is not complete. The retained full run failed when
+its temporary PostgreSQL entered recovery; Fabric database-dependent tests could
+not start. Real Docker reached the OPL-profile fixture's ready state and
+password/session login, but the complete replacement/cleanup scenario has not
+passed. Exact Docker events exposed a probe execution/automatic-removal deadline
+conflict. Execution and verified cleanup now have one owner and separate bounds;
+focused tests pass, while the updated complete Docker scenario still needs a
+successful run. Subsequent host observations show sustained CPU saturation and
+heavy memory compression/swap, so the next full PostgreSQL/Docker run requires an
+available local verification environment. These partial results are not a full
+verification receipt.
+
+The owning checks are the CP `workspace_default_application_test.go`,
+`workspace_application_recovery_test.go`,
+`workspace_application_operation_store_test.go` and
+`workspace_application_lifecycle_test.go`; the Fabric application lifecycle and
+real Docker integration tests; and Ledger `workspace_application_receipt_test.go`.
+Local logs are retained under
+`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-application-delivery/output/workspace-default-install-replacement-20260913/`.
+These local checks do not establish a Candidate, Product Release, Tencent
+Instance deployment, real OPL App business session, or IBD business availability.
 
 ### Independent Application Deployment Verification
 
@@ -111,8 +154,9 @@ Instance qualification requires its own deployment and runtime receipts.
 
 These checks prove their respective source and local-runtime layers. The
 non-OPL Docker fixture is not OPL App or IBD business qualification. Application
-replacement, obsolete image retirement, real Tencent networking/TLS, and the
-selected Workspace's IBD launch remain open. No new Candidate, Product Release
+replacement and retirement verification for the successor change are reported
+above. Real Tencent networking/TLS and the selected Workspace's IBD launch
+remain open. No new Candidate, Product Release
 or Instance receipt is claimed.
 
 ## Evidence Matrix

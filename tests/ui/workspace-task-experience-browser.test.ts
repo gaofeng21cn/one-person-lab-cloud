@@ -7,12 +7,15 @@ import type {
   PricingCatalogResponse,
   PricingPreviewResponse,
   RuntimeCredentialResponse,
+  RuntimeCredentialRotationResponse,
   SourceEnvelope,
   WorkspaceDTO,
   WorkspaceGatewayBudgetDTO,
   WorkspaceGatewayBudgetUpdateRequest,
   WorkspaceListData,
   WorkspaceLaunchResponse,
+  WorkspaceCurrentApplicationDTO,
+  WorkspaceRenewalReadDTO,
   WorkspaceRuntimeDTO
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
@@ -231,6 +234,157 @@ test("customer completes one authoritative Workspace journey at desktop and mobi
 
 test("Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed", { timeout: 60_000 }, verifyWorkspaceDetailExperience);
 
+test("Current application status and declared capabilities replace legacy Workspace entry and controls", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const application: WorkspaceCurrentApplicationDTO = {
+    operationId: "application-knowledge", applicationId: "knowledge-app", revision: "1.2.3", status: "pending",
+    capabilities: { credentials: false, gateway: false }
+  };
+  let runtimeOperationId = application.operationId;
+  let budgetReads = 0;
+  const detail: WorkspaceDTO = {
+    id: "ws-1", ownerAccountId: "acct-1", ownerUserId: "user-customer", name: "Application Workspace",
+    state: "running", createdAt: "2026-09-13T00:00:00Z", updatedAt: "2026-09-13T00:00:00Z",
+    packageId: "basic", storageGb: 10, renewalStatus: "manual", workspaceApiKeyId: "9",
+    applicationBinding: "knowledge-app@1.2.3", currentApplication: application
+  };
+  const source = <T,>(data: T, sourceName = "control-plane"): SourceEnvelope<T> => ({
+    source: sourceName, status: "available", available: true, fetchedAt: detail.updatedAt, data
+  });
+  try {
+    for (const viewport of viewports) {
+      application.status = "pending";
+      application.capabilities.credentials = false;
+      delete application.entryUrl;
+      runtimeOperationId = application.operationId;
+      detail.applicationBinding = "empty";
+      delete detail.currentApplication;
+      detail.applicationInstallation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status: "running" };
+      let installationResumes = 0;
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      const audit = await installBrowserAudit(page, demo.origin);
+      await page.addInitScript("window.open = (url) => { window.openedApplication = url; return null; };");
+      await page.route("**/api/workspaces?*", (route) => route.fulfill({ json: source<WorkspaceListData>({ items: [detail], total: 1, page: 1, pageSize: 50 }) }));
+      await page.route("**/api/workspaces/ws-1/application-installation/resume", async (route) => {
+        assert.equal(route.request().method(), "POST");
+        assert.deepEqual(route.request().postDataJSON(), {});
+        installationResumes += 1;
+        detail.applicationInstallation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status: "running", canResume: false };
+        await route.fulfill({ status: 202, json: { workspaceId: "ws-1", applicationInstallation: detail.applicationInstallation } });
+      });
+      await page.route("**/api/workspaces/ws-1/runtime-status", (route) => route.fulfill({ json: source<WorkspaceRuntimeDTO>({
+        workspaceId: "ws-1", runtimeId: "runtime-ws-1", status: application.status === "ready" ? "running" : "unready",
+        ready: application.status === "ready", checks: [], url: "https://retired-entry.example.invalid/",
+        access: { username: "retired-user", credentialStatus: "configured" },
+        currentApplication: detail.currentApplication ? { ...application, operationId: runtimeOperationId } : undefined
+      }, "fabric") }));
+      await page.route("**/api/workspaces/ws-1/renewal", (route) => route.fulfill({ json: {
+        workspaceId: "ws-1", autoRenew: false, paidThrough: "2026-10-13T00:00:00Z", renewalStatus: "manual",
+        recovery: { state: "not_required", reason: "" }
+      } satisfies WorkspaceRenewalReadDTO }));
+      await page.route("**/api/workspaces/ws-1/gateway-budget", async (route) => {
+        budgetReads += 1;
+        await route.fulfill({ status: 500, json: { error: "unexpected_legacy_budget_read" } });
+      });
+      await login(page, demo.origin);
+      await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
+      const availability = page.locator(".workspace-availability");
+      const open = page.getByRole("button", { name: "打开工作空间", exact: true });
+      const refresh = page.locator(".workspace-identity-panel").getByRole("button", { name: "刷新", exact: true });
+      await page.getByText("应用安装中", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await open.isDisabled(), true);
+      detail.applicationInstallation.status = "manual_review";
+      await refresh.click();
+      await page.getByText("应用安装需要处理", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "继续安装应用", exact: true }).count(), 0);
+      detail.applicationInstallation.canResume = true;
+      await refresh.click();
+      await page.getByRole("button", { name: "继续安装应用", exact: true }).click();
+      await page.getByText("应用安装中", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(installationResumes, 1);
+      assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+      detail.applicationBinding = "knowledge-app@1.2.3";
+      detail.currentApplication = application;
+      delete detail.applicationInstallation;
+      await refresh.click();
+      await availability.getByText("应用正在部署", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("knowledge-app · 1.2.3", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await open.isDisabled(), true);
+      assert.equal(await page.locator(".workspace-access-panel").count(), 0);
+      assert.equal(await page.locator(".workspace-settings-panel").count(), 0);
+      application.status = "ready";
+      application.entryUrl = "https://knowledge-app.example.invalid/";
+      await refresh.click();
+      await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+      await open.click();
+      assert.equal(await page.evaluate(() => (window as unknown as { openedApplication: string }).openedApplication), application.entryUrl);
+      delete application.entryUrl;
+      await refresh.click();
+      await availability.getByText("运行中", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await open.isDisabled(), true);
+      for (const [status, label] of [["suspended", "应用已暂停"], ["failed", "应用运行失败"]] as const) {
+        application.status = status;
+        await refresh.click();
+        await availability.getByText(label, { exact: true }).waitFor({ state: "visible" });
+        assert.equal(await open.isDisabled(), true);
+      }
+      application.status = "ready";
+      application.entryUrl = "https://knowledge-app.example.invalid/";
+      runtimeOperationId = "retired-application";
+      await refresh.click();
+      await availability.getByText("状态待确认", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await open.isDisabled(), true);
+      assert.equal(budgetReads, 0);
+
+      let rotationSubmitted = false;
+      let rotationWrites = 0;
+      await page.route("**/api/workspaces/ws-1/runtime-credentials/reveal", (route) => route.fulfill({ json: {
+        workspaceId: "ws-1", access: {
+          account: "application-user", username: "application-user", password: rotationSubmitted ? "FixtureAfterRotation" : "FixtureBeforeRotation",
+          credentialStatus: "configured", credentialVersion: rotationSubmitted ? "2" : "1"
+        }
+      } satisfies RuntimeCredentialResponse }));
+      await page.route("**/api/workspaces/ws-1/runtime-credentials/rotate", (route) => {
+        rotationSubmitted = true;
+        rotationWrites += 1;
+        application.status = "pending";
+        return route.fulfill({ status: 202, json: {
+          workspaceId: "ws-1", operationId: "application-after-rotation", status: "pending"
+        } satisfies RuntimeCredentialRotationResponse });
+      });
+      application.capabilities.credentials = true;
+      runtimeOperationId = application.operationId;
+      await refresh.click();
+      await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+      const accessPanel = page.locator(".workspace-access-panel");
+      await accessPanel.getByRole("button", { name: "显示", exact: true }).click();
+      await accessPanel.getByText("FixtureBeforeRotation", { exact: true }).waitFor({ state: "visible" });
+      await accessPanel.getByRole("button", { name: "轮换密码", exact: true }).click();
+      await page.getByText("密码轮换已提交，应用正在更新；完成后请重新显示密码", { exact: true }).waitFor({ state: "visible" });
+      await availability.getByText("应用正在部署", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await accessPanel.getByText("FixtureBeforeRotation", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("登录密码已轮换", { exact: true }).count(), 0);
+      application.operationId = "application-after-rotation";
+      runtimeOperationId = application.operationId;
+      application.status = "ready";
+      await refresh.click();
+      await availability.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
+      await accessPanel.getByRole("button", { name: "显示", exact: true }).click();
+      await accessPanel.getByText("FixtureAfterRotation", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(rotationWrites, 1);
+      assert.equal(await accessPanel.getByText("API 密钥", { exact: true }).count(), 0);
+      assert.deepEqual(audit.pageErrors, []);
+      assert.deepEqual(audit.externalRequests, []);
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
 test("multiple active Workspace launches block repeat purchase until recovery is unambiguous", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
@@ -381,8 +535,8 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
 
     await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
     await page.getByText("当前开通结果尚未确认，请刷新状态，暂勿重复购买。", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("heading", { name: "工作空间已可使用", exact: true }).count(), 0);
-    assert.equal(await visibleTextCount(page, "工作空间已完成开通，可以继续查看并进入。"), 0);
+    assert.equal(await page.getByRole("heading", { name: "工作空间资源已开通", exact: true }).count(), 0);
+    assert.equal(await visibleTextCount(page, "计算与存储资源已开通，可进入详情查看应用安装与运行状态。"), 0);
     assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
     assert.equal(await visibleTextCount(page, "succeeded"), 0);
     assert.equal(authoritativeReadCount, 0);
@@ -980,7 +1134,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
     assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
     assert.deepEqual(authoritativeReadRequests[0], { page: "1", pageSize: "50" });
-    await page.getByRole("heading", { name: "工作空间已可使用", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "工作空间资源已开通", exact: true }).waitFor({ state: "visible" });
     const viewWorkspace = page.getByRole("button", { name: "查看工作空间", exact: true });
     await viewWorkspace.waitFor({ state: "visible" });
     await viewWorkspace.click();

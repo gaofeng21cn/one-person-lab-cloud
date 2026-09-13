@@ -75,6 +75,10 @@ const (
 	FieldApplicationBinding = "application_binding"
 	// FieldApplicationBindingVersion holds the string denoting the application_binding_version field in the database.
 	FieldApplicationBindingVersion = "application_binding_version"
+	// FieldCurrentApplicationDeploymentID holds the string denoting the current_application_deployment_id field in the database.
+	FieldCurrentApplicationDeploymentID = "current_application_deployment_id"
+	// FieldReservedApplicationDeploymentID holds the string denoting the reserved_application_deployment_id field in the database.
+	FieldReservedApplicationDeploymentID = "reserved_application_deployment_id"
 	// Table holds the table name of the workspace in the database.
 	Table = "control_plane_workspaces"
 )
@@ -113,6 +117,8 @@ var Columns = []string{
 	FieldCustomerProduct,
 	FieldApplicationBinding,
 	FieldApplicationBindingVersion,
+	FieldCurrentApplicationDeploymentID,
+	FieldReservedApplicationDeploymentID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -190,6 +196,10 @@ var (
 	DefaultApplicationBinding string
 	// DefaultApplicationBindingVersion holds the default value on creation for the "application_binding_version" field.
 	DefaultApplicationBindingVersion int64
+	// DefaultCurrentApplicationDeploymentID holds the default value on creation for the "current_application_deployment_id" field.
+	DefaultCurrentApplicationDeploymentID string
+	// DefaultReservedApplicationDeploymentID holds the default value on creation for the "reserved_application_deployment_id" field.
+	DefaultReservedApplicationDeploymentID string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -355,4 +365,14 @@ func ByApplicationBinding(opts ...sql.OrderTermOption) OrderOption {
 // ByApplicationBindingVersion orders the results by the application_binding_version field.
 func ByApplicationBindingVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldApplicationBindingVersion, opts...).ToFunc()
+}
+
+// ByCurrentApplicationDeploymentID orders the results by the current_application_deployment_id field.
+func ByCurrentApplicationDeploymentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCurrentApplicationDeploymentID, opts...).ToFunc()
+}
+
+// ByReservedApplicationDeploymentID orders the results by the reserved_application_deployment_id field.
+func ByReservedApplicationDeploymentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReservedApplicationDeploymentID, opts...).ToFunc()
 }

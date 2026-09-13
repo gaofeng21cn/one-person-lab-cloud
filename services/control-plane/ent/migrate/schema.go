@@ -452,6 +452,8 @@ var (
 		{Name: "customer_product", Type: field.TypeBool, Default: true},
 		{Name: "application_binding", Type: field.TypeString, Default: ""},
 		{Name: "application_binding_version", Type: field.TypeInt64, Default: 0},
+		{Name: "current_application_deployment_id", Type: field.TypeString, Default: ""},
+		{Name: "reserved_application_deployment_id", Type: field.TypeString, Default: ""},
 	}
 	// ControlPlaneWorkspacesTable holds the schema information for the "control_plane_workspaces" table.
 	ControlPlaneWorkspacesTable = &schema.Table{

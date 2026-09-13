@@ -315,34 +315,36 @@ type workspaceLaunchReconcileOperation struct {
 }
 
 type workspaceLaunchReconcileCreate struct {
-	OperationID             string
-	RequestHash             string
-	AccountID               string
-	OwnerUserID             string
-	Sub2APIUserID           int64
-	WorkspaceKeyGroupID     int64
-	WorkspaceID             string
-	Name                    string
-	PackageID               string
-	StorageGB               int
-	AutoRenew               bool
-	PriceVersion            string
-	TotalChargeUSDMicros    int64
-	ProviderProfileRef      string
-	PreflightBindingRef     string
-	SpecDigest              string
-	WorkspaceImageDigest    string
-	PreChargeBalanceMicros  int64
-	AcceptanceBCapacitySlot bool
-	ResourceBillingEnabled  *bool
-	Mode                    contracts.WorkspaceProvisioningMode
-	CreatedAt               time.Time
+	DefaultApplicationOperation map[string]any
+	OperationID                 string
+	RequestHash                 string
+	AccountID                   string
+	OwnerUserID                 string
+	Sub2APIUserID               int64
+	WorkspaceKeyGroupID         int64
+	WorkspaceID                 string
+	Name                        string
+	PackageID                   string
+	StorageGB                   int
+	AutoRenew                   bool
+	PriceVersion                string
+	TotalChargeUSDMicros        int64
+	ProviderProfileRef          string
+	PreflightBindingRef         string
+	SpecDigest                  string
+	WorkspaceImageDigest        string
+	PreChargeBalanceMicros      int64
+	AcceptanceBCapacitySlot     bool
+	ResourceBillingEnabled      *bool
+	Mode                        contracts.WorkspaceProvisioningMode
+	CreatedAt                   time.Time
 }
 
 type workspaceLaunchReconcileClaim struct {
-	AccountID               string
-	DesiredOperation        map[string]any
-	AcceptanceBCapacitySlot bool
+	DefaultApplicationOperation map[string]any
+	AccountID                   string
+	DesiredOperation            map[string]any
+	AcceptanceBCapacitySlot     bool
 }
 
 type workspaceLaunchReconcileCAS struct {
@@ -475,7 +477,7 @@ func (r *WorkspaceLaunchReconciler) Create(ctx context.Context, command workspac
 		return workspaceLaunchReconcileOperation{}, err
 	}
 	if err := r.store.ClaimWorkspaceLaunchReconcile(ctx, workspaceLaunchReconcileClaim{
-		AccountID: command.AccountID, DesiredOperation: row, AcceptanceBCapacitySlot: command.AcceptanceBCapacitySlot,
+		AccountID: command.AccountID, DesiredOperation: row, AcceptanceBCapacitySlot: command.AcceptanceBCapacitySlot, DefaultApplicationOperation: command.DefaultApplicationOperation,
 	}); err != nil {
 		if !errors.Is(err, errWorkspaceLaunchCASConflict) {
 			return workspaceLaunchReconcileOperation{}, err
@@ -488,10 +490,15 @@ func (r *WorkspaceLaunchReconciler) Create(ctx context.Context, command workspac
 		if decodeErr != nil || !workspaceLaunchReconcileSubmissionMatches(existing, command) {
 			return workspaceLaunchReconcileOperation{}, err
 		}
-		if existing.Status == contracts.StatusPending {
+		if existing.Status == contracts.StatusPending && existing.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
 			return r.Reconcile(ctx, command.OperationID)
 		}
 		return existing, nil
+	}
+	// A resource-only request starts at the charge stage. Dispatch it only
+	// from the durable worker, after the request has returned its operation.
+	if operation.provisioningMode() == contracts.WorkspaceProvisioningResourceOnly {
+		return operation, nil
 	}
 	return r.Reconcile(ctx, command.OperationID)
 }

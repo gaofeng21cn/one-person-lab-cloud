@@ -196,6 +196,7 @@ type dockerContainerInspect struct {
 	Image  string `json:"Image"`
 	Config struct {
 		Image       string            `json:"Image"`
+		Env         []string          `json:"Env"`
 		Labels      map[string]string `json:"Labels"`
 		Healthcheck *struct {
 			Test        []string `json:"Test"`

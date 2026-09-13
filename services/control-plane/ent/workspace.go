@@ -79,7 +79,11 @@ type Workspace struct {
 	ApplicationBinding string `json:"application_binding,omitempty"`
 	// ApplicationBindingVersion holds the value of the "application_binding_version" field.
 	ApplicationBindingVersion int64 `json:"application_binding_version,omitempty"`
-	selectValues              sql.SelectValues
+	// CurrentApplicationDeploymentID holds the value of the "current_application_deployment_id" field.
+	CurrentApplicationDeploymentID string `json:"current_application_deployment_id,omitempty"`
+	// ReservedApplicationDeploymentID holds the value of the "reserved_application_deployment_id" field.
+	ReservedApplicationDeploymentID string `json:"reserved_application_deployment_id,omitempty"`
+	selectValues                    sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -91,7 +95,7 @@ func (*Workspace) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case workspace.FieldWorkspaceAPIKeyID, workspace.FieldApplicationBindingVersion:
 			values[i] = new(sql.NullInt64)
-		case workspace.FieldID, workspace.FieldAccountID, workspace.FieldOwnerAccountID, workspace.FieldOwnerUserID, workspace.FieldUserID, workspace.FieldName, workspace.FieldURL, workspace.FieldState, workspace.FieldStatus, workspace.FieldPurchaseReceiptID, workspace.FieldBillingStateJSON, workspace.FieldStorageID, workspace.FieldCurrentComputeAllocationID, workspace.FieldCurrentAttachmentID, workspace.FieldRuntimeID, workspace.FieldRuntimeServiceName, workspace.FieldRuntimeServiceNameRoot, workspace.FieldServiceName, workspace.FieldAccessTokenStatus, workspace.FieldAccessAccount, workspace.FieldAccessUsername, workspace.FieldCredentialStatus, workspace.FieldCredentialVersion, workspace.FieldCredentialSecretRef, workspace.FieldVerificationSlotID, workspace.FieldApplicationBinding:
+		case workspace.FieldID, workspace.FieldAccountID, workspace.FieldOwnerAccountID, workspace.FieldOwnerUserID, workspace.FieldUserID, workspace.FieldName, workspace.FieldURL, workspace.FieldState, workspace.FieldStatus, workspace.FieldPurchaseReceiptID, workspace.FieldBillingStateJSON, workspace.FieldStorageID, workspace.FieldCurrentComputeAllocationID, workspace.FieldCurrentAttachmentID, workspace.FieldRuntimeID, workspace.FieldRuntimeServiceName, workspace.FieldRuntimeServiceNameRoot, workspace.FieldServiceName, workspace.FieldAccessTokenStatus, workspace.FieldAccessAccount, workspace.FieldAccessUsername, workspace.FieldCredentialStatus, workspace.FieldCredentialVersion, workspace.FieldCredentialSecretRef, workspace.FieldVerificationSlotID, workspace.FieldApplicationBinding, workspace.FieldCurrentApplicationDeploymentID, workspace.FieldReservedApplicationDeploymentID:
 			values[i] = new(sql.NullString)
 		case workspace.FieldCreatedAt, workspace.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -302,6 +306,18 @@ func (w *Workspace) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				w.ApplicationBindingVersion = value.Int64
 			}
+		case workspace.FieldCurrentApplicationDeploymentID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field current_application_deployment_id", values[i])
+			} else if value.Valid {
+				w.CurrentApplicationDeploymentID = value.String
+			}
+		case workspace.FieldReservedApplicationDeploymentID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field reserved_application_deployment_id", values[i])
+			} else if value.Valid {
+				w.ReservedApplicationDeploymentID = value.String
+			}
 		default:
 			w.selectValues.Set(columns[i], values[i])
 		}
@@ -430,6 +446,12 @@ func (w *Workspace) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("application_binding_version=")
 	builder.WriteString(fmt.Sprintf("%v", w.ApplicationBindingVersion))
+	builder.WriteString(", ")
+	builder.WriteString("current_application_deployment_id=")
+	builder.WriteString(w.CurrentApplicationDeploymentID)
+	builder.WriteString(", ")
+	builder.WriteString("reserved_application_deployment_id=")
+	builder.WriteString(w.ReservedApplicationDeploymentID)
 	builder.WriteByte(')')
 	return builder.String()
 }

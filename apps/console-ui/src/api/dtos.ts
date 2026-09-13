@@ -80,6 +80,8 @@ export interface Workspace {
   name?: string;
   url?: string;
   applicationBinding?: string;
+  currentApplication?: WorkspaceCurrentApplicationDTO;
+  applicationInstallation?: WorkspaceApplicationInstallationDTO;
   storageId?: string;
   currentComputeAllocationId?: string;
   currentAttachmentId?: string;
@@ -141,6 +143,7 @@ export interface WorkspaceLaunchResponse {
   createdAt?: string;
   updatedAt?: string;
   closeout?: WorkspaceLaunchCloseoutDTO;
+  applicationInstallation?: WorkspaceApplicationInstallationDTO;
 }
 
 export interface WorkspaceLaunchCloseoutDTO {
@@ -218,6 +221,25 @@ export interface WorkspaceRuntimeDTO {
   url?: string;
   serviceName?: string;
   access?: RuntimeAccessSummary;
+  currentApplication?: WorkspaceCurrentApplicationDTO;
+}
+
+export interface WorkspaceCurrentApplicationDTO {
+  operationId: string;
+  applicationId: string;
+  revision: string;
+  status: "absent" | "pending" | "ready" | "failed" | "suspended";
+  entryUrl?: string;
+  capabilities: { credentials: boolean; gateway: boolean };
+}
+
+export interface WorkspaceApplicationInstallationDTO {
+  operationId: string;
+  applicationId: string;
+  revision: string;
+  status: "pending" | "running" | "manual_review";
+  canResume?: boolean;
+  canRetry?: boolean;
 }
 
 export interface WorkspaceGatewayBudgetDTO {
@@ -261,6 +283,12 @@ export interface RuntimeCredentialResponse {
   access: RuntimeCredentialAccess;
   receiptId?: string;
 }
+
+export type RuntimeCredentialRotationResponse = RuntimeCredentialResponse | {
+  workspaceId: string;
+  operationId: string;
+  status: "pending";
+};
 
 export type WorkspaceRuntimeCredentialDTO = RuntimeCredentialResponse;
 
@@ -978,7 +1006,9 @@ export interface WorkspaceApplicationRuntimeObservationDTO {
 
 export interface WorkspaceApplicationIntentDTO {
   operationId: string;
+  workspaceId: string;
   phase: string;
+  failurePhase?: string;
   applicationId: string;
   targetRevision: string;
   currentBinding: string;

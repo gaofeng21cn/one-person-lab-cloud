@@ -374,16 +374,21 @@ export function createOperatorWorkspaceApplicationDeployment(
   workspaceId: string,
   applicationId: string,
   targetRevision: string,
-  configurationDigest: string,
+  configuration: { environment: Record<string, string> },
   csrfToken: string,
   idempotencyKey: string
 ): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
   return postJson<unknown>(
     "/api/operator/application-deployments",
-    { workspaceId, applicationId, targetRevision, configurationDigest }, csrfToken, idempotencyKey
+    { workspaceId, applicationId, targetRevision, configuration }, csrfToken, idempotencyKey
   ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
 
 export function getOperatorWorkspaceApplicationDeployment(operationId: string, signal?: AbortSignal): Promise<SourceEnvelope<{ status: string; intent: WorkspaceApplicationIntentDTO }>> {
   return sourceGet<{ status: string; intent: WorkspaceApplicationIntentDTO }>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}`, signal);
+}
+
+export function retryOperatorWorkspaceApplicationDeployment(operationId: string, csrfToken: string): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
+  return postJson<unknown>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}/retry`, {}, csrfToken, `application-retry:${operationId}`)
+    .then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }

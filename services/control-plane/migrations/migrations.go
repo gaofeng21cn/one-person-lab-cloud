@@ -61,6 +61,9 @@ var workspaceApplicationBindingVersion string
 //go:embed 202609130001_application_data_materials.sql
 var applicationDataMaterials string
 
+//go:embed 202609130001_workspace_application_selection.sql
+var workspaceApplicationSelection string
+
 func Apply(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, monthlyHardCut, []any{}, nil)
 }
@@ -155,4 +158,8 @@ func ApplyWorkspaceApplicationBindingVersion(ctx context.Context, driver dialect
 
 func ApplyApplicationDataMaterials(ctx context.Context, driver dialect.Driver) error {
 	return driver.Exec(ctx, applicationDataMaterials, []any{}, nil)
+}
+
+func ApplyWorkspaceApplicationSelection(ctx context.Context, driver dialect.Driver) error {
+	return driver.Exec(ctx, workspaceApplicationSelection, []any{}, nil)
 }

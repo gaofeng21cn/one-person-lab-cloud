@@ -232,6 +232,9 @@ func (app *controlPlaneServer) getWorkspaceRuntimeImageReplacement(w http.Respon
 // Image updates never grant access or restart an unpaid Workspace. Renewal
 // proof comes from the existing entitlement owner, independently of image policy.
 func (app *controlPlaneServer) workspaceRuntimeImageReplacementEligibility(ctx context.Context, launch workspaceLaunchReconcileOperation, workspace map[string]any) error {
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		return errors.New("workspace_application_deployment_required")
+	}
 	if launch.Status != contracts.StatusSucceeded || firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) != "running" {
 		return errWorkspaceRuntimeImageReplacementConflict
 	}

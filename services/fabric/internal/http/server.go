@@ -537,6 +537,43 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		result, err := service.ReplaceWorkspaceRuntimeImage(r.Context(), input)
 		writeResult(w, result, err)
 	})
+
+	mux.HandleFunc("POST /fabric/workspace-application-runtimes/{workspaceId}/gateway-secret-cleanup", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.WorkspaceApplicationGatewaySecretCleanupInput
+		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+			return
+		}
+		if input.WorkspaceID != strings.TrimSpace(r.PathValue("workspaceId")) {
+			writeError(w, http.StatusBadRequest, "workspace_application_runtime_identity_required")
+			return
+		}
+		err := service.RemoveWorkspaceApplicationGatewaySecret(r.Context(), input)
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			State string `json:"state"`
+		}{"absent"})
+	})
+	mux.HandleFunc("POST /fabric/workspace-application-runtimes/{workspaceId}/preflight", func(w http.ResponseWriter, r *http.Request) {
+		var input fabric.WorkspaceApplicationRuntimeInput
+		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+			return
+		}
+		if input.WorkspaceID != strings.TrimSpace(r.PathValue("workspaceId")) {
+			writeError(w, http.StatusBadRequest, "workspace_application_runtime_identity_required")
+			return
+		}
+		err := service.PreflightWorkspaceApplicationRuntime(r.Context(), input)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			Admitted bool `json:"admitted"`
+		}{true})
+	})
 	mux.HandleFunc("POST /fabric/workspace-application-runtimes", func(w http.ResponseWriter, r *http.Request) {
 		var input fabric.WorkspaceApplicationRuntimeInput
 		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
@@ -571,6 +608,33 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		}
 		writeResult(w, observation, err)
 	})
+
+	for _, endpoint := range []string{"lifecycle", "lifecycle-readback", "credentials"} {
+		mux.HandleFunc("POST /fabric/workspace-application-runtimes/{workspaceId}/"+endpoint, func(w http.ResponseWriter, r *http.Request) {
+			var input fabric.WorkspaceApplicationRuntimeLifecycleInput
+			if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
+				return
+			}
+			if input.WorkspaceID != strings.TrimSpace(r.PathValue("workspaceId")) {
+				writeError(w, http.StatusBadRequest, "workspace_application_runtime_identity_required")
+				return
+			}
+			if endpoint == "credentials" {
+				w.Header().Set("Cache-Control", "no-store")
+				result, err := service.ReadWorkspaceApplicationRuntimeCredentials(r.Context(), input)
+				writeResult(w, result, err)
+				return
+			}
+			var result fabric.WorkspaceApplicationRuntimeLifecycleResult
+			var err error
+			if endpoint == "lifecycle" {
+				result, err = service.SetWorkspaceApplicationRuntimeLifecycle(r.Context(), input)
+			} else {
+				result, err = service.ReadWorkspaceApplicationRuntimeLifecycle(r.Context(), input)
+			}
+			writeResult(w, result, err)
+		})
+	}
 	mux.HandleFunc("POST /fabric/workspace-runtimes/{workspaceId}/gateway-network/recover", func(w http.ResponseWriter, r *http.Request) {
 		var input fabric.WorkspaceRuntimeGatewayNetworkRecoveryInput
 		if !decodeWrite(w, r, &input.IdempotencyKey, &input) {
@@ -782,7 +846,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	switch parts[1] + "/" + parts[3] {
-	case "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback":
+	case "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback", "workspace-application-runtimes/lifecycle", "workspace-application-runtimes/lifecycle-readback", "workspace-application-runtimes/credentials", "workspace-application-runtimes/preflight", "workspace-application-runtimes/gateway-secret-cleanup":
 		return true
 	default:
 		return false
@@ -821,6 +885,31 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 			return fabricMutationScope{}, false
 		}
 		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_application_runtime", parts[2], "read_workspace_application_runtime"
+
+	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && (parts[3] == "lifecycle" || parts[3] == "lifecycle-readback" || parts[3] == "credentials"):
+		if value("workspaceId") != parts[2] || value("runtimeId") == "" || value("runtimeOperationId") == "" {
+			return fabricMutationScope{}, false
+		}
+		action := "set_workspace_application_runtime_lifecycle"
+		if parts[3] == "lifecycle-readback" {
+			action = "read_workspace_application_runtime_lifecycle"
+		}
+		if parts[3] == "credentials" {
+			action = "read_workspace_application_runtime_credentials"
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_application_runtime", value("runtimeId"), action
+
+	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && parts[3] == "preflight":
+		if value("workspaceId") != parts[2] || value("runtimeOperationId") != scope.OperationID {
+			return fabricMutationScope{}, false
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_application_runtime", parts[2], "preflight_workspace_application_runtime"
+
+	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && parts[3] == "gateway-secret-cleanup":
+		if value("workspaceId") != parts[2] || value("secretRef") == "" {
+			return fabricMutationScope{}, false
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "gateway_secret", value("secretRef"), "remove_workspace_application_gateway_secret"
 	case r.URL.Path == "/fabric/gateway-secrets":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "gateway_secret", scope.WorkspaceID, "upsert_gateway_secret"
 	case r.URL.Path == "/fabric/storage-attachments":

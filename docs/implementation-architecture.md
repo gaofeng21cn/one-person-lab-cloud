@@ -218,19 +218,63 @@ Gateway Secret and deletion-residue observations retain their separate owners.
 
 ### Workspace Application Deployment
 
-The independent application worker consumes admitted immutable revisions and
-the Workspace's existing resources. It scans both pending and running intents;
-each retry keeps the same Runtime operation identity and the original successful
-Launch's attachment binding. The typed CP/Fabric requests carry the account,
-Workspace and operation identities through the existing scoped capability
-authorization. Invalid requests remain client errors and pending observations
-remain structured HTTP 202 responses. CP commits the selected revision binding
-and receipt-phase intent in one PostgreSQL transaction before recording the
-Ledger receipt. A lost commit response resumes from that persisted phase.
-Execution is enabled with `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1`.
-The base Compose forwards this installation setting; the local Workspace overlay
-enables it together with the existing Workspace workers. With the switch off,
-requests only persist deployment intent and do not execute it.
+New default purchases compose a resource-only Launch with a separate durable
+`workspace.application.default-install` request in the same claim transaction.
+The HTTP request returns before the resource worker dispatches a charge. The
+application request freezes the installed default image policy and its OPL App
+runtime description; its Key is handed transiently to Fabric, retaining only
+Key identity and immutable Secret references. Resource activation and the
+purchase receipt do not depend on application readiness. Explicit resource-only
+purchases omit the installation request. Retained full Launch commands keep
+their original stages and immutable receipts.
+
+The application worker consumes admitted immutable revisions and existing
+Workspace resources. CP owns the selected and reserved deployment IDs on the
+Workspace row. It validates real configuration and Secret bindings, then asks
+Fabric to preflight the frozen target before suspending its predecessor. The
+worker creates the new runtime generation, waits for current component and
+entry readback, atomically switches the selection and operation phase, retires
+the exact predecessor, and writes the deployment receipt. There is one selected
+application per Workspace, including all of that application's dependency
+components. Replacement preserves compute, storage, attachment, entitlement and
+original purchase facts. Workspace/operation transactions and result CAS prevent
+a competing command or a delayed worker response from overwriting selection or
+completed progress. A successor does not create resources or charge the wallet.
+
+`OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables both default
+installation and deployment recovery. The base Compose forwards this setting;
+the local Workspace overlay enables it. With the switch off, accepted requests
+remain durable without application execution. Operators retry a failed frozen
+command through `POST /api/operator/application-deployments/{id}/retry`.
+Customers continue a default installation with
+`POST /api/workspaces/{id}/application-installation/resume`; this reuses the
+original request, Key and deployment instead of making another purchase.
+
+Application generation IDs own Runtime components and Secret mounts. OPL
+credential identity is frozen separately in the runtime configuration: ordinary
+updates and reinstallations retain it; explicit password or Gateway rotation
+advances it. Historical migration names the proven credential source rather
+than deriving a new password from the new deployment ID.
+Stable data bindings belong to the Workspace/application pair: compatible
+updates and reinstalling the same application keep those bindings; other
+applications receive separate directories. Explicit historical layouts name the
+original runtime operation and require owner readback before reusing old OPL
+`/data` and `/projects` or retained generic mounts. They do not infer data
+ownership from a path. OPL App's declared runtime profile keeps its password,
+session and Gateway Secret file ABI; other profiles receive only their declared
+configuration and bindings.
+
+Access and lifecycle consumers read the current selected deployment. Suspension
+and deletion inventory every owned application generation, including incomplete
+creation, while resume starts only the selected generation. Fabric's terminal
+absence fence rejects a late create. Delete confirms application and owned
+Gateway Secret absence before detaching storage or removing resources; external
+source Secrets and Sub2API Keys remain retained. Local Docker retires only exact
+images with no remaining container reference. Tencent reports image retirement
+as `instance_required`, leaving node-level collection to the Instance owner.
+Resource-only purchase/deletion receipts carry an explicit provisioning mode;
+application cleanup has a typed evidence projection, separate from CP retry
+cursors and from retained full Launch receipt identity.
 
 `WorkspaceApplicationRevision.entryPort` explicitly selects a named TCP port
 for the HTTP root. An omitted entry declares no web endpoint; `healthChecks`
@@ -258,8 +302,8 @@ otherwise Kubernetes admission and the installation's default controller own
 selection. Its returned HTTP URL does not prove DNS/TLS or
 business availability. Tencent supports one native readiness probe and rejects
 multiple required checks before mutation. `cloud_private` creates no external
-entry; authenticated private access, Registry browsing, replacement/retirement
-and complete application lifecycle migration remain roadmap work.
+entry. Authenticated private access, Registry browsing, full dependency-specific
+configuration and actual Instance adoption remain roadmap work.
 
 ## Provider Port
 
@@ -572,8 +616,10 @@ debit code, user, total, component, and downstream resource identities.
 Workspace DELETE is a separate durable `workspace.delete.v2` Control Plane
 owner operation. Before cleanup, it reads the immutable succeeded Launch and
 matches its exact charged or zero-cost Ledger Launch Receipt; it does not read
-Debit history or invoke a wallet mutation. Runtime, compute, storage, and
-attachment remain bound to the Launch, while the current Workspace Key and
+Debit history or invoke a wallet mutation. Compute, storage and attachment
+remain bound to the Launch. Independent application generations come from the
+persisted selection and deployment inventory; retained full Runtime identity
+continues to use the Launch. For that retained path, the current Workspace Key and
 Gateway Secret are recovered from the current Workspace projection and the
 strict completed Key Rotation lineage from the Launch Key. It then consumes Fabric's typed
 Runtime and Gateway Secret observations (`ready/absent/pending/conflict/error`)

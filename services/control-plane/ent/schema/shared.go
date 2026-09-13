@@ -175,6 +175,8 @@ func workspaceFields() []ent.Field {
 		field.Bool("customer_product").Default(true),
 		field.String("application_binding").Default(""),
 		field.Int64("application_binding_version").Default(0),
+		field.String("current_application_deployment_id").Default(""),
+		field.String("reserved_application_deployment_id").Default(""),
 	)
 }
 
