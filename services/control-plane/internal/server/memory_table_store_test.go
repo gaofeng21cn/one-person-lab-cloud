@@ -12,44 +12,46 @@ import (
 )
 
 type memoryTableStore struct {
-	mu                   sync.Mutex
-	accounts             controlPlaneRecordSet
-	users                controlPlaneRecordSet
-	userIDByEmail        map[string]string
-	sessions             controlPlaneRecordSet
-	sessionIDsByUser     map[string]map[string]struct{}
-	computes             controlPlaneRecordSet
-	storages             controlPlaneRecordSet
-	attachments          controlPlaneRecordSet
-	workspaces           controlPlaneRecordSet
-	auditEvents          []map[string]any
-	announcements        controlPlaneRecordSet
-	announcementReads    controlPlaneRecordSet
-	runtimeOps           []map[string]any
-	productionE2E        controlPlaneRecordSet
-	reconciliation       map[string]any
-	reconciliations      controlPlaneRecordSet
-	reconciliationErr    error
-	applicationRevisions controlPlaneRecordSet
+	mu                       sync.Mutex
+	accounts                 controlPlaneRecordSet
+	users                    controlPlaneRecordSet
+	userIDByEmail            map[string]string
+	sessions                 controlPlaneRecordSet
+	sessionIDsByUser         map[string]map[string]struct{}
+	computes                 controlPlaneRecordSet
+	storages                 controlPlaneRecordSet
+	attachments              controlPlaneRecordSet
+	workspaces               controlPlaneRecordSet
+	auditEvents              []map[string]any
+	announcements            controlPlaneRecordSet
+	announcementReads        controlPlaneRecordSet
+	runtimeOps               []map[string]any
+	productionE2E            controlPlaneRecordSet
+	reconciliation           map[string]any
+	reconciliations          controlPlaneRecordSet
+	reconciliationErr        error
+	applicationRevisions     controlPlaneRecordSet
+	applicationDataMaterials controlPlaneRecordSet
 }
 
 func newMemoryTableStore() *memoryTableStore {
 	const developmentOperatorEmail = "admin@opl.local"
 	return &memoryTableStore{
-		accounts:             controlPlaneRecordSet{"acct-admin": {"id": "acct-admin", "ownerUserId": "usr-admin", "sub2apiUserId": int64(1), "status": "active", "workspacePurchaseEnabled": true}},
-		users:                controlPlaneRecordSet{"usr-admin": {"id": "usr-admin", "email": developmentOperatorEmail, "accountId": "acct-admin", "role": "admin", "status": "active"}},
-		userIDByEmail:        map[string]string{developmentOperatorEmail: "usr-admin"},
-		sessions:             controlPlaneRecordSet{},
-		sessionIDsByUser:     map[string]map[string]struct{}{},
-		computes:             controlPlaneRecordSet{},
-		storages:             controlPlaneRecordSet{},
-		attachments:          controlPlaneRecordSet{},
-		workspaces:           controlPlaneRecordSet{},
-		announcements:        controlPlaneRecordSet{},
-		announcementReads:    controlPlaneRecordSet{},
-		productionE2E:        controlPlaneRecordSet{},
-		reconciliations:      controlPlaneRecordSet{},
-		applicationRevisions: controlPlaneRecordSet{},
+		accounts:                 controlPlaneRecordSet{"acct-admin": {"id": "acct-admin", "ownerUserId": "usr-admin", "sub2apiUserId": int64(1), "status": "active", "workspacePurchaseEnabled": true}},
+		users:                    controlPlaneRecordSet{"usr-admin": {"id": "usr-admin", "email": developmentOperatorEmail, "accountId": "acct-admin", "role": "admin", "status": "active"}},
+		userIDByEmail:            map[string]string{developmentOperatorEmail: "usr-admin"},
+		sessions:                 controlPlaneRecordSet{},
+		sessionIDsByUser:         map[string]map[string]struct{}{},
+		computes:                 controlPlaneRecordSet{},
+		storages:                 controlPlaneRecordSet{},
+		attachments:              controlPlaneRecordSet{},
+		workspaces:               controlPlaneRecordSet{},
+		announcements:            controlPlaneRecordSet{},
+		announcementReads:        controlPlaneRecordSet{},
+		productionE2E:            controlPlaneRecordSet{},
+		reconciliations:          controlPlaneRecordSet{},
+		applicationRevisions:     controlPlaneRecordSet{},
+		applicationDataMaterials: controlPlaneRecordSet{},
 	}
 }
 
@@ -1335,6 +1337,38 @@ func (s *memoryTableStore) ApplyWorkspaceApplicationActivation(_ context.Context
 	row["applicationBinding"] = mutation.NextBinding
 	row["applicationBindingVersion"] = mutation.NextVersion
 	return nil
+}
+
+func (s *memoryTableStore) AdmittedApplicationDataMaterial(_ context.Context, applicationID, version string) (map[string]any, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row := s.applicationDataMaterials[applicationID+"@"+version]
+	if row == nil {
+		return nil, false, nil
+	}
+	return cloneMap(row), true, nil
+}
+
+func (s *memoryTableStore) ApplyApplicationDataMaterialAdmission(_ context.Context, mutation applicationDataMaterialMutation) (map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := mutation.ApplicationID + "@" + mutation.Version
+	if existing := s.applicationDataMaterials[key]; existing != nil {
+		if stringValue(existing["digest"]) != mutation.Digest {
+			return nil, application.ErrDataMaterialConflict
+		}
+		return cloneMap(existing), nil
+	}
+	row := map[string]any{
+		"id":               applicationDataMaterialRowID(mutation.ApplicationID, mutation.Version),
+		"applicationId":    mutation.ApplicationID,
+		"version":          mutation.Version,
+		"digest":           mutation.Digest,
+		"payload":          mutation.Payload,
+		"admittedByUserId": mutation.AdmittedByUserID,
+	}
+	s.applicationDataMaterials[key] = row
+	return cloneMap(row), nil
 }
 
 func (s *memoryTableStore) ClaimWorkspaceApplicationDeploymentIntent(_ context.Context, row map[string]any) error {

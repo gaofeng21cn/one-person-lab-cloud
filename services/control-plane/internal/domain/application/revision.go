@@ -24,6 +24,9 @@ var (
 	// ErrRevisionNotAdmitted reports a deployment that targets a revision
 	// identity without an admitted revision behind it.
 	ErrRevisionNotAdmitted = errors.New("workspace_application_revision_not_admitted")
+	// ErrDataMaterialConflict reports two different data material contents
+	// admitted under the same application identity.
+	ErrDataMaterialConflict = errors.New("workspace_application_data_material_conflict")
 	// ErrDeploymentTransitionInvalid reports a deployment intent whose
 	// previous-application facts do not match the Workspace's current binding.
 	ErrDeploymentTransitionInvalid = errors.New("workspace_application_deployment_transition_invalid")

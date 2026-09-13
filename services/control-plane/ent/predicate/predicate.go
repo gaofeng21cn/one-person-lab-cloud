@@ -18,6 +18,9 @@ type Announcement func(*sql.Selector)
 // AnnouncementRead is the predicate function for announcementread builders.
 type AnnouncementRead func(*sql.Selector)
 
+// ApplicationDataMaterial is the predicate function for applicationdatamaterial builders.
+type ApplicationDataMaterial func(*sql.Selector)
+
 // ApplicationRevision is the predicate function for applicationrevision builders.
 type ApplicationRevision func(*sql.Selector)
 

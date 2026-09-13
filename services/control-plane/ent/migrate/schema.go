@@ -85,6 +85,30 @@ var (
 		Columns:    ControlPlaneAnnouncementReadsColumns,
 		PrimaryKey: []*schema.Column{ControlPlaneAnnouncementReadsColumns[0]},
 	}
+	// ControlPlaneApplicationDataMaterialsColumns holds the columns for the "control_plane_application_data_materials" table.
+	ControlPlaneApplicationDataMaterialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "application_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeString},
+		{Name: "digest", Type: field.TypeString},
+		{Name: "payload", Type: field.TypeString},
+		{Name: "admitted_by_user_id", Type: field.TypeString},
+	}
+	// ControlPlaneApplicationDataMaterialsTable holds the schema information for the "control_plane_application_data_materials" table.
+	ControlPlaneApplicationDataMaterialsTable = &schema.Table{
+		Name:       "control_plane_application_data_materials",
+		Columns:    ControlPlaneApplicationDataMaterialsColumns,
+		PrimaryKey: []*schema.Column{ControlPlaneApplicationDataMaterialsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "applicationdatamaterial_application_id_version",
+				Unique:  true,
+				Columns: []*schema.Column{ControlPlaneApplicationDataMaterialsColumns[3], ControlPlaneApplicationDataMaterialsColumns[4]},
+			},
+		},
+	}
 	// ControlPlaneApplicationRevisionsColumns holds the columns for the "control_plane_application_revisions" table.
 	ControlPlaneApplicationRevisionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -500,6 +524,7 @@ var (
 		ControlPlaneAdminAuditEventsTable,
 		ControlPlaneAnnouncementsTable,
 		ControlPlaneAnnouncementReadsTable,
+		ControlPlaneApplicationDataMaterialsTable,
 		ControlPlaneApplicationRevisionsTable,
 		ControlPlaneArchivedAdminAuditEventsTable,
 		ControlPlaneAuthAttemptsTable,
@@ -529,6 +554,9 @@ func init() {
 	}
 	ControlPlaneAnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "control_plane_announcement_reads",
+	}
+	ControlPlaneApplicationDataMaterialsTable.Annotation = &entsql.Annotation{
+		Table: "control_plane_application_data_materials",
 	}
 	ControlPlaneApplicationRevisionsTable.Annotation = &entsql.Annotation{
 		Table: "control_plane_application_revisions",

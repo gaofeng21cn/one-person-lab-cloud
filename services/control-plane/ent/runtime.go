@@ -7,6 +7,7 @@ import (
 	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/ent/announcementread"
+	"opl-cloud/services/control-plane/ent/applicationdatamaterial"
 	"opl-cloud/services/control-plane/ent/applicationrevision"
 	"opl-cloud/services/control-plane/ent/archivedadminauditevent"
 	"opl-cloud/services/control-plane/ent/authattempt"
@@ -205,6 +206,42 @@ func init() {
 	announcementreadDescID := announcementreadFields[0].Descriptor()
 	// announcementread.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	announcementread.IDValidator = announcementreadDescID.Validators[0].(func(string) error)
+	applicationdatamaterialFields := schema.ApplicationDataMaterial{}.Fields()
+	_ = applicationdatamaterialFields
+	// applicationdatamaterialDescCreatedAt is the schema descriptor for created_at field.
+	applicationdatamaterialDescCreatedAt := applicationdatamaterialFields[1].Descriptor()
+	// applicationdatamaterial.DefaultCreatedAt holds the default value on creation for the created_at field.
+	applicationdatamaterial.DefaultCreatedAt = applicationdatamaterialDescCreatedAt.Default.(func() time.Time)
+	// applicationdatamaterialDescUpdatedAt is the schema descriptor for updated_at field.
+	applicationdatamaterialDescUpdatedAt := applicationdatamaterialFields[2].Descriptor()
+	// applicationdatamaterial.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	applicationdatamaterial.DefaultUpdatedAt = applicationdatamaterialDescUpdatedAt.Default.(func() time.Time)
+	// applicationdatamaterial.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	applicationdatamaterial.UpdateDefaultUpdatedAt = applicationdatamaterialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// applicationdatamaterialDescApplicationID is the schema descriptor for application_id field.
+	applicationdatamaterialDescApplicationID := applicationdatamaterialFields[3].Descriptor()
+	// applicationdatamaterial.ApplicationIDValidator is a validator for the "application_id" field. It is called by the builders before save.
+	applicationdatamaterial.ApplicationIDValidator = applicationdatamaterialDescApplicationID.Validators[0].(func(string) error)
+	// applicationdatamaterialDescVersion is the schema descriptor for version field.
+	applicationdatamaterialDescVersion := applicationdatamaterialFields[4].Descriptor()
+	// applicationdatamaterial.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	applicationdatamaterial.VersionValidator = applicationdatamaterialDescVersion.Validators[0].(func(string) error)
+	// applicationdatamaterialDescDigest is the schema descriptor for digest field.
+	applicationdatamaterialDescDigest := applicationdatamaterialFields[5].Descriptor()
+	// applicationdatamaterial.DigestValidator is a validator for the "digest" field. It is called by the builders before save.
+	applicationdatamaterial.DigestValidator = applicationdatamaterialDescDigest.Validators[0].(func(string) error)
+	// applicationdatamaterialDescPayload is the schema descriptor for payload field.
+	applicationdatamaterialDescPayload := applicationdatamaterialFields[6].Descriptor()
+	// applicationdatamaterial.PayloadValidator is a validator for the "payload" field. It is called by the builders before save.
+	applicationdatamaterial.PayloadValidator = applicationdatamaterialDescPayload.Validators[0].(func(string) error)
+	// applicationdatamaterialDescAdmittedByUserID is the schema descriptor for admitted_by_user_id field.
+	applicationdatamaterialDescAdmittedByUserID := applicationdatamaterialFields[7].Descriptor()
+	// applicationdatamaterial.AdmittedByUserIDValidator is a validator for the "admitted_by_user_id" field. It is called by the builders before save.
+	applicationdatamaterial.AdmittedByUserIDValidator = applicationdatamaterialDescAdmittedByUserID.Validators[0].(func(string) error)
+	// applicationdatamaterialDescID is the schema descriptor for id field.
+	applicationdatamaterialDescID := applicationdatamaterialFields[0].Descriptor()
+	// applicationdatamaterial.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	applicationdatamaterial.IDValidator = applicationdatamaterialDescID.Validators[0].(func(string) error)
 	applicationrevisionFields := schema.ApplicationRevision{}.Fields()
 	_ = applicationrevisionFields
 	// applicationrevisionDescCreatedAt is the schema descriptor for created_at field.
