@@ -188,6 +188,16 @@ func applicationRevisionFields() []ent.Field {
 	)
 }
 
+func applicationDataMaterialFields() []ent.Field {
+	return append(baseFields(),
+		field.String("application_id").NotEmpty(),
+		field.String("version").NotEmpty(),
+		field.String("digest").NotEmpty(),
+		field.String("payload").NotEmpty(),
+		field.String("admitted_by_user_id").NotEmpty(),
+	)
+}
+
 func billingReconciliationFields() []ent.Field {
 	return append(baseFields(),
 		field.String("status").Default(""),

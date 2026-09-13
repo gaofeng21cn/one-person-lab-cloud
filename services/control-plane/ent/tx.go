@@ -20,6 +20,8 @@ type Tx struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// ApplicationDataMaterial is the client for interacting with the ApplicationDataMaterial builders.
+	ApplicationDataMaterial *ApplicationDataMaterialClient
 	// ApplicationRevision is the client for interacting with the ApplicationRevision builders.
 	ApplicationRevision *ApplicationRevisionClient
 	// ArchivedAdminAuditEvent is the client for interacting with the ArchivedAdminAuditEvent builders.
@@ -183,6 +185,7 @@ func (tx *Tx) init() {
 	tx.AdminAuditEvent = NewAdminAuditEventClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
+	tx.ApplicationDataMaterial = NewApplicationDataMaterialClient(tx.config)
 	tx.ApplicationRevision = NewApplicationRevisionClient(tx.config)
 	tx.ArchivedAdminAuditEvent = NewArchivedAdminAuditEventClient(tx.config)
 	tx.AuthAttempt = NewAuthAttemptClient(tx.config)

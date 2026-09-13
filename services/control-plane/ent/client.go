@@ -15,6 +15,7 @@ import (
 	"opl-cloud/services/control-plane/ent/adminauditevent"
 	"opl-cloud/services/control-plane/ent/announcement"
 	"opl-cloud/services/control-plane/ent/announcementread"
+	"opl-cloud/services/control-plane/ent/applicationdatamaterial"
 	"opl-cloud/services/control-plane/ent/applicationrevision"
 	"opl-cloud/services/control-plane/ent/archivedadminauditevent"
 	"opl-cloud/services/control-plane/ent/authattempt"
@@ -48,6 +49,8 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// ApplicationDataMaterial is the client for interacting with the ApplicationDataMaterial builders.
+	ApplicationDataMaterial *ApplicationDataMaterialClient
 	// ApplicationRevision is the client for interacting with the ApplicationRevision builders.
 	ApplicationRevision *ApplicationRevisionClient
 	// ArchivedAdminAuditEvent is the client for interacting with the ArchivedAdminAuditEvent builders.
@@ -91,6 +94,7 @@ func (c *Client) init() {
 	c.AdminAuditEvent = NewAdminAuditEventClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.ApplicationDataMaterial = NewApplicationDataMaterialClient(c.config)
 	c.ApplicationRevision = NewApplicationRevisionClient(c.config)
 	c.ArchivedAdminAuditEvent = NewArchivedAdminAuditEventClient(c.config)
 	c.AuthAttempt = NewAuthAttemptClient(c.config)
@@ -201,6 +205,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AdminAuditEvent:         NewAdminAuditEventClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ApplicationDataMaterial: NewApplicationDataMaterialClient(cfg),
 		ApplicationRevision:     NewApplicationRevisionClient(cfg),
 		ArchivedAdminAuditEvent: NewArchivedAdminAuditEventClient(cfg),
 		AuthAttempt:             NewAuthAttemptClient(cfg),
@@ -238,6 +243,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AdminAuditEvent:         NewAdminAuditEventClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ApplicationDataMaterial: NewApplicationDataMaterialClient(cfg),
 		ApplicationRevision:     NewApplicationRevisionClient(cfg),
 		ArchivedAdminAuditEvent: NewArchivedAdminAuditEventClient(cfg),
 		AuthAttempt:             NewAuthAttemptClient(cfg),
@@ -282,10 +288,11 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
-		c.ApplicationRevision, c.ArchivedAdminAuditEvent, c.AuthAttempt,
-		c.BillingReconciliation, c.ComputeAllocation, c.ProductionE2ERecord,
-		c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session, c.StorageAttachment,
-		c.StorageVolume, c.User, c.Workspace, c.WorkspaceSyncEvent,
+		c.ApplicationDataMaterial, c.ApplicationRevision, c.ArchivedAdminAuditEvent,
+		c.AuthAttempt, c.BillingReconciliation, c.ComputeAllocation,
+		c.ProductionE2ERecord, c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session,
+		c.StorageAttachment, c.StorageVolume, c.User, c.Workspace,
+		c.WorkspaceSyncEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -296,10 +303,11 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Account, c.AdminAuditEvent, c.Announcement, c.AnnouncementRead,
-		c.ApplicationRevision, c.ArchivedAdminAuditEvent, c.AuthAttempt,
-		c.BillingReconciliation, c.ComputeAllocation, c.ProductionE2ERecord,
-		c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session, c.StorageAttachment,
-		c.StorageVolume, c.User, c.Workspace, c.WorkspaceSyncEvent,
+		c.ApplicationDataMaterial, c.ApplicationRevision, c.ArchivedAdminAuditEvent,
+		c.AuthAttempt, c.BillingReconciliation, c.ComputeAllocation,
+		c.ProductionE2ERecord, c.ProjectTaskSyncHead, c.RuntimeOperation, c.Session,
+		c.StorageAttachment, c.StorageVolume, c.User, c.Workspace,
+		c.WorkspaceSyncEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -316,6 +324,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *ApplicationDataMaterialMutation:
+		return c.ApplicationDataMaterial.mutate(ctx, m)
 	case *ApplicationRevisionMutation:
 		return c.ApplicationRevision.mutate(ctx, m)
 	case *ArchivedAdminAuditEventMutation:
@@ -878,6 +888,139 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
+	}
+}
+
+// ApplicationDataMaterialClient is a client for the ApplicationDataMaterial schema.
+type ApplicationDataMaterialClient struct {
+	config
+}
+
+// NewApplicationDataMaterialClient returns a client for the ApplicationDataMaterial from the given config.
+func NewApplicationDataMaterialClient(c config) *ApplicationDataMaterialClient {
+	return &ApplicationDataMaterialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `applicationdatamaterial.Hooks(f(g(h())))`.
+func (c *ApplicationDataMaterialClient) Use(hooks ...Hook) {
+	c.hooks.ApplicationDataMaterial = append(c.hooks.ApplicationDataMaterial, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `applicationdatamaterial.Intercept(f(g(h())))`.
+func (c *ApplicationDataMaterialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ApplicationDataMaterial = append(c.inters.ApplicationDataMaterial, interceptors...)
+}
+
+// Create returns a builder for creating a ApplicationDataMaterial entity.
+func (c *ApplicationDataMaterialClient) Create() *ApplicationDataMaterialCreate {
+	mutation := newApplicationDataMaterialMutation(c.config, OpCreate)
+	return &ApplicationDataMaterialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ApplicationDataMaterial entities.
+func (c *ApplicationDataMaterialClient) CreateBulk(builders ...*ApplicationDataMaterialCreate) *ApplicationDataMaterialCreateBulk {
+	return &ApplicationDataMaterialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApplicationDataMaterialClient) MapCreateBulk(slice any, setFunc func(*ApplicationDataMaterialCreate, int)) *ApplicationDataMaterialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApplicationDataMaterialCreateBulk{err: fmt.Errorf("calling to ApplicationDataMaterialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApplicationDataMaterialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApplicationDataMaterialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ApplicationDataMaterial.
+func (c *ApplicationDataMaterialClient) Update() *ApplicationDataMaterialUpdate {
+	mutation := newApplicationDataMaterialMutation(c.config, OpUpdate)
+	return &ApplicationDataMaterialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApplicationDataMaterialClient) UpdateOne(adm *ApplicationDataMaterial) *ApplicationDataMaterialUpdateOne {
+	mutation := newApplicationDataMaterialMutation(c.config, OpUpdateOne, withApplicationDataMaterial(adm))
+	return &ApplicationDataMaterialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApplicationDataMaterialClient) UpdateOneID(id string) *ApplicationDataMaterialUpdateOne {
+	mutation := newApplicationDataMaterialMutation(c.config, OpUpdateOne, withApplicationDataMaterialID(id))
+	return &ApplicationDataMaterialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ApplicationDataMaterial.
+func (c *ApplicationDataMaterialClient) Delete() *ApplicationDataMaterialDelete {
+	mutation := newApplicationDataMaterialMutation(c.config, OpDelete)
+	return &ApplicationDataMaterialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApplicationDataMaterialClient) DeleteOne(adm *ApplicationDataMaterial) *ApplicationDataMaterialDeleteOne {
+	return c.DeleteOneID(adm.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApplicationDataMaterialClient) DeleteOneID(id string) *ApplicationDataMaterialDeleteOne {
+	builder := c.Delete().Where(applicationdatamaterial.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApplicationDataMaterialDeleteOne{builder}
+}
+
+// Query returns a query builder for ApplicationDataMaterial.
+func (c *ApplicationDataMaterialClient) Query() *ApplicationDataMaterialQuery {
+	return &ApplicationDataMaterialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApplicationDataMaterial},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ApplicationDataMaterial entity by its id.
+func (c *ApplicationDataMaterialClient) Get(ctx context.Context, id string) (*ApplicationDataMaterial, error) {
+	return c.Query().Where(applicationdatamaterial.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApplicationDataMaterialClient) GetX(ctx context.Context, id string) *ApplicationDataMaterial {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ApplicationDataMaterialClient) Hooks() []Hook {
+	return c.hooks.ApplicationDataMaterial
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApplicationDataMaterialClient) Interceptors() []Interceptor {
+	return c.inters.ApplicationDataMaterial
+}
+
+func (c *ApplicationDataMaterialClient) mutate(ctx context.Context, m *ApplicationDataMaterialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApplicationDataMaterialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApplicationDataMaterialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApplicationDataMaterialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApplicationDataMaterialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ApplicationDataMaterial mutation op: %q", m.Op())
 	}
 }
 
@@ -2746,17 +2889,17 @@ func (c *WorkspaceSyncEventClient) mutate(ctx context.Context, m *WorkspaceSyncE
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Account, AdminAuditEvent, Announcement, AnnouncementRead, ApplicationRevision,
-		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
-		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
-		StorageAttachment, StorageVolume, User, Workspace,
-		WorkspaceSyncEvent []ent.Hook
+		Account, AdminAuditEvent, Announcement, AnnouncementRead,
+		ApplicationDataMaterial, ApplicationRevision, ArchivedAdminAuditEvent,
+		AuthAttempt, BillingReconciliation, ComputeAllocation, ProductionE2ERecord,
+		ProjectTaskSyncHead, RuntimeOperation, Session, StorageAttachment,
+		StorageVolume, User, Workspace, WorkspaceSyncEvent []ent.Hook
 	}
 	inters struct {
-		Account, AdminAuditEvent, Announcement, AnnouncementRead, ApplicationRevision,
-		ArchivedAdminAuditEvent, AuthAttempt, BillingReconciliation, ComputeAllocation,
-		ProductionE2ERecord, ProjectTaskSyncHead, RuntimeOperation, Session,
-		StorageAttachment, StorageVolume, User, Workspace,
-		WorkspaceSyncEvent []ent.Interceptor
+		Account, AdminAuditEvent, Announcement, AnnouncementRead,
+		ApplicationDataMaterial, ApplicationRevision, ArchivedAdminAuditEvent,
+		AuthAttempt, BillingReconciliation, ComputeAllocation, ProductionE2ERecord,
+		ProjectTaskSyncHead, RuntimeOperation, Session, StorageAttachment,
+		StorageVolume, User, Workspace, WorkspaceSyncEvent []ent.Interceptor
 	}
 )

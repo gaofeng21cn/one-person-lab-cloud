@@ -56,6 +56,18 @@ func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 }
 
+// The ApplicationDataMaterialFunc type is an adapter to allow the use of ordinary
+// function as ApplicationDataMaterial mutator.
+type ApplicationDataMaterialFunc func(context.Context, *ent.ApplicationDataMaterialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApplicationDataMaterialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApplicationDataMaterialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApplicationDataMaterialMutation", m)
+}
+
 // The ApplicationRevisionFunc type is an adapter to allow the use of ordinary
 // function as ApplicationRevision mutator.
 type ApplicationRevisionFunc func(context.Context, *ent.ApplicationRevisionMutation) (ent.Value, error)

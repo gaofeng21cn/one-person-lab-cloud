@@ -145,6 +145,9 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 		{Version: "202609120003_workspace_application_binding_version", Run: func(ctx context.Context) error {
 			return controlplanemigrations.ApplyWorkspaceApplicationBindingVersion(ctx, driver)
 		}},
+		{Version: "202609130001_application_data_materials", Run: func(ctx context.Context) error {
+			return controlplanemigrations.ApplyApplicationDataMaterials(ctx, driver)
+		}},
 	}
 }
 
@@ -462,6 +465,13 @@ var (
 		textField("PublishedAt", "SetPublishedAt", "publishedAt"),
 		textField("CreatedByUserID", "SetCreatedByUserID", "createdByUserId"),
 		textField("UpdatedByUserID", "SetUpdatedByUserID", "updatedByUserId"),
+	}
+	applicationDataMaterialEntFields = []entRecordField{
+		textField("ApplicationID", "SetApplicationID", "applicationId"),
+		textField("Version", "SetVersion", "version"),
+		textField("Digest", "SetDigest", "digest"),
+		textField("Payload", "SetPayload", "payload"),
+		textField("AdmittedByUserID", "SetAdmittedByUserID", "admittedByUserId"),
 	}
 	announcementReadEntFields = []entRecordField{
 		textField("AnnouncementID", "SetAnnouncementID", "announcementId"),
