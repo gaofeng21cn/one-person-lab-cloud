@@ -1064,12 +1064,13 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
       <Select block label="暴露策略" value={draft.exposurePolicy} options={[
         { value: "application", label: "应用自身登录" },
         { value: "anonymous", label: "匿名可访问" },
-        { value: "cloud_private", label: "仅平台内访问" }
+        { value: "cloud_private", label: "不发布外部入口" }
       ]} onChange={(value) => deployment.setDraftField("exposurePolicy", value)} />
       <Field label="容器镜像" description="仓库@sha256 摘要钉死，如 repo.example/app@sha256:…" error={deployment.validation.fieldErrors.image} value={draft.image} onChange={(event) => deployment.setDraftField("image", event.target.value)} />
+      <Field label="HTTP 服务端口" optional description="应用网页服务监听的端口；留空则不提供网页入口" error={deployment.validation.fieldErrors.httpPort} value={draft.httpPort} onChange={(event) => deployment.setDraftField("httpPort", event.target.value)} />
       <div className="application-form-pair">
-        <Field label="健康检查路径" optional value={draft.healthCheckPath} onChange={(event) => deployment.setDraftField("healthCheckPath", event.target.value)} />
-        <Field label="健康检查端口" optional value={draft.healthCheckPort} onChange={(event) => deployment.setDraftField("healthCheckPort", event.target.value)} />
+        <Field label="健康检查路径" optional error={deployment.validation.fieldErrors.healthCheckPath} value={draft.healthCheckPath} onChange={(event) => deployment.setDraftField("healthCheckPath", event.target.value)} />
+        <Field label="健康检查端口" optional error={deployment.validation.fieldErrors.healthCheckPort} value={draft.healthCheckPort} onChange={(event) => deployment.setDraftField("healthCheckPort", event.target.value)} />
       </div>
     </div>
     <div className="application-form-section"><h3>持久挂载（写入 CBS 数据盘）</h3>

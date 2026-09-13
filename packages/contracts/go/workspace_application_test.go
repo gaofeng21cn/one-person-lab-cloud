@@ -7,6 +7,7 @@ func validWorkspaceApplicationRevision() WorkspaceApplicationRevision {
 		SchemaVersion: 1, ApplicationID: "chaokang-agent-ibd", Version: "20260909-verified",
 		Platform: "linux/amd64", Image: "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:2fcfa6cd799ada43f6977621da9d7e2595a0b608c9207b9eaf06dd150f6fcf64",
 		Ports:            []WorkspaceApplicationPort{{Name: "http", Port: 8082, Protocol: "TCP"}},
+		EntryPort:        "http",
 		HealthChecks:     []WorkspaceApplicationHealthCheck{{Port: 8082, Path: "/api/health"}},
 		PersistentMounts: []WorkspaceApplicationMount{{Name: "knowledge", MountPath: "/data/knowledge"}},
 		ExposurePolicy:   "anonymous",
@@ -29,6 +30,34 @@ func TestValidateWorkspaceApplicationRevisionRejectsTagAndInvalidMount(t *testin
 	revision.PersistentMounts[0].MountPath = "/data/../knowledge"
 	if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
 		t.Fatal("expected traversal mount to be rejected")
+	}
+}
+
+func TestValidateWorkspaceApplicationRevisionRejectsInvalidEntryAndProbe(t *testing.T) {
+	for _, entry := range []string{"unknown", "dns"} {
+		revision := validWorkspaceApplicationRevision()
+		revision.Ports = append(revision.Ports, WorkspaceApplicationPort{Name: "dns", Port: 53, Protocol: "UDP"})
+		revision.EntryPort = entry
+		if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
+			t.Fatalf("expected entry %q to be rejected", entry)
+		}
+	}
+	revision := validWorkspaceApplicationRevision()
+	revision.HealthChecks[0].InitialDelaySeconds = -1
+	if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
+		t.Fatal("expected negative probe delay to be rejected")
+	}
+}
+
+func TestValidateWorkspaceApplicationRevisionRejectsConflictingComponentNames(t *testing.T) {
+	for _, names := range [][]string{{"main"}, {"redis", "redis"}, {"Redis"}, {"redis-"}, {"../redis"}} {
+		revision := validWorkspaceApplicationRevision()
+		for _, name := range names {
+			revision.Dependencies = append(revision.Dependencies, WorkspaceApplicationDependency{Name: name, Image: revision.Image})
+		}
+		if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
+			t.Fatalf("expected invalid or conflicting component names %v to be rejected", names)
+		}
 	}
 }
 

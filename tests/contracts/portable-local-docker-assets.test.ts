@@ -56,6 +56,18 @@ test("portable Local-Docker assets configure from a standalone download director
     assert.equal(result.error, undefined);
     assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"));
 
+    const resolved = spawnSync("docker", [
+      "compose", "--env-file", "./opl-cloud.env",
+      "-f", "./compose.yaml", "-f", "./compose.deployment-customer-owned.yaml",
+      "-f", "./compose.fabric-local-docker.yaml", "-f", "./compose.local-workspace.yaml",
+      "config", "--format", "json"
+    ], { cwd: downloadRoot, encoding: "utf8" });
+    assert.equal(resolved.status, 0, resolved.stderr);
+    const resolvedServices = JSON.parse(resolved.stdout).services;
+    const resolvedFabric = resolvedServices.fabric;
+    assert.equal(resolvedFabric.environment.OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE, resolvedFabric.image);
+    assert.equal(resolvedServices["control-plane"].environment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
+
     for (const requiredName of [
       "OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER",
       "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT",

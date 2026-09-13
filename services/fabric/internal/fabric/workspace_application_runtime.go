@@ -13,11 +13,16 @@ import (
 // has not implemented the application runtime port yet.
 var ErrWorkspaceApplicationRuntimeProviderUnsupported = errors.New("workspace_application_runtime_provider_unsupported")
 
+// ErrWorkspaceApplicationRuntimeInputInvalid classifies rejected application
+// inputs before an operation is claimed or a provider mutation is dispatched.
+var ErrWorkspaceApplicationRuntimeInputInvalid = errors.New("workspace_application_runtime_input_invalid")
+
 // WorkspaceApplicationRuntimeInput drives one application runtime creation
 // from an admitted revision. The revision is the declared description; the
 // configuration digest is the identity of the non-secret configuration the
 // operator supplied. Secret values never travel through this input.
 type WorkspaceApplicationRuntimeInput struct {
+	AccountID             string                                 `json:"accountId"`
 	WorkspaceID           string                                 `json:"workspaceId"`
 	ComputeID             string                                 `json:"computeId"`
 	VolumeID              string                                 `json:"volumeId"`
@@ -54,6 +59,7 @@ func workspaceApplicationRuntimeID(workspaceID string) string {
 
 func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, volume StorageVolume, attachment StorageAttachment) error {
 	if compute.ID == "" || volume.ID == "" || compute.AccountID == "" || compute.AccountID != volume.AccountID ||
+		input.AccountID == "" || input.AccountID != compute.AccountID ||
 		input.WorkspaceID == "" || input.WorkspaceID != compute.WorkspaceID || input.WorkspaceID != volume.WorkspaceID {
 		return fmt.Errorf("workspace_application_runtime_resource_mismatch")
 	}
@@ -85,7 +91,7 @@ func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplic
 // is authoritative: it names every declared component where it actually runs.
 func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	if strings.TrimSpace(input.IdempotencyKey) == "" {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, fmt.Errorf("runtime_idempotency_key_required")
+		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, errors.New("runtime_idempotency_key_required"))
 	}
 	s.mu.Lock()
 	compute := s.computes[input.ComputeID]
@@ -93,7 +99,7 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 	attachment := s.attachments[input.AttachmentID]
 	s.mu.Unlock()
 	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, err)
 	}
 	requestHash := hashInput(input)
 	now := s.now()
@@ -119,12 +125,17 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 	if errors.Is(ensureErr, ErrWorkspaceLaunchPending) {
 		// Components are still coming up; the claim stays started so the next
 		// replay resolves by readback.
-		_ = s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "started", record, nil)
+		if err := s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "started", record, nil); err != nil {
+			return observation, err
+		}
 		return observation, ensureErr
 	}
 	if ensureErr != nil {
-		_ = s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "failed", record, ensureErr)
-		return observation, ensureErr
+		saveErr := s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "failed", record, ensureErr)
+		if observation.Status == "failed" && errors.Is(ensureErr, ErrRuntimeOperationFailed) {
+			return observation, saveErr
+		}
+		return observation, errors.Join(ensureErr, saveErr)
 	}
 	if err := s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "succeeded", record, nil); err != nil {
 		return observation, err
@@ -139,11 +150,16 @@ func (s *Service) ensureWorkspaceApplicationRuntime(ctx context.Context, input W
 		return contracts.WorkspaceApplicationRuntimeObservation{}, record, ErrWorkspaceApplicationRuntimeProviderUnsupported
 	}
 	observation, err := provider.EnsureWorkspaceApplicationRuntime(s.providerMutationContext(ctx, operation), input, compute, volume)
-	if err == nil {
-		err = contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, observation)
-	}
-	if err == nil && observation.RuntimeID == "" {
-		observation.RuntimeID = record.RuntimeID
+	if err == nil || errors.Is(err, ErrWorkspaceLaunchPending) {
+		err = validateWorkspaceApplicationRuntimeObservation(input, &observation)
+		if err == nil {
+			switch observation.Status {
+			case "pending":
+				err = ErrWorkspaceLaunchPending
+			case "failed", "absent":
+				err = ErrRuntimeOperationFailed
+			}
+		}
 	}
 	record.Observation = observation
 	return observation, record, err
@@ -155,15 +171,13 @@ func (s *Service) ensureWorkspaceApplicationRuntime(ctx context.Context, input W
 func (s *Service) replayWorkspaceApplicationRuntime(ctx context.Context, stored FabricOperation, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	switch stored.Status {
 	case "started":
-		if !runtimeOperationNeedsReadback(stored, s.now()) {
+		var record workspaceApplicationRuntimeRecord
+		providerReturned := decodeOperationResource(stored, &record) && record.Observation.Status == "pending"
+		if !providerReturned && !runtimeOperationNeedsReadback(stored, s.now()) {
 			return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationInProgress
 		}
 	case "succeeded":
-		var record workspaceApplicationRuntimeRecord
-		if decodeOperationResource(stored, &record) && record.Observation.RuntimeID != "" {
-			return record.Observation, nil
-		}
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
+		return s.readWorkspaceApplicationRuntime(ctx, input)
 	case "failed":
 	default:
 		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
@@ -172,21 +186,18 @@ func (s *Service) replayWorkspaceApplicationRuntime(ctx context.Context, stored 
 }
 
 func (s *Service) convergeWorkspaceApplicationRuntime(ctx context.Context, stored FabricOperation, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
-	provider, ok := s.runtimeProvider.(workspaceApplicationRuntimeProvider)
-	if !ok {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrWorkspaceApplicationRuntimeProviderUnsupported
+	observation, err := s.readWorkspaceApplicationRuntime(ctx, input)
+	if err != nil {
+		return observation, err
 	}
-	observation, err := provider.ReadWorkspaceApplicationRuntime(ctx, input)
-	if err != nil || contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, observation) != nil {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
-	}
-	if observation.Status == "absent" {
-		// Nothing the mutation would have created exists; the readback proves
-		// the claim never landed, so it must not converge to success.
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
-	}
-	if observation.RuntimeID == "" {
-		observation.RuntimeID = workspaceApplicationRuntimeID(input.WorkspaceID)
+	if observation.Status != "ready" {
+		if observation.Status == "pending" {
+			return observation, ErrWorkspaceLaunchPending
+		}
+		if observation.Status == "failed" {
+			return observation, nil
+		}
+		return observation, ErrRuntimeOperationFailed
 	}
 	record := workspaceApplicationRuntimeRecord{RuntimeID: observation.RuntimeID, WorkspaceID: input.WorkspaceID, Observation: observation}
 	if _, err := s.convergeRuntimeOperationReadback(ctx, stored, record, nil); err != nil {
@@ -197,7 +208,9 @@ func (s *Service) convergeWorkspaceApplicationRuntime(ctx context.Context, store
 
 func (s *Service) saveWorkspaceApplicationRuntimeOperation(ctx context.Context, operation FabricOperation, status string, record workspaceApplicationRuntimeRecord, operationErr error) error {
 	operation.Status = status
-	operation.FinishedAt = s.now()
+	if status != "started" {
+		operation.FinishedAt = s.now()
+	}
 	operation.ErrorCode = errorCode(operationErr)
 	operation.Retryable = false
 	fillOperationResource(&operation, record)
@@ -220,26 +233,37 @@ func (s *Service) WorkspaceApplicationRuntimeReadback(ctx context.Context, input
 	if !found {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, fmt.Errorf("workspace_application_runtime_not_found")
 	}
-	if operation.Status == "started" {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationInProgress
+	if operation.RequestHash != hashInput(input) {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeIdempotencyConflict
 	}
-	if operation.Status != "succeeded" {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
+	return s.replayWorkspaceApplicationRuntime(ctx, operation, input)
+}
+
+// Live reads never substitute a historical successful observation for an
+// unavailable, invalid or currently unready provider result.
+func (s *Service) readWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	provider, ok := s.runtimeProvider.(workspaceApplicationRuntimeProvider)
+	if !ok {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrWorkspaceApplicationRuntimeProviderUnsupported
 	}
-	var record workspaceApplicationRuntimeRecord
-	if !decodeOperationResource(operation, &record) || record.Observation.RuntimeID == "" {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeOperationFailed
+	observation, err := provider.ReadWorkspaceApplicationRuntime(ctx, input)
+	if err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
-	// The succeeded record keeps the creation-time authority; a live read is
-	// returned to the caller without rewriting it.
-	if provider, ok := s.runtimeProvider.(workspaceApplicationRuntimeProvider); ok {
-		live, readErr := provider.ReadWorkspaceApplicationRuntime(ctx, input)
-		if readErr == nil && contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, live) == nil {
-			if live.RuntimeID == "" {
-				live.RuntimeID = record.RuntimeID
-			}
-			return live, nil
-		}
+	if err := validateWorkspaceApplicationRuntimeObservation(input, &observation); err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
-	return record.Observation, nil
+	return observation, nil
+}
+
+func validateWorkspaceApplicationRuntimeObservation(input WorkspaceApplicationRuntimeInput, observation *contracts.WorkspaceApplicationRuntimeObservation) error {
+	if err := contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, *observation); err != nil {
+		return err
+	}
+	runtimeID := workspaceApplicationRuntimeID(input.WorkspaceID)
+	if observation.WorkspaceID != input.WorkspaceID || (observation.RuntimeID != "" && observation.RuntimeID != runtimeID) {
+		return errors.New("workspace_application_runtime_observation_identity_mismatch")
+	}
+	observation.RuntimeID = runtimeID
+	return nil
 }

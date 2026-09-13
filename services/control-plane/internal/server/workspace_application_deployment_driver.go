@@ -5,21 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
+	"opl-cloud/services/control-plane/ent/runtimeoperation"
 	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
 
 const (
-	workspaceApplicationDeploymentRuntimePhase    = "runtime"
-	workspaceApplicationDeploymentActivatingPhase = "activating"
-	workspaceApplicationDeploymentReceiptPhase    = "receipt"
-	workspaceApplicationDeploymentActivePhase     = "active"
+	workspaceApplicationDeploymentRuntimePhase      = "runtime"
+	workspaceApplicationDeploymentActivatingPhase   = "activating"
+	workspaceApplicationDeploymentReceiptPhase      = "receipt"
+	workspaceApplicationDeploymentActivePhase       = "active"
+	workspaceApplicationDeploymentManualReviewPhase = "manual_review"
 
 	workspaceApplicationDeploymentWorkerInterval = 30 * time.Second
 )
@@ -35,6 +39,7 @@ type workspaceApplicationActivationMutation struct {
 	ExpectedVersion int64
 	NextBinding     string
 	NextVersion     int64
+	Intent          workspaceApplicationDeploymentIntent
 }
 
 // workspaceApplicationDeploymentWorkerEnabled follows the launch worker
@@ -63,7 +68,7 @@ func (app *controlPlaneServer) startWorkspaceApplicationDeploymentWorker(ctx con
 
 func (app *controlPlaneServer) runWorkspaceApplicationDeploymentsOnce(ctx context.Context, service *controlplane.Service) error {
 	operations, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{
-		Action: workspaceApplicationDeploymentAction, Statuses: []string{"pending"}, Limit: 50,
+		Action: workspaceApplicationDeploymentAction, Statuses: []string{"pending", "running"},
 	})
 	if err != nil {
 		return err
@@ -106,7 +111,7 @@ func (app *controlPlaneServer) runWorkspaceApplicationDeployment(ctx context.Con
 			return app.advanceWorkspaceApplicationActivation(ctx, row, &intent)
 		case workspaceApplicationDeploymentReceiptPhase:
 			return app.advanceWorkspaceApplicationReceipt(ctx, service, row, &intent)
-		case workspaceApplicationDeploymentActivePhase:
+		case workspaceApplicationDeploymentActivePhase, workspaceApplicationDeploymentManualReviewPhase:
 			return nil
 		default:
 			return errors.New("workspace_application_deployment_phase_invalid")
@@ -126,14 +131,9 @@ func (app *controlPlaneServer) persistWorkspaceApplicationDeployment(ctx context
 }
 
 func (app *controlPlaneServer) markWorkspaceApplicationManualReview(ctx context.Context, row map[string]any, intent workspaceApplicationDeploymentIntent, reason string) error {
+	intent.Phase = workspaceApplicationDeploymentManualReviewPhase
 	intent.LastError = reason
-	encoded, err := json.Marshal(intent)
-	if err != nil {
-		return err
-	}
-	row["result"] = string(encoded)
-	row["status"] = "manual_review"
-	return app.tables.SaveRuntimeOperation(ctx, row)
+	return app.persistWorkspaceApplicationDeployment(ctx, row, intent, "manual_review")
 }
 
 func (app *controlPlaneServer) advanceWorkspaceApplicationRuntime(ctx context.Context, service *controlplane.Service, row map[string]any, intent *workspaceApplicationDeploymentIntent) error {
@@ -148,14 +148,40 @@ func (app *controlPlaneServer) advanceWorkspaceApplicationRuntime(ctx context.Co
 	if !ok {
 		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, errApplicationRevisionPayloadInvalid.Error())
 	}
+	current, found, err := app.tables.GetWorkspace(ctx, intent.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, errWorkspaceApplicationWorkspaceGone.Error())
+	}
+	launch, found, err := app.canonicalWorkspaceLaunch(ctx, current, func(launch workspaceLaunchReconcileOperation, workspace map[string]any) []string {
+		if !workspaceApplicationResourcesMatch(workspace, *intent) ||
+			launch.stringFact("accountId") != intent.AccountID || launch.stringFact("workspaceId") != intent.WorkspaceID ||
+			launch.stringFact("computeAllocationId") != intent.ComputeID || launch.stringFact("storageId") != intent.StorageID ||
+			launch.stringFact("attachmentId") != intent.AttachmentID || launch.stringFact("attachmentBindingRef") == "" {
+			return []string{"application_resource_binding"}
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, errWorkspaceApplicationResourcesUnready.Error())
+	}
 	observation, ensureErr := service.EnsureWorkspaceApplicationRuntime(ctx, clients.WorkspaceApplicationRuntimeInput{
-		WorkspaceID: intent.WorkspaceID, ComputeID: intent.ComputeID, VolumeID: intent.StorageID,
-		AttachmentID: intent.AttachmentID, AttachmentOperationID: intent.OperationID + ":attachment",
+		AccountID: intent.AccountID, WorkspaceID: intent.WorkspaceID, ComputeID: intent.ComputeID, VolumeID: intent.StorageID,
+		AttachmentID: intent.AttachmentID, AttachmentOperationID: launch.stringFact("attachmentBindingRef"),
 		RuntimeOperationID: intent.OperationID + ":runtime",
 		Revision:           revision, ConfigurationDigest: intent.ConfigurationDigest,
 	}, intent.OperationID+":runtime")
 	intent.RuntimeObservation = &observation
 	if ensureErr != nil {
+		var upstream *clients.FabricHTTPError
+		if errors.As(ensureErr, &upstream) && (upstream.StatusCode == http.StatusBadRequest || upstream.StatusCode == http.StatusUnauthorized || upstream.StatusCode == http.StatusForbidden) {
+			return app.markWorkspaceApplicationManualReview(ctx, row, *intent, ensureErr.Error())
+		}
 		if strings.Contains(ensureErr.Error(), "component_conflict") || errors.Is(ensureErr, errWorkspaceApplicationRevisionGone) {
 			return app.markWorkspaceApplicationManualReview(ctx, row, *intent, ensureErr.Error())
 		}
@@ -166,13 +192,23 @@ func (app *controlPlaneServer) advanceWorkspaceApplicationRuntime(ctx context.Co
 		}
 		return ensureErr
 	}
+	if err := contracts.ValidateWorkspaceApplicationRuntimeObservation(revision, observation); err != nil {
+		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, err.Error())
+	}
+	if observation.WorkspaceID != intent.WorkspaceID ||
+		observation.Status == "ready" && observation.RuntimeID == "" {
+		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, "workspace_application_runtime_observation_mismatch")
+	}
+	if observation.Status == "failed" {
+		return app.markWorkspaceApplicationManualReview(ctx, row, *intent, "workspace_application_runtime_failed")
+	}
+	intent.LastError = ""
 	if observation.Status != "ready" {
 		// Components are still converging on the provider; the claim stays
 		// started and the next tick re-ensures.
 		return app.persistWorkspaceApplicationDeployment(ctx, row, *intent, "running")
 	}
 	intent.Phase = workspaceApplicationDeploymentActivatingPhase
-	intent.LastError = ""
 	return app.persistWorkspaceApplicationDeployment(ctx, row, *intent, "running")
 }
 
@@ -180,12 +216,17 @@ func (app *controlPlaneServer) advanceWorkspaceApplicationActivation(ctx context
 	// The reserved binding and version were captured at intent creation; the
 	// activation commits the deployed revision reference against exactly that
 	// reservation or fails into manual review.
+	next := *intent
+	next.Phase = workspaceApplicationDeploymentReceiptPhase
+	next.ActivationAt = time.Now().UTC().Format(time.RFC3339Nano)
+	next.LastError = ""
 	mutation := workspaceApplicationActivationMutation{
 		WorkspaceID:     intent.WorkspaceID,
 		ExpectedBinding: intent.CurrentBinding,
 		ExpectedVersion: intent.ExpectedWorkspaceVersion,
 		NextBinding:     intent.ApplicationID + "@" + intent.TargetRevision,
 		NextVersion:     intent.ExpectedWorkspaceVersion + 1,
+		Intent:          next,
 	}
 	if err := app.tables.ApplyWorkspaceApplicationActivation(ctx, mutation); err != nil {
 		if errors.Is(err, errWorkspaceApplicationActivationConflict) {
@@ -195,10 +236,16 @@ func (app *controlPlaneServer) advanceWorkspaceApplicationActivation(ctx context
 		}
 		return err
 	}
-	intent.Phase = workspaceApplicationDeploymentReceiptPhase
-	intent.ActivationAt = time.Now().UTC().Format(time.RFC3339Nano)
-	intent.LastError = ""
-	return app.persistWorkspaceApplicationDeployment(ctx, row, *intent, "running")
+	return nil
+}
+
+func workspaceApplicationResourcesMatch(workspace map[string]any, intent workspaceApplicationDeploymentIntent) bool {
+	return stringValue(workspace["id"]) == intent.WorkspaceID &&
+		firstNonEmpty(stringValue(workspace["accountId"]), stringValue(workspace["ownerAccountId"])) == intent.AccountID &&
+		firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"])) == "running" &&
+		firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])) == intent.ComputeID &&
+		stringValue(workspace["storageId"]) == intent.StorageID &&
+		firstNonEmpty(stringValue(workspace["currentAttachmentId"]), stringValue(workspace["attachmentId"])) == intent.AttachmentID
 }
 
 func (app *controlPlaneServer) advanceWorkspaceApplicationReceipt(ctx context.Context, service *controlplane.Service, row map[string]any, intent *workspaceApplicationDeploymentIntent) error {
@@ -227,9 +274,9 @@ func applicationRuntimeIDFromObservation(intent *workspaceApplicationDeploymentI
 	return ""
 }
 
-// ApplyWorkspaceApplicationActivation commits the deployed revision reference
-// against the reserved binding version, or fails with a conflict when the
-// workspace binding moved after the intent was created.
+// ApplyWorkspaceApplicationActivation commits the binding and the receipt-phase
+// operation together. A lost commit response resumes evidence recording, while
+// a failed phase write rolls the binding back in the same transaction.
 func (s *postgresEntStateStore) ApplyWorkspaceApplicationActivation(ctx context.Context, mutation workspaceApplicationActivationMutation) error {
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
@@ -243,6 +290,20 @@ func (s *postgresEntStateStore) ApplyWorkspaceApplicationActivation(ctx context.
 	if err != nil {
 		return err
 	}
+	operation, err := tx.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(mutation.Intent.OperationID), lockRowForUpdate).Only(ctx)
+	if err != nil {
+		return err
+	}
+	current, err := decodeWorkspaceApplicationDeploymentIntent(recordFromEnt(operation, runtimeOpEntFields))
+	if err != nil || current.RequestHash != mutation.Intent.RequestHash {
+		return errWorkspaceApplicationActivationConflict
+	}
+	if current.Phase == workspaceApplicationDeploymentReceiptPhase || current.Phase == workspaceApplicationDeploymentActivePhase {
+		return nil
+	}
+	if current.Phase != workspaceApplicationDeploymentActivatingPhase || !workspaceApplicationResourcesMatch(recordFromEnt(entity, workspaceEntFields), mutation.Intent) {
+		return errWorkspaceApplicationActivationConflict
+	}
 	if entity.ApplicationBinding != mutation.ExpectedBinding || entity.ApplicationBindingVersion != mutation.ExpectedVersion {
 		return errWorkspaceApplicationActivationConflict
 	}
@@ -250,6 +311,13 @@ func (s *postgresEntStateStore) ApplyWorkspaceApplicationActivation(ctx context.
 		SetApplicationBinding(mutation.NextBinding).
 		SetApplicationBindingVersion(mutation.NextVersion).
 		Exec(ctx); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(mutation.Intent)
+	if err != nil {
+		return err
+	}
+	if err := tx.RuntimeOperation.UpdateOneID(operation.ID).SetResult(string(encoded)).SetStatus("running").Exec(ctx); err != nil {
 		return err
 	}
 	return tx.Commit()

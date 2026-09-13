@@ -26,7 +26,7 @@ type WorkspaceApplicationRuntimeObservation struct {
 	RuntimeID     string                                     `json:"runtimeId"`
 	Status        string                                     `json:"status"`
 	// EntryURL is the user-facing web entry of the main component. It is set
-	// when the exposure policy and declared ports allow a published entry and
+	// when the exposure policy and explicit EntryPort allow a published entry and
 	// stays empty for cloud-private or worker-only applications.
 	EntryURL   string                                     `json:"entryUrl,omitempty"`
 	Components []WorkspaceApplicationRuntimeComponentState `json:"components"`
@@ -42,7 +42,7 @@ const (
 
 // WorkspaceApplicationRuntimeComponents derives the declared component list of
 // one revision: the main component plus one component per dependency. Names
-// are unique by construction; the revision validation owns the image rules.
+// and images are checked by revision admission before provider execution.
 func WorkspaceApplicationRuntimeComponents(revision WorkspaceApplicationRevision) []WorkspaceApplicationRuntimeComponentState {
 	components := []WorkspaceApplicationRuntimeComponentState{{
 		Name: WorkspaceApplicationComponentMain, Role: WorkspaceApplicationComponentMain,
@@ -124,6 +124,9 @@ func ValidateWorkspaceApplicationRuntimeObservation(revision WorkspaceApplicatio
 	}
 	if len(observation.Components) != len(declared) {
 		return errors.New("workspace_application_runtime_component_unexpected")
+	}
+	if observation.Status != WorkspaceApplicationRuntimeOverallStatus(observation.Components) {
+		return errors.New("workspace_application_runtime_status_mismatch")
 	}
 	return nil
 }
