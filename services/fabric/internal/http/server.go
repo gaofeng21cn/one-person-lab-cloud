@@ -543,6 +543,10 @@ func newFabricMux(service *fabric.Service) http.Handler {
 			return
 		}
 		observation, err := service.CreateWorkspaceApplicationRuntime(r.Context(), input)
+		if errors.Is(err, fabric.ErrWorkspaceApplicationRuntimeInputInvalid) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if errors.Is(err, fabric.ErrWorkspaceLaunchPending) {
 			// Pending is not a failure: the components are converging and the
 			// observation carries the live state.
@@ -561,6 +565,10 @@ func newFabricMux(service *fabric.Service) http.Handler {
 			return
 		}
 		observation, err := service.WorkspaceApplicationRuntimeReadback(r.Context(), input)
+		if errors.Is(err, fabric.ErrWorkspaceLaunchPending) {
+			writeJSON(w, http.StatusAccepted, observation)
+			return
+		}
 		writeResult(w, observation, err)
 	})
 	mux.HandleFunc("POST /fabric/workspace-runtimes/{workspaceId}/gateway-network/recover", func(w http.ResponseWriter, r *http.Request) {
@@ -755,6 +763,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	if r.URL.Path == "/fabric/compute-allocations" || r.URL.Path == "/fabric/storage-volumes" || r.URL.Path == "/fabric/workspace-runtimes" ||
+		r.URL.Path == "/fabric/workspace-application-runtimes" ||
 		r.URL.Path == "/fabric/gateway-secrets" || r.URL.Path == "/fabric/workspace-launches/stages/ensure" ||
 		r.URL.Path == "/fabric/workspace-launches/closeout" || r.URL.Path == "/fabric/workspace-launches/closeout/freeze" ||
 		r.URL.Path == "/fabric/workspace-runtimes/power" ||
@@ -773,7 +782,7 @@ func isFabricMutation(r *http.Request) bool {
 		return false
 	}
 	switch parts[1] + "/" + parts[3] {
-	case "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements":
+	case "compute-allocations/renew", "compute-allocations/destroy", "storage-volumes/renew", "storage-volumes/destroy", "storage-attachments/detach", "workspace-runtimes/repair", "workspace-runtimes/destroy", "workspace-runtimes/gateway-secret", "workspace-runtimes/image-replacements", "workspace-application-runtimes/readback":
 		return true
 	default:
 		return false
@@ -802,6 +811,16 @@ func fabricMutationScopeForRequest(ctx context.Context, resolver fabricMutationS
 		if value("runtimeOperationId") != scope.OperationID {
 			scope.Action = "update_workspace_runtime"
 		}
+	case r.URL.Path == "/fabric/workspace-application-runtimes":
+		if value("runtimeOperationId") != scope.OperationID {
+			return fabricMutationScope{}, false
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_application_runtime", scope.WorkspaceID, "create_workspace_application_runtime"
+	case len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && parts[3] == "readback":
+		if value("workspaceId") != parts[2] || value("runtimeOperationId") != scope.OperationID {
+			return fabricMutationScope{}, false
+		}
+		scope.ResourceKind, scope.ResourceID, scope.Action = "workspace_application_runtime", parts[2], "read_workspace_application_runtime"
 	case r.URL.Path == "/fabric/gateway-secrets":
 		scope.ResourceKind, scope.ResourceID, scope.Action = "gateway_secret", scope.WorkspaceID, "upsert_gateway_secret"
 	case r.URL.Path == "/fabric/storage-attachments":

@@ -7,7 +7,8 @@ import {
   presentWorkspaceApplicationComponentState,
   presentWorkspaceApplicationDeploymentPhase,
   validateWorkspaceApplicationRevisionDraft,
-  workspaceApplicationDeploymentConfigurationDigestValid
+  workspaceApplicationDeploymentConfigurationDigestValid,
+  workspaceApplicationDeploymentPhaseSteps
 } from "../../apps/console-ui/src/app/workspace-application-deployment-controller-model.ts";
 
 function draft(overrides: Partial<Parameters<typeof validateWorkspaceApplicationRevisionDraft>[0]> = {}) {
@@ -54,6 +55,11 @@ test("Mount and dependency rows validate names, paths and uniqueness", () => {
   assert.match(validation.mountErrors[1] ?? "", /重复/);
   assert.match(validation.scratchMountErrors[0] ?? "", /挂载名/);
   assert.match(validation.dependencyErrors[1] ?? "", /重复/);
+  const reserved = validateWorkspaceApplicationRevisionDraft(filledDraft({
+    dependencies: [{ name: "main", image: "" }, { name: "redis-", image: "" }]
+  }));
+  assert.match(reserved.dependencyErrors[0] ?? "", /保留/);
+  assert.match(reserved.dependencyErrors[1] ?? "", /服务名/);
 });
 
 test("The composed revision carries only what the administrator declared", () => {
@@ -63,10 +69,37 @@ test("The composed revision carries only what the administrator declared", () =>
   assert.deepEqual(base.persistentMounts, [{ name: "data", mountPath: "/data" }]);
   assert.equal("dependencies" in base, false);
   assert.deepEqual(base.healthChecks, [{ port: 8080, path: "/healthz", initialDelaySeconds: 5 }]);
+  assert.deepEqual(base.ports, [{ name: "http", port: 8080, protocol: "TCP" }]);
+  assert.equal(base.entryPort, "http");
   const withDependency = composeWorkspaceApplicationRevision(filledDraft({
     dependencies: [{ name: "retrieval", image: "repo.example/svc@sha256:" + "b".repeat(64) }]
   }));
   assert.deepEqual(withDependency.dependencies, [{ name: "retrieval", image: "repo.example/svc@sha256:" + "b".repeat(64) }]);
+});
+
+test("HTTP entry and health checks are independent declarations", () => {
+  const revision = composeWorkspaceApplicationRevision(filledDraft({ httpPort: "8082", healthCheckPort: "9000" }));
+  assert.deepEqual(revision.ports, [{ name: "http", port: 8082, protocol: "TCP" }]);
+  assert.deepEqual(revision.healthChecks, [{ port: 9000, path: "/healthz", initialDelaySeconds: 5 }]);
+  const worker = composeWorkspaceApplicationRevision(filledDraft({ httpPort: "" }));
+  assert.equal("ports" in worker, false);
+  assert.equal("entryPort" in worker, false);
+  assert.ok(worker.healthChecks);
+});
+
+test("Invalid ports, partial probes and mutable dependency images cannot be submitted", () => {
+  for (const port of ["0", "65536", "99999", "1.5", "-1"]) {
+    assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ httpPort: port })).ok, false);
+    assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ healthCheckPort: port })).ok, false);
+  }
+  assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ healthCheckPort: "" })).ok, false);
+  assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ healthCheckPath: "" })).ok, false);
+  assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ healthCheckPath: "", healthCheckPort: "" })).ok, true);
+  assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ dependencies: [{ name: "cache", image: "repo.example/cache:latest" }] })).ok, false);
+});
+
+test("Manual review does not claim that an unknown failed stage reached receipt", () => {
+  assert.deepEqual(workspaceApplicationDeploymentPhaseSteps("manual_review"), []);
 });
 
 test("Deployment configuration digest requires 64 hex characters", () => {

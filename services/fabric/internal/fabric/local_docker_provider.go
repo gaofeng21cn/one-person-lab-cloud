@@ -46,6 +46,7 @@ type LocalDockerProviderConfig struct {
 	HostStorageRoot              string
 	RuntimeHost                  string
 	PublishHost                  string
+	ApplicationProbeImage        string
 	AllowUnboundedSwap           bool
 	RuntimeGatewayContainer      string
 	ConfigureRuntimeGateway      bool
@@ -85,6 +86,7 @@ type LocalDockerProvider struct {
 	hostStorageRootErr                error
 	runtimeHost                       string
 	publishHost                       string
+	applicationProbeImage             string
 	allowUnboundedSwap                bool
 	runtimeGatewayContainer           string
 	configureRuntimeGatewayEnabled    bool
@@ -109,6 +111,7 @@ func NewLocalDockerProvider() *LocalDockerProvider {
 		HostStorageRoot:              strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT")),
 		RuntimeHost:                  runtimeHost,
 		PublishHost:                  firstNonEmpty(strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PUBLISH_HOST")), runtimeHost),
+		ApplicationProbeImage:        strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE")),
 		AllowUnboundedSwap:           os.Getenv("OPL_FABRIC_LOCAL_DOCKER_ALLOW_UNBOUNDED_SWAP") == "1",
 		RuntimeGatewayContainer:      strings.TrimSpace(os.Getenv("OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER")),
 		ConfigureRuntimeGateway:      true,
@@ -149,6 +152,7 @@ func newLocalDockerProvider(config LocalDockerProviderConfig, runner dockerRunne
 		storageQuota:                      storageQuota,
 		runtimeHost:                       runtimeHost,
 		publishHost:                       firstNonEmpty(strings.TrimSpace(config.PublishHost), runtimeHost),
+		applicationProbeImage:             strings.TrimSpace(config.ApplicationProbeImage),
 		allowUnboundedSwap:                config.AllowUnboundedSwap,
 		runtimeGatewayContainer:           strings.TrimSpace(config.RuntimeGatewayContainer),
 		configureRuntimeGatewayEnabled:    config.ConfigureRuntimeGateway,
