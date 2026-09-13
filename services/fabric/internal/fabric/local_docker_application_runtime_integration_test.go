@@ -514,8 +514,12 @@ require('node:http').createServer((request, response) => {
 		t.Fatalf("old image absence was not confirmed by exact inspect: %v: %s", err, output)
 	}
 	t.Log("old OPL component and its unreferenced image are absent")
+	if output, err := exec.CommandContext(ctx, "docker", "exec", thirdName, "node", "-e", "require('fs').unlinkSync('/data/ready')").CombinedOutput(); err != nil {
+		t.Fatalf("prepare declared health check for resume: %v: %s", err, output)
+	}
 	for _, state := range []string{"suspended", "running", "absent"} {
-		result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(thirdInput, state, launchID+":third-"+state))
+		lifecycle := applicationLifecycleInput(thirdInput, state, launchID+":third-"+state)
+		result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, lifecycle)
 		if err != nil {
 			t.Fatalf("third app %s: %v", state, err)
 		}
@@ -523,9 +527,40 @@ require('node:http').createServer((request, response) => {
 			t.Fatalf("third app state=%s want=%s", result.State, state)
 		}
 		if state == "running" {
-			if err := waitForLocalRuntime(ctx, third.EntryURL+"healthz"); err != nil {
-				t.Fatal(err)
+			if result.State != "pending" || result.Observation.Status != "pending" || result.Observation.EntryURL != "" {
+				t.Fatalf("resume published an entry before declared health passed: %#v", result)
 			}
+			if output, err := exec.CommandContext(ctx, "docker", "exec", thirdName, "node", "-e", "require('fs').writeFileSync('/data/ready','ready')").CombinedOutput(); err != nil {
+				t.Fatalf("complete resumed application health: %v: %s", err, output)
+			}
+			for {
+				result, err = service.ReadWorkspaceApplicationRuntimeLifecycle(ctx, lifecycle)
+				if err != nil {
+					t.Fatalf("read resumed application: %v", err)
+				}
+				if result.State == "running" {
+					break
+				}
+				if result.State != "pending" || result.Observation.Status != "pending" || result.Observation.EntryURL != "" {
+					t.Fatalf("unexpected resumed application state: %#v", result)
+				}
+				select {
+				case <-ctx.Done():
+					t.Fatalf("resumed application never became ready: %v", ctx.Err())
+				case <-time.After(200 * time.Millisecond):
+				}
+			}
+			if result.Observation.Status != "ready" || result.Observation.EntryURL == "" {
+				t.Fatalf("resumed application has no ready entry: %#v", result)
+			}
+			// Docker may allocate a new ephemeral host port when it starts the
+			// container again. Only the current owner readback names its entry.
+			httpGetBody(t, result.Observation.EntryURL+"healthz")
+			finished, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, lifecycle)
+			if err != nil || finished.State != "running" || finished.Observation.EntryURL != result.Observation.EntryURL {
+				t.Fatalf("resume command did not converge to its current entry: result=%#v err=%v", finished, err)
+			}
+			t.Log("resumed application passed pending-to-ready readback and current-entry HTTP health")
 		}
 	}
 	if err := service.RemoveWorkspaceApplicationGatewaySecret(ctx, WorkspaceApplicationGatewaySecretCleanupInput{AccountID: accountID, WorkspaceID: workspaceID, SecretRef: gateway.SecretRef, IdempotencyKey: launchID + ":secret-cleanup"}); err != nil {

@@ -167,12 +167,28 @@ func (app *controlPlaneServer) workspaceApplicationLifecycleInventory(ctx contex
 
 func (app *controlPlaneServer) workspaceApplicationHistoricalLifecycleOwner(ctx context.Context, workspace map[string]any, intents []workspaceApplicationDeploymentIntent) (string, error) {
 	selected, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
-	if err != nil || !found {
+	if err != nil {
 		return "", errors.New("workspace_application_historical_selection_unconfirmed")
 	}
 	byID := make(map[string]workspaceApplicationDeploymentIntent, len(intents))
 	for _, intent := range intents {
 		byID[intent.OperationID] = intent
+	}
+	if !found {
+		// The first historical deployment can be cancelled before activation.
+		// Migration preserves its exact reservation; no selected Runtime exists
+		// yet, and another historical command cannot substitute for that owner.
+		reserved, exists := byID[stringValue(workspace["reservedApplicationDeploymentId"])]
+		if !exists || reserved.Version != 1 || !workspaceApplicationOwnedResourcesMatch(workspace, reserved) || reserved.ActivationAt != "" ||
+			reserved.PreviousDeploymentID != "" || reserved.CurrentBinding != stringValue(workspace["applicationBinding"]) || reserved.ExpectedWorkspaceVersion != int64(numberField(workspace, "applicationBindingVersion", 0)) {
+			return "", errors.New("workspace_application_historical_selection_unconfirmed")
+		}
+		switch reserved.Phase {
+		case workspaceApplicationDeploymentIntentPhase, workspaceApplicationDeploymentRuntimePhase, workspaceApplicationDeploymentActivatingPhase, workspaceApplicationDeploymentManualReviewPhase:
+			return reserved.OperationID, nil
+		default:
+			return "", errors.New("workspace_application_historical_selection_unconfirmed")
+		}
 	}
 	seen := map[string]bool{}
 	for {

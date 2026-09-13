@@ -503,6 +503,73 @@ func TestApplicationLifecycleHistoricalRuntimeUsesSelectedLineageOnce(t *testing
 	}
 }
 
+type absentHistoricalApplicationFabric struct {
+	applicationLifecycleFabric
+}
+
+func (f *absentHistoricalApplicationFabric) ReadWorkspaceApplicationRuntime(ctx context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	observation, err := f.applicationLifecycleFabric.ReadWorkspaceApplicationRuntime(ctx, input)
+	observation.Status, observation.EntryURL = "absent", ""
+	for index := range observation.Components {
+		observation.Components[index].State = "absent"
+	}
+	return observation, err
+}
+
+func TestApplicationLifecycleUnactivatedHistoricalReservationIsFenced(t *testing.T) {
+	for _, phase := range []string{workspaceApplicationDeploymentIntentPhase, workspaceApplicationDeploymentRuntimePhase, workspaceApplicationDeploymentActivatingPhase, workspaceApplicationDeploymentManualReviewPhase} {
+		for _, desired := range []string{"absent", "suspended"} {
+			t.Run(phase+"/"+desired, func(t *testing.T) {
+				ctx := context.Background()
+				fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+				app := fixture.server.(*controlPlaneHTTPHandler).app
+				reserved := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "historical-pending", false)
+				reserved.Version, reserved.Phase = 1, phase
+				reserved.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{}
+				reserved.SecretBindings, reserved.DataBindingIDs = nil, nil
+				reserved.DataBindingID, reserved.DataLayout, reserved.DataSourceRuntimeOperationID = "", "", ""
+				reserved.RequestHash = workspaceApplicationDeploymentRequestHash(reserved)
+				row, _, _ := app.tables.GetRuntimeOperation(ctx, reserved.OperationID)
+				payload, _ := json.Marshal(reserved)
+				row["result"] = string(payload)
+				mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
+				workspace, _, _ := app.tables.GetWorkspace(ctx, reserved.WorkspaceID)
+				if stringValue(workspace["currentApplicationDeploymentId"]) != "" || stringValue(workspace["reservedApplicationDeploymentId"]) != reserved.OperationID {
+					t.Fatal("fixture did not retain an unactivated reservation")
+				}
+				runtimeID := contracts.WorkspaceApplicationHistoricalRuntimeID(reserved.WorkspaceID)
+				fabric := &absentHistoricalApplicationFabric{applicationLifecycleFabric{workspaceDeleteFabric: fixture.fabric, states: map[string]string{runtimeID: "absent"}}}
+				service := newTestService(&fakeLedgerClient{}, fabric)
+				inventory, err := app.workspaceApplicationLifecycleInventory(ctx, service, workspace, desired, "lifecycle-owner")
+				if err != nil || len(inventory.Runtimes) != 1 || len(fabric.runtimeInputs) != 1 || fabric.runtimeInputs[0].SchemaVersion != 0 || fabric.runtimeInputs[0].RuntimeOperationID != reserved.OperationID+":runtime" {
+					t.Fatalf("reserved historical inventory=%+v reads=%+v err=%v", inventory, fabric.runtimeInputs, err)
+				}
+				input := inventory.Runtimes[0].Input
+				if !input.HistoricalApplicationRuntime || input.RuntimeID != runtimeID || input.RuntimeOperationID != reserved.OperationID+":runtime" {
+					t.Fatalf("wrong historical fence owner: %+v", input)
+				}
+				if err := app.convergeWorkspaceApplicationLifecycle(ctx, service, inventory, func() error { return nil }); err != nil || len(fabric.mutations) != 1 || !workspaceApplicationLifecycleComplete(inventory, desired) {
+					t.Fatalf("absent reserved Runtime was not fenced: inventory=%+v mutations=%+v err=%v", inventory, fabric.mutations, err)
+				}
+				for _, mismatch := range []struct {
+					field string
+					value any
+				}{{"reservedApplicationDeploymentId", "unproved-reservation"}, {"applicationBindingVersion", reserved.ExpectedWorkspaceVersion + 1}, {"applicationBinding", "opl_app"}} {
+					changed := cloneMap(workspace)
+					changed[mismatch.field] = mismatch.value
+					if _, err := app.workspaceApplicationLifecycleInventory(ctx, service, changed, desired, "lifecycle-owner"); err == nil {
+						t.Fatalf("historical inventory ignored %s mismatch", mismatch.field)
+					}
+				}
+				resumed, err := app.workspaceApplicationLifecycleInventory(ctx, service, workspace, "running", "renewal-owner")
+				if err != nil || len(resumed.Runtimes) != 0 {
+					t.Fatalf("renewal tried to activate the unselected reservation: %+v %v", resumed, err)
+				}
+			})
+		}
+	}
+}
+
 func TestApplicationDefaultPreparationAndDeleteClaimsAreMutuallyExclusive(t *testing.T) {
 	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
 	handler := fixture.server.(*controlPlaneHTTPHandler)

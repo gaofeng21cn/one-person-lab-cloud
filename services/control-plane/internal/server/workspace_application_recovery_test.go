@@ -36,6 +36,11 @@ func testWorkspaceApplicationRecovery(t *testing.T, store controlPlaneTableStore
 	mustStore(t, app.markWorkspaceApplicationManualReview(ctx, row, intent, "test_activation_unconfirmed"))
 	failed, _, _ := store.GetRuntimeOperation(ctx, id)
 	workspace, _, _ := store.GetWorkspace(ctx, intent.WorkspaceID)
+	// The PostgreSQL projection omits zero-valued fields; SaveWorkspace changes
+	// only fields present in the input. Restore the empty selection/version
+	// explicitly so each rejection probe starts from the same reserved command.
+	workspace["currentApplicationDeploymentId"] = intent.PreviousDeploymentID
+	workspace["applicationBindingVersion"] = intent.ExpectedWorkspaceVersion
 	for _, test := range []struct {
 		field string
 		value any
@@ -54,8 +59,8 @@ func testWorkspaceApplicationRecovery(t *testing.T, store controlPlaneTableStore
 		if retained["result"] != failed["result"] {
 			t.Fatal("rejected recovery mutated failed command")
 		}
+		mustStore(t, store.SaveWorkspace(ctx, workspace))
 	}
-	mustStore(t, store.SaveWorkspace(ctx, workspace))
 	suspended := cloneMap(workspace)
 	suspended["state"] = "suspended"
 	if _, err := workspaceApplicationRecoveryRow(suspended, failed, nil); !errors.Is(err, errWorkspaceApplicationRecoveryConflict) {

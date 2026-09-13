@@ -80,7 +80,7 @@ func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplic
 // is authoritative: it names every declared component where it actually runs.
 func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	if input.SchemaVersion == 0 {
-		return s.historicalApplicationReadback(ctx, input)
+		return s.historicalApplicationReadback(ctx, input, false)
 	}
 	var result contracts.WorkspaceApplicationRuntimeObservation
 	err := s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(input.WorkspaceID), func(ctx context.Context) error {
@@ -247,7 +247,7 @@ func (s *Service) saveWorkspaceApplicationRuntimeOperation(ctx context.Context, 
 // with a live provider read when the provider supports it.
 func (s *Service) WorkspaceApplicationRuntimeReadback(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	if input.SchemaVersion == 0 {
-		return s.historicalApplicationReadback(ctx, input)
+		return s.historicalApplicationReadback(ctx, input, true)
 	}
 	// After the claim, the operation's ResourceID is the deterministic runtime
 	// identity assigned by fillOperationResource.

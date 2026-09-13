@@ -255,6 +255,10 @@ credential identity is frozen separately in the runtime configuration: ordinary
 updates and reinstallations retain it; explicit password or Gateway rotation
 advances it. Historical migration names the proven credential source rather
 than deriving a new password from the new deployment ID.
+For a new operator deployment, CP supplies the explicit OPL ABI environment
+keys; the request supplies the complete user environment, so omitted user keys
+are removed. Prior user settings do not become CP-owned fields. Replaying the
+original mutation key still requires its original configuration digest.
 Stable data bindings belong to the Workspace/application pair: compatible
 updates and reinstalling the same application keep those bindings; other
 applications receive separate directories. Explicit historical layouts name the
@@ -266,7 +270,11 @@ configuration and bindings.
 
 Access and lifecycle consumers read the current selected deployment. Suspension
 and deletion inventory every owned application generation, including incomplete
-creation, while resume starts only the selected generation. Fabric's terminal
+creation, while resume starts only the selected generation. An unactivated
+historical v1 deployment is identified by its exact migrated reservation and
+binding/version. A missing historical create record establishes absence only
+when no other operation owns that shared Runtime ID and provider readback also
+confirms absence; this read does not authorize historical creation. Fabric's terminal
 absence fence rejects a late create. Delete confirms application and owned
 Gateway Secret absence before detaching storage or removing resources; external
 source Secrets and Sub2API Keys remain retained. Local Docker retires only exact

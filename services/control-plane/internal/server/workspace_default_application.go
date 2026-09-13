@@ -274,6 +274,16 @@ func (app *controlPlaneServer) workspaceOPLApplicationConfiguration(ctx context.
 	if !found {
 		return configuration, nil, 0, errWorkspaceApplicationWorkspaceGone
 	}
+	// These exact keys form the CP-owned OPL runtime ABI. Each new deployment
+	// supplies a complete set of user environment values over this base; a prior
+	// user's settings never become reserved keys through application selection.
+	configuration.Environment = map[string]string{
+		"OPL_WEBUI_DEPLOYMENT_MODE": "cloud", "OPL_WEBUI_AUTH_MODE": "password", "OPL_WEBUI_USERNAME": "opl",
+		"OPL_GATEWAY_API_KEY_FILE": "/run/secrets/opl_gateway_api_key",
+		"OPL_WEBUI_PASSWORD_FILE":  "/run/secrets/opl_webui_password", "OPL_WEBUI_SESSION_SECRET_FILE": "/run/secrets/webui_session_secret",
+		"OPL_WORKSPACE_ID": workspaceID, "OPL_COMPUTE_ALLOCATION_ID": firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])), "OPL_OWNER_ACCOUNT_ID": stringValue(workspace["accountId"]),
+		"DATA_DIR": "/data", "AIONUI_DATA_DIR": "/data", "OPL_PROJECTS_DIR": "/projects", "OPL_WORKSPACE_ROOT": "/projects", "OPL_WEBUI_RECOVERY_DIR": "/recovery", "AIONUI_ALLOW_REMOTE": "true", "ALLOW_REMOTE": "true", "HOME": "/data", "CODEX_HOME": "/data/.codex",
+	}
 	var secret clients.GatewaySecretWriteResult
 	var keyID int64
 	if current, selected, err := app.workspaceApplicationSelectedAncestor(ctx, workspace, applicationID); err != nil {
@@ -284,7 +294,9 @@ func (app *controlPlaneServer) workspaceOPLApplicationConfiguration(ctx context.
 			return configuration, nil, 0, err
 		}
 		if current.Version == 2 && input.Revision.RuntimeProfile == "opl_app" {
-			return current.Configuration, current.SecretBindings, current.WorkspaceAPIKeyID, nil
+			configuration.CredentialVersion = current.Configuration.CredentialVersion
+			configuration.CredentialSourceRuntimeOperationID = current.Configuration.CredentialSourceRuntimeOperationID
+			return configuration, current.SecretBindings, current.WorkspaceAPIKeyID, nil
 		}
 	}
 	rows, err := queryRuntimeOperations(ctx, app.tables, runtimeOperationQuery{WorkspaceID: workspaceID, Action: workspaceDefaultApplicationAction})
@@ -316,13 +328,6 @@ func (app *controlPlaneServer) workspaceOPLApplicationConfiguration(ctx context.
 	}
 	if secret.SecretRef == "" || secret.Version == "" || keyID <= 0 {
 		return configuration, nil, 0, errors.New("workspace_application_gateway_binding_missing")
-	}
-	configuration.Environment = map[string]string{
-		"OPL_WEBUI_DEPLOYMENT_MODE": "cloud", "OPL_WEBUI_AUTH_MODE": "password", "OPL_WEBUI_USERNAME": "opl",
-		"OPL_GATEWAY_API_KEY_FILE": "/run/secrets/opl_gateway_api_key",
-		"OPL_WEBUI_PASSWORD_FILE":  "/run/secrets/opl_webui_password", "OPL_WEBUI_SESSION_SECRET_FILE": "/run/secrets/webui_session_secret",
-		"OPL_WORKSPACE_ID": workspaceID, "OPL_COMPUTE_ALLOCATION_ID": firstNonEmpty(stringValue(workspace["currentComputeAllocationId"]), stringValue(workspace["computeAllocationId"])), "OPL_OWNER_ACCOUNT_ID": stringValue(workspace["accountId"]),
-		"DATA_DIR": "/data", "AIONUI_DATA_DIR": "/data", "OPL_PROJECTS_DIR": "/projects", "OPL_WORKSPACE_ROOT": "/projects", "OPL_WEBUI_RECOVERY_DIR": "/recovery", "AIONUI_ALLOW_REMOTE": "true", "ALLOW_REMOTE": "true", "HOME": "/data", "CODEX_HOME": "/data/.codex",
 	}
 	return configuration, []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: secret.SecretRef, Version: secret.Version, Key: "opl_gateway_api_key"}}, keyID, nil
 }

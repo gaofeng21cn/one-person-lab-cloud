@@ -204,7 +204,7 @@ func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) 
 	service := fixture.server.(*controlPlaneHTTPHandler).service
 	revision := defaultOPLApplicationRevision("registry.example/opl-app@sha256:" + strings.Repeat("a", 64))
 	bindings := []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", Key: "opl_gateway_api_key", SecretRef: "opl-gateway-ws-alpha", Version: "gateway-original"}}
-	initial := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"OPL_WEBUI_USERNAME": "opl"}}, bindings, 19, true)
+	initial := seedApplicationRevisionForLifecycle(t, app, "ws-alpha", revision, contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"OPL_WEBUI_USERNAME": "opl", "PRIOR_USER_SETTING": "original"}}, bindings, 19, true)
 	revision.Version = "rotated"
 	configuration := initial.Configuration
 	configuration.CredentialVersion = "explicit-credential-version"
@@ -226,8 +226,11 @@ func TestApplicationCredentialConfigurationFollowsSelectedLineage(t *testing.T) 
 	row["result"] = string(payload)
 	mustStore(t, app.tables.SaveRuntimeOperation(ctx, row))
 	resolved, resolvedBindings, keyID, err := app.workspaceOPLApplicationConfiguration(ctx, service, "ws-alpha", revision.ApplicationID)
-	if err != nil || !reflect.DeepEqual(resolved, rotated.Configuration) || !reflect.DeepEqual(resolvedBindings, rotated.SecretBindings) || keyID != 20 {
+	if err != nil || resolved.CredentialVersion != rotated.Configuration.CredentialVersion || resolved.CredentialSourceRuntimeOperationID != rotated.Configuration.CredentialSourceRuntimeOperationID || !reflect.DeepEqual(resolvedBindings, rotated.SecretBindings) || keyID != 20 {
 		t.Fatalf("return to OPL lost selected credentials: configuration=%+v bindings=%+v key=%d err=%v", resolved, resolvedBindings, keyID, err)
+	}
+	if _, retained := resolved.Environment["PRIOR_USER_SETTING"]; retained || resolved.Environment["OPL_WEBUI_AUTH_MODE"] != "password" || resolved.Environment["OPL_WEBUI_USERNAME"] != "opl" || resolved.Environment["DATA_DIR"] != "/data" {
+		t.Fatal("OPL configuration did not resolve exactly the platform ABI environment")
 	}
 	returned, err := app.createWorkspaceApplicationDeploymentIntent(ctx, "ws-alpha", "return-after-rotation", revision.ApplicationID, revision.Version, resolved, resolvedBindings, keyID, "", "")
 	if err != nil || returned.Configuration.CredentialVersion != rotated.Configuration.CredentialVersion || returned.DataBindingID != initial.DataBindingID {

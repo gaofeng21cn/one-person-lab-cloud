@@ -3,6 +3,7 @@ package fabric
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	contracts "opl-cloud/packages/contracts/go"
 	"os"
@@ -163,6 +164,162 @@ func TestWorkspaceApplicationHistoricalReadbackAdoptsExactOriginalInput(t *testi
 	newHistorical.IdempotencyKey = newHistorical.RuntimeOperationID
 	if _, err := service.CreateWorkspaceApplicationRuntime(ctx, newHistorical); err == nil || runner.runCount() != 2 {
 		t.Fatalf("unclaimed historical input recreated: %v", err)
+	}
+}
+
+func TestWorkspaceApplicationHistoricalReadbackUncreatedCanBeFenced(t *testing.T) {
+	for _, desired := range []string{"absent", "suspended"} {
+		t.Run(desired, func(t *testing.T) {
+			ctx := context.Background()
+			provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			store := NewMemoryOperationStore()
+			service := runtimeTestService(provider, store)
+			input := applicationRuntimeInput("reserved-historical", applicationRevisionForTest())
+			input.SchemaVersion, input.DataBindingID = 0, ""
+			input.ConfigurationDigest = strings.Repeat("c", 64)
+			readback, err := service.WorkspaceApplicationRuntimeReadback(ctx, input)
+			if err != nil || readback.Status != "absent" || readback.RuntimeID != applicationRuntimeID(input) || len(readback.Components) != 2 {
+				t.Fatalf("uncreated readback=%#v err=%v", readback, err)
+			}
+			if err := contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, readback); err != nil {
+				t.Fatal(err)
+			}
+			if operations, err := service.ListOperations(ctx); err != nil || len(operations) != 0 {
+				t.Fatalf("uncreated read wrote an adoption: operations=%v err=%v", operations, err)
+			}
+			if _, err := service.CreateWorkspaceApplicationRuntime(ctx, input); !errors.Is(err, ErrRuntimeIdempotencyConflict) {
+				t.Fatalf("unclaimed historical create accepted: %v", err)
+			}
+			lifecycle := applicationLifecycleInput(input, desired, "cancel-reserved-historical")
+			lifecycle.RuntimeID, lifecycle.HistoricalApplicationRuntime = readback.RuntimeID, true
+			if result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, lifecycle); err != nil || result.State != "absent" {
+				t.Fatalf("uncreated fence=%#v err=%v", result, err)
+			}
+			service = runtimeTestService(provider, store)
+			if _, found, err := service.resourceOperations.LatestResourceOperation(ctx, "workspace_application_lifecycle", lifecycle.RuntimeID); err != nil || !found {
+				t.Fatalf("fence missing after restart: found=%t err=%v", found, err)
+			}
+			if readback, err := service.WorkspaceApplicationRuntimeReadback(ctx, input); err != nil || readback.Status != "absent" {
+				t.Fatalf("fenced readback=%#v err=%v", readback, err)
+			}
+			if _, err := service.CreateWorkspaceApplicationRuntime(ctx, input); !errors.Is(err, ErrRuntimeIdempotencyConflict) || runner.runCount() != 0 {
+				t.Fatalf("fenced historical input recreated: err=%v runs=%d", err, runner.runCount())
+			}
+		})
+	}
+}
+
+func TestWorkspaceApplicationHistoricalReadbackRejectsOtherSharedRuntimeOwner(t *testing.T) {
+	for _, foreign := range []bool{false, true} {
+		for _, status := range []string{"started", "failed", "succeeded"} {
+			name := status
+			if foreign {
+				name += "-foreign"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctx := context.Background()
+				provider := &recordingApplicationRuntimeProvider{}
+				store := NewMemoryOperationStore()
+				service := runtimeTestService(provider, store)
+				input := applicationRuntimeInput("missing-historical-key", applicationRevisionForTest())
+				input.SchemaVersion, input.DataBindingID = 0, ""
+				input.ConfigurationDigest = strings.Repeat("c", 64)
+				absent := applicationObservationForTest(input.Revision, "absent")
+				provider.observation.Store(&absent)
+				owner := input
+				owner.RuntimeOperationID = "other-historical-key"
+				if foreign {
+					owner.AccountID = "another-account"
+				}
+				operation := newOperation("create_workspace_application_runtime", "workspace_application_runtime", applicationRuntimeID(owner), owner.AccountID, owner.WorkspaceID, owner.RuntimeOperationID, historicalApplicationRequestHash(owner), service.now())
+				operation.ID, operation.Status, operation.CreatedAt = "other-historical-owner", status, service.now()
+				if _, _, err := service.runtimeOperations.ClaimRuntime(ctx, operation); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := service.WorkspaceApplicationRuntimeReadback(ctx, input); !errors.Is(err, ErrRuntimeIdempotencyConflict) || provider.readCalls.Load() != 0 {
+					t.Fatalf("shared RuntimeID owner ignored: err=%v reads=%d", err, provider.readCalls.Load())
+				}
+			})
+		}
+	}
+}
+
+func TestWorkspaceApplicationHistoricalReadbackUncreatedRequiresEveryComponentAbsent(t *testing.T) {
+	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(applicationRevisionForTest()) {
+		t.Run(component.Name, func(t *testing.T) {
+			ctx := context.Background()
+			provider, _, paths := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			service := runtimeTestService(provider, NewMemoryOperationStore())
+			input := applicationRuntimeInput("missing-owner", applicationRevisionForTest())
+			input.SchemaVersion, input.DataBindingID = 0, ""
+			input.ConfigurationDigest = strings.Repeat("c", 64)
+			compute := service.computes[input.ComputeID]
+			if _, err := provider.ensureWorkspaceApplicationComponent(ctx, input, compute, localDockerName("opl-compute", compute.ID), paths, component); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.WorkspaceApplicationRuntimeReadback(ctx, input); !errors.Is(err, ErrRuntimeIdempotencyConflict) {
+				t.Fatalf("existing %s treated as absent: %v", component.Name, err)
+			}
+		})
+	}
+}
+
+func TestWorkspaceApplicationHistoricalReadbackUncreatedPreservesProviderFailure(t *testing.T) {
+	provider := &recordingApplicationRuntimeProvider{}
+	service := runtimeTestService(provider, NewMemoryOperationStore())
+	input := applicationRuntimeInput("missing-owner", applicationRevisionForTest())
+	input.SchemaVersion, input.DataBindingID = 0, ""
+	input.ConfigurationDigest = strings.Repeat("c", 64)
+	readErr := errors.New("provider_read_failed")
+	provider.readErr.Store(&readErr)
+	if _, err := service.WorkspaceApplicationRuntimeReadback(context.Background(), input); !errors.Is(err, readErr) {
+		t.Fatalf("provider failure treated as absence: %v", err)
+	}
+	provider.readErr.Store(nil)
+	invalid := applicationObservationForTest(input.Revision, "absent")
+	invalid.Components = invalid.Components[:1]
+	provider.observation.Store(&invalid)
+	if _, err := service.WorkspaceApplicationRuntimeReadback(context.Background(), input); err == nil {
+		t.Fatal("incomplete provider absence accepted")
+	}
+}
+
+func TestWorkspaceApplicationLifecycleResumeReadsCurrentEntryAfterPending(t *testing.T) {
+	ctx := context.Background()
+	provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	service := runtimeTestService(provider, NewMemoryOperationStore())
+	volume := service.volumes["storage-alpha"]
+	volume.ProviderResourceID, volume.SizeGB = "", 10
+	service.volumes["storage-alpha"] = volume
+	input := applicationRuntimeInput("resume-current-entry", applicationRevisionForTest())
+	initial, err := service.CreateWorkspaceApplicationRuntime(ctx, input)
+	if err != nil || initial.Status != "ready" {
+		t.Fatalf("initial=%#v err=%v", initial, err)
+	}
+	if result, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, applicationLifecycleInput(input, "suspended", "suspend-current-entry")); err != nil || result.State != "suspended" {
+		t.Fatalf("suspend=%#v err=%v", result, err)
+	}
+	name, _ := localDockerApplicationComponentNameForInput(input, "main")
+	var containers []dockerContainerInspect
+	if err := json.Unmarshal(runner.containers[name], &containers); err != nil {
+		t.Fatal(err)
+	}
+	containers[0].NetworkSettings.Ports["8080/tcp"][0].HostPort = "32080"
+	runner.containers[name], runner.containers["cid-"+name] = mustJSON(containers), mustJSON(containers)
+	runner.probeReady = false
+	resume := applicationLifecycleInput(input, "running", "resume-current-entry")
+	pending, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
+	if err != nil || pending.State != "pending" || pending.Observation.Status != "pending" || pending.Observation.EntryURL != "" {
+		t.Fatalf("resume health pending=%#v err=%v", pending, err)
+	}
+	runner.probeReady = true
+	live, err := service.ReadWorkspaceApplicationRuntimeLifecycle(ctx, resume)
+	if err != nil || live.State != "running" || live.Observation.Status != "ready" || live.Observation.EntryURL != "http://127.0.0.1:32080/" || live.Observation.EntryURL == initial.EntryURL {
+		t.Fatalf("resume current entry=%#v err=%v", live, err)
+	}
+	finished, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
+	if err != nil || finished.State != "running" || finished.Observation.EntryURL != live.Observation.EntryURL || runner.runCount() != 2 {
+		t.Fatalf("resume convergence recreated runtime: result=%#v err=%v runs=%d", finished, err, runner.runCount())
 	}
 }
 

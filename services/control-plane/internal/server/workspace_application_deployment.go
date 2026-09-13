@@ -419,6 +419,8 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 					writeError(w, http.StatusConflict, prepErr.Error())
 					return
 				}
+				// The owner returns only ABI environment keys and the retained
+				// credential identity. Omitted user keys disappear in this command.
 				for name, value := range requestedEnvironment {
 					if owned, exists := configuration.Environment[name]; exists && owned != value {
 						writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")

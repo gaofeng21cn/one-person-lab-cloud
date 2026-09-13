@@ -110,4 +110,53 @@ func TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials(t *t
 	if retained["result"] != acceptedRow["result"] || !reflect.DeepEqual(workspaceBefore, workspaceAfter) || len(fabric.lifecycle) != lifecycleCount {
 		t.Fatal("HTTP replay changed the original command, current selection, or runtime")
 	}
+	// A new operator command owns its complete set of application settings.
+	// Prior user settings remain mutable, while credentials and ABI stay owned.
+	for _, command := range []struct {
+		key         string
+		environment map[string]string
+	}{
+		{"change-user-settings", map[string]string{"CLIENT_SETTING": "changed", "ADDED_SETTING": "new"}},
+		{"remove-user-settings", map[string]string{}},
+	} {
+		requested := contracts.WorkspaceApplicationRuntimeConfiguration{Environment: command.environment}
+		created := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", body(revision.ApplicationID, revision.Version, requested), command.key)
+		var commandResponse struct {
+			Intent workspaceApplicationDeploymentIntent `json:"intent"`
+		}
+		if created.Code != http.StatusAccepted || json.Unmarshal(created.Body.Bytes(), &commandResponse) != nil {
+			t.Fatalf("new user configuration command %s rejected: status=%d body=%s", command.key, created.Code, created.Body.String())
+		}
+		updated := commandResponse.Intent
+		if updated.Configuration.CredentialVersion != rotated.Configuration.CredentialVersion || updated.Configuration.CredentialSourceRuntimeOperationID != rotated.Configuration.CredentialSourceRuntimeOperationID || !reflect.DeepEqual(updated.SecretBindings, rotated.SecretBindings) || updated.WorkspaceAPIKeyID != rotated.WorkspaceAPIKeyID {
+			t.Fatalf("user configuration command changed credential identity: %+v", updated)
+		}
+		for _, name := range []string{"CLIENT_SETTING", "ADDED_SETTING", "OWNER_CURRENT_SETTING"} {
+			value, exists := updated.Configuration.Environment[name]
+			expected, requested := command.environment[name]
+			if exists != requested || value != expected {
+				t.Fatalf("command %s retained or changed omitted setting %s: got=%q exists=%v", command.key, name, value, exists)
+			}
+		}
+		for _, name := range []string{"OPL_WEBUI_AUTH_MODE", "OPL_WEBUI_USERNAME", "OPL_WEBUI_PASSWORD_FILE", "OPL_WEBUI_SESSION_SECRET_FILE", "OPL_GATEWAY_API_KEY_FILE", "OPL_WORKSPACE_ID", "OPL_OWNER_ACCOUNT_ID", "DATA_DIR", "CODEX_HOME"} {
+			if updated.Configuration.Environment[name] != accepted.Configuration.Environment[name] {
+				t.Fatalf("new command changed OPL ABI %s", name)
+			}
+		}
+		runDeploymentWorkerToCompletion(t, app, service, updated.OperationID)
+		if !reflect.DeepEqual(fabric.inputs[updated.OperationID+":runtime"].Configuration, updated.Configuration) {
+			t.Fatal("Fabric did not receive the replacement user configuration")
+		}
+	}
+	for _, name := range []string{"OPL_WEBUI_AUTH_MODE", "OPL_WEBUI_PASSWORD_FILE", "OPL_GATEWAY_API_KEY_FILE", "OPL_WORKSPACE_ID", "DATA_DIR"} {
+		requested := contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{name: "operator-overridden"}}
+		denied := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", body(revision.ApplicationID, revision.Version, requested), "override-abi-"+name)
+		if denied.Code != http.StatusBadRequest || !strings.Contains(denied.Body.String(), "workspace_application_owned_configuration_conflict") {
+			t.Fatalf("operator changed OPL ABI %s: %d %s", name, denied.Code, denied.Body.String())
+		}
+	}
+	replay = requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-deployments", originalBody, "opl-http-command")
+	if replay.Code != http.StatusAccepted || json.Unmarshal(replay.Body.Bytes(), &response) != nil || !reflect.DeepEqual(response.Intent, accepted) {
+		t.Fatalf("user settings replacement changed original replay: %d %s", replay.Code, replay.Body.String())
+	}
 }

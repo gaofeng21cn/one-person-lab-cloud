@@ -36,7 +36,7 @@ func applicationRuntimeRequestHash(input WorkspaceApplicationRuntimeInput) strin
 func validHistoricalApplicationInput(input WorkspaceApplicationRuntimeInput) bool {
 	return input.SchemaVersion == 0 && input.AccountID != "" && input.WorkspaceID != "" && input.ComputeID != "" && input.VolumeID != "" && input.RuntimeOperationID != "" && input.ConfigurationDigest != "" && input.DataLayout == "" && input.DataSourceRuntimeOperationID == "" && input.DataBindingID == "" && len(input.Configuration.Environment) == 0 && input.Configuration.CredentialVersion == "" && input.Configuration.CredentialSourceRuntimeOperationID == "" && len(input.SecretBindings) == 0 && input.Revision.RuntimeProfile == "" && contracts.ValidateWorkspaceApplicationRevision(input.Revision) == nil
 }
-func (s *Service) historicalApplicationReadback(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+func (s *Service) historicalApplicationReadback(ctx context.Context, input WorkspaceApplicationRuntimeInput, allowUncreated bool) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var observation contracts.WorkspaceApplicationRuntimeObservation
 	if !validHistoricalApplicationInput(input) {
 		return observation, ErrWorkspaceApplicationRuntimeInputInvalid
@@ -46,8 +46,29 @@ func (s *Service) historicalApplicationReadback(ctx context.Context, input Works
 		if err != nil {
 			return err
 		}
+		if !found {
+			if !allowUncreated {
+				return ErrRuntimeIdempotencyConflict
+			}
+			// Historical generations share a RuntimeID. An absent request key
+			// cannot establish absence while any other owner retains that ID.
+			if _, owned, err := s.resourceOperations.LatestResourceOperation(ctx, "workspace_application_runtime", applicationRuntimeID(input)); err != nil {
+				return err
+			} else if owned {
+				return ErrRuntimeIdempotencyConflict
+			}
+			live, err := s.readWorkspaceApplicationRuntime(ctx, input)
+			if err != nil {
+				return err
+			}
+			if live.Status != "absent" {
+				return ErrRuntimeIdempotencyConflict
+			}
+			observation = live
+			return nil
+		}
 		var record workspaceApplicationRuntimeRecord
-		if !found || operation.AccountID != input.AccountID || operation.WorkspaceID != input.WorkspaceID || operation.RequestHash != historicalApplicationRequestHash(input) || !decodeOperationResource(operation, &record) || record.RuntimeID != applicationRuntimeID(input) {
+		if operation.AccountID != input.AccountID || operation.WorkspaceID != input.WorkspaceID || operation.RequestHash != historicalApplicationRequestHash(input) || !decodeOperationResource(operation, &record) || record.RuntimeID != applicationRuntimeID(input) {
 			return ErrRuntimeIdempotencyConflict
 		}
 		// Retained success does not establish current readiness. A current provider

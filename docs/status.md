@@ -64,17 +64,18 @@ new application-data material HTTP checks, plus shared Go contract tests.
 Browser, TypeScript, lint and build checks passed before the main integration;
 their source files are unchanged by that integration.
 
-Required full verification is not complete. The retained full run failed when
-its temporary PostgreSQL entered recovery; Fabric database-dependent tests could
-not start. Real Docker reached the OPL-profile fixture's ready state and
-password/session login, but the complete replacement/cleanup scenario has not
-passed. Exact Docker events exposed a probe execution/automatic-removal deadline
-conflict. Execution and verified cleanup now have one owner and separate bounds;
-focused tests pass, while the updated complete Docker scenario still needs a
-successful run. Subsequent host observations show sustained CPU saturation and
-heavy memory compression/swap, so the next full PostgreSQL/Docker run requires an
-available local verification environment. These partial results are not a full
-verification receipt.
+Required full verification is not complete. The latest retained full run exposed
+a recovery test that failed to restore omitted PostgreSQL zero fields, a Docker
+test using a stale entry after restart, and two retained checks hitting resource
+or migration-lock deadlines. The recovery fixture now restores each baseline
+explicitly; production recovery checks remain unchanged. Docker already proved
+same-application data/session retention, cross-application isolation and exact
+old-image absence. Its resume test now consumes current lifecycle entry readback.
+After the idle local IBD verification stack was stopped with its data retained,
+the unchanged Docker core scenario passed in 40.16 seconds. Review also repaired
+unactivated historical reservations during lifecycle inventory and separated
+CP-owned ABI keys from user environment updates. Focused checks pass; the final
+integrated PostgreSQL/Docker run remains required.
 
 The owning checks are the CP `workspace_default_application_test.go`,
 `workspace_application_recovery_test.go`,
