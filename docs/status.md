@@ -94,7 +94,16 @@ and deployment transition checks against the Workspace's current binding —
 and commit `722f2ee7` adds the administrator-only admission/read routes and
 PostgreSQL revision persistence. Identical content replays the stored revision;
 conflicting content cannot overwrite it. Domain, HTTP and real PostgreSQL
-admission checks passed. The Fabric deployment path remains the next slice.
+admission checks passed. The Fabric application engine and Local-Docker entry
+publication are implemented through `d4e34677`. The non-OPL visit-counter
+integration test builds and pushes an immutable image to a local registry,
+provisions compute/storage/attachment, checks the declared HTTP entry, then
+replaces the main container and verifies its retained local workspace data.
+The focused real-Docker test and `npm run verify:local:full` passed on
+2026-09-13, including all 18 PostgreSQL/Docker Go test packages with zero
+skips. This proves Local-Docker
+application execution and bind-mount persistence only; it does not qualify
+Tencent CBS/TKE, dependency components, or the Control Plane/Console journey.
 The full local gate also exposed a retained Fabric terminalization race:
 an identical request could finish between the replay and candidate reads.
 The command, result-read and HTTP authorization paths now re-read the exact

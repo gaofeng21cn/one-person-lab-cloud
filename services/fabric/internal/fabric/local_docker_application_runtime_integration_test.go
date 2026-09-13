@@ -215,7 +215,7 @@ require('node:http').createServer((request, response) => {
 		t.Fatalf("first visit body=%q", body)
 	}
 
-	// Replace the whole main container: the CBS-backed data must survive.
+	// Replace the whole main container: the local workspace mount must survive.
 	containerName, nameErr := localDockerApplicationComponentName(workspaceID, "main")
 	if nameErr != nil {
 		t.Fatal(nameErr)
@@ -234,7 +234,7 @@ require('node:http').createServer((request, response) => {
 	if !strings.Contains(body, "visits: 2") {
 		t.Fatalf("visit counter did not persist across replacement: %q", body)
 	}
-	t.Log("non-OPL application deployed, served over HTTP, and its CBS-backed data survived full container replacement")
+	t.Log("non-OPL application deployed, served over HTTP, and its local workspace data survived full container replacement")
 }
 
 func httpGetBody(t *testing.T, url string) string {
