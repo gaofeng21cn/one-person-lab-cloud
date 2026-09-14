@@ -215,6 +215,57 @@ failures.
 | Full log SHA-256 | `40c45fcb6783593b7ae68bd53040c0149a673bd71e01b0451d1f7f80174ac429` |
 | Completed at | 2026-09-14 (Asia/Shanghai) |
 
+### Dependency Component Specification Verification
+
+The dependency contract upgrades from a bare name/image pair to a full
+per-component specification, driven by the real IBD deployment shape (one
+main service plus six knowledge services). A dependency now declares its own
+ports (declared inside the application network, never published), TCP or HTTP
+health checks, persistent and scratch mounts under the application's data
+namespace, its own entrypoint/args/environment, and its own Secret inputs in
+the revision-wide SecretBindings namespace. The main component's mounts,
+entrypoint and probes never leak into a dependency — the audit finding that
+Local applied main's mount/entrypoint to every dependency is closed by
+construction: dependency containers run only what their own spec declares.
+
+Fabric Local-Docker runs dependencies exactly from their spec (`--expose`
+for declared TCP ports, per-dependency env/entrypoint/args, per-dependency
+mounts and tmpfs) and readback gates dependency readiness on the first
+declared TCP/HTTP check against the container's real network address.
+Fabric Tencent renders per-dependency Deployments with their own command,
+args, env, tcpSocket/httpGet readiness probes, workspace-data subPath mounts
+and memory-backed scratch emptyDirs; dependency ports appear as container
+ports without publication. CP admission validates the full dependency spec
+through the existing revision contract, so hand-registered and
+registry-selected revisions obey the same bounds.
+
+Focused evidence: contracts dependency-spec tests (full spec accepted, 13
+rejection cases, revision-level propagation), Local
+`TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec` (spec-driven args,
+no main inheritance), Tencent
+`TestTencentApplicationManifestDependencyOwnSpec` (command/args/env/probe/
+ports/mount per spec). The whole CP server package passed against isolated
+real PostgreSQL; the whole Fabric package passed with its PostgreSQL URL.
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Implementation base | `929ba15a` (canonical main after PR #553) |
+| Command | `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` |
+| Result | exit 0; 313 browser/source checks pass; 4 PostgreSQL owners pass with zero skips |
+| Full log SHA-256 | `295c023157ee96b7e6d21ffdd39b0a4491126f601e48d8f8b9a5d16ecea682dd` |
+| Completed at | 2026-09-14 (Asia/Shanghai) |
+| Source consistency | Clean tracked worktree at the recorded HEAD; docs-only closeout followed. Two earlier full runs failed on `node:22-bookworm-slim` digest pulls being reset by the network; the same digest pre-pulled by exact reference, and the passing run consumed it without a fetch. Those failed attempts are retained separately and do not qualify this result. |
+
+IBD image locks are maintained in
+[ibd-image-lock.md](./delivery/ibd-image-lock.md): all seven TCR repositories
+(`chaokang_agent_ibd`, `ibd-ragflow`, `ibd-tei`, `ibd-es01`, `ibd-mysql`,
+`ibd-minio-silo`, `ibd-valkey`, tag `20260909-verified`) now carry server
+digests identical to the bundle manifest's frozen `image_id` values, pushed
+blob-by-blob from the verified delivery archives without rebuilding. The
+`oplcloud` namespace is private; browsing uses
+`OPL_WORKSPACE_REGISTRY_USERNAME/PASSWORD` and node pulls use the
+installation-level pull secret.
+
 ## Evidence Matrix
 
 | Layer | Current evidence | What it does not prove |

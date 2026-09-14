@@ -231,7 +231,8 @@ type dockerContainerInspect struct {
 }
 
 type dockerEndpointSettings struct {
-	NetworkID string `json:"NetworkID"`
+	NetworkID  string `json:"NetworkID"`
+	IPAddress string `json:"IPAddress"`
 }
 
 func exactContainerNetworkMembership(container dockerContainerInspect, networkName, networkID string) (bool, error) {

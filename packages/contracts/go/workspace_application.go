@@ -74,8 +74,14 @@ type WorkspaceApplicationSecretInput struct {
 }
 
 type WorkspaceApplicationDependency struct {
-	Name  string `json:"name"`
-	Image string `json:"image"`
+	Name         string                                   `json:"name"`
+	Image        string                                   `json:"image"`
+	Ports        []WorkspaceApplicationDependencyPort     `json:"ports,omitempty"`
+	HealthChecks []WorkspaceApplicationDependencyHealthCheck `json:"healthChecks,omitempty"`
+	PersistentMounts []WorkspaceApplicationDependencyMount `json:"persistentMounts,omitempty"`
+	ScratchMounts    []WorkspaceApplicationDependencyMount `json:"scratchMounts,omitempty"`
+	Command      WorkspaceApplicationDependencyCommand    `json:"command,omitempty"`
+	SecretInputs []WorkspaceApplicationSecretInput `json:"secretInputs,omitempty"`
 }
 
 // WorkspaceApplicationDeployment is the immutable cross-owner intent for one
@@ -182,6 +188,9 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 			return errors.New("workspace_application_dependency_duplicate")
 		}
 		seenComponents[dependency.Name] = struct{}{}
+		if err := ValidateWorkspaceApplicationDependency(dependency); err != nil {
+			return err
+		}
 	}
 	return nil
 }
