@@ -182,7 +182,3 @@ func writeWorkspaceRegistryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, apiErr.Code)
 	}
 }
-
-// RegistryAPIError re-exports the clients error type for route mapping.
-type RegistryAPIError = clients.RegistryAPIError
-
