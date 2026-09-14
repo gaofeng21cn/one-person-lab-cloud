@@ -5,7 +5,13 @@ import {
   admitOperatorApplicationRevision,
   createOperatorWorkspaceApplicationDeployment,
   getOperatorWorkspaceApplicationDeployment,
-  retryOperatorWorkspaceApplicationDeployment
+  listOperatorRegistryRepositories,
+  listOperatorRegistryTags,
+  resolveOperatorRegistryImage,
+  retryOperatorWorkspaceApplicationDeployment,
+  type WorkspaceRegistryRepositoryCatalogDTO,
+  type WorkspaceRegistryResolutionDTO,
+  type WorkspaceRegistryTagDTO
 } from "../api/console-read-api.ts";
 import {
   composeWorkspaceApplicationRevision,
@@ -42,6 +48,13 @@ export interface WorkspaceApplicationDeploymentCapability {
   removeDependency: (index: number) => void;
   setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
   setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
+  registryCatalog: WorkspaceRegistryRepositoryCatalogDTO | null;
+  registryTags: WorkspaceRegistryTagDTO[] | null;
+  registryResolution: WorkspaceRegistryResolutionDTO | null;
+  registryBusy: boolean;
+  browseRegistryRepositories: (namespace: string) => Promise<boolean>;
+  browseRegistryTags: (namespace: string, repository: string) => Promise<boolean>;
+  resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: WorkspaceApplicationIntentDTO | null;
   busy: boolean;
   admitRevision: () => Promise<boolean>;
@@ -115,6 +128,79 @@ export function useWorkspaceApplicationDeploymentController({
       dependencies: current.dependencies.map((item, i) => i === index ? { ...item, [field]: value } : item)
     }));
   }, []);
+
+  // Registry selection state: the administrator browses the approved
+  // namespace's repositories, then a repository's tags, then resolves one tag
+  // to its digest-pinned reference. Resolution writes the reference into the
+  // draft image field; the admission contract stays digest-only.
+  const [registryCatalog, setRegistryCatalog] = useState<WorkspaceRegistryRepositoryCatalogDTO | null>(null);
+  const [registryTags, setRegistryTags] = useState<WorkspaceRegistryTagDTO[] | null>(null);
+  const [registryBusy, setRegistryBusy] = useState(false);
+  const [registryResolution, setRegistryResolution] = useState<WorkspaceRegistryResolutionDTO | null>(null);
+
+  const browseRegistryRepositories = useCallback(async (namespace: string): Promise<boolean> => {
+    if (!session || registryBusy) return false;
+    const ownsRequest = currentMutationRequest();
+    setRegistryBusy(true);
+    try {
+      const catalog = await listOperatorRegistryRepositories(namespace);
+      if (!ownsRequest()) return false;
+      setRegistryCatalog(catalog);
+      setRegistryTags(null);
+      setRegistryResolution(null);
+      return true;
+    } catch (error) {
+      if (ownsRequest()) flash(mutationError(error), "danger");
+      return false;
+    } finally {
+      if (ownsRequest()) setRegistryBusy(false);
+    }
+  }, [currentMutationRequest, flash, mutationError, registryBusy, session]);
+
+  const browseRegistryTags = useCallback(async (namespace: string, repository: string): Promise<boolean> => {
+    if (!session || registryBusy) return false;
+    const ownsRequest = currentMutationRequest();
+    setRegistryBusy(true);
+    try {
+      const result = await listOperatorRegistryTags(namespace, repository);
+      if (!ownsRequest()) return false;
+      if (result.namespace !== namespace || result.repository !== repository) {
+        throw new Error("workspace_registry_readback_mismatch");
+      }
+      setRegistryTags(result.tags);
+      setRegistryResolution(null);
+      return true;
+    } catch (error) {
+      if (ownsRequest()) flash(mutationError(error), "danger");
+      return false;
+    } finally {
+      if (ownsRequest()) setRegistryBusy(false);
+    }
+  }, [currentMutationRequest, flash, mutationError, registryBusy, session]);
+
+  const resolveRegistryTag = useCallback(async (namespace: string, repository: string, tag: string): Promise<boolean> => {
+    if (!session || busy || registryBusy) return false;
+    const requestStillCurrent = currentMutationRequest();
+    const generation = ++requestGeneration.current;
+    const csrfToken = session.csrfToken;
+    setRegistryBusy(true);
+    try {
+      const resolution = await resolveOperatorRegistryImage(namespace, repository, tag, csrfToken, `registry-resolve:${namespace}/${repository}@${tag}`);
+      if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
+      if (resolution.namespace !== namespace || resolution.repository !== repository || resolution.tag !== tag
+        || !/^sha256:[0-9a-f]{64}$/.test(resolution.digest) || resolution.reference !== `${repository}@${resolution.digest}`) {
+        throw new Error("workspace_registry_resolution_unconfirmed");
+      }
+      setRegistryResolution(resolution);
+      setDraft((current) => ({ ...current, image: resolution.reference }));
+      return true;
+    } catch (error) {
+      if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
+      return false;
+    } finally {
+      if (generation === requestGeneration.current && requestStillCurrent()) setRegistryBusy(false);
+    }
+  }, [busy, currentMutationRequest, flash, mutationError, registryBusy, session]);
 
   const pollIntent = useCallback((operationId: string, targetWorkspaceId: string, generation: number) => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -240,6 +326,8 @@ export function useWorkspaceApplicationDeploymentController({
     draft, validation, setDraftField,
     addPersistentMount, removePersistentMount, addScratchMount, removeScratchMount,
     addDependency, removeDependency, setDraftListItem, setDraftDependency,
+    registryCatalog, registryTags, registryResolution, registryBusy,
+    browseRegistryRepositories, browseRegistryTags, resolveRegistryTag,
     intent, busy, admitRevision, deploy, retry, reset
   };
 }

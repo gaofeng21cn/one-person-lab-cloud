@@ -127,3 +127,24 @@ test("Component states present with the operator's vocabulary", () => {
   assert.deepEqual(presentWorkspaceApplicationComponentState("failed"), { label: "失败", tone: "danger" });
   assert.deepEqual(presentWorkspaceApplicationComponentState("other"), { label: "状态待确认", tone: "warning" });
 });
+
+test("A registry-resolved digest-pinned reference passes the draft validation unchanged", () => {
+  const digest = "b".repeat(64);
+  const resolved = draft({
+    applicationId: "chaokang-agent-ibd", version: "1.0.0",
+    image: `uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:${digest}`
+  });
+  const validation = validateWorkspaceApplicationRevisionDraft(resolved);
+  assert.equal(validation.ok, true, JSON.stringify(validation.fieldErrors));
+  const revision = composeWorkspaceApplicationRevision(resolved) as { image: string };
+  assert.equal(revision.image, `uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:${digest}`);
+});
+
+test("A tag reference from the registry never passes validation as an image", () => {
+  const validation = validateWorkspaceApplicationRevisionDraft(draft({
+    applicationId: "chaokang-agent-ibd", version: "1.0.0",
+    image: "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd:v1.0.0"
+  }));
+  assert.equal(validation.ok, false);
+  assert.match(String(validation.fieldErrors.image), /sha256/);
+});

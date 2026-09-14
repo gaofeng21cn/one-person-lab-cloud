@@ -37,12 +37,12 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Capability | Current source behavior | Remaining gap and owning source |
 | --- | --- | --- |
 | Resource purchase and fulfillment | New default purchases commit a resource-only Launch and an independent default installation request. Charges advance in the resource worker; application failure does not rewrite purchase success. Explicit resource-only and retained full Launch contracts remain distinct. | Actual Instance adoption is unqualified. CP owns Launch and Workspace orchestration; Fabric owns resources. |
-| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. | Registry repository/tag discovery is absent. Full IBD dependency configuration remains open. |
+| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. |
 | Runtime execution | Local-Docker and Tencent execute declared components and live health/entry readback. OPL App uses an explicit profile and Secret-file ABI; lifecycle targets exact generations and fences late creation after deletion. | Tencent supports at most one native readiness probe. Local Docker fixtures do not qualify the actual upstream OPL App or IBD image. |
 | Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
 | Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; an application without a web entry has no Open action. `cloud_private` publishes no external entry. | Application Cookie/API/SSE behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
 | Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
-| Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Namespace → repository → tag/version selection remains open. |
+| Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. The registration form browses `repository` and tag lists from the catalog namespace and fills the digest-pinned reference after server-side resolution. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
 
 ### Default Application Replacement Verification
 
@@ -172,6 +172,48 @@ replacement and retirement verification for the successor change are reported
 above. Real Tencent networking/TLS and the selected Workspace's IBD launch
 remain open. No new Candidate, Product Release
 or Instance receipt is claimed.
+
+### Registry Catalog Selection Verification
+
+The registry catalog follows the same owner path as the admission route it
+feeds. `packages/contracts/go` owns the namespace boundary: only the cataloged
+`oplcloud` namespace browses, repository names validate against the same
+component pattern family as applications, and the assembled reference must
+satisfy the existing digest-pinned workspace image contract. The Control Plane
+client speaks the OCI Distribution API v2 (`_catalog`, `tags/list`, manifest
+HEAD-style resolution through `Docker-Content-Digest`) with bearer-token
+negotiation from the `WWW-Authenticate` challenge; credentials come from
+`OPL_WORKSPACE_REGISTRY_USERNAME`/`OPL_WORKSPACE_REGISTRY_PASSWORD` and a
+half-configured pair fails startup. An anonymous request against a
+credentialed registry surfaces 401, never a fabricated catalog.
+
+The route exposes three administrator reads under the existing scoped session
+protection: `GET /api/operator/registry/repositories`,
+`GET /api/operator/registry/tags/{namespace}/{repository}`, and
+`POST /api/operator/registry/resolve`. Error mapping is explicit: the
+registry's 401/403 is 401 access denied, `NAME_UNKNOWN` is 404 target unknown,
+transport and timeout failures are 502, and nothing degrades into invented
+catalog rows. The Console registration form gains a
+namespace → 列出仓库 → 列出 tag → 解析 digest flow; a successful resolution
+writes the digest-pinned reference into the draft image field and the form's
+existing validation then gates admission unchanged. Tag references never
+validate as images.
+
+Focused evidence: contracts 6 cases, clients 9 cases (namespace filtering,
+tag ordering, digest pinning, tag rejection, credential negotiation, invalid
+hosts), server routes 8 cases (admin session requirement, namespace
+boundaries, resolve identity checks, full error mapping) and the Console form
+model 2 new cases — all passing. Before this run the whole Control Plane
+server package also passed against an isolated real PostgreSQL with zero
+failures.
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Implementation base | `2670621d44a19aa6713576103bed211aa7fed29d` (canonical main after PR #552) |
+| Command | `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` |
+| Result | exit 0; 313 browser/source checks pass; 4 PostgreSQL owners pass with zero skips (`postgresmigrate` 1, ledger 3, control-plane 8, fabric 6 packages) |
+| Full log SHA-256 | `40c45fcb6783593b7ae68bd53040c0149a673bd71e01b0451d1f7f80174ac429` |
+| Completed at | 2026-09-14 (Asia/Shanghai) |
 
 ## Evidence Matrix
 

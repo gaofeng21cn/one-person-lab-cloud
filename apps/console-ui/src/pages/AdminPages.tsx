@@ -1058,7 +1058,26 @@ export function AdminPages({ controller, route }: { controller: ConsoleControlle
 
 function WorkspaceApplicationRegistration({ deployment }: { deployment: WorkspaceApplicationDeploymentController }) {
   const { draft } = deployment;
+  const [registryNamespace, setRegistryNamespace] = useState("oplcloud");
+  const [registryRepository, setRegistryRepository] = useState("");
+  const [registryTag, setRegistryTag] = useState("");
   return <section className="panel"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
+    <div className="application-form-section"><h3>从镜像仓库选择</h3>
+      <div className="application-form-grid">
+        <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" value={registryNamespace} onChange={(event) => setRegistryNamespace(event.target.value)} />
+        <div className="application-form-pair">
+          <Field label="repository" optional description="先列出命名空间下的仓库" value={registryRepository} onChange={(event) => setRegistryRepository(event.target.value)} />
+          <Field label="tag/版本" optional description="选择后解析为固定 digest 并填入镜像字段" value={registryTag} onChange={(event) => setRegistryTag(event.target.value)} />
+        </div>
+      </div>
+      <div className="application-form-row">
+        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === ""} onClick={() => void deployment.browseRegistryRepositories(registryNamespace.trim())}>列出仓库</Button>
+        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === "" || registryRepository.trim() === ""} onClick={() => void deployment.browseRegistryTags(registryNamespace.trim(), registryRepository.trim())}>列出 tag</Button>
+        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || deployment.busy || registryNamespace.trim() === "" || registryRepository.trim() === "" || registryTag.trim() === ""} onClick={() => void deployment.resolveRegistryTag(registryNamespace.trim(), registryRepository.trim(), registryTag.trim())}>解析 digest</Button>
+      </div>
+      {deployment.registryCatalog ? <p className="application-form-hint">仓库主机 {deployment.registryCatalog.host};命名空间 {deployment.registryCatalog.namespaces.join("、")};{deployment.registryCatalog.items.length} 个 repository。{deployment.registryTags ? `已选 repository 的 ${deployment.registryTags.length} 个 tag。` : ""}</p> : null}
+      {deployment.registryResolution ? <p className="application-form-hint">已解析 <code>{deployment.registryResolution.tag}</code> → <code>{deployment.registryResolution.digest}</code>,镜像字段已填入固定引用。</p> : null}
+    </div>
     <div className="application-form-grid">
       <Field label="应用 ID" description="小写字母开头，仅含小写字母、数字或连字符" error={deployment.validation.fieldErrors.applicationId} value={draft.applicationId} onChange={(event) => deployment.setDraftField("applicationId", event.target.value)} />
       <Field label="版本" description="如 1.0.0" error={deployment.validation.fieldErrors.version} value={draft.version} onChange={(event) => deployment.setDraftField("version", event.target.value)} />

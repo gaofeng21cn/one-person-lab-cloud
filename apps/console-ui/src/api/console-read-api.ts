@@ -392,3 +392,47 @@ export function retryOperatorWorkspaceApplicationDeployment(operationId: string,
   return postJson<unknown>(`/api/operator/application-deployments/${encodeURIComponent(operationId)}/retry`, {}, csrfToken, `application-retry:${operationId}`)
     .then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
+
+export interface WorkspaceRegistryRepositoryDTO {
+  namespace: string;
+  repository: string;
+}
+
+export interface WorkspaceRegistryRepositoryCatalogDTO {
+  host: string;
+  namespaces: string[];
+  items: WorkspaceRegistryRepositoryDTO[];
+}
+
+export interface WorkspaceRegistryTagDTO {
+  tag: string;
+}
+
+export interface WorkspaceRegistryResolutionDTO {
+  namespace: string;
+  repository: string;
+  tag: string;
+  digest: string;
+  reference: string;
+}
+
+export function listOperatorRegistryRepositories(namespace: string): Promise<WorkspaceRegistryRepositoryCatalogDTO> {
+  const query = namespace ? `?namespace=${encodeURIComponent(namespace)}` : "";
+  return getJson<unknown>(`/api/operator/registry/repositories${query}`).then(decodeDto<WorkspaceRegistryRepositoryCatalogDTO>);
+}
+
+export function listOperatorRegistryTags(namespace: string, repository: string): Promise<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }> {
+  return getJson<unknown>(`/api/operator/registry/tags/${encodeURIComponent(namespace)}/${encodeURIComponent(repository)}`)
+    .then(decodeDto<{ namespace: string; repository: string; tags: WorkspaceRegistryTagDTO[] }>);
+}
+
+export function resolveOperatorRegistryImage(
+  namespace: string,
+  repository: string,
+  tag: string,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceRegistryResolutionDTO> {
+  return postJson<unknown>("/api/operator/registry/resolve", { namespace, repository, tag }, csrfToken, idempotencyKey)
+    .then(decodeDto<WorkspaceRegistryResolutionDTO>);
+}
