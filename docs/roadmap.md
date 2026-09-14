@@ -173,7 +173,7 @@ Instance 结果分别记录。
 | --- | --- | --- |
 | 独立应用部署 | CP→Fabric 账号/资源/操作身份与授权、后台继续推进、原子激活、声明入口及真实健康读回、必要 Console 字段。 | 2026-09-13 本地修复与验证完成：全量检查的 18 个 PostgreSQL/Docker 包零跳过；最终 provider/HTTP 回归含真实 Docker，68 个测试及子用例通过、零跳过。[源码与验证证据](status.md#independent-application-deployment-verification)分别绑定全量检查和最后账户读回修正。Cloud 源码集成见 [PR #551](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/551)；腾讯实例部署仍需 owner 验证。 |
 | 默认安装与应用替换 | OPL App 作为默认应用走独立部署操作；同一 Workspace 保持一个选定应用；按预检查确定中断/替换方式，清理旧实例及无引用镜像，保留隔离持久数据。 | 默认安装、同应用更新、切换与原命令恢复已实现；资源/购买不变，生命周期按当前部署工作。2026-09-14 Cloud 本地验证完成：`verify:local:full` 通过全部源码/浏览器检查及 18 个 PostgreSQL/Docker 测试包、零跳过；真实 Docker 覆盖替换、数据/凭据保持、停止/恢复/删除与旧运行/无引用镜像清理。证据见 [默认应用替换验证](status.md#default-application-replacement-verification)；Instance 采用和实际镜像验收仍未完成。 |
-| 仓库与镜像选择 | 在指定命名空间列 repository，再选 tag/版本，解析固定 digest/platform，连接现有登记、预检查和部署操作。 | `one-person-lab-app` 与 `chaokang_agent_ibd` 从同一选择入口使用；不把命名空间当作单个镜像仓库。未完成。 |
+| 仓库与镜像选择 | 在指定命名空间列 repository，再选 tag/版本，解析固定 digest/platform，连接现有登记、预检查和部署操作。 | `one-person-lab-app` 与 `chaokang_agent_ibd` 从同一选择入口使用；不把命名空间当作单个镜像仓库。命名空间内 repository/tag 浏览与 tag→固定 digest 解析已实现（管理员路由、Console 表单、OCI Distribution API 客户端）；多平台 manifest 的逐平台 digest 选择未完成。 |
 | IBD 材料与依赖 | 主 OCI、六个知识服务或明确外部绑定、配置/Secret 接口、挂载、健康检查和必需的数据/恢复材料。 | 隔离环境中真实检索、问答、SSE 与引用可用，所需通用能力由当前 owner 实现。未完成。 |
 | 既有 Workspace 部署 IBD | Instance owner 安装准确 Candidate，在既有资源上替换 OPL App，完成真实访问、数据与恢复读回并保存不可变 receipt。 | IBD 实际可用，旧实例/无引用镜像清理，资源和原应用数据保持。未完成，属于受保护 Instance 工作流。 |
 

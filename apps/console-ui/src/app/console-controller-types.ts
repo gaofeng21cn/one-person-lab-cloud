@@ -306,6 +306,13 @@ export interface WorkspaceApplicationDeploymentController {
   removeDependency: (index: number) => void;
   setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
   setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
+  registryCatalog: import("../api/console-read-api.ts").WorkspaceRegistryRepositoryCatalogDTO | null;
+  registryTags: import("../api/console-read-api.ts").WorkspaceRegistryTagDTO[] | null;
+  registryResolution: import("../api/console-read-api.ts").WorkspaceRegistryResolutionDTO | null;
+  registryBusy: boolean;
+  browseRegistryRepositories: (namespace: string) => Promise<boolean>;
+  browseRegistryTags: (namespace: string, repository: string) => Promise<boolean>;
+  resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: import("../api/dtos.ts").WorkspaceApplicationIntentDTO | null;
   busy: boolean;
   admitRevision: () => Promise<boolean>;
