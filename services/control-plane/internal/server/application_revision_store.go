@@ -3,10 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/ent/applicationrevision"
+	"opl-cloud/services/control-plane/ent/runtimeoperation"
+	"opl-cloud/services/control-plane/ent/workspace"
 	"opl-cloud/services/control-plane/internal/domain/application"
 )
 
@@ -103,10 +106,57 @@ func decodeApplicationRevisionPayload(payload string) (contracts.WorkspaceApplic
 // concurrent claim won; the caller compares the persisted request hash for the
 // idempotent replay decision.
 func (s *postgresEntStateStore) ClaimWorkspaceApplicationDeploymentIntent(ctx context.Context, row map[string]any) error {
-	if err := saveRecord(ctx, stringValue(row["id"]), row, s.client.RuntimeOperation.Create(), runtimeOpEntFields); controlplaneent.IsConstraintError(err) {
+	intent, err := decodeWorkspaceApplicationDeploymentIntent(row)
+	if err != nil {
+		return err
+	}
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	entity, err := tx.Workspace.Query().Where(workspace.IDEQ(intent.WorkspaceID), lockRowForUpdate).Only(ctx)
+	if controlplaneent.IsNotFound(err) {
+		return errWorkspaceApplicationWorkspaceGone
+	}
+	if err != nil {
+		return err
+	}
+	if exists, err := tx.RuntimeOperation.Query().Where(runtimeoperation.IDEQ(intent.OperationID)).Exist(ctx); err != nil {
+		return err
+	} else if exists {
+		return errWorkspaceApplicationIntentConflict
+	}
+	if !workspaceApplicationEntitlementOpen(recordFromEnt(entity, workspaceEntFields), time.Now()) || !workspaceApplicationOwnedResourcesMatch(recordFromEnt(entity, workspaceEntFields), intent) || entity.ApplicationBinding != intent.CurrentBinding || entity.ApplicationBindingVersion != intent.ExpectedWorkspaceVersion || entity.CurrentApplicationDeploymentID != intent.PreviousDeploymentID {
+		return errWorkspaceApplicationIntentConflict
+	}
+	operations, err := tx.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(intent.WorkspaceID), lockRowForUpdate).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		other := recordFromEnt(operation, runtimeOpEntFields)
+		if workspaceKeyRotationBlocksDelete(other) && !(operation.ID == intent.OriginOperationID && operation.Action == "workspace.gateway_key.rotate") || workspaceDeleteBlocksRotation(other) {
+			return errWorkspaceApplicationIntentConflict
+		}
+	}
+	if entity.ReservedApplicationDeploymentID != "" {
+		prior, err := tx.RuntimeOperation.Get(ctx, entity.ReservedApplicationDeploymentID)
+		if err != nil {
+			return err
+		}
+		reserved, err := decodeWorkspaceApplicationDeploymentIntent(recordFromEnt(prior, runtimeOpEntFields))
+		if err != nil || reserved.Phase != workspaceApplicationDeploymentActivePhase {
+			return errWorkspaceApplicationIntentConflict
+		}
+	}
+	if err := saveRecord(ctx, stringValue(row["id"]), row, tx.RuntimeOperation.Create(), runtimeOpEntFields); controlplaneent.IsConstraintError(err) {
 		return errWorkspaceApplicationIntentConflict
 	} else if err != nil {
 		return err
 	}
-	return nil
+	if err := tx.Workspace.UpdateOneID(intent.WorkspaceID).SetReservedApplicationDeploymentID(intent.OperationID).Exec(ctx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

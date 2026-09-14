@@ -4,13 +4,13 @@ import type { WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
 import {
   admitOperatorApplicationRevision,
   createOperatorWorkspaceApplicationDeployment,
-  getOperatorWorkspaceApplicationDeployment
+  getOperatorWorkspaceApplicationDeployment,
+  retryOperatorWorkspaceApplicationDeployment
 } from "../api/console-read-api.ts";
 import {
   composeWorkspaceApplicationRevision,
   emptyWorkspaceApplicationRevisionDraft,
   validateWorkspaceApplicationRevisionDraft,
-  workspaceApplicationDeploymentConfigurationDigestValid,
   type WorkspaceApplicationRevisionDraft
 } from "./workspace-application-deployment-controller-model.ts";
 
@@ -19,6 +19,8 @@ const deploymentPollLimit = 150;
 
 export interface WorkspaceApplicationDeploymentDependencies {
   session: { user: { id: string }; csrfToken: string } | null;
+  workspaceId: string;
+  refreshWorkspace: (workspaceId: string) => Promise<void>;
   flash: (message: string, tone?: string) => void;
   mutationError: (error: unknown) => string;
   currentMutationRequest: () => () => boolean;
@@ -40,17 +42,18 @@ export interface WorkspaceApplicationDeploymentCapability {
   removeDependency: (index: number) => void;
   setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
   setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
-  configurationDigest: string;
-  setConfigurationDigest: (value: string) => void;
   intent: WorkspaceApplicationIntentDTO | null;
   busy: boolean;
   admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
+  retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;
 }
 
 export function useWorkspaceApplicationDeploymentController({
   session,
+  workspaceId,
+  refreshWorkspace,
   flash,
   mutationError,
   currentMutationRequest
@@ -58,13 +61,12 @@ export function useWorkspaceApplicationDeploymentController({
   const [draft, setDraft] = useState<WorkspaceApplicationRevisionDraft>(emptyWorkspaceApplicationRevisionDraft());
   const [applicationId, setApplicationId] = useState("");
   const [targetRevision, setTargetRevision] = useState("");
-  const [configurationDigest, setConfigurationDigest] = useState("");
   const [intent, setIntent] = useState<WorkspaceApplicationIntentDTO | null>(null);
   const [busy, setBusy] = useState(false);
   const requestGeneration = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scope = useRef({ userId: session?.user.id || "", csrfToken: session?.csrfToken || "" });
-  scope.current = { userId: session?.user.id || "", csrfToken: session?.csrfToken || "" };
+  const selectedWorkspaceId = useRef(workspaceId);
+  selectedWorkspaceId.current = workspaceId;
 
   const reset = useCallback(() => {
     requestGeneration.current += 1;
@@ -77,7 +79,7 @@ export function useWorkspaceApplicationDeploymentController({
   useEffect(() => {
     reset();
     return reset;
-  }, [reset, session?.csrfToken, session?.user.id]);
+  }, [reset, session?.csrfToken, session?.user.id, workspaceId]);
 
   const setDraftField = useCallback(<K extends keyof WorkspaceApplicationRevisionDraft>(field: K, value: WorkspaceApplicationRevisionDraft[K]) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -114,25 +116,34 @@ export function useWorkspaceApplicationDeploymentController({
     }));
   }, []);
 
-  const pollIntent = useCallback((operationId: string, generation: number) => {
+  const pollIntent = useCallback((operationId: string, targetWorkspaceId: string, generation: number) => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
+    const requestStillCurrent = currentMutationRequest();
+    const ownsRequest = () => generation === requestGeneration.current
+      && selectedWorkspaceId.current === targetWorkspaceId && requestStillCurrent();
     let polls = 0;
     const tick = async () => {
-      if (generation !== requestGeneration.current) return;
+      if (!ownsRequest()) return;
       polls += 1;
       try {
         const envelope = await getOperatorWorkspaceApplicationDeployment(operationId);
         const response = envelope.available ? envelope.data : null;
-        if (generation !== requestGeneration.current || !response) return;
+        if (!ownsRequest()) return;
+        if (!response || response.intent.operationId !== operationId || response.intent.workspaceId !== targetWorkspaceId) {
+          throw new Error("workspace_application_deployment_readback_unconfirmed");
+        }
         setIntent(response.intent);
         if (response.intent.phase === "active" || response.intent.phase === "manual_review") {
           setBusy(false);
-          if (response.intent.phase === "active") flash("应用部署完成");
+          if (response.intent.phase === "active") {
+            await refreshWorkspace(targetWorkspaceId);
+            if (ownsRequest()) flash("应用部署完成");
+          }
           else flash(`应用部署待人工处理：${response.intent.lastError || "详见部署记录"}`, "danger");
           return;
         }
       } catch {
-        if (generation !== requestGeneration.current) return;
+        if (!ownsRequest()) return;
         if (polls >= deploymentPollLimit) {
           setBusy(false);
           return;
@@ -145,7 +156,7 @@ export function useWorkspaceApplicationDeploymentController({
       }
     };
     void tick();
-  }, [flash]);
+  }, [currentMutationRequest, flash, refreshWorkspace]);
 
   const admitRevision = useCallback(async (): Promise<boolean> => {
     if (!session || busy) return false;
@@ -174,13 +185,9 @@ export function useWorkspaceApplicationDeploymentController({
   }, [busy, currentMutationRequest, draft, flash, mutationError, session]);
 
   const deploy = useCallback(async (workspaceId: string): Promise<boolean> => {
-    if (!session || busy || !workspaceId) return false;
+    if (!session || busy || !workspaceId || workspaceId !== selectedWorkspaceId.current) return false;
     if (!applicationId || !targetRevision) {
       flash("请先填写应用 ID 与目标版本", "danger");
-      return false;
-    }
-    if (!workspaceApplicationDeploymentConfigurationDigestValid(configurationDigest)) {
-      flash("配置摘要需为 64 位十六进制", "danger");
       return false;
     }
     const requestStillCurrent = currentMutationRequest();
@@ -189,27 +196,50 @@ export function useWorkspaceApplicationDeploymentController({
     setBusy(true);
     try {
       const result = await createOperatorWorkspaceApplicationDeployment(
-        workspaceId, applicationId, targetRevision, configurationDigest, csrfToken,
+        workspaceId, applicationId, targetRevision, { environment: {} }, csrfToken,
         `wsad-${crypto.randomUUID()}`
       );
-      if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
+      if (generation !== requestGeneration.current || workspaceId !== selectedWorkspaceId.current || !requestStillCurrent()) return false;
+      if (result.intent.workspaceId !== workspaceId) throw new Error("workspace_application_deployment_identity_mismatch");
       setIntent(result.intent);
-      pollIntent(result.intent.operationId, generation);
+      pollIntent(result.intent.operationId, workspaceId, generation);
       return true;
     } catch (error) {
-      if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
-      setBusy(false);
+      if (generation === requestGeneration.current && workspaceId === selectedWorkspaceId.current && requestStillCurrent()) {
+        flash(mutationError(error), "danger");
+        setBusy(false);
+      }
       return false;
     }
-  }, [applicationId, busy, configurationDigest, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
+  }, [applicationId, busy, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
 
   const validation = validateWorkspaceApplicationRevisionDraft(draft);
+  const retry = useCallback(async (targetWorkspaceId: string, operationId: string): Promise<boolean> => {
+    if (!session || busy || !operationId || !targetWorkspaceId || selectedWorkspaceId.current !== targetWorkspaceId) return false;
+    const requestStillCurrent = currentMutationRequest();
+    const generation = ++requestGeneration.current;
+    const ownsRequest = () => generation === requestGeneration.current && selectedWorkspaceId.current === targetWorkspaceId && requestStillCurrent();
+    setBusy(true);
+    try {
+      const result = await retryOperatorWorkspaceApplicationDeployment(operationId, session.csrfToken);
+      if (!ownsRequest()) return false;
+      if (result.intent.operationId !== operationId || result.intent.workspaceId !== targetWorkspaceId) throw new Error("workspace_application_deployment_identity_mismatch");
+      setIntent(result.intent);
+      pollIntent(operationId, targetWorkspaceId, generation);
+      return true;
+    } catch (error) {
+      if (ownsRequest()) {
+        flash(mutationError(error), "danger");
+        setBusy(false);
+      }
+      return false;
+    }
+  }, [busy, currentMutationRequest, flash, mutationError, pollIntent, session]);
   return {
     applicationId, targetRevision, setApplicationId, setTargetRevision,
     draft, validation, setDraftField,
     addPersistentMount, removePersistentMount, addScratchMount, removeScratchMount,
     addDependency, removeDependency, setDraftListItem, setDraftDependency,
-    configurationDigest, setConfigurationDigest,
-    intent, busy, admitRevision, deploy, reset
+    intent, busy, admitRevision, deploy, retry, reset
   };
 }

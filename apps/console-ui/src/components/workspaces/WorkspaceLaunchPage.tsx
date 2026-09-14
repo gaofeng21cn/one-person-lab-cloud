@@ -6,7 +6,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import type { WorkspaceLaunchController } from "../../app/console-controller-types.ts";
 import {
-  presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
+  presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
 } from "../../app/workspace-experience-model.ts";
 import type { PlanId, PricingPlan } from "../../api/dtos.ts";
 import { Alert, Badge, Button, Checkbox, Field } from "../ui/index.ts";
@@ -218,9 +218,11 @@ export function LaunchOperation({
     : operationPresentation;
   const stagePresentation = presentWorkspaceLaunchStage(operation.phase);
   const resultUnconfirmed = presentation.kind === "unconfirmed";
+  const installation = operation.applicationInstallation ? presentWorkspaceApplicationInstallation(operation.applicationInstallation) : null;
   const content = (
     <section className={`launch-operation ${compact ? "launch-operation--compact" : ""}`} data-slide="C-WS-04">
       <div className="launch-operation-head"><div><h2>{presentation.title}</h2><p>{presentation.summary}</p></div></div>
+      {installation ? <Alert color={installation.tone} title={installation.title} description={installation.description} /> : null}
       {!operation.closeout ? <div className="launch-current-phase"><span>当前进度</span><strong>{stagePresentation.label}</strong></div> : null}
       <details className="launch-technical-details">
         <summary>技术详情</summary>

@@ -430,7 +430,7 @@ func TestWorkspaceLaunchMonthlyPreflightFailureBlocksDebitAndFabricMutation(t *t
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
 			continued, runErr := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "monthly-preflight-"+failureMode)
-			operations, err := store.ListRuntimeOperations(context.Background())
+			operations, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -475,7 +475,7 @@ func TestWorkspaceLaunchMissingProviderZoneParksReservedDebitWithoutAuthorityWri
 	if runErr == nil || !errors.Is(runErr, errWorkspaceLaunchMonthlyPreflightInvalid) {
 		t.Fatalf("run launch error=%v, want %v", runErr, errWorkspaceLaunchMonthlyPreflightInvalid)
 	}
-	rows, err := store.ListRuntimeOperations(context.Background())
+	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("read launch operations=%#v err=%v", rows, err)
 	}
@@ -524,7 +524,7 @@ func TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages(t *test
 			break
 		}
 	}
-	operations, err := store.ListRuntimeOperations(context.Background())
+	operations, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(operations) != 1 {
 		t.Fatalf("read launch operations=%#v err=%v", operations, err)
 	}
@@ -606,19 +606,29 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 		"storage binding":    {first.stringFact("storageBindingRef"), second.stringFact("storageBindingRef")},
 		"attachment":         {first.stringFact("attachmentId"), second.stringFact("attachmentId")},
 		"attachment binding": {first.stringFact("attachmentBindingRef"), second.stringFact("attachmentBindingRef")},
-		"gateway secret":     {first.stringFact("gatewaySecretRef"), second.stringFact("gatewaySecretRef")},
-		"secret binding":     {first.stringFact("secretBindingRef"), second.stringFact("secretBindingRef")},
-		"Runtime":            {first.stringFact("runtimeId"), second.stringFact("runtimeId")},
-		"Runtime binding":    {first.stringFact("runtimeBindingRef"), second.stringFact("runtimeBindingRef")},
 		"Receipt":            {first.stringFact("receiptId"), second.stringFact("receiptId")},
 	} {
 		if values[0] == "" || values[1] == "" || values[0] == values[1] {
 			t.Fatalf("%s identity is not independent: %#v", fact, values)
 		}
 	}
-	if first.int64Fact("workspaceApiKeyId") <= 0 || second.int64Fact("workspaceApiKeyId") <= 0 ||
-		first.int64Fact("workspaceApiKeyId") == second.int64Fact("workspaceApiKeyId") {
-		t.Fatalf("Workspace Key identities are not independent: first=%d second=%d", first.int64Fact("workspaceApiKeyId"), second.int64Fact("workspaceApiKeyId"))
+	var installationKeys []int64
+	for _, launch := range []workspaceLaunchReconcileOperation{first, second} {
+		row, found, err := store.GetRuntimeOperation(context.Background(), workspaceDefaultApplicationOperationID(launch.ID))
+		if err != nil || !found {
+			t.Fatalf("default installation missing: %v", err)
+		}
+		request, err := decodeWorkspaceDefaultApplication(row)
+		if err != nil || request.LaunchOperationID != launch.ID || request.WorkspaceID != launch.stringFact("workspaceId") || request.GatewaySecret == nil || request.WorkspaceAPIKeyID <= 0 {
+			t.Fatalf("default application identity invalid: %v", err)
+		}
+		installationKeys = append(installationKeys, request.WorkspaceAPIKeyID)
+		if launch.int64Fact("workspaceApiKeyId") != 0 || launch.stringFact("runtimeId") != "" {
+			t.Fatal("resource purchase contains application facts")
+		}
+	}
+	if installationKeys[0] == installationKeys[1] {
+		t.Fatal("default applications share a Workspace Key")
 	}
 	for _, operation := range []workspaceLaunchReconcileOperation{first, second} {
 		receipt, ok := ledger.receipts[operation.ID+":purchase-receipt"]
@@ -641,7 +651,7 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 	if !workspaceIDs[first.stringFact("workspaceId")] || !workspaceIDs[second.stringFact("workspaceId")] {
 		t.Fatalf("Account readback lost a Workspace: ids=%#v", workspaceIDs)
 	}
-	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 10 {
+	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 {
 		t.Fatalf("independent writes charges=%#v keys=%#v ledgerWrites=%d receipts=%#v FabricStages=%#v events=%#v",
 			client.charges, client.keys, ledger.writes, ledger.receipts, fabric.stageResults, *events)
 	}
@@ -660,13 +670,13 @@ func TestWorkspaceLaunchSameAccountSequentialPurchasesCreateIndependentWorkspace
 			t.Fatalf("replay %s status=%d body=%s", replay.key, response.Code, response.Body.String())
 		}
 	}
-	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 10 || len(*events) != beforeEvents {
+	if len(client.charges) != 2 || len(client.keys) != 2 || ledger.writes != 2 || len(ledger.receipts) != 2 || len(fabric.stageResults) != 6 || len(*events) != beforeEvents {
 		t.Fatalf("replay added writes charges=%#v keys=%#v ledgerWrites=%d receipts=%#v FabricStages=%#v events=%#v",
 			client.charges, client.keys, ledger.writes, ledger.receipts, fabric.stageResults, *events)
 	}
 }
 
-func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *testing.T) {
+func TestWorkspaceLaunchRetainedFullWorkerContinuesFreshRuntimePendingReadOnly(t *testing.T) {
 	t.Setenv(controlledBasicPilotEnabledEnv, "1")
 	t.Setenv(controlledBasicPilotAccountsEnv, "acct-alpha")
 	t.Setenv("OPL_TENCENT_ZONE", "ap-guangzhou-1")
@@ -675,12 +685,7 @@ func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *
 	server, store, _, fabric, events := newWorkspaceLaunchMonthlyPreflightFixture(t, "")
 	fabric.runtimePending = true
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Fresh runtime pending","packageId":"basic","autoRenew":false}`,
-		"fresh-runtime-pending")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedFullLaunchForMonthlyPreflightTest(t, store, "fresh-runtime-pending", "Fresh runtime pending", firstNonEmpty(fabric.providerProfileRef, "provider-profile"))
 	if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "fresh-runtime-pending"); err != nil {
 		t.Fatalf("continue launch: %v", err)
 	}
@@ -690,7 +695,7 @@ func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *
 		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
 			t.Fatalf("run launch to runtime pending: %v", err)
 		}
-		rows, err := store.ListRuntimeOperations(context.Background())
+		rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("read launch operations=%#v err=%v", rows, err)
 		}
@@ -715,7 +720,7 @@ func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *
 	if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
 		t.Fatalf("continue runtime owner read: %v", err)
 	}
-	rows, err := store.ListRuntimeOperations(context.Background())
+	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("read continued launch operations=%#v err=%v", rows, err)
 	}
@@ -731,7 +736,7 @@ func TestWorkspaceLaunchNormalPostWorkerContinuesFreshRuntimePendingReadOnly(t *
 			t.Fatalf("complete launch after runtime ready: %v", err)
 		}
 	}
-	rows, err = store.ListRuntimeOperations(context.Background())
+	rows, err = queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("read terminal launch operations=%#v err=%v", rows, err)
 	}
@@ -762,12 +767,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	fabric.providerProfileRef = "tencent-tke"
 	fabric.runtimePending = true
 	session := loginForTest(t, server, "alpha@example.com", "CorrectHorseBatteryStaple!")
-	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches",
-		`{"name":"Automatic runtime recovery","packageId":"basic","autoRenew":false}`,
-		"automatic-runtime-recovery")
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
+	seedRetainedFullLaunchForMonthlyPreflightTest(t, store, "automatic-runtime-recovery", "Automatic runtime recovery", firstNonEmpty(fabric.providerProfileRef, "provider-profile"))
 	if _, err := continueWorkspaceLaunchKeyForMonthlyPreflightTest(t, server, session, "automatic-runtime-recovery"); err != nil {
 		t.Fatalf("continue launch: %v", err)
 	}
@@ -777,7 +777,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 		if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
 			t.Fatalf("run launch to Runtime manual review: %v", err)
 		}
-		rows, err := store.ListRuntimeOperations(context.Background())
+		rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("read launch operations=%#v err=%v", rows, err)
 		}
@@ -799,7 +799,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 	if err := handler.app.runWorkspaceLaunchesOnce(context.Background(), handler.service); err != nil {
 		t.Fatalf("auto recover ready Runtime: %v", err)
 	}
-	rows, err := store.ListRuntimeOperations(context.Background())
+	rows, err := queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("read recovered launch operations=%#v err=%v", rows, err)
 	}
@@ -818,7 +818,7 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 			t.Fatalf("complete recovered launch: %v", err)
 		}
 	}
-	rows, err = store.ListRuntimeOperations(context.Background())
+	rows, err = queryRuntimeOperations(context.Background(), store, runtimeOperationQuery{Action: "workspace.launch.v2"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("read terminal launch operations=%#v err=%v", rows, err)
 	}
@@ -828,4 +828,21 @@ func TestWorkspaceLaunchWorkerAutoRecoversManualReviewWhenRuntimeBecomesReady(t 
 		t.Fatalf("automatic recovery did not preserve one original purchase: operation=%s charges=%#v keys=%#v runtimeEnsure=%d receiptWrites=%d receipts=%d err=%v",
 			workspaceLaunchReconcileResultSummary(terminal), client.charges, client.keys, fabric.runtimeEnsureCalls, fabric.receiptLedger.writes, len(fabric.receiptLedger.receipts), err)
 	}
+}
+
+func seedRetainedFullLaunchForMonthlyPreflightTest(t *testing.T, store *memoryTableStore, key, name, profile string) {
+	t.Helper()
+	command := workspaceLaunchUnitCommand()
+	command.OperationID, command.AccountID, command.OwnerUserID = workspaceLaunchOperationID("acct-alpha", key), "acct-alpha", "usr-alpha"
+	command.WorkspaceID, command.Sub2APIUserID, command.Name = "ws-"+stableID(key)[:18], 41, name
+	command.Mode, command.ProviderProfileRef = contracts.WorkspaceProvisioningFull, profile
+	operation, err := newWorkspaceLaunchReconcileOperation(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := workspaceLaunchReconcileOperationRow(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStore(t, store.SaveRuntimeOperation(context.Background(), row))
 }

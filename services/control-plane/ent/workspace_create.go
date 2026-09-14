@@ -454,6 +454,34 @@ func (wc *WorkspaceCreate) SetNillableApplicationBindingVersion(i *int64) *Works
 	return wc
 }
 
+// SetCurrentApplicationDeploymentID sets the "current_application_deployment_id" field.
+func (wc *WorkspaceCreate) SetCurrentApplicationDeploymentID(s string) *WorkspaceCreate {
+	wc.mutation.SetCurrentApplicationDeploymentID(s)
+	return wc
+}
+
+// SetNillableCurrentApplicationDeploymentID sets the "current_application_deployment_id" field if the given value is not nil.
+func (wc *WorkspaceCreate) SetNillableCurrentApplicationDeploymentID(s *string) *WorkspaceCreate {
+	if s != nil {
+		wc.SetCurrentApplicationDeploymentID(*s)
+	}
+	return wc
+}
+
+// SetReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field.
+func (wc *WorkspaceCreate) SetReservedApplicationDeploymentID(s string) *WorkspaceCreate {
+	wc.mutation.SetReservedApplicationDeploymentID(s)
+	return wc
+}
+
+// SetNillableReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field if the given value is not nil.
+func (wc *WorkspaceCreate) SetNillableReservedApplicationDeploymentID(s *string) *WorkspaceCreate {
+	if s != nil {
+		wc.SetReservedApplicationDeploymentID(*s)
+	}
+	return wc
+}
+
 // SetID sets the "id" field.
 func (wc *WorkspaceCreate) SetID(s string) *WorkspaceCreate {
 	wc.mutation.SetID(s)
@@ -615,6 +643,14 @@ func (wc *WorkspaceCreate) defaults() {
 		v := workspace.DefaultApplicationBindingVersion
 		wc.mutation.SetApplicationBindingVersion(v)
 	}
+	if _, ok := wc.mutation.CurrentApplicationDeploymentID(); !ok {
+		v := workspace.DefaultCurrentApplicationDeploymentID
+		wc.mutation.SetCurrentApplicationDeploymentID(v)
+	}
+	if _, ok := wc.mutation.ReservedApplicationDeploymentID(); !ok {
+		v := workspace.DefaultReservedApplicationDeploymentID
+		wc.mutation.SetReservedApplicationDeploymentID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -713,6 +749,12 @@ func (wc *WorkspaceCreate) check() error {
 	}
 	if _, ok := wc.mutation.ApplicationBindingVersion(); !ok {
 		return &ValidationError{Name: "application_binding_version", err: errors.New(`ent: missing required field "Workspace.application_binding_version"`)}
+	}
+	if _, ok := wc.mutation.CurrentApplicationDeploymentID(); !ok {
+		return &ValidationError{Name: "current_application_deployment_id", err: errors.New(`ent: missing required field "Workspace.current_application_deployment_id"`)}
+	}
+	if _, ok := wc.mutation.ReservedApplicationDeploymentID(); !ok {
+		return &ValidationError{Name: "reserved_application_deployment_id", err: errors.New(`ent: missing required field "Workspace.reserved_application_deployment_id"`)}
 	}
 	if v, ok := wc.mutation.ID(); ok {
 		if err := workspace.IDValidator(v); err != nil {
@@ -877,6 +919,14 @@ func (wc *WorkspaceCreate) createSpec() (*Workspace, *sqlgraph.CreateSpec) {
 	if value, ok := wc.mutation.ApplicationBindingVersion(); ok {
 		_spec.SetField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
 		_node.ApplicationBindingVersion = value
+	}
+	if value, ok := wc.mutation.CurrentApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldCurrentApplicationDeploymentID, field.TypeString, value)
+		_node.CurrentApplicationDeploymentID = value
+	}
+	if value, ok := wc.mutation.ReservedApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldReservedApplicationDeploymentID, field.TypeString, value)
+		_node.ReservedApplicationDeploymentID = value
 	}
 	return _node, _spec
 }

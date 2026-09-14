@@ -1131,8 +1131,22 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	bindInput(&runtimeInput)
 	mutationIDs["local_docker_runtime_create"] = providerMutationOperationID(runtimeInput.Binding, "local_docker_runtime_create", "workspace_runtime", localRuntimeID(workspaceID), localRuntimeName(workspaceID))
 	runtime, err := service.EnsureWorkspaceLaunchStage(ctx, runtimeInput)
-	if err != nil || runtime.State != "pending" || runtime.Reason != "operation_pending" || runtime.Binding != runtimeInput.Binding || runtime.Resources != runtimeInput.Resources {
+	if err != nil || runtime.Binding != runtimeInput.Binding {
 		t.Fatalf("initial runtime=%#v err=%v", runtime, err)
+	}
+	// Docker health can converge before the first owner read finishes. Validate
+	// the actual response contract at either reachable point in that transition.
+	switch runtime.State {
+	case "pending":
+		if runtime.Reason != "operation_pending" || runtime.Resources != runtimeInput.Resources {
+			t.Fatalf("initial pending runtime=%#v", runtime)
+		}
+	case "ready":
+		if runtime.Reason != "none" || runtime.Resources.RuntimeURL == "" {
+			t.Fatalf("initial ready runtime=%#v", runtime)
+		}
+	default:
+		t.Fatalf("initial runtime has invalid state: %#v", runtime)
 	}
 	runtime, err = waitForWorkspaceStage(ctx, service, runtimeInput)
 	if err != nil || runtime.State != "ready" || runtime.Reason != "none" || runtime.Binding != runtimeInput.Binding || runtime.Resources.RuntimeURL == "" ||

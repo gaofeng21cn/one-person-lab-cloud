@@ -219,6 +219,16 @@ func ApplicationBindingVersion(v int64) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldApplicationBindingVersion, v))
 }
 
+// CurrentApplicationDeploymentID applies equality check predicate on the "current_application_deployment_id" field. It's identical to CurrentApplicationDeploymentIDEQ.
+func CurrentApplicationDeploymentID(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldCurrentApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentID applies equality check predicate on the "reserved_application_deployment_id" field. It's identical to ReservedApplicationDeploymentIDEQ.
+func ReservedApplicationDeploymentID(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldReservedApplicationDeploymentID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Workspace {
 	return predicate.Workspace(sql.FieldEQ(FieldCreatedAt, v))
@@ -2032,6 +2042,136 @@ func ApplicationBindingVersionLT(v int64) predicate.Workspace {
 // ApplicationBindingVersionLTE applies the LTE predicate on the "application_binding_version" field.
 func ApplicationBindingVersionLTE(v int64) predicate.Workspace {
 	return predicate.Workspace(sql.FieldLTE(FieldApplicationBindingVersion, v))
+}
+
+// CurrentApplicationDeploymentIDEQ applies the EQ predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDNEQ applies the NEQ predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDNEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNEQ(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDIn applies the In predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldIn(FieldCurrentApplicationDeploymentID, vs...))
+}
+
+// CurrentApplicationDeploymentIDNotIn applies the NotIn predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDNotIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNotIn(FieldCurrentApplicationDeploymentID, vs...))
+}
+
+// CurrentApplicationDeploymentIDGT applies the GT predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDGT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGT(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDGTE applies the GTE predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDGTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGTE(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDLT applies the LT predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDLT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLT(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDLTE applies the LTE predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDLTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLTE(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDContains applies the Contains predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDContains(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContains(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDHasPrefix applies the HasPrefix predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDHasPrefix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasPrefix(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDHasSuffix applies the HasSuffix predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDHasSuffix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasSuffix(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDEqualFold applies the EqualFold predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDEqualFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEqualFold(FieldCurrentApplicationDeploymentID, v))
+}
+
+// CurrentApplicationDeploymentIDContainsFold applies the ContainsFold predicate on the "current_application_deployment_id" field.
+func CurrentApplicationDeploymentIDContainsFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContainsFold(FieldCurrentApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDEQ applies the EQ predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEQ(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDNEQ applies the NEQ predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDNEQ(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNEQ(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDIn applies the In predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldIn(FieldReservedApplicationDeploymentID, vs...))
+}
+
+// ReservedApplicationDeploymentIDNotIn applies the NotIn predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDNotIn(vs ...string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldNotIn(FieldReservedApplicationDeploymentID, vs...))
+}
+
+// ReservedApplicationDeploymentIDGT applies the GT predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDGT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGT(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDGTE applies the GTE predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDGTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldGTE(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDLT applies the LT predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDLT(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLT(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDLTE applies the LTE predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDLTE(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldLTE(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDContains applies the Contains predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDContains(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContains(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDHasPrefix applies the HasPrefix predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDHasPrefix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasPrefix(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDHasSuffix applies the HasSuffix predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDHasSuffix(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldHasSuffix(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDEqualFold applies the EqualFold predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDEqualFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldEqualFold(FieldReservedApplicationDeploymentID, v))
+}
+
+// ReservedApplicationDeploymentIDContainsFold applies the ContainsFold predicate on the "reserved_application_deployment_id" field.
+func ReservedApplicationDeploymentIDContainsFold(v string) predicate.Workspace {
+	return predicate.Workspace(sql.FieldContainsFold(FieldReservedApplicationDeploymentID, v))
 }
 
 // And groups predicates with the AND operator between them.

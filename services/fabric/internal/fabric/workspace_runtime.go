@@ -565,6 +565,21 @@ func (s *Service) WorkspaceRuntimeCredentials(ctx context.Context, accountID, wo
 }
 
 func (s *Service) UpsertGatewaySecret(ctx context.Context, input GatewaySecretInput) (GatewaySecret, error) {
+	var result GatewaySecret
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(input.WorkspaceID), func(ctx context.Context) error {
+		cleanup, found, err := s.resourceOperations.LatestResourceOperation(ctx, "workspace_application_secret_cleanup", gatewaySecretName(input.WorkspaceID))
+		if err != nil {
+			return err
+		}
+		if found && cleanup.Action == "remove_workspace_application_gateway_secret" {
+			return errors.New("workspace_application_gateway_secret_retired")
+		}
+		result, err = s.upsertWorkspaceGatewaySecret(ctx, input)
+		return err
+	})
+	return result, err
+}
+func (s *Service) upsertWorkspaceGatewaySecret(ctx context.Context, input GatewaySecretInput) (GatewaySecret, error) {
 	if strings.TrimSpace(input.AccountID) == "" || strings.TrimSpace(input.WorkspaceID) == "" || input.WorkspaceAPIKeyID <= 0 || strings.TrimSpace(input.GatewayAPIKey) == "" || strings.TrimSpace(input.IdempotencyKey) == "" {
 		return GatewaySecret{}, fmt.Errorf("gateway_secret_input_required")
 	}

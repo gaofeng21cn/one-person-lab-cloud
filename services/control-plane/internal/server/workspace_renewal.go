@@ -206,66 +206,68 @@ func planWorkspaceRenewalIntent(workspace, user map[string]any, operations []map
 const workspaceRenewalLeaseDuration = 5 * time.Minute
 
 type workspaceRenewalOperation struct {
-	ExpiryRuntimePower          *contracts.WorkspaceRuntimePowerResult `json:"expiryRuntimePower,omitempty"`
-	ResumeRuntimePower          *contracts.WorkspaceRuntimePowerResult `json:"resumeRuntimePower,omitempty"`
-	ID                          string                                 `json:"-"`
-	Status                      string                                 `json:"-"`
-	CreatedAt                   string                                 `json:"-"`
-	PersistedResult             string                                 `json:"-"`
-	RequestHash                 string                                 `json:"requestHash"`
-	Phase                       string                                 `json:"phase"`
-	AccountID                   string                                 `json:"accountId"`
-	OwnerUserID                 string                                 `json:"ownerUserId"`
-	WorkspaceID                 string                                 `json:"workspaceId"`
-	PackageID                   string                                 `json:"packageId"`
-	StorageGB                   int64                                  `json:"storageGb"`
-	ComputeID                   string                                 `json:"computeAllocationId"`
-	StorageID                   string                                 `json:"storageId"`
-	PriceVersion                string                                 `json:"priceVersion"`
-	ComputeUSDMicros            int64                                  `json:"computeUsdMicros"`
-	StorageUSDMicros            int64                                  `json:"storageUsdMicros"`
-	TotalUSDMicros              int64                                  `json:"totalUsdMicros"`
-	PeriodStart                 string                                 `json:"periodStart"`
-	PaidThrough                 string                                 `json:"paidThrough"`
-	RenewedThrough              string                                 `json:"renewedThrough"`
-	RedeemCode                  string                                 `json:"sub2apiRedeemCode"`
-	RefundCode                  string                                 `json:"sub2apiRefundCode"`
-	ComputePreflightConfirmed   bool                                   `json:"computePreflightConfirmed,omitempty"`
-	StoragePreflightConfirmed   bool                                   `json:"storagePreflightConfirmed,omitempty"`
-	ChargeAttempted             bool                                   `json:"chargeAttempted,omitempty"`
-	ChargeConfirmation          map[string]any                         `json:"chargeConfirmation,omitempty"`
-	PreChargeBalanceUSDMicros   int64                                  `json:"preChargeBalanceUsdMicros,omitempty"`
-	PostChargeBalanceUSDMicros  int64                                  `json:"postChargeBalanceUsdMicros,omitempty"`
-	PostChargeBalanceKnown      bool                                   `json:"postChargeBalanceKnown,omitempty"`
-	RefundAttempted             bool                                   `json:"refundAttempted,omitempty"`
-	RefundConfirmation          map[string]any                         `json:"refundConfirmation,omitempty"`
-	RefundReason                string                                 `json:"refundReason,omitempty"`
-	RefundReceiptID             string                                 `json:"refundReceiptId,omitempty"`
-	ComputeRenewal              map[string]any                         `json:"computeRenewal,omitempty"`
-	StorageRenewal              map[string]any                         `json:"storageRenewal,omitempty"`
-	ComputeReadback             map[string]any                         `json:"computeReadback,omitempty"`
-	StorageReadback             map[string]any                         `json:"storageReadback,omitempty"`
-	EntitlementCommitted        bool                                   `json:"entitlementCommitted,omitempty"`
-	ReceiptID                   string                                 `json:"receiptId,omitempty"`
-	ErrorCode                   string                                 `json:"errorCode,omitempty"`
-	PriorStatus                 string                                 `json:"priorStatus,omitempty"`
-	PriorErrorCode              string                                 `json:"priorErrorCode,omitempty"`
-	ExpiryStatus                string                                 `json:"expiryStatus,omitempty"`
-	ExpiryPhase                 string                                 `json:"expiryPhase,omitempty"`
-	ExpiryErrorCode             string                                 `json:"expiryErrorCode,omitempty"`
-	ExpiryReceiptID             string                                 `json:"expiryReceiptId,omitempty"`
-	ExpiryPeriodStart           string                                 `json:"expiryPeriodStart,omitempty"`
-	ExpiryPaidThrough           string                                 `json:"expiryPaidThrough,omitempty"`
-	LeaseToken                  string                                 `json:"leaseToken,omitempty"`
-	LeaseExpiresAt              string                                 `json:"leaseExpiresAt,omitempty"`
-	ReviewResolutionKey         string                                 `json:"reviewResolutionKey,omitempty"`
-	ReviewResolutionFingerprint string                                 `json:"reviewResolutionFingerprint,omitempty"`
-	ReviewResolutionDecision    string                                 `json:"reviewResolutionDecision,omitempty"`
-	ReviewResolutionEvidenceRef string                                 `json:"reviewResolutionEvidenceRef,omitempty"`
-	ReviewResolutionReviewer    string                                 `json:"reviewResolutionReviewer,omitempty"`
-	ReviewResolutionPhase       string                                 `json:"reviewResolutionPhase,omitempty"`
-	ReviewResolutionResolvedAt  string                                 `json:"reviewResolutionResolvedAt,omitempty"`
-	ReviewResolutionResult      map[string]any                         `json:"reviewResolutionResult,omitempty"`
+	ExpiryRuntimePower          *contracts.WorkspaceRuntimePowerResult  `json:"expiryRuntimePower,omitempty"`
+	ResumeRuntimePower          *contracts.WorkspaceRuntimePowerResult  `json:"resumeRuntimePower,omitempty"`
+	ExpiryApplicationPower      *workspaceApplicationLifecycleOperation `json:"expiryApplicationPower,omitempty"`
+	ResumeApplicationPower      *workspaceApplicationLifecycleOperation `json:"resumeApplicationPower,omitempty"`
+	ID                          string                                  `json:"-"`
+	Status                      string                                  `json:"-"`
+	CreatedAt                   string                                  `json:"-"`
+	PersistedResult             string                                  `json:"-"`
+	RequestHash                 string                                  `json:"requestHash"`
+	Phase                       string                                  `json:"phase"`
+	AccountID                   string                                  `json:"accountId"`
+	OwnerUserID                 string                                  `json:"ownerUserId"`
+	WorkspaceID                 string                                  `json:"workspaceId"`
+	PackageID                   string                                  `json:"packageId"`
+	StorageGB                   int64                                   `json:"storageGb"`
+	ComputeID                   string                                  `json:"computeAllocationId"`
+	StorageID                   string                                  `json:"storageId"`
+	PriceVersion                string                                  `json:"priceVersion"`
+	ComputeUSDMicros            int64                                   `json:"computeUsdMicros"`
+	StorageUSDMicros            int64                                   `json:"storageUsdMicros"`
+	TotalUSDMicros              int64                                   `json:"totalUsdMicros"`
+	PeriodStart                 string                                  `json:"periodStart"`
+	PaidThrough                 string                                  `json:"paidThrough"`
+	RenewedThrough              string                                  `json:"renewedThrough"`
+	RedeemCode                  string                                  `json:"sub2apiRedeemCode"`
+	RefundCode                  string                                  `json:"sub2apiRefundCode"`
+	ComputePreflightConfirmed   bool                                    `json:"computePreflightConfirmed,omitempty"`
+	StoragePreflightConfirmed   bool                                    `json:"storagePreflightConfirmed,omitempty"`
+	ChargeAttempted             bool                                    `json:"chargeAttempted,omitempty"`
+	ChargeConfirmation          map[string]any                          `json:"chargeConfirmation,omitempty"`
+	PreChargeBalanceUSDMicros   int64                                   `json:"preChargeBalanceUsdMicros,omitempty"`
+	PostChargeBalanceUSDMicros  int64                                   `json:"postChargeBalanceUsdMicros,omitempty"`
+	PostChargeBalanceKnown      bool                                    `json:"postChargeBalanceKnown,omitempty"`
+	RefundAttempted             bool                                    `json:"refundAttempted,omitempty"`
+	RefundConfirmation          map[string]any                          `json:"refundConfirmation,omitempty"`
+	RefundReason                string                                  `json:"refundReason,omitempty"`
+	RefundReceiptID             string                                  `json:"refundReceiptId,omitempty"`
+	ComputeRenewal              map[string]any                          `json:"computeRenewal,omitempty"`
+	StorageRenewal              map[string]any                          `json:"storageRenewal,omitempty"`
+	ComputeReadback             map[string]any                          `json:"computeReadback,omitempty"`
+	StorageReadback             map[string]any                          `json:"storageReadback,omitempty"`
+	EntitlementCommitted        bool                                    `json:"entitlementCommitted,omitempty"`
+	ReceiptID                   string                                  `json:"receiptId,omitempty"`
+	ErrorCode                   string                                  `json:"errorCode,omitempty"`
+	PriorStatus                 string                                  `json:"priorStatus,omitempty"`
+	PriorErrorCode              string                                  `json:"priorErrorCode,omitempty"`
+	ExpiryStatus                string                                  `json:"expiryStatus,omitempty"`
+	ExpiryPhase                 string                                  `json:"expiryPhase,omitempty"`
+	ExpiryErrorCode             string                                  `json:"expiryErrorCode,omitempty"`
+	ExpiryReceiptID             string                                  `json:"expiryReceiptId,omitempty"`
+	ExpiryPeriodStart           string                                  `json:"expiryPeriodStart,omitempty"`
+	ExpiryPaidThrough           string                                  `json:"expiryPaidThrough,omitempty"`
+	LeaseToken                  string                                  `json:"leaseToken,omitempty"`
+	LeaseExpiresAt              string                                  `json:"leaseExpiresAt,omitempty"`
+	ReviewResolutionKey         string                                  `json:"reviewResolutionKey,omitempty"`
+	ReviewResolutionFingerprint string                                  `json:"reviewResolutionFingerprint,omitempty"`
+	ReviewResolutionDecision    string                                  `json:"reviewResolutionDecision,omitempty"`
+	ReviewResolutionEvidenceRef string                                  `json:"reviewResolutionEvidenceRef,omitempty"`
+	ReviewResolutionReviewer    string                                  `json:"reviewResolutionReviewer,omitempty"`
+	ReviewResolutionPhase       string                                  `json:"reviewResolutionPhase,omitempty"`
+	ReviewResolutionResolvedAt  string                                  `json:"reviewResolutionResolvedAt,omitempty"`
+	ReviewResolutionResult      map[string]any                          `json:"reviewResolutionResult,omitempty"`
 }
 
 type workspaceRenewalClaimCAS struct {
@@ -373,6 +375,10 @@ func decodeWorkspaceRenewalOperation(row map[string]any) (workspaceRenewalOperat
 	operation.ID = firstNonEmpty(stringValue(row["operationId"]), stringValue(row["id"]))
 	operation.Status, operation.CreatedAt, operation.PersistedResult = stringValue(row["status"]), stringValue(row["createdAt"]), result
 	if operation.ID == "" || operation.Status == "" || operation.RequestHash == "" || operation.AccountID == "" || operation.WorkspaceID == "" || operation.PaidThrough == "" {
+		return workspaceRenewalOperation{}, errors.New("invalid_workspace_renewal_operation")
+	}
+	if !validWorkspaceApplicationLifecycle(operation.ExpiryApplicationPower, operation.AccountID, operation.WorkspaceID, operation.ID, "suspended") ||
+		!validWorkspaceApplicationLifecycle(operation.ResumeApplicationPower, operation.AccountID, operation.WorkspaceID, operation.ID, "running") {
 		return workspaceRenewalOperation{}, errors.New("invalid_workspace_renewal_operation")
 	}
 	for field, want := range map[string]string{
@@ -483,8 +489,15 @@ func (app *controlPlaneServer) processWorkspaceRenewal(ctx context.Context, serv
 				operation.ReceiptID = ""
 			}
 		}
-		if expired && operation.ExpiryStatus != "" && (operation.ExpiryPhase == "compute" || (operation.ExpiryPhase == "receipt" || operation.ExpiryPhase == "complete") && (operation.ExpiryRuntimePower == nil || operation.ExpiryRuntimePower.State != "suspended" && operation.ExpiryRuntimePower.State != "absent")) {
-			operation.ExpiryPhase = "runtime_suspend"
+		if expired && operation.ExpiryStatus != "" && (operation.ExpiryPhase == "compute" || operation.ExpiryPhase == "receipt" || operation.ExpiryPhase == "complete") {
+			mode, err := app.workspaceLaunchProvisioningMode(ctx, workspaceID)
+			if err != nil {
+				return err
+			}
+			legacyStopped := mode == contracts.WorkspaceProvisioningResourceOnly || operation.ExpiryRuntimePower != nil && (operation.ExpiryRuntimePower.State == "suspended" || operation.ExpiryRuntimePower.State == "absent")
+			if operation.ExpiryPhase == "compute" || !legacyStopped || !workspaceApplicationLifecycleComplete(operation.ExpiryApplicationPower, "suspended") {
+				operation.ExpiryPhase = "runtime_suspend"
+			}
 		}
 		if found && terminalWorkspaceRenewal(operation) && (!expired || operation.ExpiryStatus == "expired_unpaid" && operation.ExpiryPhase == "complete") {
 			return nil
@@ -562,6 +575,18 @@ func (app *controlPlaneServer) processWorkspaceRenewal(ctx context.Context, serv
 }
 
 func (app *controlPlaneServer) persistWorkspaceRenewal(ctx context.Context, operation *workspaceRenewalOperation, workspace *workspaceRenewalWorkspacePatch) error {
+	if !validWorkspaceApplicationLifecycle(operation.ExpiryApplicationPower, operation.AccountID, operation.WorkspaceID, operation.ID, "suspended") ||
+		!validWorkspaceApplicationLifecycle(operation.ResumeApplicationPower, operation.AccountID, operation.WorkspaceID, operation.ID, "running") {
+		return errors.New("workspace_application_lifecycle_identity_invalid")
+	}
+	if operation.PersistedResult != "" {
+		var previous workspaceRenewalOperation
+		if json.Unmarshal([]byte(operation.PersistedResult), &previous) != nil ||
+			!workspaceApplicationLifecycleTargetsMatch(previous.ExpiryApplicationPower, operation.ExpiryApplicationPower) ||
+			!workspaceApplicationLifecycleTargetsMatch(previous.ResumeApplicationPower, operation.ResumeApplicationPower) {
+			return errors.New("workspace_application_lifecycle_targets_changed")
+		}
+	}
 	desired := workspaceRenewalOperationRow(*operation)
 	update := workspaceRenewalPersistCAS{OperationID: operation.ID, ExpectedOperationResult: operation.PersistedResult, DesiredOperation: desired}
 	if workspace != nil {
@@ -1417,6 +1442,9 @@ func (app *controlPlaneServer) recordWorkspaceRenewalExpiryReceipt(ctx context.C
 	if operation.ExpiryRuntimePower != nil {
 		execution["runtimePower"] = operation.ExpiryRuntimePower
 	}
+	if operation.ExpiryApplicationPower != nil {
+		execution["applicationRuntimePower"] = operation.ExpiryApplicationPower
+	}
 	if operation.PriorStatus != "" {
 		execution["priorStatus"] = operation.PriorStatus
 	}
@@ -1566,13 +1594,41 @@ func (app *controlPlaneServer) workspaceRenewalRuntimePowerInput(ctx context.Con
 }
 
 func (app *controlPlaneServer) convergeWorkspaceRenewalRuntimePower(ctx context.Context, service *controlplane.Service, operation *workspaceRenewalOperation, desired string) error {
-	if mode, err := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); err != nil {
-		return err
-	} else if mode == contracts.WorkspaceProvisioningResourceOnly {
-		// A resource-only Workspace owns no application runtime, so there is
-		// nothing to suspend or resume; the runtime power facts stay unset.
-		return nil
+	workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
+	if err != nil || !found {
+		return errors.New("workspace_runtime_identity_unavailable")
 	}
+	applicationPower := &operation.ExpiryApplicationPower
+	if desired == "running" {
+		applicationPower = &operation.ResumeApplicationPower
+	}
+	if *applicationPower == nil {
+		*applicationPower, err = app.workspaceApplicationLifecycleInventory(ctx, service, workspace, desired, operation.ID)
+		if err != nil {
+			return err
+		}
+		if err := app.persistWorkspaceRenewal(ctx, operation, nil); err != nil {
+			return err
+		}
+	}
+	applicationErr := app.convergeWorkspaceApplicationLifecycle(ctx, service, *applicationPower, func() error {
+		return app.persistWorkspaceRenewal(ctx, operation, nil)
+	})
+	if desired == "running" && len((*applicationPower).Runtimes) > 0 {
+		// Recovery starts the selected application, never its retired predecessor.
+		return applicationErr
+	}
+	if mode, err := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); err != nil {
+		return errors.Join(applicationErr, err)
+	} else if mode == contracts.WorkspaceProvisioningResourceOnly {
+		// Independent applications were handled above. This Launch never
+		// created a retained legacy Runtime.
+		return applicationErr
+	}
+	return errors.Join(applicationErr, app.convergeWorkspaceRenewalLegacyRuntimePower(ctx, service, operation, desired))
+}
+
+func (app *controlPlaneServer) convergeWorkspaceRenewalLegacyRuntimePower(ctx context.Context, service *controlplane.Service, operation *workspaceRenewalOperation, desired string) error {
 	input, err := app.workspaceRenewalRuntimePowerInput(ctx, *operation, desired)
 	if err != nil {
 		return err
@@ -1624,6 +1680,32 @@ func (app *controlPlaneServer) convergeWorkspaceRenewalRuntimePower(ctx context.
 }
 
 func (app *controlPlaneServer) workspaceRenewalRuntimeRecoveryEligible(ctx context.Context, service *controlplane.Service, operation workspaceRenewalOperation) error {
+	workspace, found, err := app.tables.GetWorkspace(ctx, operation.WorkspaceID)
+	if err != nil || !found {
+		return errors.New("workspace_runtime_identity_unavailable")
+	}
+	applications, err := app.workspaceApplicationLifecycleInventory(ctx, service, workspace, "running", operation.ID)
+	if err != nil {
+		return err
+	}
+	if len(applications.Runtimes) > 0 {
+		for _, target := range applications.Runtimes {
+			result, err := service.ReadWorkspaceApplicationRuntimeLifecycle(ctx, target.Input)
+			if err != nil {
+				return err
+			}
+			if result.RuntimeID != target.Input.RuntimeID || result.WorkspaceID != target.Input.WorkspaceID {
+				return errors.New("workspace_application_lifecycle_readback_invalid")
+			}
+			if result.State == "absent" {
+				return errWorkspaceRenewalResourcesReclaimed
+			}
+			if result.State != "running" && result.State != "suspended" {
+				return errors.New("workspace_application_lifecycle_pending")
+			}
+		}
+		return nil
+	}
 	if mode, err := app.workspaceLaunchProvisioningMode(ctx, operation.WorkspaceID); err != nil {
 		return err
 	} else if mode == contracts.WorkspaceProvisioningResourceOnly {

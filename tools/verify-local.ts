@@ -65,7 +65,9 @@ export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/internal/postgresmigrate", race: true },
   { cwd: "services/ledger" },
   { cwd: "services/control-plane", timeout: "15m" },
-  { cwd: "services/fabric" }
+  // The application replacement scenario has a 15-minute overall budget;
+  // leave time for the other Fabric tests and exact fixture cleanup as well.
+  { cwd: "services/fabric", timeout: "20m" }
 ]);
 
 export function parseVerifyLocalArgs(args = process.argv.slice(2)) {

@@ -187,7 +187,9 @@ func seedNormalWorkspaceComputeClaimPending(t *testing.T, store OperationStore, 
 	operation.Status = "claim_pending"
 	operation.ErrorCode = "compute_claim_cvm_readback_mismatch"
 	operation.ProviderRequestID = allocation.ProviderRequestID
-	operation.CreatedAt = allocation.CreatedAt
+	// Skew the proposed queue timestamp without changing the actual start time.
+	// FIFO admission must assign CreatedAt from the store's own clock.
+	operation.CreatedAt = allocation.CreatedAt.Add(time.Hour)
 	operation.ComputePoolKey = input.NodePoolID
 	operation.RedactedProviderPayload = computeAllocationOperationPayload(allocation, plan)
 	operation.RedactedProviderPayload = withNormalLaunchStageBudget(operation.RedactedProviderPayload, "compute_create", confirmedNormalLaunchMutationBudget())
@@ -200,8 +202,8 @@ func seedNormalWorkspaceComputeClaimPending(t *testing.T, store OperationStore, 
 	if err := bindLaunchStageOperation(&operation, &launchBinding); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Append(context.Background(), operation); err != nil {
-		t.Fatal(err)
+	if _, claimed, err := store.ClaimComputePoolRuntime(context.Background(), operation); err != nil || !claimed {
+		t.Fatalf("seed compute pool admission: claimed=%v err=%v", claimed, err)
 	}
 	ownership := MachineOwnership{
 		ID: "owner_" + stableSuffix(allocation.ID, allocation.MachineName)[:16], ResourceID: allocation.ID,

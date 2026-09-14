@@ -134,6 +134,16 @@ func (a *workspaceLaunchUnitAdapter) ReadStage(_ context.Context, operation work
 		}
 		a.mu.Lock()
 	}
+	// Both readers must reach the observation before either can advance the
+	// operation. This also applies to ready/error observations, not only absent.
+	if barrier := a.barrier; barrier != nil {
+		if readNumber == 2 {
+			close(barrier)
+		}
+		a.mu.Unlock()
+		<-barrier
+		a.mu.Lock()
+	}
 	stage := string(operation.Stage)
 	if results := a.readResultsByStage[stage]; len(results) > 0 {
 		result := results[0]
@@ -157,14 +167,7 @@ func (a *workspaceLaunchUnitAdapter) ReadStage(_ context.Context, operation work
 		a.mu.Unlock()
 		return workspaceLaunchStageObservation{State: workspaceLaunchStageReady, Facts: workspaceLaunchReadyFacts(operation.Stage)}, nil
 	}
-	if a.barrier != nil && a.reads == 2 {
-		close(a.barrier)
-	}
-	barrier := a.barrier
 	a.mu.Unlock()
-	if barrier != nil {
-		<-barrier
-	}
 	return workspaceLaunchStageObservation{State: workspaceLaunchStageAbsent}, nil
 }
 

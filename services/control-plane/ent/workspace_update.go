@@ -474,6 +474,34 @@ func (wu *WorkspaceUpdate) AddApplicationBindingVersion(i int64) *WorkspaceUpdat
 	return wu
 }
 
+// SetCurrentApplicationDeploymentID sets the "current_application_deployment_id" field.
+func (wu *WorkspaceUpdate) SetCurrentApplicationDeploymentID(s string) *WorkspaceUpdate {
+	wu.mutation.SetCurrentApplicationDeploymentID(s)
+	return wu
+}
+
+// SetNillableCurrentApplicationDeploymentID sets the "current_application_deployment_id" field if the given value is not nil.
+func (wu *WorkspaceUpdate) SetNillableCurrentApplicationDeploymentID(s *string) *WorkspaceUpdate {
+	if s != nil {
+		wu.SetCurrentApplicationDeploymentID(*s)
+	}
+	return wu
+}
+
+// SetReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field.
+func (wu *WorkspaceUpdate) SetReservedApplicationDeploymentID(s string) *WorkspaceUpdate {
+	wu.mutation.SetReservedApplicationDeploymentID(s)
+	return wu
+}
+
+// SetNillableReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field if the given value is not nil.
+func (wu *WorkspaceUpdate) SetNillableReservedApplicationDeploymentID(s *string) *WorkspaceUpdate {
+	if s != nil {
+		wu.SetReservedApplicationDeploymentID(*s)
+	}
+	return wu
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wu *WorkspaceUpdate) Mutation() *WorkspaceMutation {
 	return wu.mutation
@@ -638,6 +666,12 @@ func (wu *WorkspaceUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := wu.mutation.AddedApplicationBindingVersion(); ok {
 		_spec.AddField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
+	}
+	if value, ok := wu.mutation.CurrentApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldCurrentApplicationDeploymentID, field.TypeString, value)
+	}
+	if value, ok := wu.mutation.ReservedApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldReservedApplicationDeploymentID, field.TypeString, value)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, wu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1105,6 +1139,34 @@ func (wuo *WorkspaceUpdateOne) AddApplicationBindingVersion(i int64) *WorkspaceU
 	return wuo
 }
 
+// SetCurrentApplicationDeploymentID sets the "current_application_deployment_id" field.
+func (wuo *WorkspaceUpdateOne) SetCurrentApplicationDeploymentID(s string) *WorkspaceUpdateOne {
+	wuo.mutation.SetCurrentApplicationDeploymentID(s)
+	return wuo
+}
+
+// SetNillableCurrentApplicationDeploymentID sets the "current_application_deployment_id" field if the given value is not nil.
+func (wuo *WorkspaceUpdateOne) SetNillableCurrentApplicationDeploymentID(s *string) *WorkspaceUpdateOne {
+	if s != nil {
+		wuo.SetCurrentApplicationDeploymentID(*s)
+	}
+	return wuo
+}
+
+// SetReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field.
+func (wuo *WorkspaceUpdateOne) SetReservedApplicationDeploymentID(s string) *WorkspaceUpdateOne {
+	wuo.mutation.SetReservedApplicationDeploymentID(s)
+	return wuo
+}
+
+// SetNillableReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field if the given value is not nil.
+func (wuo *WorkspaceUpdateOne) SetNillableReservedApplicationDeploymentID(s *string) *WorkspaceUpdateOne {
+	if s != nil {
+		wuo.SetReservedApplicationDeploymentID(*s)
+	}
+	return wuo
+}
+
 // Mutation returns the WorkspaceMutation object of the builder.
 func (wuo *WorkspaceUpdateOne) Mutation() *WorkspaceMutation {
 	return wuo.mutation
@@ -1299,6 +1361,12 @@ func (wuo *WorkspaceUpdateOne) sqlSave(ctx context.Context) (_node *Workspace, e
 	}
 	if value, ok := wuo.mutation.AddedApplicationBindingVersion(); ok {
 		_spec.AddField(workspace.FieldApplicationBindingVersion, field.TypeInt64, value)
+	}
+	if value, ok := wuo.mutation.CurrentApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldCurrentApplicationDeploymentID, field.TypeString, value)
+	}
+	if value, ok := wuo.mutation.ReservedApplicationDeploymentID(); ok {
+		_spec.SetField(workspace.FieldReservedApplicationDeploymentID, field.TypeString, value)
 	}
 	_node = &Workspace{config: wuo.config}
 	_spec.Assign = _node.assignValues

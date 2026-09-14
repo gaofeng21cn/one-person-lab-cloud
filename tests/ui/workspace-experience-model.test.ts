@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { decodeDto } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
   WorkspaceDTO,
@@ -11,6 +12,7 @@ import {
   formatWorkspaceBudgetUsdInput,
   parseWorkspaceBudgetUsdInput,
   presentWorkspaceApplicationBinding,
+  presentWorkspaceApplicationInstallation,
   presentWorkspaceBudget,
   presentWorkspaceLaunch,
   presentWorkspaceLaunchStage,
@@ -113,8 +115,8 @@ test("Workspace launch statuses produce exact customer outcomes", () => {
       status: "succeeded",
       expected: {
         kind: "succeeded",
-        title: "工作空间已可使用",
-        summary: "工作空间已完成开通，可以继续查看并进入。",
+        title: "工作空间资源已开通",
+        summary: "计算与存储资源已开通，可进入详情查看应用安装与运行状态。",
         tone: "success",
         canOpenWorkspace: true
       }
@@ -393,6 +395,45 @@ test("Workspace application binding presents the empty state for resource-only w
   assert.deepEqual(presentWorkspaceApplicationBinding("opl_app"), { known: true, label: "OPL App" });
   assert.deepEqual(presentWorkspaceApplicationBinding(undefined), { known: false, label: "待确认" });
   assert.deepEqual(presentWorkspaceApplicationBinding("future_binding"), { known: false, label: "待确认" });
+  assert.deepEqual(presentWorkspaceApplicationBinding("knowledge-app@1.2.3"), { known: true, label: "knowledge-app · 1.2.3" });
+});
+
+test("Current applications use their own entry and an absent web entry is a valid running application", () => {
+  const currentApplication: NonNullable<WorkspaceRuntimeDTO["currentApplication"]> = {
+    operationId: "deployment-current", applicationId: "knowledge-app", revision: "1.2.3",
+    status: "ready", capabilities: { credentials: false, gateway: false }
+  };
+  const worker = presentWorkspaceRuntime(runtime({ currentApplication }));
+  assert.equal(worker.kind, "ready");
+  assert.equal(worker.canOpen, false);
+  assert.equal(worker.url, null);
+  assert.equal(worker.label, "运行中");
+  const web = { ...currentApplication, entryUrl: "https://current-app.example.invalid/" };
+  assert.equal(presentWorkspaceRuntime(runtime({ currentApplication: web })).url, web.entryUrl);
+  assert.equal(presentWorkspaceRuntime(runtime({ currentApplication: web }), null).canOpen, false);
+  assert.equal(presentWorkspaceRuntime(runtime({ currentApplication: web }), { ...web, operationId: "next-deployment" }).canOpen, false);
+  for (const status of ["pending", "absent", "failed", "suspended"] as const) {
+    const result = presentWorkspaceRuntime(runtime({ currentApplication: { ...web, status } }));
+    assert.equal(result.canOpen, false);
+    assert.equal(result.url, null);
+  }
+  const unknown = decodeDto<WorkspaceRuntimeDTO>({ ...runtime(), currentApplication: { ...web, status: "future" } });
+  assert.equal(presentWorkspaceRuntime(unknown).canOpen, false);
+  assert.equal(presentWorkspaceRuntime(unknown).url, null);
+  assert.equal(presentWorkspaceApplicationBinding("opl_app", currentApplication).label, "knowledge-app · 1.2.3");
+});
+
+test("Application installation results stay separate from resource purchase success", () => {
+  for (const status of ["pending", "running", "manual_review"] as const) {
+    const installation = { operationId: "install-default", applicationId: "opl-app", revision: "1.2.3", status };
+    const purchase = presentWorkspaceLaunch(launch({ status: "succeeded", workspaceId: "ws-default", applicationInstallation: installation }));
+    assert.equal(purchase.kind, "succeeded");
+    assert.equal(purchase.title, "工作空间资源已开通");
+    assert.equal(purchase.canOpenWorkspace, true);
+    const presentation = presentWorkspaceApplicationInstallation(installation);
+    assert.match(presentation.description, /opl-app · 1.2.3/);
+    assert.equal(presentation.tone, status === "manual_review" ? "warning" : "info");
+  }
 });
 
 test("Workspace budget inputs convert exact USD decimals without floating point rounding", () => {

@@ -53,6 +53,7 @@ import { useOperatorResourceReadController } from "./use-operator-resource-read-
 import { useWorkspaceBudgetController } from "./use-workspace-budget-controller.ts";
 import { useWorkspaceDeleteController } from "./use-workspace-delete-controller.ts";
 import { useWorkspaceApplicationDeploymentController } from "./use-workspace-application-deployment-controller.ts";
+import { useWorkspaceApplicationInstallationController } from "./use-workspace-application-installation-controller.ts";
 import { useWorkspaceImageReleaseController } from "./use-workspace-image-release-controller.ts";
 import { useWorkspaceLaunchController } from "./use-workspace-launch-controller.ts";
 import { useWorkspaceRenewalController } from "./use-workspace-renewal-controller.ts";
@@ -180,6 +181,7 @@ export function useConsoleController() {
     walletAdjustmentCapability.reset();
     workspaceDeleteCapability.reset();
     workspaceRenewalCapability.reset();
+    workspaceApplicationInstallation.reset();
     workspaceImageReleaseCapability.reset();
     workspaceRuntimeImageReplacementCapability.reset();
     workspaceBudgetCapability.reset();
@@ -327,6 +329,11 @@ export function useConsoleController() {
   });
   const workspaceRenewal: WorkspaceRenewalController = workspaceRenewalCapability;
 
+  const workspaceApplicationInstallation = useWorkspaceApplicationInstallationController({
+    session, workspace: activeWorkspace, workspaceId: activeWorkspaceId, currentMutationRequest,
+    refreshWorkspace: () => refreshCurrentPage(), flash, mutationError
+  });
+
   const workspaceBudgetCapability = useWorkspaceBudgetController({
     session,
     workspace: activeWorkspace,
@@ -391,6 +398,8 @@ export function useConsoleController() {
 
   const workspaceApplicationDeploymentCapability = useWorkspaceApplicationDeploymentController({
     session,
+    workspaceId: operatorResourceRead.selectedWorkspaceId,
+    refreshWorkspace: operatorResourceRead.refreshWorkspace,
     flash,
     mutationError,
     currentMutationRequest
@@ -457,6 +466,7 @@ export function useConsoleController() {
         updateSource("workspaceBudget", { value: unavailableSource("sub2api"), loading: false, error: "" });
         return;
       }
+      if (detail.data.currentApplication?.capabilities.gateway === false || detail.data.applicationBinding === "empty" || !detail.data.workspaceApiKeyId) return;
       beginSource("workspaceBudget");
       try {
         const result = await getWorkspaceGatewayBudget(workspaceId, detail.data.workspaceApiKeyId || "");
@@ -731,6 +741,7 @@ export function useConsoleController() {
     operatorAnnouncements,
     operatorResourceRead,
     workspaceApplicationDeployment,
+    workspaceApplicationInstallation,
     workspaceImageRelease,
     workspaceRuntimeImageReplacement,
     walletAdjustmentOperation: walletAdjustment.operation,

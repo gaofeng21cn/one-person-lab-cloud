@@ -67,6 +67,20 @@ func (app *controlPlaneServer) workspaceAccessResponse(ctx context.Context, row 
 		}
 		canonicalComputeID, canonicalStorageID = state.ComputeAllocationID, state.StorageID
 	}
+	if stringValue(row["currentApplicationDeploymentId"]) != "" {
+		if _, found, err := app.currentWorkspaceApplicationDeployment(ctx, row); err != nil || !found {
+			response["openable"], response["accessState"] = false, "disabled"
+			return response, "workspace_runtime_truth_unavailable"
+		}
+		if _, found, err := app.canonicalWorkspaceLaunch(ctx, row, workspaceLaunchResourceProjectionMismatchFields, app.recordCanonicalWorkspaceLaunchFailure); err != nil || !found {
+			response["openable"], response["accessState"] = false, "disabled"
+			return response, "workspace_resource_truth_unavailable"
+		}
+		// This method admits current entitlement only. Application availability
+		// and its independent entry are read live at the customer API boundary.
+		projectWorkspaceCurrentApplication(row, response, nil)
+		return response, ""
+	}
 	if _, canonical, err := app.canonicalWorkspaceLaunchForAccess(ctx, row); err != nil {
 		response["openable"], response["accessState"] = false, "disabled"
 		return response, "workspace_runtime_truth_unavailable"
@@ -317,6 +331,8 @@ type workspaceKeyRotationOperation struct {
 	Usage7dUSDMicros          int64          `json:"usage7dUsdMicros,omitempty"`
 	BudgetCapturedAt          string         `json:"budgetCapturedAt,omitempty"`
 	SecretRef                 string         `json:"secretRef,omitempty"`
+	SecretVersion             string         `json:"secretVersion,omitempty"`
+	ApplicationDeploymentID   string         `json:"applicationDeploymentId,omitempty"`
 	Fingerprint               string         `json:"fingerprint,omitempty"`
 	RuntimeID                 string         `json:"runtimeId,omitempty"`
 	ReceiptID                 string         `json:"receiptId,omitempty"`
@@ -452,6 +468,10 @@ func (app *controlPlaneServer) rotateWorkspaceGatewayKey(w http.ResponseWriter, 
 	workspaceID := r.PathValue("workspaceId")
 	workspace, ok := app.ownedWorkspaceForCredentialCommand(w, r, workspaceID)
 	if !ok {
+		return
+	}
+	if err := app.requireWorkspaceGatewayApplication(r.Context(), workspace); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	user, userID, credential, ok := app.gatewayUserContext(w, r)
@@ -683,11 +703,21 @@ func (app *controlPlaneServer) runWorkspaceKeyRotation(r *http.Request, service 
 			if err != nil {
 				return operation, err
 			}
-			operation.SecretRef, operation.Fingerprint, operation.Phase = secret.SecretRef, secret.Fingerprint, "runtime_bind"
+			operation.SecretRef, operation.SecretVersion, operation.Fingerprint, operation.Phase = secret.SecretRef, secret.Version, secret.Fingerprint, "runtime_bind"
 			if err := app.persistWorkspaceKeyRotation(ctx, operationID, accountID, workspaceID, "started", operation); err != nil {
 				return operation, err
 			}
 		case "runtime_bind":
+			if managed, err := app.bindWorkspaceCurrentApplicationGateway(ctx, service, workspaceID, operationID, &operation); managed {
+				if err != nil {
+					return operation, err
+				}
+				operation.Phase = "runtime_readback"
+				if err := app.persistWorkspaceKeyRotation(ctx, operationID, accountID, workspaceID, "started", operation); err != nil {
+					return operation, err
+				}
+				continue
+			}
 			binding, err := service.BindWorkspaceRuntimeGatewaySecret(ctx, clients.WorkspaceRuntimeGatewaySecretInput{
 				AccountID: accountID, WorkspaceID: workspaceID, WorkspaceAPIKeyID: operation.NewKeyID,
 				SecretRef: operation.SecretRef, Fingerprint: operation.Fingerprint,
@@ -703,6 +733,16 @@ func (app *controlPlaneServer) runWorkspaceKeyRotation(r *http.Request, service 
 				return operation, err
 			}
 		case "runtime_readback":
+			if operation.ApplicationDeploymentID != "" {
+				if !app.workspaceApplicationGatewayBindingConverged(ctx, service, workspaceID, operation) {
+					return operation, errWorkspaceKeyRotationInProgress
+				}
+				operation.Phase = "workspace_commit"
+				if err := app.persistWorkspaceKeyRotation(ctx, operationID, accountID, workspaceID, "started", operation); err != nil {
+					return operation, err
+				}
+				continue
+			}
 			binding, err := service.WorkspaceRuntimeGatewaySecret(ctx, workspaceID)
 			if err != nil {
 				return operation, err
@@ -1009,6 +1049,10 @@ func (app *controlPlaneServer) workspaceKeyRotationConverged(ctx context.Context
 		return false
 	}
 	workspace, ok := app.getWorkspace(workspaceID)
+	if operation.ApplicationDeploymentID != "" {
+		return ok && !oldKeyPresent && len(keys) == 1 && workspaceRotationReplacementStaticPolicyMatches(keys[0], userID, operation) &&
+			int64(numberField(workspace, "workspaceApiKeyId", 0)) == operation.NewKeyID && app.workspaceApplicationGatewayBindingConverged(ctx, service, workspaceID, operation)
+	}
 	binding, bindErr := service.WorkspaceRuntimeGatewaySecret(ctx, workspaceID)
 	return ok && bindErr == nil && !oldKeyPresent && len(keys) == 1 && workspaceRotationReplacementStaticPolicyMatches(keys[0], userID, operation) &&
 		int64(numberField(workspace, "workspaceApiKeyId", 0)) == operation.NewKeyID &&
@@ -1042,6 +1086,12 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	workspace, ok := app.getWorkspace(workspaceID)
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		// Independent applications own their origin and authentication. The
+		// historical OPL proxy must not carry credentials to a successor.
+		writeError(w, http.StatusConflict, "workspace_application_entry_required")
 		return
 	}
 	if state := stringValue(workspace["state"]); state == "data_deleted" || state == "unrecoverable" || state == "storage_missing" || state == "destroyed" {

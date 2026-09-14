@@ -32,3 +32,46 @@ func (s *Service) ReadWorkspaceApplicationRuntime(ctx context.Context, input cli
 	}
 	return client.ReadWorkspaceApplicationRuntime(ctx, input)
 }
+
+func (s *Service) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput, idempotencyKey string) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceApplicationRuntimeLifecycleClient)
+	if !ok {
+		return contracts.WorkspaceApplicationRuntimeLifecycleResult{}, errors.New("workspace_application_runtime_lifecycle_client_unavailable")
+	}
+	if idempotencyKey == "" {
+		return contracts.WorkspaceApplicationRuntimeLifecycleResult{}, errors.New("workspace_application_runtime_idempotency_key_required")
+	}
+	return client.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, idempotencyKey)
+}
+
+func (s *Service) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput) (contracts.WorkspaceApplicationRuntimeLifecycleResult, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceApplicationRuntimeLifecycleClient)
+	if !ok {
+		return contracts.WorkspaceApplicationRuntimeLifecycleResult{}, errors.New("workspace_application_runtime_lifecycle_client_unavailable")
+	}
+	return client.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input)
+}
+
+func (s *Service) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
+	client, ok := s.fabric.(clients.FabricWorkspaceApplicationRuntimeLifecycleClient)
+	if !ok {
+		return contracts.WorkspaceApplicationRuntimeCredentials{}, errors.New("workspace_application_runtime_credentials_client_unavailable")
+	}
+	return client.ReadWorkspaceApplicationRuntimeCredentials(ctx, input)
+}
+
+func (s *Service) PreflightWorkspaceApplicationRuntime(ctx context.Context, input clients.WorkspaceApplicationRuntimeInput) error {
+	client, ok := s.fabric.(clients.FabricWorkspaceApplicationRuntimePreflightClient)
+	if !ok {
+		return errors.New("workspace_application_runtime_preflight_client_unavailable")
+	}
+	return client.PreflightWorkspaceApplicationRuntime(ctx, input)
+}
+
+func (s *Service) RemoveWorkspaceApplicationGatewaySecret(ctx context.Context, input clients.WorkspaceApplicationGatewaySecretCleanupInput, key string) error {
+	client, ok := s.fabric.(clients.FabricWorkspaceApplicationGatewaySecretCleanupClient)
+	if !ok {
+		return errors.New("workspace_application_gateway_secret_cleanup_client_unavailable")
+	}
+	return client.RemoveWorkspaceApplicationGatewaySecret(ctx, input, key)
+}

@@ -21,19 +21,7 @@ var ErrWorkspaceApplicationRuntimeInputInvalid = errors.New("workspace_applicati
 // from an admitted revision. The revision is the declared description; the
 // configuration digest is the identity of the non-secret configuration the
 // operator supplied. Secret values never travel through this input.
-type WorkspaceApplicationRuntimeInput struct {
-	AccountID             string                                 `json:"accountId"`
-	WorkspaceID           string                                 `json:"workspaceId"`
-	ComputeID             string                                 `json:"computeId"`
-	VolumeID              string                                 `json:"volumeId"`
-	AttachmentID          string                                 `json:"attachmentId"`
-	AttachmentOperationID string                                 `json:"attachmentOperationId"`
-	RuntimeOperationID    string                                 `json:"runtimeOperationId"`
-	IdempotencyKey        string                                 `json:"-"`
-	OperationID           string                                 `json:"-"`
-	Revision              contracts.WorkspaceApplicationRevision `json:"revision"`
-	ConfigurationDigest   string                                 `json:"configurationDigest"`
-}
+type WorkspaceApplicationRuntimeInput = contracts.WorkspaceApplicationRuntimeInput
 
 // workspaceApplicationRuntimeProvider is the optional port a provider
 // implements as its application runtime support lands. Local-Docker and
@@ -51,10 +39,11 @@ type workspaceApplicationRuntimeRecord struct {
 	RuntimeID   string                                           `json:"runtimeId"`
 	WorkspaceID string                                           `json:"workspaceId"`
 	Observation contracts.WorkspaceApplicationRuntimeObservation `json:"observation"`
+	Input       WorkspaceApplicationRuntimeInput                 `json:"input"`
 }
 
-func workspaceApplicationRuntimeID(workspaceID string) string {
-	return "rt_app_" + stableSuffix("workspace_application_runtime", workspaceID)
+func workspaceApplicationRuntimeID(runtimeOperationID string) string {
+	return contracts.WorkspaceApplicationRuntimeID(runtimeOperationID)
 }
 
 func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, volume StorageVolume, attachment StorageAttachment) error {
@@ -68,7 +57,7 @@ func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplic
 		attachment.ComputeID != input.ComputeID || attachment.VolumeID != input.VolumeID || attachment.Status != "attached" {
 		return fmt.Errorf("workspace_application_runtime_attachment_mismatch")
 	}
-	if input.RuntimeOperationID == "" {
+	if input.RuntimeOperationID == "" || input.IdempotencyKey != input.RuntimeOperationID {
 		return fmt.Errorf("workspace_application_runtime_identity_invalid")
 	}
 	if !isReadyResourceStatus(compute.Status) || volume.Status != "ready" {
@@ -79,8 +68,8 @@ func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplic
 	}
 	// Application images are publisher-owned, digest-pinned references admitted
 	// by Control Plane; the OPL image catalog deliberately does not apply here.
-	if strings.TrimSpace(input.ConfigurationDigest) == "" {
-		return fmt.Errorf("workspace_application_runtime_configuration_digest_required")
+	if err := validateWorkspaceApplicationConfiguration(input); err != nil {
+		return err
 	}
 	return nil
 }
@@ -90,6 +79,19 @@ func (s *Service) validateWorkspaceApplicationRuntimeInput(input WorkspaceApplic
 // convergence rules as the retained OPL App runtime creation. The observation
 // is authoritative: it names every declared component where it actually runs.
 func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	if input.SchemaVersion == 0 {
+		return s.historicalApplicationReadback(ctx, input, false)
+	}
+	var result contracts.WorkspaceApplicationRuntimeObservation
+	err := s.resourceLocks.WithPoolLock(ctx, workspaceRuntimeLockKey(input.WorkspaceID), func(ctx context.Context) error {
+		var err error
+		result, err = s.createWorkspaceApplicationRuntime(ctx, input)
+		return err
+	})
+	return result, err
+}
+
+func (s *Service) createWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	if strings.TrimSpace(input.IdempotencyKey) == "" {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, errors.New("runtime_idempotency_key_required"))
 	}
@@ -101,6 +103,25 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, errors.Join(ErrWorkspaceApplicationRuntimeInputInvalid, err)
 	}
+	latest, found, lifecycleErr := s.resourceOperations.LatestResourceOperation(ctx, "workspace_application_lifecycle", applicationRuntimeID(input))
+	if lifecycleErr != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, lifecycleErr
+	}
+	if found {
+		var previous workspaceApplicationLifecycleRecord
+		if !decodeOperationResource(latest, &previous) {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeIdempotencyConflict
+		}
+		if previous.Input.AccountID != input.AccountID || previous.Input.WorkspaceID != input.WorkspaceID {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeIdempotencyConflict
+		}
+		if previous.Input.DesiredState != "running" {
+			return contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: applicationRuntimeID(input), Status: "absent", Components: contracts.WorkspaceApplicationRuntimeComponents(input.Revision)}, errors.New("workspace_application_runtime_fenced")
+		}
+	}
+	if err := s.validateApplicationDataLayout(ctx, input); err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+	}
 	requestHash := hashInput(input)
 	now := s.now()
 	action := "create_workspace_application_runtime"
@@ -108,7 +129,7 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 	operation.ID = "fop_app_runtime_claim_" + stableSuffix(action, input.IdempotencyKey)
 	operation.Status = "started"
 	operation.CreatedAt = now
-	record := workspaceApplicationRuntimeRecord{RuntimeID: workspaceApplicationRuntimeID(input.WorkspaceID), WorkspaceID: input.WorkspaceID}
+	record := workspaceApplicationRuntimeRecord{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, Input: input}
 	fillOperationResource(&operation, record)
 	input.OperationID = input.IdempotencyKey
 	stored, claimed, err := s.claimRuntimeOperation(ctx, operation)
@@ -144,12 +165,16 @@ func (s *Service) CreateWorkspaceApplicationRuntime(ctx context.Context, input W
 }
 
 func (s *Service) ensureWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput, operation FabricOperation, compute ComputeAllocation, volume StorageVolume) (contracts.WorkspaceApplicationRuntimeObservation, workspaceApplicationRuntimeRecord, error) {
-	record := workspaceApplicationRuntimeRecord{RuntimeID: workspaceApplicationRuntimeID(input.WorkspaceID), WorkspaceID: input.WorkspaceID}
+	record := workspaceApplicationRuntimeRecord{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, Input: input}
 	provider, ok := s.runtimeProvider.(workspaceApplicationRuntimeProvider)
 	if !ok {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, record, ErrWorkspaceApplicationRuntimeProviderUnsupported
 	}
-	observation, err := provider.EnsureWorkspaceApplicationRuntime(s.providerMutationContext(ctx, operation), input, compute, volume)
+	credentialCtx, err := s.applicationCredentialContext(ctx, input)
+	if err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, record, err
+	}
+	observation, err := provider.EnsureWorkspaceApplicationRuntime(s.providerMutationContext(credentialCtx, operation), input, compute, volume)
 	if err == nil || errors.Is(err, ErrWorkspaceLaunchPending) {
 		err = validateWorkspaceApplicationRuntimeObservation(input, &observation)
 		if err == nil {
@@ -199,7 +224,7 @@ func (s *Service) convergeWorkspaceApplicationRuntime(ctx context.Context, store
 		}
 		return observation, ErrRuntimeOperationFailed
 	}
-	record := workspaceApplicationRuntimeRecord{RuntimeID: observation.RuntimeID, WorkspaceID: input.WorkspaceID, Observation: observation}
+	record := workspaceApplicationRuntimeRecord{RuntimeID: observation.RuntimeID, WorkspaceID: input.WorkspaceID, Observation: observation, Input: input}
 	if _, err := s.convergeRuntimeOperationReadback(ctx, stored, record, nil); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
@@ -221,10 +246,13 @@ func (s *Service) saveWorkspaceApplicationRuntimeOperation(ctx context.Context, 
 // observation of one application runtime, converging the durable operation
 // with a live provider read when the provider supports it.
 func (s *Service) WorkspaceApplicationRuntimeReadback(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+	if input.SchemaVersion == 0 {
+		return s.historicalApplicationReadback(ctx, input, true)
+	}
 	// After the claim, the operation's ResourceID is the deterministic runtime
 	// identity assigned by fillOperationResource.
 	operation, found, err := s.runtimeOperationQueries.OperationByResourceActionIdempotency(
-		ctx, "workspace_application_runtime", workspaceApplicationRuntimeID(input.WorkspaceID),
+		ctx, "workspace_application_runtime", applicationRuntimeID(input),
 		"create_workspace_application_runtime", input.IdempotencyKey,
 	)
 	if err != nil {
@@ -260,7 +288,7 @@ func validateWorkspaceApplicationRuntimeObservation(input WorkspaceApplicationRu
 	if err := contracts.ValidateWorkspaceApplicationRuntimeObservation(input.Revision, *observation); err != nil {
 		return err
 	}
-	runtimeID := workspaceApplicationRuntimeID(input.WorkspaceID)
+	runtimeID := applicationRuntimeID(input)
 	if observation.WorkspaceID != input.WorkspaceID || (observation.RuntimeID != "" && observation.RuntimeID != runtimeID) {
 		return errors.New("workspace_application_runtime_observation_identity_mismatch")
 	}

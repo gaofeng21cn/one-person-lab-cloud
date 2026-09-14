@@ -148,6 +148,9 @@ func controlPlaneMigrations(client *controlplaneent.Client, driver dialect.Drive
 		{Version: "202609130001_application_data_materials", Run: func(ctx context.Context) error {
 			return controlplanemigrations.ApplyApplicationDataMaterials(ctx, driver)
 		}},
+		{Version: "202609130001_workspace_application_selection", Run: func(ctx context.Context) error {
+			return controlplanemigrations.ApplyWorkspaceApplicationSelection(ctx, driver)
+		}},
 	}
 }
 

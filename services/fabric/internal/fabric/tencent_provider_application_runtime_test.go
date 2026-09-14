@@ -3,9 +3,11 @@ package fabric
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +24,7 @@ type fakeTencentKubectl struct {
 	deployments map[string]map[string]any
 	resources   map[string]map[string]any
 	applies     [][]map[string]any
+	mutations   [][]string
 }
 
 func (f *fakeTencentKubectl) call(_ context.Context, args []string, stdin []byte) ([]byte, error) {
@@ -56,7 +59,7 @@ func (f *fakeTencentKubectl) call(_ context.Context, args []string, stdin []byte
 						f.deployments[name] = item
 					}
 				}
-			} else if item["kind"] != "NetworkPolicy" {
+			} else {
 				key := stringValue(item["kind"]) + ":" + name
 				if previous := f.resources[key]; previous != nil {
 					item["status"] = previous["status"]
@@ -65,19 +68,125 @@ func (f *fakeTencentKubectl) call(_ context.Context, args []string, stdin []byte
 			}
 		}
 		return nil, nil
-	case "get":
-		items := make([]map[string]any, 0, len(f.deployments))
-		for _, deployment := range f.deployments {
-			items = append(items, deployment)
+
+	case "create":
+		var item map[string]any
+		if err := json.Unmarshal(stdin, &item); err != nil {
+			return nil, err
 		}
-		for _, resource := range f.resources {
-			items = append(items, resource)
+		name := stringValue(nested(item, "metadata", "name"))
+		if item["kind"] != "Secret" {
+			return nil, errors.New("unexpected create")
 		}
-		body, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": items})
+		item["metadata"].(map[string]any)["uid"] = "Secret:" + name
+		data := map[string]any{}
+		for key, value := range item["stringData"].(map[string]any) {
+			data[key] = base64.StdEncoding.EncodeToString([]byte(stringValue(value)))
+		}
+		item["data"] = data
+		delete(item, "stringData")
+		if f.resources["Secret:"+name] != nil {
+			return nil, errors.New("already exists")
+		}
+		f.resources["Secret:"+name] = item
+		return nil, nil
+	case "scale":
+		f.mutations = append(f.mutations, append([]string(nil), args...))
+		name := strings.TrimPrefix(args[1], "deployment/")
+		deployment := f.deployments[name]
+		if deployment == nil {
+			return nil, errors.New("deployment missing")
+		}
+		replicas, err := strconv.Atoi(strings.TrimPrefix(args[2], "--replicas="))
 		if err != nil {
 			return nil, err
 		}
-		return body, nil
+		deployment["spec"].(map[string]any)["replicas"] = replicas
+		deployment["metadata"].(map[string]any)["generation"] = number(nested(deployment, "metadata", "generation")) + 1
+		deployment["status"] = map[string]any{"replicas": replicas, "readyReplicas": 0, "observedGeneration": nested(deployment, "metadata", "generation")}
+		if replicas == 0 {
+			delete(f.resources, "ReplicaSet:"+name)
+			delete(f.resources, "Pod:"+name)
+		}
+		return nil, nil
+	case "delete":
+		f.mutations = append(f.mutations, append([]string(nil), args...))
+		for _, target := range args[1:] {
+			if strings.HasPrefix(target, "--") {
+				continue
+			}
+			kind, name, ok := strings.Cut(target, "/")
+			if !ok {
+				return nil, errors.New("unscoped delete")
+			}
+			if kind == "deployment" {
+				delete(f.deployments, name)
+				delete(f.resources, "ReplicaSet:"+name)
+				delete(f.resources, "Pod:"+name)
+			}
+			for key, resource := range f.resources {
+				if strings.EqualFold(stringValue(resource["kind"]), kind) && stringValue(nested(resource, "metadata", "name")) == name {
+					delete(f.resources, key)
+				}
+			}
+		}
+		return nil, nil
+	case "get":
+		if kind, name, named := strings.Cut(args[1], "/"); named {
+			var object map[string]any
+			for _, resource := range f.resources {
+				if strings.EqualFold(stringValue(resource["kind"]), kind) && stringValue(nested(resource, "metadata", "name")) == name {
+					object = resource
+				}
+			}
+			if object == nil {
+				return nil, nil
+			}
+			return json.Marshal(object)
+		}
+		selector := map[string]string{}
+		for i, arg := range args {
+			if arg == "-l" && i+1 < len(args) {
+				for _, pair := range strings.Split(args[i+1], ",") {
+					key, value, ok := strings.Cut(pair, "=")
+					if ok {
+						selector[key] = value
+					}
+				}
+			}
+		}
+		matches := func(item map[string]any) bool {
+			kind := strings.ToLower(stringValue(item["kind"]))
+			if kind == "persistentvolumeclaim" {
+				kind = "pvc"
+			}
+			included := false
+			for _, requested := range strings.Split(args[1], ",") {
+				included = included || requested == kind
+			}
+			if !included {
+				return false
+			}
+			for key, value := range selector {
+				if stringValue(nested(item, "metadata", "labels", key)) != value {
+					return false
+				}
+			}
+			return true
+		}
+		items := make([]map[string]any, 0)
+		for _, deployment := range f.deployments {
+			if matches(deployment) {
+				items = append(items, deployment)
+			}
+		}
+		for _, resource := range f.resources {
+			if matches(resource) {
+				items = append(items, resource)
+			}
+		}
+		return json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": items})
+
 	}
 	return nil, errors.New("unexpected kubectl call: " + strings.Join(args, " "))
 }
@@ -100,7 +209,7 @@ func (f *fakeTencentKubectl) setAllReady() {
 		status["readyReplicas"] = 1
 		status["availableReplicas"] = 1
 		status["updatedReplicas"] = 1
-		status["observedGeneration"] = 1
+		status["observedGeneration"] = nested(deployment, "metadata", "generation")
 		f.deployments[name] = deployment
 		template := applicationObjectCopy(nested(deployment, "spec", "template"))
 		labels := nested(deployment, "metadata", "labels")
@@ -208,6 +317,8 @@ func tencentApplicationRuntimeFixture(t *testing.T) (*TencentProvider, *fakeTenc
 	input := applicationRuntimeInput("app-runtime-tencent", revision)
 	input.WorkspaceID = "ws-alpha"
 	input.Revision.EntryPort = "http"
+	volume := tencentApplicationVolume()
+	fake.resources["PersistentVolumeClaim:"+storagePVCName(volume)] = map[string]any{"kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": storagePVCName(volume), "uid": "pvc-owned", "labels": map[string]any{"oplcloud.cn/storage-id": volume.ID}, "annotations": map[string]any{"opl_account_id": input.AccountID, "opl_workspace_id": input.WorkspaceID, "opl_resource_id": volume.ID}}}
 	return provider, fake, input
 }
 
@@ -293,7 +404,7 @@ func TestTencentApplicationRuntimeManifestBindsWorkspaceData(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := string(encoded)
-	if !strings.Contains(manifest, "persistentVolumeClaim") || !strings.Contains(manifest, `"subPath":"main/data"`) {
+	if !strings.Contains(manifest, "persistentVolumeClaim") || !strings.Contains(manifest, `"subPath":"`+contracts.WorkspaceApplicationDataDirectory(input.DataBindingID)+`/data"`) {
 		t.Fatalf("manifest must bind the workspace PVC through per-component subPaths: %s", manifest)
 	}
 	if !strings.Contains(manifest, "readinessProbe") || !strings.Contains(manifest, `"medium":"Memory"`) {
@@ -407,7 +518,7 @@ func TestTencentApplicationRuntimeEntryRequiresLiveControllerRoute(t *testing.T)
 	if observation := read(); observation.Status != "pending" || observation.Components[0].State != "pending" || observation.EntryURL != "" {
 		t.Fatalf("a required entry must keep the main component pending until its route is published: %#v", observation)
 	}
-	ingress := fake.resources["Ingress:"+k8sName(input.ComputeID+"-"+input.Revision.ApplicationID+"-entry")]
+	ingress := fake.resources["Ingress:"+workspaceApplicationComponentResourceName(input, "entry")]
 	fake.setEntryReady()
 	if observation := read(); observation.Status != "ready" || observation.Components[0].State != "ready" || observation.EntryURL != "http://"+workspaceApplicationIngressHost(input)+"/" {
 		t.Fatalf("controller admitted HTTP route=%#v", observation)
@@ -425,7 +536,7 @@ func TestTencentApplicationRuntimeEntryUsesAdmittedClusterDefaultClass(t *testin
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatal(err)
 	}
-	ingress := fake.resources["Ingress:"+k8sName(input.ComputeID+"-"+input.Revision.ApplicationID+"-entry")]
+	ingress := fake.resources["Ingress:"+workspaceApplicationComponentResourceName(input, "entry")]
 	spec := ingress["spec"].(map[string]any)
 	if _, declared := spec["ingressClassName"]; declared {
 		t.Fatal("the adapter must not invent an installation Ingress class")
@@ -576,6 +687,165 @@ func TestTencentApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) {
 					t.Fatalf("drift=%#v err=%v mutationCount=%d", observed, err, fake.applyCount())
 				}
 			})
+		}
+	}
+}
+
+func TestTencentApplicationLifecycleTargetsOneGenerationAndRetainsSuccessor(t *testing.T) {
+	ctx := context.Background()
+	provider, fake, old := tencentApplicationRuntimeFixture(t)
+	if _, err := provider.EnsureWorkspaceApplicationRuntime(ctx, old, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+		t.Fatal(err)
+	}
+	next := old
+	next.RuntimeOperationID = "successor-runtime"
+	next.IdempotencyKey = next.RuntimeOperationID
+	next.Revision.ApplicationID = "successor-app"
+	next.DataBindingID = "successor-data"
+	next.ConfigurationDigest, _ = contracts.WorkspaceApplicationConfigurationDigest(next.Configuration, next.SecretBindings, next.DataBindingID)
+	if _, err := provider.EnsureWorkspaceApplicationRuntime(ctx, next, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+		t.Fatal(err)
+	}
+	fake.setAllReady()
+	fake.setEntryReady()
+	oldLive, err := provider.ReadWorkspaceApplicationRuntime(ctx, old)
+	if err != nil || oldLive.Status != "ready" {
+		t.Fatalf("old ready=%#v err=%v", oldLive, err)
+	}
+	nextLive, err := provider.ReadWorkspaceApplicationRuntime(ctx, next)
+	if err != nil || nextLive.Status != "ready" || oldLive.EntryURL == nextLive.EntryURL {
+		t.Fatalf("successor ready=%#v err=%v", nextLive, err)
+	}
+	suspended, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, old, "suspended")
+	if err != nil || suspended.State != "suspended" {
+		t.Fatalf("suspend=%#v err=%v", suspended, err)
+	}
+	if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, old, "running"); err != nil {
+		t.Fatal(err)
+	}
+	fake.setAllReady()
+	resumed, err := provider.ReadWorkspaceApplicationRuntimeLifecycle(ctx, old)
+	if err != nil || resumed.State != "running" {
+		t.Fatalf("resume=%#v err=%v", resumed, err)
+	}
+	removed, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, old, "absent")
+	if err != nil || removed.State != "absent" {
+		t.Fatalf("remove=%#v err=%v", removed, err)
+	}
+	for _, image := range removed.ImageRetirement {
+		if image.State != "instance_required" {
+			t.Fatal("Tencent image retirement falsely claimed")
+		}
+	}
+	nextLive, err = provider.ReadWorkspaceApplicationRuntime(ctx, next)
+	if err != nil || nextLive.Status != "ready" {
+		t.Fatalf("cleanup touched successor: %#v err=%v", nextLive, err)
+	}
+	for _, call := range fake.mutations {
+		for _, arg := range call {
+			if arg == "--all" || strings.Contains(arg, next.RuntimeOperationID) || strings.HasPrefix(arg, "pvc/") || strings.HasPrefix(arg, "pv/") {
+				t.Fatalf("unbounded lifecycle mutation %v", call)
+			}
+		}
+	}
+}
+
+func TestTencentApplicationReadbackRejectsActualMountDrift(t *testing.T) {
+	for _, change := range []string{"data subpath", "data readonly", "data pvc", "storage owner", "scratch medium", "secret subpath", "secret readonly", "secret source", "extra mount"} {
+		t.Run(change, func(t *testing.T) {
+			ctx := context.Background()
+			provider, fake, input := tencentApplicationRuntimeFixture(t)
+			input.Revision.SecretInputs = []contracts.WorkspaceApplicationSecretInput{{Name: "service-token", Target: "/run/secrets/service-token"}}
+			input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "service-token", SecretRef: "declared-fixture-secret", Version: "fixture-version", Key: "token"}}
+			input.ConfigurationDigest, _ = contracts.WorkspaceApplicationConfigurationDigest(input.Configuration, input.SecretBindings, input.DataBindingID)
+			fake.resources["Secret:declared-fixture-secret"] = map[string]any{"kind": "Secret", "metadata": map[string]any{"name": "declared-fixture-secret", "annotations": map[string]any{"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": "fixture-version"}}, "data": map[string]any{"token": base64.StdEncoding.EncodeToString([]byte("synthetic-token"))}}
+			if _, err := provider.EnsureWorkspaceApplicationRuntime(ctx, input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+				t.Fatal(err)
+			}
+			fake.setAllReady()
+			fake.setEntryReady()
+			if baseline, err := provider.ReadWorkspaceApplicationRuntime(ctx, input); err != nil || baseline.Status != "ready" {
+				t.Fatalf("baseline state=%s err=%v", baseline.Status, err)
+			}
+			deployment := fake.deployments[workspaceApplicationComponentResourceName(input, "main")]
+			mounts := firstContainerField(deployment, "volumeMounts").([]any)
+			volumes := nested(deployment, "spec", "template", "spec", "volumes").([]any)
+			for _, value := range mounts {
+				mount := value.(map[string]any)
+				switch {
+				case mount["name"] == "workspace-data" && change == "data subpath":
+					mount["subPath"] = "another-application/data"
+				case mount["name"] == "workspace-data" && change == "data readonly":
+					mount["readOnly"] = true
+				case mount["name"] == "application-secrets" && change == "secret subpath":
+					mount["subPath"] = "other-key"
+				case mount["name"] == "application-secrets" && change == "secret readonly":
+					mount["readOnly"] = false
+				}
+			}
+			for _, value := range volumes {
+				volume := value.(map[string]any)
+				switch {
+				case volume["name"] == "workspace-data" && change == "data pvc":
+					volume["persistentVolumeClaim"].(map[string]any)["claimName"] = "foreign-storage"
+				case volume["name"] == "scratch-0" && change == "scratch medium":
+					volume["emptyDir"].(map[string]any)["medium"] = ""
+				case volume["name"] == "application-secrets" && change == "secret source":
+					volume["secret"].(map[string]any)["secretName"] = "another-generation"
+				}
+			}
+			if change == "storage owner" {
+				pvc := fake.resources["PersistentVolumeClaim:"+storagePVCName(tencentApplicationVolume())]
+				nested(pvc, "metadata", "annotations").(map[string]any)["opl_account_id"] = "foreign-account"
+			}
+			if change == "extra mount" {
+				container := nested(deployment, "spec", "template", "spec", "containers").([]any)[0].(map[string]any)
+				container["volumeMounts"] = append(mounts, map[string]any{"name": "workspace-data", "mountPath": "/leaked-data"})
+			}
+			// Even a rolled-out, healthy pod must not turn drifted mounts into ready.
+			fake.setAllReady()
+			observed, err := provider.ReadWorkspaceApplicationRuntime(ctx, input)
+			if err == nil && observed.Status != "failed" {
+				t.Fatalf("drift escaped readback: state=%s err=%v", observed.Status, err)
+			}
+			before := len(fake.mutations)
+			if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "suspended"); err == nil || len(fake.mutations) != before {
+				t.Fatal("lifecycle mutated a conflicting mount binding")
+			}
+		})
+	}
+}
+
+func TestTencentApplicationHistoricalPolicyRequiresExactOwnerAndAbsence(t *testing.T) {
+	ctx := context.Background()
+	provider, fake, input := tencentApplicationRuntimeFixture(t)
+	input.SchemaVersion = 0
+	input.DataBindingID = ""
+	input.ConfigurationDigest = strings.Repeat("c", 64)
+	tags := oplCostTags(input.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
+	for _, policy := range []map[string]any{workspaceApplicationNetworkPolicy(input, tags), workspaceApplicationPublicEntryPolicy(input, tags)} {
+		metadata := policy["metadata"].(map[string]any)
+		delete(metadata, "labels") // Exact original policy representation.
+		fake.resources["NetworkPolicy:"+stringValue(metadata["name"])] = applicationObjectCopy(policy)
+	}
+	live, err := provider.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input)
+	if err != nil || live.State != "pending" {
+		t.Fatalf("unlabelled policies were omitted: state=%s err=%v", live.State, err)
+	}
+	name := workspaceApplicationComponentResourceName(input, "network")
+	annotations := nested(fake.resources["NetworkPolicy:"+name], "metadata", "annotations").(map[string]any)
+	annotations["opl_account_id"] = "foreign-account"
+	if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "absent"); err == nil || len(fake.mutations) != 0 {
+		t.Fatal("foreign policy was deleted")
+	}
+	annotations["opl_account_id"] = input.AccountID
+	removed, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "absent")
+	if err != nil || removed.State != "absent" {
+		t.Fatalf("owned historical policy cleanup: state=%s err=%v", removed.State, err)
+	}
+	for key := range fake.resources {
+		if strings.HasPrefix(key, "NetworkPolicy:") {
+			t.Fatal("historical policy remained after absent readback")
 		}
 	}
 }

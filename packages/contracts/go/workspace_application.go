@@ -18,13 +18,16 @@ var (
 // admitted before a Workspace deployment. Image references are digest-pinned;
 // tags are discovery input and are not persisted here.
 type WorkspaceApplicationRevision struct {
-	SchemaVersion int                        `json:"schemaVersion"`
-	ApplicationID string                     `json:"applicationId"`
-	Version       string                     `json:"version"`
-	Platform      string                     `json:"platform"`
-	Image         string                     `json:"image"`
-	Entrypoint    []string                   `json:"entrypoint,omitempty"`
-	Ports         []WorkspaceApplicationPort `json:"ports,omitempty"`
+	SchemaVersion int    `json:"schemaVersion"`
+	ApplicationID string `json:"applicationId"`
+	Version       string `json:"version"`
+	Platform      string `json:"platform"`
+	Image         string `json:"image"`
+	// RuntimeProfile explicitly opts an admitted application into the OPL App
+	// authentication and Gateway ABI. An ordinary application receives no such credentials.
+	RuntimeProfile string                     `json:"runtimeProfile,omitempty"`
+	Entrypoint     []string                   `json:"entrypoint,omitempty"`
+	Ports          []WorkspaceApplicationPort `json:"ports,omitempty"`
 	// EntryPort names the declared TCP port serving the application's HTTP root.
 	// An empty name declares no web entry; health probes do not publish a port.
 	EntryPort        string                            `json:"entryPort,omitempty"`
@@ -122,6 +125,9 @@ func ValidateWorkspaceApplicationDeployment(deployment WorkspaceApplicationDeplo
 }
 
 func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision) error {
+	if revision.RuntimeProfile != "" && revision.RuntimeProfile != "opl_app" {
+		return errors.New("workspace_application_runtime_profile_invalid")
+	}
 	if revision.SchemaVersion != 1 || !workspaceApplicationIDPattern.MatchString(strings.TrimSpace(revision.ApplicationID)) ||
 		!workspaceApplicationVersionPattern.MatchString(strings.TrimSpace(revision.Version)) ||
 		!workspaceApplicationPlatformPattern.MatchString(strings.TrimSpace(revision.Platform)) ||

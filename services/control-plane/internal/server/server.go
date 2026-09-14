@@ -124,6 +124,10 @@ func retiredConsoleAPI(method, path string) bool {
 	if !strings.HasPrefix(path, "/api/workspaces/") {
 		return false
 	}
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if method == http.MethodPost && len(segments) == 5 && segments[3] == "application-installation" && segments[4] == "resume" {
+		return false
+	}
 	for _, segment := range strings.Split(strings.Trim(path, "/"), "/")[3:] {
 		switch segment {
 		case "backups", "recovery", "resume", "sync", "transfers", "transfer", "contents":

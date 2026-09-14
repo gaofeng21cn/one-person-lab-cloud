@@ -50,6 +50,8 @@ var (
 		textField("VerificationSlotID", "SetVerificationSlotID", "verificationSlotId"),
 		textField("ApplicationBinding", "SetApplicationBinding", "applicationBinding"),
 		intField("ApplicationBindingVersion", "SetApplicationBindingVersion", "applicationBindingVersion"),
+		textField("CurrentApplicationDeploymentID", "SetCurrentApplicationDeploymentID", "currentApplicationDeploymentId"),
+		textField("ReservedApplicationDeploymentID", "SetReservedApplicationDeploymentID", "reservedApplicationDeploymentId"),
 		boolField("CustomerProduct", "SetCustomerProduct", "customerProduct"),
 		entRecordField{EntityField: "BillingStateJSON", Setter: "SetBillingStateJSON", Kind: "workspace_billing_json"},
 	}
@@ -593,11 +595,23 @@ func (s *postgresEntStateStore) ClaimWorkspaceKeyRotation(ctx context.Context, r
 	if err != nil {
 		return err
 	}
+	reservedID := stringValue(workspaceRow["reservedApplicationDeploymentId"])
+	reservationConfirmed := reservedID == ""
 	for _, entity := range operationEntities {
 		existing := recordFromEnt(entity, runtimeOpEntFields)
-		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) {
+		if stringValue(existing["id"]) == reservedID {
+			intent, err := decodeWorkspaceApplicationDeploymentIntent(existing)
+			if err != nil || intent.Phase != workspaceApplicationDeploymentActivePhase || intent.OperationID != stringValue(workspaceRow["currentApplicationDeploymentId"]) {
+				return errWorkspaceKeyRotationInProgress
+			}
+			reservationConfirmed = true
+		}
+		if workspaceKeyRotationBlocksDelete(existing) || workspaceDeleteBlocksRotation(existing) || workspaceDefaultApplicationPreparationBlocks(existing) {
 			return errWorkspaceKeyRotationInProgress
 		}
+	}
+	if !reservationConfirmed {
+		return errWorkspaceKeyRotationInProgress
 	}
 	if err := saveRecord(ctx, stringValue(row["id"]), row, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
 		if controlplaneent.IsConstraintError(err) {
@@ -766,6 +780,15 @@ func claimWorkspaceLaunchReconcileLocked(ctx context.Context, client *controlpla
 		}
 		if inFlight >= controlledBasicPilotGlobalInFlightLimit() {
 			return errWorkspaceLaunchCapacityReached
+		}
+	}
+	if claim.DefaultApplicationOperation != nil {
+		request, err := decodeWorkspaceDefaultApplication(claim.DefaultApplicationOperation)
+		if err != nil || request.AccountID != claim.AccountID || request.WorkspaceID != desired.stringFact("workspaceId") || request.LaunchOperationID != desired.ID || desired.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
+			return errWorkspaceLaunchCASConflict
+		}
+		if err := saveRecord(ctx, request.OperationID, claim.DefaultApplicationOperation, client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+			return err
 		}
 	}
 	if err := saveRecord(ctx, desired.ID, controlPlaneRecord(claim.DesiredOperation), client.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
@@ -1320,7 +1343,7 @@ func (s *postgresEntStateStore) ApplyWorkspaceDelete(ctx context.Context, mutati
 		}
 		for _, entity := range operationEntities {
 			row := recordFromEnt(entity, runtimeOpEntFields)
-			if workspaceRenewalBlocksDelete(row) || workspaceKeyRotationBlocksDelete(row) {
+			if workspaceRenewalBlocksDelete(row) || workspaceKeyRotationBlocksDelete(row) || workspaceDefaultApplicationPreparationBlocks(row) {
 				return errWorkspaceDeleteCASConflict
 			}
 		}
@@ -1338,6 +1361,9 @@ func (s *postgresEntStateStore) ApplyWorkspaceDelete(ctx context.Context, mutati
 			if controlplaneent.IsConstraintError(err) {
 				return errWorkspaceDeleteCASConflict
 			}
+			return err
+		}
+		if err := client.Workspace.UpdateOneID(desired.WorkspaceID).SetState("deleting").SetStatus("deleting").Exec(ctx); err != nil {
 			return err
 		}
 	} else {

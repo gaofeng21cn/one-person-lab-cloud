@@ -32,7 +32,7 @@ func admitKnowledgeRevisionForTest(t *testing.T, server http.Handler, operator *
 }
 
 func deployIntentBody(configurationDigest string) string {
-	return `{"workspaceId":"ws-alpha","applicationId":"knowledge-app","targetRevision":"1.0.0","configurationDigest":"` + configurationDigest + `"}`
+	return `{"workspaceId":"ws-alpha","applicationId":"knowledge-app","targetRevision":"1.0.0","configuration":{"environment":{"CONFIG":"` + configurationDigest + `"}}}`
 }
 
 func TestApplicationDeploymentIntentHTTP(t *testing.T) {
@@ -75,7 +75,7 @@ func TestApplicationDeploymentIntentHTTP(t *testing.T) {
 		t.Fatalf("changed intent under the same key status=%d body=%s", changed.Code, changed.Body.String())
 	}
 
-	notAdmitted := `{"workspaceId":"ws-alpha","applicationId":"unknown-app","targetRevision":"1.0.0","configurationDigest":"` + strings.Repeat("c", 64) + `"}`
+	notAdmitted := `{"workspaceId":"ws-alpha","applicationId":"unknown-app","targetRevision":"1.0.0","configuration":{"environment":{"CONFIG":"` + strings.Repeat("c", 64) + `"}}}`
 	missing := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", notAdmitted, "deploy-unknown")
 	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "workspace_application_revision_not_found") {
 		t.Fatalf("unadmitted revision status=%d body=%s", missing.Code, missing.Body.String())
@@ -85,7 +85,7 @@ func TestApplicationDeploymentIntentHTTP(t *testing.T) {
 	workspace["applicationBinding"] = "other-app@2.0.0"
 	mustStore(t, fixture.store.SaveWorkspace(context.Background(), workspace))
 	mismatch := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", deployIntentBody(strings.Repeat("c", 64)), "deploy-knowledge-mismatch")
-	if mismatch.Code != http.StatusConflict || !strings.Contains(mismatch.Body.String(), "workspace_application_deployment_transition_invalid") {
+	if mismatch.Code != http.StatusConflict || !strings.Contains(mismatch.Body.String(), "workspace_application_binding_unknown") {
 		t.Fatalf("binding mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
 	}
 

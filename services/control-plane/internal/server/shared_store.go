@@ -35,4 +35,6 @@ type SharedStore interface {
 	AdmittedApplicationDataMaterial(ctx context.Context, applicationID, version string) (map[string]any, bool, error)
 	ApplyApplicationDataMaterialAdmission(ctx context.Context, mutation applicationDataMaterialMutation) (map[string]any, error)
 	ClaimWorkspaceApplicationDeploymentIntent(ctx context.Context, row map[string]any) error
+	PersistWorkspaceApplicationOperation(ctx context.Context, expectedResult string, desiredRow map[string]any) error
+	ResumeWorkspaceApplicationDeployment(ctx context.Context, operationID string) (map[string]any, error)
 }

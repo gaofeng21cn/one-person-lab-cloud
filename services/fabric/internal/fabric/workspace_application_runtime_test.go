@@ -73,10 +73,15 @@ func (p *recordingApplicationRuntimeProvider) ReadWorkspaceApplicationRuntime(_ 
 }
 
 func applicationRuntimeInput(key string, revision contracts.WorkspaceApplicationRevision) WorkspaceApplicationRuntimeInput {
+	digest, err := contracts.WorkspaceApplicationConfigurationDigest(contracts.WorkspaceApplicationRuntimeConfiguration{}, nil, "data-knowledge")
+	if err != nil {
+		panic(err)
+	}
 	return WorkspaceApplicationRuntimeInput{
+		SchemaVersion: 2, DataBindingID: "data-knowledge",
 		AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", ComputeID: "compute-alpha", VolumeID: "storage-alpha",
 		AttachmentID: "attachment-alpha", AttachmentOperationID: "workspace-launch-alpha:attachment",
-		RuntimeOperationID: key, Revision: revision, ConfigurationDigest: strings.Repeat("c", 64), IdempotencyKey: key,
+		RuntimeOperationID: key, Revision: revision, ConfigurationDigest: digest, IdempotencyKey: key,
 	}
 }
 
@@ -104,7 +109,8 @@ func TestCreateWorkspaceApplicationRuntimeHappyPathAndReplay(t *testing.T) {
 	}
 
 	changed := input
-	changed.ConfigurationDigest = strings.Repeat("d", 64)
+	changed.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{Environment: map[string]string{"MODE": "changed"}}
+	changed.ConfigurationDigest, _ = contracts.WorkspaceApplicationConfigurationDigest(changed.Configuration, changed.SecretBindings, changed.DataBindingID)
 	if _, err := service.CreateWorkspaceApplicationRuntime(context.Background(), changed); !errors.Is(err, ErrRuntimeIdempotencyConflict) {
 		t.Fatalf("changed replay error=%v, want ErrRuntimeIdempotencyConflict", err)
 	}

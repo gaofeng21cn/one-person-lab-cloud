@@ -94,14 +94,17 @@ func TestD2RefundReconciliationRejectsUnpaidOriginal(t *testing.T) {
 	command.OperationID, command.AccountID, command.WorkspaceID = chain.purchase.ID, chain.accountID, chain.purchase.stringFact("workspaceId")
 	command.OwnerUserID, command.Sub2APIUserID = chain.purchase.stringFact("ownerUserId"), chain.purchase.int64Fact("sub2apiUserId")
 	command.RequestHash = chain.purchase.stringFact("requestHash")
+	command.Mode = chain.purchase.provisioningMode()
 	command.PriceVersion, command.TotalChargeUSDMicros = chain.purchase.stringFact("priceVersion"), chain.purchase.int64Fact("totalChargeUsdMicros")
 	pending, err := newWorkspaceLaunchReconcileOperation(command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pending.Stage = contracts.StageDebit
-	for field := range workspaceLaunchStageCanonicalFacts[contracts.StageKey] {
-		pending.raw[field] = chain.purchase.raw[field]
+	if command.Mode == contracts.WorkspaceProvisioningFull {
+		for field := range workspaceLaunchStageCanonicalFacts[contracts.StageKey] {
+			pending.raw[field] = chain.purchase.raw[field]
+		}
 	}
 	pending.raw["chargeAttempted"] = mustJSON(true)
 	row, err := workspaceLaunchReconcileOperationRow(pending)

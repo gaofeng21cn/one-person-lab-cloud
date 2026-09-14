@@ -1063,6 +1063,10 @@ type fakeFabricClient struct {
 	applicationRuntimeInputs      []clients.WorkspaceApplicationRuntimeInput
 }
 
+func (f *fakeFabricClient) PreflightWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput) error {
+	return contracts.ValidateWorkspaceApplicationRuntimeConfiguration(input)
+}
+
 func (f *fakeFabricClient) EnsureWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput, _ string) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	f.applicationRuntimeInputs = append(f.applicationRuntimeInputs, input)
 	if f.applicationRuntimeErr != nil {
@@ -1076,7 +1080,7 @@ func (f *fakeFabricClient) EnsureWorkspaceApplicationRuntime(_ context.Context, 
 		components[index].State = "ready"
 	}
 	return contracts.WorkspaceApplicationRuntimeObservation{
-		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: "rt_app_fake",
+		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID),
 		Status: "ready", Components: components,
 	}, nil
 }

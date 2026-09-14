@@ -15892,46 +15892,48 @@ func (m *UserMutation) ResetEdge(name string) error {
 // WorkspaceMutation represents an operation that mutates the Workspace nodes in the graph.
 type WorkspaceMutation struct {
 	config
-	op                             Op
-	typ                            string
-	id                             *string
-	created_at                     *time.Time
-	updated_at                     *time.Time
-	account_id                     *string
-	owner_account_id               *string
-	owner_user_id                  *string
-	user_id                        *string
-	name                           *string
-	url                            *string
-	state                          *string
-	status                         *string
-	purchase_receipt_id            *string
-	billing_state_json             *string
-	storage_id                     *string
-	current_compute_allocation_id  *string
-	current_attachment_id          *string
-	runtime_id                     *string
-	runtime_service_name           *string
-	runtime_service_name_root      *string
-	service_name                   *string
-	workspace_api_key_id           *int64
-	addworkspace_api_key_id        *int64
-	access_token_status            *string
-	access_account                 *string
-	access_username                *string
-	credential_status              *string
-	credential_version             *string
-	credential_secret_ref          *string
-	access_requires_login          *bool
-	verification_slot_id           *string
-	customer_product               *bool
-	application_binding            *string
-	application_binding_version    *int64
-	addapplication_binding_version *int64
-	clearedFields                  map[string]struct{}
-	done                           bool
-	oldValue                       func(context.Context) (*Workspace, error)
-	predicates                     []predicate.Workspace
+	op                                 Op
+	typ                                string
+	id                                 *string
+	created_at                         *time.Time
+	updated_at                         *time.Time
+	account_id                         *string
+	owner_account_id                   *string
+	owner_user_id                      *string
+	user_id                            *string
+	name                               *string
+	url                                *string
+	state                              *string
+	status                             *string
+	purchase_receipt_id                *string
+	billing_state_json                 *string
+	storage_id                         *string
+	current_compute_allocation_id      *string
+	current_attachment_id              *string
+	runtime_id                         *string
+	runtime_service_name               *string
+	runtime_service_name_root          *string
+	service_name                       *string
+	workspace_api_key_id               *int64
+	addworkspace_api_key_id            *int64
+	access_token_status                *string
+	access_account                     *string
+	access_username                    *string
+	credential_status                  *string
+	credential_version                 *string
+	credential_secret_ref              *string
+	access_requires_login              *bool
+	verification_slot_id               *string
+	customer_product                   *bool
+	application_binding                *string
+	application_binding_version        *int64
+	addapplication_binding_version     *int64
+	current_application_deployment_id  *string
+	reserved_application_deployment_id *string
+	clearedFields                      map[string]struct{}
+	done                               bool
+	oldValue                           func(context.Context) (*Workspace, error)
+	predicates                         []predicate.Workspace
 }
 
 var _ ent.Mutation = (*WorkspaceMutation)(nil)
@@ -17208,6 +17210,78 @@ func (m *WorkspaceMutation) ResetApplicationBindingVersion() {
 	m.addapplication_binding_version = nil
 }
 
+// SetCurrentApplicationDeploymentID sets the "current_application_deployment_id" field.
+func (m *WorkspaceMutation) SetCurrentApplicationDeploymentID(s string) {
+	m.current_application_deployment_id = &s
+}
+
+// CurrentApplicationDeploymentID returns the value of the "current_application_deployment_id" field in the mutation.
+func (m *WorkspaceMutation) CurrentApplicationDeploymentID() (r string, exists bool) {
+	v := m.current_application_deployment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentApplicationDeploymentID returns the old "current_application_deployment_id" field's value of the Workspace entity.
+// If the Workspace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkspaceMutation) OldCurrentApplicationDeploymentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentApplicationDeploymentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentApplicationDeploymentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentApplicationDeploymentID: %w", err)
+	}
+	return oldValue.CurrentApplicationDeploymentID, nil
+}
+
+// ResetCurrentApplicationDeploymentID resets all changes to the "current_application_deployment_id" field.
+func (m *WorkspaceMutation) ResetCurrentApplicationDeploymentID() {
+	m.current_application_deployment_id = nil
+}
+
+// SetReservedApplicationDeploymentID sets the "reserved_application_deployment_id" field.
+func (m *WorkspaceMutation) SetReservedApplicationDeploymentID(s string) {
+	m.reserved_application_deployment_id = &s
+}
+
+// ReservedApplicationDeploymentID returns the value of the "reserved_application_deployment_id" field in the mutation.
+func (m *WorkspaceMutation) ReservedApplicationDeploymentID() (r string, exists bool) {
+	v := m.reserved_application_deployment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReservedApplicationDeploymentID returns the old "reserved_application_deployment_id" field's value of the Workspace entity.
+// If the Workspace object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkspaceMutation) OldReservedApplicationDeploymentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReservedApplicationDeploymentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReservedApplicationDeploymentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReservedApplicationDeploymentID: %w", err)
+	}
+	return oldValue.ReservedApplicationDeploymentID, nil
+}
+
+// ResetReservedApplicationDeploymentID resets all changes to the "reserved_application_deployment_id" field.
+func (m *WorkspaceMutation) ResetReservedApplicationDeploymentID() {
+	m.reserved_application_deployment_id = nil
+}
+
 // Where appends a list predicates to the WorkspaceMutation builder.
 func (m *WorkspaceMutation) Where(ps ...predicate.Workspace) {
 	m.predicates = append(m.predicates, ps...)
@@ -17242,7 +17316,7 @@ func (m *WorkspaceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkspaceMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 33)
 	if m.created_at != nil {
 		fields = append(fields, workspace.FieldCreatedAt)
 	}
@@ -17336,6 +17410,12 @@ func (m *WorkspaceMutation) Fields() []string {
 	if m.application_binding_version != nil {
 		fields = append(fields, workspace.FieldApplicationBindingVersion)
 	}
+	if m.current_application_deployment_id != nil {
+		fields = append(fields, workspace.FieldCurrentApplicationDeploymentID)
+	}
+	if m.reserved_application_deployment_id != nil {
+		fields = append(fields, workspace.FieldReservedApplicationDeploymentID)
+	}
 	return fields
 }
 
@@ -17406,6 +17486,10 @@ func (m *WorkspaceMutation) Field(name string) (ent.Value, bool) {
 		return m.ApplicationBinding()
 	case workspace.FieldApplicationBindingVersion:
 		return m.ApplicationBindingVersion()
+	case workspace.FieldCurrentApplicationDeploymentID:
+		return m.CurrentApplicationDeploymentID()
+	case workspace.FieldReservedApplicationDeploymentID:
+		return m.ReservedApplicationDeploymentID()
 	}
 	return nil, false
 }
@@ -17477,6 +17561,10 @@ func (m *WorkspaceMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldApplicationBinding(ctx)
 	case workspace.FieldApplicationBindingVersion:
 		return m.OldApplicationBindingVersion(ctx)
+	case workspace.FieldCurrentApplicationDeploymentID:
+		return m.OldCurrentApplicationDeploymentID(ctx)
+	case workspace.FieldReservedApplicationDeploymentID:
+		return m.OldReservedApplicationDeploymentID(ctx)
 	}
 	return nil, fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -17703,6 +17791,20 @@ func (m *WorkspaceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetApplicationBindingVersion(v)
 		return nil
+	case workspace.FieldCurrentApplicationDeploymentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentApplicationDeploymentID(v)
+		return nil
+	case workspace.FieldReservedApplicationDeploymentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReservedApplicationDeploymentID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)
 }
@@ -17880,6 +17982,12 @@ func (m *WorkspaceMutation) ResetField(name string) error {
 		return nil
 	case workspace.FieldApplicationBindingVersion:
 		m.ResetApplicationBindingVersion()
+		return nil
+	case workspace.FieldCurrentApplicationDeploymentID:
+		m.ResetCurrentApplicationDeploymentID()
+		return nil
+	case workspace.FieldReservedApplicationDeploymentID:
+		m.ResetReservedApplicationDeploymentID()
 		return nil
 	}
 	return fmt.Errorf("unknown Workspace field %s", name)

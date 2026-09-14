@@ -1,5 +1,34 @@
 # Workspace Runtime Access
 
+## Selected Application Access
+
+New installations resolve the selected application deployment independently of
+the original resource Launch. `currentApplication` reports that generation's
+live readiness and declared entry; `applicationInstallation` separately reports
+pending or failed default installation. A ready application without a declared
+web entry does not show an Open action. Fabric read failure cannot replay a
+previous ready observation.
+
+A declared public entry uses the application's own origin and root path.
+Control Plane does not route a generic application through OPL App's `/w` cookie
+proxy or transfer management credentials. The application owns its sessions,
+assets, APIs and streaming behavior; DNS/TLS and real browser qualification are
+Instance obligations. `cloud_private` does not expose an anonymous public URL.
+
+Only a declared OPL runtime profile enables OPL password and Gateway controls.
+It uses username `opl`, `/run/secrets/opl_webui_password`,
+`/run/secrets/webui_session_secret` and its declared Gateway Key file. Ordinary
+image updates and reinstalling the same application retain the frozen credential
+identity; migration from a full Launch preserves its proven credential source.
+Explicit password and Gateway rotation advance the credential version through a
+successor deployment with the same data binding;
+HTTP 202 means the operation is pending, not that a new password is already in
+use. Console drops revealed credentials when the selection changes and keeps
+passwords only in component memory.
+
+## Retained Full Launch Access
+
+The following compatibility path applies only to retained full Launch runtimes.
 The Tencent/TKE adapter access path is:
 
 ```text
