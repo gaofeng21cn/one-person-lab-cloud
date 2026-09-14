@@ -280,6 +280,43 @@ func applicationRuntimeProviderFixture(t *testing.T, workspaceID string) (*Local
 	return provider, runner, paths
 }
 
+func TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec(t *testing.T) {
+	revision := applicationRevisionForTest()
+	revision.Dependencies = []contracts.WorkspaceApplicationDependency{{
+		Name:  "retrieval",
+		Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
+		Ports: []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
+		Command: contracts.WorkspaceApplicationDependencyCommand{
+			Entrypoint: []string{"/bin/serve"},
+			Args:       []string{"--port=9200"},
+			Env:        map[string]string{"RETRIEVAL_MODE": "local"},
+		},
+		ScratchMounts: []contracts.WorkspaceApplicationDependencyMount{{Name: "cache", MountPath: "/cache"}},
+	}}
+	provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	input := applicationRuntimeInput("app-runtime-dep-spec", revision)
+	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, ComputeAllocation{
+		ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running",
+	}, StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if observation.Status != "ready" {
+		t.Fatalf("observation=%#v", observation)
+	}
+	dependencyArgs := strings.Join(runner.runArgs(1), " ")
+	for _, expected := range []string{"--entrypoint /bin/serve", "--port=9200", "--env RETRIEVAL_MODE=local",
+		"type=tmpfs,target=/cache", "--expose 9200"} {
+		if !strings.Contains(dependencyArgs, expected) {
+			t.Fatalf("dependency args missing %q: %s", expected, dependencyArgs)
+		}
+	}
+	// 依赖不得继承主组件的挂载与入口发布
+	if strings.Contains(dependencyArgs, "target=/data") || strings.Contains(dependencyArgs, "-p ") {
+		t.Fatalf("dependency inherited main-component facts: %s", dependencyArgs)
+	}
+}
+
 func TestLocalDockerApplicationRuntimeEnsureCreatesDeclaredComponents(t *testing.T) {
 	revision := applicationRevisionForTest()
 	provider, runner, paths := applicationRuntimeProviderFixture(t, "workspace-alpha")

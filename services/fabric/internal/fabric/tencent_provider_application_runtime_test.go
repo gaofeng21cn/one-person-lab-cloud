@@ -249,6 +249,33 @@ func applicationObjectCopy(value any) map[string]any {
 // Validate the Kubernetes fields implicated in the application admission bugs.
 // LabelSelectors use the actual Kubernetes type and parser; Service and Ingress
 // checks exercise their port/path requirements without contacting a cluster.
+func decodeTencentApplicationListItems(t *testing.T, input WorkspaceApplicationRuntimeInput) []map[string]any {
+	t.Helper()
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(workspaceApplicationManifest(input, tencentApplicationCompute(), tencentApplicationVolume()), &list); err != nil {
+		t.Fatalf("manifest decode: %v", err)
+	}
+	if err := validateApplicationManifestObjects(list.Items); err != nil {
+		t.Fatalf("manifest invalid: %v", err)
+	}
+	return list.Items
+}
+
+func findTencentApplicationDeployment(items []map[string]any, componentName string) map[string]any {
+	for _, item := range items {
+		if item["kind"] != "Deployment" {
+			continue
+		}
+		labels, _ := nested(item, "metadata", "labels").(map[string]any)
+		if stringValue(labels["oplcloud.cn/component-name"]) == componentName {
+			return item
+		}
+	}
+	return nil
+}
+
 func validateApplicationManifestObjects(items []map[string]any) error {
 	selector := func(value any) error {
 		decoder := json.NewDecoder(bytes.NewReader(mustJSON(value)))
@@ -328,6 +355,56 @@ func tencentApplicationCompute() ComputeAllocation {
 
 func tencentApplicationVolume() StorageVolume {
 	return StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", SizeGB: 10, Status: "ready", ProviderResourceID: "pvc/opl-data-storage-alpha"}
+}
+
+func TestTencentApplicationManifestDependencyOwnSpec(t *testing.T) {
+	_, _, input := tencentApplicationRuntimeFixture(t)
+	revision := input.Revision
+	revision.Dependencies = []contracts.WorkspaceApplicationDependency{{
+		Name:  "retrieval",
+		Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
+		Ports: []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
+		Command: contracts.WorkspaceApplicationDependencyCommand{
+			Entrypoint: []string{"/bin/serve"},
+			Args:       []string{"--port=9200"},
+			Env:        map[string]string{"RETRIEVAL_MODE": "local"},
+		},
+		HealthChecks:     []contracts.WorkspaceApplicationDependencyHealthCheck{{Type: "tcp", Port: 9200, InitialDelaySeconds: 15}},
+		PersistentMounts: []contracts.WorkspaceApplicationDependencyMount{{Name: "index", MountPath: "/index"}},
+	}}
+	input.Revision = revision
+	items := decodeTencentApplicationListItems(t, input)
+
+	deployment := findTencentApplicationDeployment(items, "retrieval")
+	if deployment == nil {
+		t.Fatal("retrieval deployment missing")
+	}
+	container := deployment["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+	if fmt.Sprint(container["command"]) != "[/bin/serve]" || fmt.Sprint(container["args"]) != "[--port=9200]" {
+		t.Fatalf("dependency command/args = %v / %v", container["command"], container["args"])
+	}
+	env := container["env"].([]any)[0].(map[string]any)
+	if env["name"] != "RETRIEVAL_MODE" || env["value"] != "local" {
+		t.Fatalf("dependency env = %v", env)
+	}
+	probe := container["readinessProbe"].(map[string]any)
+	if probe["tcpSocket"] == nil || probe["httpGet"] != nil {
+		t.Fatalf("tcp dependency probe = %v", probe)
+	}
+	ports := container["ports"].([]any)[0].(map[string]any)
+	if ports["containerPort"] != float64(9200) {
+		t.Fatalf("dependency port = %v", ports)
+	}
+	foundIndex := false
+	for _, item := range container["volumeMounts"].([]any) {
+		mount := item.(map[string]any)
+		if mount["mountPath"] == "/index" && mount["name"] == "workspace-data" {
+			foundIndex = true
+		}
+	}
+	if !foundIndex {
+		t.Fatalf("dependency persistent mount missing: %v", container["volumeMounts"])
+	}
 }
 
 func TestTencentApplicationRuntimeEnsureAppliesAndReportsPending(t *testing.T) {

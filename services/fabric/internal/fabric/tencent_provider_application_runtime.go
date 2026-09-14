@@ -422,6 +422,13 @@ func workspaceApplicationComponentDeployment(
 	ports := []any{}
 	volumeMounts := []any{}
 	volumes := []any{}
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		if dependency, depErr := dependencySpecByName(input.Revision, component.Name); depErr == nil {
+			for _, port := range dependency.Ports {
+				ports = append(ports, map[string]any{"name": port.Name, "containerPort": port.Port, "protocol": port.Protocol})
+			}
+		}
+	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		for _, port := range input.Revision.Ports {
 			ports = append(ports, map[string]any{"name": port.Name, "containerPort": port.Port, "protocol": port.Protocol})
@@ -461,6 +468,46 @@ func workspaceApplicationComponentDeployment(
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 0 {
 		container["command"] = input.Revision.Entrypoint
+	}
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
+		if depErr != nil {
+			return map[string]any{}
+		}
+		if len(dependency.Command.Entrypoint) > 0 {
+			container["command"] = dependency.Command.Entrypoint
+		}
+		if len(dependency.Command.Args) > 0 {
+			container["args"] = dependency.Command.Args
+		}
+		if len(dependency.Command.Env) > 0 {
+			names := make([]string, 0, len(dependency.Command.Env))
+			for name := range dependency.Command.Env {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			env := []any{}
+			for _, name := range names {
+				env = append(env, map[string]any{"name": name, "value": dependency.Command.Env[name]})
+			}
+			container["env"] = env
+		}
+		for _, mount := range dependency.PersistentMounts {
+			volumeMounts = append(volumeMounts, map[string]any{"name": "workspace-data", "mountPath": mount.MountPath, "subPath": applicationPersistentSubPath(input, contracts.WorkspaceApplicationMount{Name: mount.Name, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly}), "readOnly": mount.ReadOnly})
+		}
+		for index, mount := range dependency.ScratchMounts {
+			volumeName := fmt.Sprintf("dependency-scratch-%d", index)
+			volumes = append(volumes, map[string]any{"name": volumeName, "emptyDir": map[string]any{"medium": "Memory"}})
+			volumeMounts = append(volumeMounts, map[string]any{"name": volumeName, "mountPath": mount.MountPath})
+		}
+		if len(dependency.HealthChecks) > 0 {
+			check := dependency.HealthChecks[0]
+			if check.Type == "http" {
+				readinessProbe = map[string]any{"httpGet": map[string]any{"path": check.Path, "port": check.Port}, "initialDelaySeconds": check.InitialDelaySeconds, "periodSeconds": 10}
+			} else {
+				readinessProbe = map[string]any{"tcpSocket": map[string]any{"port": check.Port}, "initialDelaySeconds": check.InitialDelaySeconds, "periodSeconds": 10}
+			}
+		}
 	}
 	if len(ports) > 0 {
 		container["ports"] = ports

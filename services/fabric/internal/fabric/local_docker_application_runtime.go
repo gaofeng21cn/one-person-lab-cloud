@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"io"
+	"net/http"
+
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -168,6 +171,23 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntime(ctx context.Contex
 				}
 			}
 		}
+		if component.Role == contracts.WorkspaceApplicationComponentDependency {
+			dependency, depErr := dependencySpecByName(input.Revision, component.Name)
+			if depErr != nil {
+				return contracts.WorkspaceApplicationRuntimeObservation{}, depErr
+			}
+			if len(dependency.HealthChecks) > 0 {
+				ready, healthyErr := localDockerDependencyHealthy(input, dependency, container)
+				if healthyErr != nil {
+					return contracts.WorkspaceApplicationRuntimeObservation{}, healthyErr
+				}
+				if ready {
+					state.ReadyCheck = dependency.HealthChecks[0].Type + "_declared"
+				} else {
+					state.State = "pending"
+				}
+			}
+		}
 		observed = append(observed, state)
 	}
 	status := contracts.WorkspaceApplicationRuntimeOverallStatus(observed)
@@ -212,6 +232,17 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 	}
 	args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
 	args = append(args, "--network", network, "--platform", input.Revision.Platform)
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
+		if depErr != nil {
+			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
+		}
+		depArgs, depErr := localDockerDependencyRunArgs(input, dependency, storagePaths)
+		if depErr != nil {
+			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
+		}
+		args = append(args, depArgs...)
+	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		args = append(args, applicationEnvironmentArgs(input)...)
 		secretArgs, err := p.applicationSecretMountArgs(input)
@@ -252,6 +283,90 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		return localDockerApplicationComponentState(component, dockerContainerInspect{}), firstNonNil(inspectErr, fmt.Errorf("local_docker_application_component_readback_missing"))
 	}
 	return localDockerApplicationComponentState(component, created), nil
+}
+
+// dependencySpecByName resolves one dependency's full spec from the admitted
+// revision; the main component never resolves through this path.
+func dependencySpecByName(revision contracts.WorkspaceApplicationRevision, name string) (contracts.WorkspaceApplicationDependency, error) {
+	for _, dependency := range revision.Dependencies {
+		if dependency.Name == name {
+			return dependency, nil
+		}
+	}
+	return contracts.WorkspaceApplicationDependency{}, fmt.Errorf("local_docker_application_dependency_spec_missing")
+}
+
+// localDockerDependencyRunArgs materialises one dependency's declared spec:
+// its own ports (declared only, never published), command/env, mounts and
+// secret files. Nothing inherits from the main component.
+func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths) ([]string, error) {
+	args := []string{}
+	for _, port := range dependency.Ports {
+		if port.Protocol == "TCP" {
+			args = append(args, "--expose", strconv.Itoa(port.Port))
+		}
+	}
+	for name, value := range dependency.Command.Env {
+		args = append(args, "--env", name+"="+value)
+	}
+	if len(dependency.Command.Entrypoint) > 0 {
+		args = append(args, "--entrypoint", dependency.Command.Entrypoint[0])
+	}
+	for _, mount := range dependency.PersistentMounts {
+		source := localDockerApplicationPersistentSource(input, storagePaths, contracts.WorkspaceApplicationMount{Name: mount.Name, MountPath: mount.MountPath, ReadOnly: mount.ReadOnly})
+		if err := os.MkdirAll(source, 0755); err != nil {
+			return nil, err
+		}
+		binding := "type=bind,source=" + source + ",target=" + mount.MountPath + ",bind-propagation=rprivate"
+		if mount.ReadOnly {
+			binding += ",readonly"
+		}
+		args = append(args, "--mount", binding)
+	}
+	for _, mount := range dependency.ScratchMounts {
+		args = append(args, "--mount", "type=tmpfs,target="+mount.MountPath+",tmpfs-mode=0755")
+	}
+	args = append(args, dependency.Image)
+	if len(dependency.Command.Entrypoint) > 1 {
+		args = append(args, dependency.Command.Entrypoint[1:]...)
+	}
+	args = append(args, dependency.Command.Args...)
+	return args, nil
+}
+
+// localDockerDependencyHealthy probes one dependency's declared health check
+// against its container network identity. TCP checks use the container IP;
+// HTTP checks additionally require the declared path to answer.
+func localDockerDependencyHealthy(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, container dockerContainerInspect) (bool, error) {
+	if len(dependency.HealthChecks) == 0 {
+		return container.State.Running, nil
+	}
+	check := dependency.HealthChecks[0]
+	address := ""
+	for _, network := range container.NetworkSettings.Networks {
+		if network.IPAddress != "" {
+			address = network.IPAddress
+			break
+		}
+	}
+	if address == "" {
+		return false, nil
+	}
+	if check.Type == "tcp" {
+		connection, err := net.DialTimeout("tcp", net.JoinHostPort(address, strconv.Itoa(check.Port)), 2*time.Second)
+		if err != nil {
+			return false, nil
+		}
+		_ = connection.Close()
+		return true, nil
+	}
+	response, err := http.Get("http://" + net.JoinHostPort(address, strconv.Itoa(check.Port)) + check.Path)
+	if err != nil {
+		return false, nil
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	return response.StatusCode >= 200 && response.StatusCode < 400, nil
 }
 
 func localDockerApplicationComponentState(component contracts.WorkspaceApplicationRuntimeComponentState, container dockerContainerInspect) contracts.WorkspaceApplicationRuntimeComponentState {
