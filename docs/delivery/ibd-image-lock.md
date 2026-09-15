@@ -30,3 +30,49 @@ alpine 恢复工具(3.7MB,官方镜像)不入库,部署机直接 `docker pull al
 
 - 浏览/解析:`OPL_WORKSPACE_REGISTRY_USERNAME=100047070895` + 对应密码
 - 节点拉取:安装级 `OPL_IMAGE_PULL_SECRET_NAME` 指向含同一凭据的 K8s pull secret
+
+## Fixed Local Reference
+
+The runtime reference is the original `ibd-assistant-full-20260909` bundle and
+Compose project `ibd-full-20260909-03`, not a later Docker Desktop experiment.
+The bundle manifest SHA-256 is
+`0e0b15dd132223cdce3c193b76303f5cc9d42881d4d54448f89e4be467bcc05b`.
+Its own `deploy.py --phase verify` checked all 74 files and eight image archives
+on 2026-09-15 without creating containers or changing data. The eighth archive is
+the original restoration helper, not another running application component.
+
+Preserve the four independent knowledge-data bindings, restored embedding model,
+original component settings and authenticated health checks. The main image's
+three knowledge-file environment paths already point at files baked into that
+image; they are configuration, not a new file-import feature. The main `/state`
+is an owned executable tmpfs, not a persistent host directory. Original parsing
+and indexing are not repeated; MinerU and Temporal are not startup dependencies.
+
+The application root OCI index is `2fcfa6cd…`; its `linux/amd64` child manifest is
+`d04777dd…`. These are distinct identities in the same archived index, not a
+replacement image. Qualification must retain both layers instead of comparing
+a platform-selected manifest against an index as though they were identical.
+
+Original retained artifacts prove healthy startup, restored 20-document/
+2,101-chunk knowledge data, and one successful streamed answer with citations.
+The outer image-bound acceptance report still records an artifact-identity
+failure; this is a usable runtime reference, not a completed Cloud or clinical
+qualification. A new run must bind its actual source, image, input and result
+identities. Real model configuration is an external read-only input and is not
+present in the bundle or product source.
+
+Current reference-lock and non-secret derived deployment material are retained
+under the active development worktree's `output/ibd-baseline-20260915/`. They are
+qualification inputs, not a second product registry. A new original-image
+question with the user-selected `glm-5.3-flash` passed HTTP/container receipt,
+SSE and citation checks; see `docs/status.md` for its exact run evidence.
+This does not prove product data restore, Console/Control Plane replacement,
+or Tencent Instance adoption.
+
+The non-secret reference projection keeps Elasticsearch's original dotted
+environment settings, image and authentication. It does not replace the baked
+configuration with a generated approximation. Redis keeps its original image
+entrypoint; its password-bearing arguments are represented by a readonly Secret
+configuration file with the same password, memory ceiling and eviction policy.
+An isolated original-image check verified this transport without mounting old
+knowledge volumes or exposing a host port. No credential value is recorded here.

@@ -266,6 +266,115 @@ blob-by-blob from the verified delivery archives without rebuilding. The
 `OPL_WORKSPACE_REGISTRY_USERNAME/PASSWORD` and node pulls use the
 installation-level pull secret.
 
+### Original IBD Runtime Alignment (Local Development)
+
+An isolated development worktree based on `ff957a65` fixes the original IBD
+bundle as reference. The bundle's own verify command passes all 74 file checks
+and eight image archive checks without mutation. New generic source implements
+component-scoped non-secret files, versioned Secret file/env consumption,
+dependency readiness ordering and original-command continuation, authenticated
+shell/exec probes, explicit execution requirements and scratch semantics. No IBD
+service names, repository list, restore algorithm or model credentials are added
+to the product runtime. `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full`
+passes 313 source/browser tests, compile/typecheck/lint/build, and all 18
+PostgreSQL/Docker packages with zero skips. The final run completed at
+`2026-09-15T06:29:05.131356+00:00` and retained the same source-file fingerprint before
+and after execution: `6e71ca89557248e8a6f762c86513bb743044cb3ded9516ec6240d21346bdd32a`. Its log SHA-256 is
+`1d8349541bacf1b7c134a6bddd523aad55d01ff2981a6c858094c8386dc62d9e` (`verify-local-full-closed.log` and result JSON below).
+That fingerprint qualifies the recorded run, not subsequent Console/CP changes
+or the opt-in business-verifier hook. An earlier diagnostic run
+exposed expired hard-coded test periods; test fixtures now use a current valid
+monthly period with the existing month algorithm. Production entitlement checks
+are unchanged, and boundary tests still reject access at paid-through expiry.
+
+The opt-in `application_reference` test tag compiles separately from ordinary
+verification. Its input validation tests pass; trying the prepared incomplete
+reference stops at the missing model Secret before any resource write. A small
+real-Docker check also verifies approved seccomp JSON readback; a separate
+isolated original Valkey image verifies the credential-file transport and
+unchanged memory policy without mounting the original knowledge volumes.
+
+On 2026-09-15, the user selected `glm-5.3-flash` with provider credentials
+from `/Users/huangrende/.codex/config.toml`. The original publisher helper
+produced an isolated model-only Secret; the source file was not modified.
+The exact-reference runtime test passed startup, suspend, resume, and deletion
+in 568.94 seconds. The first run exposed MySQL data-dictionary incompatibility
+on case-insensitive host storage; rerunning on an isolated case-sensitive APFS
+test disk passed without changing database settings or original data.
+Evidence: `runtime-current-model-case-sensitive.log` in the directory below.
+The subsequent original-image business attempt with `glm-5.3-flash` passed:
+one submitted question, eight retrieved chunks, four cited evidence cards,
+226 SSE snapshots including 220 partial-answer updates. The final SSE result
+equals the HTTP answer, all numbered citations resolve to quoted evidence,
+and the HTTP receipt equals its container artifact. Run identity:
+`345f21db-b394-43ca-abd0-7768020c2000`. Evidence is under
+`business-verification/attempt-20260915T085400Z/` in the directory below.
+The external publisher verifier copy adds only the missing allowlist entry for
+`opl-response-receipt.json`, already requested by its own validator; original
+bundle bytes and validation assertions remain unchanged. This is Fabric/runtime
+business evidence, not Console-to-Control-Plane replacement or clinical quality
+qualification. Original cold data
+restoration remains application-owned; pre-seeded qualification data is not a
+completed Control Plane restore feature. Tencent rejects the reference's
+currently unsupported init/custom-seccomp/exact-tmpfs requirements. There is no
+new Candidate or Instance deployment claim. Development evidence lives at
+`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-ibd-baseline/output/ibd-baseline-20260915/`.
+
+### Application Deployment Input Delivery (Local Development)
+
+The Console now renders the existing registry repository/tag lists as selectable
+options and admits complete publisher revision JSON without reducing dependency
+or execution fields to the simple form. Deployment forwards non-secret
+`environment/files` and exact `name/secretRef/version/key` bindings through the
+existing CP endpoint. Switching Workspace/session clears scoped configuration;
+changing registry selection clears the old resolved image. No IBD-specific
+runtime, Secret-value upload API, or new persistence schema was added.
+
+CP rejects unknown revision/configuration/binding properties, binds Secret
+references to the accepted command digest, and retains its OPL credential
+ownership. Focused HTTP tests cover default OPL installation followed by generic
+replacement, exact Fabric inputs, unchanged purchase/resources, isolated data
+bindings, ordered predecessor retirement, command replay conflicts, and
+preflight failure without predecessor interruption. These tests use a Fabric
+fixture; the Console Playwright tests use mocked API responses. They do not
+establish an uninterrupted Console→real CP→real Fabric→IBD qualification.
+
+`GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on
+2026-09-15: 316 source/browser tests and 18 PostgreSQL/Docker packages, zero
+skips. The source fingerprint was unchanged throughout verification:
+`fc396bed20180288df754879ec44f96db6a1c4c03f4f833488a3a4590751dfc9`.
+The full log SHA-256 is
+`a52e1317738a22394a035ca8c67c9d4eab72beb4aa4493dec9aaf5995784e4d6`.
+Evidence for the current full regression is recorded under
+`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-ibd-baseline/output/product-replacement-20260915/`.
+The real integrated replacement and Tencent execution requirements remain open.
+The portable Local provider requires Linux 5.14+ ext4/XFS project quota; this
+macOS/Docker Desktop host is not a qualifying storage host. Installation can use
+the publisher's frozen knowledge restoration materials; a new generic product
+Restore platform is not a prerequisite to this replacement acceptance. Pre-seeded
+data tests still do not qualify any product Restore API. This host limitation does not require purchasing new resources; actual cloud
+qualification uses an existing Workspace through its Instance owner.
+
+### Pre-PR Replacement Safety Review
+
+The pre-PR review reproduced a component configuration file colliding with a
+data mount while both admission and Local preflight accepted it. Unified
+component target validation now rejects duplicate mount destinations and file
+ancestors of other mounts/files before predecessor suspension. Directory mounts
+containing file inputs remain allowed. Main and dependency regression cases
+cover these boundaries.
+
+Tencent execution rejection remains intentional and tested before mutation.
+The original reference seccomp source contains Docker/Moby conditional profile
+fields; it cannot simply be declared an already-installed Kubernetes profile.
+The Init and exact scratch requirements also need provider/installation
+implementation and target-node evidence. No target Workspace was replaced by
+this source delivery. The final pre-PR full regression passed 316 source/browser tests and
+18 PostgreSQL/Docker packages with zero skips at `2026-09-15T11:21:55.859964+00:00`.
+Its source fingerprint remained `e32b8912b59e31df031354e288ec4f53884d1c19a684854560b1b7e48fe0122e` throughout the run;
+log SHA-256: `f90314be28f02e9d0315a4b8dbf8c6ecc7772bd0cebe14a898bd51c28db5b820`. Evidence is retained in
+`output/pr-delivery-20260915/` of this development worktree.
+
 ## Evidence Matrix
 
 | Layer | Current evidence | What it does not prove |

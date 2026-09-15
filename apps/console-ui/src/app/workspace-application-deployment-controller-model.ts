@@ -1,4 +1,4 @@
-import type { WorkspaceApplicationComponentStateDTO, WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
+import type { WorkspaceApplicationConfigurationDTO, WorkspaceApplicationSecretBindingDTO, WorkspaceApplicationComponentStateDTO, WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
 
 export interface WorkspaceApplicationRevisionMountDraft {
   name: string;
@@ -208,4 +208,41 @@ export function presentWorkspaceApplicationIntent(intent: WorkspaceApplicationIn
     })),
     isTerminal: intent.phase === "active" || intent.phase === "manual_review"
   };
+}
+
+function applicationJSONObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseApplicationJSON(text: string): unknown {
+  try { return JSON.parse(text); } catch { throw new Error("请输入有效 JSON"); }
+}
+
+// Preserve the publisher's complete description. Admission owns domain validation.
+export function parseWorkspaceApplicationRevisionJSON(text: string): Record<string, unknown> {
+  const value = parseApplicationJSON(text);
+  if (!applicationJSONObject(value) || typeof value.applicationId !== "string" || !value.applicationId
+    || typeof value.version !== "string" || !value.version) {
+    throw new Error("应用描述需为包含 applicationId 与 version 的 JSON 对象");
+  }
+  return value;
+}
+
+export function parseWorkspaceApplicationDeploymentJSON(configurationText: string, bindingsText: string): {
+  configuration: WorkspaceApplicationConfigurationDTO;
+  secretBindings: WorkspaceApplicationSecretBindingDTO[];
+} {
+  const configuration = parseApplicationJSON(configurationText);
+  if (!applicationJSONObject(configuration) || Object.keys(configuration).some((key) => key !== "environment" && key !== "files")
+    || Object.values(configuration).some((value) => !applicationJSONObject(value) || Object.values(value).some((item) => typeof item !== "string"))) {
+    throw new Error("运行配置仅允许 environment/files 字符串映射；凭据必须使用 Secret 引用");
+  }
+  const bindings = parseApplicationJSON(bindingsText);
+  const fields = ["name", "secretRef", "version", "key"];
+  if (!Array.isArray(bindings) || bindings.some((binding) => !applicationJSONObject(binding)
+    || Object.keys(binding).length !== fields.length || Object.keys(binding).some((key) => !fields.includes(key))
+    || fields.some((key) => typeof binding[key] !== "string" || !binding[key].trim()))) {
+    throw new Error("Secret 绑定须为数组，每项仅允许非空 name、secretRef、version、key 引用；不接受密钥值");
+  }
+  return { configuration: configuration as WorkspaceApplicationConfigurationDTO, secretBindings: bindings as WorkspaceApplicationSecretBindingDTO[] };
 }

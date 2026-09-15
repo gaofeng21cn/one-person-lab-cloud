@@ -287,7 +287,7 @@ func TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec(t *testing.T) {
 		Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
 		Ports: []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
 		Command: contracts.WorkspaceApplicationDependencyCommand{
-			Entrypoint: []string{"/bin/serve"},
+			Entrypoint: []string{"/bin/serve", "worker"},
 			Args:       []string{"--port=9200"},
 			Env:        map[string]string{"RETRIEVAL_MODE": "local"},
 		},
@@ -304,12 +304,24 @@ func TestLocalDockerApplicationRuntimeDependencyRunsOwnSpec(t *testing.T) {
 	if observation.Status != "ready" {
 		t.Fatalf("observation=%#v", observation)
 	}
-	dependencyArgs := strings.Join(runner.runArgs(1), " ")
+	dependencyArgs := strings.Join(runner.runArgsForComponent("retrieval"), " ")
 	for _, expected := range []string{"--entrypoint /bin/serve", "--port=9200", "--env RETRIEVAL_MODE=local",
 		"type=tmpfs,target=/cache", "--expose 9200"} {
 		if !strings.Contains(dependencyArgs, expected) {
 			t.Fatalf("dependency args missing %q: %s", expected, dependencyArgs)
 		}
+	}
+	imageCount := 0
+	for _, arg := range runner.runArgsForComponent("retrieval") {
+		if arg == revision.Dependencies[0].Image {
+			imageCount++
+		}
+	}
+	if imageCount != 1 || !strings.HasSuffix(dependencyArgs, revision.Dependencies[0].Image+" worker --port=9200") {
+		t.Fatalf("dependency image/command boundary invalid: %s", dependencyArgs)
+	}
+	if !strings.Contains(dependencyArgs, "--network-alias retrieval") {
+		t.Fatalf("missing declared service alias: %s", dependencyArgs)
 	}
 	// 依赖不得继承主组件的挂载与入口发布
 	if strings.Contains(dependencyArgs, "target=/data") || strings.Contains(dependencyArgs, "-p ") {
@@ -335,13 +347,13 @@ func TestLocalDockerApplicationRuntimeEnsureCreatesDeclaredComponents(t *testing
 	if runner.runCount() != 2 {
 		t.Fatalf("run calls=%d, want one per declared component", runner.runCount())
 	}
-	mainArgs := strings.Join(runner.runArgs(0), " ")
+	mainArgs := strings.Join(runner.runArgsForComponent("main"), " ")
 	if !strings.Contains(mainArgs, "--network opl-compute-") ||
 		!strings.Contains(mainArgs, "type=bind,source="+filepath.ToSlash(filepath.Join(paths.Data, contracts.WorkspaceApplicationDataDirectory(input.DataBindingID), "data"))+",target=/data") ||
 		!strings.Contains(mainArgs, revision.Image) {
 		t.Fatalf("main run args=%s", mainArgs)
 	}
-	dependencyArgs := strings.Join(runner.runArgs(1), " ")
+	dependencyArgs := strings.Join(runner.runArgsForComponent("retrieval"), " ")
 	if !strings.Contains(dependencyArgs, "opl-app-retrieval-") || !strings.Contains(dependencyArgs, revision.Dependencies[0].Image) {
 		t.Fatalf("dependency run args=%s", dependencyArgs)
 	}
@@ -444,7 +456,7 @@ func TestLocalDockerApplicationRuntimePublishesDeclaredPortsAndEntryURL(t *testi
 	if err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
-	mainArgs := strings.Join(runner.runArgs(0), " ")
+	mainArgs := strings.Join(runner.runArgsForComponent("main"), " ")
 	if !strings.Contains(mainArgs, "-p 127.0.0.1::8080") {
 		t.Fatalf("main run args must publish the declared port: %s", mainArgs)
 	}
@@ -466,8 +478,8 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 	if err != nil || observation.Status != "pending" || observation.EntryURL != "" {
 		t.Fatalf("pending=%#v err=%v", observation, err)
 	}
-	main := strings.Join(runner.runArgs(0), " ")
-	dependency := strings.Join(runner.runArgs(1), " ")
+	main := strings.Join(runner.runArgsForComponent("main"), " ")
+	dependency := strings.Join(runner.runArgsForComponent("retrieval"), " ")
 	if strings.Contains(main, " -p ") || !strings.Contains(main, "--entrypoint /app/server") || !strings.HasSuffix(main, revision.Image+" --serve") {
 		t.Fatalf("main=%s", main)
 	}
@@ -555,7 +567,7 @@ func TestLocalDockerApplicationRuntimePublishesOnlySelectedEntry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := strings.Join(runner.runArgs(0), " ")
+			args := strings.Join(runner.runArgsForComponent("main"), " ")
 			if strings.Contains(args, "::5353") || (entry == "" && strings.Contains(args, " -p ")) || (entry != "" && !strings.Contains(args, "::8080/tcp")) {
 				t.Fatalf("args=%s", args)
 			}
@@ -599,4 +611,91 @@ func TestLocalDockerApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) 
 			})
 		}
 	}
+}
+
+func TestLocalDockerApplicationRuntimeDependencyDeclaredHealth(t *testing.T) {
+	for _, mode := range []string{"ready", "not-ready", "delay", "exited", "probe-image-missing"} {
+		t.Run(mode, func(t *testing.T) {
+			provider, runner, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			revision := applicationRevisionForTest()
+			revision.HealthChecks = nil
+			revision.Dependencies[0].HealthChecks = []contracts.WorkspaceApplicationDependencyHealthCheck{
+				{Type: "tcp", Port: 9200, InitialDelaySeconds: 5}, {Type: "http", Port: 9201, Path: "/health", InitialDelaySeconds: 10},
+			}
+			input := applicationRuntimeInput("dependency-health", revision)
+			if mode == "probe-image-missing" {
+				provider.applicationProbeImage = ""
+			}
+			if mode == "delay" {
+				provider.now = func() time.Time { return time.Now().Add(-time.Hour + 7*time.Second) }
+			}
+			if mode == "not-ready" {
+				runner.probeReady = false
+			}
+			observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input,
+				ComputeAllocation{ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running"},
+				StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
+			if mode == "probe-image-missing" {
+				if err == nil || err.Error() != "local_docker_application_probe_image_required" || runner.runCount() != 0 {
+					t.Fatalf("err=%v runs=%d", err, runner.runCount())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "delay" {
+				if observation.Status != "pending" || len(runner.probes) != 0 {
+					t.Fatalf("observation=%+v probes=%d", observation, len(runner.probes))
+				}
+				return
+			}
+			if len(runner.probes) != 1 {
+				t.Fatalf("dependency must probe inside container network: %d", len(runner.probes))
+			}
+			args := runner.probes[0]
+			var checks []contracts.WorkspaceApplicationDependencyHealthCheck
+			if err := json.Unmarshal([]byte(args[len(args)-1]), &checks); err != nil || len(checks) != 2 || checks[0].Type != "tcp" || checks[1].Path != "/health" {
+				t.Fatalf("checks=%+v err=%v", checks, err)
+			}
+			dependencyName, _ := localDockerApplicationComponentNameForInput(input, revision.Dependencies[0].Name)
+			if !strings.Contains(strings.Join(args, " "), "--network container:cid-"+dependencyName) {
+				t.Fatalf("wrong probe network: %v", args)
+			}
+			if mode == "not-ready" {
+				if observation.Status != "pending" {
+					t.Fatalf("observation=%+v", observation)
+				}
+				return
+			}
+			if observation.Status != "ready" {
+				t.Fatalf("observation=%+v", observation)
+			}
+			if mode == "exited" {
+				var containers []map[string]any
+				if err := json.Unmarshal(runner.containers[dependencyName], &containers); err != nil {
+					t.Fatal(err)
+				}
+				containers[0]["State"] = map[string]any{"Running": false, "Status": "exited"}
+				runner.containers[dependencyName] = mustJSON(containers)
+				observation, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
+				if err != nil || observation.Status != "failed" || len(runner.probes) != 1 || observation.Components[1].LastError != "container exited" {
+					t.Fatalf("observation=%+v err=%v probes=%d", observation, err, len(runner.probes))
+				}
+			}
+		})
+	}
+}
+
+func (r *applicationRuntimeDockerRunner) runArgsForComponent(name string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, args := range r.runs {
+		for _, arg := range args {
+			if arg == "opl.component.name="+name {
+				return append([]string(nil), args...)
+			}
+		}
+	}
+	return nil
 }

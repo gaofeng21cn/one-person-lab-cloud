@@ -289,6 +289,18 @@ export interface CustomerAnnouncementController {
 }
 
 export interface WorkspaceApplicationDeploymentController {
+  registrationMode: "form" | "json";
+  setRegistrationMode: (value: "form" | "json") => void;
+  revisionJSON: string;
+  setRevisionJSON: (value: string) => void;
+  revisionJSONError: string;
+  configurationJSON: string;
+  setConfigurationJSON: (value: string) => void;
+  secretBindingsJSON: string;
+  setSecretBindingsJSON: (value: string) => void;
+  deploymentJSONError: string;
+  resetRegistrySelection: (level: "namespace" | "repository" | "tag") => void;
+
   applicationId: string;
   targetRevision: string;
   setApplicationId: (value: string) => void;

@@ -21,7 +21,7 @@ func TestApplicationRevisionAdmissionHTTP(t *testing.T) {
 		return `{"schemaVersion":1,"applicationId":"knowledge-app","version":"1.0.0","platform":"linux/amd64",` +
 			`"image":"repo.example/apps/knowledge@sha256:` + imageDigest + `",` +
 			`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
-			`"resources":{"cpu":2,"memoryGb":4},"exposurePolicy":"application"}`
+			`"exposurePolicy":"application"}`
 	}
 
 	first := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions", revision(strings.Repeat("a", 64)), "admit-knowledge-first")
@@ -58,7 +58,7 @@ func TestApplicationRevisionAdmissionHTTP(t *testing.T) {
 
 	invalid := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions",
 		`{"schemaVersion":1,"applicationId":"knowledge-app","version":"2.0.0","platform":"linux/amd64",`+
-			`"image":"repo.example/apps/knowledge@sha256:`+strings.Repeat("a", 64)+`","resources":{"cpu":1,"memoryGb":1},"exposurePolicy":"public"}`,
+			`"image":"repo.example/apps/knowledge@sha256:`+strings.Repeat("a", 64)+`","exposurePolicy":"public"}`,
 		"admit-knowledge-invalid")
 	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "invalid_application_revision") {
 		t.Fatalf("invalid admission status=%d body=%s", invalid.Code, invalid.Body.String())
@@ -98,7 +98,7 @@ func TestApplicationRevisionAdmissionPostgres(t *testing.T) {
 	revision := `{"schemaVersion":1,"applicationId":"knowledge-app","version":"1.0.0","platform":"linux/amd64",` +
 		`"image":"repo.example/apps/knowledge@sha256:` + strings.Repeat("a", 64) + `",` +
 		`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
-		`"resources":{"cpu":2,"memoryGb":4},"exposurePolicy":"application"}`
+		`"exposurePolicy":"application"}`
 	first := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions", revision, "admit-pg-first")
 	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"decision":"new"`) {
 		t.Fatalf("postgres first admission status=%d body=%s", first.Code, first.Body.String())

@@ -18,11 +18,12 @@ var (
 // admitted before a Workspace deployment. Image references are digest-pinned;
 // tags are discovery input and are not persisted here.
 type WorkspaceApplicationRevision struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	ApplicationID string `json:"applicationId"`
-	Version       string `json:"version"`
-	Platform      string `json:"platform"`
-	Image         string `json:"image"`
+	Execution     WorkspaceApplicationExecution `json:"execution,omitzero"`
+	SchemaVersion int                           `json:"schemaVersion"`
+	ApplicationID string                        `json:"applicationId"`
+	Version       string                        `json:"version"`
+	Platform      string                        `json:"platform"`
+	Image         string                        `json:"image"`
 	// RuntimeProfile explicitly opts an admitted application into the OPL App
 	// authentication and Gateway ABI. An ordinary application receives no such credentials.
 	RuntimeProfile string                     `json:"runtimeProfile,omitempty"`
@@ -35,6 +36,7 @@ type WorkspaceApplicationRevision struct {
 	PersistentMounts []WorkspaceApplicationMount       `json:"persistentMounts,omitempty"`
 	ScratchMounts    []WorkspaceApplicationMount       `json:"scratchMounts,omitempty"`
 	SecretInputs     []WorkspaceApplicationSecretInput `json:"secretInputs,omitempty"`
+	ConfigInputs     []WorkspaceApplicationConfigInput `json:"configInputs,omitempty"`
 	Dependencies     []WorkspaceApplicationDependency  `json:"dependencies,omitempty"`
 	ExposurePolicy   string                            `json:"exposurePolicy"`
 }
@@ -66,22 +68,38 @@ type WorkspaceApplicationMount struct {
 	Name      string `json:"name"`
 	MountPath string `json:"mountPath"`
 	ReadOnly  bool   `json:"readOnly,omitempty"`
+	// Scratch options are explicit; persistent data permissions are never widened.
+	Mode       *uint32 `json:"mode,omitempty"`
+	UserID     *int64  `json:"userId,omitempty"`
+	GroupID    *int64  `json:"groupId,omitempty"`
+	SizeBytes  int64   `json:"sizeBytes,omitempty"`
+	Executable bool    `json:"executable,omitempty"`
 }
 
 type WorkspaceApplicationSecretInput struct {
+	Name   string `json:"name"`
+	Target string `json:"target,omitempty"`
+	Env    string `json:"env,omitempty"`
+}
+
+// WorkspaceApplicationConfigInput names a non-secret file supplied by Configuration.Files.
+type WorkspaceApplicationConfigInput struct {
 	Name   string `json:"name"`
 	Target string `json:"target"`
 }
 
 type WorkspaceApplicationDependency struct {
-	Name         string                                   `json:"name"`
-	Image        string                                   `json:"image"`
-	Ports        []WorkspaceApplicationDependencyPort     `json:"ports,omitempty"`
-	HealthChecks []WorkspaceApplicationDependencyHealthCheck `json:"healthChecks,omitempty"`
-	PersistentMounts []WorkspaceApplicationDependencyMount `json:"persistentMounts,omitempty"`
-	ScratchMounts    []WorkspaceApplicationDependencyMount `json:"scratchMounts,omitempty"`
-	Command      WorkspaceApplicationDependencyCommand    `json:"command,omitempty"`
-	SecretInputs []WorkspaceApplicationSecretInput `json:"secretInputs,omitempty"`
+	Execution        WorkspaceApplicationExecution               `json:"execution,omitzero"`
+	DependsOn        []string                                    `json:"dependsOn,omitempty"`
+	Name             string                                      `json:"name"`
+	Image            string                                      `json:"image"`
+	Ports            []WorkspaceApplicationDependencyPort        `json:"ports,omitempty"`
+	HealthChecks     []WorkspaceApplicationDependencyHealthCheck `json:"healthChecks,omitempty"`
+	PersistentMounts []WorkspaceApplicationDependencyMount       `json:"persistentMounts,omitempty"`
+	ScratchMounts    []WorkspaceApplicationDependencyMount       `json:"scratchMounts,omitempty"`
+	Command          WorkspaceApplicationDependencyCommand       `json:"command,omitempty"`
+	SecretInputs     []WorkspaceApplicationSecretInput           `json:"secretInputs,omitempty"`
+	ConfigInputs     []WorkspaceApplicationConfigInput           `json:"configInputs,omitempty"`
 }
 
 // WorkspaceApplicationDeployment is the immutable cross-owner intent for one
@@ -131,6 +149,12 @@ func ValidateWorkspaceApplicationDeployment(deployment WorkspaceApplicationDeplo
 }
 
 func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision) error {
+	if err := ValidateWorkspaceApplicationExecution(revision.Execution); err != nil {
+		return err
+	}
+	if revision.RuntimeProfile == "opl_app" && (revision.Execution.UserID != nil && *revision.Execution.UserID != 10001 || revision.Execution.GroupID != nil && *revision.Execution.GroupID != 10001) {
+		return errors.New("workspace_application_opl_identity_invalid")
+	}
 	if revision.RuntimeProfile != "" && revision.RuntimeProfile != "opl_app" {
 		return errors.New("workspace_application_runtime_profile_invalid")
 	}
@@ -159,6 +183,9 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 			return errors.New("workspace_application_entry_port_invalid")
 		}
 	}
+	if err := ValidateWorkspaceApplicationMountOptions(revision.PersistentMounts, revision.ScratchMounts); err != nil {
+		return err
+	}
 	seenMounts := map[string]struct{}{}
 	for _, mount := range append(append([]WorkspaceApplicationMount{}, revision.PersistentMounts...), revision.ScratchMounts...) {
 		if strings.TrimSpace(mount.Name) == "" || !strings.HasPrefix(mount.MountPath, "/") || strings.Contains(mount.MountPath, "..") {
@@ -174,11 +201,10 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 			return errors.New("workspace_application_health_check_invalid")
 		}
 	}
-	for _, secret := range revision.SecretInputs {
-		if strings.TrimSpace(secret.Name) == "" || strings.TrimSpace(secret.Target) == "" {
-			return errors.New("workspace_application_secret_input_invalid")
-		}
+	if err := validateWorkspaceApplicationInputs(revision.SecretInputs, revision.ConfigInputs, nil, append(append([]WorkspaceApplicationMount{}, revision.PersistentMounts...), revision.ScratchMounts...)); err != nil {
+		return err
 	}
+
 	seenComponents := map[string]struct{}{WorkspaceApplicationComponentMain: {}}
 	for _, dependency := range revision.Dependencies {
 		if !workspaceApplicationComponentNamePattern.MatchString(dependency.Name) || !ValidWorkspaceImageReference(dependency.Image) {
@@ -191,6 +217,9 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 		if err := ValidateWorkspaceApplicationDependency(dependency); err != nil {
 			return err
 		}
+	}
+	if _, err := WorkspaceApplicationStartupOrder(revision); err != nil {
+		return err
 	}
 	return nil
 }

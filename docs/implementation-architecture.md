@@ -287,19 +287,60 @@ cursors and from retained full Launch receipt identity.
 `WorkspaceApplicationRevision.entryPort` explicitly selects a named TCP port
 for the HTTP root. An omitted entry declares no web endpoint; `healthChecks`
 does not publish a port. Dependencies have unique component names, with `main`
-reserved. Current top-level entrypoint, ports, mounts and probes belong only to
-the main component; dependency-specific configuration is an open capability.
+reserved. Entrypoints, ports, mounts, execution requirements, configuration files
+and Secret file/environment targets are component-scoped. Supporting components
+may declare `dependsOn`; the main component waits for all its dependencies.
+Admission rejects unknown dependencies, duplicate edges and cycles using a stable
+topological traversal. Suspend/delete use reverse dependency order.
 
-Fabric claims creation once and resumes a returned pending observation by live
-provider readback. Both providers compare observed account labels with the
+Non-secret file contents live in `Configuration.Files` and participate in the
+existing configuration digest; `ConfigInputs` only declares names and mount
+targets. Local-Docker prepares immutable generation files; Tencent uses an
+immutable generation ConfigMap. Both verify actual content, scope and mounts and
+remove only owned generation files/objects after Runtime absence. Secret values
+remain in installation-owned stores: Local consumes exact pre-provisioned
+versions under its existing provider input root, while Tencent reads the existing
+versioned K8s Secret surface. Bindings are checked against account, Workspace,
+version and key. Environment Secrets use a protected Local env-file or K8s
+`secretKeyRef`, not plaintext application configuration or command arguments.
+No new Secret-management API or application-specific backend is introduced.
+Operators submit `secretBindings` references with non-secret `configuration`
+through the existing application-deployment endpoint. The client-command digest
+includes exact versions and configuration files; a changed binding cannot replay
+an accepted command. OPL App credentials remain CP-owned and reject operator
+binding overrides. Fabric validates the installation-owned Secret scope before
+CP suspends the predecessor. Console offers full publisher revision JSON alongside
+the simple registration form and passes files/references without reducing them
+to the simple form's fields. Unknown revision/configuration/binding properties
+are rejected at HTTP admission rather than silently discarded. Component file inputs and directory mounts share one target namespace: exact target collisions or a file used as another mount’s parent are rejected before replacement; files nested under a directory mount remain valid.
+
+Execution identity is declared per component. Local supports explicit non-root
+UID/GID, init and a digest-bound, installation-approved seccomp file. Scratch
+mounts can declare their mode, ownership, size and executable property; persistent
+mount names are confined to one data-binding path segment and deployment never
+widens existing data permissions. Tencent maps supported identities and scratch
+size but rejects unsupported init, custom seccomp and exact scratch permission
+requirements before mutation. It does not claim equivalent support by ignoring
+those fields.
+
+Fabric claims creation once. Read remains pure observation. Replaying the
+original authorized Create can continue components that were recorded as absent
+in a still-started, pending creation; a completed/failed creation or disappeared
+previously-created component is never silently recreated. Authorized lifecycle
+resume can continue the same deferred creation after suspension. Both providers compare observed account labels with the
 authorized request account. Provider read errors or mismatched observations
 cannot replay a historical ready value. Local-Docker publishes only the selected external
 HTTP port and executes declared HTTP probes from a temporary restricted container
 sharing the main container's network, without customer mounts. The portable
 overlay reuses the pinned Cloud image, which contains Node, as
 `OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE`; native installations must set this explicitly
-when declaring HTTP probes. Probe startup errors remain errors and failed HTTP
-checks remain pending.
+when declaring HTTP/TCP probes. All required network checks run in the target
+container network, including dependencies. An explicitly declared Local shell
+health check runs through that component's shell with output isolated and a
+strict exit-status protocol; transport failures remain errors, while a completed
+unhealthy check remains pending. Exited components retain failed observations.
+Tencent uses its native HTTP/TCP/exec readiness probe and rejects multiple
+required checks rather than silently dropping them.
 
 Tencent emits valid per-component Service/Deployment and application network
 policies. It verifies the current Deployment generation, controller ownership
@@ -310,8 +351,9 @@ otherwise Kubernetes admission and the installation's default controller own
 selection. Its returned HTTP URL does not prove DNS/TLS or
 business availability. Tencent supports one native readiness probe and rejects
 multiple required checks before mutation. `cloud_private` creates no external
-entry. Authenticated private access, Registry browsing, full dependency-specific
-configuration and actual Instance adoption remain roadmap work.
+entry. Registry browsing feeds admitted image identities. Authenticated private
+access, application data restore execution, unsupported provider requirements and
+actual Instance adoption remain separate roadmap outcomes.
 
 ## Provider Port
 

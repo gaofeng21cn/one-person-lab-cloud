@@ -75,6 +75,14 @@ func (f *fakeTencentKubectl) call(_ context.Context, args []string, stdin []byte
 			return nil, err
 		}
 		name := stringValue(nested(item, "metadata", "name"))
+		if item["kind"] == "ConfigMap" {
+			item["metadata"].(map[string]any)["uid"] = "ConfigMap:" + name
+			if f.resources["ConfigMap:"+name] != nil {
+				return nil, errors.New("already exists")
+			}
+			f.resources["ConfigMap:"+name] = item
+			return nil, nil
+		}
 		if item["kind"] != "Secret" {
 			return nil, errors.New("unexpected create")
 		}
@@ -201,6 +209,9 @@ func (f *fakeTencentKubectl) setAllReady() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for name, deployment := range f.deployments {
+		if number(nested(deployment, "spec", "replicas")) == 0 {
+			continue
+		}
 		status, ok := deployment["status"].(map[string]any)
 		if !ok {
 			status = map[string]any{}
@@ -413,21 +424,21 @@ func TestTencentApplicationRuntimeEnsureAppliesAndReportsPending(t *testing.T) {
 	if !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("first ensure err=%v, want pending", err)
 	}
-	if observation.Status != "pending" || len(observation.Components) != 2 || observation.Components[0].State != "pending" {
+	if observation.Status != "pending" || len(observation.Components) != 2 || observation.Components[0].State != "absent" || observation.Components[1].State != "pending" {
 		t.Fatalf("pending observation=%#v", observation)
 	}
 	if fake.applyCount() != 1 {
 		t.Fatalf("apply calls=%d", fake.applyCount())
 	}
 	manifest := fake.applies[0]
-	if len(manifest) != 7 {
-		t.Fatalf("manifest items=%d, want two deployments, two services, private/public policies and one ingress", len(manifest))
+	if len(manifest) != 5 {
+		t.Fatalf("manifest items=%d, want only the admitted dependency deployment/service, policies and ingress", len(manifest))
 	}
 	kinds := map[string]int{}
 	for _, item := range manifest {
 		kinds[item["kind"].(string)]++
 	}
-	if kinds["Deployment"] != 2 || kinds["Service"] != 2 || kinds["NetworkPolicy"] != 2 || kinds["Ingress"] != 1 {
+	if kinds["Deployment"] != 1 || kinds["Service"] != 1 || kinds["NetworkPolicy"] != 2 || kinds["Ingress"] != 1 {
 		t.Fatalf("manifest kinds=%v", kinds)
 	}
 }
@@ -437,7 +448,7 @@ func TestTencentApplicationRuntimeReadyAfterDeploymentsConverge(t *testing.T) {
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("first ensure err=%v", err)
 	}
-	fake.setAllReady()
+	completeTencentApplicationStartup(t, provider, fake, input)
 	fake.setEntryReady()
 	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume())
 	if err != nil || observation.Status != "ready" || len(observation.Components) != 2 {
@@ -460,10 +471,11 @@ func TestTencentApplicationRuntimeReadbackReportsAbsent(t *testing.T) {
 }
 
 func TestTencentApplicationRuntimeRejectsImageDrift(t *testing.T) {
-	provider, _, input := tencentApplicationRuntimeFixture(t)
+	provider, fake, input := tencentApplicationRuntimeFixture(t)
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("first ensure err=%v", err)
 	}
+	completeTencentApplicationStartup(t, provider, fake, input)
 	drifted := input
 	drifted.Revision.Image = "repo.example/apps/knowledge@sha256:" + strings.Repeat("f", 64)
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), drifted, tencentApplicationCompute(), tencentApplicationVolume()); err == nil || !strings.Contains(err.Error(), "tencent_application_component_conflict") {
@@ -476,7 +488,8 @@ func TestTencentApplicationRuntimeManifestBindsWorkspaceData(t *testing.T) {
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("first ensure err=%v", err)
 	}
-	encoded, err := json.Marshal(fake.applies[0])
+	completeTencentApplicationStartup(t, provider, fake, input)
+	encoded, err := json.Marshal(fake.applies[len(fake.applies)-1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +577,7 @@ func TestTencentApplicationRuntimeReadbackRequiresCurrentOwnedReadyImage(t *test
 			if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 				t.Fatal(err)
 			}
-			fake.setAllReady()
+			completeTencentApplicationStartup(t, provider, fake, input)
 			fake.setEntryReady()
 			if observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err != nil || observed.Status != "ready" {
 				t.Fatalf("baseline=%#v err=%v", observed, err)
@@ -583,7 +596,7 @@ func TestTencentApplicationRuntimeEntryRequiresLiveControllerRoute(t *testing.T)
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatal(err)
 	}
-	fake.setAllReady()
+	completeTencentApplicationStartup(t, provider, fake, input)
 	read := func() contracts.WorkspaceApplicationRuntimeObservation {
 		t.Helper()
 		observation, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
@@ -613,6 +626,7 @@ func TestTencentApplicationRuntimeEntryUsesAdmittedClusterDefaultClass(t *testin
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatal(err)
 	}
+	completeTencentApplicationStartup(t, provider, fake, input)
 	ingress := fake.resources["Ingress:"+workspaceApplicationComponentResourceName(input, "entry")]
 	spec := ingress["spec"].(map[string]any)
 	if _, declared := spec["ingressClassName"]; declared {
@@ -620,7 +634,6 @@ func TestTencentApplicationRuntimeEntryUsesAdmittedClusterDefaultClass(t *testin
 	}
 	// The Kubernetes admission/controller owns selection when no class is set.
 	spec["ingressClassName"] = "cluster-default"
-	fake.setAllReady()
 	fake.setEntryReady()
 	observation, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || observation.Status != "ready" || observation.EntryURL == "" {
@@ -645,7 +658,7 @@ func TestTencentApplicationRuntimeDoesNotRequireAnUndeclaredOrPrivateEntry(t *te
 			if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 				t.Fatal(err)
 			}
-			fake.setAllReady()
+			completeTencentApplicationStartup(t, provider, fake, input)
 			observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 			if err != nil || observed.Status != "ready" || observed.Components[0].State != "ready" || observed.EntryURL != "" {
 				t.Fatalf("entry not required: observation=%#v err=%v", observed, err)
@@ -738,7 +751,7 @@ func TestTencentApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) {
 				if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 					t.Fatal(err)
 				}
-				fake.setAllReady()
+				completeTencentApplicationStartup(t, provider, fake, input)
 				fake.setEntryReady()
 				if observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err != nil || observed.Status != "ready" {
 					t.Fatalf("baseline=%#v err=%v", observed, err)
@@ -783,7 +796,8 @@ func TestTencentApplicationLifecycleTargetsOneGenerationAndRetainsSuccessor(t *t
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(ctx, next, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatal(err)
 	}
-	fake.setAllReady()
+	completeTencentApplicationStartup(t, provider, fake, old)
+	completeTencentApplicationStartup(t, provider, fake, next)
 	fake.setEntryReady()
 	oldLive, err := provider.ReadWorkspaceApplicationRuntime(ctx, old)
 	if err != nil || oldLive.Status != "ready" {
@@ -800,7 +814,7 @@ func TestTencentApplicationLifecycleTargetsOneGenerationAndRetainsSuccessor(t *t
 	if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, old, "running"); err != nil {
 		t.Fatal(err)
 	}
-	fake.setAllReady()
+	completeTencentApplicationResume(t, provider, fake, old)
 	resumed, err := provider.ReadWorkspaceApplicationRuntimeLifecycle(ctx, old)
 	if err != nil || resumed.State != "running" {
 		t.Fatalf("resume=%#v err=%v", resumed, err)
@@ -839,7 +853,7 @@ func TestTencentApplicationReadbackRejectsActualMountDrift(t *testing.T) {
 			if _, err := provider.EnsureWorkspaceApplicationRuntime(ctx, input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 				t.Fatal(err)
 			}
-			fake.setAllReady()
+			completeTencentApplicationStartup(t, provider, fake, input)
 			fake.setEntryReady()
 			if baseline, err := provider.ReadWorkspaceApplicationRuntime(ctx, input); err != nil || baseline.Status != "ready" {
 				t.Fatalf("baseline state=%s err=%v", baseline.Status, err)
@@ -925,4 +939,28 @@ func TestTencentApplicationHistoricalPolicyRequiresExactOwnerAndAbsence(t *testi
 			t.Fatal("historical policy remained after absent readback")
 		}
 	}
+}
+
+// Fixtures advance the real Ensure/Set paths between provider-ready readbacks;
+// no test manufactures a component that the admission path has not created.
+func completeTencentApplicationStartup(t *testing.T, provider *TencentProvider, fake *fakeTencentKubectl, input WorkspaceApplicationRuntimeInput) {
+	t.Helper()
+	for round := 0; round < len(input.Revision.Dependencies)+1; round++ {
+		fake.setAllReady()
+		if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); err != nil && !errors.Is(err, ErrWorkspaceLaunchPending) {
+			t.Fatal(err)
+		}
+	}
+	fake.setAllReady()
+}
+
+func completeTencentApplicationResume(t *testing.T, provider *TencentProvider, fake *fakeTencentKubectl, input WorkspaceApplicationRuntimeInput) {
+	t.Helper()
+	for round := 0; round < len(input.Revision.Dependencies)+1; round++ {
+		fake.setAllReady()
+		if _, err := provider.SetWorkspaceApplicationRuntimeLifecycle(context.Background(), input, "running"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake.setAllReady()
 }

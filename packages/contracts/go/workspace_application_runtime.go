@@ -68,7 +68,8 @@ func WorkspaceApplicationRuntimeComponents(revision WorkspaceApplicationRevision
 // WorkspaceApplicationRuntimeOverallStatus derives the runtime status from
 // its components: any failed component fails the runtime, an all-absent
 // runtime is absent, any pending component keeps it pending, and only an
-// all-ready runtime is ready.
+// all-ready runtime is ready. A partially created runtime whose existing
+// components are all suspended is suspended; missing components remain absent.
 func WorkspaceApplicationRuntimeOverallStatus(components []WorkspaceApplicationRuntimeComponentState) string {
 	absent, pending, ready, suspended := 0, 0, 0, 0
 	for _, component := range components {
@@ -86,7 +87,7 @@ func WorkspaceApplicationRuntimeOverallStatus(components []WorkspaceApplicationR
 		}
 	}
 	switch {
-	case suspended == len(components) && suspended > 0:
+	case suspended+absent == len(components) && suspended > 0:
 		return "suspended"
 	case absent == len(components):
 		return "absent"
@@ -147,6 +148,7 @@ func ValidateWorkspaceApplicationRuntimeObservation(revision WorkspaceApplicatio
 // non-secret process configuration. Credentials use immutable Secret bindings.
 type WorkspaceApplicationRuntimeConfiguration struct {
 	Environment map[string]string `json:"environment,omitempty"`
+	Files       map[string]string `json:"files,omitempty"`
 	// OPL credentials are stable across image attempts. Only an explicit
 	// credential rotation advances Version; migration retains its proven source.
 	CredentialVersion                  string `json:"credentialVersion,omitempty"`
@@ -225,7 +227,13 @@ func WorkspaceApplicationDataDirectory(dataBindingID string) string {
 	return "app-data-" + hex.EncodeToString(digest[:16])
 }
 
-var workspaceApplicationEnvironmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var workspaceApplicationEnvironmentName = regexp.MustCompile(`^[-._A-Za-z][-._A-Za-z0-9]*$`)
+
+// Container environment keys follow the common Docker/Kubernetes name grammar,
+// not shell assignment identifiers (for example Elasticsearch uses dotted keys).
+func ValidWorkspaceApplicationEnvironmentName(name string) bool {
+	return workspaceApplicationEnvironmentName.MatchString(name)
+}
 
 // WorkspaceApplicationConfigurationDigest binds actual non-secret inputs and
 // Secret identities. Binding order is not semantically significant.
@@ -237,6 +245,16 @@ func WorkspaceApplicationConfigurationDigest(configuration WorkspaceApplicationR
 		if !workspaceApplicationEnvironmentName.MatchString(name) || strings.ContainsRune(value, 0) {
 			return "", errors.New("workspace_application_configuration_invalid")
 		}
+	}
+	totalFileBytes := 0
+	for name, content := range configuration.Files {
+		if !workspaceApplicationInputNamePattern.MatchString(name) || len(content) > 256*1024 || strings.ContainsRune(content, 0) {
+			return "", errors.New("workspace_application_config_file_invalid")
+		}
+		totalFileBytes += len(content)
+	}
+	if totalFileBytes > 1024*1024 {
+		return "", errors.New("workspace_application_config_files_too_large")
 	}
 	ordered := append([]WorkspaceApplicationRuntimeSecretBinding(nil), bindings...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
@@ -288,7 +306,7 @@ func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplication
 		return errors.New("workspace_application_configuration_digest_mismatch")
 	}
 	declared := map[string]bool{}
-	for _, secret := range input.Revision.SecretInputs {
+	for _, secret := range WorkspaceApplicationSecretInputs(input.Revision) {
 		declared[secret.Name] = true
 	}
 	for _, binding := range input.SecretBindings {
@@ -299,6 +317,22 @@ func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplication
 	}
 	if len(declared) != 0 {
 		return errors.New("workspace_application_secret_binding_missing")
+	}
+	if err := validateWorkspaceApplicationInputs(input.Revision.SecretInputs, input.Revision.ConfigInputs, input.Configuration.Environment, append(append([]WorkspaceApplicationMount{}, input.Revision.PersistentMounts...), input.Revision.ScratchMounts...)); err != nil {
+		return err
+	}
+	files := map[string]bool{}
+	for _, file := range WorkspaceApplicationConfigInputs(input.Revision) {
+		files[file.Name] = true
+	}
+	for name := range input.Configuration.Files {
+		if !files[name] {
+			return errors.New("workspace_application_config_file_undeclared")
+		}
+		delete(files, name)
+	}
+	if len(files) != 0 {
+		return errors.New("workspace_application_config_file_missing")
 	}
 	return nil
 }

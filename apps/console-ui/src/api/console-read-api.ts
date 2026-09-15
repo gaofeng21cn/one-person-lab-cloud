@@ -1,3 +1,4 @@
+import type { WorkspaceApplicationConfigurationDTO, WorkspaceApplicationSecretBindingDTO } from "./dtos.ts";
 import { decodeDto, decodeSource } from "./dtos.ts";
 import type {
   AnnouncementPageDTO,
@@ -374,13 +375,14 @@ export function createOperatorWorkspaceApplicationDeployment(
   workspaceId: string,
   applicationId: string,
   targetRevision: string,
-  configuration: { environment: Record<string, string> },
+  configuration: WorkspaceApplicationConfigurationDTO,
   csrfToken: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  secretBindings: WorkspaceApplicationSecretBindingDTO[] = []
 ): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
   return postJson<unknown>(
     "/api/operator/application-deployments",
-    { workspaceId, applicationId, targetRevision, configuration }, csrfToken, idempotencyKey
+    { workspaceId, applicationId, targetRevision, configuration, ...(secretBindings.length ? { secretBindings } : {}) }, csrfToken, idempotencyKey
   ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
 

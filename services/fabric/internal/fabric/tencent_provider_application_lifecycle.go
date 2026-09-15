@@ -2,6 +2,7 @@ package fabric
 
 import (
 	"context"
+	"errors"
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
 	"strconv"
@@ -57,11 +58,26 @@ func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Co
 	if _, err := p.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input); err != nil {
 		return WorkspaceApplicationRuntimeLifecycleResult{}, err
 	}
+	order, err := contracts.WorkspaceApplicationStartupOrder(input.Revision)
+	if err != nil {
+		return WorkspaceApplicationRuntimeLifecycleResult{}, err
+	}
+	if desired != "running" {
+		for left, right := 0, len(order)-1; left < right; left, right = left+1, right-1 {
+			order[left], order[right] = order[right], order[left]
+		}
+	}
 	if desired == "absent" {
 		targets := []string{"delete"}
-		for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-			name := workspaceApplicationComponentResourceName(input, component.Name)
+		for _, componentName := range order {
+			name := workspaceApplicationComponentResourceName(input, componentName)
 			targets = append(targets, "deployment/"+name, "service/"+name)
+		}
+		if len(input.Configuration.Files) > 0 {
+			if _, err := p.readApplicationConfigObject(ctx, input); err != nil && !errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+				return WorkspaceApplicationRuntimeLifecycleResult{}, err
+			}
+			targets = append(targets, "configmap/"+workspaceApplicationComponentResourceName(input, "config"))
 		}
 		targets = append(targets, "networkpolicy/"+workspaceApplicationComponentResourceName(input, "network"), "networkpolicy/"+workspaceApplicationComponentResourceName(input, "entry-network"), "ingress/"+workspaceApplicationComponentResourceName(input, "entry"), "secret/"+workspaceApplicationComponentResourceName(input, "secrets"), "--ignore-not-found=true", "--wait=false")
 		if _, err := p.callKubectl(ctx, targets, nil, protectedresource.Target{}); err != nil {
@@ -78,9 +94,13 @@ func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Co
 		if err != nil {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}
-		for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
-			name := workspaceApplicationComponentResourceName(input, component.Name)
-			if _, exists := resources.deployments[name]; !exists {
+		for _, componentName := range order {
+			name := workspaceApplicationComponentResourceName(input, componentName)
+			deployment, exists := resources.deployments[name]
+			if !exists || number(nested(deployment, "spec", "replicas")) == float64(replicas) {
+				continue
+			}
+			if desired == "running" && !workspaceApplicationDependenciesReady(input, componentName, resources) {
 				continue
 			}
 			if _, err := p.callKubectl(ctx, []string{"scale", "deployment/" + name, "--replicas=" + strconv.Itoa(replicas)}, nil, protectedresource.Target{}); err != nil {

@@ -12,8 +12,80 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 )
+
+func validateTencentApplicationCapabilities(revision contracts.WorkspaceApplicationRevision) error {
+	if len(revision.HealthChecks) > 1 {
+		return errors.New("tencent_application_health_checks_unsupported")
+	}
+	mounts := append([]contracts.WorkspaceApplicationMount(nil), revision.ScratchMounts...)
+	executions := []contracts.WorkspaceApplicationExecution{revision.Execution}
+	if revision.RuntimeProfile == "opl_app" && (revision.Execution.UserID != nil && *revision.Execution.UserID != 10001 || revision.Execution.GroupID != nil && *revision.Execution.GroupID != 10001) {
+		return errors.New("tencent_application_opl_identity_unsupported")
+	}
+	for _, dependency := range revision.Dependencies {
+		if len(dependency.HealthChecks) > 1 {
+			return errors.New("tencent_application_health_checks_unsupported")
+		}
+		mounts = append(mounts, dependency.ScratchMounts...)
+		executions = append(executions, dependency.Execution)
+	}
+	for _, execution := range executions {
+		if execution.Init || execution.SeccompProfile != "" {
+			return errors.New("tencent_application_execution_unsupported")
+		}
+	}
+	for _, mount := range mounts {
+		if mount.Mode != nil || mount.UserID != nil || mount.GroupID != nil || mount.Executable {
+			return errors.New("tencent_application_scratch_options_unsupported")
+		}
+	}
+	return nil
+}
+
+func workspaceApplicationSecurityContext(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) map[string]any {
+	security := map[string]any{"seccompProfile": map[string]any{"type": "RuntimeDefault"}}
+	execution := input.Revision.Execution
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		security["runAsNonRoot"], security["runAsUser"], security["runAsGroup"] = true, 10001, 10001
+		security["fsGroup"], security["fsGroupChangePolicy"] = 10001, tencentWorkspaceFSGroupPolicy
+	} else if dependency, err := dependencySpecByName(input.Revision, component.Name); err == nil {
+		execution = dependency.Execution
+	}
+	if execution.UserID != nil {
+		security["runAsNonRoot"], security["runAsUser"] = true, *execution.UserID
+	}
+	if execution.GroupID != nil {
+		security["runAsGroup"] = *execution.GroupID
+	}
+	return security
+}
+
+func verifyTencentApplicationExecution(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState, actual any) bool {
+	security, ok := actual.(map[string]any)
+	if !ok {
+		return false
+	}
+	expected := workspaceApplicationSecurityContext(input, component)
+	for _, field := range []string{"runAsNonRoot", "runAsUser", "runAsGroup", "fsGroup", "fsGroupChangePolicy", "seccompProfile"} {
+		if !bytes.Equal(mustJSON(expected[field]), mustJSON(security[field])) {
+			return false
+		}
+	}
+	return true
+}
+
+func workspaceApplicationScratchVolume(mount contracts.WorkspaceApplicationMount) map[string]any {
+	volume := map[string]any{"medium": "Memory"}
+	if mount.SizeBytes > 0 {
+		volume["sizeLimit"] = strconv.FormatInt(mount.SizeBytes, 10)
+	}
+	return volume
+}
 
 func workspaceApplicationEnvironment(input WorkspaceApplicationRuntimeInput) []any {
 	names := make([]string, 0, len(input.Configuration.Environment))
@@ -30,13 +102,53 @@ func workspaceApplicationEnvironment(input WorkspaceApplicationRuntimeInput) []a
 func workspaceApplicationSecretTargets(input WorkspaceApplicationRuntimeInput) map[string]string {
 	targets := map[string]string{}
 	for _, secret := range input.Revision.SecretInputs {
-		targets[secret.Name] = secret.Target
+		if secret.Target != "" {
+			targets[secret.Name] = secret.Target
+		}
 	}
 	if input.Revision.RuntimeProfile == "opl_app" {
 		targets["webui-password"] = "/run/secrets/opl_webui_password"
 		targets["webui-session"] = "/run/secrets/webui_session_secret"
 	}
 	return targets
+}
+
+func workspaceApplicationComponentSecretTargets(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) map[string]string {
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		return workspaceApplicationSecretTargets(input)
+	}
+	targets := map[string]string{}
+	dependency, err := dependencySpecByName(input.Revision, component.Name)
+	if err == nil {
+		for _, secret := range dependency.SecretInputs {
+			if secret.Target != "" {
+				targets[secret.Name] = secret.Target
+			}
+		}
+	}
+	return targets
+}
+
+func workspaceApplicationComponentEnvironment(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) []any {
+	declarations := input.Revision.SecretInputs
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, err := dependencySpecByName(input.Revision, component.Name)
+		if err != nil {
+			return nil
+		}
+		input.Configuration.Environment = dependency.Command.Env
+		declarations = dependency.SecretInputs
+	}
+	result := workspaceApplicationEnvironment(input)
+	for _, secret := range declarations {
+		if secret.Env != "" {
+			result = append(result, map[string]any{"name": secret.Env, "valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": workspaceApplicationComponentResourceName(input, "secrets"), "key": secret.Name}}})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return stringValue(result[i].(map[string]any)["name"]) < stringValue(result[j].(map[string]any)["name"])
+	})
+	return result
 }
 
 func (p *TencentProvider) readApplicationBoundSecret(ctx context.Context, input WorkspaceApplicationRuntimeInput, binding contracts.WorkspaceApplicationRuntimeSecretBinding) (string, error) {
@@ -86,7 +198,11 @@ func (p *TencentProvider) applicationSecretObject(ctx context.Context, input Wor
 }
 
 func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
-	if len(workspaceApplicationSecretTargets(input)) == 0 {
+	required := len(input.Revision.SecretInputs) > 0 || input.Revision.RuntimeProfile == "opl_app"
+	for _, dependency := range input.Revision.Dependencies {
+		required = required || len(dependency.SecretInputs) > 0
+	}
+	if !required {
 		return nil
 	}
 	if _, err := p.applicationSecretObject(ctx, input); err == nil {
@@ -156,10 +272,68 @@ func tencentApplicationCredentialToken(ctx context.Context, input WorkspaceAppli
 	return version, nil
 }
 func verifyTencentApplicationConfiguration(input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState, deployment map[string]any, storagePVC string) bool {
-	if input.SchemaVersion == 0 || component.Role != contracts.WorkspaceApplicationComponentMain {
+	if input.SchemaVersion == 0 {
 		return true
 	}
-	expected := workspaceApplicationEnvironment(input)
+	if !verifyTencentApplicationExecution(input, component, nested(deployment, "spec", "template", "spec", "securityContext")) {
+		return false
+	}
+	persistentMounts, scratchMounts := input.Revision.PersistentMounts, input.Revision.ScratchMounts
+	command, arguments := input.Revision.Entrypoint, []string(nil)
+	scratchPrefix := "scratch-"
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, err := dependencySpecByName(input.Revision, component.Name)
+		if err != nil {
+			return false
+		}
+		persistentMounts, scratchMounts = dependency.PersistentMounts, dependency.ScratchMounts
+		command, arguments = dependency.Command.Entrypoint, dependency.Command.Args
+		scratchPrefix = "dependency-scratch-"
+		ports := []any{}
+		for _, port := range dependency.Ports {
+			ports = append(ports, map[string]any{"name": port.Name, "containerPort": port.Port, "protocol": port.Protocol})
+		}
+		actualPorts := firstContainerField(deployment, "ports")
+		if !(len(ports) == 0 && actualPorts == nil) && !bytes.Equal(mustJSON(ports), mustJSON(actualPorts)) {
+			return false
+		}
+		if len(dependency.HealthChecks) > 1 {
+			return false
+		}
+		probe := firstContainerField(deployment, "readinessProbe")
+		if len(dependency.HealthChecks) == 1 {
+			check := dependency.HealthChecks[0]
+			actual, ok := probe.(map[string]any)
+			if !ok || number(actual["initialDelaySeconds"]) != float64(check.InitialDelaySeconds) || number(actual["periodSeconds"]) != 10 || actual["grpc"] != nil {
+				return false
+			}
+			if check.Type == "http" {
+				if actual["exec"] != nil || actual["tcpSocket"] != nil || stringValue(nested(actual, "httpGet", "path")) != check.Path || number(nested(actual, "httpGet", "port")) != float64(check.Port) {
+					return false
+				}
+			} else if check.Type == "exec" {
+				if actual["httpGet"] != nil || actual["tcpSocket"] != nil || !bytes.Equal(mustJSON(check.Command), mustJSON(nested(actual, "exec", "command"))) {
+					return false
+				}
+			} else {
+				if actual["exec"] != nil || actual["httpGet"] != nil || number(nested(actual, "tcpSocket", "port")) != float64(check.Port) {
+					return false
+				}
+			}
+		} else if probe != nil {
+			return false
+		}
+	}
+	for field, expected := range map[string][]string{"command": command, "args": arguments} {
+		actual := firstContainerField(deployment, field)
+		if len(expected) == 0 && actual == nil {
+			continue
+		}
+		if !bytes.Equal(mustJSON(expected), mustJSON(actual)) {
+			return false
+		}
+	}
+	expected := workspaceApplicationComponentEnvironment(input, component)
 	actual, _ := firstContainerField(deployment, "env").([]any)
 	if len(expected) != len(actual) || len(expected) > 0 && !reflect.DeepEqual(expected, actual) {
 		return false
@@ -195,26 +369,35 @@ func verifyTencentApplicationConfiguration(input WorkspaceApplicationRuntimeInpu
 		delete(mounts, path)
 		return true
 	}
-	for _, mount := range input.Revision.PersistentMounts {
+	for _, mount := range persistentMounts {
 		if !consumeMount(mount.MountPath, "workspace-data", applicationPersistentSubPath(input, mount), mount.ReadOnly) {
 			return false
 		}
 	}
-	if len(input.Revision.PersistentMounts) > 0 {
+	if len(persistentMounts) > 0 {
 		volume := volumes["workspace-data"]
 		if len(volume) != 2 || storagePVC == "" || stringValue(nested(volume, "persistentVolumeClaim", "claimName")) != storagePVC || nested(volume, "persistentVolumeClaim", "readOnly") == true {
 			return false
 		}
 		delete(volumes, "workspace-data")
 	}
-	for i, mount := range input.Revision.ScratchMounts {
-		name := fmt.Sprintf("scratch-%d", i)
+	for i, mount := range scratchMounts {
+		name := fmt.Sprintf("%s%d", scratchPrefix, i)
 		if !consumeMount(mount.MountPath, name, "", false) || len(volumes[name]) != 2 || stringValue(nested(volumes[name], "emptyDir", "medium")) != "Memory" {
+			return false
+		}
+		actualSize := stringValue(nested(volumes[name], "emptyDir", "sizeLimit"))
+		if mount.SizeBytes > 0 {
+			quantity, err := resource.ParseQuantity(actualSize)
+			if err != nil || quantity.Cmp(*resource.NewQuantity(mount.SizeBytes, resource.DecimalSI)) != 0 {
+				return false
+			}
+		} else if actualSize != "" {
 			return false
 		}
 		delete(volumes, name)
 	}
-	targets := workspaceApplicationSecretTargets(input)
+	targets := workspaceApplicationComponentSecretTargets(input, component)
 	for name, path := range targets {
 		if !consumeMount(path, "application-secrets", name, true) {
 			return false
@@ -226,6 +409,19 @@ func verifyTencentApplicationConfiguration(input WorkspaceApplicationRuntimeInpu
 			return false
 		}
 		delete(volumes, "application-secrets")
+	}
+	configInputs := workspaceApplicationComponentConfigInputs(input, component)
+	for _, config := range configInputs {
+		if !consumeMount(config.Target, "application-config", config.Name, true) {
+			return false
+		}
+	}
+	if len(configInputs) > 0 {
+		volume := volumes["application-config"]
+		if len(volume) != 2 || stringValue(nested(volume, "configMap", "name")) != workspaceApplicationComponentResourceName(input, "config") || number(nested(volume, "configMap", "defaultMode")) != 0444 {
+			return false
+		}
+		delete(volumes, "application-config")
 	}
 	return len(mounts) == 0 && len(volumes) == 0
 }

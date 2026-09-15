@@ -35,10 +35,28 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx conte
 }
 
 func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Context, input WorkspaceApplicationRuntimeInput, desired string) (WorkspaceApplicationRuntimeLifecycleResult, error) {
-	if _, err := p.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input); err != nil {
+	current, err := p.ReadWorkspaceApplicationRuntimeLifecycle(ctx, input)
+	if err != nil {
 		return WorkspaceApplicationRuntimeLifecycleResult{}, err
 	}
-	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
+	order, err := contracts.WorkspaceApplicationStartupOrder(input.Revision)
+	if err != nil {
+		return WorkspaceApplicationRuntimeLifecycleResult{}, err
+	}
+	if desired != "running" && desired != "suspended" && desired != "absent" {
+		return WorkspaceApplicationRuntimeLifecycleResult{}, ErrWorkspaceApplicationRuntimeInputInvalid
+	}
+	if desired != "running" {
+		for left, right := 0, len(order)-1; left < right; left, right = left+1, right-1 {
+			order[left], order[right] = order[right], order[left]
+		}
+	}
+	states := map[string]contracts.WorkspaceApplicationRuntimeComponentState{}
+	for _, component := range current.Observation.Components {
+		states[component.Name] = component
+	}
+	for _, componentName := range order {
+		component := states[componentName]
 		name, _ := localDockerApplicationComponentNameForInput(input, component.Name)
 		container, exists, err := p.inspectContainer(ctx, name)
 		if err != nil {
@@ -49,11 +67,16 @@ func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx contex
 		}
 		switch desired {
 		case "running":
-			if !container.State.Running {
+			if !container.State.Running && applicationComponentPrerequisitesReady(input.Revision, component.Name, states) {
 				if _, err = p.runner.Run(ctx, nil, "container", "start", name); err != nil {
 					return WorkspaceApplicationRuntimeLifecycleResult{}, err
 				}
 			}
+			state, _, err := p.readWorkspaceApplicationComponent(ctx, input, component)
+			if err != nil {
+				return WorkspaceApplicationRuntimeLifecycleResult{}, err
+			}
+			states[component.Name] = state
 		case "suspended", "absent":
 			if container.State.Running {
 				if _, err = p.runner.Run(ctx, nil, "container", "stop", name); err != nil {
@@ -85,7 +108,7 @@ func (p *LocalDockerProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx contex
 			return result, err
 		}
 	}
-	return result, p.removeApplicationCredentialFiles(input)
+	return result, errors.Join(p.removeApplicationCredentialFiles(input), p.removeApplicationConfigFiles(input), p.removeApplicationSecretEnvFiles(input))
 }
 
 func (p *LocalDockerProvider) retireWorkspaceApplicationImage(ctx context.Context, imageRef string) (contracts.WorkspaceApplicationRuntimeImageRetirement, error) {

@@ -15,6 +15,8 @@ import {
 } from "../api/console-read-api.ts";
 import {
   composeWorkspaceApplicationRevision,
+  parseWorkspaceApplicationRevisionJSON,
+  parseWorkspaceApplicationDeploymentJSON,
   emptyWorkspaceApplicationRevisionDraft,
   validateWorkspaceApplicationRevisionDraft,
   type WorkspaceApplicationRevisionDraft
@@ -33,6 +35,18 @@ export interface WorkspaceApplicationDeploymentDependencies {
 }
 
 export interface WorkspaceApplicationDeploymentCapability {
+  registrationMode: "form" | "json";
+  setRegistrationMode: (value: "form" | "json") => void;
+  revisionJSON: string;
+  setRevisionJSON: (value: string) => void;
+  revisionJSONError: string;
+  configurationJSON: string;
+  setConfigurationJSON: (value: string) => void;
+  secretBindingsJSON: string;
+  setSecretBindingsJSON: (value: string) => void;
+  deploymentJSONError: string;
+  resetRegistrySelection: (level: "namespace" | "repository" | "tag") => void;
+
   applicationId: string;
   targetRevision: string;
   setApplicationId: (value: string) => void;
@@ -72,6 +86,14 @@ export function useWorkspaceApplicationDeploymentController({
   currentMutationRequest
 }: WorkspaceApplicationDeploymentDependencies): WorkspaceApplicationDeploymentCapability {
   const [draft, setDraft] = useState<WorkspaceApplicationRevisionDraft>(emptyWorkspaceApplicationRevisionDraft());
+  const [registrationMode, setRegistrationMode] = useState<"form" | "json">("form");
+  const [revisionJSON, setRevisionJSON] = useState("");
+  const [configurationJSON, setConfigurationJSON] = useState('{"environment":{}}');
+  const [secretBindingsJSON, setSecretBindingsJSON] = useState("[]");
+  let revisionJSONError = "";
+  let deploymentJSONError = "";
+  try { parseWorkspaceApplicationRevisionJSON(revisionJSON); } catch (error) { revisionJSONError = (error as Error).message; }
+  try { parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON); } catch (error) { deploymentJSONError = (error as Error).message; }
   const [applicationId, setApplicationId] = useState("");
   const [targetRevision, setTargetRevision] = useState("");
   const [intent, setIntent] = useState<WorkspaceApplicationIntentDTO | null>(null);
@@ -91,6 +113,8 @@ export function useWorkspaceApplicationDeploymentController({
 
   useEffect(() => {
     reset();
+    setConfigurationJSON('{"environment":{}}');
+    setSecretBindingsJSON("[]");
     return reset;
   }, [reset, session?.csrfToken, session?.user.id, workspaceId]);
 
@@ -138,9 +162,30 @@ export function useWorkspaceApplicationDeploymentController({
   const [registryBusy, setRegistryBusy] = useState(false);
   const [registryResolution, setRegistryResolution] = useState<WorkspaceRegistryResolutionDTO | null>(null);
 
+  const registryGeneration = useRef(0);
+  const resetRegistrySelection = useCallback((level: "namespace" | "repository" | "tag") => {
+    registryGeneration.current += 1;
+    setRegistryBusy(false);
+    if (level === "namespace") setRegistryCatalog(null);
+    if (level !== "tag") setRegistryTags(null);
+    setRegistryResolution(null);
+    if (registryResolution) {
+      setDraft((current) => current.image === registryResolution.reference ? { ...current, image: "" } : current);
+      setRevisionJSON((current) => {
+        let revision: Record<string, unknown>;
+        try { revision = parseWorkspaceApplicationRevisionJSON(current); } catch { return current; }
+        if (revision.image !== registryResolution.reference) return current;
+        delete revision.image;
+        return JSON.stringify(revision, null, 2);
+      });
+    }
+  }, [registryResolution]);
+
   const browseRegistryRepositories = useCallback(async (namespace: string): Promise<boolean> => {
     if (!session || registryBusy) return false;
-    const ownsRequest = currentMutationRequest();
+    const requestStillCurrent = currentMutationRequest();
+    const generation = ++registryGeneration.current;
+    const ownsRequest = () => generation === registryGeneration.current && requestStillCurrent();
     setRegistryBusy(true);
     try {
       const catalog = await listOperatorRegistryRepositories(namespace);
@@ -159,7 +204,9 @@ export function useWorkspaceApplicationDeploymentController({
 
   const browseRegistryTags = useCallback(async (namespace: string, repository: string): Promise<boolean> => {
     if (!session || registryBusy) return false;
-    const ownsRequest = currentMutationRequest();
+    const requestStillCurrent = currentMutationRequest();
+    const generation = ++registryGeneration.current;
+    const ownsRequest = () => generation === registryGeneration.current && requestStillCurrent();
     setRegistryBusy(true);
     try {
       const result = await listOperatorRegistryTags(namespace, repository);
@@ -182,25 +229,29 @@ export function useWorkspaceApplicationDeploymentController({
     if (!session || busy || registryBusy) return false;
     const requestStillCurrent = currentMutationRequest();
     const generation = ++requestGeneration.current;
+    const registryRequest = ++registryGeneration.current;
     const csrfToken = session.csrfToken;
     setRegistryBusy(true);
     try {
       const resolution = await resolveOperatorRegistryImage(namespace, repository, tag, csrfToken, `registry-resolve:${namespace}/${repository}@${tag}`);
-      if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
+      if (generation !== requestGeneration.current || registryRequest !== registryGeneration.current || !requestStillCurrent()) return false;
       if (resolution.namespace !== namespace || resolution.repository !== repository || resolution.tag !== tag
         || !/^sha256:[0-9a-f]{64}$/.test(resolution.digest) || resolution.reference !== `${repository}@${resolution.digest}`) {
         throw new Error("workspace_registry_resolution_unconfirmed");
       }
       setRegistryResolution(resolution);
-      setDraft((current) => ({ ...current, image: resolution.reference }));
+      if (registrationMode === "json") {
+        const revision = parseWorkspaceApplicationRevisionJSON(revisionJSON);
+        setRevisionJSON(JSON.stringify({ ...revision, image: resolution.reference }, null, 2));
+      } else setDraft((current) => ({ ...current, image: resolution.reference }));
       return true;
     } catch (error) {
       if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
       return false;
     } finally {
-      if (generation === requestGeneration.current && requestStillCurrent()) setRegistryBusy(false);
+      if (generation === requestGeneration.current && registryRequest === registryGeneration.current && requestStillCurrent()) setRegistryBusy(false);
     }
-  }, [busy, currentMutationRequest, flash, mutationError, registryBusy, session]);
+  }, [busy, currentMutationRequest, flash, mutationError, registrationMode, revisionJSON, registryBusy, session]);
 
   const pollIntent = useCallback((operationId: string, targetWorkspaceId: string, generation: number) => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -247,7 +298,7 @@ export function useWorkspaceApplicationDeploymentController({
   const admitRevision = useCallback(async (): Promise<boolean> => {
     if (!session || busy) return false;
     const validation = validateWorkspaceApplicationRevisionDraft(draft);
-    if (!validation.ok) {
+    if (registrationMode === "form" && !validation.ok || registrationMode === "json" && revisionJSONError) {
       flash("请先修正表单中标红的字段", "danger");
       return false;
     }
@@ -256,10 +307,11 @@ export function useWorkspaceApplicationDeploymentController({
     const csrfToken = session.csrfToken;
     setBusy(true);
     try {
-      const result = await admitOperatorApplicationRevision(
-        composeWorkspaceApplicationRevision(draft), csrfToken, `${draft.applicationId}@${draft.version}`
-      );
+      const revision = registrationMode === "json" ? parseWorkspaceApplicationRevisionJSON(revisionJSON) : composeWorkspaceApplicationRevision(draft);
+      const result = await admitOperatorApplicationRevision(revision, csrfToken, `${revision.applicationId}@${revision.version}`);
       if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
+      setApplicationId(result.revision.applicationId);
+      setTargetRevision(result.revision.version);
       flash(`应用版本已准入（${result.decision === "identical" ? "与既有版本一致，幂等重放" : "新版本"}）：${result.revision.digest.slice(0, 16)}…`);
       return true;
     } catch (error) {
@@ -268,7 +320,7 @@ export function useWorkspaceApplicationDeploymentController({
     } finally {
       if (generation === requestGeneration.current && requestStillCurrent()) setBusy(false);
     }
-  }, [busy, currentMutationRequest, draft, flash, mutationError, session]);
+  }, [busy, currentMutationRequest, draft, flash, mutationError, registrationMode, revisionJSON, revisionJSONError, session]);
 
   const deploy = useCallback(async (workspaceId: string): Promise<boolean> => {
     if (!session || busy || !workspaceId || workspaceId !== selectedWorkspaceId.current) return false;
@@ -281,9 +333,10 @@ export function useWorkspaceApplicationDeploymentController({
     const csrfToken = session.csrfToken;
     setBusy(true);
     try {
+      const { configuration, secretBindings } = parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON);
       const result = await createOperatorWorkspaceApplicationDeployment(
-        workspaceId, applicationId, targetRevision, { environment: {} }, csrfToken,
-        `wsad-${crypto.randomUUID()}`
+        workspaceId, applicationId, targetRevision, configuration, csrfToken,
+        `wsad-${crypto.randomUUID()}`, secretBindings
       );
       if (generation !== requestGeneration.current || workspaceId !== selectedWorkspaceId.current || !requestStillCurrent()) return false;
       if (result.intent.workspaceId !== workspaceId) throw new Error("workspace_application_deployment_identity_mismatch");
@@ -297,7 +350,7 @@ export function useWorkspaceApplicationDeploymentController({
       }
       return false;
     }
-  }, [applicationId, busy, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
+  }, [applicationId, busy, configurationJSON, secretBindingsJSON, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
 
   const validation = validateWorkspaceApplicationRevisionDraft(draft);
   const retry = useCallback(async (targetWorkspaceId: string, operationId: string): Promise<boolean> => {
@@ -322,6 +375,8 @@ export function useWorkspaceApplicationDeploymentController({
     }
   }, [busy, currentMutationRequest, flash, mutationError, pollIntent, session]);
   return {
+    registrationMode, setRegistrationMode, revisionJSON, setRevisionJSON, revisionJSONError,
+    configurationJSON, setConfigurationJSON, secretBindingsJSON, setSecretBindingsJSON, deploymentJSONError, resetRegistrySelection,
     applicationId, targetRevision, setApplicationId, setTargetRevision,
     draft, validation, setDraftField,
     addPersistentMount, removePersistentMount, addScratchMount, removeScratchMount,

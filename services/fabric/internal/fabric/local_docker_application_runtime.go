@@ -12,9 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"io"
-	"net/http"
-
 	contracts "opl-cloud/packages/contracts/go"
 )
 
@@ -29,9 +26,18 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 	if err := validateWorkspaceApplicationConfiguration(input); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
+	if err := p.validateApplicationExecutions(input); err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+	}
 	if _, _, err := p.applicationSecretFiles(input); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
+	for _, dependency := range input.Revision.Dependencies {
+		if _, _, err := p.applicationDeclaredSecrets(input, dependency.SecretInputs); err != nil {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, err
+		}
+	}
+
 	if err := p.validateLocalDockerApplicationRuntimeIdentity(input, compute); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
@@ -41,43 +47,82 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 	if err := p.applicationCredentialFiles(input, true); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
+	if err := p.applicationConfigFiles(input, true); err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+	}
 	storagePaths, err := p.readStorageDirectories(volume)
 	if err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
 	network := localDockerName("opl-compute", compute.ID)
-	runtimeID := applicationRuntimeID(input)
+	order, err := contracts.WorkspaceApplicationStartupOrder(input.Revision)
+	if err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+	}
 	components := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)
-	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(components))
-	ensureErr := error(nil)
+	states := map[string]contracts.WorkspaceApplicationRuntimeComponentState{}
+	declared := map[string]contracts.WorkspaceApplicationRuntimeComponentState{}
 	for _, component := range components {
-		state, componentErr := p.ensureWorkspaceApplicationComponent(ctx, input, compute, network, storagePaths, component)
-		observed = append(observed, state)
-		if componentErr != nil && ensureErr == nil {
-			ensureErr = componentErr
+		declared[component.Name] = component
+		component.State = "absent"
+		states[component.Name] = component
+	}
+	observation := func() contracts.WorkspaceApplicationRuntimeObservation {
+		observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(components))
+		for _, component := range components {
+			observed = append(observed, states[component.Name])
 		}
-		if componentErr != nil {
-			// Remaining declared components stay absent: the observation must
-			// always cover exactly the declared set.
-			for _, remaining := range components[len(observed):] {
-				observed = append(observed, contracts.WorkspaceApplicationRuntimeComponentState{
-					Name: remaining.Name, Role: remaining.Role, Image: remaining.Image, State: "absent",
-				})
+		return contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: applicationRuntimeID(input), Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed}
+	}
+	entryURL := ""
+	for _, name := range order {
+		component := declared[name]
+		// Ensure only absent components whose prerequisites have completed health
+		// checks. Existing failed containers are observed, never recreated.
+		containerName, nameErr := localDockerApplicationComponentNameForInput(input, name)
+		if nameErr != nil {
+			return observation(), nameErr
+		}
+		_, exists, inspectErr := p.inspectContainer(ctx, containerName)
+		if inspectErr != nil {
+			return observation(), inspectErr
+		}
+		if !exists && applicationComponentPrerequisitesReady(input.Revision, name, states) {
+			state, err := p.ensureWorkspaceApplicationComponent(ctx, input, compute, network, storagePaths, component)
+			states[name] = state
+			if err != nil {
+				return observation(), err
 			}
-			break
+			exists = true
+		}
+		if exists && component.Role == contracts.WorkspaceApplicationComponentMain {
+			if err := p.ensureApplicationGatewayNetwork(ctx, input, compute); err != nil {
+				return observation(), err
+			}
+		}
+		state, url, err := p.readWorkspaceApplicationComponent(ctx, input, component)
+		if err != nil {
+			return observation(), err
+		}
+		states[name] = state
+		if component.Role == contracts.WorkspaceApplicationComponentMain {
+			entryURL = url
 		}
 	}
-	observation := contracts.WorkspaceApplicationRuntimeObservation{
-		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID,
-		Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed,
+	result := observation()
+	if result.Status == "ready" {
+		result.EntryURL = entryURL
 	}
-	if ensureErr != nil {
-		return observation, ensureErr
+	return result, nil
+}
+
+func applicationComponentPrerequisitesReady(revision contracts.WorkspaceApplicationRevision, name string, states map[string]contracts.WorkspaceApplicationRuntimeComponentState) bool {
+	for _, dependency := range contracts.WorkspaceApplicationComponentDependencies(revision, name) {
+		if states[dependency].State != "ready" {
+			return false
+		}
 	}
-	if err := p.ensureApplicationGatewayNetwork(ctx, input, compute); err != nil {
-		return observation, err
-	}
-	return p.ReadWorkspaceApplicationRuntime(ctx, input)
+	return true
 }
 
 // Only the explicitly selected TCP entry has a public host binding.
@@ -114,82 +159,16 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntime(ctx context.Contex
 	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(components))
 	entryURL := ""
 	for _, component := range components {
-		name, nameErr := localDockerApplicationComponentNameForInput(input, component.Name)
-		if nameErr != nil {
-			return contracts.WorkspaceApplicationRuntimeObservation{}, nameErr
-		}
-		container, exists, inspectErr := p.inspectContainer(ctx, name)
-		if inspectErr != nil {
-			return contracts.WorkspaceApplicationRuntimeObservation{}, inspectErr
-		}
-		if !exists {
-			observed = append(observed, contracts.WorkspaceApplicationRuntimeComponentState{
-				Name: component.Name, Role: component.Role, Image: component.Image, State: "absent",
-			})
-			continue
-		}
-		if input.AccountID == "" || !exactDockerLabels(container.Config.Labels, localDockerApplicationLabels(input, input.AccountID, component)) || container.Config.Image != component.Image {
-			return contracts.WorkspaceApplicationRuntimeObservation{}, errors.New("local_docker_application_component_conflict")
-		}
-		entryPort := 0
-		if component.Role == contracts.WorkspaceApplicationComponentMain {
-			entryPort = localDockerApplicationEntryPort(input.Revision)
-			if input.SchemaVersion == 2 && input.Revision.RuntimeProfile == "opl_app" {
-				if err := p.verifyRuntimeGatewayNetwork(ctx, container); err != nil {
-					return contracts.WorkspaceApplicationRuntimeObservation{}, err
-				}
-			}
-			if err := p.verifyApplicationConfiguration(input, container); err != nil {
-				return contracts.WorkspaceApplicationRuntimeObservation{}, err
-			}
-		}
-		for port, bindings := range container.NetworkSettings.Ports {
-			if len(bindings) > 0 && (entryPort == 0 || port != strconv.Itoa(entryPort)+"/tcp") {
-				return contracts.WorkspaceApplicationRuntimeObservation{}, errors.New("local_docker_application_component_conflict")
-			}
-		}
-		state := localDockerApplicationComponentState(component, container)
-		if component.Role == contracts.WorkspaceApplicationComponentMain {
-			for _, port := range input.Revision.Ports {
-				state.Ports = append(state.Ports, port.Port)
-			}
-			if state.State == "ready" && len(input.Revision.HealthChecks) > 0 {
-				ready, probeErr := p.probeLocalDockerApplication(ctx, input, container)
-				if probeErr != nil {
-					return contracts.WorkspaceApplicationRuntimeObservation{}, probeErr
-				}
-				state.ReadyCheck = "declared_http"
-				if !ready {
-					state.State = "pending"
-				}
-			}
-			if state.State == "ready" {
-				var entryErr error
-				entryURL, entryErr = p.localDockerApplicationEntryURL(input.Revision, container)
-				if entryErr != nil {
-					return contracts.WorkspaceApplicationRuntimeObservation{}, entryErr
-				}
-			}
-		}
-		if component.Role == contracts.WorkspaceApplicationComponentDependency {
-			dependency, depErr := dependencySpecByName(input.Revision, component.Name)
-			if depErr != nil {
-				return contracts.WorkspaceApplicationRuntimeObservation{}, depErr
-			}
-			if len(dependency.HealthChecks) > 0 {
-				ready, healthyErr := localDockerDependencyHealthy(input, dependency, container)
-				if healthyErr != nil {
-					return contracts.WorkspaceApplicationRuntimeObservation{}, healthyErr
-				}
-				if ready {
-					state.ReadyCheck = dependency.HealthChecks[0].Type + "_declared"
-				} else {
-					state.State = "pending"
-				}
-			}
+		state, url, err := p.readWorkspaceApplicationComponent(ctx, input, component)
+		if err != nil {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, err
 		}
 		observed = append(observed, state)
+		if component.Role == contracts.WorkspaceApplicationComponentMain {
+			entryURL = url
+		}
 	}
+
 	status := contracts.WorkspaceApplicationRuntimeOverallStatus(observed)
 	if status != "ready" {
 		entryURL = ""
@@ -198,6 +177,105 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntime(ctx context.Contex
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID,
 		Status: status, EntryURL: entryURL, Components: observed,
 	}, nil
+}
+
+func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Context, input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) (contracts.WorkspaceApplicationRuntimeComponentState, string, error) {
+	entryURL := ""
+	name, nameErr := localDockerApplicationComponentNameForInput(input, component.Name)
+	if nameErr != nil {
+		return component, "", nameErr
+	}
+	container, exists, inspectErr := p.inspectContainer(ctx, name)
+	if inspectErr != nil {
+		return component, "", inspectErr
+	}
+	if !exists {
+		return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "absent"}, "", nil
+	}
+	if input.AccountID == "" || !exactDockerLabels(container.Config.Labels, localDockerApplicationLabels(input, input.AccountID, component)) || container.Config.Image != component.Image {
+		return component, "", errors.New("local_docker_application_component_conflict")
+	}
+	entryPort := 0
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		entryPort = localDockerApplicationEntryPort(input.Revision)
+		if input.SchemaVersion == 2 && input.Revision.RuntimeProfile == "opl_app" {
+			if err := p.verifyRuntimeGatewayNetwork(ctx, container); err != nil {
+				return component, "", err
+			}
+		}
+		if err := p.verifyApplicationConfiguration(input, container); err != nil {
+			return component, "", err
+		}
+	}
+	for port, bindings := range container.NetworkSettings.Ports {
+		if len(bindings) > 0 && (entryPort == 0 || port != strconv.Itoa(entryPort)+"/tcp") {
+			return component, "", errors.New("local_docker_application_component_conflict")
+		}
+	}
+	if err := p.verifyApplicationConfigMounts(input, component.Name, container); err != nil {
+		return component, "", err
+	}
+	if err := p.verifyApplicationExecution(input, component.Name, container); err != nil {
+		return component, "", err
+	}
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		if err := verifyApplicationScratchMounts(input.Revision.ScratchMounts, container); err != nil {
+			return component, "", err
+		}
+	} else {
+		dependency, err := dependencySpecByName(input.Revision, component.Name)
+		if err != nil {
+			return component, "", err
+		}
+		if err := verifyApplicationScratchMounts(dependency.ScratchMounts, container); err != nil {
+			return component, "", err
+		}
+	}
+	state := localDockerApplicationComponentState(component, container)
+	if component.Role == contracts.WorkspaceApplicationComponentMain {
+		for _, port := range input.Revision.Ports {
+			state.Ports = append(state.Ports, port.Port)
+		}
+		if state.State == "ready" && len(input.Revision.HealthChecks) > 0 {
+			ready, probeErr := p.probeLocalDockerApplication(ctx, input, container)
+			if probeErr != nil {
+				return component, "", probeErr
+			}
+			state.ReadyCheck = "declared_http"
+			if !ready {
+				state.State = "pending"
+			}
+		}
+		if state.State == "ready" {
+			var entryErr error
+			entryURL, entryErr = p.localDockerApplicationEntryURL(input.Revision, container)
+			if entryErr != nil {
+				return component, "", entryErr
+			}
+		}
+	}
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
+		if depErr != nil {
+			return component, "", depErr
+		}
+		if err := p.verifyApplicationDeclaredSecrets(input, container, dependency.SecretInputs); err != nil {
+			return component, "", err
+		}
+
+		if state.State == "ready" && len(dependency.HealthChecks) > 0 {
+			ready, healthyErr := p.probeLocalDockerDependencyChecks(ctx, input, container, dependency.HealthChecks)
+			if healthyErr != nil {
+				return component, "", healthyErr
+			}
+			if ready {
+				state.ReadyCheck = dependency.HealthChecks[0].Type + "_declared"
+			} else {
+				state.State = "pending"
+			}
+		}
+	}
+	return state, entryURL, nil
 }
 
 func (p *LocalDockerProvider) validateLocalDockerApplicationRuntimeIdentity(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation) error {
@@ -231,7 +309,12 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 		return localDockerApplicationComponentState(component, container), nil
 	}
 	args := append([]string{"run", "-d", "--name", name}, dockerLabelArgs(labels)...)
-	args = append(args, "--network", network, "--platform", input.Revision.Platform)
+	executionArgs, err := p.applicationExecutionArgs(applicationComponentExecution(input.Revision, component.Name))
+	if err != nil {
+		return component, err
+	}
+	args = append(args, executionArgs...)
+	args = append(args, "--network", network, "--network-alias", component.Name, "--platform", input.Revision.Platform)
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
 		if depErr != nil {
@@ -242,6 +325,12 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
 		}
 		args = append(args, depArgs...)
+		secretArgs, err := p.applicationComponentSecretArgs(input, component.Name, dependency.SecretInputs)
+		if err != nil {
+			return component, err
+		}
+		args = append(args, secretArgs...)
+
 	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		args = append(args, applicationEnvironmentArgs(input)...)
@@ -265,13 +354,24 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 			args = append(args, "--mount", binding)
 		}
 		for _, mount := range input.Revision.ScratchMounts {
-			args = append(args, "--mount", "type=tmpfs,target="+mount.MountPath+",tmpfs-mode=0755")
+			args = append(args, localDockerApplicationScratchArgs(mount)...)
 		}
 		if len(input.Revision.Entrypoint) > 0 {
 			args = append(args, "--entrypoint", input.Revision.Entrypoint[0])
 		}
 	}
+	args = append(args, p.applicationConfigMountArgs(input, component.Name)...)
 	args = append(args, component.Image)
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, err := dependencySpecByName(input.Revision, component.Name)
+		if err != nil {
+			return component, err
+		}
+		if len(dependency.Command.Entrypoint) > 1 {
+			args = append(args, dependency.Command.Entrypoint[1:]...)
+		}
+		args = append(args, dependency.Command.Args...)
+	}
 	if component.Role == contracts.WorkspaceApplicationComponentMain && len(input.Revision.Entrypoint) > 1 {
 		args = append(args, input.Revision.Entrypoint[1:]...)
 	}
@@ -296,9 +396,9 @@ func dependencySpecByName(revision contracts.WorkspaceApplicationRevision, name 
 	return contracts.WorkspaceApplicationDependency{}, fmt.Errorf("local_docker_application_dependency_spec_missing")
 }
 
-// localDockerDependencyRunArgs materialises one dependency's declared spec:
-// its own ports (declared only, never published), command/env, mounts and
-// secret files. Nothing inherits from the main component.
+// localDockerDependencyRunArgs returns Docker flags only: the component caller
+// appends the image once, followed by its process arguments. Dependency flags
+// do not inherit the main component's ports, environment, or mounts.
 func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, storagePaths localDockerStoragePaths) ([]string, error) {
 	args := []string{}
 	for _, port := range dependency.Ports {
@@ -324,49 +424,9 @@ func localDockerDependencyRunArgs(input WorkspaceApplicationRuntimeInput, depend
 		args = append(args, "--mount", binding)
 	}
 	for _, mount := range dependency.ScratchMounts {
-		args = append(args, "--mount", "type=tmpfs,target="+mount.MountPath+",tmpfs-mode=0755")
+		args = append(args, localDockerApplicationScratchArgs(mount)...)
 	}
-	args = append(args, dependency.Image)
-	if len(dependency.Command.Entrypoint) > 1 {
-		args = append(args, dependency.Command.Entrypoint[1:]...)
-	}
-	args = append(args, dependency.Command.Args...)
 	return args, nil
-}
-
-// localDockerDependencyHealthy probes one dependency's declared health check
-// against its container network identity. TCP checks use the container IP;
-// HTTP checks additionally require the declared path to answer.
-func localDockerDependencyHealthy(input WorkspaceApplicationRuntimeInput, dependency contracts.WorkspaceApplicationDependency, container dockerContainerInspect) (bool, error) {
-	if len(dependency.HealthChecks) == 0 {
-		return container.State.Running, nil
-	}
-	check := dependency.HealthChecks[0]
-	address := ""
-	for _, network := range container.NetworkSettings.Networks {
-		if network.IPAddress != "" {
-			address = network.IPAddress
-			break
-		}
-	}
-	if address == "" {
-		return false, nil
-	}
-	if check.Type == "tcp" {
-		connection, err := net.DialTimeout("tcp", net.JoinHostPort(address, strconv.Itoa(check.Port)), 2*time.Second)
-		if err != nil {
-			return false, nil
-		}
-		_ = connection.Close()
-		return true, nil
-	}
-	response, err := http.Get("http://" + net.JoinHostPort(address, strconv.Itoa(check.Port)) + check.Path)
-	if err != nil {
-		return false, nil
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-	return response.StatusCode >= 200 && response.StatusCode < 400, nil
 }
 
 func localDockerApplicationComponentState(component contracts.WorkspaceApplicationRuntimeComponentState, container dockerContainerInspect) contracts.WorkspaceApplicationRuntimeComponentState {
@@ -412,16 +472,40 @@ func localDockerApplicationLabels(input WorkspaceApplicationRuntimeInput, accoun
 }
 
 func (p *LocalDockerProvider) validateLocalDockerApplicationProbe(revision contracts.WorkspaceApplicationRevision) error {
-	if len(revision.HealthChecks) > 0 && !contracts.ValidWorkspaceImageReference(p.applicationProbeImage) {
+	hasChecks := len(revision.HealthChecks) > 0
+	for _, dependency := range revision.Dependencies {
+		for _, check := range dependency.HealthChecks {
+			if check.Type == "exec" {
+				if len(check.Command) != 3 || check.Command[0] != "/bin/sh" || check.Command[1] != "-c" {
+					return errors.New("local_docker_application_exec_probe_unsupported")
+				}
+			} else {
+				hasChecks = true
+			}
+		}
+	}
+	if hasChecks && !contracts.ValidWorkspaceImageReference(p.applicationProbeImage) {
 		return errors.New("local_docker_application_probe_image_required")
 	}
 	return nil
 }
 
 const localDockerApplicationProbeScript = `
+import net from 'node:net';
 const checks = JSON.parse(process.argv[1]);
 const results = await Promise.all(checks.map(async check => {
   try {
+    if (check.type === 'tcp') {
+      return await new Promise(resolve => {
+        const socket = net.createConnection({host: '127.0.0.1', port: check.port});
+        const finish = ready => { socket.destroy(); resolve(ready); };
+        socket.setTimeout(5000);
+        socket.once('connect', () => finish(true));
+        socket.once('timeout', () => finish(false));
+        socket.once('error', () => finish(false));
+      });
+    }
+    if (check.type !== 'http') return false;
     const response = await fetch('http://127.0.0.1:' + check.port + check.path, { signal: AbortSignal.timeout(5000), redirect: 'manual' });
     const ready = response.status >= 200 && response.status < 400;
     await response.body?.cancel();
@@ -432,21 +516,82 @@ process.stdout.write(JSON.stringify({ready: results.every(Boolean)}));
 `
 
 func (p *LocalDockerProvider) probeLocalDockerApplication(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) (bool, error) {
+	checks := make([]contracts.WorkspaceApplicationDependencyHealthCheck, 0, len(input.Revision.HealthChecks))
+	for _, check := range input.Revision.HealthChecks {
+		checks = append(checks, contracts.WorkspaceApplicationDependencyHealthCheck{Type: "http", Port: check.Port, Path: check.Path, InitialDelaySeconds: check.InitialDelaySeconds})
+	}
+	return p.probeLocalDockerApplicationChecks(ctx, input, container, checks)
+}
+
+// Local supports the explicitly declared /bin/sh -c capability, not arbitrary
+// exec argv. The declared shell runs a fixed wrapper; original command output
+// cannot become readiness evidence or leak through the Docker runner's errors.
+const localDockerApplicationExecProbeScript = `"$@" >/dev/null 2>&1
+status=$?
+printf 'opl-health-exit:%s\n' "$status"
+`
+
+func (p *LocalDockerProvider) probeLocalDockerDependencyChecks(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect, declared []contracts.WorkspaceApplicationDependencyHealthCheck) (bool, error) {
 	startedAt, err := time.Parse(time.RFC3339Nano, container.State.StartedAt)
 	if err != nil {
 		return false, errors.New("local_docker_application_started_at_invalid")
 	}
-	for _, check := range input.Revision.HealthChecks {
+	for _, check := range declared {
 		if p.now().Before(startedAt.Add(time.Duration(check.InitialDelaySeconds) * time.Second)) {
 			return false, nil
 		}
 	}
-	checks, err := json.Marshal(input.Revision.HealthChecks)
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	networkChecks := make([]contracts.WorkspaceApplicationDependencyHealthCheck, 0, len(declared))
+	for _, check := range declared {
+		if check.Type != "exec" {
+			networkChecks = append(networkChecks, check)
+			continue
+		}
+		if len(check.Command) != 3 || check.Command[0] != "/bin/sh" || check.Command[1] != "-c" {
+			return false, errors.New("local_docker_application_exec_probe_unsupported")
+		}
+		args := []string{"exec", container.ID, check.Command[0], "-c", localDockerApplicationExecProbeScript, "opl-health"}
+		args = append(args, check.Command...)
+		output, runErr := p.runner.Run(probeCtx, nil, args...)
+		if runErr != nil || probeCtx.Err() != nil {
+			return false, errors.Join(errors.New("local_docker_application_exec_probe_failed"), probeCtx.Err())
+		}
+		marker := strings.TrimSuffix(string(output), "\n")
+		codeText, ok := strings.CutPrefix(marker, "opl-health-exit:")
+		code, err := strconv.Atoi(codeText)
+		if !ok || err != nil || code < 0 || code > 255 || strconv.Itoa(code) != codeText || string(output) != marker+"\n" {
+			return false, errors.New("local_docker_application_exec_probe_result_invalid")
+		}
+		if code != 0 {
+			return false, nil
+		}
+	}
+	if len(networkChecks) == 0 {
+		return true, nil
+	}
+	return p.probeLocalDockerApplicationChecks(probeCtx, input, container, networkChecks)
+}
+
+// All declared checks run in the target network namespace, never against a
+// Docker bridge IP from the host or by assuming tools in the application image.
+func (p *LocalDockerProvider) probeLocalDockerApplicationChecks(ctx context.Context, input WorkspaceApplicationRuntimeInput, container dockerContainerInspect, declared []contracts.WorkspaceApplicationDependencyHealthCheck) (bool, error) {
+	startedAt, err := time.Parse(time.RFC3339Nano, container.State.StartedAt)
+	if err != nil {
+		return false, errors.New("local_docker_application_started_at_invalid")
+	}
+	for _, check := range declared {
+		if p.now().Before(startedAt.Add(time.Duration(check.InitialDelaySeconds) * time.Second)) {
+			return false, nil
+		}
+	}
+	checks, err := json.Marshal(declared)
 	if err != nil {
 		return false, err
 	}
 	probeName := "opl-app-probe-" + stableSuffix(input.WorkspaceID, container.ID, time.Now().UTC().Format(time.RFC3339Nano))[:24]
-	// The execution deadline covers container startup and the HTTP probe. The
+	// The execution deadline covers container startup and all declared probes. The
 	// provider is the single cleanup owner; auto-remove would keep docker run
 	// waiting for storage teardown and race a second cleanup on timeout.
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

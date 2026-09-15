@@ -1064,20 +1064,27 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
   return <section className="panel"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
     <div className="application-form-section"><h3>从镜像仓库选择</h3>
       <div className="application-form-grid">
-        <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" value={registryNamespace} onChange={(event) => setRegistryNamespace(event.target.value)} />
+        <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" disabled={deployment.registryBusy} value={registryNamespace} onChange={(event) => { setRegistryNamespace(event.target.value); setRegistryRepository(""); setRegistryTag(""); deployment.resetRegistrySelection("namespace"); }} />
         <div className="application-form-pair">
-          <Field label="repository" optional description="先列出命名空间下的仓库" value={registryRepository} onChange={(event) => setRegistryRepository(event.target.value)} />
-          <Field label="tag/版本" optional description="选择后解析为固定 digest 并填入镜像字段" value={registryTag} onChange={(event) => setRegistryTag(event.target.value)} />
+          <Select block label="repository" description="先列出命名空间下的仓库" disabled={deployment.registryBusy} value={registryRepository} options={(deployment.registryCatalog?.items || []).filter((item) => item.namespace === registryNamespace.trim()).map((item) => ({ value: item.repository, label: item.repository }))} onChange={(value) => { setRegistryRepository(value); setRegistryTag(""); deployment.resetRegistrySelection("repository"); }} />
+          <Select block label="tag/版本" description="选择后解析为固定 digest 并填入镜像字段" disabled={deployment.registryBusy} value={registryTag} options={(deployment.registryTags || []).map((item) => ({ value: item.tag, label: item.tag }))} onChange={(value) => { setRegistryTag(value); deployment.resetRegistrySelection("tag"); }} />
         </div>
       </div>
       <div className="application-form-row">
         <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === ""} onClick={() => void deployment.browseRegistryRepositories(registryNamespace.trim())}>列出仓库</Button>
         <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || registryNamespace.trim() === "" || registryRepository.trim() === ""} onClick={() => void deployment.browseRegistryTags(registryNamespace.trim(), registryRepository.trim())}>列出 tag</Button>
-        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || deployment.busy || registryNamespace.trim() === "" || registryRepository.trim() === "" || registryTag.trim() === ""} onClick={() => void deployment.resolveRegistryTag(registryNamespace.trim(), registryRepository.trim(), registryTag.trim())}>解析 digest</Button>
+        <Button size="sm" variant="outline" busy={deployment.registryBusy} disabled={deployment.registryBusy || deployment.busy || (deployment.registrationMode === "json" && Boolean(deployment.revisionJSONError)) || registryNamespace.trim() === "" || registryRepository.trim() === "" || registryTag.trim() === ""} onClick={() => void deployment.resolveRegistryTag(registryNamespace.trim(), registryRepository.trim(), registryTag.trim())}>解析 digest</Button>
       </div>
       {deployment.registryCatalog ? <p className="application-form-hint">仓库主机 {deployment.registryCatalog.host};命名空间 {deployment.registryCatalog.namespaces.join("、")};{deployment.registryCatalog.items.length} 个 repository。{deployment.registryTags ? `已选 repository 的 ${deployment.registryTags.length} 个 tag。` : ""}</p> : null}
       {deployment.registryResolution ? <p className="application-form-hint">已解析 <code>{deployment.registryResolution.tag}</code> → <code>{deployment.registryResolution.digest}</code>,镜像字段已填入固定引用。</p> : null}
     </div>
+    <Select block label="登记方式" disabled={deployment.busy || deployment.registryBusy} value={deployment.registrationMode} options={[{ value: "form", label: "简单表单" }, { value: "json", label: "发布者完整描述 JSON" }]} onChange={(value) => deployment.setRegistrationMode(value as "form" | "json")} />
+    {deployment.registrationMode === "json" ? <div className="console-field">
+      <label className="console-field__label" htmlFor="application-revision-json">完整应用描述 JSON</label>
+      <textarea id="application-revision-json" disabled={deployment.busy || deployment.registryBusy} rows={14} value={deployment.revisionJSON} onChange={(event) => deployment.setRevisionJSON(event.target.value)} aria-invalid={Boolean(deployment.revisionJSONError)} />
+      <span className="console-field__description">完整保留组件、配置接口、依赖和运行要求；由 Control Plane 校验准入。仅提交描述及 Secret 接口，不填写凭据值。</span>
+      {deployment.revisionJSONError ? <span className="console-field__error">{deployment.revisionJSONError}</span> : null}
+    </div> : <>
     <div className="application-form-grid">
       <Field label="应用 ID" description="小写字母开头，仅含小写字母、数字或连字符" error={deployment.validation.fieldErrors.applicationId} value={draft.applicationId} onChange={(event) => deployment.setDraftField("applicationId", event.target.value)} />
       <Field label="版本" description="如 1.0.0" error={deployment.validation.fieldErrors.version} value={draft.version} onChange={(event) => deployment.setDraftField("version", event.target.value)} />
@@ -1120,7 +1127,8 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
       </div>)}
       <Button size="sm" variant="outline" onClick={deployment.addDependency}>添加依赖服务</Button>
     </div>
-    <Button busy={deployment.busy} color="primary" disabled={deployment.busy || !deployment.validation.ok} onClick={() => void deployment.admitRevision()}>登记应用版本</Button>
+    </>}
+    <Button busy={deployment.busy} color="primary" disabled={deployment.busy || (deployment.registrationMode === "json" ? Boolean(deployment.revisionJSONError) : !deployment.validation.ok)} onClick={() => void deployment.admitRevision()}>登记应用版本</Button>
   </section>;
 }
 
@@ -1132,7 +1140,12 @@ function WorkspaceApplicationDeploymentCard({ deployment, selectedWorkspaceId, i
       <Field label="应用 ID" description="已准入的应用标识" value={deployment.applicationId} onChange={(event) => deployment.setApplicationId(event.target.value)} />
       <Field label="目标版本" description="该应用已准入的版本" value={deployment.targetRevision} onChange={(event) => deployment.setTargetRevision(event.target.value)} />
     </div>
-    <Button busy={deployment.busy} color="primary" disabled={!selectedWorkspaceId || deployment.busy} onClick={() => void deployment.deploy(selectedWorkspaceId)}>部署到 {selectedWorkspaceId || "…"} 工作区</Button>
+    <div className="application-form-grid">
+      <div className="console-field"><label className="console-field__label" htmlFor="application-configuration-json">运行配置 JSON</label><textarea id="application-configuration-json" rows={6} value={deployment.configurationJSON} onChange={(event) => deployment.setConfigurationJSON(event.target.value)} /><span className="console-field__description">仅允许非敏感 environment 和 files 字符串映射。</span></div>
+      <div className="console-field"><label className="console-field__label" htmlFor="application-secret-bindings-json">Secret 引用 JSON</label><textarea id="application-secret-bindings-json" rows={6} value={deployment.secretBindingsJSON} onChange={(event) => deployment.setSecretBindingsJSON(event.target.value)} /><span className="console-field__description">数组，每项仅含 name、secretRef、version、key；引用已存在的 Secret，不填写密钥值。</span></div>
+    </div>
+    {deployment.deploymentJSONError ? <p className="console-field__error" role="alert">{deployment.deploymentJSONError}</p> : null}
+    <Button busy={deployment.busy} color="primary" disabled={!selectedWorkspaceId || deployment.busy || Boolean(deployment.deploymentJSONError)} onClick={() => void deployment.deploy(selectedWorkspaceId)}>部署到 {selectedWorkspaceId || "…"} 工作区</Button>
     {presentation ? <div className="application-deployment-status">
       <div className="application-phase-steps">{presentation.steps.map((step) => <div className="application-phase-step" data-state={step.state} key={step.label}><span>{step.label}</span></div>)}</div>
       <dl className="data-list">

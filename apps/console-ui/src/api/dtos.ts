@@ -1024,3 +1024,15 @@ export interface WorkspaceApplicationRevisionAdmissionDTO {
   decision: string;
   revision: { id: string; applicationId: string; version: string; digest: string };
 }
+
+export interface WorkspaceApplicationConfigurationDTO {
+  environment?: Record<string, string>;
+  files?: Record<string, string>;
+}
+
+export interface WorkspaceApplicationSecretBindingDTO {
+  name: string;
+  secretRef: string;
+  version: string;
+  key: string;
+}

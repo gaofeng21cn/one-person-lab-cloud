@@ -24,7 +24,7 @@ func admitKnowledgeRevisionForTest(t *testing.T, server http.Handler, operator *
 		`"image":"repo.example/apps/knowledge@sha256:` + strings.Repeat("a", 64) + `",` +
 		`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
 		`"entryPort":"http",` +
-		`"resources":{"cpu":2,"memoryGb":4},"exposurePolicy":"application"}`
+		`"exposurePolicy":"application"}`
 	admitted := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions", revision, "admit-deploy-test")
 	if admitted.Code != http.StatusOK {
 		t.Fatalf("revision admission status=%d body=%s", admitted.Code, admitted.Body.String())
@@ -151,8 +151,9 @@ func TestApplicationDeploymentIntentPostgres(t *testing.T) {
 		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
 	}
 	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 12)
 	for key, value := range map[string]any{
-		"paidThrough": "2026-10-12T00:00:00Z", "periodStart": "2026-09-12T00:00:00Z", "billingAnchorDay": 12,
+		"paidThrough": paidThrough.Format(time.RFC3339Nano), "periodStart": periodStart.Format(time.RFC3339Nano), "billingAnchorDay": 12,
 	} {
 		operation.raw[key], _ = json.Marshal(value)
 	}
@@ -225,8 +226,9 @@ func seedResourceOnlyActivatedWorkspace(t *testing.T, store controlPlaneTableSto
 		operation.Attempts[stage], operation.Observations[stage] = attempt, observation
 	}
 	operation.Stage, operation.Status = contracts.StageSucceeded, contracts.StatusSucceeded
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 12)
 	for key, value := range map[string]any{
-		"paidThrough": "2026-10-12T00:00:00Z", "periodStart": "2026-09-12T00:00:00Z", "billingAnchorDay": 12,
+		"paidThrough": paidThrough.Format(time.RFC3339Nano), "periodStart": periodStart.Format(time.RFC3339Nano), "billingAnchorDay": 12,
 	} {
 		operation.raw[key], _ = json.Marshal(value)
 	}
