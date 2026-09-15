@@ -544,18 +544,19 @@ func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTab
 	if err != nil {
 		t.Fatal(err)
 	}
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 15)
 	readyFacts := map[string]any{
 		"sub2apiRedeemCode": "opl:workspace-purchase-alpha",
 		"workspaceApiKeyId": int64(19), "workspaceKeyStatus": workspaceKeyCodexGroupBound, "workspaceKeyFingerprint": "sha256:" + strings.Repeat("a", 64),
 		"chargeAttempted": true, "chargeConfirmation": map[string]any{"code": "opl:workspace-purchase-alpha", "userId": int64(41), "chargeUsdMicros": int64(52_580_000), "status": "used"},
 		"postChargeBalanceUsdMicros": int64(947_420_000), "postChargeBalanceKnown": true, "billingPeriodState": "frozen",
-		"periodStart": "2026-08-15T00:00:00Z", "paidThrough": "2026-09-15T00:00:00Z", "billingAnchorDay": 15,
+		"periodStart": periodStart.Format(time.RFC3339Nano), "paidThrough": paidThrough.Format(time.RFC3339Nano), "billingAnchorDay": 15,
 		"computeAllocationId": "compute-alpha", "computeBindingRef": "workspace-launch-alpha:compute", "storageId": "storage-alpha", "storageBindingRef": "workspace-launch-alpha:storage",
 		"attachmentId": "attachment-alpha", "attachmentBindingRef": "workspace-launch-alpha:attachment",
 		"gatewaySecretRef": "opl-gateway-ws-alpha", "gatewaySecretVersion": "v1", "secretBindingRef": "workspace-launch-alpha:secret",
 		"runtimeId": "runtime-alpha", "runtimeReady": true, "runtimeServiceName": "runtime-alpha", "runtimeBindingRef": "workspace-launch-alpha:runtime",
 		"url": "https://workspace.example/alpha", "runtimeUsername": "opl", "credentialStatus": "configured", "credentialVersion": "v1", "credentialSecretRef": "runtime-secret-alpha",
-		"activationOperationId": "workspace-launch-alpha:activation", "workspaceActivatedAt": "2026-08-15T00:01:00Z",
+		"activationOperationId": "workspace-launch-alpha:activation", "workspaceActivatedAt": periodStart.Format(time.RFC3339Nano),
 		"receiptId": "receipt-purchase-alpha", "receiptOperationId": "workspace-launch-alpha:purchase-receipt",
 	}
 	for key, value := range readyFacts {
@@ -581,7 +582,7 @@ func newWorkspaceDeleteCompletionFixtureWith(t *testing.T, store controlPlaneTab
 	}
 	ledger.purchase = clients.Receipt{ReceiptInput: purchaseInput, ReceiptID: "receipt-purchase-alpha"}
 	usedBy := int64(41)
-	usedAt := time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC)
+	usedAt := periodStart
 	sub2API.history["opl:workspace-purchase-alpha"] = clients.Sub2APIBalanceHistoryEntry{
 		Code: "opl:workspace-purchase-alpha", Type: "balance", ValueUSDMicros: -52_580_000, Status: "used", UsedBy: &usedBy, UsedAt: &usedAt,
 	}

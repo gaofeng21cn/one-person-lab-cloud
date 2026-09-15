@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -355,9 +356,31 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		targetRevision, _ := input["targetRevision"].(string)
 		var configuration contracts.WorkspaceApplicationRuntimeConfiguration
 		rawConfiguration, configErr := json.Marshal(input["configuration"])
-		if configErr != nil || json.Unmarshal(rawConfiguration, &configuration) != nil {
+		if configErr != nil {
 			writeError(w, http.StatusBadRequest, "invalid_application_configuration")
 			return
+		}
+		configurationDecoder := json.NewDecoder(bytes.NewReader(rawConfiguration))
+		configurationDecoder.DisallowUnknownFields()
+		if configurationDecoder.Decode(&configuration) != nil {
+			writeError(w, http.StatusBadRequest, "invalid_application_configuration")
+			return
+		}
+		// Operators bind installation-provisioned Secrets by immutable reference;
+		// values and ownership remain with Fabric's scoped Secret store.
+		var requestedBindings []contracts.WorkspaceApplicationRuntimeSecretBinding
+		if supplied, exists := input["secretBindings"]; exists {
+			encoded, err := json.Marshal(supplied)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_secret_bindings")
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&requestedBindings); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_secret_bindings")
+				return
+			}
 		}
 		if _, supplied := input["configurationDigest"]; supplied {
 			writeError(w, http.StatusBadRequest, "client_configuration_digest_forbidden")
@@ -381,6 +404,17 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 			return
 		}
 		clientConfigurationDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(clientConfiguration))
+		if len(requestedBindings) > 0 {
+			// Freeze the client command in Workspace scope, before resolving its
+			// application data binding. The runtime digest is computed separately.
+			// The existing canonical digest sorts and validates bindings. Preserve
+			// the established empty-binding command identity for OPL installations.
+			clientConfigurationDigest, err = contracts.WorkspaceApplicationConfigurationDigest(configuration, requestedBindings, workspaceID)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_secret_bindings")
+				return
+			}
+		}
 		// Replay the accepted client command before resolving credentials or
 		// configuration from the currently selected application.
 		priorRow, replayed, err := app.tables.GetRuntimeOperation(r.Context(), workspaceApplicationDeploymentOperationID(workspaceID, key))
@@ -397,7 +431,7 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 			writeJSON(w, http.StatusAccepted, map[string]any{"intent": prior})
 			return
 		}
-		var secretBindings []contracts.WorkspaceApplicationRuntimeSecretBinding
+		secretBindings := requestedBindings
 		var workspaceAPIKeyID int64
 		// OPL credentials are resolved by the CP owner, never accepted as arbitrary application input.
 		revisionRow, admitted, revisionErr := app.tables.AdmittedApplicationRevision(r.Context(), applicationID, targetRevision)
@@ -412,7 +446,12 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 				return
 			}
 			if revision.RuntimeProfile == "opl_app" {
+				if len(requestedBindings) > 0 {
+					writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
+					return
+				}
 				requestedEnvironment := configuration.Environment
+				requestedFiles := configuration.Files
 				var prepErr error
 				configuration, secretBindings, workspaceAPIKeyID, prepErr = app.workspaceOPLApplicationConfiguration(r.Context(), service, workspaceID, applicationID)
 				if prepErr != nil {
@@ -428,6 +467,7 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 					}
 					configuration.Environment[name] = value
 				}
+				configuration.Files = requestedFiles
 			}
 		}
 		intent, err := app.createWorkspaceApplicationDeploymentIntent(

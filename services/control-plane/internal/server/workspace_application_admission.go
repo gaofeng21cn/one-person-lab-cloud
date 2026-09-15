@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,7 +68,9 @@ func registerApplicationRevisionRoutes(mux *http.ServeMux, app *controlPlaneServ
 			return
 		}
 		var revision contracts.WorkspaceApplicationRevision
-		if json.Unmarshal(encoded, &revision) != nil {
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&revision) != nil {
 			writeError(w, http.StatusBadRequest, "invalid_application_revision")
 			return
 		}

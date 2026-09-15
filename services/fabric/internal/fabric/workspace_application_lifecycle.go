@@ -151,6 +151,14 @@ func (s *Service) workspaceApplicationLifecycle(ctx context.Context, input Works
 			}
 			result, err = provider.SetWorkspaceApplicationRuntimeLifecycle(mutationCtx, creation, input.DesiredState)
 		}
+		if err == nil && input.DesiredState == "running" && result.State != "running" {
+			advanced, advanceErr := s.resumeDeferredApplicationStartup(ctx, creation)
+			err = advanceErr
+			if advanced && err == nil {
+				result, err = provider.ReadWorkspaceApplicationRuntimeLifecycle(ctx, creation)
+			}
+		}
+
 		validationErr := validateApplicationLifecycleResult(creation, result)
 		err = errors.Join(err, validationErr)
 		previous := stored
@@ -172,6 +180,42 @@ func (s *Service) workspaceApplicationLifecycle(ctx context.Context, input Works
 	})
 	return result, err
 }
+
+// Lifecycle running is an existing authorized mutation under the Workspace lock.
+// It may resume a never-completed startup, but never recreate lost components of
+// a previously successful or failed creation operation.
+func (s *Service) resumeDeferredApplicationStartup(ctx context.Context, input WorkspaceApplicationRuntimeInput) (bool, error) {
+	stored, found, err := s.runtimeOperationQueries.OperationByResourceActionIdempotency(ctx, "workspace_application_runtime", applicationRuntimeID(input), "create_workspace_application_runtime", input.RuntimeOperationID)
+	if err != nil {
+		return false, err
+	}
+	if !found || stored.RequestHash != applicationRuntimeRequestHash(input) {
+		return false, ErrRuntimeIdempotencyConflict
+	}
+	// Transport-only keys are not persisted in the creation DTO. Restore them
+	// from the already identity-validated durable claim, not the lifecycle key.
+	input.IdempotencyKey = stored.IdempotencyKey
+	input.OperationID = stored.IdempotencyKey
+	resume, err := s.workspaceApplicationStartupContinuation(ctx, stored, input)
+	if err != nil || !resume {
+		return false, err
+	}
+	s.mu.Lock()
+	compute, volume, attachment := s.computes[input.ComputeID], s.volumes[input.VolumeID], s.attachments[input.AttachmentID]
+	s.mu.Unlock()
+	if err := s.validateWorkspaceApplicationRuntimeInput(input, compute, volume, attachment); err != nil {
+		return false, err
+	}
+	if err := s.validateApplicationDataLayout(ctx, input); err != nil {
+		return false, err
+	}
+	_, err = s.advanceWorkspaceApplicationCreation(ctx, input, stored, compute, volume)
+	if errors.Is(err, ErrWorkspaceLaunchPending) {
+		err = nil
+	}
+	return true, err
+}
+
 func validateApplicationLifecycleResult(input WorkspaceApplicationRuntimeInput, result WorkspaceApplicationRuntimeLifecycleResult) error {
 	if result.RuntimeID != applicationRuntimeID(input) || result.WorkspaceID != input.WorkspaceID {
 		return ErrRuntimeIdempotencyConflict

@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   composeWorkspaceApplicationRevision,
+  parseWorkspaceApplicationRevisionJSON,
+  parseWorkspaceApplicationDeploymentJSON,
   emptyWorkspaceApplicationRevisionDraft,
   presentWorkspaceApplicationComponentState,
   presentWorkspaceApplicationDeploymentPhase,
@@ -147,4 +149,29 @@ test("A tag reference from the registry never passes validation as an image", ()
   }));
   assert.equal(validation.ok, false);
   assert.match(String(validation.fieldErrors.image), /sha256/);
+});
+
+
+test("Publisher JSON preserves complete component inputs and execution without re-composition", () => {
+  const revision = { applicationId: "knowledge-app", version: "1", image: "repo/app@sha256:" + "a".repeat(64),
+    entrypoint: ["app", "serve"], execution: { userId: 1000, init: true }, configInputs: [{ name: "settings", target: "/etc/app/settings" }],
+    dependencies: [{ name: "database", image: "repo/db@sha256:" + "b".repeat(64), dependsOn: ["bootstrap"],
+      command: { argv: ["database"], env: { MODE: "stable" } }, execution: { userId: 1001 },
+      secretInputs: [{ name: "password", env: "DB_PASSWORD" }], persistentMounts: [{ name: "db", mountPath: "/var/lib/db", readOnly: false }] }] };
+  assert.deepEqual(parseWorkspaceApplicationRevisionJSON(JSON.stringify(revision)), revision);
+  for (const text of ["{", "[]", "null", "{}", '{"applicationId":"app","version":1}']) {
+    assert.throws(() => parseWorkspaceApplicationRevisionJSON(text));
+  }
+});
+
+test("Deployment JSON preserves files and only accepts immutable Secret reference fields", () => {
+  const configuration = { environment: { APP_MODE: "stable" }, files: { settings: "line 1\nline 2" } };
+  const secretBindings = [{ name: "database", secretRef: "secret-db", version: "v1", key: "password" }];
+  assert.deepEqual(parseWorkspaceApplicationDeploymentJSON(JSON.stringify(configuration), JSON.stringify(secretBindings)), { configuration, secretBindings });
+  for (const value of [{ files: { settings: 1 } }, { environment: [] }, { credentialVersion: "x" }, { files: null }]) {
+    assert.throws(() => parseWorkspaceApplicationDeploymentJSON(JSON.stringify(value), "[]"));
+  }
+  for (const value of [null, {}, [{ ...secretBindings[0], value: "not-accepted" }], [{ ...secretBindings[0], key: "" }], [{ name: "database", secretRef: "db" }]]) {
+    assert.throws(() => parseWorkspaceApplicationDeploymentJSON("{}", JSON.stringify(value)));
+  }
 });

@@ -27,28 +27,25 @@ func applicationEnvironmentArgs(input WorkspaceApplicationRuntimeInput) []string
 }
 
 func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationRuntimeInput) (map[string]string, localDockerGatewayMetadata, error) {
-	files := map[string]string{}
-	if len(input.SecretBindings) == 0 && input.Revision.RuntimeProfile != "opl_app" {
+	files, _, err := p.applicationDeclaredSecrets(input, input.Revision.SecretInputs)
+	if err != nil {
+		return nil, localDockerGatewayMetadata{}, err
+	}
+	if input.Revision.RuntimeProfile != "opl_app" {
 		return files, localDockerGatewayMetadata{}, nil
 	}
 	binding, err := workspaceApplicationGatewayBinding(input)
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	source, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
+	_, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
 	if err != nil {
 		return nil, metadata, err
 	}
-	if metadata.AccountID != input.AccountID || metadata.WorkspaceID != input.WorkspaceID || metadata.Version != binding.Version || len(input.SecretBindings) != 1 {
+	if metadata.AccountID != input.AccountID || metadata.WorkspaceID != input.WorkspaceID || metadata.Version != binding.Version {
 		return nil, metadata, ErrLaunchStageBindingConflict
 	}
 
-	for _, declared := range input.Revision.SecretInputs {
-		if declared.Name != binding.Name {
-			return nil, metadata, errors.New("local_docker_application_secret_binding_unsupported")
-		}
-		files[declared.Target] = filepath.Join(source, localDockerGatewayKeyFile)
-	}
 	credentialPath := filepath.Join(p.gatewaySecretRoot, "application-credentials", applicationRuntimeID(input))
 	files["/run/secrets/opl_webui_password"] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
 	files["/run/secrets/webui_session_secret"] = filepath.Join(credentialPath, localDockerWebUISessionSecretFile)
@@ -56,20 +53,7 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 }
 
 func (p *LocalDockerProvider) applicationSecretMountArgs(input WorkspaceApplicationRuntimeInput) ([]string, error) {
-	files, _, err := p.applicationSecretFiles(input)
-	if err != nil {
-		return nil, err
-	}
-	targets := make([]string, 0, len(files))
-	for target := range files {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-	args := []string{}
-	for _, target := range targets {
-		args = append(args, "--mount", "type=bind,source="+files[target]+",target="+target+",readonly,bind-propagation=rprivate")
-	}
-	return args, nil
+	return p.applicationComponentSecretArgs(input, "main", input.Revision.SecretInputs)
 }
 
 func (p *LocalDockerProvider) verifyApplicationConfiguration(input WorkspaceApplicationRuntimeInput, container dockerContainerInspect) error {
@@ -122,7 +106,7 @@ func (p *LocalDockerProvider) verifyApplicationConfiguration(input WorkspaceAppl
 			return errors.New("local_docker_application_secret_mount_mismatch")
 		}
 	}
-	return nil
+	return p.verifyApplicationDeclaredSecrets(input, container, input.Revision.SecretInputs)
 }
 func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeCredentials(ctx context.Context, input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
 	_, _, err := p.applicationSecretFiles(input)

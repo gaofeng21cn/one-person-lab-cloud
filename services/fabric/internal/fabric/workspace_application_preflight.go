@@ -44,6 +44,17 @@ func (p *LocalDockerProvider) PreflightWorkspaceApplicationRuntime(ctx context.C
 	if _, err := p.readStorageDirectories(volume); err != nil {
 		return err
 	}
+	if err := validateWorkspaceApplicationConfiguration(input); err != nil {
+		return err
+	}
+	if err := p.validateApplicationExecutions(input); err != nil {
+		return err
+	}
+	for _, dependency := range input.Revision.Dependencies {
+		if _, _, err := p.applicationDeclaredSecrets(input, dependency.SecretInputs); err != nil {
+			return err
+		}
+	}
 	if _, _, err := p.applicationSecretFiles(input); err != nil {
 		return err
 	}
@@ -58,8 +69,8 @@ func (p *TencentProvider) PreflightWorkspaceApplicationRuntime(ctx context.Conte
 	if err := p.validateInstallationConfig(); err != nil {
 		return err
 	}
-	if len(input.Revision.HealthChecks) > 1 {
-		return errors.New("tencent_application_health_checks_unsupported")
+	if err := validateTencentApplicationCapabilities(input.Revision); err != nil {
+		return err
 	}
 	for _, binding := range input.SecretBindings {
 		if _, err := p.readApplicationBoundSecret(ctx, input, binding); err != nil {

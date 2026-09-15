@@ -140,12 +140,23 @@ func (s *Service) createWorkspaceApplicationRuntime(ctx context.Context, input W
 		if stored.RequestHash != requestHash {
 			return contracts.WorkspaceApplicationRuntimeObservation{}, ErrRuntimeIdempotencyConflict
 		}
-		return s.replayWorkspaceApplicationRuntime(ctx, stored, input)
+		resume, err := s.workspaceApplicationStartupContinuation(ctx, stored, input)
+		if err != nil {
+			return contracts.WorkspaceApplicationRuntimeObservation{}, err
+		}
+		if !resume {
+			return s.replayWorkspaceApplicationRuntime(ctx, stored, input)
+		}
 	}
+	return s.advanceWorkspaceApplicationCreation(ctx, input, stored, compute, volume)
+}
+
+func (s *Service) advanceWorkspaceApplicationCreation(ctx context.Context, input WorkspaceApplicationRuntimeInput, stored FabricOperation, compute ComputeAllocation, volume StorageVolume) (contracts.WorkspaceApplicationRuntimeObservation, error) {
+
 	observation, record, ensureErr := s.ensureWorkspaceApplicationRuntime(ctx, input, stored, compute, volume)
 	if errors.Is(ensureErr, ErrWorkspaceLaunchPending) {
-		// Components are still coming up; the claim stays started so the next
-		// replay resolves by readback.
+		// Keep the claim started. Reads only observe readiness; a repeated Create
+		// may advance components recorded as deferred by their prerequisites.
 		if err := s.saveWorkspaceApplicationRuntimeOperation(ctx, stored, "started", record, nil); err != nil {
 			return observation, err
 		}
@@ -162,6 +173,47 @@ func (s *Service) createWorkspaceApplicationRuntime(ctx context.Context, input W
 		return observation, err
 	}
 	return observation, nil
+}
+
+// Only an authorized repeat of Create may continue a dependency-gated startup.
+// A saved pending observation identifies nodes never created; missing nodes
+// previously observed present are drift, not permission to recreate resources.
+func (s *Service) workspaceApplicationStartupContinuation(ctx context.Context, stored FabricOperation, input WorkspaceApplicationRuntimeInput) (bool, error) {
+	if stored.Status != "started" {
+		return false, nil
+	}
+	var record workspaceApplicationRuntimeRecord
+	if !decodeOperationResource(stored, &record) || record.Observation.Status != "pending" {
+		return false, nil
+	}
+	previous := map[string]string{}
+	for _, component := range record.Observation.Components {
+		previous[component.Name] = component.State
+	}
+	hasDeferred := false
+	for _, component := range record.Observation.Components {
+		hasDeferred = hasDeferred || component.State == "absent"
+	}
+	if !hasDeferred {
+		return false, nil
+	}
+	live, err := s.readWorkspaceApplicationRuntime(ctx, input)
+	if err != nil {
+		return false, err
+	}
+	if live.Status != "pending" {
+		return false, nil
+	}
+	deferred := false
+	for _, component := range live.Components {
+		if component.State == "absent" {
+			if previous[component.Name] != "absent" {
+				return false, nil
+			}
+			deferred = true
+		}
+	}
+	return deferred, nil
 }
 
 func (s *Service) ensureWorkspaceApplicationRuntime(ctx context.Context, input WorkspaceApplicationRuntimeInput, operation FabricOperation, compute ComputeAllocation, volume StorageVolume) (contracts.WorkspaceApplicationRuntimeObservation, workspaceApplicationRuntimeRecord, error) {

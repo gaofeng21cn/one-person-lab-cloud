@@ -7,10 +7,10 @@ import (
 
 func validDependency() WorkspaceApplicationDependency {
 	return WorkspaceApplicationDependency{
-		Name:  "mysql",
-		Image: "registry.example/oplcloud/ibd-mysql@sha256:" + strings.Repeat("a", 64),
-		Ports: []WorkspaceApplicationDependencyPort{{Name: "mysql", Port: 3306, Protocol: "TCP"}},
-		HealthChecks: []WorkspaceApplicationDependencyHealthCheck{{Type: "tcp", Port: 3306, InitialDelaySeconds: 10}},
+		Name:             "mysql",
+		Image:            "registry.example/oplcloud/ibd-mysql@sha256:" + strings.Repeat("a", 64),
+		Ports:            []WorkspaceApplicationDependencyPort{{Name: "mysql", Port: 3306, Protocol: "TCP"}},
+		HealthChecks:     []WorkspaceApplicationDependencyHealthCheck{{Type: "tcp", Port: 3306, InitialDelaySeconds: 10}},
 		PersistentMounts: []WorkspaceApplicationDependencyMount{{Name: "data", MountPath: "/var/lib/mysql"}},
 		Command: WorkspaceApplicationDependencyCommand{
 			Args: []string{"--max_connections=1000", "--character-set-server=utf8mb4"},
@@ -28,10 +28,12 @@ func TestValidateWorkspaceApplicationDependencyAcceptsFullSpec(t *testing.T) {
 
 func TestValidateWorkspaceApplicationDependencyRejections(t *testing.T) {
 	cases := map[string]func(*WorkspaceApplicationDependency){
-		"bad name":       func(d *WorkspaceApplicationDependency) { d.Name = "MySQL" },
-		"bad image":      func(d *WorkspaceApplicationDependency) { d.Image = "registry.example/mysql:8" },
-		"bad port name":  func(d *WorkspaceApplicationDependency) { d.Ports[0].Name = "MySQL" },
-		"port conflict":  func(d *WorkspaceApplicationDependency) { d.Ports = append(d.Ports, WorkspaceApplicationDependencyPort{Name: "x", Port: 3306, Protocol: "TCP"}) },
+		"bad name":      func(d *WorkspaceApplicationDependency) { d.Name = "MySQL" },
+		"bad image":     func(d *WorkspaceApplicationDependency) { d.Image = "registry.example/mysql:8" },
+		"bad port name": func(d *WorkspaceApplicationDependency) { d.Ports[0].Name = "MySQL" },
+		"port conflict": func(d *WorkspaceApplicationDependency) {
+			d.Ports = append(d.Ports, WorkspaceApplicationDependencyPort{Name: "x", Port: 3306, Protocol: "TCP"})
+		},
 		"bad protocol":   func(d *WorkspaceApplicationDependency) { d.Ports[0].Protocol = "HTTP" },
 		"bad check type": func(d *WorkspaceApplicationDependency) { d.HealthChecks[0].Type = "icmp" },
 		"tcp with path":  func(d *WorkspaceApplicationDependency) { d.HealthChecks[0].Path = "/health" },
@@ -59,9 +61,9 @@ func TestValidateWorkspaceApplicationDependencyRejections(t *testing.T) {
 func TestRevisionValidationCoversDependencySpec(t *testing.T) {
 	revision := WorkspaceApplicationRevision{
 		SchemaVersion: 1, ApplicationID: "chaokang-agent-ibd", Version: "20260909",
-		Platform: "linux/amd64",
-		Image:    "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:" + strings.Repeat("2", 64),
-		Ports: []WorkspaceApplicationPort{{Name: "webui", Port: 8082, Protocol: "TCP"}},
+		Platform:  "linux/amd64",
+		Image:     "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:" + strings.Repeat("2", 64),
+		Ports:     []WorkspaceApplicationPort{{Name: "webui", Port: 8082, Protocol: "TCP"}},
 		EntryPort: "webui", ExposurePolicy: "application",
 	}
 	dependency := validDependency()

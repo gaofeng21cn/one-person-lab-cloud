@@ -195,6 +195,7 @@ type dockerContainerInspect struct {
 	Name   string `json:"Name"`
 	Image  string `json:"Image"`
 	Config struct {
+		User        string            `json:"User"`
 		Image       string            `json:"Image"`
 		Env         []string          `json:"Env"`
 		Labels      map[string]string `json:"Labels"`
@@ -222,16 +223,19 @@ type dockerContainerInspect struct {
 		Networks map[string]dockerEndpointSettings `json:"Networks"`
 	} `json:"NetworkSettings"`
 	HostConfig struct {
-		NanoCPUs   int64             `json:"NanoCpus"`
-		Memory     int64             `json:"Memory"`
-		MemorySwap int64             `json:"MemorySwap"`
-		Mounts     []dockerHostMount `json:"Mounts"`
+		Init        *bool             `json:"Init"`
+		SecurityOpt []string          `json:"SecurityOpt"`
+		Tmpfs       map[string]string `json:"Tmpfs"`
+		NanoCPUs    int64             `json:"NanoCpus"`
+		Memory      int64             `json:"Memory"`
+		MemorySwap  int64             `json:"MemorySwap"`
+		Mounts      []dockerHostMount `json:"Mounts"`
 	} `json:"HostConfig"`
 	Mounts []dockerRuntimeMount `json:"Mounts"`
 }
 
 type dockerEndpointSettings struct {
-	NetworkID  string `json:"NetworkID"`
+	NetworkID string `json:"NetworkID"`
 	IPAddress string `json:"IPAddress"`
 }
 

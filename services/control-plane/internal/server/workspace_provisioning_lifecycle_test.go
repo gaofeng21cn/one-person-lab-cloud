@@ -87,16 +87,17 @@ func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixt
 	if operation.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly {
 		t.Fatal("lifecycle fixture launch must be resource-only")
 	}
+	periodStart, paidThrough := workspaceFixtureCurrentBillingPeriod(time.Now(), 15)
 	readyFacts := map[string]any{
 		"sub2apiRedeemCode":          "opl:workspace-purchase-alpha",
 		"chargeAttempted":            true,
 		"chargeConfirmation":         map[string]any{"code": "opl:workspace-purchase-alpha", "userId": int64(41), "chargeUsdMicros": int64(52_580_000), "status": "used"},
 		"postChargeBalanceUsdMicros": int64(947_420_000), "postChargeBalanceKnown": true, "billingPeriodState": "frozen",
-		"periodStart": "2026-08-15T00:00:00Z", "paidThrough": "2026-09-15T00:00:00Z", "billingAnchorDay": 15,
+		"periodStart": periodStart.Format(time.RFC3339Nano), "paidThrough": paidThrough.Format(time.RFC3339Nano), "billingAnchorDay": 15,
 		"computeAllocationId": "compute-alpha", "computeBindingRef": "workspace-launch-alpha:ensure_compute_allocation",
 		"storageId": "storage-alpha", "storageBindingRef": "workspace-launch-alpha:storage",
 		"attachmentId": "attachment-alpha", "attachmentBindingRef": "workspace-launch-alpha:attachment",
-		"activationOperationId": "workspace-launch-alpha:activation", "workspaceActivatedAt": "2026-08-15T00:01:00Z",
+		"activationOperationId": "workspace-launch-alpha:activation", "workspaceActivatedAt": periodStart.Format(time.RFC3339Nano),
 		"receiptId": "receipt-purchase-alpha", "receiptOperationId": "workspace-launch-alpha:purchase-receipt",
 	}
 	for key, value := range readyFacts {
