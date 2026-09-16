@@ -239,16 +239,6 @@ func (f *fakeTencentKubectl) setAllReady() {
 	}
 }
 
-func (f *fakeTencentKubectl) setEntryReady() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, resource := range f.resources {
-		if resource["kind"] == "Ingress" {
-			resource["status"] = map[string]any{"loadBalancer": map[string]any{"ingress": []any{map[string]any{"hostname": "lb.example"}}}}
-		}
-	}
-}
-
 func applicationObjectCopy(value any) map[string]any {
 	var result map[string]any
 	if err := json.Unmarshal(mustJSON(value), &result); err != nil {
@@ -258,7 +248,7 @@ func applicationObjectCopy(value any) map[string]any {
 }
 
 // Validate the Kubernetes fields implicated in the application admission bugs.
-// LabelSelectors use the actual Kubernetes type and parser; Service and Ingress
+// LabelSelectors use the actual Kubernetes type and parser; Service
 // checks exercise their port/path requirements without contacting a cluster.
 func decodeTencentApplicationListItems(t *testing.T, input WorkspaceApplicationRuntimeInput) []map[string]any {
 	t.Helper()
@@ -305,18 +295,6 @@ func validateApplicationManifestObjects(items []map[string]any) error {
 			ports, _ := spec["ports"].([]any)
 			if len(ports) == 0 && spec["clusterIP"] != "None" {
 				return errors.New("ClusterIP Service requires ports")
-			}
-		case "Ingress":
-			rules, _ := spec["rules"].([]any)
-			for _, value := range rules {
-				rule, _ := value.(map[string]any)
-				paths, _ := nested(rule, "http", "paths").([]any)
-				for _, value := range paths {
-					path, _ := value.(map[string]any)
-					if !strings.HasPrefix(stringValue(path["path"]), "/") && (path["pathType"] == "Prefix" || path["pathType"] == "Exact") {
-						return errors.New("Ingress Prefix/Exact path must be absolute")
-					}
-				}
 			}
 		case "NetworkPolicy":
 			if err := selector(spec["podSelector"]); err != nil {
@@ -431,14 +409,14 @@ func TestTencentApplicationRuntimeEnsureAppliesAndReportsPending(t *testing.T) {
 		t.Fatalf("apply calls=%d", fake.applyCount())
 	}
 	manifest := fake.applies[0]
-	if len(manifest) != 5 {
-		t.Fatalf("manifest items=%d, want only the admitted dependency deployment/service, policies and ingress", len(manifest))
+	if len(manifest) != 3 {
+		t.Fatalf("manifest items=%d, want only the admitted dependency deployment, service and the application policy", len(manifest))
 	}
 	kinds := map[string]int{}
 	for _, item := range manifest {
 		kinds[item["kind"].(string)]++
 	}
-	if kinds["Deployment"] != 1 || kinds["Service"] != 1 || kinds["NetworkPolicy"] != 2 || kinds["Ingress"] != 1 {
+	if kinds["Deployment"] != 1 || kinds["Service"] != 1 || kinds["NetworkPolicy"] != 1 {
 		t.Fatalf("manifest kinds=%v", kinds)
 	}
 }
@@ -449,7 +427,6 @@ func TestTencentApplicationRuntimeReadyAfterDeploymentsConverge(t *testing.T) {
 		t.Fatalf("first ensure err=%v", err)
 	}
 	completeTencentApplicationStartup(t, provider, fake, input)
-	fake.setEntryReady()
 	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume())
 	if err != nil || observation.Status != "ready" || len(observation.Components) != 2 {
 		t.Fatalf("ready observation=%#v err=%v", observation, err)
@@ -505,7 +482,9 @@ func TestTencentApplicationRuntimeManifestBindsWorkspaceData(t *testing.T) {
 	}
 }
 
-func TestTencentApplicationRuntimeIngressHonorsExposurePolicy(t *testing.T) {
+// The installation serves applications through its own gateway, so the adapter
+// publishes one resolved destination and creates no entry object of its own.
+func TestTencentApplicationRuntimeEntryFollowsExposurePolicy(t *testing.T) {
 	provider, fake, input := tencentApplicationRuntimeFixture(t)
 	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
 		t.Fatalf("first ensure err=%v", err)
@@ -514,27 +493,24 @@ func TestTencentApplicationRuntimeIngressHonorsExposurePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := string(encoded)
-	if !strings.Contains(manifest, `"kind":"Ingress"`) {
-		t.Fatalf("application exposure must create the entry ingress: %s", manifest)
+	if strings.Contains(string(encoded), `"kind":"Ingress"`) {
+		t.Fatalf("the adapter must not create an entry object of its own: %s", encoded)
 	}
-	host := workspaceApplicationIngressHost(input)
-	if !strings.Contains(manifest, host) || !strings.Contains(manifest, `"name":"`+workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)+`"`) {
-		t.Fatalf("ingress must route the application host to the main component service: %s", manifest)
+	completeTencentApplicationStartup(t, provider, fake, input)
+	published, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
+	if err != nil || published.Status != "ready" {
+		t.Fatalf("published=%#v err=%v", published, err)
+	}
+	expected := &contracts.WorkspaceApplicationEntry{ServiceName: workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), Port: 8080}
+	if published.Entry == nil || *published.Entry != *expected {
+		t.Fatalf("entry=%#v want %#v", published.Entry, expected)
 	}
 
-	fake.applies = nil
 	private := input
 	private.Revision.ExposurePolicy = "cloud_private"
-	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), private, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
-		t.Fatalf("private ensure err=%v", err)
-	}
-	encodedPrivate, err := json.Marshal(fake.applies[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encodedPrivate), `"kind":"Ingress"`) {
-		t.Fatalf("cloud-private application must stay cluster-internal: %s", encodedPrivate)
+	privateObservation, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), private)
+	if err != nil || privateObservation.Status != "ready" || privateObservation.Entry != nil {
+		t.Fatalf("a cluster-private application publishes no entry: %#v err=%v", privateObservation, err)
 	}
 }
 
@@ -578,71 +554,15 @@ func TestTencentApplicationRuntimeReadbackRequiresCurrentOwnedReadyImage(t *test
 				t.Fatal(err)
 			}
 			completeTencentApplicationStartup(t, provider, fake, input)
-			fake.setEntryReady()
 			if observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err != nil || observed.Status != "ready" {
 				t.Fatalf("baseline=%#v err=%v", observed, err)
 			}
 			tc.change(fake, workspaceApplicationComponentResourceName(input, "main"))
 			observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-			if err != nil || observed.Status != tc.status || observed.EntryURL != "" {
+			if err != nil || observed.Status != tc.status || observed.Entry != nil {
 				t.Fatalf("readback=%#v err=%v", observed, err)
 			}
 		})
-	}
-}
-
-func TestTencentApplicationRuntimeEntryRequiresLiveControllerRoute(t *testing.T) {
-	provider, fake, input := tencentApplicationRuntimeFixture(t)
-	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
-		t.Fatal(err)
-	}
-	completeTencentApplicationStartup(t, provider, fake, input)
-	read := func() contracts.WorkspaceApplicationRuntimeObservation {
-		t.Helper()
-		observation, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return observation
-	}
-	if observation := read(); observation.Status != "pending" || observation.Components[0].State != "pending" || observation.EntryURL != "" {
-		t.Fatalf("a required entry must keep the main component pending until its route is published: %#v", observation)
-	}
-	ingress := fake.resources["Ingress:"+workspaceApplicationComponentResourceName(input, "entry")]
-	fake.setEntryReady()
-	if observation := read(); observation.Status != "ready" || observation.Components[0].State != "ready" || observation.EntryURL != "http://"+workspaceApplicationIngressHost(input)+"/" {
-		t.Fatalf("controller admitted HTTP route=%#v", observation)
-	}
-	rules := nested(ingress, "spec", "rules").([]any)
-	rules[0].(map[string]any)["host"] = "other.example"
-	if observation := read(); observation.Status != "pending" || observation.Components[0].State != "pending" || observation.EntryURL != "" {
-		t.Fatalf("foreign route=%#v", observation)
-	}
-}
-
-func TestTencentApplicationRuntimeEntryUsesAdmittedClusterDefaultClass(t *testing.T) {
-	provider, fake, input := tencentApplicationRuntimeFixture(t)
-	t.Setenv("OPL_INGRESS_CLASS", "")
-	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
-		t.Fatal(err)
-	}
-	completeTencentApplicationStartup(t, provider, fake, input)
-	ingress := fake.resources["Ingress:"+workspaceApplicationComponentResourceName(input, "entry")]
-	spec := ingress["spec"].(map[string]any)
-	if _, declared := spec["ingressClassName"]; declared {
-		t.Fatal("the adapter must not invent an installation Ingress class")
-	}
-	// The Kubernetes admission/controller owns selection when no class is set.
-	spec["ingressClassName"] = "cluster-default"
-	fake.setEntryReady()
-	observation, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-	if err != nil || observation.Status != "ready" || observation.EntryURL == "" {
-		t.Fatalf("default controller route=%#v err=%v", observation, err)
-	}
-	t.Setenv("OPL_INGRESS_CLASS", "explicit-class")
-	observation, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-	if err != nil || observation.Status != "pending" || observation.EntryURL != "" {
-		t.Fatalf("a different explicit class must not use the old controller: %#v err=%v", observation, err)
 	}
 }
 
@@ -660,14 +580,14 @@ func TestTencentApplicationRuntimeDoesNotRequireAnUndeclaredOrPrivateEntry(t *te
 			}
 			completeTencentApplicationStartup(t, provider, fake, input)
 			observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-			if err != nil || observed.Status != "ready" || observed.Components[0].State != "ready" || observed.EntryURL != "" {
+			if err != nil || observed.Status != "ready" || observed.Components[0].State != "ready" || observed.Entry != nil {
 				t.Fatalf("entry not required: observation=%#v err=%v", observed, err)
 			}
 		})
 	}
 }
 
-func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedPublicEntry(t *testing.T) {
+func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedEntryPorts(t *testing.T) {
 	_, _, input := tencentApplicationRuntimeFixture(t)
 	input.Revision.Ports = append(input.Revision.Ports,
 		contracts.WorkspaceApplicationPort{Name: "admin", Port: 9000, Protocol: "TCP"},
@@ -686,25 +606,13 @@ func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedPublicEntry(t *tes
 	for _, item := range manifest.Items {
 		spec, _ := item["spec"].(map[string]any)
 		name := stringValue(nested(item, "metadata", "name"))
+		if item["kind"] == "Ingress" {
+			t.Fatal("the adapter must not publish an entry object of its own")
+		}
 		switch {
 		case item["kind"] == "Service" && strings.HasSuffix(name, "retrieval"):
 			if spec["clusterIP"] != "None" || spec["ports"] != nil {
 				t.Fatalf("dependency DNS service=%#v", spec)
-			}
-		case item["kind"] == "NetworkPolicy" && strings.HasSuffix(name, "application-entry"):
-			selector := nested(spec, "podSelector", "matchLabels").(map[string]any)
-			if selector["app.kubernetes.io/instance"] != workspaceApplicationComponentResourceName(input, "main") {
-				t.Fatalf("public scope=%#v", selector)
-			}
-			rule := spec["ingress"].([]any)[0].(map[string]any)
-			ports := rule["ports"].([]any)
-			if rule["from"] != nil || len(ports) != 1 || number(ports[0].(map[string]any)["port"]) != 9000 {
-				t.Fatalf("public ingress=%#v", rule)
-			}
-		case item["kind"] == "Ingress":
-			path := spec["rules"].([]any)[0].(map[string]any)["http"].(map[string]any)["paths"].([]any)[0].(map[string]any)
-			if path["path"] != "/" || number(nested(path, "backend", "service", "port", "number")) != 9000 || spec["ingressClassName"] != "qcloud" {
-				t.Fatalf("selected route=%#v", item)
 			}
 		case item["kind"] == "Deployment" && strings.HasSuffix(name, "-main"):
 			command := firstContainerField(item, "command").([]any)
@@ -722,9 +630,11 @@ func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedPublicEntry(t *tes
 			}
 		}
 	}
+	// Every declared application port stays reachable inside the application
+	// network; nothing is published merely because a port exists.
 	input.Revision.EntryPort = ""
-	if workspaceApplicationIngress(input, tencentApplicationCompute(), nil) != nil || workspaceApplicationPublicEntryPolicy(input, nil) != nil {
-		t.Fatal("service ports alone must not imply a public HTTP entry")
+	if entry, published := contracts.WorkspaceApplicationEntryPort(input.Revision); published {
+		t.Fatalf("service ports alone must not imply a published entry: %#v", entry)
 	}
 	input.Revision.PersistentMounts, input.Revision.ScratchMounts = nil, nil
 	main := contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0]
@@ -744,7 +654,7 @@ func TestTencentApplicationRuntimeRejectsUnsupportedHealthChecksBeforeApply(t *t
 }
 
 func TestTencentApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) {
-	for _, kind := range []string{"Deployment", "ReplicaSet", "Pod", "Service", "Ingress"} {
+	for _, kind := range []string{"Deployment", "ReplicaSet", "Pod", "Service"} {
 		for _, account := range []string{"", "acct-foreign"} {
 			t.Run(kind+"/account="+account, func(t *testing.T) {
 				provider, fake, input := tencentApplicationRuntimeFixture(t)
@@ -752,7 +662,6 @@ func TestTencentApplicationRuntimeReadbackRejectsAccountDrift(t *testing.T) {
 					t.Fatal(err)
 				}
 				completeTencentApplicationStartup(t, provider, fake, input)
-				fake.setEntryReady()
 				if observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input); err != nil || observed.Status != "ready" {
 					t.Fatalf("baseline=%#v err=%v", observed, err)
 				}
@@ -798,13 +707,12 @@ func TestTencentApplicationLifecycleTargetsOneGenerationAndRetainsSuccessor(t *t
 	}
 	completeTencentApplicationStartup(t, provider, fake, old)
 	completeTencentApplicationStartup(t, provider, fake, next)
-	fake.setEntryReady()
 	oldLive, err := provider.ReadWorkspaceApplicationRuntime(ctx, old)
 	if err != nil || oldLive.Status != "ready" {
 		t.Fatalf("old ready=%#v err=%v", oldLive, err)
 	}
 	nextLive, err := provider.ReadWorkspaceApplicationRuntime(ctx, next)
-	if err != nil || nextLive.Status != "ready" || oldLive.EntryURL == nextLive.EntryURL {
+	if err != nil || nextLive.Status != "ready" || oldLive.Entry == nil || nextLive.Entry == nil || oldLive.Entry.ServiceName == nextLive.Entry.ServiceName {
 		t.Fatalf("successor ready=%#v err=%v", nextLive, err)
 	}
 	suspended, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, old, "suspended")
@@ -854,7 +762,6 @@ func TestTencentApplicationReadbackRejectsActualMountDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 			completeTencentApplicationStartup(t, provider, fake, input)
-			fake.setEntryReady()
 			if baseline, err := provider.ReadWorkspaceApplicationRuntime(ctx, input); err != nil || baseline.Status != "ready" {
 				t.Fatalf("baseline state=%s err=%v", baseline.Status, err)
 			}
@@ -914,7 +821,7 @@ func TestTencentApplicationHistoricalPolicyRequiresExactOwnerAndAbsence(t *testi
 	input.DataBindingID = ""
 	input.ConfigurationDigest = strings.Repeat("c", 64)
 	tags := oplCostTags(input.AccountID, input.WorkspaceID, applicationRuntimeID(input), input.RuntimeOperationID)
-	for _, policy := range []map[string]any{workspaceApplicationNetworkPolicy(input, tags), workspaceApplicationPublicEntryPolicy(input, tags)} {
+	for _, policy := range []map[string]any{workspaceApplicationNetworkPolicy(input, tags)} {
 		metadata := policy["metadata"].(map[string]any)
 		delete(metadata, "labels") // Exact original policy representation.
 		fake.resources["NetworkPolicy:"+stringValue(metadata["name"])] = applicationObjectCopy(policy)
@@ -963,4 +870,67 @@ func completeTencentApplicationResume(t *testing.T, provider *TencentProvider, f
 		}
 	}
 	fake.setAllReady()
+}
+
+func renderedApplicationDeployment(t *testing.T, input WorkspaceApplicationRuntimeInput, name string) map[string]any {
+	t.Helper()
+	encoded := workspaceApplicationComponentManifest(input, tencentApplicationCompute(), tencentApplicationVolume(), nil)
+	var document struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range document.Items {
+		if stringValue(item["kind"]) == "Deployment" && stringValue(nested(item, "metadata", "name")) == name {
+			return item
+		}
+	}
+	t.Fatalf("rendered Deployment %s not found", name)
+	return nil
+}
+
+func containerResources(t *testing.T, deployment map[string]any) map[string]any {
+	t.Helper()
+	containers, _ := nested(deployment, "spec", "template", "spec", "containers").([]any)
+	if len(containers) != 1 {
+		t.Fatalf("deployment must carry exactly one container: %#v", deployment)
+	}
+	resources, _ := containers[0].(map[string]any)["resources"].(map[string]any)
+	return resources
+}
+
+// A declared envelope reaches every component as the container's requests and
+// limits, and an undeclared component stays BestEffort instead of receiving
+// invented bounds.
+func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) {
+	_, _, input := tencentApplicationRuntimeFixture(t)
+	input.Revision.Compute = contracts.WorkspaceApplicationCompute{CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30}
+	input.Revision.Dependencies = []contracts.WorkspaceApplicationDependency{{
+		Name: "retrieval", Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
+		Ports:   []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
+		Compute: contracts.WorkspaceApplicationCompute{CPURequestMilli: 1000, MemoryRequestBytes: 1 << 30},
+	}}
+
+	main := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
+	mainRequests, _ := main["requests"].(map[string]any)
+	mainLimits, _ := main["limits"].(map[string]any)
+	if mainRequests["cpu"] != "500m" || mainRequests["memory"] != "2147483648" || mainLimits["cpu"] != "2000m" || mainLimits["memory"] != "3221225472" {
+		t.Fatalf("main envelope mismatch: %#v", main)
+	}
+	dependency := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, "retrieval")))
+	dependencyRequests, _ := dependency["requests"].(map[string]any)
+	dependencyLimits, _ := dependency["limits"].(map[string]any)
+	if dependencyRequests["cpu"] != "1000m" || dependencyRequests["memory"] != "1073741824" {
+		t.Fatalf("dependency requests mismatch: %#v", dependency)
+	}
+	if _, declared := dependencyLimits["memory"]; declared {
+		t.Fatalf("undeclared dependency limit must stay absent: %#v", dependency)
+	}
+
+	input.Revision.Compute = contracts.WorkspaceApplicationCompute{}
+	input.Revision.Dependencies[0].Compute = contracts.WorkspaceApplicationCompute{}
+	if resources := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))); resources != nil {
+		t.Fatalf("an undeclared component must not receive resources: %#v", resources)
+	}
 }

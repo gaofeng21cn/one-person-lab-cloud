@@ -37,10 +37,10 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Capability | Current source behavior | Remaining gap and owning source |
 | --- | --- | --- |
 | Resource purchase and fulfillment | New default purchases commit a resource-only Launch and an independent default installation request. Charges advance in the resource worker; application failure does not rewrite purchase success. Explicit resource-only and retained full Launch contracts remain distinct. | Actual Instance adoption is unqualified. CP owns Launch and Workspace orchestration; Fabric owns resources. |
-| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. |
+| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Each component may declare its CPU and memory request and limit, which the provider applies to that component alone. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. Target-node feasibility for a declared envelope is not yet read back. |
 | Runtime execution | Local-Docker and Tencent execute declared components and live health/entry readback. OPL App uses an explicit profile and Secret-file ABI; lifecycle targets exact generations and fences late creation after deletion. | Tencent supports at most one native readiness probe. Local Docker fixtures do not qualify the actual upstream OPL App or IBD image. |
 | Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
-| Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; an application without a web entry has no Open action. `cloud_private` publishes no external entry. | Application Cookie/API/SSE behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
+| Application entry | One gateway serves the OPL App and every admitted application under the installation's existing workspace route. The executing provider reports the resolved destination or URL, the Control Plane owns the route, and an application without a published entry has no Open action. `cloud_private` publishes no external entry. | Target-installation end-to-end routing, application assets under the route's path prefix, Cookie/API/SSE behavior and Instance qualification remain open. No platform-authenticated private access is claimed. |
 | Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
 | Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. The registration form browses `repository` and tag lists from the catalog namespace and fills the digest-pinned reference after server-side resolution. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
 
@@ -354,6 +354,61 @@ the publisher's frozen knowledge restoration materials; a new generic product
 Restore platform is not a prerequisite to this replacement acceptance. Pre-seeded
 data tests still do not qualify any product Restore API. This host limitation does not require purchasing new resources; actual cloud
 qualification uses an existing Workspace through its Instance owner.
+
+### Component Compute Envelope (Local Development)
+
+Two gaps that only surfaced when a real hosted application was attempted are
+closed at their owners.
+
+- **Component compute envelope.** `WorkspaceApplicationRevision.Compute` and
+  `WorkspaceApplicationDependency.Compute` declare one component's CPU and
+  memory request and limit. Admission rejects a negative value, a request above
+  its own limit, and a value beyond the per-component ceiling. The Tencent
+  provider translates the envelope into the container's `resources`; the Local
+  provider translates it into `--cpus`, `--memory`, `--memory-swap` and
+  `--memory-reservation`, so a local run cannot hide an overrun in swap that the
+  hosted provider reports as an eviction. An undeclared component keeps the
+  previous unbounded shape and is never given invented bounds.
+`GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
+316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
+fingerprint `081f4acbebcf14590fb3fd430f36c833e4ca6569d169095a1e85a667d6d2463a`; log SHA-256 `82ee04b2e9e2ba90c36f6eb93828a6027f4851af0a063536eb4fb6b4ae1c8b37`; evidence in
+`output/application-entry-and-resources-20260916/`.
+
+This does not prove that a target node has enough allocatable memory for a
+declared envelope, or that any real application fits the basic package. Those
+need the protected Instance readback, and no production state was changed.
+
+### Unified Application Entry (Local Development)
+
+One gateway serves both the OPL App and every admitted application, so adding an
+application adds no DNS record, certificate, or load balancer.
+
+- The executing provider reports one resolved entry: `WorkspaceApplicationEntry`.
+  An installation gateway publishes `ServiceName` and `Port` for the destination
+  it proxies to; a provider that binds an endpoint itself publishes `URL`.
+  Exactly one shape is admitted, and an entry exists only once it is ready.
+- The Tencent adapter creates no entry object of its own: the Ingress and the
+  public-entry NetworkPolicy are gone, because the installation's gateway is the
+  publisher and the application NetworkPolicy already admits it.
+- The Control Plane owns the route. `workspaceEntryUpstream` resolves the single
+  upstream — the current application's reported destination when it publishes an
+  entry, otherwise the launched workspace runtime — and `workspaceGatewayEntryURL`
+  is the one place the customer-facing route is composed.
+- The historical refusal to proxy a Workspace that had deployed an application
+  (`workspace_application_entry_required`) is removed, together with the
+  provider-prefix and fixed-port assumptions in `workspaceServiceTarget`.
+
+`GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
+316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
+fingerprint `63f74d04bd1dabbde240824452f521540dc85696fca9e291a0d4337cd9a11e90`;
+log SHA-256
+`0468d448af32f0fb7ce075b01300ab10b6fdf4d777731bd527fde7cee8706675`; evidence in
+`output/entry-unification-20260916/`.
+
+This does not prove that a target installation serves the route end to end: the
+application must answer on its declared entry port and work under the workspace
+route's path prefix. That needs the protected Instance readback, and no
+production state was changed.
 
 ### Pre-PR Replacement Safety Review
 

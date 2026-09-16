@@ -309,16 +309,16 @@ func TestWorkspaceApplicationLifecycleResumeReadsCurrentEntryAfterPending(t *tes
 	runner.probeReady = false
 	resume := applicationLifecycleInput(input, "running", "resume-current-entry")
 	pending, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || pending.State != "pending" || pending.Observation.Status != "pending" || pending.Observation.EntryURL != "" {
+	if err != nil || pending.State != "pending" || pending.Observation.Status != "pending" || localEntryURL(pending.Observation) != "" {
 		t.Fatalf("resume health pending=%#v err=%v", pending, err)
 	}
 	runner.probeReady = true
 	live, err := service.ReadWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || live.State != "running" || live.Observation.Status != "ready" || live.Observation.EntryURL != "http://127.0.0.1:32080/" || live.Observation.EntryURL == initial.EntryURL {
+	if err != nil || live.State != "running" || live.Observation.Status != "ready" || localEntryURL(live.Observation) != "http://127.0.0.1:32080/" || localEntryURL(live.Observation) == localEntryURL(initial) {
 		t.Fatalf("resume current entry=%#v err=%v", live, err)
 	}
 	finished, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || finished.State != "running" || finished.Observation.EntryURL != live.Observation.EntryURL || runner.runCount() != 2 {
+	if err != nil || finished.State != "running" || localEntryURL(finished.Observation) != localEntryURL(live.Observation) || runner.runCount() != 2 {
 		t.Fatalf("resume convergence recreated runtime: result=%#v err=%v runs=%d", finished, err, runner.runCount())
 	}
 }
@@ -339,7 +339,11 @@ func TestWorkspaceApplicationOPLCredentialsAreVersionedAndSecretsRetireAfterCons
 		t.Fatal(err)
 	}
 	input := applicationRuntimeInput("opl-generation-1", applicationRevisionForTest())
-	input.Revision.RuntimeProfile = "opl_app"
+	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
+		{Name: "admin-password", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/opl_webui_password", Username: "opl"},
+		{Name: "session-secret", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/run/secrets/webui_session_secret"},
+		{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"},
+	}
 	input.Configuration.CredentialVersion = "explicit-credential-v1"
 	input.Revision.SecretInputs = []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}}
 	input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: secret.SecretRef, Version: secret.Version, Key: "opl_gateway_api_key"}}
@@ -401,7 +405,11 @@ func TestWorkspaceApplicationMigrationPreservesProvenRotatedCredentials(t *testi
 	ctx := context.Background()
 	t.Setenv("OPL_AIONUI_ADMIN_PASSWORD_SEED", "migration-synthetic-seed")
 	provider, fake, input := tencentApplicationRuntimeFixture(t)
-	input.Revision.RuntimeProfile = "opl_app"
+	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
+		{Name: "admin-password", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/opl_webui_password", Username: "opl"},
+		{Name: "session-secret", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/run/secrets/webui_session_secret"},
+		{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"},
+	}
 	input.Revision.SecretInputs = []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}}
 	input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: gatewaySecretName(input.WorkspaceID), Version: "gateway-version", Key: "opl_gateway_api_key"}}
 	fake.resources["Secret:"+gatewaySecretName(input.WorkspaceID)] = map[string]any{"kind": "Secret", "metadata": map[string]any{"name": gatewaySecretName(input.WorkspaceID), "annotations": map[string]any{"oplcloud.cn/account-id": input.AccountID, "oplcloud.cn/workspace-id": input.WorkspaceID, "oplcloud.cn/secret-version": "gateway-version"}}, "data": map[string]any{"opl_gateway_api_key": base64.StdEncoding.EncodeToString([]byte("synthetic-gateway"))}}
@@ -437,11 +445,12 @@ func TestWorkspaceApplicationMigrationPreservesProvenRotatedCredentials(t *testi
 		t.Fatal(err)
 	}
 	credentials, err := provider.ReadWorkspaceApplicationRuntimeCredentials(ctx, input)
-	if err != nil || credentials.WebUIPassword != deriveAionUIAdminPassword("migration-synthetic-seed", input.WorkspaceID, rotatedToken) {
+	if err != nil || credentials.WebUIPassword != deriveWorkspaceAdminPassword("migration-synthetic-seed", input.WorkspaceID, rotatedToken) {
 		t.Fatalf("migration did not preserve rotated password: %v", err)
 	}
 	secret := fake.resources["Secret:"+workspaceApplicationComponentResourceName(input, "secrets")]
-	if stringValue(nested(secret, "data", "webui-session")) != base64.StdEncoding.EncodeToString([]byte(deriveWebUISessionSecret("migration-synthetic-seed", input.WorkspaceID, rotatedToken))) {
+	sessionCredential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret)
+	if !declared || stringValue(nested(secret, "data", sessionCredential.Name)) != base64.StdEncoding.EncodeToString([]byte(deriveWorkspaceSessionSecret("migration-synthetic-seed", input.WorkspaceID, rotatedToken))) {
 		t.Fatal("migration did not preserve rotated session secret")
 	}
 	input.Configuration.CredentialVersion = original.Access.CredentialVersion

@@ -11,10 +11,22 @@ var workspaceApplicationInputNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z
 
 // WorkspaceApplicationSecretInputs enumerates consumers, including bindings
 // shared across components. Values never enter the declaration.
+// WorkspaceApplicationSecretInputs is every secret value one revision is given,
+// whether it comes from the publisher's own Secret reference or from a
+// platform-issued credential. Admission and binding validation both read this
+// one list, so a binding cannot be admitted against one source and rejected
+// against the other.
 func WorkspaceApplicationSecretInputs(revision WorkspaceApplicationRevision) []WorkspaceApplicationSecretInput {
 	inputs := append([]WorkspaceApplicationSecretInput{}, revision.SecretInputs...)
 	for _, component := range revision.Dependencies {
 		inputs = append(inputs, component.SecretInputs...)
+	}
+	for _, credential := range revision.Credentials {
+		// Only a credential the installation reads from an existing Secret is
+		// bound by reference; a derived credential is computed, not supplied.
+		if credential.Kind == WorkspaceApplicationCredentialGatewayKey {
+			inputs = append(inputs, WorkspaceApplicationSecretInput{Name: credential.Name, Target: credential.Target, Env: credential.Env})
+		}
 	}
 	return inputs
 }

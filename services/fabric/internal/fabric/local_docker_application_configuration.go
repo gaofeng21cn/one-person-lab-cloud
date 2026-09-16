@@ -31,7 +31,7 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	if input.Revision.RuntimeProfile != "opl_app" {
+	if !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		return files, localDockerGatewayMetadata{}, nil
 	}
 	binding, err := workspaceApplicationGatewayBinding(input)
@@ -181,10 +181,10 @@ func applicationWebUICredentials(input WorkspaceApplicationRuntimeInput) (localD
 	if token == "" {
 		return localDockerWebUICredentials{}, errors.New("workspace_application_credential_version_required")
 	}
-	return localDockerWebUICredentials{Password: []byte(deriveAionUIAdminPassword(seed, input.WorkspaceID, token)), SessionSecret: []byte(deriveWebUISessionSecret(seed, input.WorkspaceID, token))}, nil
+	return localDockerWebUICredentials{Password: []byte(deriveWorkspaceAdminPassword(seed, input.WorkspaceID, token)), SessionSecret: []byte(deriveWorkspaceSessionSecret(seed, input.WorkspaceID, token))}, nil
 }
 func (p *LocalDockerProvider) applicationCredentialFiles(input WorkspaceApplicationRuntimeInput, prepare bool) error {
-	if input.Revision.RuntimeProfile != "opl_app" {
+	if !workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		return nil
 	}
 	credentials, err := applicationWebUICredentials(input)
@@ -250,7 +250,7 @@ func localDockerApplicationPersistentSource(input WorkspaceApplicationRuntimeInp
 }
 
 func (p *LocalDockerProvider) removeApplicationCredentialFiles(input WorkspaceApplicationRuntimeInput) error {
-	if input.Revision.RuntimeProfile != "opl_app" {
+	if !workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		return nil
 	}
 	root, err := p.openGatewaySecretRoot()

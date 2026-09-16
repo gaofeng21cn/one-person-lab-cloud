@@ -169,8 +169,8 @@ func (c *workspaceRegistryHTTPClient) bearerToken(ctx context.Context, scope str
 }
 
 type registryAuthChallenge struct {
-	realm string
-	scope string
+	realm   string
+	scope   string
 	service string
 }
 

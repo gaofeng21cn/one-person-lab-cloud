@@ -64,8 +64,8 @@ func localDockerWebUICredentialsFor(metadata localDockerGatewayMetadata) (localD
 	if seed == "" {
 		return localDockerWebUICredentials{}, fmt.Errorf("local_docker_webui_credential_seed_required")
 	}
-	password := deriveAionUIAdminPassword(seed, metadata.WorkspaceID, metadata.Version)
-	sessionSecret := deriveWebUISessionSecret(seed, metadata.WorkspaceID, metadata.Version)
+	password := deriveWorkspaceAdminPassword(seed, metadata.WorkspaceID, metadata.Version)
+	sessionSecret := deriveWorkspaceSessionSecret(seed, metadata.WorkspaceID, metadata.Version)
 	if metadata.WorkspaceID == "" || metadata.Version == "" || password == "" || sessionSecret == "" {
 		return localDockerWebUICredentials{}, fmt.Errorf("local_docker_webui_credential_identity_invalid")
 	}
@@ -1036,7 +1036,8 @@ func (p *LocalDockerProvider) runtimeFromContainer(container dockerContainerInsp
 	}
 	return WorkspaceRuntime{Observation: observation,
 		ID: runtimeID, OperationID: labels["opl.operation.id"], WorkspaceID: workspaceID, URL: url, Status: status,
-		ServiceName: container.Name, ImageID: labels["opl.image.ref"], ProviderRequestID: providerRequestID("docker-runtime-read", runtimeID), Ready: ready,
+		ServiceName: container.Name,
+		ImageID:     labels["opl.image.ref"], ProviderRequestID: providerRequestID("docker-runtime-read", runtimeID), Ready: ready,
 		Checks: []Check{{Name: "docker_container_running", OK: container.State.Running}, {Name: "runtime_port_published", OK: url != ""}}, CreatedAt: p.now(),
 	}, nil
 }

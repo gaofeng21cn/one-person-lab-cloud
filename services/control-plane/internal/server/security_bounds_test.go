@@ -28,18 +28,27 @@ func TestWorkspaceServiceTargetAcceptsOnlyDNSServiceIdentity(t *testing.T) {
 	if workspaceRuntimeWebUIPort != strconv.Itoa(contract.WorkspaceWebUI.Port) {
 		t.Fatalf("Control Plane Workspace Runtime port=%s, contract=%d", workspaceRuntimeWebUIPort, contract.WorkspaceWebUI.Port)
 	}
-	for _, valid := range []string{"opl-runtime-alpha", "opl-compute-alpha"} {
-		target, err := workspaceServiceTarget(valid)
+	runtimePort, err := strconv.Atoi(workspaceRuntimeWebUIPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, valid := range []string{"opl-runtime-alpha", "opl-compute-alpha", "app-0123456789abcdef"} {
+		target, err := workspaceServiceTarget(valid, runtimePort)
 		if err != nil || target.String() != "http://"+valid+":"+workspaceRuntimeWebUIPort {
 			t.Fatalf("workspaceServiceTarget(%q) = %v, %v", valid, target, err)
 		}
 	}
 	for _, invalid := range []string{
 		"http://127.0.0.1:8080", "https://runtime.example", "127.0.0.1", "runtime:8080",
-		"user@runtime", "runtime/path", "Runtime", "-runtime", "runtime-", "runtime\nadmin", "runtime-alpha", "opl-runtime.alpha",
+		"user@runtime", "runtime/path", "Runtime", "-runtime", "runtime-", "runtime\nadmin", "opl-runtime.alpha",
 	} {
-		if target, err := workspaceServiceTarget(invalid); err == nil {
+		if target, err := workspaceServiceTarget(invalid, runtimePort); err == nil {
 			t.Fatalf("workspaceServiceTarget(%q) accepted %v", invalid, target)
+		}
+	}
+	for _, port := range []int{0, -1, 65536} {
+		if target, err := workspaceServiceTarget("app-0123456789abcdef", port); err == nil {
+			t.Fatalf("workspaceServiceTarget accepted port %d: %v", port, target)
 		}
 	}
 }

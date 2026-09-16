@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -326,15 +327,26 @@ func failedRuntimeOperations(operations []map[string]any) []any {
 	return failed
 }
 
-func workspaceServiceTarget(serviceName string) (*url.URL, error) {
+// workspaceGatewayEntryURL is the route this installation publishes for one
+// Workspace. The gateway is this server, so the route is this server's own shape
+// rather than a value an executing provider observes.
+func workspaceGatewayEntryURL(workspaceID string) string {
+	return "https://" + workspaceDomain() + "/w/" + workspaceID + "/"
+}
+
+// workspaceServiceTarget names the single in-cluster destination the workspace
+// gateway proxies to. The destination is one DNS label the cluster resolves, so
+// an address, an external host or a compound name is refused; the port is the
+// one the resolved entry published, never a value this function invents.
+func workspaceServiceTarget(serviceName string, port int) (*url.URL, error) {
 	value := strings.TrimSpace(serviceName)
-	if value == "" || len(value) > 63 || strings.ContainsAny(value, ".:/@\\\r\n") || !strings.HasPrefix(value, "opl-") {
+	if value == "" || len(value) > 63 || strings.ContainsAny(value, ".:/@"+"\\"+"\r\n") {
 		return nil, errors.New("invalid_workspace_runtime_destination")
 	}
 	if net.ParseIP(value) != nil || strings.EqualFold(value, "localhost") || strings.HasSuffix(strings.ToLower(value), ".localhost") {
 		return nil, errors.New("invalid_workspace_runtime_destination")
 	}
-	if value[len(value)-1] == '-' {
+	if value[0] == '-' || value[len(value)-1] == '-' {
 		return nil, errors.New("invalid_workspace_runtime_destination")
 	}
 	for _, char := range value {
@@ -342,7 +354,10 @@ func workspaceServiceTarget(serviceName string) (*url.URL, error) {
 			return nil, errors.New("invalid_workspace_runtime_destination")
 		}
 	}
-	return url.Parse("http://" + value + ":" + workspaceRuntimeWebUIPort)
+	if port < 1 || port > 65535 {
+		return nil, errors.New("invalid_workspace_runtime_destination")
+	}
+	return url.Parse("http://" + value + ":" + strconv.Itoa(port))
 }
 
 func workspaceIDFromPath(path string) string {

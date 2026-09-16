@@ -89,6 +89,9 @@ func ValidateWorkspaceApplicationDependency(dependency WorkspaceApplicationDepen
 		}
 	}
 
+	if err := ValidateWorkspaceApplicationCompute(dependency.Compute); err != nil {
+		return err
+	}
 	if err := ValidateWorkspaceApplicationMountOptions(dependency.PersistentMounts, dependency.ScratchMounts); err != nil {
 		return err
 	}

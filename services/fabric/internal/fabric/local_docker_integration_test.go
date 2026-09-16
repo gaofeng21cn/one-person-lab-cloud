@@ -701,8 +701,8 @@ func TestLocalDockerGatewaySecretLifecycleMaterializesExactModesUnderRestrictive
 	assertMode(filepath.Join(versionPath, localDockerGatewayMetaFile), 0400)
 	assertMode(filepath.Join(versionPath, localDockerWebUIPasswordFile), 0400)
 	assertMode(filepath.Join(versionPath, localDockerWebUISessionSecretFile), 0400)
-	wantPassword := deriveAionUIAdminPassword(localDockerTestWebUISeed, workspaceID, metadata.Version)
-	wantSessionSecret := deriveWebUISessionSecret(localDockerTestWebUISeed, workspaceID, metadata.Version)
+	wantPassword := deriveWorkspaceAdminPassword(localDockerTestWebUISeed, workspaceID, metadata.Version)
+	wantSessionSecret := deriveWorkspaceSessionSecret(localDockerTestWebUISeed, workspaceID, metadata.Version)
 	if password, err := os.ReadFile(filepath.Join(versionPath, localDockerWebUIPasswordFile)); err != nil || string(password) != wantPassword {
 		t.Fatalf("webui password=%q err=%v", password, err)
 	}
@@ -737,10 +737,10 @@ func TestLocalDockerGatewaySecretLifecycleMaterializesExactModesUnderRestrictive
 	assertMode(filepath.Join(rotatedVersionPath, localDockerGatewayMetaFile), 0400)
 	assertMode(filepath.Join(rotatedVersionPath, localDockerWebUIPasswordFile), 0400)
 	assertMode(filepath.Join(rotatedVersionPath, localDockerWebUISessionSecretFile), 0400)
-	if password, err := os.ReadFile(filepath.Join(rotatedVersionPath, localDockerWebUIPasswordFile)); err != nil || string(password) != deriveAionUIAdminPassword(localDockerTestWebUISeed, workspaceID, rotatedMetadata.Version) {
+	if password, err := os.ReadFile(filepath.Join(rotatedVersionPath, localDockerWebUIPasswordFile)); err != nil || string(password) != deriveWorkspaceAdminPassword(localDockerTestWebUISeed, workspaceID, rotatedMetadata.Version) {
 		t.Fatalf("rotated webui password=%q err=%v", password, err)
 	}
-	if sessionSecret, err := os.ReadFile(filepath.Join(rotatedVersionPath, localDockerWebUISessionSecretFile)); err != nil || string(sessionSecret) != deriveWebUISessionSecret(localDockerTestWebUISeed, workspaceID, rotatedMetadata.Version) {
+	if sessionSecret, err := os.ReadFile(filepath.Join(rotatedVersionPath, localDockerWebUISessionSecretFile)); err != nil || string(sessionSecret) != deriveWorkspaceSessionSecret(localDockerTestWebUISeed, workspaceID, rotatedMetadata.Version) {
 		t.Fatalf("rotated webui session secret=%q err=%v", sessionSecret, err)
 	}
 	if _, err := provider.ReadGatewaySecretByDigest(context.Background(), GatewaySecretReadbackInput{
@@ -1183,7 +1183,7 @@ func TestLocalDockerWorkspaceCorePath(t *testing.T) {
 	}
 	credentials, err := restartedService.WorkspaceRuntimeCredentials(ctx, accountID, workspaceID)
 	if err != nil || credentials.ID != status.ID || credentials.OperationID != status.OperationID ||
-		credentials.Access.Username != webuiUsername || credentials.Access.Password != deriveAionUIAdminPassword(localDockerTestWebUISeed, workspaceID, digest[:16]) ||
+		credentials.Access.Username != webuiUsername || credentials.Access.Password != deriveWorkspaceAdminPassword(localDockerTestWebUISeed, workspaceID, digest[:16]) ||
 		credentials.Access.CredentialStatus != "configured" || credentials.Access.CredentialVersion != digest[:16] || credentials.Access.SecretRef != secretRef {
 		t.Fatalf("canonical runtime credentials=%#v err=%v", credentials, err)
 	}
@@ -2057,14 +2057,14 @@ func TestLocalDockerGatewaySecretCrashCutRotationAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	passwordPath := filepath.Join(versionPath, localDockerWebUIPasswordFile)
-	if err := os.WriteFile(passwordPath, []byte(deriveAionUIAdminPassword(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), 0400); err != nil {
+	if err := os.WriteFile(passwordPath, []byte(deriveWorkspaceAdminPassword(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), 0400); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(passwordPath, 0400); err != nil {
 		t.Fatal(err)
 	}
 	sessionPath := filepath.Join(versionPath, localDockerWebUISessionSecretFile)
-	if err := os.WriteFile(sessionPath, []byte(deriveWebUISessionSecret(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), 0400); err != nil {
+	if err := os.WriteFile(sessionPath, []byte(deriveWorkspaceSessionSecret(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), 0400); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(sessionPath, 0400); err != nil {
@@ -2406,7 +2406,7 @@ func TestLocalDockerRuntimeStatusFailsClosedOnSecretIdentityOrMountDrift(t *test
 		t.Fatalf("baseline create runtime=%#v err=%v", runtime, err)
 	}
 	if runtime, err := provider.WorkspaceRuntimeStatus(context.Background(), input.WorkspaceID); err != nil || !runtime.Ready ||
-		runtime.Access.Username != webuiUsername || runtime.Access.Password != deriveAionUIAdminPassword(localDockerTestWebUISeed, input.WorkspaceID, runner.container.Config.Labels["opl.secret.version"]) ||
+		runtime.Access.Username != webuiUsername || runtime.Access.Password != deriveWorkspaceAdminPassword(localDockerTestWebUISeed, input.WorkspaceID, runner.container.Config.Labels["opl.secret.version"]) ||
 		runtime.Access.CredentialStatus != "configured" || runtime.Access.CredentialVersion != runner.container.Config.Labels["opl.secret.version"] || runtime.Access.SecretRef != input.GatewaySecretRef {
 		t.Fatalf("baseline runtime=%#v err=%v", runtime, err)
 	}

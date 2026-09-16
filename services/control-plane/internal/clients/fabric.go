@@ -354,10 +354,13 @@ type RuntimeHealthSummary struct {
 }
 
 type WorkspaceRuntime struct {
-	ID                string                 `json:"id"`
-	OperationID       string                 `json:"operationId,omitempty"`
-	WorkspaceID       string                 `json:"workspaceId"`
-	URL               string                 `json:"url"`
+	ID          string `json:"id"`
+	OperationID string `json:"operationId,omitempty"`
+	WorkspaceID string `json:"workspaceId"`
+	// URL is set only when a provider publishes the endpoint itself. An
+	// installation gateway publishes the route, so such a provider reports only
+	// ServiceName and leaves URL empty.
+	URL               string                 `json:"url,omitempty"`
 	Status            string                 `json:"status"`
 	ServiceName       string                 `json:"serviceName"`
 	ImageID           string                 `json:"imageId,omitempty"`

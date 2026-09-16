@@ -302,7 +302,7 @@ require('node:http').createServer((request, response) => {
 	// replay the provisioned compute, storage and attachment.
 	service = NewServiceWithOperationStore(provider, store)
 	revision := contracts.WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform, RuntimeProfile: "opl_app", SecretInputs: []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}},
+		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform, Credentials: []contracts.WorkspaceApplicationCredential{{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"}},
 		Image:            imageID,
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
@@ -356,7 +356,7 @@ require('node:http').createServer((request, response) => {
 		if err != nil || credentials.WebUIUsername != "opl" {
 			t.Fatalf("OPL credential ABI: %v", err)
 		}
-		anonymous, err := http.Get(observation.EntryURL)
+		anonymous, err := http.Get(localEntryURL(observation))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -365,7 +365,7 @@ require('node:http').createServer((request, response) => {
 			t.Fatal("OPL profile entry must require its own login")
 		}
 		body, _ := json.Marshal(map[string]string{"username": credentials.WebUIUsername, "password": credentials.WebUIPassword})
-		login, err := http.Post(observation.EntryURL+"login", "application/json", bytes.NewReader(body))
+		login, err := http.Post(localEntryURL(observation)+"login", "application/json", bytes.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -376,7 +376,7 @@ require('node:http').createServer((request, response) => {
 		if establishedSession == nil {
 			establishedSession = login.Cookies()[0]
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, observation.EntryURL, nil)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, localEntryURL(observation), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -401,7 +401,7 @@ require('node:http').createServer((request, response) => {
 	firstInput.IdempotencyKey = launchID + ":app-1"
 	firstInput.RuntimeOperationID = firstInput.IdempotencyKey
 	pending, pendingErr := service.CreateWorkspaceApplicationRuntime(ctx, firstInput)
-	if !errors.Is(pendingErr, ErrWorkspaceLaunchPending) || pending.Status != "pending" || pending.EntryURL != "" {
+	if !errors.Is(pendingErr, ErrWorkspaceLaunchPending) || pending.Status != "pending" || localEntryURL(pending) != "" {
 		t.Fatalf("running HTTP server with failing declared health check must stay pending: observation=%#v err=%v", pending, pendingErr)
 	}
 	containerName, nameErr := localDockerApplicationComponentName(firstInput.RuntimeOperationID, "main")
@@ -421,10 +421,10 @@ require('node:http').createServer((request, response) => {
 		t.Fatalf("pending replay recreated main: before=%s after=%s err=%v", beforeID, afterID, err)
 	}
 
-	if first.Status != "ready" || first.EntryURL == "" {
+	if first.Status != "ready" || localEntryURL(first) == "" {
 		t.Fatalf("first observation=%#v", first)
 	}
-	if err := waitForLocalRuntime(ctx, first.EntryURL+"healthz"); err != nil {
+	if err := waitForLocalRuntime(ctx, localEntryURL(first)+"healthz"); err != nil {
 		t.Fatalf("entry not reachable: %v", err)
 	}
 	body := authenticatedBody(firstInput, first)
@@ -441,7 +441,7 @@ require('node:http').createServer((request, response) => {
 	secondInput.RuntimeOperationID = launchID + ":app-2"
 	secondInput.IdempotencyKey = secondInput.RuntimeOperationID
 	second := ensure(secondInput.RuntimeOperationID)
-	if err := waitForLocalRuntime(ctx, second.EntryURL+"healthz"); err != nil {
+	if err := waitForLocalRuntime(ctx, localEntryURL(second)+"healthz"); err != nil {
 		t.Fatal(err)
 	}
 	body = authenticatedBody(secondInput, second)
@@ -473,7 +473,7 @@ require('node:http').createServer((request, response) => {
 	runtimeInput = secondInput
 	runtimeInput.Revision = revision
 	runtimeInput.Revision.ApplicationID = "isolated-counter"
-	runtimeInput.Revision.RuntimeProfile = ""
+	runtimeInput.Revision.Credentials = nil
 	runtimeInput.Revision.SecretInputs = nil
 	runtimeInput.Revision.Image = alternateImage
 	runtimeInput.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{}
@@ -498,7 +498,7 @@ require('node:http').createServer((request, response) => {
 		t.Fatalf("isolated app inherited data or credentials: %v: %s", err, output)
 	}
 	third := ensure(thirdInput.RuntimeOperationID)
-	body = httpGetBody(t, third.EntryURL)
+	body = httpGetBody(t, localEntryURL(third))
 	if !strings.Contains(body, "visits: 1") {
 		t.Fatalf("different-application data not isolated: %q", body)
 	}
@@ -527,7 +527,7 @@ require('node:http').createServer((request, response) => {
 			t.Fatalf("third app state=%s want=%s", result.State, state)
 		}
 		if state == "running" {
-			if result.State != "pending" || result.Observation.Status != "pending" || result.Observation.EntryURL != "" {
+			if result.State != "pending" || result.Observation.Status != "pending" || localEntryURL(result.Observation) != "" {
 				t.Fatalf("resume published an entry before declared health passed: %#v", result)
 			}
 			if output, err := exec.CommandContext(ctx, "docker", "exec", thirdName, "node", "-e", "require('fs').writeFileSync('/data/ready','ready')").CombinedOutput(); err != nil {
@@ -541,7 +541,7 @@ require('node:http').createServer((request, response) => {
 				if result.State == "running" {
 					break
 				}
-				if result.State != "pending" || result.Observation.Status != "pending" || result.Observation.EntryURL != "" {
+				if result.State != "pending" || result.Observation.Status != "pending" || localEntryURL(result.Observation) != "" {
 					t.Fatalf("unexpected resumed application state: %#v", result)
 				}
 				select {
@@ -550,14 +550,14 @@ require('node:http').createServer((request, response) => {
 				case <-time.After(200 * time.Millisecond):
 				}
 			}
-			if result.Observation.Status != "ready" || result.Observation.EntryURL == "" {
+			if result.Observation.Status != "ready" || localEntryURL(result.Observation) == "" {
 				t.Fatalf("resumed application has no ready entry: %#v", result)
 			}
 			// Docker may allocate a new ephemeral host port when it starts the
 			// container again. Only the current owner readback names its entry.
-			httpGetBody(t, result.Observation.EntryURL+"healthz")
+			httpGetBody(t, localEntryURL(result.Observation)+"healthz")
 			finished, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, lifecycle)
-			if err != nil || finished.State != "running" || finished.Observation.EntryURL != result.Observation.EntryURL {
+			if err != nil || finished.State != "running" || localEntryURL(finished.Observation) != localEntryURL(result.Observation) {
 				t.Fatalf("resume command did not converge to its current entry: result=%#v err=%v", finished, err)
 			}
 			t.Log("resumed application passed pending-to-ready readback and current-entry HTTP health")

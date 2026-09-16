@@ -635,7 +635,7 @@ func validWorkspaceLaunchProviderResult(input WorkspaceLaunchStageInput, result 
 		return result.Resources.GatewaySecretRef != "" && result.Resources.GatewaySecretVersion != "" &&
 			result.Resources.GatewaySecretFingerprint == input.Resources.GatewaySecretFingerprint
 	case "runtime":
-		return result.Resources.RuntimeID != "" && result.Resources.RuntimeServiceName != "" && result.Resources.RuntimeURL != ""
+		return result.Resources.RuntimeID != "" && result.Resources.RuntimeServiceName != ""
 	default:
 		return false
 	}

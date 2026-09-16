@@ -8,6 +8,7 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/domain/application"
+	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
 // Reads are allowed during suspension/deletion: they identify owned resources,
@@ -35,7 +36,7 @@ func (app *controlPlaneServer) currentWorkspaceApplicationDeployment(ctx context
 	id := stringValue(workspace["currentApplicationDeploymentId"])
 	if id == "" {
 		binding := stringValue(workspace["applicationBinding"])
-		if binding == "" || binding == "empty" || binding == "opl_app" {
+		if binding == "" || binding == "empty" || binding == provisioning.ApplicationBindingOPLApp {
 			return workspaceApplicationDeploymentIntent{}, false, nil
 		}
 		return workspaceApplicationDeploymentIntent{}, false, errWorkspaceApplicationBindingUnknown
@@ -112,7 +113,8 @@ func (app *controlPlaneServer) workspaceApplicationSelectedAncestor(ctx context.
 	return workspaceApplicationDeploymentIntent{}, false, nil
 }
 
-func (app *controlPlaneServer) workspaceApplicationCredentialConfiguration(ctx context.Context, workspace map[string]any, applicationID, operationID string, configuration contracts.WorkspaceApplicationRuntimeConfiguration) (contracts.WorkspaceApplicationRuntimeConfiguration, error) {
+func (app *controlPlaneServer) workspaceApplicationCredentialConfiguration(ctx context.Context, workspace map[string]any, revision contracts.WorkspaceApplicationRevision, operationID string, configuration contracts.WorkspaceApplicationRuntimeConfiguration) (contracts.WorkspaceApplicationRuntimeConfiguration, error) {
+	applicationID := revision.ApplicationID
 	if configuration.CredentialVersion != "" {
 		return configuration, nil
 	}
@@ -131,7 +133,7 @@ func (app *controlPlaneServer) workspaceApplicationCredentialConfiguration(ctx c
 		configuration.CredentialSourceRuntimeOperationID = prior.Configuration.CredentialSourceRuntimeOperationID
 		return configuration, nil
 	}
-	if applicationID == "opl-app" {
+	if contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchResourceProjectionMismatchFields, nil)
 		if err != nil {
 			return configuration, err
@@ -201,8 +203,8 @@ func (app *controlPlaneServer) workspaceApplicationRuntimeInput(ctx context.Cont
 
 // A first reinstall after a historical application's replacement must resolve
 // its original data owner. Current selection alone cannot identify that data.
-func (app *controlPlaneServer) workspaceApplicationHistoricalDataBinding(ctx context.Context, workspace map[string]any, applicationID, profile string, selected workspaceApplicationDeploymentIntent, hasSelection bool, owned []workspaceApplicationDeploymentIntent) (string, string, error) {
-	if applicationID == "opl-app" && profile == "opl_app" {
+func (app *controlPlaneServer) workspaceApplicationHistoricalDataBinding(ctx context.Context, workspace map[string]any, revision contracts.WorkspaceApplicationRevision, selected workspaceApplicationDeploymentIntent, hasSelection bool, owned []workspaceApplicationDeploymentIntent) (string, string, error) {
+	if contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchResourceProjectionMismatchFields, nil)
 		if err != nil {
 			return "", "", err
@@ -218,7 +220,7 @@ func (app *controlPlaneServer) workspaceApplicationHistoricalDataBinding(ctx con
 	historicalCandidate := false
 	for _, intent := range owned {
 		byID[intent.OperationID] = intent
-		if intent.Version == 1 && intent.ApplicationID == applicationID {
+		if intent.Version == 1 && intent.ApplicationID == revision.ApplicationID {
 			historicalCandidate = true
 		}
 	}
@@ -229,7 +231,7 @@ func (app *controlPlaneServer) workspaceApplicationHistoricalDataBinding(ctx con
 		}
 		visited[selected.OperationID] = true
 		if selected.Version == 1 {
-			if selected.ApplicationID == applicationID {
+			if selected.ApplicationID == revision.ApplicationID {
 				return "legacy_application", selected.OperationID + ":runtime", nil
 			}
 			break

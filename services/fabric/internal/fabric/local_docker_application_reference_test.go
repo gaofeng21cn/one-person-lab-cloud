@@ -100,7 +100,7 @@ func loadApplicationReference(path string) (applicationReferenceMaterial, error)
 	if err := contracts.ValidateWorkspaceApplicationRevision(fixture.Revision); err != nil {
 		return result, err
 	}
-	if fixture.Revision.RuntimeProfile != "" {
+	if len(fixture.Revision.Credentials) != 0 {
 		return result, errors.New("reference_harness_requires_application_owned_credentials")
 	}
 	if !contracts.ValidWorkspaceImageReference(fixture.ProbeImage) || !contracts.ValidWorkspaceImageReference(fixture.CopyImage) || fixture.SizeGB < 10 || fixture.SizeGB%10 != 0 || fixture.TimeoutSeconds < 1 || fixture.TimeoutSeconds > 1800 {

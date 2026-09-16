@@ -17,12 +17,12 @@ import (
 // stub, because the route itself is what these tests own: session checks,
 // namespace boundaries and error mapping — not the OCI client.
 type workspaceRegistryStub struct {
-	repositories []contracts.WorkspaceRegistryRepository
+	repositories    []contracts.WorkspaceRegistryRepository
 	repositoriesErr error
-	tags        []contracts.WorkspaceRegistryTag
-	tagsErr     error
-	resolution  contracts.WorkspaceRegistryImageResolution
-	resolutionErr error
+	tags            []contracts.WorkspaceRegistryTag
+	tagsErr         error
+	resolution      contracts.WorkspaceRegistryImageResolution
+	resolutionErr   error
 }
 
 func (stub *workspaceRegistryStub) ListRepositories(_ context.Context, _ string) ([]contracts.WorkspaceRegistryRepository, error) {
@@ -105,8 +105,8 @@ func TestRegistryCatalogTags(t *testing.T) {
 		t.Fatalf("tags status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	var response struct {
-		Namespace  string   `json:"namespace"`
-		Repository string   `json:"repository"`
+		Namespace  string                           `json:"namespace"`
+		Repository string                           `json:"repository"`
 		Tags       []contracts.WorkspaceRegistryTag `json:"tags"`
 	}
 	if json.Unmarshal(rec.Body.Bytes(), &response) != nil || response.Repository != "one-person-lab-app" || len(response.Tags) != 1 {

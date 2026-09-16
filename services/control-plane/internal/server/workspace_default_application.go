@@ -40,19 +40,23 @@ func workspaceDefaultApplicationOperationID(launchID string) string {
 }
 
 func defaultOPLApplicationRevision(image string) contracts.WorkspaceApplicationRevision {
-	revision := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "opl-app", Platform: "linux/amd64", Image: image, RuntimeProfile: "opl_app",
+	revision := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "opl-app", Platform: "linux/amd64", Image: image,
 		Ports: []contracts.WorkspaceApplicationPort{{Name: "webui", Port: 3000, Protocol: "TCP"}}, EntryPort: "webui",
 		HealthChecks:     []contracts.WorkspaceApplicationHealthCheck{{Port: 3000, Path: "/", InitialDelaySeconds: 10}},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}, {Name: "projects", MountPath: "/projects"}},
 		ScratchMounts:    []contracts.WorkspaceApplicationMount{{Name: "recovery", MountPath: "/recovery"}},
-		SecretInputs:     []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}}, ExposurePolicy: "application"}
+		Credentials: []contracts.WorkspaceApplicationCredential{
+			{Name: "admin-password", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/opl_webui_password", Username: "opl"},
+			{Name: "session-secret", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/run/secrets/webui_session_secret"},
+			{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"},
+		}, ExposurePolicy: "application"}
 	payload, _ := json.Marshal(revision)
 	revision.Version = fmt.Sprintf("%x", sha256.Sum256(payload))
 	return revision
 }
 
 func workspaceDefaultApplicationRow(request workspaceDefaultApplicationRequest) (map[string]any, error) {
-	if request.SchemaVersion != 1 || request.OperationID != workspaceDefaultApplicationOperationID(request.LaunchOperationID) || request.AccountID == "" || request.WorkspaceID == "" || request.OwnerUserID == "" || request.Sub2APIUserID <= 0 || request.WorkspaceKeyGroupID <= 0 || request.Revision.RuntimeProfile != "opl_app" {
+	if request.SchemaVersion != 1 || request.OperationID != workspaceDefaultApplicationOperationID(request.LaunchOperationID) || request.AccountID == "" || request.WorkspaceID == "" || request.OwnerUserID == "" || request.Sub2APIUserID <= 0 || request.WorkspaceKeyGroupID <= 0 || !contracts.WorkspaceApplicationRequiresPlatformCredentials(request.Revision) {
 		return nil, errors.New("workspace_default_application_invalid")
 	}
 	if err := contracts.ValidateWorkspaceApplicationRevision(request.Revision); err != nil {
@@ -293,7 +297,7 @@ func (app *controlPlaneServer) workspaceOPLApplicationConfiguration(ctx context.
 		if err != nil {
 			return configuration, nil, 0, err
 		}
-		if current.Version == 2 && input.Revision.RuntimeProfile == "opl_app" {
+		if current.Version == 2 && contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision) {
 			configuration.CredentialVersion = current.Configuration.CredentialVersion
 			configuration.CredentialSourceRuntimeOperationID = current.Configuration.CredentialSourceRuntimeOperationID
 			return configuration, current.SecretBindings, current.WorkspaceAPIKeyID, nil

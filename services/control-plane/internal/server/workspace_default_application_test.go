@@ -42,7 +42,7 @@ func (f *applicationReplacementFabric) EnsureWorkspaceApplicationRuntime(ctx con
 	return result, err
 }
 func (f *applicationReplacementFabric) ReadWorkspaceApplicationRuntime(_ context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
-	result := contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID), Status: f.states[input.RuntimeOperationID], EntryURL: "https://" + input.Revision.ApplicationID + ".example.test/", Components: contracts.WorkspaceApplicationRuntimeComponents(input.Revision)}
+	result := contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID), Status: f.states[input.RuntimeOperationID], Entry: &contracts.WorkspaceApplicationEntry{URL: "https://" + input.Revision.ApplicationID + ".example.test/"}, Components: contracts.WorkspaceApplicationRuntimeComponents(input.Revision)}
 	for i := range result.Components {
 		result.Components[i].State = result.Status
 	}

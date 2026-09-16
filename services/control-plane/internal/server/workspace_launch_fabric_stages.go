@@ -275,9 +275,16 @@ func workspaceLaunchFabricStageFacts(stage contracts.Stage, resources clients.Wo
 			"workspaceKeyFingerprint": operation.stringFact("workspaceKeyFingerprint"),
 		}, nil
 	case contracts.StageRuntime:
+		// The customer-facing entry belongs to this server: it is the gateway
+		// that serves the route. A provider that publishes an endpoint itself
+		// wins; otherwise the entry is this server's own Workspace route.
+		url := resources.RuntimeURL
+		if url == "" {
+			url = workspaceGatewayEntryURL(operation.stringFact("workspaceId"))
+		}
 		return map[string]any{
 			"runtimeId": resources.RuntimeID, "runtimeReady": true, "runtimeServiceName": resources.RuntimeServiceName,
-			"runtimeBindingRef": resources.RuntimeBindingRef, "runtimeUsername": resources.RuntimeUsername, "url": resources.RuntimeURL,
+			"runtimeBindingRef": resources.RuntimeBindingRef, "runtimeUsername": resources.RuntimeUsername, "url": url,
 			"credentialStatus": resources.RuntimeCredentialStatus, "credentialVersion": resources.RuntimeCredentialVersion,
 			"credentialSecretRef": resources.RuntimeCredentialSecretRef,
 		}, nil
@@ -294,7 +301,7 @@ func workspaceLaunchFabricResources(operation workspaceLaunchReconcileOperation)
 		GatewaySecretRef: operation.stringFact("gatewaySecretRef"), GatewaySecretVersion: operation.stringFact("gatewaySecretVersion"),
 		GatewaySecretFingerprint: operation.stringFact("workspaceKeyFingerprint"), SecretBindingRef: operation.stringFact("secretBindingRef"),
 		RuntimeID: operation.stringFact("runtimeId"), RuntimeServiceName: operation.stringFact("runtimeServiceName"),
-		RuntimeUsername: operation.stringFact("runtimeUsername"), RuntimeURL: operation.stringFact("url"),
+		RuntimeURL:              operation.stringFact("url"),
 		RuntimeCredentialStatus: operation.stringFact("credentialStatus"), RuntimeCredentialVersion: operation.stringFact("credentialVersion"),
 		RuntimeCredentialSecretRef: operation.stringFact("credentialSecretRef"), RuntimeBindingRef: operation.stringFact("runtimeBindingRef"),
 	}

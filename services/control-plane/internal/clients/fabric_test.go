@@ -128,8 +128,7 @@ func TestFabricHTTPClientUsesCapabilityForWorkspaceRuntimeImageReplacement(t *te
 	}
 	input := WorkspaceRuntimeImageReplacementInput{
 		LaunchOperationID: "launch-alpha", AccountID: "acct-alpha", WorkspaceID: "ws-alpha", RuntimeID: "runtime-alpha",
-		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "opl-compute-alpha",
-		PreviousImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("a", 64), ReplacementImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("b", 64),
+		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "opl-compute-alpha", PreviousImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("a", 64), ReplacementImageDigest: "registry.example/workspace@sha256:" + strings.Repeat("b", 64),
 	}
 	result, err := client.ReplaceWorkspaceRuntimeImage(context.Background(), input, "replacement-once")
 	if err != nil || result.Status != "succeeded" || result.OperationID != "replacement-once" {
@@ -152,8 +151,7 @@ func TestFabricHTTPClientUsesCapabilityForWorkspaceRuntimeGatewayNetworkRecovery
 	}
 	result, err := client.RecoverWorkspaceRuntimeGatewayNetwork(context.Background(), WorkspaceRuntimeGatewayNetworkRecoveryInput{
 		AccountID: "acct-alpha", WorkspaceID: "ws-alpha", ComputeID: "compute-alpha", RuntimeID: "rt-alpha",
-		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "runtime-alpha",
-	}, "recover-once")
+		RuntimeOperationID: "launch-alpha:runtime", RuntimeServiceName: "runtime-alpha"}, "recover-once")
 	if err != nil || result.Status != "succeeded" || result.OperationID != "recover-once" {
 		t.Fatalf("recovery result=%#v err=%v", result, err)
 	}

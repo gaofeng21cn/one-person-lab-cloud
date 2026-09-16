@@ -45,7 +45,6 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 			t.Fatal("Read advanced startup")
 		}
 	}
-	fake.setEntryReady()
 	stopped, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "suspended")
 	if err != nil || stopped.State != "suspended" {
 		t.Fatalf("stop=%#v err=%v", stopped, err)
@@ -205,7 +204,6 @@ func TestTencentApplicationExecutionIdentityRenderedAndReadBack(t *testing.T) {
 	input.Revision.Execution = contracts.WorkspaceApplicationExecution{UserID: &mainUser, GroupID: &mainGroup}
 	input.Revision.Dependencies[0].Execution = contracts.WorkspaceApplicationExecution{UserID: &depUser, GroupID: &depGroup}
 	completeTencentApplicationStartup(t, provider, fake, input)
-	fake.setEntryReady()
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		deployment := fake.deployments[workspaceApplicationComponentResourceName(input, component.Name)]
 		security := nested(deployment, "spec", "template", "spec", "securityContext").(map[string]any)
@@ -235,26 +233,19 @@ func TestTencentApplicationExecutionIdentityRenderedAndReadBack(t *testing.T) {
 	}
 }
 
-func TestTencentApplicationOPLIdentityCannotBeOverridden(t *testing.T) {
+// The provider admits a declared execution identity; which identity an
+// application may use is the application's own decision, and reusing another
+// generation's data is constrained at the runtime configuration boundary.
+func TestTencentApplicationAdmitsDeclaredExecutionIdentity(t *testing.T) {
 	_, _, input := tencentApplicationRuntimeFixture(t)
-	user, group := int64(10001), int64(10001)
-	input.Revision.RuntimeProfile = "opl_app"
+	user, group := int64(10002), int64(10002)
 	input.Revision.Execution = contracts.WorkspaceApplicationExecution{UserID: &user, GroupID: &group}
 	if err := validateTencentApplicationCapabilities(input.Revision); err != nil {
-		t.Fatal(err)
+		t.Fatalf("declared identity=%v", err)
 	}
-	for _, change := range []string{"user", "group"} {
-		t.Run(change, func(t *testing.T) {
-			user, group = 10001, 10001
-			if change == "user" {
-				user = 10002
-			} else {
-				group = 10002
-			}
-			if err := validateTencentApplicationCapabilities(input.Revision); err == nil || err.Error() != "tencent_application_opl_identity_unsupported" {
-				t.Fatalf("identity override err=%v", err)
-			}
-		})
+	security := workspaceApplicationSecurityContext(input, contracts.WorkspaceApplicationRuntimeComponents(input.Revision)[0])
+	if security["runAsUser"] != int64(10002) || security["runAsGroup"] != int64(10002) {
+		t.Fatalf("declared identity must reach the container: %#v", security)
 	}
 }
 

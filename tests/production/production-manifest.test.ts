@@ -59,7 +59,7 @@ test("production manifest requires deployment secret refs for every launch varia
     "system_compute_identity:true",
     "registry_images:true",
     "workspace_image_releases:true",
-    "workspace_domain:true"
+    "workspace_domain:true",
   ]);
 });
 
@@ -102,7 +102,7 @@ test("production manifest validates Tencent TKE fields only", () => {
     "system_compute_identity:true",
     "registry_images:true",
     "workspace_image_releases:true",
-    "workspace_domain:true"
+    "workspace_domain:true",
   ]);
 });
 

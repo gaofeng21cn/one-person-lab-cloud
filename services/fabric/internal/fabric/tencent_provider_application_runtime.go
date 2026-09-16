@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"sort"
+	"strconv"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
@@ -92,7 +92,6 @@ type workspaceApplicationKubernetesResources struct {
 	deployments map[string]map[string]any
 	replicaSets map[string]map[string]any
 	services    map[string]map[string]any
-	ingresses   map[string]map[string]any
 	pods        []map[string]any
 	auxiliary   map[string]map[string]any
 	storagePVC  string
@@ -101,11 +100,11 @@ type workspaceApplicationKubernetesResources struct {
 func (p *TencentProvider) readWorkspaceApplicationResources(ctx context.Context, input WorkspaceApplicationRuntimeInput) (workspaceApplicationKubernetesResources, error) {
 	resources := workspaceApplicationKubernetesResources{
 		deployments: map[string]map[string]any{}, replicaSets: map[string]map[string]any{},
-		services: map[string]map[string]any{}, ingresses: map[string]map[string]any{}, auxiliary: map[string]map[string]any{},
+		services: map[string]map[string]any{}, auxiliary: map[string]map[string]any{},
 	}
 	selector := "oplcloud.cn/workspace-id=" + k8sCostLabelValue(input.WorkspaceID) +
 		",oplcloud.cn/runtime-id=" + k8sCostLabelValue(applicationRuntimeID(input))
-	raw, err := p.callKubectl(ctx, []string{"get", "deployment,replicaset,pod,service,ingress,networkpolicy,secret,configmap", "-l", selector, "-o", "json"}, nil, protectedresource.Target{})
+	raw, err := p.callKubectl(ctx, []string{"get", "deployment,replicaset,pod,service,networkpolicy,secret,configmap", "-l", selector, "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return resources, err
 	}
@@ -133,8 +132,6 @@ func (p *TencentProvider) readWorkspaceApplicationResources(ctx context.Context,
 			resources.pods = append(resources.pods, object)
 		case "Service":
 			resources.services[name] = object
-		case "Ingress":
-			resources.ingresses[name] = object
 		case "NetworkPolicy", "Secret", "ConfigMap":
 			resources.auxiliary[stringValue(object["kind"])+":"+name] = object
 		default:
@@ -197,17 +194,11 @@ func (p *TencentProvider) readWorkspaceApplicationResources(ctx context.Context,
 }
 
 func workspaceApplicationObservation(input WorkspaceApplicationRuntimeInput, resources workspaceApplicationKubernetesResources) contracts.WorkspaceApplicationRuntimeObservation {
-	_, hasEntry := contracts.WorkspaceApplicationEntryPort(input.Revision)
-	entryRequired := hasEntry && input.Revision.ExposurePolicy != "cloud_private"
-	entryURL := workspaceApplicationEntryURL(input, resources)
 	observed := make([]contracts.WorkspaceApplicationRuntimeComponentState, 0, len(input.Revision.Dependencies)+1)
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		state, lastError := "absent", ""
 		if deployment, found := resources.deployments[workspaceApplicationComponentResourceName(input, component.Name)]; found {
 			state, lastError = workspaceApplicationComponentStatus(input, component, deployment, resources)
-		}
-		if component.Role == contracts.WorkspaceApplicationComponentMain && state == "ready" && entryRequired && entryURL == "" {
-			state, lastError = "pending", "tencent_application_entry_pending"
 		}
 		observed = append(observed, contracts.WorkspaceApplicationRuntimeComponentState{
 			Name: component.Name, Role: component.Role, Image: component.Image,
@@ -219,8 +210,16 @@ func workspaceApplicationObservation(input WorkspaceApplicationRuntimeInput, res
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: applicationRuntimeID(input),
 		Status: contracts.WorkspaceApplicationRuntimeOverallStatus(observed), Components: observed,
 	}
+	// The installation serves applications through its own gateway, so the
+	// provider reports the destination that gateway proxies to and never a
+	// user-facing URL of its own.
 	if observation.Status == "ready" {
-		observation.EntryURL = entryURL
+		if entryPort, published := contracts.WorkspaceApplicationEntryPort(input.Revision); published && input.Revision.ExposurePolicy != "cloud_private" {
+			observation.Entry = &contracts.WorkspaceApplicationEntry{
+				ServiceName: workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain),
+				Port:        entryPort.Port,
+			}
+		}
 	}
 	return observation
 }
@@ -282,65 +281,6 @@ func workspaceApplicationComponentStatus(input WorkspaceApplicationRuntimeInput,
 		return "pending", ""
 	}
 	return "ready", ""
-}
-
-// EntryURL describes a route admitted by the installation's Ingress controller.
-// It does not assert public HTTP/DNS/TLS qualification, which belongs to the
-// Instance owner. A desired host or ready Deployment alone is not an entry.
-func workspaceApplicationEntryURL(input WorkspaceApplicationRuntimeInput, resources workspaceApplicationKubernetesResources) string {
-	entryPort, hasEntry := contracts.WorkspaceApplicationEntryPort(input.Revision)
-	if input.Revision.ExposurePolicy == "cloud_private" || !hasEntry {
-		return ""
-	}
-	ingress := resources.ingresses[workspaceApplicationComponentResourceName(input, "entry")]
-	class := os.Getenv("OPL_INGRESS_CLASS")
-	if ingress == nil || nested(ingress, "metadata", "deletionTimestamp") != nil ||
-		class != "" && stringValue(nested(ingress, "spec", "ingressClassName")) != class {
-		return ""
-	}
-	addresses, _ := nested(ingress, "status", "loadBalancer", "ingress").([]any)
-	assigned := false
-	for _, value := range addresses {
-		address, _ := value.(map[string]any)
-		assigned = assigned || stringValue(address["ip"]) != "" || stringValue(address["hostname"]) != ""
-	}
-	if !assigned {
-		return ""
-	}
-	name := workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)
-	service := resources.services[name]
-	selector, _ := nested(service, "spec", "selector").(map[string]any)
-	if service == nil || nested(service, "metadata", "deletionTimestamp") != nil ||
-		!reflect.DeepEqual(selector, stringAnyMap(workspaceApplicationComponentSelector(input, contracts.WorkspaceApplicationComponentMain))) {
-		return ""
-	}
-	servicePorts, _ := nested(service, "spec", "ports").([]any)
-	portMatches := false
-	for _, value := range servicePorts {
-		port, _ := value.(map[string]any)
-		portMatches = portMatches || stringValue(port["name"]) == entryPort.Name && number(port["port"]) == float64(entryPort.Port) &&
-			stringValue(port["targetPort"]) == entryPort.Name && stringValue(port["protocol"]) == "TCP"
-	}
-	if !portMatches {
-		return ""
-	}
-	host := workspaceApplicationIngressHost(input)
-	rules, _ := nested(ingress, "spec", "rules").([]any)
-	if len(rules) != 1 {
-		return ""
-	}
-	rule, _ := rules[0].(map[string]any)
-	paths, _ := nested(rule, "http", "paths").([]any)
-	if stringValue(rule["host"]) != host || len(paths) != 1 {
-		return ""
-	}
-	path, _ := paths[0].(map[string]any)
-	if stringValue(path["path"]) != "/" || stringValue(path["pathType"]) != "Prefix" ||
-		stringValue(nested(path, "backend", "service", "name")) != name ||
-		number(nested(path, "backend", "service", "port", "number")) != float64(entryPort.Port) {
-		return ""
-	}
-	return "http://" + host + "/"
 }
 
 func workspaceApplicationComponentPorts(revision contracts.WorkspaceApplicationRevision, componentName string) []int {
@@ -405,12 +345,6 @@ func workspaceApplicationComponentManifest(input WorkspaceApplicationRuntimeInpu
 		)
 	}
 	items = append(items, workspaceApplicationNetworkPolicy(input, tags))
-	if policy := workspaceApplicationPublicEntryPolicy(input, tags); policy != nil {
-		items = append(items, policy)
-	}
-	if ingress := workspaceApplicationIngress(input, compute, tags); ingress != nil {
-		items = append(items, ingress)
-	}
 	return mustJSON(map[string]any{"apiVersion": "v1", "kind": "List", "items": items})
 }
 
@@ -557,6 +491,18 @@ func workspaceApplicationComponentDeployment(
 			volumeMounts = append(volumeMounts, map[string]any{"name": "application-config", "mountPath": config.Target, "subPath": config.Name, "readOnly": true})
 		}
 	}
+	// The declared envelope becomes the container's requests and limits. An
+	// application that declares nothing keeps the previous BestEffort shape
+	// rather than receiving invented bounds.
+	envelope := input.Revision.Compute
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		if dependency, depErr := dependencySpecByName(input.Revision, component.Name); depErr == nil {
+			envelope = dependency.Compute
+		}
+	}
+	if resources := workspaceApplicationComponentResources(envelope); resources != nil {
+		container["resources"] = resources
+	}
 	if len(ports) > 0 {
 		container["ports"] = ports
 	}
@@ -630,59 +576,33 @@ func workspaceApplicationNetworkPolicy(input WorkspaceApplicationRuntimeInput, t
 	}, "spec": map[string]any{"podSelector": workspaceSelector, "policyTypes": []any{"Ingress", "Egress"}, "ingress": ingress, "egress": egress}}
 }
 
-func workspaceApplicationPublicEntryPolicy(input WorkspaceApplicationRuntimeInput, tags map[string]string) map[string]any {
-	port, hasEntry := contracts.WorkspaceApplicationEntryPort(input.Revision)
-	if input.Revision.ExposurePolicy == "cloud_private" || !hasEntry {
+// workspaceApplicationComponentResources translates one declared envelope into
+// a container's requests and limits. Scheduling and the target-node feasibility
+// check depend on the requests; the limits bound one component so a runaway
+// process cannot consume its siblings on the shared workspace node.
+func workspaceApplicationComponentResources(compute contracts.WorkspaceApplicationCompute) map[string]any {
+	requests, limits := map[string]any{}, map[string]any{}
+	if compute.CPURequestMilli > 0 {
+		requests["cpu"] = fmt.Sprintf("%dm", compute.CPURequestMilli)
+	}
+	if compute.MemoryRequestBytes > 0 {
+		requests["memory"] = strconv.FormatInt(compute.MemoryRequestBytes, 10)
+	}
+	if compute.CPULimitMilli > 0 {
+		limits["cpu"] = fmt.Sprintf("%dm", compute.CPULimitMilli)
+	}
+	if compute.MemoryLimitBytes > 0 {
+		limits["memory"] = strconv.FormatInt(compute.MemoryLimitBytes, 10)
+	}
+	resources := map[string]any{}
+	if len(requests) > 0 {
+		resources["requests"] = requests
+	}
+	if len(limits) > 0 {
+		resources["limits"] = limits
+	}
+	if len(resources) == 0 {
 		return nil
 	}
-	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, "entry-network"), "annotations": tags, "labels": mergeStringMaps(k8sCostLabels(tags), map[string]string{"oplcloud.cn/runtime-id": k8sCostLabelValue(applicationRuntimeID(input))}),
-	}, "spec": map[string]any{
-		"podSelector": map[string]any{"matchLabels": workspaceApplicationComponentSelector(input, contracts.WorkspaceApplicationComponentMain)},
-		"policyTypes": []any{"Ingress"},
-		"ingress":     []any{map[string]any{"ports": []any{map[string]any{"protocol": "TCP", "port": port.Port}}}},
-	}}
-}
-
-// workspaceApplicationIngressHost derives the dedicated subdomain origin of
-// one application deployment. Apps keep their own root path and cookies, so
-// they never share the workspace domain's cookie scope; wildcard DNS and
-// certificate coverage for this subdomain are installation prerequisites.
-func workspaceApplicationIngressHost(input WorkspaceApplicationRuntimeInput) string {
-	if input.SchemaVersion == 0 {
-		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), workspaceDomain())
-	}
-	return fmt.Sprintf("%s.%s", workspaceApplicationComponentResourceName(input, "origin"), workspaceDomain())
-}
-
-// workspaceApplicationIngress renders the public entry of one application
-// deployment. cloud-private applications and applications without declared
-// web ports stay cluster-internal: no Ingress is created for them.
-func workspaceApplicationIngress(input WorkspaceApplicationRuntimeInput, compute ComputeAllocation, tags map[string]string) map[string]any {
-	port, hasEntry := contracts.WorkspaceApplicationEntryPort(input.Revision)
-	if input.Revision.ExposurePolicy == "cloud_private" || !hasEntry {
-		return nil
-	}
-	runtimeID := applicationRuntimeID(input)
-	labels := mergeStringMaps(map[string]string{
-		"oplcloud.cn/account-id":            compute.AccountID,
-		"oplcloud.cn/workspace-id":          k8sCostLabelValue(input.WorkspaceID),
-		"oplcloud.cn/runtime-id":            k8sCostLabelValue(runtimeID),
-		"oplcloud.cn/compute-allocation-id": k8sCostLabelValue(compute.ID),
-		"app.kubernetes.io/name":            "opl-workspace-application",
-		"app.kubernetes.io/instance":        workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain),
-	}, k8sCostLabels(tags))
-	paths := []any{map[string]any{
-		"path": "/", "pathType": "Prefix",
-		"backend": map[string]any{"service": map[string]any{"name": workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), "port": map[string]any{"number": port.Port}}},
-	}}
-	spec := map[string]any{"rules": []any{map[string]any{
-		"host": workspaceApplicationIngressHost(input), "http": map[string]any{"paths": paths},
-	}}}
-	if class := os.Getenv("OPL_INGRESS_CLASS"); class != "" {
-		spec["ingressClassName"] = class
-	}
-	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, "entry"), "labels": labels, "annotations": tags,
-	}, "spec": spec}
+	return resources
 }

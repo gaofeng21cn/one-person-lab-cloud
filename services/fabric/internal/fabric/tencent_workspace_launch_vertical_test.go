@@ -924,7 +924,7 @@ func TestTencentWorkspaceLaunchRuntimeReplayRequiresExactRuntimeAndGatewayBindin
 	provider.kubectl = fixture.kubectl
 
 	result, err := service.EnsureWorkspaceLaunchStage(context.Background(), input)
-	if err != nil || result.State != "ready" || result.Resources.RuntimeID != runtimeID || result.Resources.RuntimeServiceName != serviceName || result.Resources.RuntimeURL == "" {
+	if err != nil || result.State != "ready" || result.Resources.RuntimeID != runtimeID || result.Resources.RuntimeServiceName != serviceName {
 		status, statusErr := provider.WorkspaceRuntimeStatus(context.Background(), input.Binding.WorkspaceID)
 		t.Fatalf("runtime result=%#v err=%v status=%#v statusErr=%v", result, err, status, statusErr)
 	}
@@ -1150,7 +1150,9 @@ func TestTencentWorkspaceLaunchCompletesTypedFiveStageChainWithGETOnlyReplay(t *
 
 	runtimeInput := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "runtime", "ensure_runtime", result.Resources)
 	result, err = service.EnsureWorkspaceLaunchStage(context.Background(), runtimeInput)
-	if err != nil || result.State != "ready" || result.Resources.RuntimeID == "" || result.Resources.RuntimeURL != "https://workspace.medopl.cn/w/ws-alpha/" {
+	// The installation gateway owns the customer route, so the provider reports
+	// the service it runs and publishes no route of its own.
+	if err != nil || result.State != "ready" || result.Resources.RuntimeID == "" || result.Resources.RuntimeServiceName == "" || result.Resources.RuntimeURL != "" {
 		t.Fatalf("runtime result=%#v err=%v", result, err)
 	}
 	stages = append(stages, stageCall{input: runtimeInput, result: result})

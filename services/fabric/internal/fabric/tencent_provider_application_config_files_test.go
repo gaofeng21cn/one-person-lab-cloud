@@ -40,7 +40,6 @@ func TestTencentApplicationDependencyConfigAndLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	completeTencentApplicationStartup(t, provider, fake, input)
-	fake.setEntryReady()
 	observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
 	if err != nil || observed.Status != "ready" {
 		t.Fatalf("observation=%#v err=%v", observed, err)

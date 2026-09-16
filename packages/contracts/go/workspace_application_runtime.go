@@ -33,11 +33,36 @@ type WorkspaceApplicationRuntimeObservation struct {
 	WorkspaceID   string `json:"workspaceId"`
 	RuntimeID     string `json:"runtimeId"`
 	Status        string `json:"status"`
-	// EntryURL is the user-facing web entry of the main component. It is set
-	// when the exposure policy and explicit EntryPort allow a published entry and
-	// stays empty for cloud-private or worker-only applications.
-	EntryURL   string                                      `json:"entryUrl,omitempty"`
+	// Entry states how the published web entry is reached. It is absent when
+	// the exposure policy publishes nothing, and present only once the entry is
+	// ready. The shape follows who publishes the route, never a module's
+	// preference.
+	Entry      *WorkspaceApplicationEntry                  `json:"entry,omitempty"`
 	Components []WorkspaceApplicationRuntimeComponentState `json:"components"`
+}
+
+// WorkspaceApplicationEntry is the resolved destination of one application's
+// published web entry. Exactly one shape is present:
+//
+//   - ServiceName and Port when the installation gateway publishes the route.
+//     The executing provider resolves them from its own resource names, so no
+//     other module re-derives the provider's naming or the declared port.
+//   - URL when the executing provider publishes the endpoint itself, as a local
+//     provider does for a directly bound host port.
+type WorkspaceApplicationEntry struct {
+	ServiceName string `json:"serviceName,omitempty"`
+	Port        int    `json:"port,omitempty"`
+	URL         string `json:"url,omitempty"`
+}
+
+// ValidateWorkspaceApplicationEntry accepts exactly the two publication shapes.
+func ValidateWorkspaceApplicationEntry(entry WorkspaceApplicationEntry) error {
+	gatewayPublished := entry.ServiceName != "" && entry.Port > 0 && entry.Port <= 65535 && entry.URL == ""
+	providerPublished := entry.URL != "" && entry.ServiceName == "" && entry.Port == 0
+	if !gatewayPublished && !providerPublished {
+		return errors.New("workspace_application_entry_invalid")
+	}
+	return nil
 }
 
 const (
@@ -140,6 +165,17 @@ func ValidateWorkspaceApplicationRuntimeObservation(revision WorkspaceApplicatio
 	}
 	if observation.Status != WorkspaceApplicationRuntimeOverallStatus(observation.Components) {
 		return errors.New("workspace_application_runtime_status_mismatch")
+	}
+	if observation.Entry != nil {
+		if err := ValidateWorkspaceApplicationEntry(*observation.Entry); err != nil {
+			return err
+		}
+		if observation.Status != "ready" {
+			return errors.New("workspace_application_runtime_entry_unready")
+		}
+		if observation.Entry.ServiceName != "" && !workspaceApplicationComponentNamePattern.MatchString(observation.Entry.ServiceName) {
+			return errors.New("workspace_application_runtime_entry_service_invalid")
+		}
 	}
 	return nil
 }
@@ -275,11 +311,31 @@ func WorkspaceApplicationConfigurationDigest(configuration WorkspaceApplicationR
 	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
+// workspaceApplicationLegacyOPLIdentity is the uid and gid every legacy OPL
+// generation ran as, and therefore the owner of the data a layout reuses.
+const workspaceApplicationLegacyOPLIdentity = 10001
+
+// workspaceApplicationIdentityMatchesLayout reports whether a declared execution
+// identity is compatible with the ownership of the data being reused. An
+// undeclared identity adopts the layout's own.
+func workspaceApplicationIdentityMatchesLayout(execution WorkspaceApplicationExecution, identity int64) bool {
+	if execution.UserID != nil && *execution.UserID != identity {
+		return false
+	}
+	if execution.GroupID != nil && *execution.GroupID != identity {
+		return false
+	}
+	return true
+}
+
 func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplicationRuntimeInput) error {
 	if input.SchemaVersion != 2 {
 		return errors.New("workspace_application_runtime_schema_unsupported")
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
+	// The credential version belongs to an application that declares a
+	// platform-issued credential; an application that declares none must not
+	// carry one.
+	if WorkspaceApplicationRequiresPlatformCredentials(input.Revision) {
 		if strings.TrimSpace(input.Configuration.CredentialVersion) == "" {
 			return errors.New("workspace_application_credential_version_required")
 		}
@@ -294,6 +350,27 @@ func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplication
 	case "legacy_opl", "legacy_application":
 		if input.DataSourceRuntimeOperationID == "" {
 			return errors.New("workspace_application_data_source_required")
+		}
+		// Reusing another generation's data means reusing its on-disk ownership.
+		// An application that declares no identity keeps the layout's own, which
+		// is what every historical generation did; one that declares a different
+		// identity would write files the layout cannot serve.
+		if input.DataLayout == "legacy_opl" {
+			// Every component that mounts the reused data writes into the same
+			// on-disk ownership, so every one of them must be compatible with it.
+			if input.Revision.Execution.UserID != nil || input.Revision.Execution.GroupID != nil {
+				if len(input.Revision.PersistentMounts) > 0 && !workspaceApplicationIdentityMatchesLayout(input.Revision.Execution, workspaceApplicationLegacyOPLIdentity) {
+					return errors.New("workspace_application_data_layout_identity_mismatch")
+				}
+			}
+			for _, dependency := range input.Revision.Dependencies {
+				if len(dependency.PersistentMounts) == 0 {
+					continue
+				}
+				if !workspaceApplicationIdentityMatchesLayout(dependency.Execution, workspaceApplicationLegacyOPLIdentity) {
+					return errors.New("workspace_application_data_layout_identity_mismatch")
+				}
+			}
 		}
 	default:
 		return errors.New("workspace_application_data_layout_invalid")

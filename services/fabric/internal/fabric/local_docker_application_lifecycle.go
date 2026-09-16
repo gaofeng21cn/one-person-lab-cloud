@@ -29,7 +29,7 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx conte
 	}
 	observation.Status = contracts.WorkspaceApplicationRuntimeOverallStatus(observation.Components)
 	if observation.Status != "ready" {
-		observation.EntryURL = ""
+		observation.Entry = nil
 	}
 	return applicationLifecycleResult(observation), nil
 }

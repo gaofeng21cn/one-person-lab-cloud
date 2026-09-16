@@ -461,7 +461,7 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 				record.RequestResources.RuntimeBindingRef != binding.ExpectedResourceBinding ||
 				!workspaceLaunchResourcesContain(record.Resources, record.RequestResources) ||
 				record.Resources.RuntimeBindingRef != operation.ID || record.Resources.RuntimeID == "" ||
-				record.Resources.RuntimeServiceName == "" || record.Resources.RuntimeURL == "" {
+				record.Resources.RuntimeServiceName == "" {
 				return nil, ErrLaunchStageBindingConflict
 			}
 			parents[operation.ID] = canonicalWorkspaceRuntimeParent{operation: operation, binding: binding, record: record}
@@ -507,8 +507,7 @@ func workspaceRuntimeIdentityCandidatesFromOperations(operations []FabricOperati
 		if !decodeOperationResource(child, &runtime) || runtime.ID == "" || runtime.ID != binding.ResourceID ||
 			runtime.ID != parent.record.Resources.RuntimeID || runtime.WorkspaceID != workspaceID ||
 			runtime.OperationID != parent.operation.ID || runtime.ServiceName == "" ||
-			runtime.ServiceName != binding.ExpectedResourceBinding || runtime.ServiceName != parent.record.Resources.RuntimeServiceName ||
-			runtime.URL == "" {
+			runtime.ServiceName != binding.ExpectedResourceBinding || runtime.ServiceName != parent.record.Resources.RuntimeServiceName {
 			return nil, ErrLaunchStageBindingConflict
 		}
 		childCounts[parent.operation.ID]++

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -460,8 +461,8 @@ func TestLocalDockerApplicationRuntimePublishesDeclaredPortsAndEntryURL(t *testi
 	if !strings.Contains(mainArgs, "-p 127.0.0.1::8080") {
 		t.Fatalf("main run args must publish the declared port: %s", mainArgs)
 	}
-	if observation.EntryURL == "" || !strings.HasPrefix(observation.EntryURL, "http://127.0.0.1:") {
-		t.Fatalf("entry URL=%q, want the published host port", observation.EntryURL)
+	if localEntryURL(observation) == "" || !strings.HasPrefix(localEntryURL(observation), "http://127.0.0.1:") {
+		t.Fatalf("entry URL=%q, want the published host port", localEntryURL(observation))
 	}
 }
 
@@ -475,7 +476,7 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input,
 		ComputeAllocation{ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running"},
 		StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
-	if err != nil || observation.Status != "pending" || observation.EntryURL != "" {
+	if err != nil || observation.Status != "pending" || localEntryURL(observation) != "" {
 		t.Fatalf("pending=%#v err=%v", observation, err)
 	}
 	main := strings.Join(runner.runArgsForComponent("main"), " ")
@@ -502,7 +503,7 @@ func TestLocalDockerApplicationRuntimeProbesMainWithoutPublishingPrivatePorts(t 
 	}
 	runner.probeReady = true
 	ready, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-	if err != nil || ready.Status != "ready" || ready.EntryURL != "" {
+	if err != nil || ready.Status != "ready" || localEntryURL(ready) != "" {
 		t.Fatalf("ready=%#v err=%v", ready, err)
 	}
 	runner.probeErr = errors.New("probe runtime unavailable")
@@ -533,12 +534,12 @@ func TestLocalDockerApplicationRuntimeInitialDelayAndLiveEntryReadback(t *testin
 	observation, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input,
 		ComputeAllocation{ID: "compute-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", Status: "running"},
 		StorageVolume{ID: "storage-alpha", AccountID: "acct-alpha", WorkspaceID: "workspace-alpha", SizeGB: 10, Status: "ready"})
-	if err != nil || observation.Status != "pending" || len(runner.probes) != 0 || observation.EntryURL != "" {
+	if err != nil || observation.Status != "pending" || len(runner.probes) != 0 || localEntryURL(observation) != "" {
 		t.Fatalf("delayed=%#v err=%v probeCalls=%d", observation, err, len(runner.probes))
 	}
 	provider.now = func() time.Time { return time.Now() }
 	observation, err = provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-	if err != nil || observation.Status != "ready" || observation.EntryURL == "" || len(runner.probes) != 1 {
+	if err != nil || observation.Status != "ready" || localEntryURL(observation) == "" || len(runner.probes) != 1 {
 		t.Fatalf("ready=%#v err=%v probeCalls=%d", observation, err, len(runner.probes))
 	}
 	name, _ := localDockerApplicationComponentName(input.RuntimeOperationID, "main")
@@ -571,7 +572,7 @@ func TestLocalDockerApplicationRuntimePublishesOnlySelectedEntry(t *testing.T) {
 			if strings.Contains(args, "::5353") || (entry == "" && strings.Contains(args, " -p ")) || (entry != "" && !strings.Contains(args, "::8080/tcp")) {
 				t.Fatalf("args=%s", args)
 			}
-			if (entry == "") != (observation.EntryURL == "") {
+			if (entry == "") != (localEntryURL(observation) == "") {
 				t.Fatalf("entry=%q observation=%#v", entry, observation)
 			}
 		})
@@ -698,4 +699,28 @@ func (r *applicationRuntimeDockerRunner) runArgsForComponent(name string) []stri
 		}
 	}
 	return nil
+}
+
+// The local provider must bound a declared component exactly like the hosted
+// provider, including a hard memory ceiling with no swap headroom.
+func TestLocalDockerApplicationResourceArgsFollowDeclaredEnvelope(t *testing.T) {
+	if args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{}); len(args) != 0 {
+		t.Fatalf("an undeclared envelope must add no argument: %#v", args)
+	}
+	args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{
+		CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30,
+	})
+	want := []string{"--cpus", "2", "--memory", "3221225472", "--memory-swap", "3221225472", "--memory-reservation", "2147483648"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args=%#v want %#v", args, want)
+	}
+}
+
+// localEntryURL reads the endpoint a local provider publishes itself. A local
+// provider binds a host port, so it reports a URL rather than a gateway route.
+func localEntryURL(observation contracts.WorkspaceApplicationRuntimeObservation) string {
+	if observation.Entry == nil {
+		return ""
+	}
+	return observation.Entry.URL
 }
