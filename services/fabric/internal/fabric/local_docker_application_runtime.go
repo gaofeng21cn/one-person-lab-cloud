@@ -202,7 +202,7 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 	entryPort := 0
 	if component.Role == contracts.WorkspaceApplicationComponentMain {
 		entryPort = localDockerApplicationEntryPort(input.Revision)
-		if input.SchemaVersion == 2 && input.Revision.RuntimeProfile == "opl_app" {
+		if input.SchemaVersion == 2 && contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 			if err := p.verifyRuntimeGatewayNetwork(ctx, container); err != nil {
 				return component, "", err
 			}
@@ -679,7 +679,7 @@ func (p *LocalDockerProvider) removeApplicationProbe(ctx context.Context, worksp
 }
 
 func (p *LocalDockerProvider) ensureApplicationGatewayNetwork(ctx context.Context, input WorkspaceApplicationRuntimeInput, compute ComputeAllocation) error {
-	if input.Revision.RuntimeProfile != "opl_app" || p.runtimeGatewayContainer == "" {
+	if !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) || p.runtimeGatewayContainer == "" {
 		return nil
 	}
 	name, err := localDockerApplicationComponentNameForInput(input, contracts.WorkspaceApplicationComponentMain)

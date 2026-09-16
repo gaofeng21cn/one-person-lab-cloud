@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"strings"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 type workspaceApplicationPreflightProvider interface {
@@ -58,7 +60,7 @@ func (p *LocalDockerProvider) PreflightWorkspaceApplicationRuntime(ctx context.C
 	if _, _, err := p.applicationSecretFiles(input); err != nil {
 		return err
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
+	if workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		if _, err := applicationWebUICredentials(input); err != nil {
 			return err
 		}
@@ -77,12 +79,14 @@ func (p *TencentProvider) PreflightWorkspaceApplicationRuntime(ctx context.Conte
 			return err
 		}
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
+	if contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		if _, err := workspaceApplicationGatewayBinding(input); err != nil {
 			return err
 		}
+	}
+	if workspaceApplicationRequiresDerivedCredentials(input.Revision) {
 		if strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED")) == "" {
-			return errors.New("workspace_application_webui_credential_seed_required")
+			return errors.New("workspace_application_credential_seed_required")
 		}
 		if _, err := tencentApplicationCredentialToken(ctx, input); err != nil {
 			return err

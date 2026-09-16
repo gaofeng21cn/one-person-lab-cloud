@@ -311,11 +311,31 @@ func WorkspaceApplicationConfigurationDigest(configuration WorkspaceApplicationR
 	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
+// workspaceApplicationLegacyOPLIdentity is the uid and gid every legacy OPL
+// generation ran as, and therefore the owner of the data a layout reuses.
+const workspaceApplicationLegacyOPLIdentity = 10001
+
+// workspaceApplicationIdentityMatchesLayout reports whether a declared execution
+// identity is compatible with the ownership of the data being reused. An
+// undeclared identity adopts the layout's own.
+func workspaceApplicationIdentityMatchesLayout(execution WorkspaceApplicationExecution, identity int64) bool {
+	if execution.UserID != nil && *execution.UserID != identity {
+		return false
+	}
+	if execution.GroupID != nil && *execution.GroupID != identity {
+		return false
+	}
+	return true
+}
+
 func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplicationRuntimeInput) error {
 	if input.SchemaVersion != 2 {
 		return errors.New("workspace_application_runtime_schema_unsupported")
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
+	// The credential version belongs to an application that declares a
+	// platform-issued credential; an application that declares none must not
+	// carry one.
+	if WorkspaceApplicationRequiresPlatformCredentials(input.Revision) {
 		if strings.TrimSpace(input.Configuration.CredentialVersion) == "" {
 			return errors.New("workspace_application_credential_version_required")
 		}
@@ -330,6 +350,27 @@ func ValidateWorkspaceApplicationRuntimeConfiguration(input WorkspaceApplication
 	case "legacy_opl", "legacy_application":
 		if input.DataSourceRuntimeOperationID == "" {
 			return errors.New("workspace_application_data_source_required")
+		}
+		// Reusing another generation's data means reusing its on-disk ownership.
+		// An application that declares no identity keeps the layout's own, which
+		// is what every historical generation did; one that declares a different
+		// identity would write files the layout cannot serve.
+		if input.DataLayout == "legacy_opl" {
+			// Every component that mounts the reused data writes into the same
+			// on-disk ownership, so every one of them must be compatible with it.
+			if input.Revision.Execution.UserID != nil || input.Revision.Execution.GroupID != nil {
+				if len(input.Revision.PersistentMounts) > 0 && !workspaceApplicationIdentityMatchesLayout(input.Revision.Execution, workspaceApplicationLegacyOPLIdentity) {
+					return errors.New("workspace_application_data_layout_identity_mismatch")
+				}
+			}
+			for _, dependency := range input.Revision.Dependencies {
+				if len(dependency.PersistentMounts) == 0 {
+					continue
+				}
+				if !workspaceApplicationIdentityMatchesLayout(dependency.Execution, workspaceApplicationLegacyOPLIdentity) {
+					return errors.New("workspace_application_data_layout_identity_mismatch")
+				}
+			}
 		}
 	default:
 		return errors.New("workspace_application_data_layout_invalid")

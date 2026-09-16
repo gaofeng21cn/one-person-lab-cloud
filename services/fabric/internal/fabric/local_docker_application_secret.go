@@ -128,7 +128,7 @@ func (p *LocalDockerProvider) applicationDeclaredSecrets(input WorkspaceApplicat
 		}
 		var source string
 		var value []byte
-		if input.Revision.RuntimeProfile == "opl_app" && declared.Name == "gateway" {
+		if gateway, hasGateway := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey); hasGateway && declared.Name == gateway.Name {
 			expected, err := workspaceApplicationGatewayBinding(input)
 			if err != nil || expected != binding {
 				return nil, nil, ErrLaunchStageBindingConflict

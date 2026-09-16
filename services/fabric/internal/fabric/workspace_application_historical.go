@@ -34,7 +34,7 @@ func applicationRuntimeRequestHash(input WorkspaceApplicationRuntimeInput) strin
 	return hashInput(input)
 }
 func validHistoricalApplicationInput(input WorkspaceApplicationRuntimeInput) bool {
-	return input.SchemaVersion == 0 && input.AccountID != "" && input.WorkspaceID != "" && input.ComputeID != "" && input.VolumeID != "" && input.RuntimeOperationID != "" && input.ConfigurationDigest != "" && input.DataLayout == "" && input.DataSourceRuntimeOperationID == "" && input.DataBindingID == "" && len(input.Configuration.Environment) == 0 && input.Configuration.CredentialVersion == "" && input.Configuration.CredentialSourceRuntimeOperationID == "" && len(input.SecretBindings) == 0 && input.Revision.RuntimeProfile == "" && contracts.ValidateWorkspaceApplicationRevision(input.Revision) == nil
+	return input.SchemaVersion == 0 && input.AccountID != "" && input.WorkspaceID != "" && input.ComputeID != "" && input.VolumeID != "" && input.RuntimeOperationID != "" && input.ConfigurationDigest != "" && input.DataLayout == "" && input.DataSourceRuntimeOperationID == "" && input.DataBindingID == "" && len(input.Configuration.Environment) == 0 && input.Configuration.CredentialVersion == "" && input.Configuration.CredentialSourceRuntimeOperationID == "" && len(input.SecretBindings) == 0 && len(input.Revision.Credentials) == 0 && contracts.ValidateWorkspaceApplicationRevision(input.Revision) == nil
 }
 func (s *Service) historicalApplicationReadback(ctx context.Context, input WorkspaceApplicationRuntimeInput, allowUncreated bool) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	var observation contracts.WorkspaceApplicationRuntimeObservation
@@ -133,7 +133,7 @@ func (s *Service) validateApplicationDataLayout(ctx context.Context, input Works
 		}
 		return nil
 	}
-	if input.DataLayout != "legacy_opl" || input.Revision.RuntimeProfile != "opl_app" {
+	if input.DataLayout != "legacy_opl" || !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		return errors.New("workspace_application_data_layout_invalid")
 	}
 	for _, mount := range input.Revision.PersistentMounts {

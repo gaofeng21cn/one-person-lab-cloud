@@ -22,8 +22,7 @@ func canonicalRuntimeOperationGraph(t *testing.T, workspaceID, suffix string, no
 	parentBinding.RequestHash = hashInput(map[string]string{"launch": parentBinding.LaunchOperationID, "stage": parentBinding.Stage})
 	runtime := WorkspaceRuntime{
 		ID: "rt_" + suffix, OperationID: parentBinding.FabricOperationID, WorkspaceID: workspaceID,
-		URL: "https://workspace.example/w/" + workspaceID + "/", ServiceName: "runtime-" + suffix,
-		Status: "running", Ready: true, Access: RuntimeAccess{Username: "opl", CredentialStatus: "configured", CredentialVersion: "v1", SecretRef: gatewaySecretName(workspaceID)},
+		URL: "https://workspace.example/w/" + workspaceID + "/", ServiceName: "runtime-" + suffix, Status: "running", Ready: true, Access: RuntimeAccess{Username: "opl", CredentialStatus: "configured", CredentialVersion: "v1", SecretRef: gatewaySecretName(workspaceID)},
 	}
 	parent := newOperation(parentBinding.Action, "workspace_launch_stage", parentBinding.FabricOperationID, parentBinding.AccountID, workspaceID, parentBinding.IdempotencyKey, parentBinding.RequestHash, now)
 	parent.ID, parent.OperationID, parent.Provider = parentBinding.FabricOperationID, parentBinding.FabricOperationID, "test-provider"
@@ -426,6 +425,9 @@ func TestMemoryWorkspaceRuntimeIdentityCandidatesAllowDynamicURLReadback(t *test
 	if !ok {
 		t.Fatal("decode canonical runtime stage record")
 	}
+	// A provider that publishes its own endpoint reports a dynamic one: a local
+	// provider binds a host port that changes per run. Identity resolution must
+	// accept that readback for the runtime it already recorded.
 	record.Resources.RuntimeURL = "http://127.0.0.1:63118/"
 	setWorkspaceLaunchStageRecord(&parent, record)
 	for _, operation := range []FabricOperation{parent, child} {

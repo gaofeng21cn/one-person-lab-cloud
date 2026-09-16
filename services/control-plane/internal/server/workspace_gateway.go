@@ -1245,6 +1245,9 @@ func (app *controlPlaneServer) workspaceEntryUpstream(ctx context.Context, works
 	if serviceName == "" {
 		return "", 0, errors.New("workspace_runtime_truth_unavailable")
 	}
+	// The Workspace Runtime's WebUI port is a fixed cross-module compatibility
+	// fact owned by the Workspace Runtime ABI contract, not a per-deployment
+	// value an instance reports.
 	port, err := strconv.Atoi(workspaceRuntimeWebUIPort)
 	if err != nil {
 		return "", 0, err

@@ -512,6 +512,9 @@ export function presentWorkspaceApplicationBinding(binding: string | undefined, 
   switch (binding) {
     case "empty":
       return { known: true, label: "未安装应用" };
+    // A historical Workspace records only the platform default application's
+    // binding; the label names the application, which is the one case a binding
+    // value is all the Console knows.
     case "opl_app":
       return { known: true, label: "OPL App" };
     default:

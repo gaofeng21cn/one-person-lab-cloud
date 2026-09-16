@@ -14,6 +14,7 @@ import (
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/control-plane/internal/controlplane"
 	"opl-cloud/services/control-plane/internal/domain/application"
+	"opl-cloud/services/control-plane/internal/domain/provisioning"
 )
 
 const (
@@ -184,7 +185,7 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 			return workspaceApplicationDeploymentIntent{}, errWorkspaceApplicationIntentConflict
 		}
 		if clientConfigurationDigest == "" {
-			if revision.RuntimeProfile == "opl_app" && configuration.CredentialVersion == "" && configuration.CredentialSourceRuntimeOperationID == "" {
+			if contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) && configuration.CredentialVersion == "" && configuration.CredentialSourceRuntimeOperationID == "" {
 				configuration.CredentialVersion = prior.Configuration.CredentialVersion
 				configuration.CredentialSourceRuntimeOperationID = prior.Configuration.CredentialSourceRuntimeOperationID
 			}
@@ -229,7 +230,7 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 		bound = true
 	}
 	if !bound {
-		historicalLayout, historicalSource, err := app.workspaceApplicationHistoricalDataBinding(ctx, workspace, applicationID, revision.RuntimeProfile, previous, selected, owned)
+		historicalLayout, historicalSource, err := app.workspaceApplicationHistoricalDataBinding(ctx, workspace, revision, previous, selected, owned)
 		if err != nil {
 			return workspaceApplicationDeploymentIntent{}, err
 		}
@@ -237,11 +238,11 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 			dataLayout, dataSource = historicalLayout, historicalSource
 		}
 	}
-	if currentBinding == "opl_app" && revision.RuntimeProfile == "opl_app" && applicationID == "opl-app" {
+	if currentBinding == provisioning.ApplicationBindingOPLApp && contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 		dataLayout = "legacy_opl"
 	}
-	if revision.RuntimeProfile == "opl_app" {
-		configuration, err = app.workspaceApplicationCredentialConfiguration(ctx, workspace, applicationID, operationID, configuration)
+	if contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) {
+		configuration, err = app.workspaceApplicationCredentialConfiguration(ctx, workspace, revision, operationID, configuration)
 		if err != nil {
 			return workspaceApplicationDeploymentIntent{}, err
 		}
@@ -256,7 +257,7 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 	}
 	dataBindingIDs := []string{dataBindingID}
 	var legacy *contracts.WorkspaceRuntimePowerInput
-	if currentBinding == "opl_app" {
+	if currentBinding == provisioning.ApplicationBindingOPLApp {
 		launch, found, err := app.canonicalWorkspaceLaunch(ctx, workspace, workspaceLaunchResourceProjectionMismatchFields, nil)
 		if err != nil || !found || launch.stringFact("runtimeId") == "" || launch.stringFact("runtimeBindingRef") == "" {
 			return workspaceApplicationDeploymentIntent{}, errWorkspaceApplicationBindingUnknown
@@ -445,7 +446,7 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 				writeError(w, http.StatusConflict, "workspace_application_revision_invalid")
 				return
 			}
-			if revision.RuntimeProfile == "opl_app" {
+			if contracts.WorkspaceApplicationRequiresPlatformCredentials(revision) {
 				if len(requestedBindings) > 0 {
 					writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
 					return

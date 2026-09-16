@@ -395,22 +395,26 @@ type WorkspaceRuntimeGatewayNetworkRecoveryResult struct {
 }
 
 type WorkspaceRuntime struct {
-	Observation       *contracts.ResourceObservation `json:"-"`
-	ID                string                         `json:"id"`
-	OperationID       string                         `json:"operationId,omitempty"`
-	WorkspaceID       string                         `json:"workspaceId"`
-	URL               string                         `json:"url"`
-	Status            string                         `json:"status"`
-	ServiceName       string                         `json:"serviceName,omitempty"`
-	ImageID           string                         `json:"imageId,omitempty"`
-	ProviderRequestID string                         `json:"providerRequestId"`
-	Access            RuntimeAccess                  `json:"access,omitempty"`
-	Ready             bool                           `json:"ready,omitempty"`
-	Checks            []Check                        `json:"checks,omitempty"`
-	CostTags          map[string]string              `json:"costTags,omitempty"`
-	CreatedAt         time.Time                      `json:"createdAt"`
-	ComputeID         string                         `json:"-"`
-	NodeName          string                         `json:"-"`
+	Observation *contracts.ResourceObservation `json:"-"`
+	ID          string                         `json:"id"`
+	OperationID string                         `json:"operationId,omitempty"`
+	WorkspaceID string                         `json:"workspaceId"`
+	// URL is the endpoint a provider publishes itself, as the local provider
+	// does for a directly bound host port. An installation gateway publishes the
+	// route instead, so such a provider reports only ServiceName and leaves URL
+	// empty: a customer-facing route is that gateway's shape, not the provider's.
+	URL               string            `json:"url,omitempty"`
+	Status            string            `json:"status"`
+	ServiceName       string            `json:"serviceName,omitempty"`
+	ImageID           string            `json:"imageId,omitempty"`
+	ProviderRequestID string            `json:"providerRequestId"`
+	Access            RuntimeAccess     `json:"access,omitempty"`
+	Ready             bool              `json:"ready,omitempty"`
+	Checks            []Check           `json:"checks,omitempty"`
+	CostTags          map[string]string `json:"costTags,omitempty"`
+	CreatedAt         time.Time         `json:"createdAt"`
+	ComputeID         string            `json:"-"`
+	NodeName          string            `json:"-"`
 }
 
 type RuntimeAccess struct {

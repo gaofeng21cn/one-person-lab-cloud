@@ -157,8 +157,7 @@ func d2HistoricalSettlementEvidence(refunded bool, operationID string) (workspac
 		Type: "billing.workspace_purchased.v1", Status: "completed", Surface: "control_plane", AccountID: "acct-d2-history", WorkspaceID: "ws-d2-history-deleted", RequestID: operationID,
 		Execution: map[string]any{
 			"resourceType": "workspace", "resourceId": "ws-d2-history-deleted", "computeAllocationId": "compute-history", "storageId": "storage-history",
-			"attachmentId": "attachment-history", "workspaceApiKeyId": int64(91), "workspaceKeyFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "runtimeId": "runtime-history", "runtimeServiceName": "runtime-service-history",
-		},
+			"attachmentId": "attachment-history", "workspaceApiKeyId": int64(91), "workspaceKeyFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "runtimeId": "runtime-history", "runtimeServiceName": "runtime-service-history"},
 		Cost: map[string]any{
 			"priceVersion": "pilot-usd-2026-07-v1", "currency": "USD", "billingUnit": "calendar_month", "totalUsdMicros": int64(52_580_000),
 			"sub2apiUserId": int64(41), "sub2apiRedeemCode": "opl:history-purchase", "postChargeBalanceUsdMicros": int64(47_420_000),

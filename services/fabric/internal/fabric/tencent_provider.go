@@ -1234,8 +1234,8 @@ func workspaceManifestWithGatewayPlan(input WorkspaceRuntimeInput, workspaceName
 	}
 	labels := stringAnyMap(mergeStringMaps(runtimeSelectorLabels(serviceName, compute), identityLabels, k8sCostLabels(tags)))
 	pvcName := storagePVCName(storage)
-	password := deriveAionUIAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed)
-	secretData := map[string]any{"webui_password": b64(password), "webui_session_secret": b64(deriveWebUISessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed))}
+	password := deriveWorkspaceAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed)
+	secretData := map[string]any{"webui_password": b64(password), "webui_session_secret": b64(deriveWorkspaceSessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), workspaceID, credentialSeed))}
 	secretItems := []any{map[string]any{"key": "webui_password", "path": "opl_webui_password"}, map[string]any{"key": "webui_session_secret", "path": "webui_session_secret"}}
 	workspaceEnv := []any{
 		map[string]any{"name": "OPL_WEBUI_DEPLOYMENT_MODE", "value": "cloud"},
@@ -1471,7 +1471,7 @@ func b64(value string) string {
 	return base64.StdEncoding.EncodeToString([]byte(value))
 }
 
-func deriveAionUIAdminPassword(seed string, workspaceID string, token string) string {
+func deriveWorkspaceAdminPassword(seed string, workspaceID string, token string) string {
 	secret := strings.TrimSpace(seed)
 	if secret == "" {
 		return ""
@@ -1485,7 +1485,7 @@ func deriveAionUIAdminPassword(seed string, workspaceID string, token string) st
 	return "opl_" + digest + "Aa1!"
 }
 
-func deriveWebUISessionSecret(seed string, workspaceID string, token string) string {
+func deriveWorkspaceSessionSecret(seed string, workspaceID string, token string) string {
 	secret := strings.TrimSpace(seed)
 	if secret == "" {
 		return ""

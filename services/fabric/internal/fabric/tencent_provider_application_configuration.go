@@ -24,9 +24,6 @@ func validateTencentApplicationCapabilities(revision contracts.WorkspaceApplicat
 	}
 	mounts := append([]contracts.WorkspaceApplicationMount(nil), revision.ScratchMounts...)
 	executions := []contracts.WorkspaceApplicationExecution{revision.Execution}
-	if revision.RuntimeProfile == "opl_app" && (revision.Execution.UserID != nil && *revision.Execution.UserID != 10001 || revision.Execution.GroupID != nil && *revision.Execution.GroupID != 10001) {
-		return errors.New("tencent_application_opl_identity_unsupported")
-	}
 	for _, dependency := range revision.Dependencies {
 		if len(dependency.HealthChecks) > 1 {
 			return errors.New("tencent_application_health_checks_unsupported")
@@ -106,9 +103,11 @@ func workspaceApplicationSecretTargets(input WorkspaceApplicationRuntimeInput) m
 			targets[secret.Name] = secret.Target
 		}
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
-		targets["webui-password"] = "/run/secrets/opl_webui_password"
-		targets["webui-session"] = "/run/secrets/webui_session_secret"
+	// A platform-issued credential lands where the application asked for it.
+	for _, credential := range input.Revision.Credentials {
+		if credential.Target != "" {
+			targets[credential.Name] = credential.Target
+		}
 	}
 	return targets
 }
@@ -198,7 +197,7 @@ func (p *TencentProvider) applicationSecretObject(ctx context.Context, input Wor
 }
 
 func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
-	required := len(input.Revision.SecretInputs) > 0 || input.Revision.RuntimeProfile == "opl_app"
+	required := len(input.Revision.SecretInputs) > 0 || contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision)
 	for _, dependency := range input.Revision.Dependencies {
 		required = required || len(dependency.SecretInputs) > 0
 	}
@@ -218,21 +217,28 @@ func (p *TencentProvider) prepareApplicationSecrets(ctx context.Context, input W
 		}
 		data[binding.Name] = value
 	}
-	if input.Revision.RuntimeProfile == "opl_app" {
-		_, err := workspaceApplicationGatewayBinding(input)
-		if err != nil {
+	if contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
+		if _, err := workspaceApplicationGatewayBinding(input); err != nil {
 			return err
 		}
+	}
+	admin, hasAdmin := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword)
+	session, hasSession := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret)
+	if hasAdmin || hasSession {
 		seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
 		if seed == "" {
-			return errors.New("workspace_application_webui_credential_seed_required")
+			return errors.New("workspace_application_credential_seed_required")
 		}
 		token, err := tencentApplicationCredentialToken(ctx, input)
 		if err != nil {
 			return err
 		}
-		data["webui-password"] = deriveAionUIAdminPassword(seed, input.WorkspaceID, token)
-		data["webui-session"] = deriveWebUISessionSecret(seed, input.WorkspaceID, token)
+		if hasAdmin {
+			data[admin.Name] = deriveWorkspaceAdminPassword(seed, input.WorkspaceID, token)
+		}
+		if hasSession {
+			data[session.Name] = deriveWorkspaceSessionSecret(seed, input.WorkspaceID, token)
+		}
 	}
 	manifest := mustJSON(map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "immutable": true, "metadata": map[string]any{
 		"name": workspaceApplicationComponentResourceName(input, "secrets"), "labels": map[string]string{"oplcloud.cn/runtime-id": k8sCostLabelValue(applicationRuntimeID(input)), "oplcloud.cn/account-id": k8sCostLabelValue(input.AccountID), "oplcloud.cn/workspace-id": k8sCostLabelValue(input.WorkspaceID)}, "annotations": map[string]string{"oplcloud.cn/configuration-digest": input.ConfigurationDigest}}, "stringData": data})
@@ -433,9 +439,13 @@ func (p *TencentProvider) ReadWorkspaceApplicationRuntimeCredentials(ctx context
 	if err != nil {
 		return contracts.WorkspaceApplicationRuntimeCredentials{}, err
 	}
-	password, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", "webui-password")))
+	admin, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword)
+	if !declared {
+		return contracts.WorkspaceApplicationRuntimeCredentials{}, errors.New("workspace_application_credentials_unavailable")
+	}
+	password, err := base64.StdEncoding.DecodeString(stringValue(nested(secret, "data", admin.Name)))
 	if err != nil || len(password) == 0 {
 		return contracts.WorkspaceApplicationRuntimeCredentials{}, ErrLaunchStageBindingConflict
 	}
-	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, WebUIUsername: webuiUsername, WebUIPassword: string(password)}, nil
+	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, WebUIUsername: admin.Username, WebUIPassword: string(password)}, nil
 }

@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	workspaceRegistryHostEnv         = "OPL_WORKSPACE_REGISTRY_HOST"
-	workspaceRegistryUsernameEnv     = "OPL_WORKSPACE_REGISTRY_USERNAME"
-	workspaceRegistryPasswordEnv     = "OPL_WORKSPACE_REGISTRY_PASSWORD"
-	workspaceRegistryDefaultHost     = "uswccr.ccs.tencentyun.com"
+	workspaceRegistryHostEnv        = "OPL_WORKSPACE_REGISTRY_HOST"
+	workspaceRegistryUsernameEnv    = "OPL_WORKSPACE_REGISTRY_USERNAME"
+	workspaceRegistryPasswordEnv    = "OPL_WORKSPACE_REGISTRY_PASSWORD"
+	workspaceRegistryDefaultHost    = "uswccr.ccs.tencentyun.com"
 	workspaceRegistryRequestTimeout = 30 * time.Second
 )
 
@@ -54,8 +54,8 @@ func workspaceRegistryCatalogFromEnv() (*workspaceApplicationRegistryCatalog, er
 }
 
 type workspaceRegistryCatalogResponse struct {
-	Host       string                                   `json:"host"`
-	Namespaces []string                                 `json:"namespaces"`
+	Host       string                                  `json:"host"`
+	Namespaces []string                                `json:"namespaces"`
 	Items      []contracts.WorkspaceRegistryRepository `json:"items,omitempty"`
 }
 

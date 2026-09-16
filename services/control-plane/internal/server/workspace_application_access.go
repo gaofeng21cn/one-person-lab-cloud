@@ -100,7 +100,11 @@ func (app *controlPlaneServer) readWorkspaceCurrentApplication(ctx context.Conte
 	if err != nil {
 		return current, contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
-	current.Capabilities = workspaceApplicationCapabilities{Credentials: input.Revision.RuntimeProfile == "opl_app", Gateway: input.Revision.RuntimeProfile == "opl_app"}
+	// Capabilities follow the application's own declaration, never its identity.
+	current.Capabilities = workspaceApplicationCapabilities{
+		Credentials: contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision),
+		Gateway:     contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey),
+	}
 	observation, err := service.ReadWorkspaceApplicationRuntime(ctx, input)
 	if err != nil {
 		return current, observation, err
@@ -198,7 +202,7 @@ func (app *controlPlaneServer) rotateWorkspaceCurrentApplicationCredentials(w ht
 		return true
 	}
 	input, err := app.workspaceApplicationRuntimeInput(r.Context(), current)
-	if err != nil || input.Revision.RuntimeProfile != "opl_app" {
+	if err != nil || !contracts.WorkspaceApplicationRequiresPlatformCredentials(input.Revision) {
 		writeError(w, http.StatusConflict, "workspace_credentials_unavailable")
 		return true
 	}
@@ -242,7 +246,7 @@ func (app *controlPlaneServer) requireWorkspaceGatewayApplication(ctx context.Co
 		return errors.New("workspace_gateway_application_unavailable")
 	}
 	input, err := app.workspaceApplicationRuntimeInput(ctx, current)
-	if err != nil || input.Revision.RuntimeProfile != "opl_app" || current.WorkspaceAPIKeyID <= 0 {
+	if err != nil || !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) || current.WorkspaceAPIKeyID <= 0 {
 		return errors.New("workspace_gateway_not_declared")
 	}
 	return nil
@@ -262,7 +266,7 @@ func (app *controlPlaneServer) bindWorkspaceCurrentApplicationGateway(ctx contex
 			return true, errWorkspaceKeyRotationState
 		}
 		input, err := app.workspaceApplicationRuntimeInput(ctx, current)
-		if err != nil || input.Revision.RuntimeProfile != "opl_app" {
+		if err != nil || !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 			return true, errWorkspaceKeyRotationConflict
 		}
 		bindings := append([]contracts.WorkspaceApplicationRuntimeSecretBinding(nil), current.SecretBindings...)

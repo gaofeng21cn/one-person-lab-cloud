@@ -7,12 +7,14 @@ import (
 )
 
 var (
-	workspaceApplicationIDPattern            = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-	workspaceApplicationVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
-	workspaceApplicationPlatformPattern      = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9._-]+$`)
-	workspaceApplicationPortNamePattern      = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
-	workspaceApplicationComponentNamePattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	workspaceApplicationHostLabelPattern     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	workspaceApplicationIDPattern             = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	workspaceApplicationVersionPattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+	workspaceApplicationPlatformPattern       = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9._-]+$`)
+	workspaceApplicationPortNamePattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
+	workspaceApplicationComponentNamePattern  = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	workspaceApplicationCredentialNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,30}$`)
+	workspaceApplicationUsernamePattern       = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,63}$`)
+	workspaceApplicationHostLabelPattern      = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 // WorkspaceApplicationRevision is the immutable, provider-neutral description
@@ -25,11 +27,13 @@ type WorkspaceApplicationRevision struct {
 	Version       string                        `json:"version"`
 	Platform      string                        `json:"platform"`
 	Image         string                        `json:"image"`
-	// RuntimeProfile explicitly opts an admitted application into the OPL App
-	// authentication and Gateway ABI. An ordinary application receives no such credentials.
-	RuntimeProfile string                     `json:"runtimeProfile,omitempty"`
-	Entrypoint     []string                   `json:"entrypoint,omitempty"`
-	Ports          []WorkspaceApplicationPort `json:"ports,omitempty"`
+	// Credentials declares the platform-issued credentials this application
+	// requires. The platform provides kinds; the application decides which it
+	// needs and where each one lands, and an application that declares none
+	// receives none. No platform branch names a specific application.
+	Credentials []WorkspaceApplicationCredential `json:"credentials,omitempty"`
+	Entrypoint  []string                         `json:"entrypoint,omitempty"`
+	Ports       []WorkspaceApplicationPort       `json:"ports,omitempty"`
 	// EntryPort names the declared TCP port serving the application's HTTP root.
 	// An empty name declares no web entry; health probes do not publish a port.
 	EntryPort        string                            `json:"entryPort,omitempty"`
@@ -89,6 +93,59 @@ func ValidateWorkspaceApplicationCompute(compute WorkspaceApplicationCompute) er
 		return errors.New("workspace_application_compute_request_above_limit")
 	}
 	return nil
+}
+
+// Platform-issued credential kinds. Each names a capability the installation
+// provides; which application asks for it is not the platform's business.
+const (
+	// WorkspaceApplicationCredentialWorkspaceAdminPassword is a per-Workspace
+	// administrator password the installation derives and can show its owner.
+	WorkspaceApplicationCredentialWorkspaceAdminPassword = "workspace_admin_password"
+	// WorkspaceApplicationCredentialWorkspaceSessionSecret is a per-Workspace
+	// secret an application signs its own browser sessions with.
+	WorkspaceApplicationCredentialWorkspaceSessionSecret = "workspace_session_secret"
+	// WorkspaceApplicationCredentialGatewayKey is the Workspace's Gateway key.
+	WorkspaceApplicationCredentialGatewayKey = "gateway_key"
+)
+
+// WorkspaceApplicationCredential is one platform-issued credential an
+// application requires, and the place that application wants it.
+type WorkspaceApplicationCredential struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Target string `json:"target,omitempty"`
+	Env    string `json:"env,omitempty"`
+	// Username is the login the password belongs to. An application's own
+	// login name is its interface, not the installation's.
+	Username string `json:"username,omitempty"`
+}
+
+// WorkspaceApplicationCredentialKind reports whether the revision requires one
+// platform-issued credential kind.
+func WorkspaceApplicationCredentialKind(revision WorkspaceApplicationRevision, kind string) bool {
+	for _, credential := range revision.Credentials {
+		if credential.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// WorkspaceApplicationRequiresPlatformCredentials reports whether the revision
+// requires any platform-issued credential at all.
+func WorkspaceApplicationRequiresPlatformCredentials(revision WorkspaceApplicationRevision) bool {
+	return len(revision.Credentials) > 0
+}
+
+// WorkspaceApplicationDeclaredCredential returns the declared credential of one
+// kind. A revision declares each kind at most once, so the result is unambiguous.
+func WorkspaceApplicationDeclaredCredential(revision WorkspaceApplicationRevision, kind string) (WorkspaceApplicationCredential, bool) {
+	for _, credential := range revision.Credentials {
+		if credential.Kind == kind {
+			return credential, true
+		}
+	}
+	return WorkspaceApplicationCredential{}, false
 }
 
 type WorkspaceApplicationPort struct {
@@ -203,11 +260,40 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 	if err := ValidateWorkspaceApplicationExecution(revision.Execution); err != nil {
 		return err
 	}
-	if revision.RuntimeProfile == "opl_app" && (revision.Execution.UserID != nil && *revision.Execution.UserID != 10001 || revision.Execution.GroupID != nil && *revision.Execution.GroupID != 10001) {
-		return errors.New("workspace_application_opl_identity_invalid")
-	}
-	if revision.RuntimeProfile != "" && revision.RuntimeProfile != "opl_app" {
-		return errors.New("workspace_application_runtime_profile_invalid")
+	seenCredentials := map[string]struct{}{}
+	seenCredentialKinds := map[string]struct{}{}
+	for _, credential := range revision.Credentials {
+		if !workspaceApplicationCredentialNamePattern.MatchString(credential.Name) {
+			return errors.New("workspace_application_credential_invalid")
+		}
+		if _, duplicate := seenCredentials[credential.Name]; duplicate {
+			return errors.New("workspace_application_credential_duplicate")
+		}
+		seenCredentials[credential.Name] = struct{}{}
+		switch credential.Kind {
+		case WorkspaceApplicationCredentialWorkspaceAdminPassword, WorkspaceApplicationCredentialWorkspaceSessionSecret, WorkspaceApplicationCredentialGatewayKey:
+		default:
+			return errors.New("workspace_application_credential_kind_invalid")
+		}
+		if _, duplicate := seenCredentialKinds[credential.Kind]; duplicate {
+			return errors.New("workspace_application_credential_kind_duplicate")
+		}
+		seenCredentialKinds[credential.Kind] = struct{}{}
+		if credential.Target == "" || !strings.HasPrefix(credential.Target, "/") || strings.Contains(credential.Target, "..") {
+			return errors.New("workspace_application_credential_target_invalid")
+		}
+		if credential.Env != "" && !ValidWorkspaceApplicationEnvironmentName(credential.Env) {
+			return errors.New("workspace_application_credential_env_invalid")
+		}
+		// A login belongs to a password credential, and a password credential
+		// needs the login it is used with.
+		if credential.Kind == WorkspaceApplicationCredentialWorkspaceAdminPassword {
+			if credential.Username == "" || !workspaceApplicationUsernamePattern.MatchString(credential.Username) {
+				return errors.New("workspace_application_credential_username_invalid")
+			}
+		} else if credential.Username != "" {
+			return errors.New("workspace_application_credential_username_unsupported")
+		}
 	}
 	if revision.SchemaVersion != 1 || !workspaceApplicationIDPattern.MatchString(strings.TrimSpace(revision.ApplicationID)) ||
 		!workspaceApplicationVersionPattern.MatchString(strings.TrimSpace(revision.Version)) ||

@@ -302,7 +302,7 @@ require('node:http').createServer((request, response) => {
 	// replay the provisioned compute, storage and attachment.
 	service = NewServiceWithOperationStore(provider, store)
 	revision := contracts.WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform, RuntimeProfile: "opl_app", SecretInputs: []contracts.WorkspaceApplicationSecretInput{{Name: "gateway", Target: "/run/secrets/opl_gateway_api_key"}},
+		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform, Credentials: []contracts.WorkspaceApplicationCredential{{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"}},
 		Image:            imageID,
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
@@ -473,7 +473,7 @@ require('node:http').createServer((request, response) => {
 	runtimeInput = secondInput
 	runtimeInput.Revision = revision
 	runtimeInput.Revision.ApplicationID = "isolated-counter"
-	runtimeInput.Revision.RuntimeProfile = ""
+	runtimeInput.Revision.Credentials = nil
 	runtimeInput.Revision.SecretInputs = nil
 	runtimeInput.Revision.Image = alternateImage
 	runtimeInput.Configuration = contracts.WorkspaceApplicationRuntimeConfiguration{}

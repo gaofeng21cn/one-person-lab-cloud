@@ -22,7 +22,7 @@ func (s *Service) applicationCredentialSource(ctx context.Context, input Workspa
 		return result, err
 	}
 	var original WorkspaceRuntime
-	if input.Revision.RuntimeProfile != "opl_app" || len(owners) != 1 || owners[0].AccountID != input.AccountID || !decodeOperationResource(owners[0], &original) || original.WorkspaceID != input.WorkspaceID || original.OperationID != result.RuntimeOperationID {
+	if !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) || len(owners) != 1 || owners[0].AccountID != input.AccountID || !decodeOperationResource(owners[0], &original) || original.WorkspaceID != input.WorkspaceID || original.OperationID != result.RuntimeOperationID {
 		return result, errors.New("workspace_application_legacy_credential_owner_missing")
 	}
 	result.OperationKey = original.OperationID
@@ -60,16 +60,30 @@ func (s *Service) applicationCredentialContext(ctx context.Context, input Worksp
 	return context.WithValue(ctx, applicationCredentialSourceContextKey{}, source), nil
 }
 
+// workspaceApplicationRequiresDerivedCredentials reports whether the revision
+// asks the installation to derive a credential for it. Deriving needs the
+// installation seed and the credential version, so the provider resolves those
+// only for an application that declared the requirement.
+func workspaceApplicationRequiresDerivedCredentials(revision contracts.WorkspaceApplicationRevision) bool {
+	return contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword) ||
+		contracts.WorkspaceApplicationCredentialKind(revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret)
+}
+
 func validateWorkspaceApplicationConfiguration(input WorkspaceApplicationRuntimeInput) error {
 	return contracts.ValidateWorkspaceApplicationRuntimeConfiguration(input)
 }
 
+// workspaceApplicationGatewayBinding resolves the Secret binding named by the
+// revision's declared Gateway credential. The credential's name is the
+// application's choice; the platform only requires that the binding points at the
+// Workspace's own Gateway secret.
 func workspaceApplicationGatewayBinding(input WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeSecretBinding, error) {
-	if input.Revision.RuntimeProfile != "opl_app" {
+	credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey)
+	if !declared {
 		return contracts.WorkspaceApplicationRuntimeSecretBinding{}, errors.New("workspace_application_credentials_unavailable")
 	}
 	for _, binding := range input.SecretBindings {
-		if binding.Name == "gateway" && binding.Key == "opl_gateway_api_key" && binding.SecretRef == gatewaySecretName(input.WorkspaceID) {
+		if binding.Name == credential.Name && binding.Key == "opl_gateway_api_key" && binding.SecretRef == gatewaySecretName(input.WorkspaceID) {
 			return binding, nil
 		}
 	}

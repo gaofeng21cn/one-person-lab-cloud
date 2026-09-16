@@ -51,8 +51,8 @@ func validRuntimeSecretArchive(t *testing.T, key []byte, metadata localDockerGat
 		{name: "./", typeflag: tar.TypeDir, mode: 0700},
 		{name: "./" + localDockerGatewayKeyFile, typeflag: tar.TypeReg, body: key, mode: 0444},
 		{name: "./" + localDockerGatewayMetaFile, typeflag: tar.TypeReg, body: meta, mode: 0400},
-		{name: "./" + localDockerWebUIPasswordFile, typeflag: tar.TypeReg, body: []byte(deriveAionUIAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), metadata.WorkspaceID, metadata.Version)), mode: 0400},
-		{name: "./" + localDockerWebUISessionSecretFile, typeflag: tar.TypeReg, body: []byte(deriveWebUISessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), metadata.WorkspaceID, metadata.Version)), mode: 0400},
+		{name: "./" + localDockerWebUIPasswordFile, typeflag: tar.TypeReg, body: []byte(deriveWorkspaceAdminPassword(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), metadata.WorkspaceID, metadata.Version)), mode: 0400},
+		{name: "./" + localDockerWebUISessionSecretFile, typeflag: tar.TypeReg, body: []byte(deriveWorkspaceSessionSecret(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"), metadata.WorkspaceID, metadata.Version)), mode: 0400},
 	})
 }
 
@@ -193,13 +193,13 @@ func TestLocalDockerRuntimeSecretArchiveFailsClosed(t *testing.T) {
 			{name: "./" + localDockerGatewayKeyFile, typeflag: tar.TypeReg, body: key, mode: 0444},
 			{name: "./" + localDockerGatewayMetaFile, typeflag: tar.TypeReg, body: metadataBody, mode: 0400},
 			{name: "./" + localDockerWebUIPasswordFile, typeflag: tar.TypeReg, body: []byte("foreign-password"), mode: 0400},
-			{name: "./" + localDockerWebUISessionSecretFile, typeflag: tar.TypeReg, body: []byte(deriveWebUISessionSecret(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), mode: 0400},
+			{name: "./" + localDockerWebUISessionSecretFile, typeflag: tar.TypeReg, body: []byte(deriveWorkspaceSessionSecret(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), mode: 0400},
 		})},
 		{name: "session secret drift", body: runtimeSecretArchive(t, []runtimeSecretArchiveEntry{
 			{name: "./", typeflag: tar.TypeDir, mode: 0700},
 			{name: "./" + localDockerGatewayKeyFile, typeflag: tar.TypeReg, body: key, mode: 0444},
 			{name: "./" + localDockerGatewayMetaFile, typeflag: tar.TypeReg, body: metadataBody, mode: 0400},
-			{name: "./" + localDockerWebUIPasswordFile, typeflag: tar.TypeReg, body: []byte(deriveAionUIAdminPassword(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), mode: 0400},
+			{name: "./" + localDockerWebUIPasswordFile, typeflag: tar.TypeReg, body: []byte(deriveWorkspaceAdminPassword(localDockerTestWebUISeed, metadata.WorkspaceID, metadata.Version)), mode: 0400},
 			{name: "./" + localDockerWebUISessionSecretFile, typeflag: tar.TypeReg, body: []byte("foreign-session-secret"), mode: 0400},
 		})},
 		{name: "unknown metadata field", body: runtimeSecretArchive(t, []runtimeSecretArchiveEntry{

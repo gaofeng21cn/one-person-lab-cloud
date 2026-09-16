@@ -222,7 +222,7 @@ func (p *TencentProvider) readWorkspaceRuntime(ctx context.Context, input Worksp
 		return runtime, err
 	}
 	if runtime.ID != runtimeID || runtime.OperationID != input.RuntimeOperationID || runtime.WorkspaceID != input.WorkspaceID ||
-		runtime.ServiceName != serviceName || runtime.URL == "" || !reflect.DeepEqual(runtime.CostTags, tags) {
+		runtime.ServiceName != serviceName || !reflect.DeepEqual(runtime.CostTags, tags) {
 		return runtime, fmt.Errorf("workspace_runtime_readback_mismatch")
 	}
 	if gateway == (tencentWorkspaceRuntimeGatewayBinding{}) {
@@ -483,7 +483,7 @@ func (p *TencentProvider) WorkspaceRuntimeStatus(ctx context.Context, workspaceI
 	}
 	return WorkspaceRuntime{Observation: observation,
 		ID: runtimeID, OperationID: runtimeOperationID, WorkspaceID: workspaceID,
-		URL: fmt.Sprintf("https://%s/w/%s/", p.workspaceDomain, workspaceID), Status: status, ServiceName: serviceName,
+		Status: status, ServiceName: serviceName,
 		ImageID: image, Access: access, Ready: ready, Checks: checks, CostTags: costTags,
 		ComputeID: stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/compute-allocation-id")), NodeName: runtimeNodeName,
 	}, nil
