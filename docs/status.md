@@ -376,7 +376,10 @@ closed at their owners.
   workspace domain. A published application may declare `EntryHostLabel`, which
   composes `<label>.<application domain>`: the publisher owns the application's
   name, the installation owns the domain, and a demo or product URL is therefore
-  stable and meaningful instead of deployment-derived. The entry Ingress reuses
+  stable and meaningful instead of deployment-derived. The administrator sets
+  that label from the same structured registration form; leaving it empty keeps
+  the deployment-derived default, so naming an application needs neither
+  hand-written JSON nor a platform change. The entry Ingress reuses
   the installation's existing load balancer when
   `OPL_APPLICATION_INGRESS_EXISTING_LB_ID` is set, because the operator's DNS
   already points at that load balancer, and declares the covering certificate
@@ -387,10 +390,10 @@ closed at their owners.
   inferred.
 
 `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
-316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
-fingerprint `73521712cdcb8a4f0dd799fb9fdd4531e51afb9481206d3f0ba99f6f09eb87ec`;
+319 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
+fingerprint `60e8ff3b77251a4b43f8887297f619b4685aac3811e4f62318ecead841dfaa38`;
 log SHA-256
-`9872054af26d1cdf4fadd251034cdbe51a7fdb4d82ab3a1fbf7084da337cbcfe`; evidence in
+`74e40ab0dd714de7b44f9ae67bc9435ddff7b23b83bfd54a14c3f739e0b474a1`; evidence in
 `output/application-entry-and-resources-20260916/`.
 
 This does not prove that the target TKE installation reuses its load balancer,

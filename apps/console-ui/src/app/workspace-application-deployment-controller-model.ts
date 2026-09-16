@@ -20,6 +20,7 @@ export interface WorkspaceApplicationRevisionDraft {
   image: string;
   exposurePolicy: string;
   httpPort: string;
+  entryHostLabel: string;
   healthCheckPath: string;
   healthCheckPort: string;
   persistentMounts: WorkspaceApplicationRevisionMountDraft[];
@@ -30,7 +31,7 @@ export interface WorkspaceApplicationRevisionDraft {
 export function emptyWorkspaceApplicationRevisionDraft(): WorkspaceApplicationRevisionDraft {
   return {
     applicationId: "", version: "", platform: "linux/amd64", image: "",
-    exposurePolicy: "application", httpPort: "8080", healthCheckPath: "/healthz", healthCheckPort: "8080",
+    exposurePolicy: "application", httpPort: "8080", entryHostLabel: "", healthCheckPath: "/healthz", healthCheckPort: "8080",
     persistentMounts: [{ name: "data", mountPath: "/data" }],
     scratchMounts: [], dependencies: []
   };
@@ -44,10 +45,11 @@ const exposurePolicies = ["anonymous", "application", "cloud_private"];
 const mountNamePattern = /^[a-z][a-z0-9-]{0,30}$/;
 const componentNamePattern = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const mountPathPattern = /^\/[A-Za-z0-9._/-]+$/;
+const entryHostLabelPattern = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export type WorkspaceApplicationRevisionField = keyof Pick<
   WorkspaceApplicationRevisionDraft,
-  "applicationId" | "version" | "platform" | "image" | "exposurePolicy" | "httpPort" | "healthCheckPath" | "healthCheckPort"
+  "applicationId" | "version" | "platform" | "image" | "exposurePolicy" | "httpPort" | "entryHostLabel" | "healthCheckPath" | "healthCheckPort"
 >;
 
 export interface WorkspaceApplicationRevisionDraftValidation {
@@ -90,6 +92,10 @@ export function validateWorkspaceApplicationRevisionDraft(draft: WorkspaceApplic
   if (draft.healthCheckPort !== "" && !validPort(draft.healthCheckPort)) fieldErrors.healthCheckPort = "端口为 1-65535 的数字";
   if (draft.healthCheckPath !== "" && draft.healthCheckPort === "") fieldErrors.healthCheckPort = "请填写健康检查端口";
   if (draft.healthCheckPort !== "" && draft.healthCheckPath === "") fieldErrors.healthCheckPath = "请填写健康检查路径";
+  // A host label only exists for a published entry: it names the application's
+  // own host inside the installation's application domain.
+  if (draft.entryHostLabel !== "" && !entryHostLabelPattern.test(draft.entryHostLabel)) fieldErrors.entryHostLabel = "小写字母或数字开头结尾，仅含小写字母、数字或连字符";
+  else if (draft.entryHostLabel !== "" && (draft.httpPort === "" || draft.exposurePolicy === "cloud_private")) fieldErrors.entryHostLabel = "只有发布网页入口的应用才能指定访问域名";
   const mountErrors = validateMountDrafts(draft.persistentMounts);
   const scratchMountErrors = validateMountDrafts(draft.scratchMounts);
   const dependencyErrors: Record<number, string> = {};
@@ -121,6 +127,7 @@ export function composeWorkspaceApplicationRevision(draft: WorkspaceApplicationR
   if (draft.httpPort !== "") {
     revision.ports = [{ name: "http", port: Number(draft.httpPort), protocol: "TCP" }];
     revision.entryPort = "http";
+    if (draft.entryHostLabel !== "") revision.entryHostLabel = draft.entryHostLabel;
   }
   if (draft.healthCheckPath !== "" && draft.healthCheckPort !== "") {
     revision.healthChecks = [{ port: Number(draft.healthCheckPort), path: draft.healthCheckPath, initialDelaySeconds: 5 }];

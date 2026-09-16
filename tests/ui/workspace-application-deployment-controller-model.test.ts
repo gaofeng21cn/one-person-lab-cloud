@@ -175,3 +175,29 @@ test("Deployment JSON preserves files and only accepts immutable Secret referenc
     assert.throws(() => parseWorkspaceApplicationDeploymentJSON("{}", JSON.stringify(value)));
   }
 });
+
+test("A published application may name its own host inside the installation domain", () => {
+  const revision = composeWorkspaceApplicationRevision(filledDraft({ entryHostLabel: "zslyibd" }));
+  assert.equal(revision.entryHostLabel, "zslyibd");
+  const unnamed = composeWorkspaceApplicationRevision(filledDraft());
+  assert.equal("entryHostLabel" in unnamed, false);
+});
+
+test("A host label is refused on an application that publishes no entry", () => {
+  const validation = validateWorkspaceApplicationRevisionDraft(filledDraft({ entryHostLabel: "zslyibd", httpPort: "" }));
+  assert.equal(validation.ok, false);
+  assert.match(validation.fieldErrors.entryHostLabel ?? "", /网页入口/);
+  const privateApplication = validateWorkspaceApplicationRevisionDraft(filledDraft({ entryHostLabel: "zslyibd", exposurePolicy: "cloud_private" }));
+  assert.equal(privateApplication.ok, false);
+  const worker = composeWorkspaceApplicationRevision(filledDraft({ entryHostLabel: "zslyibd", httpPort: "" }));
+  assert.equal("entryHostLabel" in worker, false);
+});
+
+test("Host labels keep the same shape the admission contract accepts", () => {
+  for (const label of ["ZSLYIBD", "-leading", "trailing-", "under_score", "dotted.name"]) {
+    assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ entryHostLabel: label })).ok, false, label);
+  }
+  for (const label of ["zslyibd", "ibd2", "a-b-c", "1app"]) {
+    assert.equal(validateWorkspaceApplicationRevisionDraft(filledDraft({ entryHostLabel: label })).ok, true, label);
+  }
+});
