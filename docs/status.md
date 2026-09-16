@@ -373,17 +373,24 @@ closed at their owners.
   `OPL_APPLICATION_DOMAIN`, defaulting to the workspace domain, so an
   installation can publish applications under a suffix its own certificate
   already covers instead of requiring wildcard coverage one label below the
-  workspace domain. The entry Ingress reuses the installation's existing load
-  balancer when `OPL_APPLICATION_INGRESS_EXISTING_LB_ID` is set, because the
-  operator's DNS already points at that load balancer, and declares the covering
-  certificate when `OPL_APPLICATION_INGRESS_TLS_SECRET` is set. Each of these is
-  a declared installation fact; none is inferred.
+  workspace domain. A published application may declare `EntryHostLabel`, which
+  composes `<label>.<application domain>`: the publisher owns the application's
+  name, the installation owns the domain, and a demo or product URL is therefore
+  stable and meaningful instead of deployment-derived. The entry Ingress reuses
+  the installation's existing load balancer when
+  `OPL_APPLICATION_INGRESS_EXISTING_LB_ID` is set, because the operator's DNS
+  already points at that load balancer, and declares the covering certificate
+  when `OPL_APPLICATION_INGRESS_TLS_SECRET` is set. Declaring a host label is
+  admitted only when no other Ingress in the namespace already claims that host,
+  because a derived name is unique by construction while a declared one is the
+  operator's choice. Each of these is a declared installation fact; none is
+  inferred.
 
 `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
 316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
-fingerprint `9be25a9f2e45972baadc5de0938b59b561a974afdbe03dc3435b0381bc38b5c7`;
+fingerprint `73521712cdcb8a4f0dd799fb9fdd4531e51afb9481206d3f0ba99f6f09eb87ec`;
 log SHA-256
-`ba6cab9c6f744f1a9b3163898fac5f39a4698059df0f843bc935fe41816552d8`; evidence in
+`9872054af26d1cdf4fadd251034cdbe51a7fdb4d82ab3a1fbf7084da337cbcfe`; evidence in
 `output/application-entry-and-resources-20260916/`.
 
 This does not prove that the target TKE installation reuses its load balancer,

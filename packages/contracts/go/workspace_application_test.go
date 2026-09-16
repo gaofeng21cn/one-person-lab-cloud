@@ -1,6 +1,9 @@
 package contracts
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func validWorkspaceApplicationRevision() WorkspaceApplicationRevision {
 	return WorkspaceApplicationRevision{
@@ -125,5 +128,33 @@ func TestValidateWorkspaceApplicationRejectsUnschedulableComponentEnvelope(t *te
 	}
 	if err := ValidateWorkspaceApplicationDependency(WorkspaceApplicationDependency{Name: "retrieval", Image: revision.Image, Compute: revision.Compute}); err == nil {
 		t.Fatal("expected the dependency ceiling to apply as well")
+	}
+}
+
+func TestValidateWorkspaceApplicationEntryHostLabel(t *testing.T) {
+	revision := validWorkspaceApplicationRevision()
+	revision.EntryHostLabel = "zslyibd"
+	if err := ValidateWorkspaceApplicationRevision(revision); err != nil {
+		t.Fatalf("a declared host label on a published entry must be accepted: %v", err)
+	}
+	for _, label := range []string{"ZSLYIBD", "-leading", "trailing-", "under_score", "dotted.name", strings.Repeat("a", 64)} {
+		revision = validWorkspaceApplicationRevision()
+		revision.EntryHostLabel = label
+		if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
+			t.Fatalf("expected host label %q to be rejected", label)
+		}
+	}
+	// A host label only exists for a published web entry.
+	noEntry := validWorkspaceApplicationRevision()
+	noEntry.EntryHostLabel = "zslyibd"
+	noEntry.EntryPort = ""
+	if err := ValidateWorkspaceApplicationRevision(noEntry); err == nil {
+		t.Fatal("expected a host label without an entry port to be rejected")
+	}
+	private := validWorkspaceApplicationRevision()
+	private.EntryHostLabel = "zslyibd"
+	private.ExposurePolicy = "cloud_private"
+	if err := ValidateWorkspaceApplicationRevision(private); err == nil {
+		t.Fatal("expected a host label on a cluster-private application to be rejected")
 	}
 }

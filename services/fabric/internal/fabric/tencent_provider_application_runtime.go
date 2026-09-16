@@ -49,6 +49,9 @@ func (p *TencentProvider) EnsureWorkspaceApplicationRuntime(ctx context.Context,
 			return contracts.WorkspaceApplicationRuntimeObservation{}, fmt.Errorf("tencent_application_component_conflict")
 		}
 	}
+	if err := p.validateApplicationEntryHost(ctx, input); err != nil {
+		return contracts.WorkspaceApplicationRuntimeObservation{}, err
+	}
 	if err := p.prepareApplicationSecrets(ctx, input); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
@@ -658,6 +661,44 @@ func workspaceApplicationPublicEntryPolicy(input WorkspaceApplicationRuntimeInpu
 	}}
 }
 
+// validateApplicationEntryHost admits a declared host only when the namespace
+// has no other Ingress claiming it. A derived host is unique per runtime by
+// construction, but a declared host is a name the operator chose, so the
+// installation must be checked rather than assumed: two Ingresses claiming one
+// host would serve the wrong application without any failing request.
+func (p *TencentProvider) validateApplicationEntryHost(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
+	if input.Revision.EntryHostLabel == "" {
+		return nil
+	}
+	host := workspaceApplicationIngressHost(input)
+	raw, err := p.callKubectl(ctx, []string{"get", "ingress", "-o", "json"}, nil, protectedresource.Target{})
+	if err != nil {
+		return err
+	}
+	items, err := strictKubectlItems(raw)
+	if err != nil {
+		return err
+	}
+	own := workspaceApplicationComponentResourceName(input, "entry")
+	for _, item := range items {
+		ingress, ok := item.(map[string]any)
+		if !ok || stringValue(ingress["kind"]) != "Ingress" {
+			return fmt.Errorf("tencent_application_entry_host_readback_invalid")
+		}
+		if stringValue(nested(ingress, "metadata", "name")) == own {
+			continue
+		}
+		rules, _ := nested(ingress, "spec", "rules").([]any)
+		for _, value := range rules {
+			rule, _ := value.(map[string]any)
+			if stringValue(rule["host"]) == host {
+				return fmt.Errorf("tencent_application_entry_host_conflict")
+			}
+		}
+	}
+	return nil
+}
+
 // workspaceApplicationComponentResources translates one declared envelope into
 // a container's requests and limits. Scheduling and the target-node feasibility
 // check depend on the requests; the limits bound one component so a runaway
@@ -696,6 +737,9 @@ func workspaceApplicationComponentResources(compute contracts.WorkspaceApplicati
 // resolve and cover with a certificate; this function never assumes that
 // wildcard coverage exists one label below the workspace domain.
 func workspaceApplicationIngressHost(input WorkspaceApplicationRuntimeInput) string {
+	if input.Revision.EntryHostLabel != "" {
+		return input.Revision.EntryHostLabel + "." + applicationDomain()
+	}
 	if input.SchemaVersion == 0 {
 		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), applicationDomain())
 	}

@@ -1110,3 +1110,42 @@ func completeTencentApplicationResume(t *testing.T, provider *TencentProvider, f
 	}
 	fake.setAllReady()
 }
+
+// A declared host must produce exactly the operator's URL, and the namespace
+// must not already serve that host from another Ingress.
+func TestTencentApplicationRuntimeEntryHostLabelIsDeclaredAndExclusive(t *testing.T) {
+	provider, fake, input := tencentApplicationRuntimeFixture(t)
+	input.Revision.EntryHostLabel = "zslyibd"
+	t.Setenv("OPL_APPLICATION_DOMAIN", "medopl.com")
+	if host := workspaceApplicationIngressHost(input); host != "zslyibd.medopl.com" {
+		t.Fatalf("declared host=%q", host)
+	}
+	ensure := func() error {
+		_, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume())
+		if !errors.Is(err, ErrWorkspaceLaunchPending) {
+			return err
+		}
+		return nil
+	}
+	if err := ensure(); err != nil {
+		t.Fatalf("first ensure err=%v", err)
+	}
+	entry := appliedApplicationIngress(t, fake, workspaceApplicationComponentResourceName(input, "entry"))
+	rules := nested(entry, "spec", "rules").([]any)
+	if len(rules) != 1 || stringValue(rules[0].(map[string]any)["host"]) != "zslyibd.medopl.com" {
+		t.Fatalf("entry ingress must route the declared host: %#v", entry)
+	}
+
+	// A different application claiming the same host must be rejected before it
+	// is applied, instead of silently splitting traffic between two Ingresses.
+	intruder := input
+	intruder.RuntimeOperationID = input.RuntimeOperationID + "-second"
+	fake.resources["Ingress:other-entry"] = map[string]any{
+		"apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
+		"metadata": map[string]any{"name": "other-entry", "uid": "Ingress:other-entry"},
+		"spec":     map[string]any{"rules": []any{map[string]any{"host": "zslyibd.medopl.com"}}},
+	}
+	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), intruder, tencentApplicationCompute(), tencentApplicationVolume()); err == nil || err.Error() != "tencent_application_entry_host_conflict" {
+		t.Fatalf("second claim on one host must be refused, got %v", err)
+	}
+}

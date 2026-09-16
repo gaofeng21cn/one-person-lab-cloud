@@ -12,6 +12,7 @@ var (
 	workspaceApplicationPlatformPattern      = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9._-]+$`)
 	workspaceApplicationPortNamePattern      = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
 	workspaceApplicationComponentNamePattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	workspaceApplicationHostLabelPattern     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 // WorkspaceApplicationRevision is the immutable, provider-neutral description
@@ -31,7 +32,12 @@ type WorkspaceApplicationRevision struct {
 	Ports          []WorkspaceApplicationPort `json:"ports,omitempty"`
 	// EntryPort names the declared TCP port serving the application's HTTP root.
 	// An empty name declares no web entry; health probes do not publish a port.
-	EntryPort        string                            `json:"entryPort,omitempty"`
+	EntryPort string `json:"entryPort,omitempty"`
+	// EntryHostLabel names the application's own host within the installation's
+	// application domain, so a published application has a stable, meaningful
+	// URL instead of a deployment-derived name. The publisher owns the label;
+	// the installation owns the domain it must be published under.
+	EntryHostLabel   string                            `json:"entryHostLabel,omitempty"`
 	HealthChecks     []WorkspaceApplicationHealthCheck `json:"healthChecks,omitempty"`
 	PersistentMounts []WorkspaceApplicationMount       `json:"persistentMounts,omitempty"`
 	ScratchMounts    []WorkspaceApplicationMount       `json:"scratchMounts,omitempty"`
@@ -231,6 +237,17 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 	if revision.EntryPort != "" {
 		if _, found := WorkspaceApplicationEntryPort(revision); !found {
 			return errors.New("workspace_application_entry_port_invalid")
+		}
+	}
+	if revision.EntryHostLabel != "" {
+		if !workspaceApplicationHostLabelPattern.MatchString(revision.EntryHostLabel) {
+			return errors.New("workspace_application_entry_host_label_invalid")
+		}
+		// A host only exists for a published web entry: a cluster-private
+		// application creates no Ingress, and an application without a declared
+		// entry port has nothing to route.
+		if _, found := WorkspaceApplicationEntryPort(revision); !found || revision.ExposurePolicy == "cloud_private" {
+			return errors.New("workspace_application_entry_host_label_unsupported")
 		}
 	}
 	if err := ValidateWorkspaceApplicationCompute(revision.Compute); err != nil {
