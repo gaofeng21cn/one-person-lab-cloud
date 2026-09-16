@@ -37,15 +37,10 @@ export const databaseFreeGoTestSpecs = Object.freeze([
 export const localVerificationSteps = Object.freeze([
   { name: "product boundary", command: "npm", args: ["run", "validate:product-boundary"] },
   { name: "Node source tests", command: "npm", args: ["run", "test:source"] },
-  { name: "Billing browser tests", command: "npm", args: ["run", "test:browser:billing"] },
-  { name: "Gateway usage browser tests", command: "npm", args: ["run", "test:browser:gateway-usage"] },
-  { name: "Console owner read browser tests", command: "npm", args: ["run", "test:browser:console-owner-reads"] },
-  { name: "Customer Announcement browser tests", command: "npm", args: ["run", "test:browser:customer-announcement"] },
-  { name: "Customer experience browser tests", command: "npm", args: ["run", "test:browser:customer-experience"] },
-  { name: "Operator Account browser tests", command: "npm", args: ["run", "test:browser:operator-account"] },
-  { name: "Operator Announcement browser tests", command: "npm", args: ["run", "test:browser:operator-announcement"] },
-  { name: "Operator Resource Read browser tests", command: "npm", args: ["run", "test:browser:operator-resource-read"] },
-  { name: "Workspace lifecycle browser tests", command: "npm", args: ["run", "test:browser:workspace-lifecycle"] },
+  // One bounded-concurrency invocation instead of nine sequential ones: each
+  // group used to boot its own demo server and Chromium before the next started.
+  // The named groups stay available for targeted runs.
+  { name: "Console browser suite", command: "npm", args: ["run", "test:browser:suite"] },
   { name: "TypeScript typecheck", command: "npm", args: ["run", "typecheck"] },
   { name: "TypeScript lint", command: "npm", args: ["run", "lint"] },
   { name: "Console build", command: "npm", args: ["run", "build"] },
