@@ -29,6 +29,9 @@ test("production manifest requires deployment secret refs for every launch varia
       OPL_PUBLIC_URL: { value: "https://cloud.medopl.cn" },
       OPL_CONSOLE_DOMAIN: { value: "cloud.medopl.cn" },
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
+      OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+      OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+      OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
       OPL_CLOUD_IMAGE: { value: cloudImage },
       OPL_WORKSPACE_IMAGE: { value: workspaceImage },
       OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: workspaceImageReleases },
@@ -59,7 +62,10 @@ test("production manifest requires deployment secret refs for every launch varia
     "system_compute_identity:true",
     "registry_images:true",
     "workspace_image_releases:true",
-    "workspace_domain:true"
+    "workspace_domain:true",
+    "application_domain:true",
+    "application_load_balancer:true",
+    "application_tls_secret:true"
   ]);
 });
 
@@ -72,6 +78,9 @@ test("production manifest validates Tencent TKE fields only", () => {
       OPL_PUBLIC_URL: { value: "https://cloud.medopl.cn" },
       OPL_CONSOLE_DOMAIN: { value: "cloud.medopl.cn" },
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
+      OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+      OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+      OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
       OPL_CLOUD_IMAGE: { value: cloudImage },
       OPL_WORKSPACE_IMAGE: { value: workspaceImage },
       OPL_WORKSPACE_IMAGE_RELEASES_JSON: { value: workspaceImageReleases },
@@ -102,7 +111,10 @@ test("production manifest validates Tencent TKE fields only", () => {
     "system_compute_identity:true",
     "registry_images:true",
     "workspace_image_releases:true",
-    "workspace_domain:true"
+    "workspace_domain:true",
+    "application_domain:true",
+    "application_load_balancer:true",
+    "application_tls_secret:true"
   ]);
 });
 
@@ -129,6 +141,9 @@ test("production manifest fails closed on missing env and inline secret values",
       OPL_RUNTIME_PROVIDER: { value: "tencent-tke" },
       DATABASE_URL: { value: "postgres://opl:secret@db.example.com:5432/opl_cloud" },
       OPL_WORKSPACE_DOMAIN: { value: "localhost" },
+      OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+      OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+      OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
       OPL_WORKSPACE_IMAGE: { value: "registry.example.com/opl/one-person-lab-app:latest" }
     }
   });
@@ -167,6 +182,9 @@ test("production manifest rejects empty container image tags", () => {
       OPL_PUBLIC_URL: { value: "https://cloud.medopl.cn" },
       OPL_CONSOLE_DOMAIN: { value: "cloud.medopl.cn" },
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
+      OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+      OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+      OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
       OPL_CLOUD_IMAGE: { value: "registry.example.com/opl/opl-cloud:" },
       OPL_WORKSPACE_IMAGE: { value: "registry.example.com/opl/one-person-lab-app:" },
       OPL_K8S_NAMESPACE: { value: "opl-cloud" },
@@ -218,6 +236,9 @@ test("production manifest rejects latest and every tag-only production image", (
         OPL_PUBLIC_URL: { value: "https://cloud.medopl.cn" },
         OPL_CONSOLE_DOMAIN: { value: "cloud.medopl.cn" },
         OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
+        OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+        OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+        OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
         OPL_CLOUD_IMAGE: { value: image },
         OPL_WORKSPACE_IMAGE: { value: workspaceImage },
         OPL_K8S_NAMESPACE: { value: "opl-cloud" },
@@ -246,6 +267,9 @@ test("production manifest rejects non-TKE production providers", () => {
       OPL_RUNTIME_PROVIDER: { value: "unsupported-production-runtime" },
       DATABASE_URL: { secretRef: "opl-cloud/database-url" },
       OPL_WORKSPACE_DOMAIN: { value: "workspace.medopl.cn" },
+      OPL_APPLICATION_DOMAIN: { value: "apps.example.com" },
+      OPL_APPLICATION_INGRESS_EXISTING_LB_ID: { value: "lb-example01" },
+      OPL_APPLICATION_INGRESS_TLS_SECRET: { value: "applications-wildcard-tls" },
       OPL_WORKSPACE_IMAGE: { value: workspaceImage }
     }
   });

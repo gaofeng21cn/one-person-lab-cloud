@@ -1464,6 +1464,18 @@ func workspaceDomain() string {
 	return normalizeWorkspaceDomain(os.Getenv("OPL_WORKSPACE_DOMAIN"))
 }
 
+// applicationDomain names the DNS suffix an admitted application publishes its
+// independent origin under. Applications keep their own origin and cookies, so
+// they never share the workspace domain's cookie scope. An installation may
+// point this at a suffix its own certificate already covers; an installation
+// without one keeps the previous behavior.
+func applicationDomain() string {
+	if domain := normalizeWorkspaceDomain(os.Getenv("OPL_APPLICATION_DOMAIN")); domain != "" {
+		return domain
+	}
+	return workspaceDomain()
+}
+
 func b64(value string) string {
 	if value == "" {
 		return ""

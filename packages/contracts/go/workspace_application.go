@@ -39,6 +39,55 @@ type WorkspaceApplicationRevision struct {
 	ConfigInputs     []WorkspaceApplicationConfigInput `json:"configInputs,omitempty"`
 	Dependencies     []WorkspaceApplicationDependency  `json:"dependencies,omitempty"`
 	ExposurePolicy   string                            `json:"exposurePolicy"`
+	Compute          WorkspaceApplicationCompute       `json:"compute,omitzero"`
+}
+
+// WorkspaceApplicationCompute is the resource envelope one component declares
+// for itself. Requests drive scheduling and the target-node feasibility check;
+// limits bound the component so one runaway process cannot consume its
+// siblings. Both are required facts for hosting an application whose working
+// set is larger than a single process.
+type WorkspaceApplicationCompute struct {
+	CPURequestMilli    int64 `json:"cpuRequestMilli,omitempty"`
+	CPULimitMilli      int64 `json:"cpuLimitMilli,omitempty"`
+	MemoryRequestBytes int64 `json:"memoryRequestBytes,omitempty"`
+	MemoryLimitBytes   int64 `json:"memoryLimitBytes,omitempty"`
+}
+
+// Declared reports whether the component states any resource requirement.
+// An undeclared envelope is admitted for compatibility, but it schedules as
+// BestEffort and cannot be checked against a target node.
+func (compute WorkspaceApplicationCompute) Declared() bool {
+	return compute.CPURequestMilli != 0 || compute.CPULimitMilli != 0 ||
+		compute.MemoryRequestBytes != 0 || compute.MemoryLimitBytes != 0
+}
+
+const (
+	workspaceApplicationCPUCeilingMilli    = 128_000
+	workspaceApplicationMemoryCeilingBytes = 1 << 40
+)
+
+// ValidateWorkspaceApplicationCompute rejects an envelope that cannot be
+// scheduled: a negative value, a request above its own limit, or a value beyond
+// what one workspace component may claim.
+func ValidateWorkspaceApplicationCompute(compute WorkspaceApplicationCompute) error {
+	values := []int64{compute.CPURequestMilli, compute.CPULimitMilli, compute.MemoryRequestBytes, compute.MemoryLimitBytes}
+	for _, value := range values {
+		if value < 0 {
+			return errors.New("workspace_application_compute_invalid")
+		}
+	}
+	if compute.CPURequestMilli > workspaceApplicationCPUCeilingMilli || compute.CPULimitMilli > workspaceApplicationCPUCeilingMilli ||
+		compute.MemoryRequestBytes > workspaceApplicationMemoryCeilingBytes || compute.MemoryLimitBytes > workspaceApplicationMemoryCeilingBytes {
+		return errors.New("workspace_application_compute_exceeds_ceiling")
+	}
+	if compute.CPURequestMilli > 0 && compute.CPULimitMilli > 0 && compute.CPURequestMilli > compute.CPULimitMilli {
+		return errors.New("workspace_application_compute_request_above_limit")
+	}
+	if compute.MemoryRequestBytes > 0 && compute.MemoryLimitBytes > 0 && compute.MemoryRequestBytes > compute.MemoryLimitBytes {
+		return errors.New("workspace_application_compute_request_above_limit")
+	}
+	return nil
 }
 
 type WorkspaceApplicationPort struct {
@@ -100,6 +149,7 @@ type WorkspaceApplicationDependency struct {
 	Command          WorkspaceApplicationDependencyCommand       `json:"command,omitempty"`
 	SecretInputs     []WorkspaceApplicationSecretInput           `json:"secretInputs,omitempty"`
 	ConfigInputs     []WorkspaceApplicationConfigInput           `json:"configInputs,omitempty"`
+	Compute          WorkspaceApplicationCompute                 `json:"compute,omitzero"`
 }
 
 // WorkspaceApplicationDeployment is the immutable cross-owner intent for one
@@ -182,6 +232,9 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 		if _, found := WorkspaceApplicationEntryPort(revision); !found {
 			return errors.New("workspace_application_entry_port_invalid")
 		}
+	}
+	if err := ValidateWorkspaceApplicationCompute(revision.Compute); err != nil {
+		return err
 	}
 	if err := ValidateWorkspaceApplicationMountOptions(revision.PersistentMounts, revision.ScratchMounts); err != nil {
 		return err

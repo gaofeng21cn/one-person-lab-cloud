@@ -315,6 +315,19 @@ func (p *LocalDockerProvider) ensureWorkspaceApplicationComponent(
 	}
 	args = append(args, executionArgs...)
 	args = append(args, "--network", network, "--network-alias", component.Name, "--platform", input.Revision.Platform)
+	// A declared envelope bounds the container exactly as the Kubernetes
+	// provider bounds a pod, including a hard memory ceiling: Docker would
+	// otherwise let a component spill into swap and hide the overrun that the
+	// hosted provider reports as an eviction.
+	envelope := input.Revision.Compute
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
+		if depErr != nil {
+			return localDockerApplicationComponentState(component, dockerContainerInspect{}), depErr
+		}
+		envelope = dependency.Compute
+	}
+	args = append(args, localDockerApplicationResourceArgs(envelope)...)
 	if component.Role == contracts.WorkspaceApplicationComponentDependency {
 		dependency, depErr := dependencySpecByName(input.Revision, component.Name)
 		if depErr != nil {
@@ -394,6 +407,24 @@ func dependencySpecByName(revision contracts.WorkspaceApplicationRevision, name 
 		}
 	}
 	return contracts.WorkspaceApplicationDependency{}, fmt.Errorf("local_docker_application_dependency_spec_missing")
+}
+
+// localDockerApplicationResourceArgs bounds one container by its declared
+// envelope. An undeclared envelope adds no flag, so an application that states
+// nothing keeps the previous unbounded shape.
+func localDockerApplicationResourceArgs(compute contracts.WorkspaceApplicationCompute) []string {
+	args := []string{}
+	if compute.CPULimitMilli > 0 {
+		args = append(args, "--cpus", strconv.FormatFloat(float64(compute.CPULimitMilli)/1000, 'f', -1, 64))
+	}
+	if compute.MemoryLimitBytes > 0 {
+		limit := strconv.FormatInt(compute.MemoryLimitBytes, 10)
+		args = append(args, "--memory", limit, "--memory-swap", limit)
+	}
+	if compute.MemoryRequestBytes > 0 {
+		args = append(args, "--memory-reservation", strconv.FormatInt(compute.MemoryRequestBytes, 10))
+	}
+	return args
 }
 
 // localDockerDependencyRunArgs returns Docker flags only: the component caller

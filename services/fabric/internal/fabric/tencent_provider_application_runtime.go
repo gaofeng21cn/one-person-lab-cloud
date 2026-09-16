@@ -8,6 +8,8 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
@@ -557,6 +559,18 @@ func workspaceApplicationComponentDeployment(
 			volumeMounts = append(volumeMounts, map[string]any{"name": "application-config", "mountPath": config.Target, "subPath": config.Name, "readOnly": true})
 		}
 	}
+	// The declared envelope becomes the container's requests and limits. An
+	// application that declares nothing keeps the previous BestEffort shape
+	// rather than receiving invented bounds.
+	envelope := input.Revision.Compute
+	if component.Role == contracts.WorkspaceApplicationComponentDependency {
+		if dependency, depErr := dependencySpecByName(input.Revision, component.Name); depErr == nil {
+			envelope = dependency.Compute
+		}
+	}
+	if resources := workspaceApplicationComponentResources(envelope); resources != nil {
+		container["resources"] = resources
+	}
 	if len(ports) > 0 {
 		container["ports"] = ports
 	}
@@ -644,15 +658,48 @@ func workspaceApplicationPublicEntryPolicy(input WorkspaceApplicationRuntimeInpu
 	}}
 }
 
-// workspaceApplicationIngressHost derives the dedicated subdomain origin of
-// one application deployment. Apps keep their own root path and cookies, so
-// they never share the workspace domain's cookie scope; wildcard DNS and
-// certificate coverage for this subdomain are installation prerequisites.
+// workspaceApplicationComponentResources translates one declared envelope into
+// a container's requests and limits. Scheduling and the target-node feasibility
+// check depend on the requests; the limits bound one component so a runaway
+// process cannot consume its siblings on the shared workspace node.
+func workspaceApplicationComponentResources(compute contracts.WorkspaceApplicationCompute) map[string]any {
+	requests, limits := map[string]any{}, map[string]any{}
+	if compute.CPURequestMilli > 0 {
+		requests["cpu"] = fmt.Sprintf("%dm", compute.CPURequestMilli)
+	}
+	if compute.MemoryRequestBytes > 0 {
+		requests["memory"] = strconv.FormatInt(compute.MemoryRequestBytes, 10)
+	}
+	if compute.CPULimitMilli > 0 {
+		limits["cpu"] = fmt.Sprintf("%dm", compute.CPULimitMilli)
+	}
+	if compute.MemoryLimitBytes > 0 {
+		limits["memory"] = strconv.FormatInt(compute.MemoryLimitBytes, 10)
+	}
+	resources := map[string]any{}
+	if len(requests) > 0 {
+		resources["requests"] = requests
+	}
+	if len(limits) > 0 {
+		resources["limits"] = limits
+	}
+	if len(resources) == 0 {
+		return nil
+	}
+	return resources
+}
+
+// workspaceApplicationIngressHost derives the dedicated origin of one
+// application deployment. Apps keep their own root path and cookies, so they
+// never share the workspace domain's cookie scope. The origin suffix comes from
+// the installation's application domain, which the operator must already
+// resolve and cover with a certificate; this function never assumes that
+// wildcard coverage exists one label below the workspace domain.
 func workspaceApplicationIngressHost(input WorkspaceApplicationRuntimeInput) string {
 	if input.SchemaVersion == 0 {
-		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), workspaceDomain())
+		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), applicationDomain())
 	}
-	return fmt.Sprintf("%s.%s", workspaceApplicationComponentResourceName(input, "origin"), workspaceDomain())
+	return fmt.Sprintf("%s.%s", workspaceApplicationComponentResourceName(input, "origin"), applicationDomain())
 }
 
 // workspaceApplicationIngress renders the public entry of one application
@@ -676,13 +723,24 @@ func workspaceApplicationIngress(input WorkspaceApplicationRuntimeInput, compute
 		"path": "/", "pathType": "Prefix",
 		"backend": map[string]any{"service": map[string]any{"name": workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), "port": map[string]any{"number": port.Port}}},
 	}}
+	host := workspaceApplicationIngressHost(input)
 	spec := map[string]any{"rules": []any{map[string]any{
-		"host": workspaceApplicationIngressHost(input), "http": map[string]any{"paths": paths},
+		"host": host, "http": map[string]any{"paths": paths},
 	}}}
 	if class := os.Getenv("OPL_INGRESS_CLASS"); class != "" {
 		spec["ingressClassName"] = class
 	}
+	if secretName := strings.TrimSpace(os.Getenv("OPL_APPLICATION_INGRESS_TLS_SECRET")); secretName != "" {
+		spec["tls"] = []any{map[string]any{"hosts": []any{host}, "secretName": secretName}}
+	}
+	// The installation's existing load balancer is reused instead of letting
+	// the controller allocate a second one: the operator's DNS already points
+	// at that load balancer, so a fresh one would be unreachable and bill twice.
+	annotations := tags
+	if loadBalancerID := strings.TrimSpace(os.Getenv("OPL_APPLICATION_INGRESS_EXISTING_LB_ID")); loadBalancerID != "" {
+		annotations = mergeStringMaps(tags, map[string]string{"kubernetes.io/ingress.existLbId": loadBalancerID})
+	}
 	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, "entry"), "labels": labels, "annotations": tags,
+		"name": workspaceApplicationComponentResourceName(input, "entry"), "labels": labels, "annotations": annotations,
 	}, "spec": spec}
 }

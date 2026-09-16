@@ -86,3 +86,44 @@ func TestValidateWorkspaceApplicationDeploymentRejectsDuplicateBindings(t *testi
 		t.Fatal("expected duplicate binding to be rejected")
 	}
 }
+
+func TestValidateWorkspaceApplicationComputeEnvelope(t *testing.T) {
+	cases := []struct {
+		name    string
+		compute WorkspaceApplicationCompute
+		valid   bool
+	}{
+		{"undeclared", WorkspaceApplicationCompute{}, true},
+		{"declared", WorkspaceApplicationCompute{CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30}, true},
+		{"request only", WorkspaceApplicationCompute{MemoryRequestBytes: 2 << 30}, true},
+		{"negative", WorkspaceApplicationCompute{MemoryRequestBytes: -1}, false},
+		{"cpu request above limit", WorkspaceApplicationCompute{CPURequestMilli: 2000, CPULimitMilli: 1000}, false},
+		{"memory request above limit", WorkspaceApplicationCompute{MemoryRequestBytes: 3 << 30, MemoryLimitBytes: 2 << 30}, false},
+		{"cpu above ceiling", WorkspaceApplicationCompute{CPULimitMilli: 128001}, false},
+		{"memory above ceiling", WorkspaceApplicationCompute{MemoryLimitBytes: (1 << 40) + 1}, false},
+	}
+	for _, testCase := range cases {
+		err := ValidateWorkspaceApplicationCompute(testCase.compute)
+		if testCase.valid && err != nil {
+			t.Fatalf("%s: expected valid envelope, got %v", testCase.name, err)
+		}
+		if !testCase.valid && err == nil {
+			t.Fatalf("%s: expected rejection", testCase.name)
+		}
+	}
+}
+
+func TestValidateWorkspaceApplicationRejectsUnschedulableComponentEnvelope(t *testing.T) {
+	revision := validWorkspaceApplicationRevision()
+	revision.Compute = WorkspaceApplicationCompute{CPURequestMilli: 4000, CPULimitMilli: 1000}
+	if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
+		t.Fatal("expected an unschedulable main envelope to be rejected")
+	}
+	dependency := WorkspaceApplicationDependency{Name: "retrieval", Image: revision.Image, Compute: WorkspaceApplicationCompute{MemoryRequestBytes: -1}}
+	if err := ValidateWorkspaceApplicationDependency(dependency); err == nil {
+		t.Fatal("expected an unschedulable dependency envelope to be rejected")
+	}
+	if err := ValidateWorkspaceApplicationDependency(WorkspaceApplicationDependency{Name: "retrieval", Image: revision.Image, Compute: revision.Compute}); err == nil {
+		t.Fatal("expected the dependency ceiling to apply as well")
+	}
+}

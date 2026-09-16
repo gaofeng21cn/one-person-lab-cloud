@@ -18,6 +18,9 @@ const REQUIRED_TKE_ENV = [
   "OPL_CLOUD_IMAGE",
   "OPL_K8S_NAMESPACE",
   "OPL_INGRESS_CLASS",
+  "OPL_APPLICATION_DOMAIN",
+  "OPL_APPLICATION_INGRESS_EXISTING_LB_ID",
+  "OPL_APPLICATION_INGRESS_TLS_SECRET",
   "OPL_IMAGE_PULL_SECRET_NAME",
   "OPL_WORKSPACE_STORAGE_CLASS",
   "OPL_TENCENT_ZONE",
@@ -188,7 +191,10 @@ export function validateProductionManifest({ env = {} } = {}) {
       "OPL_CLOUD_IMAGE and OPL_WORKSPACE_IMAGE must use TCR repository@sha256 references"
     ),
     check("workspace_image_releases", hasValidWorkspaceImageReleases(values), "Workspace image releases must be unique immutable TCR references and include OPL_WORKSPACE_IMAGE"),
-    check("workspace_domain", looksLikeProductionDomain(values.OPL_WORKSPACE_DOMAIN), "OPL_WORKSPACE_DOMAIN must be a production wildcard domain")
+    check("workspace_domain", looksLikeProductionDomain(values.OPL_WORKSPACE_DOMAIN), "OPL_WORKSPACE_DOMAIN must be a production wildcard domain"),
+    check("application_domain", looksLikeProductionDomain(values.OPL_APPLICATION_DOMAIN) && values.OPL_APPLICATION_DOMAIN !== values.OPL_WORKSPACE_DOMAIN, "OPL_APPLICATION_DOMAIN must be a production domain distinct from OPL_WORKSPACE_DOMAIN, so an application origin never depends on wildcard coverage below the workspace domain"),
+    check("application_load_balancer", /^lb-[a-z0-9]+$/.test(values.OPL_APPLICATION_INGRESS_EXISTING_LB_ID || ""), "OPL_APPLICATION_INGRESS_EXISTING_LB_ID must be the installation's existing CLB id"),
+    check("application_tls_secret", /^[a-z0-9][a-z0-9.-]{0,252}$/.test(values.OPL_APPLICATION_INGRESS_TLS_SECRET || ""), "OPL_APPLICATION_INGRESS_TLS_SECRET must name the secret covering the application origin")
   ];
   const failedChecks = checks.filter((item) => !item.ok).map((item) => item.id);
 

@@ -37,10 +37,10 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Capability | Current source behavior | Remaining gap and owning source |
 | --- | --- | --- |
 | Resource purchase and fulfillment | New default purchases commit a resource-only Launch and an independent default installation request. Charges advance in the resource worker; application failure does not rewrite purchase success. Explicit resource-only and retained full Launch contracts remain distinct. | Actual Instance adoption is unqualified. CP owns Launch and Workspace orchestration; Fabric owns resources. |
-| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. |
+| Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Each component may declare its CPU and memory request and limit, which the provider applies to that component alone. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. Target-node feasibility for a declared envelope is not yet read back. |
 | Runtime execution | Local-Docker and Tencent execute declared components and live health/entry readback. OPL App uses an explicit profile and Secret-file ABI; lifecycle targets exact generations and fences late creation after deletion. | Tencent supports at most one native readiness probe. Local Docker fixtures do not qualify the actual upstream OPL App or IBD image. |
 | Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
-| Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; an application without a web entry has no Open action. `cloud_private` publishes no external entry. | Application Cookie/API/SSE behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
+| Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; the origin suffix, the reused load balancer and the covering certificate come from declared installation configuration rather than from inference. An application without a web entry has no Open action. `cloud_private` publishes no external entry. | Target-installation DNS/TLS coverage, load-balancer reuse, application Cookie/API/SSE behavior and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
 | Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
 | Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. The registration form browses `repository` and tag lists from the catalog namespace and fills the digest-pinned reference after server-side resolution. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
 
@@ -354,6 +354,43 @@ the publisher's frozen knowledge restoration materials; a new generic product
 Restore platform is not a prerequisite to this replacement acceptance. Pre-seeded
 data tests still do not qualify any product Restore API. This host limitation does not require purchasing new resources; actual cloud
 qualification uses an existing Workspace through its Instance owner.
+
+### Application Compute Envelope And Entry Placement (Local Development)
+
+Two gaps that only surfaced when a real hosted application was attempted are
+closed at their owners.
+
+- **Component compute envelope.** `WorkspaceApplicationRevision.Compute` and
+  `WorkspaceApplicationDependency.Compute` declare one component's CPU and
+  memory request and limit. Admission rejects a negative value, a request above
+  its own limit, and a value beyond the per-component ceiling. The Tencent
+  provider translates the envelope into the container's `resources`; the Local
+  provider translates it into `--cpus`, `--memory`, `--memory-swap` and
+  `--memory-reservation`, so a local run cannot hide an overrun in swap that the
+  hosted provider reports as an eviction. An undeclared component keeps the
+  previous unbounded shape and is never given invented bounds.
+- **Application entry placement.** The application origin suffix comes from
+  `OPL_APPLICATION_DOMAIN`, defaulting to the workspace domain, so an
+  installation can publish applications under a suffix its own certificate
+  already covers instead of requiring wildcard coverage one label below the
+  workspace domain. The entry Ingress reuses the installation's existing load
+  balancer when `OPL_APPLICATION_INGRESS_EXISTING_LB_ID` is set, because the
+  operator's DNS already points at that load balancer, and declares the covering
+  certificate when `OPL_APPLICATION_INGRESS_TLS_SECRET` is set. Each of these is
+  a declared installation fact; none is inferred.
+
+`GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
+316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
+fingerprint `9be25a9f2e45972baadc5de0938b59b561a974afdbe03dc3435b0381bc38b5c7`;
+log SHA-256
+`ba6cab9c6f744f1a9b3163898fac5f39a4698059df0f843bc935fe41816552d8`; evidence in
+`output/application-entry-and-resources-20260916/`.
+
+This does not prove that the target TKE installation reuses its load balancer,
+resolves the application suffix and serves a covering certificate, that a target
+node has enough allocatable memory for a declared envelope, or that the IBD
+stack fits the basic package. Those need the protected Instance readback, and no
+production state was changed.
 
 ### Pre-PR Replacement Safety Review
 

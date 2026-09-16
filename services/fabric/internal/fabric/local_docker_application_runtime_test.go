@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -698,4 +699,19 @@ func (r *applicationRuntimeDockerRunner) runArgsForComponent(name string) []stri
 		}
 	}
 	return nil
+}
+
+// The local provider must bound a declared component exactly like the hosted
+// provider, including a hard memory ceiling with no swap headroom.
+func TestLocalDockerApplicationResourceArgsFollowDeclaredEnvelope(t *testing.T) {
+	if args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{}); len(args) != 0 {
+		t.Fatalf("an undeclared envelope must add no argument: %#v", args)
+	}
+	args := localDockerApplicationResourceArgs(contracts.WorkspaceApplicationCompute{
+		CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30,
+	})
+	want := []string{"--cpus", "2", "--memory", "3221225472", "--memory-swap", "3221225472", "--memory-reservation", "2147483648"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args=%#v want %#v", args, want)
+	}
 }
