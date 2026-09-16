@@ -40,7 +40,7 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Application admission and deployment | Immutable revisions, actual configuration and Secret bindings feed a reserved deployment generation. Each component may declare its CPU and memory request and limit, which the provider applies to that component alone. Preflight precedes predecessor suspension; activation switches one selection atomically, then retires the predecessor and records evidence. Failed commands resume by original identity. The operator registry catalog browses the approved namespace's repositories and tags and resolves one tag to its digest-pinned reference before admission. | Registry multi-platform manifest readback (per-platform digest listing) remains open. Full IBD dependency configuration remains open. Target-node feasibility for a declared envelope is not yet read back. |
 | Runtime execution | Local-Docker and Tencent execute declared components and live health/entry readback. OPL App uses an explicit profile and Secret-file ABI; lifecycle targets exact generations and fences late creation after deletion. | Tencent supports at most one native readiness probe. Local Docker fixtures do not qualify the actual upstream OPL App or IBD image. |
 | Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
-| Application entry | Current selection and live Fabric readiness determine the entry. Applications retain their own origin/root and declared port; an application without a web entry has no Open action. `cloud_private` publishes no external entry. | Application Cookie/API/SSE behavior, DNS/TLS and Instance origin qualification remain open. No platform-authenticated private access is claimed. |
+| Application entry | One gateway serves the OPL App and every admitted application under the installation's existing workspace route. The executing provider reports the resolved destination or URL, the Control Plane owns the route, and an application without a published entry has no Open action. `cloud_private` publishes no external entry. | Target-installation end-to-end routing, application assets under the route's path prefix, Cookie/API/SSE behavior and Instance qualification remain open. No platform-authenticated private access is claimed. |
 | Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
 | Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. The registration form browses `repository` and tag lists from the catalog namespace and fills the digest-pinned reference after server-side resolution. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
 
@@ -378,10 +378,37 @@ This does not prove that a target node has enough allocatable memory for a
 declared envelope, or that any real application fits the basic package. Those
 need the protected Instance readback, and no production state was changed.
 
-The application entry remains the workspace gateway: an application and the
-default OPL App are both admitted through the same revision contract and reached
-through the installation's existing `workspace.medopl.com` route, so adding an
-application requires no new DNS record, certificate, or load balancer.
+### Unified Application Entry (Local Development)
+
+One gateway serves both the OPL App and every admitted application, so adding an
+application adds no DNS record, certificate, or load balancer.
+
+- The executing provider reports one resolved entry: `WorkspaceApplicationEntry`.
+  An installation gateway publishes `ServiceName` and `Port` for the destination
+  it proxies to; a provider that binds an endpoint itself publishes `URL`.
+  Exactly one shape is admitted, and an entry exists only once it is ready.
+- The Tencent adapter creates no entry object of its own: the Ingress and the
+  public-entry NetworkPolicy are gone, because the installation's gateway is the
+  publisher and the application NetworkPolicy already admits it.
+- The Control Plane owns the route. `workspaceEntryUpstream` resolves the single
+  upstream — the current application's reported destination when it publishes an
+  entry, otherwise the launched workspace runtime — and `workspaceGatewayEntryURL`
+  is the one place the customer-facing route is composed.
+- The historical refusal to proxy a Workspace that had deployed an application
+  (`workspace_application_entry_required`) is removed, together with the
+  provider-prefix and fixed-port assumptions in `workspaceServiceTarget`.
+
+`GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` passed on 2026-09-16:
+316 source/browser tests and 18 PostgreSQL/Docker packages, zero skips. Source
+fingerprint `63f74d04bd1dabbde240824452f521540dc85696fca9e291a0d4337cd9a11e90`;
+log SHA-256
+`0468d448af32f0fb7ce075b01300ab10b6fdf4d777731bd527fde7cee8706675`; evidence in
+`output/entry-unification-20260916/`.
+
+This does not prove that a target installation serves the route end to end: the
+application must answer on its declared entry port and work under the workspace
+route's path prefix. That needs the protected Instance readback, and no
+production state was changed.
 
 ### Pre-PR Replacement Safety Review
 

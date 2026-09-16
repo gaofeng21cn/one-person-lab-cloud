@@ -113,13 +113,19 @@ func (app *controlPlaneServer) readWorkspaceCurrentApplication(ctx context.Conte
 		observation.RuntimeID != expectedRuntimeID {
 		return current, observation, errors.New("workspace_application_runtime_observation_mismatch")
 	}
-	if observation.EntryURL != "" {
-		entry, err := url.Parse(observation.EntryURL)
-		if err != nil || entry.Host == "" || (entry.Scheme != "http" && entry.Scheme != "https") || entry.User != nil {
+	// A provider that publishes the endpoint itself states its URL; an entry
+	// published through the installation gateway is addressed by the workspace
+	// route this server owns.
+	if entry := observation.Entry; entry != nil && entry.URL != "" {
+		entryURL, err := url.Parse(entry.URL)
+		if err != nil || entryURL.Host == "" || (entryURL.Scheme != "http" && entryURL.Scheme != "https") || entryURL.User != nil {
 			return current, observation, errors.New("workspace_application_entry_invalid")
 		}
+		current.EntryURL = entry.URL
+	} else if entry != nil {
+		current.EntryURL = workspaceGatewayEntryURL(intent.WorkspaceID)
 	}
-	current.Status, current.EntryURL = observation.Status, observation.EntryURL
+	current.Status = observation.Status
 	return current, observation, nil
 }
 

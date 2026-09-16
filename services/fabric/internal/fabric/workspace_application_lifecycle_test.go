@@ -309,16 +309,16 @@ func TestWorkspaceApplicationLifecycleResumeReadsCurrentEntryAfterPending(t *tes
 	runner.probeReady = false
 	resume := applicationLifecycleInput(input, "running", "resume-current-entry")
 	pending, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || pending.State != "pending" || pending.Observation.Status != "pending" || pending.Observation.EntryURL != "" {
+	if err != nil || pending.State != "pending" || pending.Observation.Status != "pending" || localEntryURL(pending.Observation) != "" {
 		t.Fatalf("resume health pending=%#v err=%v", pending, err)
 	}
 	runner.probeReady = true
 	live, err := service.ReadWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || live.State != "running" || live.Observation.Status != "ready" || live.Observation.EntryURL != "http://127.0.0.1:32080/" || live.Observation.EntryURL == initial.EntryURL {
+	if err != nil || live.State != "running" || live.Observation.Status != "ready" || localEntryURL(live.Observation) != "http://127.0.0.1:32080/" || localEntryURL(live.Observation) == localEntryURL(initial) {
 		t.Fatalf("resume current entry=%#v err=%v", live, err)
 	}
 	finished, err := service.SetWorkspaceApplicationRuntimeLifecycle(ctx, resume)
-	if err != nil || finished.State != "running" || finished.Observation.EntryURL != live.Observation.EntryURL || runner.runCount() != 2 {
+	if err != nil || finished.State != "running" || localEntryURL(finished.Observation) != localEntryURL(live.Observation) || runner.runCount() != 2 {
 		t.Fatalf("resume convergence recreated runtime: result=%#v err=%v runs=%d", finished, err, runner.runCount())
 	}
 }

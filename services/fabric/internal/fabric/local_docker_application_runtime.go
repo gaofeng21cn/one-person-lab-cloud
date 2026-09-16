@@ -110,8 +110,8 @@ func (p *LocalDockerProvider) EnsureWorkspaceApplicationRuntime(ctx context.Cont
 		}
 	}
 	result := observation()
-	if result.Status == "ready" {
-		result.EntryURL = entryURL
+	if result.Status == "ready" && entryURL != "" {
+		result.Entry = &contracts.WorkspaceApplicationEntry{URL: entryURL}
 	}
 	return result, nil
 }
@@ -173,10 +173,14 @@ func (p *LocalDockerProvider) ReadWorkspaceApplicationRuntime(ctx context.Contex
 	if status != "ready" {
 		entryURL = ""
 	}
-	return contracts.WorkspaceApplicationRuntimeObservation{
+	observation := contracts.WorkspaceApplicationRuntimeObservation{
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID,
-		Status: status, EntryURL: entryURL, Components: observed,
-	}, nil
+		Status: status, Components: observed,
+	}
+	if status == "ready" && entryURL != "" {
+		observation.Entry = &contracts.WorkspaceApplicationEntry{URL: entryURL}
+	}
+	return observation, nil
 }
 
 func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Context, input WorkspaceApplicationRuntimeInput, component contracts.WorkspaceApplicationRuntimeComponentState) (contracts.WorkspaceApplicationRuntimeComponentState, string, error) {

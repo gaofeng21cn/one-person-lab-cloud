@@ -33,11 +33,36 @@ type WorkspaceApplicationRuntimeObservation struct {
 	WorkspaceID   string `json:"workspaceId"`
 	RuntimeID     string `json:"runtimeId"`
 	Status        string `json:"status"`
-	// EntryURL is the user-facing web entry of the main component. It is set
-	// when the exposure policy and explicit EntryPort allow a published entry and
-	// stays empty for cloud-private or worker-only applications.
-	EntryURL   string                                      `json:"entryUrl,omitempty"`
+	// Entry states how the published web entry is reached. It is absent when
+	// the exposure policy publishes nothing, and present only once the entry is
+	// ready. The shape follows who publishes the route, never a module's
+	// preference.
+	Entry      *WorkspaceApplicationEntry                  `json:"entry,omitempty"`
 	Components []WorkspaceApplicationRuntimeComponentState `json:"components"`
+}
+
+// WorkspaceApplicationEntry is the resolved destination of one application's
+// published web entry. Exactly one shape is present:
+//
+//   - ServiceName and Port when the installation gateway publishes the route.
+//     The executing provider resolves them from its own resource names, so no
+//     other module re-derives the provider's naming or the declared port.
+//   - URL when the executing provider publishes the endpoint itself, as a local
+//     provider does for a directly bound host port.
+type WorkspaceApplicationEntry struct {
+	ServiceName string `json:"serviceName,omitempty"`
+	Port        int    `json:"port,omitempty"`
+	URL         string `json:"url,omitempty"`
+}
+
+// ValidateWorkspaceApplicationEntry accepts exactly the two publication shapes.
+func ValidateWorkspaceApplicationEntry(entry WorkspaceApplicationEntry) error {
+	gatewayPublished := entry.ServiceName != "" && entry.Port > 0 && entry.Port <= 65535 && entry.URL == ""
+	providerPublished := entry.URL != "" && entry.ServiceName == "" && entry.Port == 0
+	if !gatewayPublished && !providerPublished {
+		return errors.New("workspace_application_entry_invalid")
+	}
+	return nil
 }
 
 const (
@@ -140,6 +165,17 @@ func ValidateWorkspaceApplicationRuntimeObservation(revision WorkspaceApplicatio
 	}
 	if observation.Status != WorkspaceApplicationRuntimeOverallStatus(observation.Components) {
 		return errors.New("workspace_application_runtime_status_mismatch")
+	}
+	if observation.Entry != nil {
+		if err := ValidateWorkspaceApplicationEntry(*observation.Entry); err != nil {
+			return err
+		}
+		if observation.Status != "ready" {
+			return errors.New("workspace_application_runtime_entry_unready")
+		}
+		if observation.Entry.ServiceName != "" && !workspaceApplicationComponentNamePattern.MatchString(observation.Entry.ServiceName) {
+			return errors.New("workspace_application_runtime_entry_service_invalid")
+		}
 	}
 	return nil
 }

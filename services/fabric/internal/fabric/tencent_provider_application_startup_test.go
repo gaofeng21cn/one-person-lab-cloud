@@ -45,7 +45,6 @@ func TestTencentApplicationStartupAndResumeFollowReadyDependencies(t *testing.T)
 			t.Fatal("Read advanced startup")
 		}
 	}
-	fake.setEntryReady()
 	stopped, err := provider.SetWorkspaceApplicationRuntimeLifecycle(ctx, input, "suspended")
 	if err != nil || stopped.State != "suspended" {
 		t.Fatalf("stop=%#v err=%v", stopped, err)
@@ -205,7 +204,6 @@ func TestTencentApplicationExecutionIdentityRenderedAndReadBack(t *testing.T) {
 	input.Revision.Execution = contracts.WorkspaceApplicationExecution{UserID: &mainUser, GroupID: &mainGroup}
 	input.Revision.Dependencies[0].Execution = contracts.WorkspaceApplicationExecution{UserID: &depUser, GroupID: &depGroup}
 	completeTencentApplicationStartup(t, provider, fake, input)
-	fake.setEntryReady()
 	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
 		deployment := fake.deployments[workspaceApplicationComponentResourceName(input, component.Name)]
 		security := nested(deployment, "spec", "template", "spec", "securityContext").(map[string]any)

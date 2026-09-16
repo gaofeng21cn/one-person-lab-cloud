@@ -29,10 +29,14 @@ func (p *applicationRuntimeHTTPProvider) observation(input fabric.WorkspaceAppli
 	for index := range components {
 		components[index].State = p.state
 	}
-	return contracts.WorkspaceApplicationRuntimeObservation{
+	observation := contracts.WorkspaceApplicationRuntimeObservation{
 		SchemaVersion: 1, WorkspaceID: input.WorkspaceID, Status: p.state, Components: components,
-		EntryURL: "https://application.example/",
 	}
+	// The gateway destination exists only once the entry is ready.
+	if p.state == "ready" {
+		observation.Entry = &contracts.WorkspaceApplicationEntry{ServiceName: "app-main", Port: 8080}
+	}
+	return observation
 }
 
 func (p *applicationRuntimeHTTPProvider) EnsureWorkspaceApplicationRuntime(_ context.Context, input fabric.WorkspaceApplicationRuntimeInput, _ fabric.ComputeAllocation, _ fabric.StorageVolume) (contracts.WorkspaceApplicationRuntimeObservation, error) {
@@ -198,7 +202,7 @@ func (p *applicationRuntimeHTTPProvider) ReadWorkspaceApplicationRuntimeLifecycl
 		state = "running"
 	}
 	if state != "running" {
-		observation.EntryURL = ""
+		observation.Entry = nil
 	}
 	return fabric.WorkspaceApplicationRuntimeLifecycleResult{RuntimeID: observation.RuntimeID, WorkspaceID: input.WorkspaceID, State: state, Observation: observation}, nil
 }

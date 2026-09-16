@@ -1088,12 +1088,6 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		http.NotFound(w, r)
 		return
 	}
-	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
-		// Independent applications own their origin and authentication. The
-		// historical OPL proxy must not carry credentials to a successor.
-		writeError(w, http.StatusConflict, "workspace_application_entry_required")
-		return
-	}
 	if state := stringValue(workspace["state"]); state == "data_deleted" || state == "unrecoverable" || state == "storage_missing" || state == "destroyed" {
 		writeError(w, http.StatusGone, "workspace_storage_destroyed")
 		return
@@ -1116,15 +1110,15 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusConflict, "workspace_runtime_truth_unavailable")
 		return
 	}
-	serviceName := operation.stringFact("runtimeServiceName")
-	if serviceName == "" {
-		http.NotFound(w, r)
-		return
-	}
 	if strings.HasPrefix(r.URL.Path, "/w/"+workspaceID) {
 		setWorkspaceGatewayRouteCookie(w, workspaceID)
 	}
-	target, err := workspaceServiceTarget(serviceName)
+	upstream, port, err := app.workspaceEntryUpstream(r.Context(), workspace, operation)
+	if err != nil {
+		writeUpstreamError(w)
+		return
+	}
+	target, err := workspaceServiceTarget(upstream, port)
 	if err != nil {
 		writeUpstreamError(w)
 		return
@@ -1225,6 +1219,37 @@ func projectWorkspaceRuntimeSessionCookie(response *http.Response, workspaceID s
 		cookie.SameSite = http.SameSiteLaxMode
 		response.Header.Add("Set-Cookie", cookie.String())
 	}
+}
+
+// workspaceEntryUpstream resolves the workspace gateway's single upstream. A
+// Workspace whose current application publishes an entry is served by that
+// application; otherwise the launched workspace runtime serves it. The
+// application's destination is the one Fabric resolved for that deployment, so
+// this server never re-derives a provider resource name or a declared port.
+func (app *controlPlaneServer) workspaceEntryUpstream(ctx context.Context, workspace map[string]any, operation workspaceLaunchReconcileOperation) (string, int, error) {
+	if stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		intent, found, err := app.currentWorkspaceApplicationDeployment(ctx, workspace)
+		if err != nil {
+			return "", 0, err
+		}
+		if !found || intent.RuntimeObservation == nil || intent.RuntimeObservation.Entry == nil {
+			return "", 0, errors.New("workspace_application_entry_unavailable")
+		}
+		entry := intent.RuntimeObservation.Entry
+		if entry.ServiceName == "" {
+			return "", 0, errors.New("workspace_application_entry_unavailable")
+		}
+		return entry.ServiceName, entry.Port, nil
+	}
+	serviceName := operation.stringFact("runtimeServiceName")
+	if serviceName == "" {
+		return "", 0, errors.New("workspace_runtime_truth_unavailable")
+	}
+	port, err := strconv.Atoi(workspaceRuntimeWebUIPort)
+	if err != nil {
+		return "", 0, err
+	}
+	return serviceName, port, nil
 }
 
 func (app *controlPlaneServer) succeededWorkspaceLaunchForAccess(ctx context.Context, workspace map[string]any) (workspaceLaunchReconcileOperation, error) {

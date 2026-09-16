@@ -87,7 +87,7 @@ func TestFabricApplicationRuntimeHTTPPreservesIdentityCapabilityAndPending(t *te
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(contracts.WorkspaceApplicationRuntimeObservation{
 			SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: "rt-app-alpha", Status: state,
-			EntryURL: "https://application.example/", Components: components,
+			Entry: &contracts.WorkspaceApplicationEntry{ServiceName: "app-runtime-alpha-main", Port: 8080}, Components: components,
 		})
 	}))
 	defer upstream.Close()
@@ -101,7 +101,7 @@ func TestFabricApplicationRuntimeHTTPPreservesIdentityCapabilityAndPending(t *te
 		t.Fatalf("read pending=%#v err=%v", pending, err)
 	}
 	ready, err := client.ReadWorkspaceApplicationRuntime(context.Background(), input)
-	if err != nil || ready.Status != "ready" || ready.EntryURL != "https://application.example/" {
+	if err != nil || ready.Status != "ready" || ready.Entry == nil || ready.Entry.ServiceName != "app-runtime-alpha-main" {
 		t.Fatalf("read ready=%#v err=%v", ready, err)
 	}
 	failed, err := client.ReadWorkspaceApplicationRuntime(context.Background(), input)

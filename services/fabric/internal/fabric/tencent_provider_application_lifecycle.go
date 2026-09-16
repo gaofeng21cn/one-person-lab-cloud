@@ -41,10 +41,10 @@ func (p *TencentProvider) ReadWorkspaceApplicationRuntimeLifecycle(ctx context.C
 	}
 	observation.Status = contracts.WorkspaceApplicationRuntimeOverallStatus(observation.Components)
 	if observation.Status != "ready" {
-		observation.EntryURL = ""
+		observation.Entry = nil
 	}
 	result := applicationLifecycleResult(observation)
-	if result.State == "absent" && (len(resources.services) > 0 || len(resources.ingresses) > 0 || len(resources.replicaSets) > 0 || len(resources.pods) > 0 || len(resources.auxiliary) > 0) {
+	if result.State == "absent" && (len(resources.services) > 0 || len(resources.replicaSets) > 0 || len(resources.pods) > 0 || len(resources.auxiliary) > 0) {
 		result.State = "pending"
 		result.Observation.Status = "pending"
 		for i := range result.Observation.Components {
@@ -79,7 +79,7 @@ func (p *TencentProvider) SetWorkspaceApplicationRuntimeLifecycle(ctx context.Co
 			}
 			targets = append(targets, "configmap/"+workspaceApplicationComponentResourceName(input, "config"))
 		}
-		targets = append(targets, "networkpolicy/"+workspaceApplicationComponentResourceName(input, "network"), "networkpolicy/"+workspaceApplicationComponentResourceName(input, "entry-network"), "ingress/"+workspaceApplicationComponentResourceName(input, "entry"), "secret/"+workspaceApplicationComponentResourceName(input, "secrets"), "--ignore-not-found=true", "--wait=false")
+		targets = append(targets, "networkpolicy/"+workspaceApplicationComponentResourceName(input, "network"), "secret/"+workspaceApplicationComponentResourceName(input, "secrets"), "--ignore-not-found=true", "--wait=false")
 		if _, err := p.callKubectl(ctx, targets, nil, protectedresource.Target{}); err != nil {
 			return WorkspaceApplicationRuntimeLifecycleResult{}, err
 		}

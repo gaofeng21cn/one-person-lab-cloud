@@ -58,6 +58,15 @@ func (f *applicationLifecycleFabric) SetWorkspaceApplicationRuntimeLifecycle(_ c
 	return contracts.WorkspaceApplicationRuntimeLifecycleResult{RuntimeID: input.RuntimeID, WorkspaceID: input.WorkspaceID, State: input.DesiredState}, nil
 }
 
+// applicationGatewayEntry is the destination an installation gateway publishes
+// for a revision that exposes a web entry.
+func applicationGatewayEntry(revision contracts.WorkspaceApplicationRevision) *contracts.WorkspaceApplicationEntry {
+	if port, published := contracts.WorkspaceApplicationEntryPort(revision); published && revision.ExposurePolicy != "cloud_private" {
+		return &contracts.WorkspaceApplicationEntry{ServiceName: "app-entry-main", Port: port.Port}
+	}
+	return nil
+}
+
 func (f *applicationLifecycleFabric) ReadWorkspaceApplicationRuntimeCredentials(_ context.Context, input clients.WorkspaceApplicationRuntimeLifecycleInput) (contracts.WorkspaceApplicationRuntimeCredentials, error) {
 	return contracts.WorkspaceApplicationRuntimeCredentials{RuntimeID: input.RuntimeID, WorkspaceID: input.WorkspaceID, WebUIUsername: "owner", WebUIPassword: "test-current-password"}, nil
 }
@@ -71,15 +80,11 @@ func (f *applicationLifecycleFabric) ReadWorkspaceApplicationRuntime(_ context.C
 	for index := range components {
 		components[index].State = "ready"
 	}
-	entryURL := ""
-	if input.Revision.EntryPort != "" {
-		entryURL = "http://application.example/"
-	}
 	runtimeID := contracts.WorkspaceApplicationRuntimeID(input.RuntimeOperationID)
 	if input.SchemaVersion == 0 {
 		runtimeID = contracts.WorkspaceApplicationHistoricalRuntimeID(input.WorkspaceID)
 	}
-	return contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID, Status: "ready", EntryURL: entryURL, Components: components}, nil
+	return contracts.WorkspaceApplicationRuntimeObservation{SchemaVersion: 1, WorkspaceID: input.WorkspaceID, RuntimeID: runtimeID, Status: "ready", Entry: applicationGatewayEntry(input.Revision), Components: components}, nil
 }
 
 func seedCurrentApplicationForLifecycle(t *testing.T, app *controlPlaneServer, workspaceID, applicationID string, selected bool) workspaceApplicationDeploymentIntent {
@@ -105,6 +110,18 @@ func seedApplicationRevisionForLifecycle(t *testing.T, app *controlPlaneServer, 
 		t.Fatal("missing intent", err)
 	}
 	intent.Phase, intent.ActivationAt, intent.ReceiptID = workspaceApplicationDeploymentActivePhase, time.Now().UTC().Format(time.RFC3339Nano), "application-receipt"
+	// An activated generation always carries the runtime observation Fabric
+	// reported for it, including the destination the installation gateway serves.
+	activated := contracts.WorkspaceApplicationRuntimeObservation{
+		SchemaVersion: 1, WorkspaceID: workspaceID,
+		RuntimeID: contracts.WorkspaceApplicationRuntimeID(intent.OperationID + ":runtime"),
+		Status:    "ready", Entry: applicationGatewayEntry(revision),
+		Components: contracts.WorkspaceApplicationRuntimeComponents(revision),
+	}
+	for index := range activated.Components {
+		activated.Components[index].State = "ready"
+	}
+	intent.RuntimeObservation = &activated
 	payload, err := json.Marshal(intent)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +224,9 @@ func TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials(t *t
 	}
 	session := tenantOwnerSessionForTest(t, server)
 	response := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), selected.OperationID) || !strings.Contains(response.Body.String(), "http://application.example/") {
+	// An entry published through the installation gateway is addressed by the
+	// workspace route, not by a URL an executing provider invented.
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), selected.OperationID) || !strings.Contains(response.Body.String(), workspaceGatewayEntryURL("ws-alpha")) {
 		t.Fatalf("current runtime status=%d %s", response.Code, response.Body.String())
 	}
 	credentials := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/reveal", `{}`, "reveal-current")
@@ -220,7 +239,7 @@ func TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials(t *t
 	}
 	fabric.readbackError = true
 	response = requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
-	if response.Code != http.StatusBadGateway || strings.Contains(response.Body.String(), "application.example") {
+	if response.Code != http.StatusBadGateway || strings.Contains(response.Body.String(), workspaceGatewayEntryURL("ws-alpha")) {
 		t.Fatalf("stale runtime readback=%d %s", response.Code, response.Body.String())
 	}
 }
@@ -509,7 +528,7 @@ type absentHistoricalApplicationFabric struct {
 
 func (f *absentHistoricalApplicationFabric) ReadWorkspaceApplicationRuntime(ctx context.Context, input clients.WorkspaceApplicationRuntimeInput) (contracts.WorkspaceApplicationRuntimeObservation, error) {
 	observation, err := f.applicationLifecycleFabric.ReadWorkspaceApplicationRuntime(ctx, input)
-	observation.Status, observation.EntryURL = "absent", ""
+	observation.Status, observation.Entry = "absent", nil
 	for index := range observation.Components {
 		observation.Components[index].State = "absent"
 	}
