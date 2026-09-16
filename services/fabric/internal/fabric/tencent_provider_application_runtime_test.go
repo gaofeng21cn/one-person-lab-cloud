@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -539,151 +538,6 @@ func TestTencentApplicationRuntimeIngressHonorsExposurePolicy(t *testing.T) {
 	}
 }
 
-func appliedApplicationIngress(t *testing.T, fake *fakeTencentKubectl, name string) map[string]any {
-	t.Helper()
-	for _, items := range fake.applies {
-		for _, item := range items {
-			if stringValue(item["kind"]) == "Ingress" && stringValue(nested(item, "metadata", "name")) == name {
-				return item
-			}
-		}
-	}
-	t.Fatalf("applied Ingress %s not found", name)
-	return nil
-}
-
-func appliedApplicationDeployment(t *testing.T, fake *fakeTencentKubectl, name string) map[string]any {
-	t.Helper()
-	for _, items := range fake.applies {
-		for _, item := range items {
-			if stringValue(item["kind"]) == "Deployment" && stringValue(nested(item, "metadata", "name")) == name {
-				return item
-			}
-		}
-	}
-	t.Fatalf("applied Deployment %s not found", name)
-	return nil
-}
-
-func containerResources(t *testing.T, deployment map[string]any) map[string]any {
-	t.Helper()
-	containers, _ := nested(deployment, "spec", "template", "spec", "containers").([]any)
-	if len(containers) != 1 {
-		t.Fatalf("deployment must carry exactly one container: %#v", deployment)
-	}
-	resources, _ := containers[0].(map[string]any)["resources"].(map[string]any)
-	return resources
-}
-
-// A declared envelope reaches every component as the container's requests and
-// limits, and an undeclared component stays BestEffort instead of receiving
-// invented bounds.
-func renderedApplicationDeployment(t *testing.T, input WorkspaceApplicationRuntimeInput, name string) map[string]any {
-	t.Helper()
-	encoded := workspaceApplicationComponentManifest(input, tencentApplicationCompute(), tencentApplicationVolume(), nil)
-	var document struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := json.Unmarshal(encoded, &document); err != nil {
-		t.Fatal(err)
-	}
-	for _, item := range document.Items {
-		if stringValue(item["kind"]) == "Deployment" && stringValue(nested(item, "metadata", "name")) == name {
-			return item
-		}
-	}
-	t.Fatalf("rendered Deployment %s not found", name)
-	return nil
-}
-
-// A declared envelope reaches every component as the container's requests and
-// limits, and an undeclared component stays BestEffort instead of receiving
-// invented bounds.
-func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) {
-	_, _, input := tencentApplicationRuntimeFixture(t)
-	input.Revision.Compute = contracts.WorkspaceApplicationCompute{CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30}
-	input.Revision.Dependencies = []contracts.WorkspaceApplicationDependency{{
-		Name: "retrieval", Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
-		Ports:   []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
-		Compute: contracts.WorkspaceApplicationCompute{CPURequestMilli: 1000, MemoryRequestBytes: 1 << 30},
-	}}
-
-	main := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
-	mainRequests, _ := main["requests"].(map[string]any)
-	mainLimits, _ := main["limits"].(map[string]any)
-	if mainRequests["cpu"] != "500m" || mainRequests["memory"] != "2147483648" || mainLimits["cpu"] != "2000m" || mainLimits["memory"] != "3221225472" {
-		t.Fatalf("main envelope mismatch: %#v", main)
-	}
-	dependency := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, "retrieval")))
-	dependencyRequests, _ := dependency["requests"].(map[string]any)
-	dependencyLimits, _ := dependency["limits"].(map[string]any)
-	if dependencyRequests["cpu"] != "1000m" || dependencyRequests["memory"] != "1073741824" {
-		t.Fatalf("dependency requests mismatch: %#v", dependency)
-	}
-	if _, declared := dependencyLimits["memory"]; declared {
-		t.Fatalf("undeclared dependency limit must stay absent: %#v", dependency)
-	}
-
-	input.Revision.Compute = contracts.WorkspaceApplicationCompute{}
-	input.Revision.Dependencies[0].Compute = contracts.WorkspaceApplicationCompute{}
-	if resources := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))); resources != nil {
-		t.Fatalf("an undeclared component must not receive resources: %#v", resources)
-	}
-}
-
-// The entry origin must follow the installation's application domain, reuse the
-// installation's existing load balancer and declare the certificate that covers
-// the origin. None of that may be inferred: an installation without an
-// application domain keeps the workspace suffix and declares neither.
-func TestTencentApplicationRuntimeIngressPlacementFromInstallationConfig(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example.test")
-	provider, fake, input := tencentApplicationRuntimeFixture(t)
-	entryName := workspaceApplicationComponentResourceName(input, "entry")
-	ensure := func() map[string]any {
-		fake.applies = nil
-		if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
-			t.Fatalf("ensure err=%v", err)
-		}
-		return appliedApplicationIngress(t, fake, entryName)
-	}
-
-	base := ensure()
-	host := workspaceApplicationIngressHost(input)
-	if host != workspaceApplicationComponentResourceName(input, "origin")+".workspace.example.test" {
-		t.Fatalf("default origin host=%q", host)
-	}
-	if stringValue(nested(base, "spec", "rules").([]any)[0].(map[string]any)["host"]) != host {
-		t.Fatalf("default ingress must route the workspace suffix: %#v", base)
-	}
-	baseAnnotations := nested(base, "metadata", "annotations").(map[string]any)
-	if _, declared := baseAnnotations["kubernetes.io/ingress.existLbId"]; declared {
-		t.Fatalf("no load balancer may be claimed without installation config: %#v", baseAnnotations)
-	}
-	if _, declared := base["spec"].(map[string]any)["tls"]; declared {
-		t.Fatalf("no certificate may be claimed without installation config: %#v", base)
-	}
-
-	t.Setenv("OPL_APPLICATION_DOMAIN", "apps.example.test")
-	t.Setenv("OPL_APPLICATION_INGRESS_EXISTING_LB_ID", "lb-example-id")
-	t.Setenv("OPL_APPLICATION_INGRESS_TLS_SECRET", "applications-wildcard-tls")
-	configured := ensure()
-	configuredHost := workspaceApplicationIngressHost(input)
-	if configuredHost != workspaceApplicationComponentResourceName(input, "origin")+".apps.example.test" {
-		t.Fatalf("configured origin host=%q", configuredHost)
-	}
-	if stringValue(nested(configured, "spec", "rules").([]any)[0].(map[string]any)["host"]) != configuredHost {
-		t.Fatalf("configured ingress must route the application domain: %#v", configured)
-	}
-	if value := stringValue(nested(configured, "metadata", "annotations").(map[string]any)["kubernetes.io/ingress.existLbId"]); value != "lb-example-id" {
-		t.Fatalf("ingress must reuse the installation load balancer, got %q", value)
-	}
-	tls := nested(configured, "spec", "tls").([]any)
-	if len(tls) != 1 || stringValue(tls[0].(map[string]any)["secretName"]) != "applications-wildcard-tls" ||
-		!reflect.DeepEqual(tls[0].(map[string]any)["hosts"], []any{configuredHost}) {
-		t.Fatalf("ingress must declare the covering certificate: %#v", tls)
-	}
-}
-
 func TestTencentApplicationRuntimeReadbackRequiresCurrentOwnedReadyImage(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -1111,41 +965,65 @@ func completeTencentApplicationResume(t *testing.T, provider *TencentProvider, f
 	fake.setAllReady()
 }
 
-// A declared host must produce exactly the operator's URL, and the namespace
-// must not already serve that host from another Ingress.
-func TestTencentApplicationRuntimeEntryHostLabelIsDeclaredAndExclusive(t *testing.T) {
-	provider, fake, input := tencentApplicationRuntimeFixture(t)
-	input.Revision.EntryHostLabel = "zslyibd"
-	t.Setenv("OPL_APPLICATION_DOMAIN", "medopl.com")
-	if host := workspaceApplicationIngressHost(input); host != "zslyibd.medopl.com" {
-		t.Fatalf("declared host=%q", host)
+func renderedApplicationDeployment(t *testing.T, input WorkspaceApplicationRuntimeInput, name string) map[string]any {
+	t.Helper()
+	encoded := workspaceApplicationComponentManifest(input, tencentApplicationCompute(), tencentApplicationVolume(), nil)
+	var document struct {
+		Items []map[string]any `json:"items"`
 	}
-	ensure := func() error {
-		_, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume())
-		if !errors.Is(err, ErrWorkspaceLaunchPending) {
-			return err
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range document.Items {
+		if stringValue(item["kind"]) == "Deployment" && stringValue(nested(item, "metadata", "name")) == name {
+			return item
 		}
-		return nil
 	}
-	if err := ensure(); err != nil {
-		t.Fatalf("first ensure err=%v", err)
+	t.Fatalf("rendered Deployment %s not found", name)
+	return nil
+}
+
+func containerResources(t *testing.T, deployment map[string]any) map[string]any {
+	t.Helper()
+	containers, _ := nested(deployment, "spec", "template", "spec", "containers").([]any)
+	if len(containers) != 1 {
+		t.Fatalf("deployment must carry exactly one container: %#v", deployment)
 	}
-	entry := appliedApplicationIngress(t, fake, workspaceApplicationComponentResourceName(input, "entry"))
-	rules := nested(entry, "spec", "rules").([]any)
-	if len(rules) != 1 || stringValue(rules[0].(map[string]any)["host"]) != "zslyibd.medopl.com" {
-		t.Fatalf("entry ingress must route the declared host: %#v", entry)
+	resources, _ := containers[0].(map[string]any)["resources"].(map[string]any)
+	return resources
+}
+
+// A declared envelope reaches every component as the container's requests and
+// limits, and an undeclared component stays BestEffort instead of receiving
+// invented bounds.
+func TestTencentApplicationManifestCarriesDeclaredComputeEnvelope(t *testing.T) {
+	_, _, input := tencentApplicationRuntimeFixture(t)
+	input.Revision.Compute = contracts.WorkspaceApplicationCompute{CPURequestMilli: 500, CPULimitMilli: 2000, MemoryRequestBytes: 2 << 30, MemoryLimitBytes: 3 << 30}
+	input.Revision.Dependencies = []contracts.WorkspaceApplicationDependency{{
+		Name: "retrieval", Image: "repo.example/apps/retrieval@sha256:" + strings.Repeat("b", 64),
+		Ports:   []contracts.WorkspaceApplicationDependencyPort{{Name: "grpc", Port: 9200, Protocol: "TCP"}},
+		Compute: contracts.WorkspaceApplicationCompute{CPURequestMilli: 1000, MemoryRequestBytes: 1 << 30},
+	}}
+
+	main := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain)))
+	mainRequests, _ := main["requests"].(map[string]any)
+	mainLimits, _ := main["limits"].(map[string]any)
+	if mainRequests["cpu"] != "500m" || mainRequests["memory"] != "2147483648" || mainLimits["cpu"] != "2000m" || mainLimits["memory"] != "3221225472" {
+		t.Fatalf("main envelope mismatch: %#v", main)
+	}
+	dependency := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, "retrieval")))
+	dependencyRequests, _ := dependency["requests"].(map[string]any)
+	dependencyLimits, _ := dependency["limits"].(map[string]any)
+	if dependencyRequests["cpu"] != "1000m" || dependencyRequests["memory"] != "1073741824" {
+		t.Fatalf("dependency requests mismatch: %#v", dependency)
+	}
+	if _, declared := dependencyLimits["memory"]; declared {
+		t.Fatalf("undeclared dependency limit must stay absent: %#v", dependency)
 	}
 
-	// A different application claiming the same host must be rejected before it
-	// is applied, instead of silently splitting traffic between two Ingresses.
-	intruder := input
-	intruder.RuntimeOperationID = input.RuntimeOperationID + "-second"
-	fake.resources["Ingress:other-entry"] = map[string]any{
-		"apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
-		"metadata": map[string]any{"name": "other-entry", "uid": "Ingress:other-entry"},
-		"spec":     map[string]any{"rules": []any{map[string]any{"host": "zslyibd.medopl.com"}}},
-	}
-	if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), intruder, tencentApplicationCompute(), tencentApplicationVolume()); err == nil || err.Error() != "tencent_application_entry_host_conflict" {
-		t.Fatalf("second claim on one host must be refused, got %v", err)
+	input.Revision.Compute = contracts.WorkspaceApplicationCompute{}
+	input.Revision.Dependencies[0].Compute = contracts.WorkspaceApplicationCompute{}
+	if resources := containerResources(t, renderedApplicationDeployment(t, input, workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain))); resources != nil {
+		t.Fatalf("an undeclared component must not receive resources: %#v", resources)
 	}
 }

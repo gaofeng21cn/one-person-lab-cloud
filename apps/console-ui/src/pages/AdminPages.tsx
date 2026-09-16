@@ -1096,7 +1096,6 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
       ]} onChange={(value) => deployment.setDraftField("exposurePolicy", value)} />
       <Field label="容器镜像" description="仓库@sha256 摘要钉死，如 repo.example/app@sha256:…" error={deployment.validation.fieldErrors.image} value={draft.image} onChange={(event) => deployment.setDraftField("image", event.target.value)} />
       <Field label="HTTP 服务端口" optional description="应用网页服务监听的端口；留空则不提供网页入口" error={deployment.validation.fieldErrors.httpPort} value={draft.httpPort} onChange={(event) => deployment.setDraftField("httpPort", event.target.value)} />
-      <Field label="访问域名前缀" optional description="应用在安装域下的主机名，如 zslyibd → zslyibd.medopl.com；留空则由平台生成" error={deployment.validation.fieldErrors.entryHostLabel} value={draft.entryHostLabel} onChange={(event) => deployment.setDraftField("entryHostLabel", event.target.value)} />
       <div className="application-form-pair">
         <Field label="健康检查路径" optional error={deployment.validation.fieldErrors.healthCheckPath} value={draft.healthCheckPath} onChange={(event) => deployment.setDraftField("healthCheckPath", event.target.value)} />
         <Field label="健康检查端口" optional error={deployment.validation.fieldErrors.healthCheckPort} value={draft.healthCheckPort} onChange={(event) => deployment.setDraftField("healthCheckPort", event.target.value)} />

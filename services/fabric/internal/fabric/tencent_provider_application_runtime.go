@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 
 	contracts "opl-cloud/packages/contracts/go"
 	"opl-cloud/services/fabric/internal/protectedresource"
@@ -48,9 +47,6 @@ func (p *TencentProvider) EnsureWorkspaceApplicationRuntime(ctx context.Context,
 			workspaceApplicationDeploymentImage(deployment) != component.Image {
 			return contracts.WorkspaceApplicationRuntimeObservation{}, fmt.Errorf("tencent_application_component_conflict")
 		}
-	}
-	if err := p.validateApplicationEntryHost(ctx, input); err != nil {
-		return contracts.WorkspaceApplicationRuntimeObservation{}, err
 	}
 	if err := p.prepareApplicationSecrets(ctx, input); err != nil {
 		return contracts.WorkspaceApplicationRuntimeObservation{}, err
@@ -661,44 +657,6 @@ func workspaceApplicationPublicEntryPolicy(input WorkspaceApplicationRuntimeInpu
 	}}
 }
 
-// validateApplicationEntryHost admits a declared host only when the namespace
-// has no other Ingress claiming it. A derived host is unique per runtime by
-// construction, but a declared host is a name the operator chose, so the
-// installation must be checked rather than assumed: two Ingresses claiming one
-// host would serve the wrong application without any failing request.
-func (p *TencentProvider) validateApplicationEntryHost(ctx context.Context, input WorkspaceApplicationRuntimeInput) error {
-	if input.Revision.EntryHostLabel == "" {
-		return nil
-	}
-	host := workspaceApplicationIngressHost(input)
-	raw, err := p.callKubectl(ctx, []string{"get", "ingress", "-o", "json"}, nil, protectedresource.Target{})
-	if err != nil {
-		return err
-	}
-	items, err := strictKubectlItems(raw)
-	if err != nil {
-		return err
-	}
-	own := workspaceApplicationComponentResourceName(input, "entry")
-	for _, item := range items {
-		ingress, ok := item.(map[string]any)
-		if !ok || stringValue(ingress["kind"]) != "Ingress" {
-			return fmt.Errorf("tencent_application_entry_host_readback_invalid")
-		}
-		if stringValue(nested(ingress, "metadata", "name")) == own {
-			continue
-		}
-		rules, _ := nested(ingress, "spec", "rules").([]any)
-		for _, value := range rules {
-			rule, _ := value.(map[string]any)
-			if stringValue(rule["host"]) == host {
-				return fmt.Errorf("tencent_application_entry_host_conflict")
-			}
-		}
-	}
-	return nil
-}
-
 // workspaceApplicationComponentResources translates one declared envelope into
 // a container's requests and limits. Scheduling and the target-node feasibility
 // check depend on the requests; the limits bound one component so a runaway
@@ -730,20 +688,15 @@ func workspaceApplicationComponentResources(compute contracts.WorkspaceApplicati
 	return resources
 }
 
-// workspaceApplicationIngressHost derives the dedicated origin of one
-// application deployment. Apps keep their own root path and cookies, so they
-// never share the workspace domain's cookie scope. The origin suffix comes from
-// the installation's application domain, which the operator must already
-// resolve and cover with a certificate; this function never assumes that
-// wildcard coverage exists one label below the workspace domain.
+// workspaceApplicationIngressHost derives the dedicated subdomain origin of
+// one application deployment. Apps keep their own root path and cookies, so
+// they never share the workspace domain's cookie scope; wildcard DNS and
+// certificate coverage for this subdomain are installation prerequisites.
 func workspaceApplicationIngressHost(input WorkspaceApplicationRuntimeInput) string {
-	if input.Revision.EntryHostLabel != "" {
-		return input.Revision.EntryHostLabel + "." + applicationDomain()
-	}
 	if input.SchemaVersion == 0 {
-		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), applicationDomain())
+		return fmt.Sprintf("%s.%s", k8sName(input.ComputeID+"-"+input.Revision.ApplicationID), workspaceDomain())
 	}
-	return fmt.Sprintf("%s.%s", workspaceApplicationComponentResourceName(input, "origin"), applicationDomain())
+	return fmt.Sprintf("%s.%s", workspaceApplicationComponentResourceName(input, "origin"), workspaceDomain())
 }
 
 // workspaceApplicationIngress renders the public entry of one application
@@ -767,24 +720,13 @@ func workspaceApplicationIngress(input WorkspaceApplicationRuntimeInput, compute
 		"path": "/", "pathType": "Prefix",
 		"backend": map[string]any{"service": map[string]any{"name": workspaceApplicationComponentResourceName(input, contracts.WorkspaceApplicationComponentMain), "port": map[string]any{"number": port.Port}}},
 	}}
-	host := workspaceApplicationIngressHost(input)
 	spec := map[string]any{"rules": []any{map[string]any{
-		"host": host, "http": map[string]any{"paths": paths},
+		"host": workspaceApplicationIngressHost(input), "http": map[string]any{"paths": paths},
 	}}}
 	if class := os.Getenv("OPL_INGRESS_CLASS"); class != "" {
 		spec["ingressClassName"] = class
 	}
-	if secretName := strings.TrimSpace(os.Getenv("OPL_APPLICATION_INGRESS_TLS_SECRET")); secretName != "" {
-		spec["tls"] = []any{map[string]any{"hosts": []any{host}, "secretName": secretName}}
-	}
-	// The installation's existing load balancer is reused instead of letting
-	// the controller allocate a second one: the operator's DNS already points
-	// at that load balancer, so a fresh one would be unreachable and bill twice.
-	annotations := tags
-	if loadBalancerID := strings.TrimSpace(os.Getenv("OPL_APPLICATION_INGRESS_EXISTING_LB_ID")); loadBalancerID != "" {
-		annotations = mergeStringMaps(tags, map[string]string{"kubernetes.io/ingress.existLbId": loadBalancerID})
-	}
 	return map[string]any{"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": map[string]any{
-		"name": workspaceApplicationComponentResourceName(input, "entry"), "labels": labels, "annotations": annotations,
+		"name": workspaceApplicationComponentResourceName(input, "entry"), "labels": labels, "annotations": tags,
 	}, "spec": spec}
 }
