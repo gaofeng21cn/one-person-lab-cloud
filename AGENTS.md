@@ -215,3 +215,5 @@ reference the owner evidence in the same change. Required Instance evidence
 remains an explicit external obligation; Cloud-only success cannot mark the
 combined outcome complete.
 <!-- RECEIPT_RULES_END -->
+
+- GitHub 上自己新建的对外文本用英文书写：commit subject/body、PR 标题与正文、Issue、comment、Release 正文与 Release Notes。产品名、代码标识、路径、命令与原始引用除外。他人写的 Issue、PR 或 comment，无论对方用什么语言，回复沿用对方的语言；历史中已有的非英文 commit 保持原样。
