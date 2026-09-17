@@ -410,6 +410,40 @@ application must answer on its declared entry port and work under the workspace
 route's path prefix. That needs the protected Instance readback, and no
 production state was changed.
 
+### Retained Runtime Entry Projection Repair
+
+The retained full-Launch status and Runtime repair consumers now accept the
+installation-gateway observation shape introduced by `995ea522`: Fabric reports
+the observed Service without a customer URL. Control Plane composes that route
+through `workspaceGatewayEntryURL`; provider-published endpoints are preserved.
+Previously the remaining nonempty-URL guards rejected otherwise valid Runtime
+readback, making Console entry and credential metadata unavailable. No provider,
+Secret, entitlement, persistence schema, or public DTO shape was changed.
+
+The status HTTP regression first reproduced HTTP 502 with the valid URL-empty
+observation, then passed after the fix. Coverage includes ready/unready state,
+provider URLs, absent/destroyed Runtime, identity/check rejection, credential
+redaction and read-only projection. Repair tests cover both endpoint shapes,
+persisted entry, replay without repeated activation/receipt, and rejection of
+unconfirmed health or identity. The focused owner/access/repair suite passes.
+The full local command ran on 2026-09-17: 319 source/browser tests and all
+Control Plane, Ledger and migration PostgreSQL packages passed with zero skips.
+It failed in the unchanged Fabric
+`TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication`: its Gateway-only
+credential declaration still leads to a bind mount for an ungenerated
+`opl_webui_password` file. Both that fixture and its Fabric implementation match
+base `22b17336`; this failure is not repaired or counted as a pass here. Full log
+SHA-256: `1293c2ba871c6a6da5e5bed49f15a5ac92b0b38143c093dc3d7ee9b35a96479a`.
+Evidence is retained under `output/retained-runtime-entry-fix-20260917/`.
+The initial local run used the pre-existing Node installation; locked dependencies
+have since been restored with `npm ci`. Verification with those dependencies and
+PR CI are pending.
+
+This is source-check evidence only. No Candidate was built, Product Release
+published, Instance deployment performed, or customer Runtime repaired. The
+Instance must separately deploy the qualified fix and verify status, entry and
+owner-only credential access before claiming the reported outage restored.
+
 ### Pre-PR Replacement Safety Review
 
 The pre-PR review reproduced a component configuration file colliding with a

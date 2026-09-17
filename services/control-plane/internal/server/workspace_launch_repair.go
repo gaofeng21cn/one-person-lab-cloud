@@ -119,7 +119,7 @@ func (app *controlPlaneServer) repairWorkspaceLaunchRuntime(ctx context.Context,
 	if err != nil {
 		return workspaceLaunchReconcileOperation{}, err
 	}
-	if !runtime.Ready || runtime.ID == "" || runtime.URL == "" || runtime.ServiceName == "" || runtime.WorkspaceID != operation.stringFact("workspaceId") ||
+	if !runtime.Ready || runtime.ID == "" || runtime.ServiceName == "" || runtime.WorkspaceID != operation.stringFact("workspaceId") ||
 		runtime.OperationID != input.RuntimeOperationID || runtime.ImageID != imageDigest {
 		return workspaceLaunchReconcileOperation{}, fmt.Errorf("workspace_runtime_repair_not_ready")
 	}

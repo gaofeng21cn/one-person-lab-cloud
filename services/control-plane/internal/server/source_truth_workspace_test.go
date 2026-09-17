@@ -171,12 +171,13 @@ func TestWorkspaceListStoreFailureIsUnavailable(t *testing.T) {
 }
 
 func TestRuntimeStatusIsStrictReadOnlyFabricSource(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example.invalid")
 	base := newMemoryTableStore()
 	store := &scopedWorkspaceListStore{controlPlaneTableStore: base}
 	seedTenantMember(t, store, "acct-alpha", "org-alpha", "usr-alpha", "alpha@example.com")
 	calls := []string{}
 	fabric := &sourceTruthRuntimeFabric{fakeFabricClient: fakeFabricClient{calls: &calls, runtimeStatus: clients.WorkspaceRuntime{
-		ID: "runtime-alpha", WorkspaceID: "ws-alpha", URL: "https://workspace.medopl.cn/w/ws-alpha/", ServiceName: "opl-compute-alpha",
+		ID: "runtime-alpha", WorkspaceID: "ws-alpha", ServiceName: "opl-compute-alpha",
 		Status: "unready", Ready: false, Checks: []any{map[string]any{"name": "deployment_ready", "ok": false, "details": map[string]any{"providerSecret": "must-not-leak"}}},
 		Access: clients.WorkspaceRuntimeAccess{Username: "opl", Password: "must-not-leak", CredentialStatus: "configured", CredentialVersion: "v1", SecretRef: "must-not-leak"},
 	}}}
@@ -202,8 +203,34 @@ func TestRuntimeStatusIsStrictReadOnlyFabricSource(t *testing.T) {
 		t.Fatalf("runtime envelope = %#v", envelope)
 	}
 	access := mapField(data, "access")
-	if len(data) != 8 || len(access) != 3 || access["username"] != "opl" || access["credentialStatus"] != "configured" || access["credentialVersion"] != "v1" {
+	if data["url"] != "https://workspace.example.invalid/w/ws-alpha/" || len(data) != 8 || len(access) != 3 || access["username"] != "opl" || access["credentialStatus"] != "configured" || access["credentialVersion"] != "v1" {
 		t.Fatalf("runtime data = %#v", data)
+	}
+	// Tencent publishes a Service destination, not a customer URL. Both ready
+	// and unready observations must project the installation-owned route.
+	fabric.runtimeStatus.Status, fabric.runtimeStatus.Ready = "running", true
+	fabric.runtimeStatus.Checks = []any{map[string]any{"name": "deployment_ready", "ok": true}}
+	running := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
+	var runningEnvelope map[string]any
+	if err := json.NewDecoder(running.Body).Decode(&runningEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	runningData := mapField(runningEnvelope, "data")
+	if running.Code != http.StatusOK || runningEnvelope["available"] != true || runningData["ready"] != true ||
+		runningData["url"] != "https://workspace.example.invalid/w/ws-alpha/" ||
+		mapField(runningData, "access")["credentialStatus"] != "configured" || strings.Contains(running.Body.String(), "must-not-leak") {
+		t.Fatalf("installation gateway runtime = %d: %#v", running.Code, runningEnvelope)
+	}
+
+	// Local-Docker publishes its own endpoint; the projection must preserve it.
+	fabric.runtimeStatus.URL = "http://127.0.0.1:49152/"
+	published := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
+	var publishedEnvelope map[string]any
+	if err := json.NewDecoder(published.Body).Decode(&publishedEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if published.Code != http.StatusOK || mapField(publishedEnvelope, "data")["url"] != fabric.runtimeStatus.URL {
+		t.Fatalf("provider-published runtime = %d: %#v", published.Code, publishedEnvelope)
 	}
 	fabric.runtimeStatus.Checks = []any{}
 	emptyChecks := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
@@ -213,22 +240,44 @@ func TestRuntimeStatusIsStrictReadOnlyFabricSource(t *testing.T) {
 		t.Fatalf("empty runtime checks = %d: %#v", emptyChecks.Code, emptyEnvelope)
 	}
 	after, _ := store.ListWorkspaces(context.Background(), "acct-alpha")
-	if !reflect.DeepEqual(before, after) || len(calls) != 2 {
+	if !reflect.DeepEqual(before, after) || len(calls) != 4 {
 		t.Fatalf("runtime source caused side effects: before=%#v after=%#v calls=%#v", before, after, calls)
 	}
 
-	fabric.runtimeStatus = clients.WorkspaceRuntime{WorkspaceID: "ws-alpha", Status: "not_found", Ready: false, Checks: []any{map[string]any{"name": "workspace_resources_found", "ok": false}}}
-	notFound := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
-	if notFound.Code != http.StatusOK {
-		t.Fatalf("not_found runtime = %d: %s", notFound.Code, notFound.Body.String())
-	}
-	var notFoundEnvelope map[string]any
-	_ = json.NewDecoder(notFound.Body).Decode(&notFoundEnvelope)
-	notFoundData := mapField(notFoundEnvelope, "data")
-	if notFoundData["status"] != "not_found" || notFoundData["ready"] != false || notFoundData["runtimeId"] != nil || notFoundData["url"] != nil || notFoundData["serviceName"] != nil {
-		t.Fatalf("not_found runtime data = %#v", notFoundData)
+	for _, status := range []string{"not_found", "destroyed"} {
+		fabric.runtimeStatus = clients.WorkspaceRuntime{WorkspaceID: "ws-alpha", Status: status, Checks: []any{map[string]any{"name": "workspace_resources_found", "ok": false}}}
+		absent := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
+		var absentEnvelope map[string]any
+		if err := json.NewDecoder(absent.Body).Decode(&absentEnvelope); err != nil {
+			t.Fatal(err)
+		}
+		absentData := mapField(absentEnvelope, "data")
+		if absent.Code != http.StatusOK || absentData["status"] != status || absentData["ready"] != false || absentData["runtimeId"] != nil || absentData["url"] != nil || absentData["serviceName"] != nil {
+			t.Fatalf("%s runtime = %d: %#v", status, absent.Code, absentData)
+		}
 	}
 	fabric.runtimeStatus = clients.WorkspaceRuntime{ID: "runtime-alpha", WorkspaceID: "ws-alpha", URL: "https://workspace.medopl.cn/w/ws-alpha/", ServiceName: "opl-compute-alpha", Status: "unready", Ready: false, Checks: []any{}}
+	valid := fabric.runtimeStatus
+	for _, test := range []struct {
+		name       string
+		invalidate func(*clients.WorkspaceRuntime)
+	}{
+		{name: "missing runtime identity", invalidate: func(runtime *clients.WorkspaceRuntime) { runtime.ID = "" }},
+		{name: "missing service destination", invalidate: func(runtime *clients.WorkspaceRuntime) { runtime.ServiceName = "" }},
+		{name: "missing checks", invalidate: func(runtime *clients.WorkspaceRuntime) { runtime.Checks = nil }},
+		{name: "malformed check", invalidate: func(runtime *clients.WorkspaceRuntime) {
+			runtime.Checks = []any{map[string]any{"name": "deployment_ready", "ok": "true"}}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fabric.runtimeStatus = valid
+			fabric.runtimeStatus.URL = ""
+			test.invalidate(&fabric.runtimeStatus)
+			response := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
+			assertUnavailableWorkspaceEnvelope(t, response, http.StatusBadGateway, "fabric")
+		})
+	}
+	fabric.runtimeStatus = valid
 	fabric.runtimeStatus.Status = "mystery"
 	unknown := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
 	assertUnavailableWorkspaceEnvelope(t, unknown, http.StatusBadGateway, "fabric")

@@ -628,10 +628,16 @@ func workspaceRuntimeStatusResponse(runtime clients.WorkspaceRuntime, workspaceI
 	if runtime.WorkspaceID != workspaceID || runtime.Status == "" || runtime.Checks == nil {
 		return nil, false
 	}
+	entryURL := runtime.URL
 	switch runtime.Status {
 	case "running", "unready":
-		if runtime.ID == "" || runtime.URL == "" || runtime.ServiceName == "" {
+		if runtime.ID == "" || runtime.ServiceName == "" {
 			return nil, false
+		}
+		// A provider-published endpoint is already resolved. Otherwise this
+		// installation owns the customer route to the observed Service.
+		if entryURL == "" {
+			entryURL = workspaceGatewayEntryURL(workspaceID)
 		}
 	case "not_found", "destroyed":
 	default:
@@ -653,8 +659,8 @@ func workspaceRuntimeStatusResponse(runtime clients.WorkspaceRuntime, workspaceI
 	if runtime.ID != "" {
 		body["runtimeId"] = runtime.ID
 	}
-	if runtime.URL != "" {
-		body["url"] = runtime.URL
+	if entryURL != "" {
+		body["url"] = entryURL
 	}
 	if runtime.ServiceName != "" {
 		body["serviceName"] = runtime.ServiceName
