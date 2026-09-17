@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -12,6 +13,56 @@ import (
 // server-side: a caller can enumerate and resolve images inside these
 // namespaces, never outside them.
 var WorkspaceRegistryCatalogNamespaces = []string{"oplcloud"}
+
+// WorkspaceRegistryDeclaredRepositories parses the repositories an installation
+// approves for deployment, written as "<namespace>/<repository>" entries.
+//
+// Which images may run in a Workspace is an installation decision, so the
+// approved set is declared rather than discovered. A registry's catalog
+// endpoint is not a dependable source for it: the same credential that reads a
+// repository's tags can return an empty catalog, which is indistinguishable
+// from an installation that has approved nothing. The declared list is also the
+// narrower statement: it names what is approved instead of everything that
+// exists.
+//
+// Every entry passes the same namespace boundary and repository validation as a
+// lookup, so a declaration cannot widen what may be browsed. Order and
+// duplicates are normalized, and the result is sorted so that two installations
+// declaring the same set produce the same value.
+func WorkspaceRegistryDeclaredRepositories(value string) ([]WorkspaceRegistryRepository, error) {
+	repositories := make([]WorkspaceRegistryRepository, 0)
+	seen := map[string]bool{}
+	for _, entry := range strings.Split(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		namespace, repository, found := strings.Cut(entry, "/")
+		if !found {
+			return nil, errors.New("workspace_registry_repository_entry_invalid")
+		}
+		namespace, repository = strings.TrimSpace(namespace), strings.TrimSpace(repository)
+		if err := ValidateWorkspaceRegistryRepository(namespace, repository); err != nil {
+			return nil, errors.New("workspace_registry_repository_entry_invalid")
+		}
+		key := namespace + "/" + repository
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		repositories = append(repositories, WorkspaceRegistryRepository{Namespace: namespace, Repository: repository})
+	}
+	if len(repositories) == 0 {
+		return nil, errors.New("workspace_registry_repository_entry_invalid")
+	}
+	sort.Slice(repositories, func(i, j int) bool {
+		if repositories[i].Namespace != repositories[j].Namespace {
+			return repositories[i].Namespace < repositories[j].Namespace
+		}
+		return repositories[i].Repository < repositories[j].Repository
+	})
+	return repositories, nil
+}
 
 type WorkspaceRegistryRepository struct {
 	// Namespace is the TCR namespace the repository lives in; one catalog

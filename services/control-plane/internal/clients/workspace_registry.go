@@ -19,8 +19,12 @@ import (
 // Distribution API and resolves a tag to its digest-pinned image reference.
 // It is a read-only discovery client: it never pushes, deletes or rewrites
 // registry state, and it never receives Secret material.
+// WorkspaceRegistryClient resolves what a deployment selection needs from one
+// repository: its tags and the digest a tag currently names. It deliberately has
+// no enumeration: which repositories an installation approves is declared
+// configuration, and a registry's catalog endpoint is not a dependable source
+// for it.
 type WorkspaceRegistryClient interface {
-	ListRepositories(ctx context.Context, namespace string) ([]contracts.WorkspaceRegistryRepository, error)
 	ListTags(ctx context.Context, namespace, repository string) ([]contracts.WorkspaceRegistryTag, error)
 	ResolveTag(ctx context.Context, namespace, repository, tag string) (contracts.WorkspaceRegistryImageResolution, error)
 }
@@ -316,42 +320,6 @@ func (c *workspaceRegistryHTTPClient) negotiateFreshToken(ctx context.Context, s
 		return "", nil
 	}
 	return c.negotiateToken(ctx, challenge)
-}
-
-func (c *workspaceRegistryHTTPClient) ListRepositories(ctx context.Context, namespace string) ([]contracts.WorkspaceRegistryRepository, error) {
-	if err := contracts.ValidateWorkspaceRegistryNamespace(namespace); err != nil {
-		return nil, err
-	}
-	scope := "repository:" + namespace + "/*:pull" + "," + "registry:catalog:*"
-	_, body, err := c.authorize(ctx, "catalog", scope, func(bearer string) (*http.Response, []byte, error) {
-		query := url.Values{"n": []string{"1000"}}
-		return c.get(ctx, "catalog", "/v2/_catalog", query, []string{"application/json"})
-	})
-	if err != nil {
-		return nil, err
-	}
-	var payload struct {
-		Repositories []string `json:"repositories"`
-	}
-	if json.Unmarshal(body, &payload) != nil {
-		return nil, &RegistryAPIError{Operation: "catalog", Code: "catalog_response_invalid"}
-	}
-	prefix := namespace + "/"
-	repositories := make([]contracts.WorkspaceRegistryRepository, 0, len(payload.Repositories))
-	seen := map[string]bool{}
-	for _, name := range payload.Repositories {
-		repository, found := strings.CutPrefix(name, prefix)
-		if !found || repository == "" || seen[repository] {
-			continue
-		}
-		if err := contracts.ValidateWorkspaceRegistryRepository(namespace, repository); err != nil {
-			continue
-		}
-		seen[repository] = true
-		repositories = append(repositories, contracts.WorkspaceRegistryRepository{Namespace: namespace, Repository: repository})
-	}
-	sort.Slice(repositories, func(i, j int) bool { return repositories[i].Repository < repositories[j].Repository })
-	return repositories, nil
 }
 
 func (c *workspaceRegistryHTTPClient) ListTags(ctx context.Context, namespace, repository string) ([]contracts.WorkspaceRegistryTag, error) {

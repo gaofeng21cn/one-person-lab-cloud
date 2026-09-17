@@ -66,3 +66,42 @@ func TestWorkspaceRegistryImageReference(t *testing.T) {
 		t.Fatalf("assembled reference %q must satisfy the workspace image contract", reference)
 	}
 }
+
+// The approved repository set is declared configuration, so its parser is the
+// boundary that decides what an installation may publish. It normalizes order
+// and duplicates, and it refuses anything the namespace boundary would refuse.
+func TestWorkspaceRegistryDeclaredRepositories(t *testing.T) {
+	parsed, err := WorkspaceRegistryDeclaredRepositories(" oplcloud/one-person-lab-app , oplcloud/chaokang_agent_ibd ,oplcloud/one-person-lab-app, ")
+	if err != nil {
+		t.Fatalf("valid declaration rejected: %v", err)
+	}
+	if len(parsed) != 2 {
+		t.Fatalf("duplicates were not normalized: %+v", parsed)
+	}
+	if parsed[0].Namespace != "oplcloud" || parsed[0].Repository != "chaokang_agent_ibd" ||
+		parsed[1].Namespace != "oplcloud" || parsed[1].Repository != "one-person-lab-app" {
+		t.Fatalf("sorted set = %+v", parsed)
+	}
+
+	// A nested repository name keeps everything after the first separator.
+	nested, err := WorkspaceRegistryDeclaredRepositories("oplcloud/team/app")
+	if err != nil || len(nested) != 1 || nested[0].Repository != "team/app" {
+		t.Fatalf("nested repository = %+v err=%v", nested, err)
+	}
+
+	for _, declared := range []string{
+		"",
+		"   ",
+		",",
+		"library/nginx",
+		"no-namespace",
+		"/leading-slash",
+		"oplcloud/",
+		"oplcloud/Uppercase",
+		"oplcloud/has space",
+	} {
+		if _, err := WorkspaceRegistryDeclaredRepositories(declared); err == nil {
+			t.Fatalf("declaration %q was accepted", declared)
+		}
+	}
+}

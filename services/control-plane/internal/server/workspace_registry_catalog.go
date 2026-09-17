@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	workspaceRegistryHostEnv        = "OPL_WORKSPACE_REGISTRY_HOST"
-	workspaceRegistryUsernameEnv    = "OPL_WORKSPACE_REGISTRY_USERNAME"
-	workspaceRegistryPasswordEnv    = "OPL_WORKSPACE_REGISTRY_PASSWORD"
-	workspaceRegistryRequestTimeout = 30 * time.Second
+	workspaceRegistryHostEnv         = "OPL_WORKSPACE_REGISTRY_HOST"
+	workspaceRegistryUsernameEnv     = "OPL_WORKSPACE_REGISTRY_USERNAME"
+	workspaceRegistryPasswordEnv     = "OPL_WORKSPACE_REGISTRY_PASSWORD"
+	workspaceRegistryRepositoriesEnv = "OPL_WORKSPACE_REGISTRY_REPOSITORIES"
+	workspaceRegistryRequestTimeout  = 30 * time.Second
 )
 
 // workspaceApplicationRegistryCatalog is the Control Plane-owned read model
@@ -30,6 +31,12 @@ type workspaceApplicationRegistryCatalog struct {
 	// installation fact, so it is read once from the installation environment
 	// and reported back to the client instead of being re-derived per request.
 	host string
+	// declared is the repository set this installation approves for deployment.
+	// The catalog reports it instead of enumerating the registry, because a
+	// registry credential that reads a repository's tags may still return an
+	// empty catalog, and an empty catalog cannot be told apart from an
+	// installation that approved nothing.
+	declared []contracts.WorkspaceRegistryRepository
 }
 
 // workspaceRegistryCatalogFromEnv reads the installation's registry
@@ -54,6 +61,10 @@ func workspaceRegistryCatalogFromEnv() (*workspaceApplicationRegistryCatalog, er
 	if err != nil {
 		return nil, err
 	}
+	declared, err := contracts.WorkspaceRegistryDeclaredRepositories(os.Getenv(workspaceRegistryRepositoriesEnv))
+	if err != nil {
+		return nil, err
+	}
 	username, password := os.Getenv(workspaceRegistryUsernameEnv), os.Getenv(workspaceRegistryPasswordEnv)
 	if username != "" && password == "" || username == "" && password != "" {
 		return nil, errors.New("workspace_registry_credential_half_configured")
@@ -70,7 +81,7 @@ func workspaceRegistryCatalogFromEnv() (*workspaceApplicationRegistryCatalog, er
 	if err != nil {
 		return nil, err
 	}
-	return &workspaceApplicationRegistryCatalog{client: client, host: strings.TrimPrefix(endpoint, "https://")}, nil
+	return &workspaceApplicationRegistryCatalog{client: client, host: strings.TrimPrefix(endpoint, "https://"), declared: declared}, nil
 }
 
 type workspaceRegistryCatalogResponse struct {
@@ -79,7 +90,11 @@ type workspaceRegistryCatalogResponse struct {
 	Items      []contracts.WorkspaceRegistryRepository `json:"items,omitempty"`
 }
 
-func (catalog *workspaceApplicationRegistryCatalog) repositories(ctx context.Context, namespace string) (workspaceRegistryCatalogResponse, error) {
+// repositories reports the declared repository set, optionally narrowed to one
+// cataloged namespace. It performs no registry enumeration, so an installation
+// whose credential cannot list the catalog still reports the repositories it
+// actually approved rather than an empty list.
+func (catalog *workspaceApplicationRegistryCatalog) repositories(namespace string) (workspaceRegistryCatalogResponse, error) {
 	namespaces := contracts.WorkspaceRegistryCatalogNamespaces
 	if namespace != "" {
 		if err := contracts.ValidateWorkspaceRegistryNamespace(namespace); err != nil {
@@ -87,13 +102,13 @@ func (catalog *workspaceApplicationRegistryCatalog) repositories(ctx context.Con
 		}
 		namespaces = []string{namespace}
 	}
-	response := workspaceRegistryCatalogResponse{Host: catalog.host, Namespaces: contracts.WorkspaceRegistryCatalogNamespaces}
+	response := workspaceRegistryCatalogResponse{Host: catalog.host, Namespaces: contracts.WorkspaceRegistryCatalogNamespaces, Items: []contracts.WorkspaceRegistryRepository{}}
 	for _, name := range namespaces {
-		items, err := catalog.client.ListRepositories(ctx, name)
-		if err != nil {
-			return workspaceRegistryCatalogResponse{}, err
+		for _, repository := range catalog.declared {
+			if repository.Namespace == name {
+				response.Items = append(response.Items, repository)
+			}
 		}
-		response.Items = append(response.Items, items...)
 	}
 	return response, nil
 }
@@ -125,7 +140,7 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 			return
 		}
 		namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
-		response, err := catalog.repositories(r.Context(), namespace)
+		response, err := catalog.repositories(namespace)
 		if err != nil {
 			writeWorkspaceRegistryError(w, err)
 			return
