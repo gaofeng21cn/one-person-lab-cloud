@@ -6062,6 +6062,108 @@ select:focus-visible,
   }
 }
 
+/*
+ * Admin ops tables (account / workspace resource / health / resource detail).
+ * 行首状态色条按 data-state（业务状态原值）着色；表头与首列样式统一；
+ * 只改呈现，行内业务文本与 DOM 结构保持不变（浏览器测试按 tbody tr 定位）。
+ */
+.ops-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7fafc;
+  white-space: nowrap;
+  font-weight: 680;
+}
+
+.ops-table tbody tr {
+  box-shadow: inset 3px 0 0 -1px var(--row-state, #c4d2dd);
+  transition: background-color 120ms ease;
+}
+
+.ops-table tbody tr:hover {
+  background: #f7fafc;
+}
+
+.ops-table tbody tr[data-state="active"],
+.ops-table tbody tr[data-state="running"],
+.ops-table tbody tr[data-state="succeeded"],
+.ops-table tbody tr[data-state="published"] {
+  --row-state: #2a9c95;
+}
+
+.ops-table tbody tr[data-state="manual_review"],
+.ops-table tbody tr[data-state="processing"],
+.ops-table tbody tr[data-state="queued"],
+.ops-table tbody tr[data-state="scheduled"],
+.ops-table tbody tr[data-state="provisioning"],
+.ops-table tbody tr[data-state="deleting"],
+.ops-table tbody tr[data-state="warning"] {
+  --row-state: #d87536;
+}
+
+.ops-table tbody tr[data-state="disabled"],
+.ops-table tbody tr[data-state="failed"],
+.ops-table tbody tr[data-state="data_deleted"],
+.ops-table tbody tr[data-state="expired_unpaid"],
+.ops-table tbody tr[data-state="danger"] {
+  --row-state: #cf222e;
+}
+
+.ops-table td .ui-badge {
+  font-weight: 680;
+}
+
+.ops-owner {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ops-owner small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* 粘性首列：Workspace/用户名列在横向滚动时保持可见 */
+.operator-workspace-table td:first-child,
+.operator-resource-detail-table td:first-child,
+.operator-account-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  min-width: 190px;
+}
+
+.operator-workspace-table th:first-child,
+.operator-resource-detail-table th:first-child,
+.operator-account-table th:first-child {
+  min-width: 190px;
+}
+
+/* 来源状态表：紧凑行高 + 来源名排版 */
+.source-table th {
+  position: static;
+}
+
+.source-table td {
+  padding: 10px 18px;
+}
+
+.source-table td:first-child strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.source-table td:first-child small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 html,
 body,
 #app,

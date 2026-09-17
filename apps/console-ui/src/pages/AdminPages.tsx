@@ -144,10 +144,10 @@ function overallHealth(source: SourceEnvelope<OperatorHealthDTO> | null | undefi
 function SourceTable({ rows }: { rows: Array<{ label: string; source: SourceEnvelope<unknown> }> }) {
   return (
     <div className="table-wrap">
-      <table>
+      <table className="ops-table source-table">
         <thead><tr><th>来源</th><th>状态</th><th>Console 读回</th><th>权威更新时间</th></tr></thead>
         <tbody>{rows.map(({ label, source }) => (
-          <tr key={label}>
+          <tr key={label} data-state={source.status === "available" ? "active" : source.status === "empty" ? "" : "manual_review"}>
             <td><strong>{label}</strong><small>{source.source}</small></td>
             <td><SourceBadge source={source} /></td>
             <td>{source.fetchedAt ? formatDate(source.fetchedAt, true) : "暂不可用"}</td>
@@ -583,8 +583,8 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
       <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
       <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
         {(data) => <>
-          <div className="table-wrap operator-account-table"><table><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
-            <tr key={account.accountId}>
+          <div className="table-wrap operator-account-table"><table className="ops-table"><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
+            <tr key={account.accountId} data-state={account.status}>
               <td>
                 <span className="operator-account-identity">
                   <strong>{account.email}</strong>
@@ -867,7 +867,7 @@ function ResourceDetail({ controller, release, replacement, deployment }: { cont
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
           {detail.resources.length ? <>
-            <div className="table-wrap operator-resource-detail-table"><table><thead><tr><th>owner Account</th><th>owner User</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
+            <div className="table-wrap operator-resource-detail-table"><table className="ops-table"><thead><tr><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
             <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
           </> : <div className="empty-panel">暂无资源</div>}
         </>}
@@ -955,10 +955,11 @@ function ResourcesPage({ controller, release, replacement, deployment }: { contr
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table><thead><tr><th>Workspace</th><th>owner Account</th><th>owner User</th><th>套餐 / 月度总价</th><th>创建时间</th><th>paidThrough</th><th>续费状态</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月度总价</th><th>创建时间</th><th>权益截止</th><th>续费状态</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
-              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              const state = sourceData(item.workspace)?.state;
+              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><span className="ops-owner"><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></small></span></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => <Badge color={statusTone(value.state)}>{statusLabel(value.state)}</Badge>}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}
@@ -1048,10 +1049,10 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
         <div className="panel-title"><div><h2>服务健康</h2><Badge color={summary.tone}>{summary.label}</Badge></div><Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
         <SourceState error={controller.sources.operatorHealth.error} loading={controller.sources.operatorHealth.loading} onRetry={() => void controller.refreshCurrentPage()} source={healthSource} unavailableTitle="系统状态暂不可用">
           {(health) => <>
-            <div className="table-wrap operator-health-table"><table><thead><tr><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
+            <div className="table-wrap operator-health-table"><table className="ops-table"><thead><tr><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
               const service = health[key];
               const state = healthStatus(service, key);
-              return <tr key={key}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{formatDate(healthObservedAt(service, key), true)}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td><HealthDiagnostics service={service} serviceKey={key} /></td><td>{key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
+              return <tr key={key} data-state={state.tone === "success" ? "active" : state.tone === "danger" ? "disabled" : "manual_review"}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{formatDate(healthObservedAt(service, key), true)}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td><HealthDiagnostics service={service} serviceKey={key} /></td><td>{key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-health-mobile-list">{healthServices.map(({ key, name, icon }) => <OperatorHealthMobileCard controller={controller} icon={icon} key={key} name={name} onRuntimeDetails={() => setRuntimeDetailsOpen(true)} service={health[key]} serviceKey={key} />)}</div>
           </>}
