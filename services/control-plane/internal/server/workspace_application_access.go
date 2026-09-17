@@ -118,8 +118,10 @@ func (app *controlPlaneServer) readWorkspaceCurrentApplication(ctx context.Conte
 		return current, observation, errors.New("workspace_application_runtime_observation_mismatch")
 	}
 	// A provider that publishes the endpoint itself states its URL; an entry
-	// published through the installation gateway is addressed by the workspace
-	// route this server owns.
+	// published through the installation gateway is addressed by the binding's
+	// own origin, which this server both owns and routes. The retained
+	// path-based route stays available as the compatibility entry for bindings
+	// whose Workspace identity cannot form a hostname.
 	if entry := observation.Entry; entry != nil && entry.URL != "" {
 		entryURL, err := url.Parse(entry.URL)
 		if err != nil || entryURL.Host == "" || (entryURL.Scheme != "http" && entryURL.Scheme != "https") || entryURL.User != nil {
@@ -127,7 +129,11 @@ func (app *controlPlaneServer) readWorkspaceCurrentApplication(ctx context.Conte
 		}
 		current.EntryURL = entry.URL
 	} else if entry != nil {
-		current.EntryURL = workspaceGatewayEntryURL(intent.WorkspaceID)
+		if originURL, ok := workspaceApplicationOriginURL(intent.WorkspaceID, intent.ApplicationID); ok {
+			current.EntryURL = originURL
+		} else {
+			current.EntryURL = workspaceGatewayEntryURL(intent.WorkspaceID)
+		}
 	}
 	current.Status = observation.Status
 	return current, observation, nil

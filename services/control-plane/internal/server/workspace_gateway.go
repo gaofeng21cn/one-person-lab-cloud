@@ -1066,7 +1066,7 @@ func (app *controlPlaneServer) proxyWorkspace(w http.ResponseWriter, r *http.Req
 		return
 	}
 	suffix := strings.TrimPrefix(r.URL.Path, "/w/"+workspaceID)
-	app.proxyWorkspaceTo(w, r, service, workspaceID, suffix)
+	app.proxyWorkspaceTo(w, r, service, workspaceID, suffix, workspaceProxyLegacySharedHost)
 }
 
 func (app *controlPlaneServer) proxyWorkspaceRoot(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
@@ -1079,10 +1079,47 @@ func (app *controlPlaneServer) proxyWorkspaceRoot(w http.ResponseWriter, r *http
 		http.NotFound(w, r)
 		return
 	}
-	app.proxyWorkspaceTo(w, r, service, workspaceID, r.URL.Path)
+	app.proxyWorkspaceTo(w, r, service, workspaceID, r.URL.Path, workspaceProxyLegacySharedHost)
 }
 
-func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.Request, service *controlplane.Service, workspaceID string, proxyPath string) {
+// proxyWorkspaceApplicationOrigin serves a request addressed to one binding's
+// own origin. The binding owns the whole host, so every path on it belongs to
+// the application: this server never answers its own management routes there.
+//
+// The hostname carries the Workspace identity, so routing needs no lookup. The
+// application part is confirmed against the Workspace's current binding instead
+// of being trusted: a name that no longer matches belonged to a superseded
+// application, and serving the replacement under it would let the previous
+// application's browser state act on the new one.
+func (app *controlPlaneServer) proxyWorkspaceApplicationOrigin(w http.ResponseWriter, r *http.Request, service *controlplane.Service) {
+	workspaceID, applicationLabel, ok := workspaceApplicationOriginRequest(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	workspace, found := app.getWorkspace(workspaceID)
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	intent, deployed, err := app.currentWorkspaceApplicationDeployment(r.Context(), workspace)
+	if err != nil {
+		writeUpstreamError(w)
+		return
+	}
+	if !deployed {
+		http.NotFound(w, r)
+		return
+	}
+	expected, ok := workspaceApplicationOriginLabel(intent.WorkspaceID, intent.ApplicationID)
+	if !ok || expected != applicationLabel {
+		writeError(w, http.StatusGone, "workspace_application_origin_retired")
+		return
+	}
+	app.proxyWorkspaceTo(w, r, service, workspaceID, r.URL.Path, workspaceProxyApplicationOrigin)
+}
+
+func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.Request, service *controlplane.Service, workspaceID string, proxyPath string, credentials workspaceProxyCredentialPolicy) {
 	workspace, ok := app.getWorkspace(workspaceID)
 	if !ok {
 		http.NotFound(w, r)
@@ -1110,7 +1147,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusConflict, "workspace_runtime_truth_unavailable")
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/w/"+workspaceID) {
+	if credentials == workspaceProxyLegacySharedHost && strings.HasPrefix(r.URL.Path, "/w/"+workspaceID) {
 		setWorkspaceGatewayRouteCookie(w, workspaceID)
 	}
 	upstream, port, err := app.workspaceEntryUpstream(r.Context(), workspace, operation)
@@ -1163,21 +1200,40 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		}()
 		r = r.WithContext(ctx)
 	}
+	// The application must be able to reconstruct its own external address. This
+	// server is the trusted proxy boundary, so it states the external host and
+	// scheme itself and never forwards a client-supplied claim: an application
+	// that builds absolute redirects or cookie domains from these headers must
+	// not be steerable by its caller.
+	externalHost := r.Host
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		stripWorkspaceProxyCredentials(req, workspaceID)
+		if credentials == workspaceProxyApplicationOrigin {
+			stripWorkspaceOriginPlatformCredentials(req, workspaceID)
+		} else {
+			stripWorkspaceProxyCredentials(req, workspaceID)
+		}
 		if proxyPath == "" {
 			proxyPath = "/"
 		}
 		req.URL.Path = proxyPath
 		req.URL.RawPath = ""
 		req.Host = target.Host
+		req.Header.Set("X-Forwarded-Host", externalHost)
+		req.Header.Set("X-Forwarded-Proto", workspaceExternalScheme())
 	}
-	proxy.ModifyResponse = func(response *http.Response) error {
-		projectWorkspaceRuntimeSessionCookie(response, workspaceID)
-		return nil
+	if credentials == workspaceProxyApplicationOrigin {
+		proxy.ModifyResponse = func(response *http.Response) error {
+			confineOriginResponseCookies(response)
+			return nil
+		}
+	} else {
+		proxy.ModifyResponse = func(response *http.Response) error {
+			projectWorkspaceRuntimeSessionCookie(response, workspaceID)
+			return nil
+		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
 		writeUpstreamError(w)
@@ -1185,10 +1241,85 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	proxy.ServeHTTP(w, r)
 }
 
+// workspaceProxyCredentialPolicy separates the two entry shapes this server
+// publishes, because they have genuinely different credential needs.
+type workspaceProxyCredentialPolicy int
+
+const (
+	// workspaceProxyLegacySharedHost is the retained path-based entry. Several
+	// Workspaces answer on one hostname, so the launched OPL runtime's fixed
+	// session cookie name is renamed per Workspace to keep their sessions apart.
+	workspaceProxyLegacySharedHost workspaceProxyCredentialPolicy = iota
+	// workspaceProxyApplicationOrigin is one binding's own origin. The binding
+	// owns the host, so the application's cookies, authorization, redirects and
+	// storage keep their own semantics; only platform credentials are removed.
+	workspaceProxyApplicationOrigin
+)
+
 const workspaceRuntimeSessionCookieName = "aionui-session"
 
+// platformCredentialHeaders are the management-plane headers that never reach an
+// application: they authorize this server and its Console, not the application.
+var platformCredentialHeaders = []string{"X-OPL-CSRF", "X-OPL-CSRF-Token"}
+
+// stripWorkspaceOriginPlatformCredentials removes only what belongs to the
+// platform. The application receives its own Authorization header, its own
+// cookies and the routing cookie is dropped, so a request cannot carry the
+// Console's authority into application code.
+func stripWorkspaceOriginPlatformCredentials(r *http.Request, _ string) {
+	for _, header := range platformCredentialHeaders {
+		r.Header.Del(header)
+	}
+	for _, name := range []string{sessionCookieName, "opl_ws_active"} {
+		if _, err := r.Cookie(name); err != nil {
+			continue
+		}
+		dropRequestCookie(r, name)
+	}
+	for _, cookie := range r.Cookies() {
+		if strings.HasPrefix(cookie.Name, workspaceRuntimeSessionCookieNamePrefix) {
+			dropRequestCookie(r, cookie.Name)
+		}
+	}
+}
+
+func dropRequestCookie(r *http.Request, name string) {
+	remaining := make([]string, 0, len(r.Cookies()))
+	for _, cookie := range r.Cookies() {
+		if cookie.Name == name {
+			continue
+		}
+		remaining = append(remaining, cookie.Name+"="+cookie.Value)
+	}
+	if len(remaining) == 0 {
+		r.Header.Del("Cookie")
+		return
+	}
+	r.Header.Set("Cookie", strings.Join(remaining, "; "))
+}
+
+// confineOriginResponseCookies keeps an application's cookies on its own
+// binding. The application may still set whatever cookies it needs and its
+// own sessions keep working, but a Domain attribute cannot widen them onto a
+// sibling binding or onto the Console's origin, which would let one application
+// observe or overwrite another origin's browser state.
+func confineOriginResponseCookies(response *http.Response) error {
+	if len(response.Header.Values("Set-Cookie")) == 0 {
+		return nil
+	}
+	cookies := response.Cookies()
+	response.Header.Del("Set-Cookie")
+	for _, cookie := range cookies {
+		cookie.Domain = ""
+		response.Header.Add("Set-Cookie", cookie.String())
+	}
+	return nil
+}
+
+const workspaceRuntimeSessionCookieNamePrefix = "opl_ws_session_"
+
 func workspaceGatewayRuntimeSessionCookieName(workspaceID string) string {
-	return "opl_ws_session_" + stableID("workspace-runtime-session", workspaceID)[:16]
+	return workspaceRuntimeSessionCookieNamePrefix + stableID("workspace-runtime-session", workspaceID)[:16]
 }
 
 func stripWorkspaceProxyCredentials(r *http.Request, workspaceID string) {

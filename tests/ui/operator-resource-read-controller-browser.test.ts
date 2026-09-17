@@ -1013,8 +1013,13 @@ test("Registry selection admits a complete publisher revision and deploys its fi
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   const id = "workspace-publisher";
-  const repository = "registry.example/oplcloud/knowledge";
-  const otherRepository = "registry.example/oplcloud/database";
+  // Control Plane owns the registry identity: a catalog item is one repository
+  // name inside the cataloged namespace, and a resolved reference is
+  // host/namespace/repository@digest.
+  const registryHost = "registry.example";
+  const repository = "knowledge";
+  const otherRepository = "database";
+  const resolvedImage = `${registryHost}/oplcloud/${repository}@${targetDigest}`;
   const configuration = { environment: { APP_MODE: "stable" }, files: { settings: "line 1\nline 2" } };
   const secretBindings = [{ name: "database", secretRef: "secret-db", version: "v1", key: "password" }];
   const revision = { schemaVersion: 1, applicationId: "knowledge-app", version: "1.0.0", platform: "linux/amd64", image: targetImage,
@@ -1038,7 +1043,7 @@ test("Registry selection admits a complete publisher revision and deploys its fi
     await page.route("**/api/operator/registry/resolve", async (route) => {
       assert.deepEqual(route.request().postDataJSON(), { namespace: "oplcloud", repository, tag: "verified" });
       if (resolutions++ === 0) { resolutionStarted.resolve(); await releaseResolution.promise; }
-      return fulfill(route, { namespace: "oplcloud", repository, tag: "verified", digest: targetDigest, reference: `${repository}@${targetDigest}` });
+      return fulfill(route, { host: registryHost, namespace: "oplcloud", repository, tag: "verified", digest: targetDigest, reference: resolvedImage });
     });
     await page.route("**/api/operator/application-revisions", (route) => {
       admitted.push(route.request().postDataJSON());
@@ -1084,7 +1089,7 @@ test("Registry selection admits a complete publisher revision and deploys its fi
     await registration.getByText("已解析", { exact: false }).waitFor();
     await registration.getByRole("button", { name: "登记应用版本", exact: true }).click();
     await page.getByText("应用版本已准入", { exact: false }).waitFor();
-    assert.deepEqual(admitted, [{ ...revision, image: `${repository}@${targetDigest}` }]);
+    assert.deepEqual(admitted, [{ ...revision, image: resolvedImage }]);
     const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
     assert.equal(await deployment.getByLabel("应用 ID").inputValue(), revision.applicationId);
     assert.equal(await deployment.getByLabel("目标版本").inputValue(), revision.version);
@@ -1095,7 +1100,12 @@ test("Registry selection admits a complete publisher revision and deploys its fi
     await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify(secretBindings));
     await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).click();
     await deployment.getByText("receipt-publisher", { exact: true }).waitFor();
-    assert.deepEqual(writes, [{ workspaceId: id, applicationId: revision.applicationId, targetRevision: revision.version, configuration, secretBindings }]);
+    // One deployment command carries the image description, so the operator
+    // does not have to register the version as a separate preceding step.
+    assert.deepEqual(writes, [{
+      workspaceId: id, applicationId: revision.applicationId, targetRevision: revision.version,
+      configuration, secretBindings, revision: { ...revision, image: resolvedImage }
+    }]);
   } finally {
     releaseResolution.resolve();
     await browser.close();

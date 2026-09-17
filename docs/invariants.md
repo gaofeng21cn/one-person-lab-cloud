@@ -135,9 +135,33 @@ implementation and remaining gaps are reported separately in status/roadmap.
   the chosen application. Application replacement within existing resource
   entitlement does not authorize another charge or resource purchase.
 - New resource provisioning can complete without an application, application
-  login or model Key. Later deployment failure cannot repeat a debit or turn
-  fulfilled resources into an unfulfilled purchase. Retained Launches keep the
-  completion obligations of their original contract.
+  login, application Gateway Key or model Key. Later deployment failure cannot
+  repeat a debit or turn fulfilled resources into an unfulfilled purchase.
+  Retained Launches keep the completion obligations of their original contract.
+- A Launch declares its provisioning shape explicitly. A customer Launch
+  delivers resources only; it does not create an application installation. The
+  provisioning shape is never inferred from a server default or from a
+  Workspace's own resources.
+- A retained data binding is keyed by the stable application identity, never by
+  an image tag, digest or deployment attempt. An update that keeps the
+  application keeps its data binding; an unrelated application does not inherit
+  it.
+- An executable image is identified as `host/namespace/repository@digest`. A
+  module confirms the reference its owner produced; it does not re-derive a
+  second reference format from parts.
+- A registry endpoint and its credentials are installation facts. A product has
+  no built-in registry endpoint, and an unconfigured endpoint is an absent
+  capability rather than an anonymous one. Deployment time is bound to the
+  resolved digest and platform, never to a tag.
+- A Workspace binding to an application gets its own browser origin, derived
+  from the binding identity rather than allocated. A compatible update keeps it;
+  an unrelated application does not inherit it, and a superseded origin is
+  refused instead of served.
+- An application origin belongs entirely to its application. Platform
+  credentials, platform routes and platform cookies never appear on it, and an
+  application cookie cannot widen beyond its own binding.
+- The external host and scheme an application observes come from the trusted
+  proxy boundary, never from a caller-supplied header.
 - Initial application distribution, update, rollback and deployment settings
   require administrator authorization. Account ownership alone does not grant
   deployment permission; other management actions retain their role policies.

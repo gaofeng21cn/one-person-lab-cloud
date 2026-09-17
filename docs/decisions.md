@@ -4,6 +4,84 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-17: A Customer Launch Delivers Resources, Not An Application
+
+A Workspace purchase ends at resource fulfillment. The customer Console path
+opens compute, storage, attachment and the Workspace's entitlement, and it does
+not install a default application: no installation operation, application
+Gateway Key or application login is part of a customer Launch. Deploying an
+application afterwards is a separate authorized administrator operation on the
+resources that Launch already delivered. A customer Launch therefore always
+declares its provisioning shape explicitly instead of inheriting a default.
+
+This does not retire the retained Launch contract. Historical Launches keep the
+completion obligations recorded in their own operation, and the operator
+qualification flows that still install and verify the Workspace runtime continue
+to use the retained provisioning mode until their own migration lands.
+
+## 2026-09-17: One Origin Per Workspace-Application Binding, Derived Not Allocated
+
+Each Workspace's binding to an application is published at its own browser
+origin, and the origin is a pure function of the binding identity. No module
+allocates it, no table records it, and no module can disagree about it: the same
+pair always composes the same name.
+
+The name carries the Workspace identity so routing resolves a request without a
+lookup. The application component is in the name because an origin has to change
+when the Workspace's application changes: a compatible update keeps the same
+application identity and therefore the same origin, so a visitor's session
+survives, while an unrelated application gets a different origin, so the
+previous application's service worker or browser storage cannot act on its
+replacement. A name whose application component no longer matches the current
+binding belonged to a superseded application and is refused rather than served.
+
+A binding origin belongs entirely to its application. Requests are dispatched to
+the binding before the management route table, so this server's own routes never
+answer on an application host. Only platform credentials are removed from the
+forwarded request; the application keeps its own authorization and cookies, and
+a response cookie cannot widen onto a sibling binding or onto the Console. The
+proxy states the external host and scheme itself instead of forwarding a
+caller-supplied claim.
+
+The domain origins are published under is its own installation value, separate
+from the Workspace host. The layout is a deliberate choice with a cost: origins
+sit one label under the zone so the public DNS proxy's free edge certificate,
+which covers a root domain and its first-level subdomains, keeps them in scope.
+One label deeper would require both a paid edge certificate and a purchased
+certificate on the load balancer. Because the proxy terminates TLS for these
+names, the origins declare no Ingress TLS entry.
+
+The instance still owns the domain, its wildcard DNS record and its certificate.
+An installation that states no application-origin domain, or a binding whose
+Workspace identity cannot compose into a hostname, has no origin and keeps the
+retained path-based entry rather than an address that cannot resolve.
+
+## 2026-09-17: One Image Reference Format, Owned By The Contract
+
+An executable image is identified as `host/namespace/repository@digest`
+everywhere: in the registry catalog response, in the resolved reference an
+administrator selects, in admission, and in what Fabric executes. A plain
+`repository@digest` is not an image reference and must never be produced by one
+module and re-derived by another. The registry host is returned with the
+resolution so a consumer confirms the exact identity the owner produced rather
+than assembling a second format.
+
+Image selection is discovery, not publication. Choosing a repository and tag
+resolves the exact digest and platform for one deployment; it is not a global
+application publication or marketplace step. A tag is discovery input only, and
+an accepted operation keeps the digest it resolved rather than following a tag
+that moved.
+
+The registry endpoint and its credentials are installation facts. Cloud has no
+default registry host, and an installation that configures none has no image
+selection capability rather than an anonymous one; its routes answer an explicit
+unconfigured result. The instance owns the endpoint and the Secret material; it
+injects browse credentials to Control Plane and keeps the node pull credential
+in the runtime environment. The cataloged namespace boundary stays a server-side
+admission rule, so configuring a host never widens which namespaces may be
+browsed. Which identity holds which permission is an installation choice; Cloud
+does not require Control Plane and the runtime nodes to share one credential.
+
 ## 2026-09-11: Control Plane Coordinates Applications And Keeps One Process
 
 Control Plane's application authority is admission and deployment coordination,

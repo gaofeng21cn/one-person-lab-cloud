@@ -39,7 +39,8 @@ export interface WorkspaceLaunchSubmitReadiness extends WorkspaceLaunchReviewRea
 function sameWorkspaceLaunchInput(left: WorkspaceLaunchRequest, right: WorkspaceLaunchRequest): boolean {
   return left.name === right.name
     && left.packageId === right.packageId
-    && left.autoRenew === right.autoRenew;
+    && left.autoRenew === right.autoRenew
+    && left.provisioningMode === right.provisioningMode;
 }
 
 export function resolveWorkspaceLaunchIntent(
@@ -98,9 +99,23 @@ export function shouldPollWorkspaceLaunch(operation: WorkspaceLaunchResponse): b
   return operation.status !== "manual_review" && !isTerminalWorkspaceLaunch(operation.status);
 }
 
+// workspaceLaunchProvisioningMode is the one place this client states its
+// provisioning shape. A customer Launch delivers resourced capacity only; the
+// application is deployed afterwards as its own authorized operation.
+export const workspaceLaunchProvisioningMode = "resource_only" as const;
+
+// WorkspaceLaunchIntentInput is what a customer chooses: a name, a plan and
+// whether the monthly charge renews. The provisioning shape is not theirs to
+// pick, so submission is the single owner that composes the wire request.
+export type WorkspaceLaunchIntentInput = Omit<WorkspaceLaunchRequest, "provisioningMode">;
+
 export function workspaceLaunchSubmission(
-  input: WorkspaceLaunchRequest,
+  input: WorkspaceLaunchIntentInput,
   resourceBillingMode: PricingCatalogResponse["resourceBillingMode"]
 ): WorkspaceLaunchRequest {
-  return resourceBillingMode === "none" ? { ...input, autoRenew: false } : { ...input };
+  const submitted: WorkspaceLaunchRequest = {
+    ...input,
+    provisioningMode: workspaceLaunchProvisioningMode
+  };
+  return resourceBillingMode === "none" ? { ...submitted, autoRenew: false } : submitted;
 }

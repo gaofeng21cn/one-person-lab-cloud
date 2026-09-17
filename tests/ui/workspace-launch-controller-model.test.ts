@@ -17,7 +17,8 @@ import {
 const basicRequest: WorkspaceLaunchRequest = {
   name: "Alpha",
   packageId: "basic",
-  autoRenew: true
+  autoRenew: true,
+  provisioningMode: "resource_only"
 };
 
 function launchResponse(
@@ -149,4 +150,19 @@ test("resource billing mode none disables Workspace auto-renew", () => {
   });
   assert.deepEqual(workspaceLaunchSubmission(basicRequest, "enabled"), basicRequest);
   assert.deepEqual(basicRequest, original);
+});
+
+test("a customer Workspace Launch always opens resources only", () => {
+  const submitted = workspaceLaunchSubmission({ ...basicRequest, provisioningMode: "full" }, "enabled");
+  assert.equal(submitted.provisioningMode, "resource_only");
+  assert.deepEqual(workspaceLaunchSubmission(basicRequest, "enabled"), basicRequest);
+});
+
+test("an intent that changes provisioning mode is a conflict, not a silent reuse", () => {
+  const intent: WorkspaceLaunchIntent = {
+    input: { ...basicRequest },
+    idempotencyKey: "launch-key"
+  };
+  const resolved = resolveWorkspaceLaunchIntent(intent, { ...basicRequest, provisioningMode: "full" }, () => "new-key");
+  assert.equal(resolved.kind, "conflict");
 });

@@ -174,6 +174,207 @@ above. Real Tencent networking/TLS and the selected Workspace's IBD launch
 remain open. No new Candidate, Product Release
 or Instance receipt is claimed.
 
+### Customer Launch Provisioning Shape (Local Development)
+
+A customer Launch now states its provisioning shape explicitly. The Console
+launch controller composes `provisioningMode: "resource_only"` in the single
+place it builds the wire request, so ordinary purchase opens compute, storage,
+attachment and Workspace entitlement and does not create a default OPL App
+installation operation. The administrator never picks a provisioning shape, and
+changing it is a conflict against an in-flight intent rather than a silent reuse
+of the previous idempotency key.
+
+This does not change the retained contract. A request that omits
+`provisioningMode` still takes the existing path, which is what the operator
+qualification flows under `tools/` use; historical Launches keep their recorded
+completion obligations and replay through their own stored mode.
+
+Evidence: `node --test tests/ui/workspace-launch-controller-model.test.ts`
+passes 9 cases, including the new resources-only composition and the
+provisioning-mode conflict case.
+
+### Per-Binding Application Origin (Local Development)
+
+A Workspace's binding to an application is now published at its own browser
+origin instead of the shared `workspaceDomain/w/<workspaceId>/` path. The origin
+is derived, not allocated, and sits directly under its own installation-stated
+domain:
+
+```text
+<workspaceId>-<12 hex of stableID("workspace-application-origin", workspaceId, applicationId)>.<OPL_WORKSPACE_APPLICATION_DOMAIN>
+```
+
+`OPL_WORKSPACE_APPLICATION_DOMAIN` is separate from `OPL_WORKSPACE_DOMAIN` on
+purpose: the origin layout decides which DNS record and which certificate the
+installation must hold. Publishing origins one label under the zone keeps them
+inside the public DNS proxy's free edge certificate, which covers a root domain
+and its first-level subdomains; one label deeper would need a paid edge
+certificate plus a purchased load-balancer certificate. An installation that
+states no such domain publishes no origins and every binding keeps the retained
+`/w/` entry.
+
+`services/control-plane/internal/server/workspace_application_origin.go` owns
+that shape. Detail and the compatibility split are in
+[Workspace Runtime Access](./implementation/workspace-runtime-access.md#selected-application-access).
+
+- Routing reads the Workspace identity out of the name, so no distribution table
+  and no second writer exist. The application component is confirmed against the
+  Workspace's current binding; a superseded origin answers `410`
+  `workspace_application_origin_retired`.
+- A binding origin is dispatched before the management route table, so this
+  server's own routes never answer on an application host.
+- Only platform credentials are removed from the forwarded request
+  (`opl_session`, `opl_ws_active`, `opl_ws_session_*`, `X-OPL-CSRF*`). The
+  application keeps its own `Authorization` header and cookies, replacing the
+  previous behaviour that also dropped every application cookie and every
+  `Set-Cookie` except `aionui-session`.
+- Response cookies keep their values but lose any `Domain` attribute, so no
+  application can widen a cookie onto a sibling binding or onto the Console.
+- `X-Forwarded-Host` and `X-Forwarded-Proto` are now stated by the proxy.
+  Previously neither was sent, so an application building absolute URLs from its
+  request saw the in-cluster service name. A caller-supplied value is
+  overwritten. Both derive the scheme from one installation fact,
+  `workspaceExternalScheme`, which reads the installation's declared
+  `OPL_PUBLIC_URL` rather than a literal: the in-cluster hop is plain HTTP, so
+  the request cannot report the external scheme, and stating it once means the
+  published entry URLs and the forwarded header cannot disagree. `OPL_PUBLIC_URL`
+  joins `OPL_WORKSPACE_DOMAIN` as a startup requirement, so an installation that
+  cannot state its external origin fails before serving anything instead of
+  publishing an address that cannot resolve.
+- The retained path-based entry keeps its previous behaviour exactly, including
+  the per-Workspace rename of the OPL runtime's fixed session cookie, because
+  several Workspaces still answer on that one hostname.
+- The customer entry URL projected for a current application is the binding
+  origin. A binding with no derivable origin — an installation that states no
+  application-origin domain, or a Workspace identity that cannot form a DNS
+  label — keeps the path-based entry rather than an address that cannot resolve.
+
+Focused evidence: 8 new cases in `workspace_application_origin_test.go` cover
+derivation and reverse parsing, foreign-host rejection, the requirement for a
+resolvable identity, platform-credential-only stripping, cookie confinement,
+host ownership, and superseded-origin refusal.
+`TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials` was
+updated to the current contract, and it now also asserts the retained path-based
+route is no longer published as the customer entry.
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Command | `go test ./... -count=1` under `services/control-plane` |
+| Result | all packages pass; only the PostgreSQL-gated cases are skipped for a missing database |
+
+#### Instance obligation
+
+The instance must provide a proxied wildcard DNS record for
+`*.<OPL_WORKSPACE_APPLICATION_DOMAIN>`. No origin-side certificate is required:
+the public DNS proxy terminates TLS for those names and its edge certificate
+already covers the zone's first-level subdomains. Cloud has no default domain and
+creates no DNS records or certificates. The domain, its wildcard record and the
+real browser qualification remain instance-owned, and no production state was
+read or changed here.
+
+The instance acceptance tool `tools/workspace-application-delivery.mjs` now
+probes the origin space itself (`app-preflight-<run>.<application domain>`) and
+requires the Ingress to declare the origin route, replacing an earlier
+requirement that the Ingress declare wildcard TLS. The retained error code string
+stays so historical receipts still validate.
+
+Public verification of the infrastructure layer, without deploying: three
+derived origin addresses resolved, completed a TLS handshake against the edge
+certificate (`medopl.com`, `*.medopl.com`) and answered over HTTPS. The responses
+came from the currently deployed Control Plane, which predates the origin
+dispatch, so an origin host still lands on the Console's static fallback rather
+than on a Workspace's application. Routing an origin to its application is
+therefore **not** yet proven and needs the instance deployment readback; evidence
+is in `output/workspace-oci-stage-2-3-20260917/acceptance-origin.md`.
+
+### Unified Deployment Command With Inline Revision (Local Development)
+
+An operator can describe the image and its run requirements in the deployment
+command itself, so deploying an image no longer requires a separate prior
+"register an application version" business step. `POST
+/api/operator/application-deployments` accepts an optional `revision` object
+alongside the existing deployment inputs.
+
+The revision snapshot keeps its single owner. The command writes the same
+admitted-revision row the registration route writes; it does not copy the
+revision into the deployment intent and does not introduce a second table.
+Deployment still resolves the admitted payload and its digest, not the request
+body, so the existing admission/deployment consistency checks stay in force. An
+admitted identity with different content remains a conflict and never rewrites
+the stored revision, and a request whose envelope identity disagrees with the
+inline revision is rejected.
+
+The Console deployment action sends that inline revision, so one operator
+action deploys an image that was never pre-registered. The separate "register an
+application version" action remains for a publisher who wants to pre-stage a
+revision; it is no longer a prerequisite.
+
+Evidence: `go test ./internal/server/ -run
+'TestApplicationDeploymentAcceptsInlineRevision|TestApplicationDeploymentIntentHTTP'`
+passes, including a new case that asserts the revision reaches the single
+revision owner, that conflicting content is refused without rewriting the stored
+payload, and that a mismatched envelope identity is a bad request. The browser
+suite `npm run test:browser:operator-resource-read` passes 13 cases, and its
+deployment assertion now requires the command to carry the resolved image
+description.
+
+### Image Reference Identity (Local Development)
+
+An executable image has one identity: `host/namespace/repository@digest`. The
+registry resolve route returns the catalog `host` alongside the resolution, and
+the Console deployment controller confirms the returned reference against
+`host/namespace/repository@digest`.
+
+The previous check compared the returned reference against a locally assembled
+`repository@digest`. Because Control Plane resolves the full host-qualified
+reference, that comparison rejected a correct server response and the Console
+reported `workspace_registry_resolution_unconfirmed` after a successful
+resolution. The controller now verifies the identity the owner reported instead
+of deriving a second format, and the browser test fixture uses the same
+host-qualified shape.
+
+### Registry Endpoint And Credential Ownership (Local Development)
+
+The registry endpoint is an installation fact, not a product default. Cloud has
+no built-in registry host: `OPL_WORKSPACE_REGISTRY_HOST` comes from the
+instance's deployment values, and its shape is validated before use.
+
+An installation that configures no host has no image-selection capability rather
+than an anonymous one. All three registry routes answer `503`
+`workspace_registry_unconfigured`, and the catalog is never constructed. A host
+that is present but invalid, or a credential pair with only one half set, fails
+startup, because that is a misconfigured capability rather than an absent one.
+The cataloged-namespace boundary stays server-side, so configuring an endpoint
+never widens which namespaces may be browsed.
+
+This replaces the previous fallback to a hardcoded host default, and it removes
+the earlier assumption that a credentialed registry always answers an anonymous
+catalog request with 401. Reading an unauthenticated `_catalog` from
+`uswccr.ccs.tencentyun.com` returns `200` with an empty repository list, so an
+empty catalog cannot be distinguished from a missing credential by response
+shape. An anonymous account list is therefore no longer a possible reading of
+the image-selection surface.
+
+Focused evidence: `go test ./internal/server/ -run TestRegistry` passes 9 cases,
+including two new ones — an installation with no configured endpoint on all
+three routes, and the configuration matrix (absent host, invalid host,
+half-configured credential pair, complete configuration).
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Command | `npm run verify:local` |
+| Result | exit 0; source/browser checks pass, all service packages compile, database-free tests pass, git whitespace clean |
+| Focused browser run | `npm run test:browser:operator-resource-read` — 13 passed |
+| Local limitation | No PostgreSQL instance was available, so `TestPostgres*` cases were not exercised in this run |
+
+#### Instance obligation
+
+The instance must supply `OPL_WORKSPACE_REGISTRY_HOST` and inject the browse
+credential to Control Plane from an approved Secret store. The node pull
+credential stays in the runtime environment under its own binding. Cloud does
+not require both to be the same identity; it requires each consumer to hold only
+its own permission.
+
 ### Registry Catalog Selection Verification
 
 The registry catalog follows the same owner path as the admission route it
@@ -185,8 +386,7 @@ client speaks the OCI Distribution API v2 (`_catalog`, `tags/list`, manifest
 HEAD-style resolution through `Docker-Content-Digest`) with bearer-token
 negotiation from the `WWW-Authenticate` challenge; credentials come from
 `OPL_WORKSPACE_REGISTRY_USERNAME`/`OPL_WORKSPACE_REGISTRY_PASSWORD` and a
-half-configured pair fails startup. An anonymous request against a
-credentialed registry surfaces 401, never a fabricated catalog.
+half-configured pair fails startup.
 
 The route exposes three administrator reads under the existing scoped session
 protection: `GET /api/operator/registry/repositories`,

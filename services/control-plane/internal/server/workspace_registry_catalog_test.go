@@ -13,6 +13,10 @@ import (
 	"opl-cloud/services/control-plane/internal/clients"
 )
 
+// registryRouteTestHost is the installation registry host these route tests
+// configure. It stands in for the instance-owned OPL_WORKSPACE_REGISTRY_HOST.
+const registryRouteTestHost = "registry.test.example"
+
 // workspaceRegistryRouteFixture overrides the route's registry client with a
 // stub, because the route itself is what these tests own: session checks,
 // namespace boundaries and error mapping — not the OCI client.
@@ -39,17 +43,17 @@ func (stub *workspaceRegistryStub) ResolveTag(_ context.Context, _, _, _ string)
 
 func newRegistryRouteTestServer(t *testing.T, stub *workspaceRegistryStub) (http.Handler, *httptest.ResponseRecorder) {
 	t.Helper()
+	// The host is the installation registry fact the route reports back to
+	// clients, standing in for the instance-owned OPL_WORKSPACE_REGISTRY_HOST.
+	return newRegistryRouteTestServerWithCatalog(t, &workspaceApplicationRegistryCatalog{client: stub, host: registryRouteTestHost})
+}
+
+func newRegistryRouteTestServerWithCatalog(t *testing.T, catalog *workspaceApplicationRegistryCatalog) (http.Handler, *httptest.ResponseRecorder) {
+	t.Helper()
 	server, err := NewPersistentServer(newTestService(&fakeLedgerClient{}, &fakeFabricClient{}), newMemoryTableStore())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Replace the env-built catalog with the stub after construction.
-	catalog := &workspaceApplicationRegistryCatalog{client: stub}
-	registered := false
-	for _, route := range []string{} {
-		_ = route
-	}
-	_ = registered
 	handler := server.(*controlPlaneHTTPHandler)
 	// The route table is built once; re-registering on a fresh mux keeps the
 	// test on the real production handler code path.
@@ -120,8 +124,9 @@ func TestRegistryCatalogTags(t *testing.T) {
 
 func TestRegistryCatalogResolve(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
+	reference := registryRouteTestHost + "/oplcloud/one-person-lab-app@" + digest
 	stub := &workspaceRegistryStub{resolution: contracts.WorkspaceRegistryImageResolution{
-		Reference: "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@" + digest, Digest: digest,
+		Reference: reference, Digest: digest,
 	}}
 	server, operator := newRegistryRouteTestServer(t, stub)
 	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/registry/resolve",
@@ -129,9 +134,28 @@ func TestRegistryCatalogResolve(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resolve status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var response contracts.WorkspaceRegistryImageResolution
-	if json.Unmarshal(rec.Body.Bytes(), &response) != nil || response.Digest != digest || response.Reference != "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@"+digest {
-		t.Fatalf("resolve body=%s", rec.Body.String())
+	// The route returns the catalog host alongside the resolution so a client
+	// confirms the exact reference identity instead of assembling its own
+	// format. The upstream test is that the two agree byte for byte.
+	var response struct {
+		Host       string `json:"host"`
+		Namespace  string `json:"namespace"`
+		Repository string `json:"repository"`
+		Tag        string `json:"tag"`
+		Digest     string `json:"digest"`
+		Reference  string `json:"reference"`
+	}
+	if json.Unmarshal(rec.Body.Bytes(), &response) != nil {
+		t.Fatalf("resolve body is not JSON: %s", rec.Body.String())
+	}
+	if response.Digest != digest {
+		t.Fatalf("resolve digest=%q want %q", response.Digest, digest)
+	}
+	if response.Host != registryRouteTestHost || response.Namespace != "oplcloud" || response.Repository != "one-person-lab-app" || response.Tag != "v1.0.0" {
+		t.Fatalf("resolve identity=%+v body=%s", response, rec.Body.String())
+	}
+	if want := response.Host + "/" + response.Namespace + "/" + response.Repository + "@" + response.Digest; response.Reference != want {
+		t.Fatalf("resolve reference=%q want %q", response.Reference, want)
 	}
 }
 
@@ -180,5 +204,57 @@ func TestRegistryErrorMapping(t *testing.T) {
 		fmt.Sprintf(`{"namespace":"oplcloud","repository":"app","tag":"v1"}`), "resolve-gw")
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "workspace_registry_unavailable") {
 		t.Fatalf("502 mapping status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// An installation that configures no registry endpoint has no image-selection
+// capability. Every registry route must say so explicitly instead of returning
+// an empty catalog that reads like a real, empty registry.
+func TestRegistryCatalogUnconfiguredInstallation(t *testing.T) {
+	server, operator := newRegistryRouteTestServerWithCatalog(t, nil)
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/operator/registry/repositories", ""},
+		{http.MethodGet, "/api/operator/registry/tags/oplcloud/app", ""},
+		{http.MethodPost, "/api/operator/registry/resolve", `{"namespace":"oplcloud","repository":"app","tag":"v1"}`},
+	}
+	for index, testCase := range cases {
+		rec := requestWithMutationKeyForTest(t, server, operator, testCase.method, testCase.path, testCase.body, fmt.Sprintf("unconfigured-%d", index))
+		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "workspace_registry_unconfigured") {
+			t.Fatalf("%s %s status=%d body=%s", testCase.method, testCase.path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// The installation owns the registry endpoint. This product has no default:
+// an absent host is an absent capability, while a host that is present must be
+// valid and completely credentialed or startup fails.
+func TestRegistryCatalogInstallationConfiguration(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", "")
+	t.Setenv("OPL_WORKSPACE_REGISTRY_USERNAME", "")
+	t.Setenv("OPL_WORKSPACE_REGISTRY_PASSWORD", "")
+	catalog, err := workspaceRegistryCatalogFromEnv()
+	if err != nil || catalog != nil {
+		t.Fatalf("absent host: catalog=%v err=%v, want an absent capability", catalog, err)
+	}
+
+	t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", "not a host")
+	if _, err := workspaceRegistryCatalogFromEnv(); err == nil {
+		t.Fatal("invalid host was accepted")
+	}
+
+	t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", registryRouteTestHost)
+	t.Setenv("OPL_WORKSPACE_REGISTRY_USERNAME", "user")
+	if _, err := workspaceRegistryCatalogFromEnv(); err == nil {
+		t.Fatal("half-configured credential pair was accepted")
+	}
+
+	t.Setenv("OPL_WORKSPACE_REGISTRY_PASSWORD", "password")
+	catalog, err = workspaceRegistryCatalogFromEnv()
+	if err != nil || catalog == nil || catalog.host != registryRouteTestHost {
+		t.Fatalf("configured host: catalog=%v err=%v", catalog, err)
 	}
 }

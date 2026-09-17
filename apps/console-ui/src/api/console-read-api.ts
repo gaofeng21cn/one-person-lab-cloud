@@ -378,11 +378,21 @@ export function createOperatorWorkspaceApplicationDeployment(
   configuration: WorkspaceApplicationConfigurationDTO,
   csrfToken: string,
   idempotencyKey: string,
-  secretBindings: WorkspaceApplicationSecretBindingDTO[] = []
+  secretBindings: WorkspaceApplicationSecretBindingDTO[] = [],
+  revision?: unknown
 ): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
+  // An inline revision lets one deployment command carry the image and its run
+  // requirements. The Control Plane admits that revision into its single
+  // revision owner as part of the same command; sending the publisher
+  // description is not a second, separate business step for the operator.
   return postJson<unknown>(
     "/api/operator/application-deployments",
-    { workspaceId, applicationId, targetRevision, configuration, ...(secretBindings.length ? { secretBindings } : {}) }, csrfToken, idempotencyKey
+    {
+      workspaceId, applicationId, targetRevision, configuration,
+      ...(secretBindings.length ? { secretBindings } : {}),
+      ...(revision === undefined ? {} : { revision })
+    },
+    csrfToken, idempotencyKey
   ).then(decodeDto<{ intent: WorkspaceApplicationIntentDTO }>);
 }
 
@@ -411,6 +421,10 @@ export interface WorkspaceRegistryTagDTO {
 }
 
 export interface WorkspaceRegistryResolutionDTO {
+  // host is the registry endpoint Control Plane resolved against. The client
+  // confirms the returned reference against it instead of assembling a second
+  // reference format from repository and digest alone.
+  host: string;
   namespace: string;
   repository: string;
   tag: string;
