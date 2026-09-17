@@ -124,7 +124,7 @@ tbody tr:last-child td {
   border-radius: 12px;
   padding: 10px;
   background: #e8f4fd;
-  color: #2f7fb0;
+  color: #14b8a6;
 }
 
 .metric-row article:nth-child(2) > svg { background: #f3e8ff; color: #7c3aed; }
@@ -205,7 +205,74 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   border-color: #d7e2ec;
 }
 
-/* ---------- 侧栏导航：更圆润的激活态 ---------- */
+/* ---------- 概览趋势条形图（纯 CSS，不引图表库） ---------- */
+.overview-trend .trend-chart {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  height: 148px;
+  padding: 18px 20px 12px;
+}
+
+.trend-col {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  align-items: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trend-bar {
+  display: block;
+  width: 100%;
+  min-height: 4px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #14b8a6 0%, #0d9488 100%);
+  transition: height 300ms ease;
+}
+
+.trend-bar[data-empty="true"] {
+  background: #e2e8f0;
+}
+
+.trend-col small {
+  color: #94a3b8;
+  font-size: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .overview-trend .trend-chart {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    height: 120px;
+  }
+
+  .overview-trend .trend-col:nth-child(n + 8) {
+    display: none;
+  }
+}
+
+/* ---------- KPI 大数字（现代 SaaS 层级） ---------- */
+body .overview-summary .band-metric strong {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+body .overview-summary .band-metric > span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+body .overview-summary .band-metric small {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ---------- 侧栏导航：teal 激活态 + 圆润项 ---------- */
 .side-nav > a,
 .admin-nav-links a {
   border-radius: 10px;
@@ -214,6 +281,37 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
 .side-nav a.active,
 .operator-nav .admin-nav-links a.active {
   border-radius: 10px;
+  background: #f0fdfa;
+  color: #0d9488;
+  font-weight: 680;
+}
+
+.side-nav a:hover {
+  background: #f1f5f9;
+}
+
+.side-nav a svg {
+  color: inherit;
+}
+
+/* 品牌图标：teal 发光底 */
+.sidebar .brand img,
+.brand img {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px #ccfbf1, 0 2px 8px rgb(13 148 136 / 18%);
+}
+
+/* ---------- 顶栏：细边框 + 柔白 ---------- */
+body .topbar {
+  border-bottom: 1px solid #eef2f6;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(10px);
+}
+
+body .topbar h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 /* ---------- 余额操作浮窗内容卡 ---------- */

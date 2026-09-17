@@ -288,10 +288,10 @@ a {
 .access-features li > svg {
   width: 42px;
   height: 42px;
-  border: 1px solid #bcd9ec;
+  border: 1px solid #99f6e4;
   border-radius: 8px;
   padding: 9px;
-  background: #eaf3f9;
+  background: #f0fdfa;
 }
 
 .access-features li div { display: grid; min-width: 0; gap: 6px; }
@@ -305,7 +305,7 @@ a {
   place-items: center;
   padding: 28px;
   background:
-    radial-gradient(1000px 520px at 18% -10%, #dceaf2 0%, transparent 60%),
+    radial-gradient(1000px 520px at 18% -10%, #ccfbf1 0%, transparent 60%),
     radial-gradient(900px 480px at 88% 8%, #e8f4ed 0%, transparent 55%),
     #f7fafc;
 }
@@ -1032,8 +1032,8 @@ a {
   gap: 12px;
   margin: 18px 0 0;
   border-left: 3px solid var(--blue);
-  background: #eaf3f9;
-  color: #0c3c63;
+  background: #f0fdfa;
+  color: #115e59;
   padding: 10px 12px;
   font-size: 13px;
 }
@@ -1113,9 +1113,48 @@ a {
 }
 
 .operator-account-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-avatar {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%);
+  color: #115e59;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.operator-account-identity__text {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 2px;
+}
+
+.operator-account-identity__text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.operator-account-identity__text small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* 金额/资源列：等宽数字 */
+.account-balance-stack strong,
+.account-cost-stack strong,
+.account-resource-stack strong {
+  font-variant-numeric: tabular-nums;
 }
 
 .operator-workspace-table table {
@@ -1272,7 +1311,7 @@ tbody tr:last-child td {
   white-space: nowrap;
 }
 
-.resource-type.compute { color: #1664a0; }
+.resource-type.compute { color: #0d9488; }
 .resource-type.storage { color: #157b76; }
 .resource-type.attachment { color: #617487; }
 
@@ -1585,8 +1624,8 @@ tbody tr:last-child td {
 }
 
 .segmented-control button.active {
-  background: #eaf3f9;
-  color: #1664a0;
+  background: #f0fdfa;
+  color: #0d9488;
   font-weight: 700;
 }
 
@@ -2075,7 +2114,7 @@ tbody tr:last-child td {
 
 .plan-option.selected {
   border-color: var(--blue);
-  background: #eaf3f9;
+  background: #f0fdfa;
   box-shadow: 0 0 0 2px rgb(22 100 160 / 18%);
 }
 
@@ -4032,7 +4071,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid #1664a0;
+  outline: 2px solid #0d9488;
   outline-offset: 2px;
 }
 
@@ -4168,7 +4207,7 @@ select:focus-visible,
 }
 
 .account-band .eyebrow {
-  color: #5a98c8;
+  color: #2dd4bf;
 }
 
 .account-band h2 {
@@ -5874,9 +5913,9 @@ select:focus-visible,
 
 /* Console base theme. */
 :root {
-  --action: #1664a0;
-  --action-hover: #0c3c63;
-  --action-soft: #eaf3f9;
+  --action: #0d9488;
+  --action-hover: #115e59;
+  --action-soft: #f0fdfa;
   --canvas: #ffffff;
   --sidebar-surface: #f7fafc;
   --surface: #ffffff;
@@ -6208,7 +6247,7 @@ select:focus-visible,
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: var(--action, #1664a0);
+  accent-color: var(--action, #0d9488);
   cursor: pointer;
 }
 

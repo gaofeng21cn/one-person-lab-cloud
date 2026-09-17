@@ -49,6 +49,33 @@ function Metric({ label, value, note, emphasis }: { label: string; value: string
   return <article className={`band-metric ${emphasis ? "available-metric" : ""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
 }
 
+function formatTrendUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+interface TrendDay { key: string; label: string; shortLabel: string; value: number }
+
+function buildDailyTrend(entries: Array<{ at: string; value: number }>, days: number): TrendDay[] {
+  const buckets = new Map<string, number>();
+  const now = new Date();
+  const list: TrendDay[] = [];
+  for (let offset = days - 1; offset >= 0; offset--) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - offset);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    buckets.set(key, 0);
+    list.push({ key, label: `${date.getMonth() + 1}/${date.getDate()}`, shortLabel: offset % 2 === 0 || offset === days - 1 ? `${date.getDate()}日` : "", value: 0 });
+  }
+  for (const entry of entries) {
+    const parsed = new Date(entry.at);
+    if (Number.isNaN(parsed.getTime())) continue;
+    const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+    if (!buckets.has(key)) continue;
+    buckets.set(key, (buckets.get(key) || 0) + (Number.isFinite(entry.value) ? entry.value : 0));
+  }
+  return list.map((day) => ({ ...day, value: buckets.get(day.key) || 0 }));
+}
+
 function PageLink({ children, controller, path, className = "" }: { children: ReactNode; controller: ConsoleController; path: string; className?: string }) {
   return <a className={className} href={path} onClick={(event) => { event.preventDefault(); controller.navigate(path); }}>{children}</a>;
 }
@@ -82,6 +109,12 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
     : workspacesPending && !workspacesUnavailable
       ? "正在读取工作空间总数"
       : "工作空间总数暂不可用";
+  // 近 14 天费用趋势：由最近费用回执按日聚合（不引图表库，纯 CSS 条形图）。
+  const usageTrend = buildDailyTrend(receipts.map((receipt) => ({
+    at: receipt.createdAt,
+    value: presentBillingReceiptAmount(receipt).startsWith("$") ? Number(presentBillingReceiptAmount(receipt).slice(1)) || 0 : 0
+  })), 14);
+  const trendPeak = usageTrend.reduce((max, day) => Math.max(max, day.value), 0);
 
   return (
     <section className="overview-page" data-slide="C-OV-01">
@@ -90,6 +123,18 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric label="本月 API 实际费用" note="请求实际消费" value={usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"} />
         <Metric label="本月请求次数" note="账号级汇总" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
         <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
+      </section>
+
+      <section className="panel overview-trend" aria-label="近期费用趋势">
+        <div className="panel-title"><div><h2>近期费用趋势</h2><span>近 14 天 · 按日汇总</span></div><Button onClick={() => controller.navigate("/console/api/usage")} size="sm" variant="ghost">查看用量<ArrowRight aria-hidden size={15} /></Button></div>
+        <div className="trend-chart" role="img" aria-label={`近 14 天每日费用条形图，最高 ${trendPeak ? formatTrendUsd(trendPeak) : "无记录"}`}>
+          {usageTrend.map((day) => (
+            <div className="trend-col" key={day.key} title={`${day.label} · ${day.value ? formatTrendUsd(day.value) : "无消费"}`}>
+              <span className="trend-bar" style={day.value && trendPeak ? { height: `${Math.max(6, Math.round(day.value / trendPeak * 100))}%` } : undefined} data-empty={day.value === 0} />
+              <small>{day.shortLabel}</small>
+            </div>
+          ))}
+        </div>
       </section>
 
       <div className="overview-grid">

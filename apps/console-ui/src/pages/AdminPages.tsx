@@ -610,8 +610,8 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
             <tr key={account.accountId} data-state={account.status}>
               <td>
                 <span className="operator-account-identity">
-                  <strong>{account.email}</strong>
-                  <small>{account.role === "admin" ? "管理员" : account.role}</small>
+                  <span className="account-avatar" aria-hidden="true">{(account.email[0] || "?").toUpperCase()}</span>
+                  <span className="operator-account-identity__text"><strong>{account.email}</strong><small>{account.role === "admin" ? "管理员" : account.role}</small></span>
                 </span>
               </td>
               <td><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></td>
