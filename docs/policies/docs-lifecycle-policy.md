@@ -1,8 +1,10 @@
 # Documentation Lifecycle Policy
 
-This repository applies the OPL Doc method through the hierarchy in
-`docs/README.md`. The policy governs semantic ownership; it does not prescribe
-one file layout for every topic.
+[`one-person-lab`](https://github.com/gaofeng21cn/one-person-lab/blob/main/docs/policies/docs-lifecycle-policy.md)
+owns the OPL family documentation lifecycle rules. This file applies them to
+this repository and owns only the Cloud-specific rules below; Cloud's own
+hierarchy is in `docs/README.md`, which does not prescribe one file layout for
+every topic.
 
 ## One Topic, One Current Owner
 
@@ -13,9 +15,10 @@ Classify each changed section as `current_truth`, `active_gap`,
 - Reduce other active documents to a pointer plus unique support detail.
 - Put all open work in `docs/roadmap.md`; put current evidence in
   `docs/status.md`.
-- Move dated plans, design freezes, screenshots, execution logs, raw
-  verification output and completed ledgers to `docs/history/**` or rely on Git
-  history when no non-resurrection record is needed.
+- Dated plans, design freezes, screenshots, execution logs, raw verification
+  output and completed ledgers are not current documentation. Rely on Git
+  history, or keep one record under `docs/history/**` only when it still has a
+  named provenance, legal or no-resurrection purpose in the index there.
 - Delete stale or conflicting text after its successor and callers are proven.
 
 ## Creation And Retirement

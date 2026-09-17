@@ -71,13 +71,21 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Specialized Owners
 
-`opl-workspace.md` defines the Cloud application environment; the
+[`opl-workspace.md`](./opl-workspace.md) defines the Cloud application environment; the
 [Workspace application architecture](architecture.md#workspace-application-boundary)
 owns its DDD model and context boundaries. The Workspace identity decision owns
 account cardinality, and `product/workspace-experience.md` owns its
-Console interaction. `opl-console.md` defines the wider Console target while
+Console interaction. [`opl-console.md`](./opl-console.md) defines the wider Console target while
 the experience guide owns presentation principles. The other `opl-*.md` files
 are target capability references, not implementation inventories.
+
+The remaining target capability references:
+
+- [`agent-lifecycle.md`](./agent-lifecycle.md): cross-surface object and owner model for exposing standard OPL Agents in App and Workspace.
+- [`opl-gateway.md`](./opl-gateway.md): target frontier-AI capability gateway; Sub2API keeps balance, key and routing authority.
+- [`opl-serve.md`](./opl-serve.md): publishing a validated OPL Agent as an externally usable service.
+- [`opl-fabric.md`](./opl-fabric.md): target resource and connector substrate for App, Workspace, jobs and approved agent actions.
+- [`opl-connect.md`](./opl-connect.md): connector capability inside Fabric for external sources, providers and institution systems.
 
 `DEV_GUIDE.md` owns local setup and commands; `CONTRIBUTING.md` owns contribution
 and review; `AGENTS.md` owns agent execution rules. Installation, release

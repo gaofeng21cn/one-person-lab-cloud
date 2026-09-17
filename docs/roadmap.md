@@ -16,21 +16,10 @@ An `external_owner` item proceeds in that owner's repository.
 
 ## Public Beta Work Packages
 
-D1 finance and D2 original-settlement reconciliation have completed local
-development and verification. Its local source
-changes address original-transaction confirmation, original-account refund
-limits, successful Renewal refund parsing and exact financial lookup. Its
-source checks and isolated runtime evidence belong in [status.md](./status.md).
-D2 now covers retained original purchases, all renewal periods and refunds,
-exact receipt lookup and the existing customer fees page. D3 additionally
-closes local original-Launch recovery, bounded admission and failed-Launch
-resource/refund obligations with retained Gateway Keys. D4 closes expiry, explicit recovery and background deletion with focused and
-full local verification. D5 completes local fixed-image rollout, original-operation
-recovery and explicit CVM cache retirement development; production qualification
-and actual node readback remain external. TCR deletion is optional. Completed development proceeds through PR review, CI,
-merge and Candidate construction; Instance owns subsequent deployment and
-qualification. Artifact hygiene and test-data isolation are checks in those
-existing paths, not a separate D6 development stage.
+Local development for these work packages is complete; the remaining acceptance
+of each one is the Instance, Candidate and production qualification named in its
+row. Completed development proceeds through PR review, CI, merge and Candidate
+construction, and Instance owns the subsequent deployment and qualification.
 
 | ID | State | Owner | Remaining acceptance |
 | --- | --- | --- | --- |
