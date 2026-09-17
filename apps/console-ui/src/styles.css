@@ -156,17 +156,18 @@ a {
 
 .access-main {
   display: grid;
-  width: min(1180px, calc(100% - 48px));
-  min-height: calc(100vh - 84px);
-  grid-template-rows: minmax(28rem, 1fr) auto;
-  align-content: center;
-  gap: 44px;
+  width: min(1080px, calc(100% - 48px));
+  justify-items: center;
+  gap: 40px;
   margin: 0 auto;
-  padding: 52px 0 72px;
+  padding: 64px 0 72px;
 }
 
 .access-hero {
-  max-width: 800px;
+  display: grid;
+  width: min(720px, 100%);
+  justify-items: center;
+  text-align: center;
 }
 
 .access-identity {
@@ -235,6 +236,23 @@ a {
   color: var(--teal);
 }
 
+.access-showcase {
+  display: grid;
+  width: min(1080px, 100%);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px #173a5514;
+  overflow: hidden;
+}
+
+.access-showcase img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .kicker,
 .section-label {
   margin: 0;
@@ -246,30 +264,25 @@ a {
 
 .access-features {
   display: grid;
+  width: 100%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
+  gap: 18px;
   margin: 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
   padding: 0;
-  background: #fff;
   list-style: none;
 }
 
 .access-features li {
   display: grid;
   min-width: 0;
-  min-height: 112px;
-  grid-template-columns: 42px minmax(0, 1fr);
   align-items: start;
   gap: 14px;
-  border-left: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
   padding: 24px;
   color: var(--action);
-}
-
-.access-features li:first-child {
-  border-left: 0;
+  box-shadow: 0 1px 2px #173a5508;
 }
 
 .access-features li > svg {
@@ -291,29 +304,11 @@ a {
   min-height: 100vh;
   place-items: center;
   padding: 28px;
-  background: #f7fafc;
+  background:
+    radial-gradient(1000px 520px at 18% -10%, #dceaf2 0%, transparent 60%),
+    radial-gradient(900px 480px at 88% 8%, #e8f4ed 0%, transparent 55%),
+    #f7fafc;
 }
-
-.login-page {
-  grid-template-columns: minmax(0, 1fr) minmax(28rem, 1fr);
-  place-items: stretch;
-  padding: 0;
-}
-
-.login-aside {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 14px;
-  padding: clamp(40px, 8vw, 96px);
-  background: #0c3c63;
-  color: #f7fafc;
-}
-
-.login-aside img { width: 88px; height: 88px; margin-bottom: 18px; border-radius: 20px; box-shadow: var(--elevation-300); }
-.login-aside .kicker { color: #bcd9ec; }
-.login-aside strong { max-width: 440px; font-size: 32px; line-height: 1.25; }
-.login-aside span { max-width: 440px; color: #dceaf2; font-size: 15px; line-height: 1.6; }
 
 .back-button {
   position: fixed;
@@ -324,19 +319,13 @@ a {
   color: var(--muted);
 }
 
-.login-page > .back-button {
-  color: #dceaf2;
-}
-
 .login-panel {
   width: min(420px, 100%);
-  align-self: center;
-  justify-self: center;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
   background: #fff;
-  padding: 30px;
-  box-shadow: var(--elevation-200);
+  padding: 32px;
+  box-shadow: 0 24px 70px #173a551a;
 }
 
 .login-brand {
@@ -358,6 +347,20 @@ a {
 
 .login-brand strong {
   font-size: 20px;
+}
+
+.login-footnote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.login-footnote svg {
+  flex: 0 0 14px;
+  color: var(--teal);
 }
 
 .login-brand span {
@@ -1292,12 +1295,13 @@ tbody tr:last-child td {
 
 .spend-strip {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 16px 20px;
 }
 
 .spend-strip > div {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 12px;
 }
@@ -1326,7 +1330,8 @@ tbody tr:last-child td {
 .overview-rail strong,
 .gateway-summary strong {
   color: #142536;
-  font-size: 18px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
 }
 
 .order-panel {
@@ -1804,6 +1809,28 @@ tbody tr:last-child td {
   gap: 10px;
 }
 
+.workspace-plan-panel {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+.workspace-plan-panel > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 0 18px;
+}
+
+.workspace-plan-panel .data-list {
+  margin: 0;
+}
+
+.workspace-plan-panel .workspace-actions {
+  padding: 0 18px;
+}
+
 .workspace-details .data-list {
   border: 1px solid #d9e3eb;
   border-radius: 8px;
@@ -2272,9 +2299,7 @@ tbody tr:last-child td {
 
   .access-main {
     width: calc(100% - 32px);
-    min-height: calc(100vh - 72px);
-    grid-template-rows: auto auto;
-    gap: 32px;
+    gap: 28px;
     padding: 36px 0 48px;
   }
 
@@ -2316,30 +2341,17 @@ tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  .access-features li,
-  .access-features li:first-child {
-    min-height: 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding: 20px 8px;
-  }
-
-  .access-features li:first-child {
-    border-top: 0;
+  .access-showcase {
+    border-radius: 12px;
   }
 
   .login-page {
-    grid-template-columns: 1fr;
     place-items: center;
     padding: 72px 24px 32px;
   }
 
   .login-page > .back-button {
     color: var(--muted);
-  }
-
-  .login-aside {
-    display: none;
   }
 
   .sidebar {
@@ -2781,10 +2793,8 @@ tbody tr:last-child td {
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
   margin: 22px -22px -22px;
   border-top: 1px solid var(--line);
-  background: var(--line);
 }
 
 .workspace-primary-facts > div {
@@ -2793,8 +2803,22 @@ tbody tr:last-child td {
   min-height: 72px;
   align-content: center;
   gap: 5px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
   background: var(--surface);
   padding: 14px 22px;
+}
+
+.workspace-primary-facts > div:nth-child(-n + 3) {
+  border-bottom: 0;
+}
+
+.workspace-primary-facts > div:last-child {
+  border-right: 0;
+}
+
+.workspace-primary-facts > div:nth-child(3n) {
+  border-right: 0;
 }
 
 .workspace-primary-facts dt {
@@ -3000,6 +3024,19 @@ tbody tr:last-child td {
   .workspace-primary-facts > div {
     min-height: 62px;
     padding: 12px 16px;
+  }
+
+  .workspace-primary-facts > div:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .workspace-primary-facts > div:last-child {
+    border-bottom: 0;
+  }
+
+  .workspace-primary-facts > div:nth-child(3n),
+  .workspace-primary-facts > div {
+    border-right: 0;
   }
 
   .workspace-access-panel .panel-title {
@@ -3313,7 +3350,6 @@ tbody tr:last-child td {
   }
 
   .access-main {
-    min-height: calc(100vh - 72px);
     padding-top: 26px;
   }
 
@@ -4241,30 +4277,29 @@ select:focus-visible,
   width: 100%;
   border-collapse: collapse;
   color: #2a3b4d;
+  table-layout: fixed;
 }
 
 .overview-workspace-table .ui-table th,
 .overview-workspace-table .ui-table td {
   height: 58px;
   border-bottom: 1px solid var(--line);
+  overflow: hidden;
   padding: 8px 14px;
   text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.overview-workspace-table .ui-table th {
-  height: 38px;
-  font-weight: 760;
 }
 
 .overview-workspace-table .ui-table th:first-child,
 .overview-workspace-table .ui-table td:first-child {
+  width: 40%;
   padding-left: 20px;
 }
 
 .overview-workspace-table .ui-table th:last-child,
 .overview-workspace-table .ui-table td:last-child {
-  width: 36px;
+  width: 110px;
   padding-right: 20px;
   text-align: right;
 }
@@ -4274,8 +4309,9 @@ select:focus-visible,
 }
 
 .overview-workspace-table td a {
-  display: grid;
-  gap: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #0c2030;
 }
 
@@ -5859,6 +5895,21 @@ select:focus-visible,
   --navy-line: var(--line);
 }
 
+/*
+ * SDK 组件的 theme 变量（--alert-gutter 等）定义在 @layer theme，而组件规则在 @layer components；
+ * 本工程未编译 Tailwind @theme 时该链路断裂，编译后 components 层内的 padding: var(--alert-gutter)
+ * 仍求值异常（gap/radius 正常）。这里用 unlayered 规则直接给 SDK Alert 补回内边距与圆角。
+ * styles.css 无 @layer 包裹，天然是 unlayered，优先级高于所有 layered 声明。
+ */
+[class*="_Alert_1tr02_"] {
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+[class*="_Alert_1tr02_"] [class*="_Title_1tr02_"] {
+  color: var(--color-text, var(--ink));
+}
+
 html,
 body,
 #app,
@@ -6091,7 +6142,7 @@ textarea:focus-visible,
   display: block;
   margin: 13px 0 8px;
   color: var(--ink);
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 680;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -6235,7 +6286,6 @@ textarea:focus-visible,
 }
 
 .metric-row article,
-.spend-strip > div,
 .usage-summary-strip,
 .workspace-launch-balance {
   border-color: var(--line);
@@ -6469,13 +6519,15 @@ textarea:focus-visible,
   }
 
   .panel-title .overview-workspace-actions {
-    display: grid;
+    display: flex;
     width: 100%;
-    grid-template-columns: auto minmax(0, 1fr);
+    justify-content: space-between;
+    gap: 10px;
   }
 
   .overview-workspace-actions .ui-button:last-child {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     min-width: 0;
   }
 
@@ -6560,6 +6612,14 @@ textarea:focus-visible,
 
 .launch-confirm-check .console-checkbox {
   width: 100%;
+}
+
+.launch-confirm-check .console-checkbox [data-has-label] {
+  align-items: center;
+}
+
+.launch-confirm-check .console-checkbox [data-has-label] > label {
+  padding-left: 12px;
 }
 
 .launch-confirm-check .console-checkbox button[role="checkbox"] {
