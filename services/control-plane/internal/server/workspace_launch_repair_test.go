@@ -18,20 +18,26 @@ type workspaceLaunchRepairFabric struct {
 	repairs         int
 	inputs          []clients.WorkspaceRuntimeInput
 	idempotencyKeys []string
+	runtimeURL      string
+	mutateRuntime   func(*clients.WorkspaceRuntime)
 }
 
 func (f *workspaceLaunchRepairFabric) RepairWorkspaceRuntime(_ context.Context, input clients.WorkspaceRuntimeInput, idempotencyKey string) (clients.WorkspaceRuntime, error) {
 	f.repairs++
 	f.inputs = append(f.inputs, input)
 	f.idempotencyKeys = append(f.idempotencyKeys, idempotencyKey)
-	return clients.WorkspaceRuntime{
+	runtime := clients.WorkspaceRuntime{
 		ID: "runtime-repaired", OperationID: input.RuntimeOperationID, WorkspaceID: input.WorkspaceID,
-		URL: "https://workspace.example/repaired", Status: "running", ServiceName: "runtime-repaired",
+		URL: f.runtimeURL, Status: "running", ServiceName: "runtime-repaired",
 		ImageID: input.ImageID, Ready: true,
 		Access: clients.WorkspaceRuntimeAccess{
 			Username: "opl", CredentialStatus: "configured", CredentialVersion: "v2", SecretRef: "runtime-repaired-env",
 		},
-	}, nil
+	}
+	if f.mutateRuntime != nil {
+		f.mutateRuntime(&runtime)
+	}
+	return runtime, nil
 }
 
 type workspaceLaunchRepairLedger struct {
@@ -167,6 +173,15 @@ func TestWorkspaceLaunchRuntimeRepairEligibility(t *testing.T) {
 }
 
 func TestWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T) {
+	for _, test := range []struct{ name, runtimeURL string }{
+		{name: "installation gateway"},
+		{name: "provider endpoint", runtimeURL: "https://workspace.example/repaired"},
+	} {
+		t.Run(test.name, func(t *testing.T) { testWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t, test.runtimeURL) })
+	}
+}
+
+func testWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T, runtimeURL string) {
 	ctx := context.Background()
 	operation := workspaceLaunchRuntimeRepairFixture(t)
 	launchVersion := operation.Version
@@ -178,7 +193,7 @@ func TestWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T
 	store.users["usr-unit"] = map[string]any{"id": "usr-unit", "accountId": "acct-unit", "role": "owner", "status": "active"}
 	store.runtimeOps = []map[string]any{row}
 	fabricCalls := []string{}
-	fabric := &workspaceLaunchRepairFabric{fakeFabricClient: fakeFabricClient{calls: &fabricCalls}}
+	fabric := &workspaceLaunchRepairFabric{fakeFabricClient: fakeFabricClient{calls: &fabricCalls}, runtimeURL: runtimeURL}
 	ledger := &workspaceLaunchRepairLedger{receipts: map[string]clients.Receipt{}}
 	service := controlplane.NewService(ledger, fabric)
 	app := &controlPlaneServer{tables: store}
@@ -189,6 +204,14 @@ func TestWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T
 	}
 	if got.Status != "succeeded" || got.Stage != "succeeded" {
 		t.Fatalf("repair terminal state = %s/%s, want succeeded/succeeded", got.Status, got.Stage)
+	}
+	wantURL := runtimeURL
+	if wantURL == "" {
+		wantURL = workspaceGatewayEntryURL(operation.stringFact("workspaceId"))
+	}
+	workspace, found, err := store.GetWorkspace(ctx, operation.stringFact("workspaceId"))
+	if err != nil || !found || stringValue(workspace["url"]) != wantURL || got.stringFact("url") != wantURL {
+		t.Fatalf("repair entry did not follow its owner: found=%v workspaceURL=%v operationURL=%q want=%q err=%v", found, workspace["url"], got.stringFact("url"), wantURL, err)
 	}
 	wantInput := clients.WorkspaceRuntimeInput{
 		AccountID: "acct-unit", WorkspaceID: "ws-unit", ComputeID: "ca-unit", VolumeID: "vol-unit",
@@ -229,5 +252,42 @@ func TestWorkspaceLaunchRuntimeRepairConvergesAndReplaysExactlyOnce(t *testing.T
 	}
 	if _, err := time.Parse(time.RFC3339Nano, got.RuntimeRepair.AuthorizedAt); err != nil {
 		t.Fatalf("repair audit timestamp invalid: %#v err=%v", got.RuntimeRepair, err)
+	}
+}
+
+func TestWorkspaceLaunchRuntimeRepairRejectsUnconfirmedRuntime(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*clients.WorkspaceRuntime)
+	}{
+		{name: "not ready", mutate: func(runtime *clients.WorkspaceRuntime) { runtime.Ready = false }},
+		{name: "missing runtime identity", mutate: func(runtime *clients.WorkspaceRuntime) { runtime.ID = "" }},
+		{name: "missing service", mutate: func(runtime *clients.WorkspaceRuntime) { runtime.ServiceName = "" }},
+		{name: "different workspace", mutate: func(runtime *clients.WorkspaceRuntime) { runtime.WorkspaceID = "ws-other" }},
+		{name: "different operation", mutate: func(runtime *clients.WorkspaceRuntime) { runtime.OperationID = "operation-other" }},
+		{name: "different image", mutate: func(runtime *clients.WorkspaceRuntime) {
+			runtime.ImageID = "registry.example/other@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			operation := workspaceLaunchRuntimeRepairFixture(t)
+			row, err := workspaceLaunchReconcileOperationRow(operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &workspaceLaunchActivationCountingStore{memoryTableStore: newMemoryTableStore()}
+			store.runtimeOps = []map[string]any{row}
+			fabric := &workspaceLaunchRepairFabric{mutateRuntime: test.mutate}
+			ledger := &workspaceLaunchRepairLedger{receipts: map[string]clients.Receipt{}}
+			app := &controlPlaneServer{tables: store}
+			_, err = app.repairWorkspaceLaunchRuntime(ctx, controlplane.NewService(ledger, fabric), operation.ID, operation.Version, "repair-auth-unit", "usr-unit", "replace incompatible runtime image", workspaceLaunchRepairImage)
+			if err == nil || err.Error() != "workspace_runtime_repair_not_ready" {
+				t.Fatalf("unconfirmed runtime accepted: err=%v", err)
+			}
+			if fabric.repairs != 1 || store.activationMutations != 0 || ledger.records != 0 {
+				t.Fatalf("unconfirmed runtime advanced repair: repairs=%d activation=%d receipts=%d", fabric.repairs, store.activationMutations, ledger.records)
+			}
+		})
 	}
 }

@@ -264,6 +264,11 @@ OPL App 的旧数据保留并隔离，所有依赖与恢复 workload 纳入各�
 
 #### 验收场景 4. Retained State And Lifecycle Completion
 
+The retained installation-gateway status/repair URL-consumer regression is
+fixed at the source layer; [verification evidence](status.md#retained-runtime-entry-projection-repair)
+tracks its checks. Instance deployment and customer entry/credential recovery
+remain open and are not implied by source integration.
+
 **可交付结果：** 现有 Workspace 和未完成操作完成 owner-local 迁移；所有当前
 消费者在并发、失联和重启后仍正确，原购买历史可核对。
 

@@ -40,6 +40,13 @@ Browser
   -> Workspace runtime
 ```
 
+For retained Runtime status and authorized repair readback, a provider may
+report only the observed `ServiceName` when this installation publishes the
+entry. Control Plane composes the customer URL with `workspaceGatewayEntryURL`;
+a provider-published `URL` remains unchanged. A missing provider URL is not a
+Runtime failure. Runtime identity, health, entitlement and credential checks
+still apply; `unready` stays unready, and an absent Runtime gains no entry.
+
 The current Workspace Runtime compatibility boundary fixes the internal WebUI
 port at `3000`. `opl-cloud-workspace-runtime-abi-contract.json` is its versioned
 cross-module owner; Control Plane proxy routing and both Fabric adapters project
