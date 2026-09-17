@@ -135,14 +135,74 @@ tbody tr:last-child td {
   font-size: 22px;
 }
 
-/* ---------- 弹窗：16px 圆角 + 模糊遮罩 ---------- */
-.modal {
+/* ---------- 弹窗：16px 圆角 + 模糊遮罩（本工程 Modal 实际类名为 console-modal*） ---------- */
+.console-modal {
   border-radius: 16px;
   box-shadow: 0 24px 64px rgb(16 42 67 / 22%);
 }
 
-.modal > header {
+.console-modal__header {
   border-radius: 16px 16px 0 0;
+}
+
+.console-modal-backdrop {
+  background: rgb(15 30 45 / 45%);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- 按钮：rounded-xl + 主按钮同色系阴影 ---------- */
+.button,
+.ui-button {
+  border-radius: 10px;
+}
+
+body .button.primary,
+body .ui-button[data-color="primary"] {
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgb(22 100 160 / 22%);
+}
+
+body .button.primary:hover:not(:disabled),
+body .ui-button[data-color="primary"]:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgb(22 100 160 / 30%);
+}
+
+/* ---------- 统计卡副信息：正数绿/异常红 ---------- */
+.account-band .band-metric small,
+.overview-summary .band-metric small {
+  color: #94a3b8;
+}
+
+.metric-ok strong { color: #0d9464; }
+.metric-warn strong { color: #c2740a; }
+
+/* ---------- 表格容器：整体圆角带边框（sub2api .table-container） ---------- */
+.workspace-list-panel,
+.billing-surface,
+.gateway-detail,
+.panel > .table-wrap {
+  border: 1px solid #e8eef4;
+}
+
+.panel > .table-wrap {
+  border-radius: 12px;
+  margin: 14px 16px 16px;
+}
+
+/* ---------- 卡片悬停上浮（sub2api .card-hover） ---------- */
+.workspace-list > a:hover,
+.overview-receipt-list > button:hover,
+.billing-list-mobile > button:hover,
+.compact-announcement-list article:hover {
+  background: #f8fbfd;
+}
+
+.metric-row article:hover,
+.review-card:hover,
+.operator-object-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 40px rgb(16 42 67 / 8%);
+  border-color: #d7e2ec;
 }
 
 /* ---------- 侧栏导航：更圆润的激活态 ---------- */

@@ -6180,10 +6180,54 @@ select:focus-visible,
   justify-content: space-between;
   gap: 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--soft);
   padding: 12px 16px;
   margin-bottom: 14px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.wallet-target-card.is-confirmed {
+  border-color: #5cbab4;
+  background: #e8f7f2;
+}
+
+.wallet-target-card__confirm {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wallet-target-card__confirm input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--action, #1664a0);
+  cursor: pointer;
+}
+
+.wallet-kind-picker {
+  display: grid;
+  gap: 7px;
+}
+
+.wallet-kind-picker__label {
+  color: #142536;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.wallet-amount-row input {
+  font-size: 18px;
+  font-weight: 680;
+  min-height: 48px;
+  font-variant-numeric: tabular-nums;
 }
 
 .wallet-target-card__id,
