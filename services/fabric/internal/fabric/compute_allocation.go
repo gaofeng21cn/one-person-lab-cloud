@@ -457,10 +457,18 @@ func replayComputeAllocationOperation(operation FabricOperation, requestHash str
 	return allocation, ErrComputeOperationFailed
 }
 
-func (s *Service) GetComputeAllocation(_ context.Context, allocationID string) (ComputeAllocation, bool) {
+func (s *Service) GetComputeAllocation(ctx context.Context, allocationID string) (ComputeAllocation, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	allocation, ok := s.computes[allocationID]
+	s.mu.Unlock()
+	if !ok {
+		if err := s.hydrateMissingResourceState(ctx); err != nil {
+			return ComputeAllocation{}, false
+		}
+		s.mu.Lock()
+		allocation, ok = s.computes[allocationID]
+		s.mu.Unlock()
+	}
 	return allocation, ok
 }
 

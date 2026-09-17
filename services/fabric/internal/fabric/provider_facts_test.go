@@ -23,6 +23,93 @@ type providerFactsSpy struct {
 	computeReads atomic.Int32
 }
 
+func TestLaunchResourceReadsWithoutFabricRestart(t *testing.T) {
+	for _, read := range []string{"provider_facts", "compute_allocation"} {
+		t.Run(read, func(t *testing.T) {
+			ctx := context.Background()
+			service, store, provider, resources := workspaceLaunchDeleteProjectionFixture(t)
+			before, err := store.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if read == "compute_allocation" {
+				allocation, found := service.GetComputeAllocation(ctx, resources.ComputeAllocationID)
+				if !found || allocation.ID != resources.ComputeAllocationID || allocation.WorkspaceID != "ws-delete" || allocation.AccountID != "acct-delete" {
+					t.Fatalf("launched compute not readable: %#v found=%v", allocation, found)
+				}
+			} else {
+				input := ProviderFactsBatchInput{Items: []ProviderFactInput{
+					{AccountID: "acct-delete", WorkspaceID: "ws-delete", ResourceType: "compute", ResourceID: resources.ComputeAllocationID},
+					{AccountID: "acct-delete", WorkspaceID: "ws-delete", ResourceType: "storage", ResourceID: resources.StorageID},
+					{AccountID: "acct-delete", WorkspaceID: "ws-delete", ResourceType: "attachment", ResourceID: resources.AttachmentID},
+				}}
+				facts, err := service.ProviderFactsBatch(ctx, input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, fact := range facts.Items {
+					if !fact.Available || fact.ErrorCode != "" {
+						t.Fatalf("launched resource not readable: %#v", fact)
+					}
+				}
+				for i := range input.Items {
+					input.Items[i].AccountID = "foreign-account"
+				}
+				foreign, err := service.ProviderFactsBatch(ctx, input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, fact := range foreign.Items {
+					if fact.Available || fact.ErrorCode != "provider_fact_identity_mismatch" {
+						t.Fatalf("foreign resource accepted: %#v", fact)
+					}
+				}
+			}
+			// These public reads may hydrate their projection but cannot rewrite authority.
+			after, err := store.List(ctx)
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatalf("resource read changed operations: %v", err)
+			}
+			if provider.detachCalls.Load()+provider.storageDeleteCalls.Load()+provider.computeDeleteCalls.Load() != 0 {
+				t.Fatal("read performed provider mutation")
+			}
+		})
+	}
+}
+
+func TestLaunchResourceReadsRejectInvalidOrConflictingRecords(t *testing.T) {
+	for _, resourceType := range []string{"compute", "storage", "attachment"} {
+		for _, scenario := range []string{"invalid", "conflict"} {
+			t.Run(resourceType+"/"+scenario, func(t *testing.T) {
+				ctx := context.Background()
+				service, store, _, resources := workspaceLaunchDeleteProjectionFixture(t)
+				stage := resourceType
+				resourceID := resources.AttachmentID
+				if resourceType == "compute" {
+					stage, resourceID = "ensure_compute_allocation", resources.ComputeAllocationID
+				}
+				if resourceType == "storage" {
+					resourceID = resources.StorageID
+				}
+				if scenario == "invalid" {
+					invalidateWorkspaceLaunchDeleteStage(t, store, stage, resources)
+				} else {
+					appendConflictingWorkspaceLaunchDeleteStage(t, store, stage, resources)
+				}
+				fact := service.providerFact(ctx, ProviderFactInput{AccountID: "acct-delete", WorkspaceID: "ws-delete", ResourceType: resourceType, ResourceID: resourceID})
+				if fact.Available || fact.ErrorCode != "provider_fact_identity_mismatch" {
+					t.Fatalf("invalid resource accepted: %#v", fact)
+				}
+				if resourceType == "compute" {
+					if allocation, found := service.GetComputeAllocation(ctx, resourceID); found {
+						t.Fatalf("invalid compute accepted: %#v", allocation)
+					}
+				}
+			})
+		}
+	}
+}
+
 func (p *providerFactsSpy) ReadComputeProviderFacts(context.Context, ComputeAllocation) (ProviderResourceFacts, error) {
 	p.computeReads.Add(1)
 	return p.computeFacts, p.computeErr

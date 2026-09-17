@@ -99,6 +99,22 @@ func (s *Service) providerFact(ctx context.Context, input ProviderFactInput) (re
 	attachmentCompute := s.computes[attachment.ComputeID]
 	attachmentStorage := s.volumes[attachment.VolumeID]
 	s.mu.Unlock()
+	missing := input.ResourceType == "compute" && compute.ID == "" ||
+		input.ResourceType == "storage" && storage.ID == "" ||
+		input.ResourceType == "attachment" && (attachment.ID == "" || attachmentCompute.ID == "" || attachmentStorage.ID == "")
+	if missing {
+		if err := s.hydrateMissingResourceState(ctx); err != nil {
+			result.ErrorCode = errorCode(err)
+			return result
+		}
+		s.mu.Lock()
+		compute = s.computes[input.ResourceID]
+		storage = s.volumes[input.ResourceID]
+		attachment = s.attachments[input.ResourceID]
+		attachmentCompute = s.computes[attachment.ComputeID]
+		attachmentStorage = s.volumes[attachment.VolumeID]
+		s.mu.Unlock()
+	}
 	var facts ProviderResourceFacts
 	var err error
 	if input.ResourceType != "compute" && input.ResourceType != "storage" && input.ResourceType != "attachment" && input.ResourceType != "runtime" {

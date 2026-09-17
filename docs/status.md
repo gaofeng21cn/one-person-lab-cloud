@@ -22,6 +22,27 @@ registration, deployed Renewal/Delete qualification, alert and restore qualifica
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
+## Launch Resource Readback
+
+Fabric resource reads now recover missing in-memory projections from the existing
+validated Launch operation records. Previously a successful Launch in the same
+process could leave compute queries reporting absence and provider-fact queries
+reporting `provider_fact_identity_mismatch` for compute, storage and attachment.
+Both failures were reproduced through the public service methods before the fix.
+The reads reuse the existing resource projection and retain account, Workspace,
+stage-sequence and ambiguity checks; they do not rewrite operation records or
+invoke provider mutations. Focused regression checks cover all three resource
+types, compute lookup, foreign-account refusal and unchanged operation history.
+Invalid and conflicting stage records are still refused. The focused race checks
+pass, as do 215 source tests, 106 browser tests, typecheck, lint, build and all
+database-free verification steps. The Fabric suite passes 2,103 tests/subtests;
+70 database/capacity/Docker cases are skipped. The full local gate was attempted,
+but the local Docker engine returned HTTP 500 before its temporary PostgreSQL
+container could start, so that integration result is unavailable.
+
+This is source acceptance. Deployment and fresh resource observation belong to
+the Instance owner; no production identity repair or runtime recovery is claimed.
+
 ## Application Hosting Boundary
 
 The baseline below combines canonical main

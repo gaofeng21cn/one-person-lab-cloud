@@ -153,7 +153,7 @@ func TestWorkspaceLaunchResourcesDeleteWithoutFabricRestart(t *testing.T) {
 		t.Run(resourceKind, func(t *testing.T) {
 			ctx := context.Background()
 			service, _, provider, resources := workspaceLaunchDeleteProjectionFixture(t)
-			if _, exists := service.GetComputeAllocation(ctx, resources.ComputeAllocationID); exists {
+			if _, exists := service.computes[resources.ComputeAllocationID]; exists {
 				t.Fatal("fixture unexpectedly projected staged compute before cache-miss recovery")
 			}
 
