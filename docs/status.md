@@ -435,9 +435,16 @@ credential declaration still leads to a bind mount for an ungenerated
 base `22b17336`; this failure is not repaired or counted as a pass here. Full log
 SHA-256: `1293c2ba871c6a6da5e5bed49f15a5ac92b0b38143c093dc3d7ee9b35a96479a`.
 Evidence is retained under `output/retained-runtime-entry-fix-20260917/`.
-The initial local run used the pre-existing Node installation; locked dependencies
-have since been restored with `npm ci`. Verification with those dependencies and
-PR CI are pending.
+After `npm ci` restored the locked dependencies and the matching Playwright
+Chromium was installed, `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local` passed:
+319 source/browser tests, typecheck, lint, Console build, Go compilation and
+required database-free checks. The four changed source/test files were unchanged
+throughout both runs. Locked-dependency log SHA-256:
+`6dd0c44f56144fdc15195a1c88b96073e05f526610f8e914449407a5f18d61aa`.
+[PR #559](https://github.com/gaofeng21cn/one-person-lab-cloud/pull/559) CI run
+`35182897650` independently passed `dependency-review` and `validate` for source
+commit `33baf54f`; this evidence update changes documentation only. The separate
+Fabric failure above remains an open full-qualification gap.
 
 This is source-check evidence only. No Candidate was built, Product Release
 published, Instance deployment performed, or customer Runtime repaired. The
