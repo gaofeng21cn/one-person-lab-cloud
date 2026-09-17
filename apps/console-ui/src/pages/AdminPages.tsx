@@ -1067,10 +1067,29 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
         <div className="panel-title"><div><h2>服务健康</h2><Badge color={summary.tone}>{summary.label}</Badge></div><Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
         <SourceState error={controller.sources.operatorHealth.error} loading={controller.sources.operatorHealth.loading} onRetry={() => void controller.refreshCurrentPage()} source={healthSource} unavailableTitle="系统状态暂不可用">
           {(health) => <>
-            <div className="table-wrap operator-health-table"><table className="ops-table"><thead><tr><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
+            <div className="operator-health-table">
+              <table className="ops-table health-cards">
+                <thead><tr className="sr-only"><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
               const service = health[key];
               const state = healthStatus(service, key);
-              return <tr key={key} data-state={state.tone === "success" ? "active" : state.tone === "danger" ? "disabled" : "manual_review"}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{formatDate(healthObservedAt(service, key), true)}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td><HealthDiagnostics service={service} serviceKey={key} /></td><td>{key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
+              const stateKey = state.tone === "success" ? "active" : state.tone === "danger" ? "disabled" : "manual_review";
+              return <tr key={key} data-state={stateKey} className="health-card-row"><td colSpan={6}>
+                <div className="health-card">
+                  <span className={`health-card__icon health-card__icon--${state.tone}`} aria-hidden="true"><Icon size={20} /></span>
+                  <div className="health-card__main">
+                    <div className="health-card__head"><strong>{name}</strong><Badge color={state.tone}>{state.label}</Badge></div>
+                    <HealthDiagnostics service={service} serviceKey={key} />
+                  </div>
+                  <div className="health-card__meta">
+                    <small>来源观测：{formatDate(healthObservedAt(service, key), true)}</small>
+                    <small>Console 读回：{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</small>
+                  </div>
+                  <div className="operator-card-actions">
+                    {key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}
+                    <Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={15} />刷新</Button>
+                  </div>
+                </div>
+              </td></tr>;
             })}</tbody></table></div>
             <div className="operator-health-mobile-list">{healthServices.map(({ key, name, icon }) => <OperatorHealthMobileCard controller={controller} icon={icon} key={key} name={name} onRuntimeDetails={() => setRuntimeDetailsOpen(true)} service={health[key]} serviceKey={key} />)}</div>
           </>}

@@ -314,6 +314,117 @@ body .topbar h1 {
   letter-spacing: -0.01em;
 }
 
+/* ---------- 系统状态：服务健康卡行（保留 tr DOM 供测试定位） ---------- */
+.health-cards {
+  min-width: 0 !important;
+}
+
+.health-cards .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.health-cards td {
+  border-bottom: 1px solid #eef2f6;
+  padding: 0;
+}
+
+.health-cards tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.health-cards tbody tr {
+  box-shadow: none;
+}
+
+.health-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  transition: background-color 150ms ease;
+}
+
+.health-card-row:hover .health-card {
+  background: #f8fbfd;
+}
+
+.health-card__icon {
+  display: inline-grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  place-items: center;
+  border-radius: 12px;
+}
+
+.health-card__icon--success { background: #ccfbf1; color: #0d9488; }
+.health-card__icon--warning { background: #fde0b0; color: #b15e2a; }
+.health-card__icon--danger { background: #ffcecb; color: #cf222e; }
+.health-card__icon--info { background: #ccfbf1; color: #0f766e; }
+.health-card__icon--secondary { background: #e2e8f0; color: #64748b; }
+
+.health-card__main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+
+.health-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.health-card__head strong {
+  color: #142536;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.health-card__main small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.health-card__main .operator-health-diagnostics {
+  gap: 4px;
+}
+
+.health-card__meta {
+  display: grid;
+  flex: 0 0 200px;
+  gap: 4px;
+}
+
+.health-card__meta small {
+  color: #94a3b8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-card .operator-card-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .health-card {
+    flex-wrap: wrap;
+  }
+
+  .health-card__meta {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
 /* ---------- 余额操作浮窗内容卡 ---------- */
 .wallet-target-card {
   border-radius: 12px;
