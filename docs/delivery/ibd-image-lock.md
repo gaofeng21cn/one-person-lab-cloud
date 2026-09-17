@@ -62,10 +62,12 @@ identities. Real model configuration is an external read-only input and is not
 present in the bundle or product source.
 
 Current reference-lock and non-secret derived deployment material are retained
-under the active development worktree's `output/ibd-baseline-20260915/`. They are
-qualification inputs, not a second product registry. A new original-image
-question with the user-selected `glm-5.3-flash` passed HTTP/container receipt,
-SSE and citation checks; see `docs/status.md` for its exact run evidence.
+under the canonical checkout's `output/ibd-baseline-20260915/`; its transient
+`private/` test inputs and case-sensitive scratch disk image are not retained.
+They are qualification inputs, not a second product registry. A new
+original-image question with the user-selected `glm-5.3-flash` passed
+HTTP/container receipt, SSE and citation checks; see `docs/status.md` for its
+exact run evidence.
 This does not prove product data restore, Console/Control Plane replacement,
 or Tencent Instance adoption.
 
