@@ -99,8 +99,9 @@ function SourceBadge({ source }: { source: SourceEnvelope<unknown> | null | unde
   return <Badge color={sourceTone(source?.status)}>{sourceStatusLabel(source?.status)}</Badge>;
 }
 
-function SourceValue<T>({ source, children }: { source: SourceEnvelope<T> | null | undefined; children: (data: T) => ReactNode }) {
+function SourceValue<T>({ source, children, detail = false }: { source: SourceEnvelope<T> | null | undefined; children: (data: T) => ReactNode; detail?: boolean }) {
   if (!source?.available) return <span className="source-value source-value--unavailable">暂不可用{source?.status === "unavailable" ? <small>{observationReason(source.reasonCode)}</small> : null}</span>;
+  if (!detail) return <span className="source-value"><strong>{children(source.data)}</strong></span>;
   return (
     <span className="source-value">
       <strong>{children(source.data)}</strong>
@@ -497,24 +498,36 @@ function WalletOperationReadback({ controller }: { controller: ConsoleController
   const operation = controller.walletAdjustmentOperation;
   if (!operation) return null;
   const recoverable = operation.status === "manual_review" && operation.allowedActions?.includes("recover_wallet_adjustment");
+  const settled = operation.status === "succeeded" || operation.status === "failed";
+  const facts = [
+    { label: "操作 ID", value: operation.operationId },
+    { label: "调整前余额", value: operation.beforeBalance.available ? formatUsdMicros(operation.beforeBalance.data.usdMicros) : "暂不可用" },
+    { label: "调整后余额", value: operation.afterBalance.available ? formatUsdMicros(operation.afterBalance.data.usdMicros) : "暂不可用" },
+    { label: "原因", value: operation.reason },
+    { label: "关联操作", value: operation.relatedOperationId || "—" },
+    { label: "余额历史引用", value: operation.balanceHistoryRef || "—" },
+    { label: "回执 ID", value: operation.receiptId || "—" },
+    { label: "操作人", value: operation.actor || "暂不可用" },
+    { label: "错误码", value: operation.errorCode || "—" },
+    { label: "上游阶段 / HTTP", value: operation.upstreamFailure ? `${operation.upstreamFailure.phase} / ${operation.upstreamFailure.httpStatus ?? "暂不可用"}` : "—" },
+    { label: "上游错误码 / 请求 ID", value: operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "—" },
+    { label: "允许动作", value: operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无" }
+  ];
   return (
     <section className="wallet-adjustment-readback">
-      <div className="inline-notice"><span>操作结果：{statusLabel(operation.status)}</span><Button onClick={() => void controller.refreshWalletOperation()} size="sm" variant="ghost"><RefreshCw aria-hidden size={15} />刷新</Button></div>
-      <dl className="data-list">
-        <div><dt>operation ID</dt><dd>{operation.operationId}</dd></div>
-        <div><dt>phase</dt><dd>{operation.phase || "暂不可用"}</dd></div>
-        <div><dt>调整前余额</dt><dd><SourceValue source={operation.beforeBalance}>{(data) => formatUsdMicros(data.usdMicros)}</SourceValue></dd></div>
-        <div><dt>调整后余额</dt><dd><SourceValue source={operation.afterBalance}>{(data) => formatUsdMicros(data.usdMicros)}</SourceValue></dd></div>
-        <div><dt>原因</dt><dd>{operation.reason}</dd></div>
-        <div><dt>关联操作</dt><dd>{operation.relatedOperationId || "暂不可用"}</dd></div>
-        <div><dt>余额历史引用</dt><dd>{operation.balanceHistoryRef || "暂不可用"}</dd></div>
-        <div><dt>Receipt ID</dt><dd>{operation.receiptId || "暂不可用"}</dd></div>
-        <div><dt>actor</dt><dd>{operation.actor || "暂不可用"}</dd></div>
-        <div><dt>errorCode</dt><dd>{operation.errorCode || "暂不可用"}</dd></div>
-        <div><dt>上游 phase / HTTP</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.phase} / ${operation.upstreamFailure.httpStatus ?? "暂不可用"}` : "暂不可用"}</dd></div>
-        <div><dt>上游 errorCode / requestId</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "暂不可用"}</dd></div>
-        <div><dt>allowedActions</dt><dd>{operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无"}</dd></div>
-      </dl>
+      <div className="wallet-readback-banner" data-status={operation.status}>
+        <div className="wallet-readback-banner__main">
+          <strong>{settled ? (operation.status === "succeeded" ? "操作完成" : "操作失败") : "结果待确认"}</strong>
+          <small>操作 ID {operation.operationId} · 当前状态：{statusLabel(operation.status)}</small>
+        </div>
+        {settled ? null : <Button onClick={() => void controller.refreshWalletOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新</Button>}
+      </div>
+      <details className="wallet-readback-facts" open={settled ? false : true}>
+        <summary>操作详情与证据引用</summary>
+        <dl className="wallet-readback-grid">
+          {facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
+        </dl>
+      </details>
       {recoverable ? <div className="page-actions"><span>仅核对原操作结果，不会再次扣款或退款。</span><Button busy={controller.walletAdjustmentBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>重新核验</Button></div> : null}
     </section>
   );
@@ -553,13 +566,19 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
     >
       {account ? (
         <div data-slide="A-ACC-03">
-          <form id="wallet-adjustment-form" onSubmit={submit}>
-            <Field autoFocus description="必须与目标 Account ID 完全一致。" label="再次确认 Account ID" onChange={(event) => updateForm("confirmationAccountId", event.currentTarget.value)} required value={form.confirmationAccountId} />
-            <Select label="操作类型" onChange={(kind) => setForm((value) => ({ ...value, kind: kind as WalletAdjustmentRequest["kind"] }))} options={[{ value: "recharge", label: "充值" }, { value: "debit", label: "扣减" }, { value: "business_refund", label: "业务退款" }]} value={form.kind} />
-            <Field inputMode="decimal" label="金额（USD）" min="0.000001" onChange={(event) => updateForm("amountUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.amountUsd} />
-            <Field label="业务原因" maxLength={200} multiline onChange={(event) => updateForm("reason", event.currentTarget.value)} required rows={4} value={form.reason} />
-            {form.kind === "business_refund" ? <Field label="关联 operation ID" onChange={(event) => updateForm("relatedOperationId", event.currentTarget.value)} required value={form.relatedOperationId || ""} /> : null}
-          </form>
+          {controller.walletAdjustmentOperation ? null : <>
+            <div className="wallet-target-card">
+              <div className="wallet-target-card__id"><small>目标账户</small><code>{account.accountId}</code></div>
+              <div className="wallet-target-card__balance"><AccountFact source={account.wallet}>{(wallet) => <><small>当前余额</small><strong>{formatUsdMicros(wallet.usdMicros)}</strong></>}</AccountFact></div>
+            </div>
+            <form id="wallet-adjustment-form" onSubmit={submit}>
+              <SegmentedControl ariaLabel="操作类型" block onChange={(kind) => setForm((value) => ({ ...value, kind: kind as WalletAdjustmentRequest["kind"] }))} options={[{ value: "recharge", label: "充值" }, { value: "debit", label: "扣减" }, { value: "business_refund", label: "业务退款" }]} value={form.kind} />
+              <Field inputMode="decimal" label="金额（USD）" min="0.000001" onChange={(event) => updateForm("amountUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.amountUsd} />
+              <Field label="业务原因" maxLength={200} multiline onChange={(event) => updateForm("reason", event.currentTarget.value)} required rows={4} value={form.reason} />
+              {form.kind === "business_refund" ? <Field label="关联 operation ID" onChange={(event) => updateForm("relatedOperationId", event.currentTarget.value)} required value={form.relatedOperationId || ""} /> : null}
+              <Field autoFocus description="输入完整账户 ID 以确认操作对象。" label="再次确认 Account ID" onChange={(event) => updateForm("confirmationAccountId", event.currentTarget.value)} required value={form.confirmationAccountId} />
+            </form>
+          </>}
           <WalletOperationReadback controller={controller} />
         </div>
       ) : null}
@@ -614,17 +633,17 @@ function ReviewDetails({ review }: { review: OperatorReconciliationItemDTO }) {
   return (
     <div>
       <section className="data-section"><h2>Control Plane</h2><dl className="data-list">
-        <div><dt>Account</dt><dd>{review.accountId || "暂不可用"}</dd></div>
-        <div><dt>Workspace</dt><dd>暂不可用</dd></div>
-        <div><dt>billing operation</dt><dd>{review.billingOperationId || "暂不可用"}</dd></div>
+        <div><dt>账户</dt><dd>{review.accountId || "暂不可用"}</dd></div>
+        <div><dt>工作空间</dt><dd>暂不可用</dd></div>
+        <div><dt>计费操作</dt><dd>{review.billingOperationId || "暂不可用"}</dd></div>
         <div><dt>报价 / 扣款意图</dt><dd>暂不可用</dd></div>
-        <div><dt>phase</dt><dd>{review.phase || "暂不可用"}</dd></div>
-        <div><dt>errorCode</dt><dd>{review.errorCode || "暂不可用"}</dd></div>
-        <div><dt>operation reference</dt><dd>{review.operationRef || "暂不可用"}</dd></div>
+        <div><dt>阶段</dt><dd>{review.phase || "暂不可用"}</dd></div>
+        <div><dt>错误码</dt><dd>{review.errorCode || "暂不可用"}</dd></div>
+        <div><dt>操作引用</dt><dd>{review.operationRef || "暂不可用"}</dd></div>
       </dl></section>
       <section className="data-section"><h2>Gateway</h2><dl className="data-list"><div><dt>权威余额</dt><dd>暂不可用</dd></div><div><dt>余额历史证据</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Fabric</h2><dl className="data-list"><div><dt>Compute / Storage / Attachment</dt><dd>暂不可用</dd></div><div><dt>provider ID / Zone / 最近读回</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Ledger</h2><dl className="data-list"><div><dt>Receipt reference</dt><dd>{review.receiptRef || "暂不可用"}</dd></div><div><dt>reconciliation exception</dt><dd>{review.status || "暂不可用"}</dd></div></dl></section>
+      <section className="data-section"><h2>Fabric</h2><dl className="data-list"><div><dt>计算 / 存储 / 挂载</dt><dd>暂不可用</dd></div><div><dt>provider ID / 可用区 / 最近读回</dt><dd>暂不可用</dd></div></dl></section>
+      <section className="data-section"><h2>Ledger</h2><dl className="data-list"><div><dt>回执引用</dt><dd>{review.receiptRef || "暂不可用"}</dd></div><div><dt>复核异常</dt><dd>{review.status || "暂不可用"}</dd></div></dl></section>
     </div>
   );
 }
@@ -766,15 +785,15 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
         {(data) => <div className="review-list">{data.items.map((review) => {
           return <article className="review-card" key={review.id}>
             <header className="review-card__head">
-              <div className="review-card__identity"><strong>{review.accountId || "账户暂不可用"}</strong><small>{review.resourceType} · {review.billingOperationId || "billing operation 暂不可用"}</small></div>
+              <div className="review-card__identity"><strong>{review.accountId || "账户暂不可用"}</strong><small>{review.resourceType} · {review.billingOperationId || "计费操作暂不可用"}</small></div>
               <Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge>
             </header>
             <dl className="review-card__facts">
-              <div><dt>phase</dt><dd><code>{review.phase || "暂不可用"}</code></dd></div>
-              <div><dt>errorCode</dt><dd><code>{review.errorCode || "—"}</code></dd></div>
-              <div><dt>allowedActions</dt><dd>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</dd></div>
-              <div><dt>operation reference</dt><dd><code>{review.operationRef || "暂不可用"}</code></dd></div>
-              <div><dt>Receipt reference</dt><dd><code>{review.receiptRef || "暂不可用"}</code></dd></div>
+              <div><dt>阶段</dt><dd><code>{review.phase || "暂不可用"}</code></dd></div>
+              <div><dt>错误码</dt><dd><code>{review.errorCode || "—"}</code></dd></div>
+              <div><dt>允许动作</dt><dd>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</dd></div>
+              <div><dt>操作引用</dt><dd><code>{review.operationRef || "暂不可用"}</code></dd></div>
+              <div><dt>回执引用</dt><dd><code>{review.receiptRef || "暂不可用"}</code></dd></div>
             </dl>
             <footer className="review-card__actions"><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></footer>
           </article>;
@@ -928,15 +947,10 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
         <SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue>
       </header>
       <dl className="operator-object-card__facts">
-        <div><dt>owner Account</dt><dd><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></dd></div>
-        <div><dt>owner User</dt><dd><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></dd></div>
-        <div><dt>套餐 / 月度总价</dt><dd><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></dd></div>
-        <div><dt>创建时间</dt><dd><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></dd></div>
+        <div><dt>套餐 / 月费</dt><dd><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></dd></div>
         <div><dt>权益截止</dt><dd><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></dd></div>
-        <div><dt>续费状态</dt><dd><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></dd></div>
         <div><dt>业务状态</dt><dd><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></dd></div>
         <div className="operator-object-card__wide"><dt>资源现态</dt><dd><WorkspaceResourceObservations resources={item.resources} /></dd></div>
-        <div><dt>Receipt ID</dt><dd><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></dd></div>
         <div className="operator-object-card__wide"><dt>Key 累计实际费用</dt><dd><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></dd></div>
       </dl>
       <div className="operator-card-actions">
@@ -955,11 +969,11 @@ function ResourcesPage({ controller, release, replacement, deployment }: { contr
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月度总价</th><th>创建时间</th><th>权益截止</th><th>续费状态</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
               const state = sourceData(item.workspace)?.state;
-              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><span className="ops-owner"><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></small></span></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => <Badge color={statusTone(value.state)}>{statusLabel(value.state)}</Badge>}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><span className="ops-owner"><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></small></span></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => <Badge color={statusTone(value.state)}>{statusLabel(value.state)}</Badge>}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}

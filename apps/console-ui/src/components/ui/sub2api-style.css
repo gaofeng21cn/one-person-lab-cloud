@@ -1,0 +1,185 @@
+/*
+ * Sub2API 风格覆写层（参考 Wei-Shaw/sub2api 前端设计 token）。
+ * 只做呈现层调优：胶囊徽章、柔和卡片阴影、宽松表格、彩色图标块、弹窗圆角。
+ * 通过 unlayered 优先级覆盖 layered 组件样式；不改动任何 DOM/文案/测试契约。
+ */
+
+/* ---------- 徽章：胶囊形 + 浅底深字 ---------- */
+.ui-badge {
+  border-radius: var(--radius-full);
+  padding: 0 0.625rem;
+  font-weight: var(--font-weight-medium);
+}
+
+[class*="_Badge_1viyg_"] {
+  border-radius: var(--radius-full);
+  padding: 0 0.625rem;
+  font-weight: 500;
+}
+
+/* 表格单元内的胶囊徽章收紧，避免撑破列宽 */
+td .ui-badge,
+td [class*="_Badge_1viyg_"] {
+  padding: 0 0.5rem;
+  font-size: 11px;
+}
+
+.account-status-stack {
+  gap: 5px;
+}
+
+.account-status-stack .ui-badge,
+.account-status-stack [class*="_Badge_1viyg_"] {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 面板/卡片：16px 圆角 + 柔和分层阴影 + 悬停上浮 ---------- */
+.panel,
+.metric-row article,
+.plan-panel,
+.operator-object-card,
+.review-card,
+.attention-card,
+.wallet-target-card,
+.access-features li {
+  border-radius: 16px;
+  border-color: #e8eef4;
+  box-shadow: 0 1px 3px rgb(16 42 67 / 5%), 0 1px 2px rgb(16 42 67 / 4%);
+  transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+}
+
+/* 覆盖 styles.css 后段的 8px 重定义（source order 更靠后，需保持同样晚的层联胜出） */
+body .panel,
+body .metric-row article,
+body .plan-panel,
+body .operator-object-card {
+  border-radius: 16px;
+  border-color: #e8eef4;
+  box-shadow: 0 1px 3px rgb(16 42 67 / 5%), 0 1px 2px rgb(16 42 67 / 4%);
+}
+
+.overview-grid > .panel,
+.workspace-list-panel,
+.billing-surface,
+.gateway-detail,
+.gateway-usage-metrics {
+  border-radius: 16px;
+}
+
+.workspace-list > a:hover,
+.overview-receipt-list > button:hover,
+.compact-announcement-list article:hover {
+  background: #f8fbfd;
+}
+
+/* ---------- 表格：容器圆角、宽松行高、浅分隔线 ---------- */
+.table-wrap {
+  border-radius: 12px;
+}
+
+table {
+  min-width: 640px;
+}
+
+th,
+td {
+  padding: 12px 16px;
+}
+
+th {
+  background: #f7f9fb;
+  border-bottom: 1px solid #e8eef4;
+  color: #64748b;
+  font-weight: 600;
+}
+
+td {
+  border-bottom: 1px solid #eef2f6;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- ops-table：行悬停 + 状态色条柔化 ---------- */
+.ops-table tbody tr:hover {
+  background: #f8fbfd;
+}
+
+/* ---------- 指标卡：彩色图标块（sub2api stat-icon 风格） ---------- */
+.metric-row article {
+  gap: 14px;
+  padding: 20px;
+}
+
+.metric-row article > svg {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 12px;
+  padding: 10px;
+  background: #e8f4fd;
+  color: #2f7fb0;
+}
+
+.metric-row article:nth-child(2) > svg { background: #f3e8ff; color: #7c3aed; }
+.metric-row article:nth-child(3) > svg { background: #e8f7ee; color: #0d9464; }
+.metric-row article:nth-child(4) > svg { background: #fff4e0; color: #c2740a; }
+
+.metric-row article > span > strong {
+  font-size: 22px;
+}
+
+/* ---------- 弹窗：16px 圆角 + 模糊遮罩 ---------- */
+.modal {
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgb(16 42 67 / 22%);
+}
+
+.modal > header {
+  border-radius: 16px 16px 0 0;
+}
+
+/* ---------- 侧栏导航：更圆润的激活态 ---------- */
+.side-nav > a,
+.admin-nav-links a {
+  border-radius: 10px;
+}
+
+.side-nav a.active,
+.operator-nav .admin-nav-links a.active {
+  border-radius: 10px;
+}
+
+/* ---------- 余额操作浮窗内容卡 ---------- */
+.wallet-target-card {
+  border-radius: 12px;
+}
+
+.wallet-readback-banner {
+  border-radius: 12px;
+}
+
+/* ---------- 特性/展示卡片（home 页） ---------- */
+.access-showcase {
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgb(16 42 67 / 8%);
+}
+
+.access-features li {
+  border-radius: 16px;
+}
+
+.access-features li > svg {
+  border-radius: 12px;
+}
+
+.login-panel {
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgb(16 42 67 / 12%);
+}

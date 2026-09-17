@@ -3128,17 +3128,17 @@ tbody tr:last-child td {
 
 /* Sub2API-aligned customer account scan. */
 .operator-account-table table {
-  min-width: 1100px;
+  min-width: 1120px;
   table-layout: fixed;
 }
 
-.operator-account-table th:nth-child(1) { width: 17%; }
-.operator-account-table th:nth-child(2) { width: 20%; }
-.operator-account-table th:nth-child(3) { width: 12%; }
-.operator-account-table th:nth-child(4) { width: 14%; }
-.operator-account-table th:nth-child(5) { width: 11%; }
-.operator-account-table th:nth-child(6) { width: 8%; }
-.operator-account-table th:nth-child(7) { width: 18%; }
+.operator-account-table th:nth-child(1) { width: 15%; }
+.operator-account-table th:nth-child(2) { width: 19%; }
+.operator-account-table th:nth-child(3) { width: 9%; }
+.operator-account-table th:nth-child(4) { width: 12%; }
+.operator-account-table th:nth-child(5) { width: 10%; }
+.operator-account-table th:nth-child(6) { width: 13%; }
+.operator-account-table th:nth-child(7) { width: 22%; }
 
 .operator-account-table td {
   vertical-align: top;
@@ -6126,6 +6126,15 @@ select:focus-visible,
   overflow-wrap: anywhere;
 }
 
+.ops-owner .source-value > strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ops-owner .source-value--unavailable {
+  font-size: 12px;
+}
+
 /* 粘性首列：Workspace/用户名列在横向滚动时保持可见 */
 .operator-workspace-table td:first-child,
 .operator-resource-detail-table td:first-child,
@@ -6162,6 +6171,137 @@ select:focus-visible,
 .source-table td:first-child small {
   color: var(--muted);
   font-size: 10px;
+}
+
+/* 余额操作：目标账户卡 */
+.wallet-target-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.wallet-target-card__id,
+.wallet-target-card__balance {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.wallet-target-card__id small,
+.wallet-target-card__balance small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.wallet-target-card__id code {
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.wallet-target-card__balance strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-target-card__balance {
+  justify-items: end;
+  text-align: right;
+}
+
+/* 余额操作：结果横幅 + 折叠证据 */
+.wallet-readback-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #c6e9e6;
+  border-radius: 10px;
+  background: var(--green-soft, #e8f4ed);
+  padding: 12px 16px;
+}
+
+.wallet-readback-banner[data-status="failed"],
+.wallet-readback-banner[data-status="manual_review"] {
+  border-color: #f5b878;
+  background: #fffaf3;
+}
+
+.wallet-readback-banner__main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.wallet-readback-banner__main strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wallet-readback-banner__main small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.wallet-readback-facts summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  color: var(--action);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 680;
+  list-style: none;
+}
+
+.wallet-readback-facts summary::-webkit-details-marker { display: none; }
+
+.wallet-readback-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.wallet-readback-grid > div { min-width: 0; }
+
+.wallet-readback-grid dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.wallet-readback-grid dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .wallet-readback-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wallet-target-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .wallet-target-card__balance {
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 html,

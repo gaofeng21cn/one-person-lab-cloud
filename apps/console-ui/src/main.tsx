@@ -6,6 +6,7 @@ import App from "./App.tsx";
 import "./components/ui/apps-sdk.css";
 import "./components/ui/tokens.css";
 import "./components/ui/components.css";
+import "./components/ui/sub2api-style.css";
 import "./styles.css";
 
 const root = document.getElementById("root");
