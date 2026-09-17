@@ -333,11 +333,33 @@ resolution. The controller now verifies the identity the owner reported instead
 of deriving a second format, and the browser test fixture uses the same
 host-qualified shape.
 
-### Registry Endpoint And Credential Ownership (Local Development)
+### Registry Endpoint, Credential And Approved Set (Local Development)
 
 The registry endpoint is an installation fact, not a product default. Cloud has
 no built-in registry host: `OPL_WORKSPACE_REGISTRY_HOST` comes from the
 instance's deployment values, and its shape is validated before use.
+
+Which repositories are approved for deployment is also an installation fact, so
+it is declared in `OPL_WORKSPACE_REGISTRY_REPOSITORIES` as
+`<namespace>/<repository>` entries. The catalog reports that declared set and
+never enumerates the registry.
+
+The enumeration was removed because it cannot answer the question. Measured on
+the installation's own credential:
+
+```
+GET /v2/oplcloud/chaokang_agent_ibd/tags/list  -> 200, real tags
+GET /v2/_catalog?n=100                         -> 200, {"repositories":[]}
+```
+
+The same credential that reads a repository's tags returns an empty catalog, so
+an empty result is indistinguishable from an installation that approved nothing.
+The declaration is also the narrower statement: it names what is approved rather
+than everything that exists. Every declared entry passes the same namespace
+boundary and repository validation as a lookup, so a declaration cannot widen
+what may be browsed; a malformed or foreign-namespace entry fails startup, and a
+configured registry with no approved set fails startup rather than reporting an
+empty catalog.
 
 An installation that configures no host has no image-selection capability rather
 than an anonymous one. All three registry routes answer `503`
@@ -356,9 +378,13 @@ shape. An anonymous account list is therefore no longer a possible reading of
 the image-selection surface.
 
 Focused evidence: `go test ./internal/server/ -run TestRegistry` passes 9 cases,
-including two new ones — an installation with no configured endpoint on all
-three routes, and the configuration matrix (absent host, invalid host,
-half-configured credential pair, complete configuration).
+including the configuration matrix (absent host, invalid host, invalid or
+foreign-namespace declaration, half-configured credential pair, complete
+configuration) and a case proving the catalog reports the declared set for both
+an unscoped and a namespace-scoped request. The client contract suite covers the
+removed enumeration's absence indirectly: the client exposes only tag listing
+and digest resolution, and its error mapping is exercised through the tags
+route.
 
 | Source-check evidence | Exact value |
 | --- | --- |
@@ -369,11 +395,15 @@ half-configured credential pair, complete configuration).
 
 #### Instance obligation
 
-The instance must supply `OPL_WORKSPACE_REGISTRY_HOST` and inject the browse
-credential to Control Plane from an approved Secret store. The node pull
-credential stays in the runtime environment under its own binding. Cloud does
-not require both to be the same identity; it requires each consumer to hold only
-its own permission.
+The instance must supply `OPL_WORKSPACE_REGISTRY_HOST`,
+`OPL_WORKSPACE_REGISTRY_REPOSITORIES` and the browse credential, injected to
+Control Plane from an approved Secret store. The node pull credential stays in
+the runtime environment under its own binding. Cloud does not require both to be
+the same identity; it requires each consumer to hold only its own permission.
+
+The installation's pull credential was measured to read a repository's tags but
+not to enumerate the catalog. The declared set is what makes selection work
+under that credential; it does not widen the credential's permissions.
 
 ### Registry Catalog Selection Verification
 

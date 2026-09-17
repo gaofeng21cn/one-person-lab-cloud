@@ -39,15 +39,13 @@ func (f *registryFixture) handler(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/v2/":
 		w.WriteHeader(http.StatusOK)
 	case r.URL.Path == "/v2/token" && f.bearerRealm != "":
-		if r.URL.Query().Get("scope") != "repository:oplcloud/one-person-lab-app:pull" && r.URL.Query().Get("scope") != "repository:oplcloud/*:pull,registry:catalog:*" {
+		if r.URL.Query().Get("scope") != "repository:oplcloud/one-person-lab-app:pull" {
 			// The fixture only proves token negotiation happened; scope checking
 			// beyond that is registry policy, not this client's contract.
 		}
 		f.tokenIssued++
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"token":"test-token-` + fmt.Sprint(f.tokenIssued) + `","expires_in":300}`))
-	case r.URL.Path == "/v2/_catalog":
-		_, _ = w.Write([]byte(`{"repositories":["oplcloud/chaokang_agent_ibd","oplcloud/one-person-lab-app","library/other","oplcloud/","oplcloud/Bad@name"]}`))
 	case r.URL.Path == "/v2/oplcloud/one-person-lab-app/tags/list":
 		_, _ = w.Write([]byte(`{"name":"oplcloud/one-person-lab-app","tags":["v1.0.0","latest","v1.1.0-rc1"]}`))
 	case strings.HasPrefix(r.URL.Path, "/v2/oplcloud/one-person-lab-app/manifests/"):
@@ -71,33 +69,6 @@ func newRegistryFixture(t *testing.T) *registryFixture {
 	}
 	fixture.client = client
 	return fixture
-}
-
-func TestListRepositoriesFiltersNamespace(t *testing.T) {
-	fixture := newRegistryFixture(t)
-	repositories, err := fixture.client.ListRepositories(context.Background(), "oplcloud")
-	if err != nil {
-		t.Fatalf("ListRepositories failed: %v", err)
-	}
-	var names []string
-	for _, repository := range repositories {
-		names = append(names, repository.Repository)
-	}
-	if len(names) != 2 || names[0] != "chaokang_agent_ibd" || names[1] != "one-person-lab-app" {
-		t.Fatalf("unexpected repositories: %v", names)
-	}
-	for _, repository := range repositories {
-		if repository.Namespace != "oplcloud" {
-			t.Fatalf("repository carried wrong namespace: %+v", repository)
-		}
-	}
-}
-
-func TestListRepositoriesRejectsForeignNamespace(t *testing.T) {
-	fixture := newRegistryFixture(t)
-	if _, err := fixture.client.ListRepositories(context.Background(), "library"); err == nil {
-		t.Fatal("foreign namespace must not reach the registry")
-	}
 }
 
 func TestListTagsReturnsOrderedTags(t *testing.T) {
@@ -149,7 +120,7 @@ func TestAnonymousAccessDeniedSurfacesAuth(t *testing.T) {
 	fixture := newRegistryFixture(t)
 	fixture.basicUser, fixture.basicPass = "operator", "secret"
 	fixture.bearerRealm = fixture.server.URL
-	if _, err := fixture.client.ListRepositories(context.Background(), "oplcloud"); err == nil {
+	if _, err := fixture.client.ListTags(context.Background(), "oplcloud", "one-person-lab-app"); err == nil {
 		t.Fatal("unauthenticated request against a credentialed registry must fail")
 	} else {
 		var apiErr *RegistryAPIError
@@ -170,12 +141,12 @@ func TestCredentialAuthNegotiatesToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client construction failed: %v", err)
 	}
-	repositories, err := client.ListRepositories(context.Background(), "oplcloud")
+	tags, err := client.ListTags(context.Background(), "oplcloud", "one-person-lab-app")
 	if err != nil {
-		t.Fatalf("credentialed ListRepositories failed: %v", err)
+		t.Fatalf("credentialed ListTags failed: %v", err)
 	}
-	if len(repositories) != 2 {
-		t.Fatalf("unexpected repositories: %+v", repositories)
+	if len(tags) != 3 {
+		t.Fatalf("unexpected tags: %+v", tags)
 	}
 	if fixture.tokenIssued == 0 {
 		t.Fatal("bearer negotiation never ran")

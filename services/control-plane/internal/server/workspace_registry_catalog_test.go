@@ -21,16 +21,10 @@ const registryRouteTestHost = "registry.test.example"
 // stub, because the route itself is what these tests own: session checks,
 // namespace boundaries and error mapping — not the OCI client.
 type workspaceRegistryStub struct {
-	repositories    []contracts.WorkspaceRegistryRepository
-	repositoriesErr error
-	tags            []contracts.WorkspaceRegistryTag
-	tagsErr         error
-	resolution      contracts.WorkspaceRegistryImageResolution
-	resolutionErr   error
-}
-
-func (stub *workspaceRegistryStub) ListRepositories(_ context.Context, _ string) ([]contracts.WorkspaceRegistryRepository, error) {
-	return stub.repositories, stub.repositoriesErr
+	tags          []contracts.WorkspaceRegistryTag
+	tagsErr       error
+	resolution    contracts.WorkspaceRegistryImageResolution
+	resolutionErr error
 }
 
 func (stub *workspaceRegistryStub) ListTags(_ context.Context, _, _ string) ([]contracts.WorkspaceRegistryTag, error) {
@@ -41,11 +35,21 @@ func (stub *workspaceRegistryStub) ResolveTag(_ context.Context, _, _, _ string)
 	return stub.resolution, stub.resolutionErr
 }
 
+// registryRouteTestRepositories stands in for the repositories an installation
+// declares in OPL_WORKSPACE_REGISTRY_REPOSITORIES.
+var registryRouteTestRepositories = []contracts.WorkspaceRegistryRepository{
+	{Namespace: "oplcloud", Repository: "chaokang_agent_ibd"},
+	{Namespace: "oplcloud", Repository: "one-person-lab-app"},
+}
+
 func newRegistryRouteTestServer(t *testing.T, stub *workspaceRegistryStub) (http.Handler, *httptest.ResponseRecorder) {
 	t.Helper()
-	// The host is the installation registry fact the route reports back to
-	// clients, standing in for the instance-owned OPL_WORKSPACE_REGISTRY_HOST.
-	return newRegistryRouteTestServerWithCatalog(t, &workspaceApplicationRegistryCatalog{client: stub, host: registryRouteTestHost})
+	// The host and the declared set are the installation registry facts the
+	// route reports back to clients, standing in for the instance-owned
+	// OPL_WORKSPACE_REGISTRY_HOST and OPL_WORKSPACE_REGISTRY_REPOSITORIES.
+	return newRegistryRouteTestServerWithCatalog(t, &workspaceApplicationRegistryCatalog{
+		client: stub, host: registryRouteTestHost, declared: registryRouteTestRepositories,
+	})
 }
 
 func newRegistryRouteTestServerWithCatalog(t *testing.T, catalog *workspaceApplicationRegistryCatalog) (http.Handler, *httptest.ResponseRecorder) {
@@ -73,28 +77,40 @@ func TestRegistryCatalogRequiresAdminSession(t *testing.T) {
 	}
 }
 
-func TestRegistryCatalogRepositories(t *testing.T) {
-	stub := &workspaceRegistryStub{repositories: []contracts.WorkspaceRegistryRepository{
-		{Namespace: "oplcloud", Repository: "one-person-lab-app"},
-		{Namespace: "oplcloud", Repository: "chaokang_agent_ibd"},
-	}}
-	server, operator := newRegistryRouteTestServer(t, stub)
-	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories?namespace=oplcloud", "", "r")
+// The catalog reports the installation's declared set. It never enumerates the
+// registry, so a credential that cannot list a catalog cannot make an
+// installation look as though it had approved nothing.
+func TestRegistryCatalogRepositoriesReportsTheDeclaredSet(t *testing.T) {
+	server, operator := newRegistryRouteTestServer(t, &workspaceRegistryStub{})
+	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories", "", "r")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("repositories status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	var response workspaceRegistryCatalogResponse
-	if json.Unmarshal(rec.Body.Bytes(), &response) != nil || response.Host == "" || len(response.Items) != 2 {
+	if json.Unmarshal(rec.Body.Bytes(), &response) != nil || response.Host == "" {
 		t.Fatalf("repositories body=%s", rec.Body.String())
 	}
-	if response.Items[0].Repository != "one-person-lab-app" || response.Items[1].Repository != "chaokang_agent_ibd" {
-		t.Fatalf("items are not namespace-scoped: %+v", response.Items)
+	declared := make([]string, 0, len(response.Items))
+	for _, item := range response.Items {
+		if item.Namespace != "oplcloud" {
+			t.Fatalf("item carried a non-cataloged namespace: %+v", item)
+		}
+		declared = append(declared, item.Repository)
+	}
+	if len(declared) != 2 || declared[0] != "chaokang_agent_ibd" || declared[1] != "one-person-lab-app" {
+		t.Fatalf("declared repositories = %v", declared)
+	}
+
+	// A namespace-scoped request narrows the same declared set instead of
+	// reaching the registry.
+	scoped := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories?namespace=oplcloud", "", "r")
+	if scoped.Code != http.StatusOK || json.Unmarshal(scoped.Body.Bytes(), &response) != nil || len(response.Items) != 2 {
+		t.Fatalf("namespace-scoped repositories status=%d body=%s", scoped.Code, scoped.Body.String())
 	}
 }
 
 func TestRegistryCatalogRejectsForeignNamespace(t *testing.T) {
-	stub := &workspaceRegistryStub{}
-	server, operator := newRegistryRouteTestServer(t, stub)
+	server, operator := newRegistryRouteTestServer(t, &workspaceRegistryStub{})
 	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories?namespace=library", "", "r")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("foreign namespace status=%d body=%s", rec.Code, rec.Body.String())
@@ -177,16 +193,18 @@ func TestRegistryCatalogResolveInputValidation(t *testing.T) {
 }
 
 func TestRegistryErrorMapping(t *testing.T) {
-	stub := &workspaceRegistryStub{repositoriesErr: &clients.RegistryAPIError{Operation: "catalog", Status: http.StatusUnauthorized, Code: "UNAUTHORIZED"}}
+	// The repositories route reports declared configuration, so registry error
+	// mapping is exercised through the route that does reach the registry.
+	stub := &workspaceRegistryStub{tagsErr: &clients.RegistryAPIError{Operation: "tags", Status: http.StatusUnauthorized, Code: "UNAUTHORIZED"}}
 	server, operator := newRegistryRouteTestServer(t, stub)
-	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories?namespace=oplcloud", "", "r")
+	rec := requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/tags/oplcloud/one-person-lab-app", "", "r")
 	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "workspace_registry_access_denied") {
 		t.Fatalf("401 mapping status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	unreachable := &workspaceRegistryStub{repositoriesErr: &clients.RegistryAPIError{Operation: "catalog", Status: 0, Code: "transport_failure"}}
+	unreachable := &workspaceRegistryStub{tagsErr: &clients.RegistryAPIError{Operation: "tags", Status: 0, Code: "transport_failure"}}
 	server, operator = newRegistryRouteTestServer(t, unreachable)
-	rec = requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/repositories?namespace=oplcloud", "", "r")
+	rec = requestWithMutationKeyForTest(t, server, operator, http.MethodGet, "/api/operator/registry/tags/oplcloud/one-person-lab-app", "", "r")
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "workspace_registry_unreachable") {
 		t.Fatalf("transport mapping status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -236,6 +254,7 @@ func TestRegistryCatalogInstallationConfiguration(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", "")
 	t.Setenv("OPL_WORKSPACE_REGISTRY_USERNAME", "")
 	t.Setenv("OPL_WORKSPACE_REGISTRY_PASSWORD", "")
+	t.Setenv("OPL_WORKSPACE_REGISTRY_REPOSITORIES", "")
 	catalog, err := workspaceRegistryCatalogFromEnv()
 	if err != nil || catalog != nil {
 		t.Fatalf("absent host: catalog=%v err=%v, want an absent capability", catalog, err)
@@ -246,7 +265,19 @@ func TestRegistryCatalogInstallationConfiguration(t *testing.T) {
 		t.Fatal("invalid host was accepted")
 	}
 
-	t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", registryRouteTestHost)
+	// A configured registry without an approved set is a half-configured
+	// capability: it would report an empty catalog that reads like an
+	// installation which approved nothing. A foreign namespace in the
+	// declaration is refused for the same reason a lookup there is.
+	for _, declared := range []string{"", "   ", "library/nginx", "no-namespace", "oplcloud/Bad@name", ","} {
+		t.Setenv("OPL_WORKSPACE_REGISTRY_HOST", registryRouteTestHost)
+		t.Setenv("OPL_WORKSPACE_REGISTRY_REPOSITORIES", declared)
+		if _, err := workspaceRegistryCatalogFromEnv(); err == nil {
+			t.Fatalf("declared repositories %q were accepted", declared)
+		}
+	}
+
+	t.Setenv("OPL_WORKSPACE_REGISTRY_REPOSITORIES", "oplcloud/one-person-lab-app")
 	t.Setenv("OPL_WORKSPACE_REGISTRY_USERNAME", "user")
 	if _, err := workspaceRegistryCatalogFromEnv(); err == nil {
 		t.Fatal("half-configured credential pair was accepted")
@@ -254,7 +285,10 @@ func TestRegistryCatalogInstallationConfiguration(t *testing.T) {
 
 	t.Setenv("OPL_WORKSPACE_REGISTRY_PASSWORD", "password")
 	catalog, err = workspaceRegistryCatalogFromEnv()
-	if err != nil || catalog == nil || catalog.host != registryRouteTestHost {
+	if err != nil || catalog == nil || catalog.host != registryRouteTestHost || len(catalog.declared) != 1 {
 		t.Fatalf("configured host: catalog=%v err=%v", catalog, err)
+	}
+	if catalog.declared[0].Namespace != "oplcloud" || catalog.declared[0].Repository != "one-person-lab-app" {
+		t.Fatalf("declared repository = %+v", catalog.declared[0])
 	}
 }

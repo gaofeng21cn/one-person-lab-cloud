@@ -149,10 +149,15 @@ implementation and remaining gaps are reported separately in status/roadmap.
 - An executable image is identified as `host/namespace/repository@digest`. A
   module confirms the reference its owner produced; it does not re-derive a
   second reference format from parts.
-- A registry endpoint and its credentials are installation facts. A product has
-  no built-in registry endpoint, and an unconfigured endpoint is an absent
-  capability rather than an anonymous one. Deployment time is bound to the
-  resolved digest and platform, never to a tag.
+- A registry endpoint, its credentials and the repositories approved for
+  deployment are installation facts. A product has no built-in registry
+  endpoint, and an unconfigured endpoint is an absent capability rather than an
+  anonymous one. Deployment time is bound to the resolved digest and platform,
+  never to a tag.
+- Which repositories are approved is declared, never inferred from what a
+  registry happens to list. An installation that configures a registry but
+  declares no approved repository has a misconfigured capability, not an empty
+  one, and fails closed.
 - A Workspace binding to an application gets its own browser origin, derived
   from the binding identity rather than allocated. A compatible update keeps it;
   an unrelated application does not inherit it, and a superseded origin is

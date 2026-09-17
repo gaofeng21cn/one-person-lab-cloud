@@ -75,7 +75,17 @@ that moved.
 The registry endpoint and its credentials are installation facts. Cloud has no
 default registry host, and an installation that configures none has no image
 selection capability rather than an anonymous one; its routes answer an explicit
-unconfigured result. The instance owns the endpoint and the Secret material; it
+unconfigured result.
+
+The repositories an installation approves for deployment are also an
+installation fact, and they are declared rather than discovered. A registry's
+catalog endpoint cannot answer the question: the same credential that reads a
+repository's tags can return an empty catalog, and an empty catalog is
+indistinguishable from an installation that approved nothing. Declaring the set
+is also the narrower statement, and it keeps the approval decision with the
+installation instead of with whatever the registry happens to list. A configured
+registry that declares no approved repository fails startup rather than
+reporting an empty catalog. The instance owns the endpoint and the Secret material; it
 injects browse credentials to Control Plane and keeps the node pull credential
 in the runtime environment. The cataloged namespace boundary stays a server-side
 admission rule, so configuring a host never widens which namespaces may be
