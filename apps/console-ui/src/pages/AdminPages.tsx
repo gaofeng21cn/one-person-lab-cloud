@@ -241,13 +241,22 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
     { label: "Ledger 计费复核", source: overview.reconciliation },
     { label: "系统健康", source: overview.health }
   ] : [];
+  const accountsTotal = overview?.accounts.available ? overview.accounts.data.total : null;
+  const accountsActive = overview?.accounts.available ? overview.accounts.data.active : null;
+  const accountsDisabled = overview?.accounts.available ? overview.accounts.data.disabled : null;
+  const healthOk = health.label === "正常";
+  const attentionItems = [
+    reconciliationCount && reconciliationCount > 0 ? { key: "reconciliation", tone: "warning", title: `${formatCount(reconciliationCount)} 个项目等待计费复核`, description: "到计费复核处理开通结案与退款确认。", actionLabel: "去复核", path: "/admin/billing" } : null,
+    !healthOk ? { key: "health", tone: "danger", title: `系统健康：${health.label}`, description: "五个服务域按最差真实状态汇总。", actionLabel: "看详情", path: "/admin/system" } : null,
+    rows.some(({ source }) => source.status === "unavailable") ? { key: "sources", tone: "warning", title: "部分权威来源暂不可用", description: "相关值未显示为零，避免误读。", actionLabel: "", path: "" } : null
+  ].filter(Boolean) as Array<{ key: string; tone: "warning" | "danger"; title: string; description: string; actionLabel: string; path: string }>;
 
   return (
     <section className="admin-dashboard" data-slide="A-OV-01 A-OV-02">
       <section className="account-band">
         <div className="account-band-copy"><h2>运营总览</h2></div>
         <div className="band-metrics operator-metrics">
-          <Metric label="计费账户" note={overview?.accounts.available ? `正常 ${formatCount(overview.accounts.data.active)} · 停用 ${formatCount(overview.accounts.data.disabled)}` : "来源暂不可用"} value={overview?.accounts.available ? formatCount(overview.accounts.data.total) : "暂不可用"} />
+          <Metric label="计费账户" note={accountsTotal === null ? "来源暂不可用" : `正常 ${formatCount(accountsActive ?? 0)} · 停用 ${formatCount(accountsDisabled ?? 0)}`} value={accountsTotal === null ? "暂不可用" : formatCount(accountsTotal)} />
           <Metric label="Workspace" note="Control Plane" value={overview?.workspaces.available ? formatCount(overview.workspaces.data.total) : "暂不可用"} />
           <Metric label="资源" note="Fabric 聚合" value={overview?.resources.available ? formatCount(overview.resources.data.total) : "暂不可用"} />
           <Metric label="待复核" note="Ledger / Control Plane" value={reconciliationCount === null ? "暂不可用" : formatCount(reconciliationCount)} />
@@ -261,15 +270,18 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
               <article><WalletCards aria-hidden size={22} /><span>汇总余额<strong>{data.wallet.available ? formatUsdMicros(data.wallet.data.usdMicros) : "暂不可用"}</strong><small>OPL 账户 · Gateway 权威余额</small>{data.wallet.status === "unavailable" ? <small>{observationReason(data.wallet.reasonCode)}</small> : null}</span></article>
               <article><Server aria-hidden size={22} /><span>Key 总数<strong>{data.keys.available ? formatCount(data.keys.data.total) : "暂不可用"}</strong><small>OPL 账户 · Gateway Key 汇总</small>{data.keys.status === "unavailable" ? <small>{observationReason(data.keys.reasonCode)}</small> : null}</span></article>
               <article><CircleDollarSign aria-hidden size={22} /><span>累计 API 实际费用<strong>{data.usage.available ? formatUsdMicros(data.usage.data.totalActualCostUsdMicros) : "暂不可用"}</strong><small>OPL 账户 · {data.usage.available ? `今日 ${formatUsdMicros(data.usage.data.todayActualCostUsdMicros)}` : data.usage.status === "unavailable" ? observationReason(data.usage.reasonCode) : "暂不可用"}</small></span></article>
-              <article><Activity aria-hidden size={22} /><span>总体健康状态<strong>{health.label}</strong><small>五个服务域的最差真实状态</small></span></article>
+              <article className={healthOk ? "metric-ok" : "metric-warn"}><Activity aria-hidden size={22} /><span>总体健康<strong>{health.label}</strong><small>五个服务域的最差真实状态</small></span><span className="metric-gauge" aria-hidden="true"><span className={`metric-gauge__fill ${healthOk ? "is-ok" : "is-warn"}`} style={{ width: healthOk ? "100%" : "38%" }} /></span></article>
             </section>
 
             <section className="panel">
               <div className="panel-title"><div><h2>注意事项</h2><span>按复核、健康和来源状态排序</span></div>{attentionPath ? <Button color="primary" onClick={() => controller.navigate(attentionPath)} size="sm">进入处理</Button> : null}</div>
-              {reconciliationCount && reconciliationCount > 0 ? <div className="inline-notice"><span>{formatCount(reconciliationCount)} 个项目等待计费复核。</span><Button onClick={() => controller.navigate("/admin/billing")} size="sm" variant="ghost">查看</Button></div> : null}
-              {health.label !== "正常" ? <div className="inline-notice"><span>系统健康状态：{health.label}。</span><Button onClick={() => controller.navigate("/admin/system")} size="sm" variant="ghost">查看</Button></div> : null}
-              {rows.some(({ source }) => source.status === "unavailable") ? <div className="inline-notice"><span>存在权威来源暂不可用，相关值未显示为零。</span></div> : null}
-              {!attentionPath && !rows.some(({ source }) => source.status === "unavailable") ? <div className="empty-panel">当前没有待处理事项。</div> : null}
+              {attentionItems.length ? <div className="attention-list">{attentionItems.map((item) => (
+                <div className={`attention-card attention-card--${item.tone}`} key={item.key}>
+                  <span className="attention-card__dot" aria-hidden="true" />
+                  <div className="attention-card__body"><strong>{item.title}</strong><small>{item.description}</small></div>
+                  {item.actionLabel && item.path ? <Button onClick={() => controller.navigate(item.path)} size="sm" variant="outline">{item.actionLabel}</Button> : null}
+                </div>
+              ))}</div> : <div className="empty-panel">当前没有待处理事项。</div>}
             </section>
 
             <section className="panel">
@@ -751,9 +763,22 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
     <section className="panel" data-slide="A-REC-01 A-REC-02">
       <div className="panel-title"><div><h2>计费复核</h2></div><span>服务端队列</span></div>
       <SourceState empty={reviews.length === 0} emptyTitle="暂无待复核项目" error={controller.sources.operatorReconciliation.error} loading={controller.sources.operatorReconciliation.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.operatorReconciliation.value} unavailableTitle="复核数据暂不可用">
-        {(data) => <div className="table-wrap"><table><thead><tr><th>Account</th><th>资源类型</th><th>状态</th><th>billing operation</th><th>phase</th><th>errorCode</th><th>operation reference</th><th>Receipt reference</th><th>allowedActions</th><th>操作</th></tr></thead><tbody>{data.items.map((review) => {
-          return <tr key={review.id}><td>{review.accountId || "暂不可用"}</td><td>{review.resourceType}</td><td><Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge></td><td>{review.billingOperationId || "暂不可用"}</td><td>{review.phase || "暂不可用"}</td><td>{review.errorCode || "暂不可用"}</td><td>{review.operationRef || "暂不可用"}</td><td>{review.receiptRef || "暂不可用"}</td><td>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</td><td><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></td></tr>;
-        })}</tbody></table></div>}
+        {(data) => <div className="review-list">{data.items.map((review) => {
+          return <article className="review-card" key={review.id}>
+            <header className="review-card__head">
+              <div className="review-card__identity"><strong>{review.accountId || "账户暂不可用"}</strong><small>{review.resourceType} · {review.billingOperationId || "billing operation 暂不可用"}</small></div>
+              <Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge>
+            </header>
+            <dl className="review-card__facts">
+              <div><dt>phase</dt><dd><code>{review.phase || "暂不可用"}</code></dd></div>
+              <div><dt>errorCode</dt><dd><code>{review.errorCode || "—"}</code></dd></div>
+              <div><dt>allowedActions</dt><dd>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</dd></div>
+              <div><dt>operation reference</dt><dd><code>{review.operationRef || "暂不可用"}</code></dd></div>
+              <div><dt>Receipt reference</dt><dd><code>{review.receiptRef || "暂不可用"}</code></dd></div>
+            </dl>
+            <footer className="review-card__actions"><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></footer>
+          </article>;
+        })}</div>}
       </SourceState>
       <ReviewModal controller={controller} intent={recoveryIntent} onClose={() => setSelectedReview(null)} review={selectedReview} />
     </section>
