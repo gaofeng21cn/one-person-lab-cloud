@@ -549,12 +549,12 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
       kind: form.kind,
       amountUsd: form.amountUsd.trim(),
       reason: form.reason.trim(),
-      confirmationAccountId: form.confirmationAccountId.trim(),
+      confirmationAccountId: account.accountId,
       ...(form.kind === "business_refund" && form.relatedOperationId?.trim() ? { relatedOperationId: form.relatedOperationId.trim() } : {})
     };
     void controller.submitWalletAdjustment(account.accountId, input);
   };
-  const valid = Boolean(account && form.confirmationAccountId.trim() === account.accountId && form.amountUsd.trim() && form.reason.trim() && (form.kind !== "business_refund" || form.relatedOperationId?.trim()));
+  const valid = Boolean(account && form.amountUsd.trim() && form.reason.trim() && (form.kind !== "business_refund" || form.relatedOperationId?.trim()));
   return (
     <Modal
       className="modal wallet-adjustment-modal"
@@ -567,13 +567,9 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
       {account ? (
         <div data-slide="A-ACC-03">
           {controller.walletAdjustmentOperation ? null : <>
-            <div className={`wallet-target-card ${form.confirmationAccountId.trim() === account.accountId ? "is-confirmed" : ""}`}>
+            <div className="wallet-target-card">
               <div className="wallet-target-card__id"><small>目标账户</small><code>{account.accountId}</code></div>
               <div className="wallet-target-card__balance"><AccountFact source={account.wallet}>{(wallet) => <><small>当前余额</small><strong>{formatUsdMicros(wallet.usdMicros)}</strong></>}</AccountFact></div>
-              <label className="wallet-target-card__confirm">
-                <input checked={form.confirmationAccountId.trim() === account.accountId} onChange={(event) => updateForm("confirmationAccountId", event.currentTarget.checked ? account.accountId : "")} type="checkbox" />
-                <span>确认操作此账户</span>
-              </label>
             </div>
             <form id="wallet-adjustment-form" onSubmit={submit}>
               <div className="wallet-kind-picker">
@@ -585,7 +581,6 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
               </div>
               <Field label="业务原因" maxLength={200} multiline onChange={(event) => updateForm("reason", event.currentTarget.value)} required rows={3} value={form.reason} />
               {form.kind === "business_refund" ? <Field label="关联 operation ID" onChange={(event) => updateForm("relatedOperationId", event.currentTarget.value)} required value={form.relatedOperationId || ""} /> : null}
-              <Field autoFocus description="点击上方「确认操作此账户」可自动填入；也可手动输入完整账户 ID。" label="再次确认 Account ID" onChange={(event) => updateForm("confirmationAccountId", event.currentTarget.value)} required value={form.confirmationAccountId} />
             </form>
           </>}
           <WalletOperationReadback controller={controller} />

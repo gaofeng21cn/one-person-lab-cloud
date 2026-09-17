@@ -1165,7 +1165,6 @@ async function exerciseWalletAdjustment(page, state, screenshotDir, viewportName
     : page.locator(".operator-account-mobile-card:visible")).filter({ hasText: "pilot@example.com" });
   await accountSurface.getByRole("button", { name: "余额操作" }).click();
   const dialog = page.getByRole("dialog", { name: "余额操作" });
-  await dialog.getByLabel("再次确认 Account ID").pressSequentially("acct-1");
   await dialog.getByLabel("金额（USD）").pressSequentially("5");
   await dialog.getByLabel("业务原因").pressSequentially("browser retry");
   await assertNoViewportOverflow(page);
