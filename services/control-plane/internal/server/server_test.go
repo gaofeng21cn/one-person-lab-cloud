@@ -28,6 +28,8 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("OPL_DEPLOYMENT_MODE", "platform_owned")
 	_ = os.Setenv("OPL_FABRIC_PROVIDER", "local-docker")
 	_ = os.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.medopl.cn")
+	_ = os.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.medopl.cn")
+	_ = os.Setenv("OPL_PUBLIC_URL", "https://console.medopl.cn")
 	if os.Getenv("OPL_WORKSPACE_IMAGE") == "" {
 		_ = os.Setenv("OPL_WORKSPACE_IMAGE", "registry.example/opl/workspace@sha256:"+strings.Repeat("f", 64))
 	}
@@ -35,7 +37,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestDeploymentProfileRequiresExplicitInstallationInputs(t *testing.T) {
-	for _, key := range []string{"OPL_DEPLOYMENT_MODE", "OPL_FABRIC_PROVIDER", "OPL_WORKSPACE_DOMAIN"} {
+	for _, key := range []string{"OPL_DEPLOYMENT_MODE", "OPL_FABRIC_PROVIDER", "OPL_WORKSPACE_DOMAIN", "OPL_PUBLIC_URL"} {
 		t.Run(key, func(t *testing.T) {
 			t.Setenv(key, "")
 			if _, err := deploymentProfileFromEnv(); err == nil {

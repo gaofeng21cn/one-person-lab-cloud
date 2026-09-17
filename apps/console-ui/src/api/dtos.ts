@@ -111,10 +111,17 @@ export interface WorkspaceListData {
 
 export type PlanId = "basic" | "pro";
 
+// WorkspaceProvisioningMode is the Control Plane's provisioning shape for one
+// Launch. Console always opens resources only: compute, storage and attachment
+// are delivered without installing an application. The retained full mode
+// belongs to the operator qualification tools, not to this customer request.
+export type WorkspaceProvisioningMode = "full" | "resource_only";
+
 export interface WorkspaceLaunchRequest {
   name: string;
   packageId: PlanId;
   autoRenew: boolean;
+  provisioningMode: WorkspaceProvisioningMode;
 }
 
 export interface WorkspaceLaunchResponse {

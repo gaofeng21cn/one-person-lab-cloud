@@ -36,6 +36,9 @@ func deploymentProfileFromEnv() (deploymentProfile, error) {
 		if workspaceDomain() == "" {
 			return deploymentProfile{}, errors.New("OPL_WORKSPACE_DOMAIN is required")
 		}
+		if _, ok := workspacePublicURL(); !ok {
+			return deploymentProfile{}, errors.New("OPL_PUBLIC_URL is required and must be an http or https URL")
+		}
 		provider := fabricProvider(strings.TrimSpace(os.Getenv("OPL_FABRIC_PROVIDER")))
 		if provider == "" {
 			return deploymentProfile{}, errors.New("OPL_FABRIC_PROVIDER is required")

@@ -471,6 +471,79 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 				configuration.Files = requestedFiles
 			}
 		}
+		// An operator may describe the image and its run requirements in this one
+		// command instead of pre-registering the revision in a separate business
+		// step. The revision snapshot keeps its single owner: this branch writes
+		// the same admitted-revision row the registration route writes, and an
+		// already admitted identity with different content stays a conflict.
+		if rawRevision, supplied := input["revision"]; supplied {
+			encoded, err := json.Marshal(rawRevision)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.DisallowUnknownFields()
+			var revision contracts.WorkspaceApplicationRevision
+			if err := decoder.Decode(&revision); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
+			if revision.ApplicationID != applicationID || revision.Version != targetRevision {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
+			if err := contracts.ValidateWorkspaceApplicationRevision(revision); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
+			user, ok := app.sessionUserContext(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "not_authenticated")
+				return
+			}
+			if _, _, err := app.admitWorkspaceApplicationRevision(r.Context(), revision, stringValue(user["id"])); err != nil {
+				// Different content under an admitted identity is a conflict; the
+				// stored revision is never rewritten.
+				writeError(w, http.StatusConflict, err.Error())
+				return
+			}
+			// Admitting the revision is what lets the deployment resolve it below;
+			// re-reading keeps that resolution on the admitted payload rather than
+			// on the request body.
+			admittedRow, admittedNow, err := app.tables.AdmittedApplicationRevision(r.Context(), applicationID, targetRevision)
+			if err != nil || !admittedNow {
+				writeError(w, http.StatusInternalServerError, "state_read_failed")
+				return
+			}
+			admittedRevision, valid := decodeApplicationRevisionPayload(stringValue(admittedRow["payload"]))
+			if !valid {
+				writeError(w, http.StatusConflict, "workspace_application_revision_invalid")
+				return
+			}
+			if contracts.WorkspaceApplicationRequiresPlatformCredentials(admittedRevision) {
+				if len(requestedBindings) > 0 {
+					writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
+					return
+				}
+				requestedEnvironment := configuration.Environment
+				requestedFiles := configuration.Files
+				var prepErr error
+				configuration, secretBindings, workspaceAPIKeyID, prepErr = app.workspaceOPLApplicationConfiguration(r.Context(), service, workspaceID, applicationID)
+				if prepErr != nil {
+					writeError(w, http.StatusConflict, prepErr.Error())
+					return
+				}
+				for name, value := range requestedEnvironment {
+					if owned, exists := configuration.Environment[name]; exists && owned != value {
+						writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
+						return
+					}
+					configuration.Environment[name] = value
+				}
+				configuration.Files = requestedFiles
+			}
+		}
 		intent, err := app.createWorkspaceApplicationDeploymentIntent(
 			r.Context(), workspaceID, key, applicationID, targetRevision, configuration, secretBindings, workspaceAPIKeyID, "", clientConfigurationDigest,
 		)

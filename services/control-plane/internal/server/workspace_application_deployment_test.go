@@ -103,6 +103,82 @@ func TestApplicationDeploymentIntentHTTP(t *testing.T) {
 	}
 }
 
+// An operator can describe the image and its run requirements in the deployment
+// command itself. The revision snapshot keeps its single owner: the command
+// writes the same admitted-revision row the registration route writes, so no
+// second authority and no competing state appear, and the deployment still
+// resolves the admitted payload rather than the request body.
+func TestApplicationDeploymentAcceptsInlineRevision(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	operator := operatorSessionForTest(t, fixture.server)
+
+	digest := "sha256:" + strings.Repeat("b", 64)
+	revision := map[string]any{
+		"schemaVersion": 1, "applicationId": "inline-app", "version": "2.0.0", "platform": "linux/amd64",
+		"image":     "repo.example/apps/inline@" + digest,
+		"ports":     []any{map[string]any{"name": "http", "port": 8080, "protocol": "TCP"}},
+		"entryPort": "http", "exposurePolicy": "application",
+	}
+	body, err := json.Marshal(map[string]any{
+		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "2.0.0",
+		"revision": revision, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(body), "deploy-inline")
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("inline revision deployment status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The command admitted the revision into the single revision owner.
+	admitted, found, err := fixture.store.AdmittedApplicationRevision(context.Background(), "inline-app", "2.0.0")
+	if err != nil || !found {
+		t.Fatalf("revision not admitted: found=%v err=%v", found, err)
+	}
+	payload, ok := decodeApplicationRevisionPayload(stringValue(admitted["payload"]))
+	if !ok || payload.Image != revision["image"] {
+		t.Fatalf("admitted payload=%+v", payload)
+	}
+
+	// Different content under the same admitted identity is a conflict and never
+	// rewrites the stored revision.
+	conflicting := map[string]any{}
+	for key, value := range revision {
+		conflicting[key] = value
+	}
+	conflicting["image"] = "repo.example/apps/inline@sha256:" + strings.Repeat("c", 64)
+	conflictBody, err := json.Marshal(map[string]any{
+		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "2.0.0",
+		"revision": conflicting, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflict := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(conflictBody), "deploy-inline-conflict")
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("conflicting inline revision status=%d body=%s", conflict.Code, conflict.Body.String())
+	}
+	stored, _, err := fixture.store.AdmittedApplicationRevision(context.Background(), "inline-app", "2.0.0")
+	if err != nil || stringValue(stored["payload"]) != stringValue(admitted["payload"]) {
+		t.Fatalf("stored revision was rewritten: %s", stringValue(stored["payload"]))
+	}
+
+	// The request envelope must describe one identity; a mismatch is rejected.
+	mismatched, err := json.Marshal(map[string]any{
+		"workspaceId": "ws-alpha", "applicationId": "inline-app", "targetRevision": "3.0.0",
+		"revision": revision, "configuration": map[string]any{"environment": map[string]any{"CONFIG": "value"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected := requestWithMutationKeyForTest(t, fixture.server, operator, http.MethodPost, "/api/operator/application-deployments", string(mismatched), "deploy-inline-mismatch")
+	if rejected.Code != http.StatusBadRequest || !strings.Contains(rejected.Body.String(), "invalid_application_revision") {
+		t.Fatalf("mismatched identity status=%d body=%s", rejected.Code, rejected.Body.String())
+	}
+}
+
 func TestApplicationDeploymentIntentPostgres(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
 	admin := openControlPlaneTestPostgres(t)

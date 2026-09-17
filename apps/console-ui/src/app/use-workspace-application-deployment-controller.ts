@@ -235,8 +235,13 @@ export function useWorkspaceApplicationDeploymentController({
     try {
       const resolution = await resolveOperatorRegistryImage(namespace, repository, tag, csrfToken, `registry-resolve:${namespace}/${repository}@${tag}`);
       if (generation !== requestGeneration.current || registryRequest !== registryGeneration.current || !requestStillCurrent()) return false;
-      if (resolution.namespace !== namespace || resolution.repository !== repository || resolution.tag !== tag
-        || !/^sha256:[0-9a-f]{64}$/.test(resolution.digest) || resolution.reference !== `${repository}@${resolution.digest}`) {
+      // The registry reference is Control Plane's fact: it is
+      // host/namespace/repository@digest. Confirming it means comparing the
+      // whole returned reference against the identity Control Plane reported,
+      // never against a locally assembled repository@digest.
+      if (resolution.host === "" || resolution.namespace !== namespace || resolution.repository !== repository || resolution.tag !== tag
+        || !/^sha256:[0-9a-f]{64}$/.test(resolution.digest)
+        || resolution.reference !== `${resolution.host}/${resolution.namespace}/${resolution.repository}@${resolution.digest}`) {
         throw new Error("workspace_registry_resolution_unconfirmed");
       }
       setRegistryResolution(resolution);
@@ -333,10 +338,21 @@ export function useWorkspaceApplicationDeploymentController({
     const csrfToken = session.csrfToken;
     setBusy(true);
     try {
+      // The deployment command carries the image description it targets, so an
+      // operator does not have to register the version as a separate step first.
+      // Control Plane admits this revision into its single revision owner inside
+      // the same command; a version that is already admitted identically is an
+      // idempotent replay, and different content under the same identity is
+      // refused by the owner rather than silently overwritten here.
+      const revision = registrationMode === "json"
+        ? parseWorkspaceApplicationRevisionJSON(revisionJSON)
+        : validateWorkspaceApplicationRevisionDraft(draft).ok
+          ? composeWorkspaceApplicationRevision(draft)
+          : null;
       const { configuration, secretBindings } = parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON);
       const result = await createOperatorWorkspaceApplicationDeployment(
         workspaceId, applicationId, targetRevision, configuration, csrfToken,
-        `wsad-${crypto.randomUUID()}`, secretBindings
+        `wsad-${crypto.randomUUID()}`, secretBindings, revision ?? undefined
       );
       if (generation !== requestGeneration.current || workspaceId !== selectedWorkspaceId.current || !requestStillCurrent()) return false;
       if (result.intent.workspaceId !== workspaceId) throw new Error("workspace_application_deployment_identity_mismatch");
@@ -350,7 +366,7 @@ export function useWorkspaceApplicationDeploymentController({
       }
       return false;
     }
-  }, [applicationId, busy, configurationJSON, secretBindingsJSON, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
+  }, [applicationId, busy, configurationJSON, draft, registrationMode, revisionJSON, secretBindingsJSON, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
 
   const validation = validateWorkspaceApplicationRevisionDraft(draft);
   const retry = useCallback(async (targetWorkspaceId: string, operationId: string): Promise<boolean> => {

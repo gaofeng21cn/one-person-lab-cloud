@@ -225,9 +225,18 @@ func TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials(t *t
 	session := tenantOwnerSessionForTest(t, server)
 	response := requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
 	// An entry published through the installation gateway is addressed by the
-	// workspace route, not by a URL an executing provider invented.
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), selected.OperationID) || !strings.Contains(response.Body.String(), workspaceGatewayEntryURL("ws-alpha")) {
+	// binding's own origin: one host per (Workspace, application) pair, which
+	// this server owns and routes. A provider-invented URL is never adopted, and
+	// the retained path-based route is not the customer's entry any more.
+	entryURL, ok := workspaceApplicationOriginURL("ws-alpha", selected.ApplicationID)
+	if !ok {
+		t.Fatal("the binding has no derivable origin")
+	}
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), selected.OperationID) || !strings.Contains(response.Body.String(), entryURL) {
 		t.Fatalf("current runtime status=%d %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), workspaceGatewayEntryURL("ws-alpha")) {
+		t.Fatalf("the retained path-based route is still published as the customer entry: %s", response.Body.String())
 	}
 	credentials := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspaces/ws-alpha/runtime-credentials/reveal", `{}`, "reveal-current")
 	if credentials.Code != http.StatusConflict || strings.Contains(credentials.Body.String(), "test-current-password") {
@@ -239,7 +248,7 @@ func TestApplicationAccessUsesSelectedRuntimeAndSuppressesLegacyCredentials(t *t
 	}
 	fabric.readbackError = true
 	response = requestWithSession(t, server, session, http.MethodGet, "/api/workspaces/ws-alpha/runtime-status", "")
-	if response.Code != http.StatusBadGateway || strings.Contains(response.Body.String(), workspaceGatewayEntryURL("ws-alpha")) {
+	if response.Code != http.StatusBadGateway || strings.Contains(response.Body.String(), entryURL) {
 		t.Fatalf("stale runtime readback=%d %s", response.Code, response.Body.String())
 	}
 }

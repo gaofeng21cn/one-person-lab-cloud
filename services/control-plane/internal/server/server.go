@@ -32,6 +32,13 @@ func (h *controlPlaneHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	// A binding origin belongs entirely to its application, so it is dispatched
+	// before the management route table. Otherwise this server's own routes would
+	// answer on a host that is supposed to serve only the application.
+	if _, _, ok := workspaceApplicationOriginRequest(r); ok {
+		h.app.proxyWorkspaceApplicationOrigin(w, r, h.service)
+		return
+	}
 	if !isWorkspaceRequest(r) && retiredConsoleAPI(r.Method, r.URL.Path) {
 		http.NotFound(w, r)
 		return

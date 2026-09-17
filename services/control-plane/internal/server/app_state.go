@@ -331,7 +331,11 @@ func failedRuntimeOperations(operations []map[string]any) []any {
 // Workspace. The gateway is this server, so the route is this server's own shape
 // rather than a value an executing provider observes.
 func workspaceGatewayEntryURL(workspaceID string) string {
-	return "https://" + workspaceDomain() + "/w/" + workspaceID + "/"
+	scheme := workspaceExternalScheme()
+	if scheme == "" || workspaceDomain() == "" {
+		return ""
+	}
+	return scheme + "://" + workspaceDomain() + "/w/" + workspaceID + "/"
 }
 
 // workspaceServiceTarget names the single in-cluster destination the workspace
@@ -443,6 +447,41 @@ func computePoolsFromFabricCatalog(catalog clients.FabricCatalog) []any {
 
 func workspaceDomain() string {
 	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(os.Getenv("OPL_WORKSPACE_DOMAIN")), "https://"), "http://"), "/")
+}
+
+// workspacePublicURLEnv is the installation's own public address. The instance
+// already states it for the Console origin, and it is the same ingress and the
+// same TLS terminator that serves Workspace entries, so its scheme is also the
+// scheme those entries use.
+const workspacePublicURLEnv = "OPL_PUBLIC_URL"
+
+// workspacePublicURL reads the installation's declared public address. It is
+// validated at startup, so a deployment that cannot state its external origin
+// fails before serving anything rather than inventing one.
+func workspacePublicURL() (*url.URL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(os.Getenv(workspacePublicURLEnv)))
+	if err != nil || !validWebOrigin(parsed) {
+		return nil, false
+	}
+	return parsed, true
+}
+
+// workspaceExternalScheme is the scheme a browser uses to reach any Workspace
+// entry: the Workspace host, a binding origin, or the external scheme an
+// application reads from the forwarded headers. The in-cluster hop is plain HTTP
+// behind the instance's TLS terminator, so the request cannot report the
+// external scheme itself and the installation states it once instead.
+//
+// Both the published entry URLs and the forwarded-header contract read it here,
+// so the two cannot disagree. An empty result means the installation did not
+// declare an external origin; callers then publish no address at all instead of
+// one that cannot resolve.
+func workspaceExternalScheme() string {
+	origin, ok := workspacePublicURL()
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(origin.Scheme)
 }
 
 func mustJSON(value any) []byte {

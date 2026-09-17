@@ -15,6 +15,64 @@ proxy or transfer management credentials. The application owns its sessions,
 assets, APIs and streaming behavior; DNS/TLS and real browser qualification are
 Instance obligations. `cloud_private` does not expose an anonymous public URL.
 
+The origin is one hostname per (Workspace, application) pair, derived from the
+binding identity rather than allocated:
+
+```text
+<workspaceId>-<12 hex of stableID("workspace-application-origin", workspaceId, applicationId)>.<OPL_WORKSPACE_APPLICATION_DOMAIN>
+```
+
+`OPL_WORKSPACE_APPLICATION_DOMAIN` is its own installation value, not an
+inference from `OPL_WORKSPACE_DOMAIN`. Which domain the origins sit under decides
+which DNS record and which certificate the installation must hold, so making it
+explicit keeps an installation requirement from hiding behind an inference. An
+installation that publishes no such domain has no application origins, and every
+binding keeps the retained path-based entry.
+
+The origins deliberately sit **one label under the zone** rather than under the
+Workspace host. A public DNS proxy's free edge certificate covers a root domain
+and its first-level subdomains, so a first-level layout needs no origin-side
+certificate at all; a second-level layout would require both a paid edge
+certificate and a purchased certificate on the load balancer. Because the proxy
+terminates TLS for these names, the origins carry no Ingress TLS entry.
+
+`workspaceApplicationOriginHost` and `parseWorkspaceApplicationOriginHost` in
+`services/control-plane/internal/server/workspace_application_origin.go` are the
+pair that owns this shape. Routing reads the Workspace identity out of the name,
+so it needs no allocation table and no second writer. The application part is
+then confirmed against the Workspace's current binding: a name that no longer
+matches belonged to a superseded application and answers `410`
+`workspace_application_origin_retired`, so the previous application's service
+worker or browser storage cannot act on its replacement. A compatible update
+keeps the same application identity and therefore the same origin, which is what
+lets a visitor's session survive an update.
+
+A binding origin belongs entirely to its application. The request is dispatched
+before the management route table, so this server's own routes never answer on
+an application host. Only platform credentials are removed from the forwarded
+request (`opl_session`, `opl_ws_active`, `opl_ws_session_*`, and the `X-OPL-CSRF`
+headers); the application keeps its own `Authorization` header and cookies. On
+the response side the application may set whatever cookies it needs, but a
+`Domain` attribute is removed so a cookie cannot widen onto a sibling binding or
+onto the Console's origin.
+
+The proxy states the external origin itself: `X-Forwarded-Host` from the request
+and `X-Forwarded-Proto` from the installation's TLS fact. A client-supplied value
+is overwritten, because an application that builds absolute redirects or cookie
+domains from these headers must not be steerable by its caller.
+
+The external scheme is read from the installation's own `OPL_PUBLIC_URL`, which
+Control Plane already requires and validates at startup. The in-cluster hop is
+plain HTTP behind the instance's TLS terminator, so a request cannot report the
+external scheme; stating it once means the published entry URLs and the forwarded
+header cannot disagree. An installation without a valid `OPL_PUBLIC_URL` fails
+startup rather than publishing an address that cannot resolve.
+
+An installation whose `OPL_WORKSPACE_DOMAIN` is absent, or a binding whose
+Workspace identity cannot form a DNS label, has no derivable origin. Such a
+binding keeps the retained path-based entry below instead of an address that
+cannot resolve.
+
 Only a declared OPL runtime profile enables OPL password and Gateway controls.
 It uses username `opl`, `/run/secrets/opl_webui_password`,
 `/run/secrets/webui_session_secret` and its declared Gateway Key file. Ordinary

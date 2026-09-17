@@ -236,11 +236,15 @@ the OPL App port, credentials and mounts.
 ### Provisioning And Application Deployment
 
 Resource provisioning and application installation are separate business
-operations. A new Launch purchases and fulfills compute, storage, attachment
-and the declared infrastructure readiness, then establishes the Workspace's
-resource entitlement and purchase Receipt. It can complete with no application
-installed; application health, an application password and an LLM Key are not
-provisioning completion requirements.
+operations. A new customer Launch purchases and fulfills compute, storage,
+attachment and the declared infrastructure readiness, then establishes the
+Workspace's resource entitlement and purchase Receipt. It completes with no
+application installed, and it does not append an installation operation:
+application health, an application password, an application Gateway Key and an
+LLM Key are neither provisioning completion requirements nor part of a customer
+Launch. A customer Launch states its provisioning shape explicitly rather than
+relying on a server default. Retained Launch contracts keep the completion
+obligations recorded in their own operation.
 
 In the initial scope, an authorized administrator selects a target Workspace,
 registry connection, repository and image version, supplies the required
@@ -309,16 +313,28 @@ implemented together.
 OCI registries such as TCR retain the image and, where supported, its versioned
 deployment-description artifact. Data archives use an approved artifact or
 object store. Cloud persists admitted immutable references and installation
-policy, not a second image/package registry. A tag can be a discovery input;
-execution and recovery bind the resolved digest and platform. Upload success
-proves artifact availability, not application readiness. New application revisions
+policy, not a second image/package registry. An executable image is identified
+as `host/namespace/repository@digest`; a bare `repository@digest` is not a
+reference, and no module re-derives the format another owner produced. A tag can
+be a discovery input; execution and recovery bind the resolved digest and
+platform. Upload success proves artifact availability, not application readiness.
+The registry endpoint and its credentials are installation facts: Cloud has no
+default registry host, an installation that configures none has no image
+selection capability rather than an anonymous one, and the instance injects the
+browse credential into Control Plane while the runtime keeps its own pull
+credential. The browsable namespace boundary is server-side admission policy, so
+configuring an endpoint never widens it.
+
+New application revisions
 are registered by an authorized administrator through Control Plane within
 Instance-approved registry and admission policy; they do not require a Cloud
 rebuild, product Release or a new application-specific provider branch. Console's basic input is registry,
 repository and image/tag selection; the selected tag resolves to an immutable
 reference, and required settings are explicitly supplied or taken from a
-publisher's declared description. A simple image does not require a separate
-OPL Package or marketplace publication before use. Selecting one Workspace's
+publisher's declared description. Selection is discovery for one deployment,
+not a global application publication: a simple image does not require a separate
+OPL Package, marketplace publication or prior installation-wide revision
+registration before use. Selecting one Workspace's
 revision does not change the installation default or another Workspace.
 Each Workspace fixes its own desired revision, configuration and stable data
 bindings. Pushing a new TCR tag/digest or changing an installation default never
@@ -380,6 +396,14 @@ external Host/scheme through a trusted proxy boundary, constrain cookie scope,
 and isolate application origins from Console authentication. Existing path-based
 entries require a deliberate compatibility migration, not HTML or cookie-name
 rewriting for each application.
+
+The binding origin is derived from the binding identity rather than allocated,
+so it needs no distribution table and no second writer. Its name carries the
+Workspace identity, which lets routing resolve a request without a lookup, and
+an application component that changes when the Workspace's application changes.
+The Workspace is the unit that can appear in the name: an application identity
+that cannot compose into a hostname, or an installation with no Workspace
+domain, gets the retained path-based entry instead of an unresolvable address.
 
 An application declares configuration and Secret inputs using its own formats.
 Its publisher or authorized configuration owner supplies the exact contents;
