@@ -1,6 +1,7 @@
 import {
   Activity,
   Ban,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -826,20 +827,30 @@ function WorkspaceResourceObservations({ resources }: { resources: OperatorResou
 
 function ResourceRow({ resource }: { resource: OperatorResourceDTO }) {
   return (
-    <tr>
-      <td><SourceValue source={resource.ownerAccount}>{(data) => data.id}</SourceValue></td>
-      <td><SourceValue source={resource.ownerUser}>{(data) => `${data.email} · ${data.id}`}</SourceValue></td>
-      <td><SourceValue source={resource.workspace}>{(data) => data.name || data.id}</SourceValue></td>
-      <td><SourceValue source={resource.resourceType}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.packageOrSpec}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.providerId}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.zone}>{(data) => data}</SourceValue></td>
-      <td><ResourceObservation resource={resource} /></td>
-      <td><SourceValue source={resource.createdAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.expiresAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.lastReadAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.operationRef}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.receiptRef}>{(data) => data}</SourceValue></td>
+    <tr className="resource-detail-row">
+      <td colSpan={13}>
+        <div className="resource-detail-card">
+          <div className="resource-detail-card__head">
+            <span className="resource-detail-card__identity">
+              <SourceValue source={resource.workspace}>{(data) => <strong>{data.name || data.id}</strong>}</SourceValue>
+              <small><SourceValue source={resource.ownerUser}>{(data) => data.email}</SourceValue> · <SourceValue source={resource.ownerAccount}>{(data) => data.id}</SourceValue></small>
+            </span>
+            <span className="resource-detail-card__type">
+              <SourceValue source={resource.resourceType}>{(data) => ({ compute: "计算资源", storage: "存储", attachment: "挂载", runtime: "运行环境" } as Record<string, string>)[data] || data}</SourceValue>
+              <SourceValue source={resource.packageOrSpec}>{(data) => data}</SourceValue>
+            </span>
+            <ResourceObservation resource={resource} showReadTime />
+          </div>
+          <dl className="resource-detail-card__facts">
+            <div><dt>provider ID</dt><dd><SourceValue source={resource.providerId}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>可用区</dt><dd><SourceValue source={resource.zone}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>创建时间</dt><dd><SourceValue source={resource.createdAt}>{(data) => formatDate(data, true)}</SourceValue></dd></div>
+            <div><dt>到期时间</dt><dd><SourceValue source={resource.expiresAt}>{(data) => formatDate(data, true)}</SourceValue></dd></div>
+            <div><dt>操作引用</dt><dd><SourceValue source={resource.operationRef}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>回执引用</dt><dd><SourceValue source={resource.receiptRef}>{(data) => data}</SourceValue></dd></div>
+          </dl>
+        </div>
+      </td>
     </tr>
   );
 }
@@ -890,7 +901,7 @@ function ResourceDetail({ controller, release, replacement, deployment }: { cont
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
           {detail.resources.length ? <>
-            <div className="table-wrap operator-resource-detail-table"><table className="ops-table"><thead><tr><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
+            <div className="table-wrap operator-resource-detail-table"><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
             <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
           </> : <div className="empty-panel">暂无资源</div>}
         </>}
@@ -1124,7 +1135,9 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
   const [registryNamespace, setRegistryNamespace] = useState("oplcloud");
   const [registryRepository, setRegistryRepository] = useState("");
   const [registryTag, setRegistryTag] = useState("");
-  return <section className="panel"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
+  return <section className="panel panel-disclosure"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
+    <details className="application-registration-details" open>
+      <summary><span>收起 / 展开登记表单：从镜像仓库选择版本、填写运行要求并提交准入</span><ChevronDown aria-hidden size={16} className="application-registration-details__chevron" /></summary>
     <div className="application-form-section"><h3>从镜像仓库选择</h3>
       <div className="application-form-grid">
         <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" disabled={deployment.registryBusy} value={registryNamespace} onChange={(event) => { setRegistryNamespace(event.target.value); setRegistryRepository(""); setRegistryTag(""); deployment.resetRegistrySelection("namespace"); }} />
@@ -1192,6 +1205,7 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
     </div>
     </>}
     <Button busy={deployment.busy} color="primary" disabled={deployment.busy || (deployment.registrationMode === "json" ? Boolean(deployment.revisionJSONError) : !deployment.validation.ok)} onClick={() => void deployment.admitRevision()}>登记应用版本</Button>
+    </details>
   </section>;
 }
 

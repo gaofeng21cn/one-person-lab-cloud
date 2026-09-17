@@ -425,6 +425,167 @@ body .topbar h1 {
   }
 }
 
+/* ---------- 资源状态页：登记表单折叠 ---------- */
+.panel-disclosure .application-registration-details {
+  border-top: 1px solid #eef2f6;
+}
+
+.panel-disclosure .application-registration-details summary {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #0d9488;
+  cursor: pointer;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 680;
+  list-style: none;
+}
+
+.panel-disclosure .application-registration-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-disclosure .application-registration-details summary:focus-visible {
+  outline: 2px solid #0d9488;
+  outline-offset: -2px;
+}
+
+.application-registration-details__chevron {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  transition: transform 160ms ease;
+}
+
+.application-registration-details[open] .application-registration-details__chevron {
+  transform: rotate(180deg);
+}
+
+.panel-disclosure .application-registration-details[open] summary {
+  border-bottom: 1px solid #eef2f6;
+}
+
+.panel-disclosure .application-registration-details > .application-form-section:first-of-type {
+  margin-top: 16px;
+}
+
+/* ---------- 资源详情卡行（保留 table DOM 供测试定位） ---------- */
+.resource-detail-cards {
+  min-width: 0 !important;
+}
+
+.resource-detail-cards .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.resource-detail-cards td {
+  border-bottom: 1px solid #eef2f6;
+  padding: 0;
+}
+
+.resource-detail-cards tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.resource-detail-cards tbody tr {
+  box-shadow: none;
+}
+
+.resource-detail-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px 22px;
+  transition: background-color 150ms ease;
+}
+
+.resource-detail-row:hover .resource-detail-card {
+  background: #f8fbfd;
+}
+
+.resource-detail-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.resource-detail-card__identity {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.resource-detail-card__identity strong {
+  color: #142536;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.resource-detail-card__identity small {
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.resource-detail-card__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.resource-detail-card__type .source-value > strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f766e;
+}
+
+.resource-detail-card__type .source-value--unavailable {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.resource-detail-card__facts {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  border-top: 1px solid #eef2f6;
+  padding-top: 10px;
+}
+
+.resource-detail-card__facts > div {
+  min-width: 0;
+}
+
+.resource-detail-card__facts dt {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.resource-detail-card__facts dd {
+  margin: 3px 0 0;
+  color: #142536;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .resource-detail-card__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ---------- 余额操作浮窗内容卡 ---------- */
 .wallet-target-card {
   border-radius: 12px;
