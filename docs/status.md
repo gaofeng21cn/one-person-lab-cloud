@@ -96,7 +96,8 @@ The owning checks are the CP `workspace_default_application_test.go`,
 `workspace_application_lifecycle_test.go`; the Fabric application lifecycle and
 real Docker integration tests; and Ledger `workspace_application_receipt_test.go`.
 Local logs are retained under
-`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-application-delivery/output/workspace-default-install-replacement-20260913/`.
+`output/workspace-default-install-replacement-20260913/` in the canonical
+checkout.
 These local checks do not establish a Candidate, Product Release, Tencent
 Instance deployment, real OPL App business session, or IBD business availability.
 
@@ -318,7 +319,9 @@ restoration remains application-owned; pre-seeded qualification data is not a
 completed Control Plane restore feature. Tencent rejects the reference's
 currently unsupported init/custom-seccomp/exact-tmpfs requirements. There is no
 new Candidate or Instance deployment claim. Development evidence lives at
-`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-ibd-baseline/output/ibd-baseline-20260915/`.
+`output/ibd-baseline-20260915/` in the canonical checkout. Transient local test
+inputs under that directory's `private/` tree and its case-sensitive scratch
+disk image are not retained.
 
 ### Application Deployment Input Delivery (Local Development)
 
@@ -346,7 +349,7 @@ skips. The source fingerprint was unchanged throughout verification:
 The full log SHA-256 is
 `a52e1317738a22394a035ca8c67c9d4eab72beb4aa4493dec9aaf5995784e4d6`.
 Evidence for the current full regression is recorded under
-`/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud-ibd-baseline/output/product-replacement-20260915/`.
+`output/product-replacement-20260915/` in the canonical checkout.
 The real integrated replacement and Tencent execution requirements remain open.
 The portable Local provider requires Linux 5.14+ ext4/XFS project quota; this
 macOS/Docker Desktop host is not a qualifying storage host. Installation can use
@@ -468,8 +471,8 @@ implementation and target-node evidence. No target Workspace was replaced by
 this source delivery. The final pre-PR full regression passed 316 source/browser tests and
 18 PostgreSQL/Docker packages with zero skips at `2026-09-15T11:21:55.859964+00:00`.
 Its source fingerprint remained `e32b8912b59e31df031354e288ec4f53884d1c19a684854560b1b7e48fe0122e` throughout the run;
-log SHA-256: `f90314be28f02e9d0315a4b8dbf8c6ecc7772bd0cebe14a898bd51c28db5b820`. Evidence is retained in
-`output/pr-delivery-20260915/` of this development worktree.
+log SHA-256: `f90314be28f02e9d0315a4b8dbf8c6ecc7772bd0cebe14a898bd51c28db5b820`.
+Evidence is retained in `output/pr-delivery-20260915/` of the canonical checkout.
 
 ## Evidence Matrix
 
