@@ -280,12 +280,25 @@ stays so historical receipts still validate.
 
 Public verification of the infrastructure layer, without deploying: three
 derived origin addresses resolved, completed a TLS handshake against the edge
-certificate (`medopl.com`, `*.medopl.com`) and answered over HTTPS. The responses
-came from the currently deployed Control Plane, which predates the origin
-dispatch, so an origin host still lands on the Console's static fallback rather
-than on a Workspace's application. Routing an origin to its application is
-therefore **not** yet proven and needs the instance deployment readback; evidence
-is in `output/workspace-oci-stage-2-3-20260917/acceptance-origin.md`.
+certificate (`medopl.com`, `*.medopl.com`) and answered over HTTPS.
+
+The origin dispatch itself is now deployed and read back. Candidate `dc34b4de`
+deployed through the instance workflow with no rollback, and the instance
+receipt is `receipts/2026-09-18-application-origin-deploy-35253804870.json`.
+Public readback after the rollout shows the dispatch is live:
+
+| Request | Before | After |
+| --- | --- | --- |
+| `<workspace>-<12hex>.medopl.com/` | Console static fallback, `200` | `404`, no static fallback |
+| `gateway.medopl.com/` (not an origin shape) | `200` | `200` |
+| `workspace.medopl.com/w/<unknown>/` | `404` | `404` |
+| `cloud.medopl.com/api/healthz` | `200` | `200` |
+
+An origin-shaped host is now resolved and, when no such Workspace exists,
+refused rather than answered by the Console. Routing an origin to a *deployed*
+application still needs a Workspace that has an application deployed, so a real
+browser acceptance of application assets, APIs, cookies and streaming remains an
+instance obligation.
 
 ### Unified Deployment Command With Inline Revision (Local Development)
 
