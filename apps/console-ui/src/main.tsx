@@ -7,6 +7,7 @@ import "./components/ui/apps-sdk.css";
 import "./components/ui/tokens.css";
 import "./components/ui/components.css";
 import "./styles.css";
+import "./components/ui/sub2api-style.css";
 
 const root = document.getElementById("root");
 

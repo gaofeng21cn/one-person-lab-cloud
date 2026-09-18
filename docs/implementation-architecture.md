@@ -597,6 +597,35 @@ charges, refunds and expiry without a charge, and explains that monthly fees and
 API use share the account balance. Ledger's query remains policy-free; Console
 receives a safe customer projection without upstream transaction codes.
 
+The customer overview Workspace net-charge trend is a different fact and has a
+different owner: `/api/billing/workspace-settlements` (read-only) reuses
+`projectBillingSettlements` over the account's retained launch, renewal and
+business-refund operations, confirms each movement against the Sub2API balance
+record that applied the money, and returns one fixed 14-day window with its
+`asOf`, `Asia/Shanghai` calendar and pre-bucketed days. Amounts and days come
+from the owner; Console only renders them. A charged Renewal whose fulfillment
+was cancelled keeps a confirmed debit with only a refund receipt, which is why a
+receipt-based trend cannot report it. The trend also reads the one refund a retired
+Workspace delete recorded on its own operation row instead of a business-refund
+adjustment, since that row keeps the wallet refund code, user, amount and
+confirmation and names the original purchase order. A movement is in flight only
+when the order's own dispatch facts show no fund request was sent yet
+(`chargeAttempted`/`attempts.debit` for launches, `ChargeAttempted` for renewals,
+`AdjustmentAttempted`/`RecoveryAttempted`/recorded upstream failure for
+adjustments, `RefundAttempted` for refunds). A dispatched request whose wallet
+record is missing, unreadable or contradictory is `unconfirmed`, because the
+audit record can be written after the balance update: absence is never proof that
+no money moved, and a pending status is never proof that nothing was sent.
+Movements the owner cannot otherwise confirm from this account's records, wallet
+identity, amount and stored code also stay `unconfirmed` and never enter the
+totals; a movement whose order names another account is reported unresolved
+rather than counted, and a refund that would push an order's confirmed refunds
+past its confirmed charge stays unconfirmed instead of being added. Console
+labels an incomplete window as its confirmed part and never states that no charge
+happened. Receipts, service periods and provider purchase cost are not
+money movement and are excluded. Movements dated before the window are counted
+separately so an empty window is never read as "never happened".
+
 Wallet adjustment persistence owns refund admission and progress. Initial
 creation locks the account and original order in a PostgreSQL transaction,
 validates the original charge/account, and counts all associated completed and

@@ -18,16 +18,16 @@
   --gray-1000: #0c2030;
 
   /* OPL Cloud blue ramp (soft to deep navy). */
-  --blue-25: #eaf3f9;
-  --blue-50: #dceaf2;
-  --blue-100: #bcd9ec;
-  --blue-200: #8fbcdb;
-  --blue-300: #5a98c8;
-  --blue-400: #2f7fb0;
-  --blue-500: #1664a0;
-  --blue-600: #0c3c63;
-  --blue-700: #072a4a;
-  --blue-800: #051e38;
+  --blue-25: #f0fdfa;
+  --blue-50: #ccfbf1;
+  --blue-100: #99f6e4;
+  --blue-200: #5eead4;
+  --blue-300: #2dd4bf;
+  --blue-400: #14b8a6;
+  --blue-500: #0d9488;
+  --blue-600: #115e59;
+  --blue-700: #134e4a;
+  --blue-800: #042f2e;
 
   /* Success uses teal so it stays distinct from primary actions. */
   --green-25: #e8f4ed;
@@ -72,12 +72,12 @@
   --color-border-strong: #b8c6d2;
   --color-ring: rgb(22 100 160 / 24%);
 
-  --color-background-primary-solid: #1664a0;
-  --color-background-primary-solid-hover: #0c3c63;
-  --color-background-primary-soft: #eaf3f9;
-  --color-background-primary-soft-hover: #dceaf2;
-  --color-text-primary: #0c3c63;
-  --color-border-primary: #5a98c8;
+  --color-background-primary-solid: #0d9488;
+  --color-background-primary-solid-hover: #115e59;
+  --color-background-primary-soft: #f0fdfa;
+  --color-background-primary-soft-hover: #ccfbf1;
+  --color-text-primary: #115e59;
+  --color-border-primary: #2dd4bf;
 
   --color-background-success-soft: #e8f4ed;
   --color-background-success-solid: #157b76;
@@ -91,9 +91,9 @@
   --color-background-danger-solid: #cf222e;
   --color-text-danger: #a40e26;
   --color-border-danger: #ff8182;
-  --color-background-info-soft: #eaf3f9;
-  --color-text-info: #0c3c63;
-  --color-border-info: #8fbcdb;
+  --color-background-info-soft: #f0fdfa;
+  --color-text-info: #115e59;
+  --color-border-info: #5eead4;
 
   --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;

@@ -42,6 +42,7 @@ import type {
   WorkspaceRuntimeDTO,
   WorkspaceRenewalReadDTO,
   WorkspaceRuntimeImageReplacementDTO,
+  WorkspaceSettlementTrend,
   WalletAdjustmentRequest
 } from "../api/dtos.ts";
 import type { WorkspaceLaunchRecoveryState } from "./workspace-launch-controller-model.ts";
@@ -241,6 +242,7 @@ export interface BillingController {
   view: BillingView;
   setView: (view: BillingView) => void;
   receipts: RemoteState<SourceEnvelope<BillingReceiptPage>>;
+  trend: RemoteState<SourceEnvelope<WorkspaceSettlementTrend>>;
   detail: RemoteState<SourceEnvelope<BillingReceipt>>;
   selectedReceiptId: string;
   pageNumber: number;

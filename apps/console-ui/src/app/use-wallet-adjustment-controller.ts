@@ -71,13 +71,15 @@ export function useWalletAdjustmentController({
     && scope.current.csrfToken === csrfToken;
 
   const submit = async (accountId: string, input: WalletAdjustmentRequest) => {
-    if (!session || busy || input.confirmationAccountId !== accountId || !input.amountUsd || !input.reason.trim()) return null;
-    if (!window.confirm("请再次确认这笔余额操作：提交后会写入客户账户并保留操作记录。")) return null;
+    if (!session || busy || !input.amountUsd || !input.reason.trim()) return null;
+    // API 合同要求请求体携带 confirmationAccountId；由控制器自动填入，用户无需手抄。
+    const authoritativeInput: WalletAdjustmentRequest = { ...input, confirmationAccountId: accountId };
+    if (!window.confirm(`确认对账户 ${accountId} 执行${({ recharge: "充值", debit: "扣减", business_refund: "业务退款" } as Record<string, string>)[input.kind] || "余额操作"}？提交后会写入客户账户并保留操作记录。`)) return null;
     const requestStillCurrent = currentMutationRequest();
     const userId = session.user.id;
     const csrfToken = session.csrfToken;
     const generation = ++requestGeneration.current;
-    const nextIntent = resolveWalletAdjustmentIntent(intent.current, accountId, input, () => `wallet-adjustment:${crypto.randomUUID()}`);
+    const nextIntent = resolveWalletAdjustmentIntent(intent.current, accountId, authoritativeInput, () => `wallet-adjustment:${crypto.randomUUID()}`);
     intent.current = nextIntent;
     setBusy(true);
     try {

@@ -25,7 +25,10 @@ const (
 	sub2APIWorkspaceKeySearchLimit = 30
 	maxSub2APIUsagePage            = 1_000_000
 	MaxSub2APIBatchIDs             = 50
-	sub2APIUsageTimezone           = "Asia/Shanghai"
+	// Sub2APIUsageTimezone is the calendar the money-moving Sub2API facts are
+	// bucketed by. Gateway Usage windows and the customer Workspace settlement
+	// trend both date facts with it.
+	Sub2APIUsageTimezone = "Asia/Shanghai"
 )
 
 var (
@@ -1662,7 +1665,7 @@ func (c *Sub2APIHTTPClient) Usage(ctx context.Context, query Sub2APIUsageQuery) 
 		"sort_by":    {"created_at"},
 		"sort_order": {"desc"},
 		"start_date": {startDate},
-		"timezone":   {sub2APIUsageTimezone},
+		"timezone":   {Sub2APIUsageTimezone},
 		"user_id":    {strconv.FormatInt(query.UserID, 10)},
 	}
 	path := "/api/v1/admin/usage?" + values.Encode()
@@ -1768,7 +1771,7 @@ func (c *Sub2APIHTTPClient) UsageStats(ctx context.Context, query Sub2APIUsageSt
 	values := url.Values{
 		"end_date":   {endDate},
 		"start_date": {startDate},
-		"timezone":   {sub2APIUsageTimezone},
+		"timezone":   {Sub2APIUsageTimezone},
 		"user_id":    {strconv.FormatInt(query.UserID, 10)},
 	}
 	if query.APIKeyID > 0 {
@@ -2348,7 +2351,7 @@ func floorNonNegativeUSDDecimalMicros(value json.Number) (int64, error) {
 }
 
 func sub2APIUsageDateRange(period string, now time.Time) (string, string, bool) {
-	location := time.FixedZone(sub2APIUsageTimezone, 8*60*60)
+	location := time.FixedZone(Sub2APIUsageTimezone, 8*60*60)
 	today := now.In(location)
 	start := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, location)
 	switch period {

@@ -212,6 +212,41 @@ test("Console read adapters normalize a legacy unavailable envelope with a stabl
   }
 });
 
+test("Workspace settlement trend reads the owner projection once and keeps its days", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  const trend = {
+    timezone: "Asia/Shanghai",
+    asOf: "2026-09-18T09:00:00Z",
+    windowStart: "2026-09-05T00:00:00+08:00",
+    windowEnd: "2026-09-19T00:00:00+08:00",
+    days: [{ date: "2026-09-05", chargedUsdMicros: 52_580_000, refundedUsdMicros: 0, netUsdMicros: 52_580_000, chargeCount: 1, refundCount: 0 }],
+    chargedUsdMicros: 52_580_000,
+    refundedUsdMicros: 0,
+    netUsdMicros: 52_580_000,
+    settledCount: 1,
+    inFlightCount: 0,
+    unconfirmedCount: 0,
+    unattributedCount: 0,
+    outOfWindowCount: 0,
+    complete: true
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ source: "control_plane", status: "available", available: true, fetchedAt: "2026-09-18T09:00:01Z", data: trend }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const envelope = await readApi.getWorkspaceSettlementTrend();
+    assert.deepEqual(calls, ["/api/billing/workspace-settlements"]);
+    assert.equal(envelope.available, true);
+    assert.deepEqual(envelope.available ? envelope.data.days : null, trend.days);
+    assert.equal(envelope.available ? envelope.data.timezone : "", "Asia/Shanghai");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("per-Key usage list and summary send the same canonical period", async () => {
   const requested: string[] = [];
   const originalFetch = globalThis.fetch;
