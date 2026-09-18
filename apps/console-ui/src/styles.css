@@ -1085,6 +1085,7 @@ a {
 
 .operator-runtime-image-facts dd {
   margin: 6px 0 0;
+  overflow-wrap: anywhere;
   color: var(--ink);
   font-size: 12px;
   font-weight: 650;
@@ -1138,9 +1139,8 @@ a {
 }
 
 .operator-account-identity__text strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 长邮箱在窄列里换行显示，而不是被省略号截断（列宽偏好见 .operator-account-table th:first-child） */
+  overflow-wrap: anywhere;
   color: var(--ink);
   font-weight: 650;
 }
@@ -1157,27 +1157,16 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * 列宽按内容自适应（auto 布局）：固定布局 + 百分比列宽会在 1181–1439px 把「Key 累计费用」
+ * 等表头压到内容宽度以下（文字溢出到相邻列），并把末列「查看资源」按钮挤到表格右边界之外。
+ * 内容过窄时由 .table-wrap 横向滚动承载，页面本身不滚动。
+ */
 .operator-workspace-table table {
   width: 100%;
   min-width: 0;
-  table-layout: fixed;
+  table-layout: auto;
 }
-
-@media (max-width: 1180px) {
-  .operator-workspace-table table {
-    min-width: 1240px;
-  }
-}
-
-.operator-workspace-table th:nth-child(1) { width: 17%; }
-.operator-workspace-table th:nth-child(2) { width: 14%; }
-.operator-workspace-table th:nth-child(3) { width: 12%; }
-.operator-workspace-table th:nth-child(4) { width: 10%; }
-.operator-workspace-table th:nth-child(5) { width: 9%; }
-.operator-workspace-table th:nth-child(6) { width: 16%; }
-.operator-workspace-table th:nth-child(7) { width: 7%; }
-.operator-workspace-table th:nth-child(8) { width: 9%; }
-.operator-workspace-table th:nth-child(9) { width: 96px; }
 
 .operator-workspace-table td:last-child .button,
 .operator-workspace-table td:last-child .ui-button {
@@ -1820,7 +1809,10 @@ tbody tr:last-child td {
 .data-list > div {
   display: grid;
   min-height: 46px;
-  grid-template-columns: 260px minmax(0, 1fr);
+  /* 固定 260px 标签列在窄卡片（如 API 密钥详情 296px）里会把数值列压到 0 宽，数值溢出卡片；
+     改为「不超过 260px 且不超过 45%」，同一列表内标签列宽仍然一致、数值列保持对齐。 */
+  grid-template-columns: min(260px, 45%) minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
   border-bottom: 1px solid #d9e3eb;
   padding: 0 18px;
@@ -1831,11 +1823,15 @@ tbody tr:last-child td {
 }
 
 .data-list dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #617487;
 }
 
 .data-list dd {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
   color: #142536;
   font-weight: 620;
 }
@@ -2472,29 +2468,6 @@ tbody tr:last-child td {
     gap: 8px 12px;
   }
 
-  .workspace-list > a {
-    min-height: 112px;
-    gap: 10px 14px;
-    padding: 14px 16px;
-  }
-
-  .workspace-list-name {
-    grid-column: 1 / 3;
-  }
-
-  .workspace-list > a > span:nth-child(4) {
-    grid-column: 1 / 3;
-  }
-
-  .workspace-list > a > .workspace-detail-link {
-    grid-column: 1 / 3;
-  }
-
-  .workspace-list > a > svg {
-    grid-column: 3;
-    grid-row: 1 / 4;
-  }
-
   .workspace-launch-form {
     padding: 18px;
   }
@@ -2803,7 +2776,8 @@ tbody tr:last-child td {
 }
 
 .workspace-identity-panel {
-  padding: 22px;
+  /* 18px 与 .panel-title 的左右内边距一致，标题才能和下方同级面板对齐 */
+  padding: 18px;
 }
 
 .workspace-identity-panel .workspace-heading > div:first-child {
@@ -2855,7 +2829,7 @@ tbody tr:last-child td {
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 22px -22px -22px;
+  margin: 18px -18px -18px;
   border-top: 1px solid var(--line);
 }
 
@@ -2868,7 +2842,7 @@ tbody tr:last-child td {
   border-bottom: 1px solid var(--line);
   border-right: 1px solid var(--line);
   background: var(--surface);
-  padding: 14px 22px;
+  padding: 14px 18px;
 }
 
 .workspace-primary-facts > div:nth-child(-n + 3) {
@@ -3059,7 +3033,8 @@ tbody tr:last-child td {
 
 @media (max-width: 620px) {
   .workspace-identity-panel {
-    padding: 18px 16px;
+    /* 与窄屏 .panel-title 的 14px 左右内边距一致 */
+    padding: 18px 14px;
   }
 
   .workspace-entry-actions,
@@ -3080,7 +3055,7 @@ tbody tr:last-child td {
 
   .workspace-primary-facts {
     grid-template-columns: minmax(0, 1fr);
-    margin: 18px -16px -18px;
+    margin: 18px -14px -18px;
   }
 
   .workspace-primary-facts > div {
@@ -3179,6 +3154,22 @@ tbody tr:last-child td {
   display: grid;
   grid-template-columns: repeat(2, max-content);
   align-items: center;
+}
+
+@media (max-width: 820px) {
+  /*
+   * 621–820px：.panel-title 的左右内边距已经是 14px，身份卡的 18px 会让标题比同级面板多缩进 4px。
+   * 只收左右内边距，堆叠布局仍按 620px 的区块切换。
+   */
+  .workspace-identity-panel {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .workspace-primary-facts {
+    margin-right: -14px;
+    margin-left: -14px;
+  }
 }
 
 @media (max-width: 820px) {
@@ -3592,6 +3583,14 @@ tbody tr:last-child td {
   gap: 16px;
 }
 
+/*
+ * 套餐选项列宽只取决于这一列的可用宽度（侧栏与右侧摘要栏都会改变它），
+ * 因此用容器查询而不是视口断点决定列数。
+ */
+.workspace-launch-config {
+  container-type: inline-size;
+}
+
 .workspace-plan-option {
   display: grid;
   min-width: 0;
@@ -3671,6 +3670,69 @@ tbody tr:last-child td {
 .workspace-plan-option__total strong {
   color: var(--action);
   font-size: 15px;
+}
+
+/*
+ * 7 列（含计算/存储分项）的最小内容宽度是 718px，5 列（隐藏分项金额）是 542px。
+ * 容器更窄时依次降为 5 列、逐项堆叠，避免卡片内容被挤出列外。
+ */
+@container (max-width: 718px) {
+  .workspace-plan-option {
+    grid-template-columns: 24px minmax(90px, .8fr) minmax(112px, 1fr) minmax(132px, 1.15fr) minmax(104px, .9fr);
+  }
+
+  .workspace-plan-option__component {
+    display: none;
+  }
+}
+
+@container (max-width: 542px) {
+  .workspace-plan-option {
+    min-height: 0;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .workspace-plan-option__identity {
+    align-self: center;
+  }
+
+  .workspace-plan-option__fact {
+    min-height: 0;
+    grid-column: 2 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    padding: 10px 0 0;
+  }
+
+  .workspace-plan-option__fact strong {
+    white-space: normal;
+  }
+
+  .workspace-plan-option__fact small {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .workspace-plan-option__total {
+    grid-column: 3;
+    grid-row: 1;
+    display: grid;
+    min-height: 0;
+    align-self: center;
+    border: 0;
+    padding: 0;
+    text-align: right;
+  }
+
+  .workspace-plan-option__total small {
+    grid-row: auto;
+    grid-column: auto;
+  }
 }
 
 .workspace-order-summary {
@@ -3917,14 +3979,6 @@ tbody tr:last-child td {
   .workspace-launch-layout {
     grid-template-columns: minmax(0, 1fr) 280px;
   }
-
-  .workspace-plan-option {
-    grid-template-columns: 24px minmax(90px, .8fr) minmax(112px, 1fr) minmax(132px, 1.15fr) minmax(104px, .9fr);
-  }
-
-  .workspace-plan-option__component {
-    display: none;
-  }
 }
 
 @media (max-width: 1080px) {
@@ -3972,53 +4026,6 @@ tbody tr:last-child td {
   .workspace-launch-config h2,
   .workspace-launch-review h2 {
     font-size: 21px;
-  }
-
-  .workspace-plan-option {
-    min-height: 0;
-    grid-template-columns: 24px minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 12px;
-    padding: 16px;
-  }
-
-  .workspace-plan-option__identity {
-    align-self: center;
-  }
-
-  .workspace-plan-option__fact {
-    min-height: 0;
-    grid-column: 2 / -1;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding: 10px 0 0;
-  }
-
-  .workspace-plan-option__fact strong {
-    white-space: normal;
-  }
-
-  .workspace-plan-option__fact small {
-    grid-row: 1;
-    grid-column: 2;
-  }
-
-  .workspace-plan-option__total {
-    grid-column: 3;
-    grid-row: 1;
-    display: grid;
-    min-height: 0;
-    align-self: center;
-    border: 0;
-    padding: 0;
-    text-align: right;
-  }
-
-  .workspace-plan-option__total small {
-    grid-row: auto;
-    grid-column: auto;
   }
 
   .workspace-order-summary {
@@ -4790,6 +4797,37 @@ select:focus-visible,
     border-left: 0;
   }
 
+  /*
+   * Workspace 列表：六列行布局的最小内容宽度是 790px，容器在视口 1096px 以下就装不下，
+   * 因此把卡片式堆叠布局提前到 1120px（视口 1121px 时容器仍有 815px）。
+   */
+  .workspace-list-head {
+    display: none;
+  }
+
+  .workspace-list > a {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 20px;
+    min-height: 112px;
+    gap: 10px 14px;
+    padding: 14px 16px;
+  }
+
+  .workspace-list-name {
+    grid-column: 1 / 3;
+  }
+
+  .workspace-list > a > span:nth-child(4) {
+    grid-column: 1 / 3;
+  }
+
+  .workspace-list > a > .workspace-detail-link {
+    grid-column: 1 / 3;
+  }
+
+  .workspace-list > a > svg {
+    grid-column: 3;
+    grid-row: 1 / 4;
+  }
 }
 
 @media (max-width: 820px) {
@@ -4920,6 +4958,17 @@ select:focus-visible,
     max-width: 0;
   }
 
+  /* 首列被压窄时，让名称在自身盒内省略，而不是被单元格直接裁断 */
+  .overview-workspace-table td a {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .overview-workspace-table td a strong,
+  .overview-workspace-table td a small {
+    min-width: 0;
+  }
+
   .overview-workspace-table td:first-child a strong,
   .overview-workspace-table td:first-child a small {
     overflow: hidden;
@@ -4931,14 +4980,6 @@ select:focus-visible,
     max-width: 100%;
     overflow-wrap: anywhere;
     white-space: normal;
-  }
-
-  .workspace-list-head {
-    display: none;
-  }
-
-  .workspace-list > a {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 20px;
   }
 
   .launch-confirm-list,
@@ -5103,6 +5144,9 @@ select:focus-visible,
 
 .keys-panel {
   display: grid;
+  /* 单列按 minmax(0,1fr)：否则列宽会被密钥表的最小内容宽度撑开（1200px 视口下 962px），
+     表面板 896px 被裁掉且无法滚动。 */
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
 }
@@ -5153,7 +5197,11 @@ select:focus-visible,
 
 .keys-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) repeat(5, minmax(128px, 0.8fr)) auto;
+  /*
+   * 7 列布局的最小内容宽度要落在 1181–1280px 视口的容器宽度内（内容盒 854–936px）：
+   * 180 + 5×100 + 按钮 80 + 6×12 = 832px；末列用 max-content 保证「查询」按钮不被压缩。
+   */
+  grid-template-columns: minmax(180px, 1.5fr) repeat(5, minmax(100px, 0.8fr)) max-content;
   align-items: end;
   gap: 12px;
   border-bottom: 1px solid var(--line);
@@ -6197,6 +6245,14 @@ select:focus-visible,
   font-size: 12px;
 }
 
+/*
+ * 客户与计费账户表：身份列要容纳头像 + 邮箱。auto 布局下不给偏好宽度时该列只剩 ~136px，
+ * 邮箱被省略号截断（例如 stopped@example.com 只显示到 stopped@exampl…）。
+ */
+.operator-account-table th:first-child {
+  width: 220px;
+}
+
 /* 粘性首列：Workspace/用户名列在横向滚动时保持可见 */
 .operator-workspace-table td:first-child,
 .operator-resource-detail-table td:first-child,
@@ -7177,6 +7233,8 @@ textarea:focus-visible,
 
 .gateway-usage-current-key-row {
   display: flex;
+  /* 允许换行：窄屏下密钥名与「更换 API 密钥」按钮同排会把名称压到 0 宽 */
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -7253,17 +7311,22 @@ textarea:focus-visible,
 }
 
 .gateway-usage-table {
+  /* width:auto：.table-wrap 的 width:100% 叠加左右 18px margin 会让表格容器向右溢出面板块 */
+  width: auto;
   min-width: 0;
-  overflow: hidden;
   margin: 0 18px;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
 
+/*
+ * 列宽按内容自适应：固定布局的百分比列在 821–1180px 会把「操作」列压到按钮宽度以下，
+ * 而容器 overflow:hidden 时被压掉的按钮无法滚动查看。
+ */
 .gateway-usage-table table {
   width: 100%;
   min-width: 0;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .gateway-usage-table th {
@@ -7394,7 +7457,8 @@ textarea:focus-visible,
 
 .usage-request-id-fact dd {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  /* 末列按按钮的实际触摸目标宽度取值（窄屏下按钮 min-width 为 44px） */
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: start;
   gap: 6px;
 }

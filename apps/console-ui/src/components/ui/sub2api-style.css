@@ -30,10 +30,13 @@ td [class*="_Badge_1viyg_"] {
 
 .account-status-stack .ui-badge,
 .account-status-stack [class*="_Badge_1viyg_"] {
-  max-width: 132px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 状态标签文字必须完整可读：132px 的上限会把「不可新购 Workspace」（约 161px）截成省略号。
+     列宽不足时让标签换行（并解除 SDK 的固定 20px 高度，避免第二行溢出标签盒），
+     而不是截断文字或把标签挤出所在列。 */
+  height: auto;
+  min-height: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- 面板/卡片：16px 圆角 + 柔和分层阴影 + 悬停上浮 ---------- */
@@ -185,6 +188,9 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
 }
 
 .panel > .table-wrap {
+  /* width:auto：.table-wrap 基础规则是 width:100%，再叠加左右 margin 会向右溢出面板 16px，
+     表格右边缘因此比面板标题/边框多出一截（手机端面板 overflow:hidden 时还会被裁掉）。 */
+  width: auto;
   border-radius: 12px;
   margin: 14px 16px 16px;
 }
