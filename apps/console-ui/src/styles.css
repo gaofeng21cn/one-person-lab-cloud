@@ -3641,8 +3641,17 @@ tbody tr:last-child td {
 }
 
 .workspace-plan-option__identity strong {
+  /* 名称可收缩省略，避免列宽不足时把同排的「可售」徽章挤变形（不同字体度量下会差几像素） */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink);
   font-size: 15px;
+}
+
+.workspace-plan-option__identity > span > [class*="_Badge_"] {
+  flex: 0 0 auto;
 }
 
 .workspace-plan-option__fact {

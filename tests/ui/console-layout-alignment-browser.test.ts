@@ -69,6 +69,8 @@ function toFindings(report: MeasurementReport): Finding[] {
 
 
 const MEASURE = `(() => {
+  // 2px：吸收不同操作系统字体回退带来的亚像素差异，真实缺陷均远大于此
+  const TOLERANCE = 2;
   const round = (value) => Math.round(value * 100) / 100;
   const describe = (el) => {
     const cls = typeof el.className === "string" ? el.className.split(/\\s+/).filter(Boolean).slice(0, 3).join(".") : "";
@@ -107,12 +109,12 @@ const MEASURE = `(() => {
         overLeft: clips ? 0 : round(contentLeft - childRect.left),
         width: round(childRect.width)
       };
-    }).filter((item) => item.overRight > 1.5 || item.overLeft > 1.5);
+    }).filter((item) => item.overRight > TOLERANCE || item.overLeft > TOLERANCE);
     const range = document.createRange();
     range.selectNodeContents(el);
     const rects = Array.from(range.getClientRects());
     const textOverflow = rects.length ? round(Math.max(...rects.map((item) => item.right)) - contentRight) : 0;
-    if (children.length === 0 && textOverflow <= 1.5 && excess <= 2 && verticalExcess <= 2) continue;
+    if (children.length === 0 && textOverflow <= TOLERANCE && excess <= 2 && verticalExcess <= 2) continue;
     // 单行省略号是既有的、可见的截断设计，不属于“内容跑出盒子”的对齐缺陷
     const ownText = Array.from(el.childNodes).some((node) => node.nodeType === 3 && (node.textContent || "").trim().length > 0);
     if (ownText && style.textOverflow === "ellipsis" && (style.overflowX === "hidden" || style.overflowX === "clip")) continue;
@@ -146,7 +148,7 @@ const MEASURE = `(() => {
         return (childStyle.overflowX === "hidden" || childStyle.overflowX === "clip") && String(child.textContent || "").trim().length > 0;
       });
       const overflow = Math.max(clippedText ? 0 : textWidth - contentWidth, childOverflow);
-      if (overflow <= 1.5) continue;
+      if (overflow <= TOLERANCE) continue;
       rows.push({ cell: cell.tagName + ":" + (cell.cellIndex + 1), header: (cell.textContent || "").trim().slice(0, 20), overflow: round(overflow), contentWidth: round(contentWidth), textWidth: round(textWidth), childOverflow: round(childOverflow) });
     }
     if (rows.length) report.tables.push({ table: describe(table), wrapWidth: round((table.closest(".table-wrap") || table).getBoundingClientRect().width), rows });
