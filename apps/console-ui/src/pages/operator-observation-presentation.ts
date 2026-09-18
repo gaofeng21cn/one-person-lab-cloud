@@ -70,3 +70,49 @@ export function observationReason(reasonCode?: string): string {
   if (!reasonCode) return "";
   return reasonLabels[reasonCode] ? `${reasonLabels[reasonCode]}（${reasonCode}）` : `原因代码：${reasonCode}`;
 }
+
+// Deletion progress labels. The admin Runtime detail shows the same persisted
+// platform facts the customer deletion page does, so a stalled deletion is
+// described by its stage and its stable cause instead of one generic reason.
+const deleteStageLabels: Record<string, string> = {
+  runtime_absent: "正在释放应用运行环境",
+  attachment_absent: "正在解除数据盘挂载",
+  storage_absent: "正在等待数据盘解绑并销毁",
+  compute_absent: "正在等待计算资源删除结果",
+  workspace_absent: "正在确认 Workspace 资源已全部移除",
+  receipt_recorded: "正在记录删除回执"
+};
+
+const deletePageStateLabels: Record<string, string> = {
+  waiting: "等待本阶段证据",
+  retrying: "自动重试中",
+  blocked: "已暂停，需要核对",
+  completed: "已完成"
+};
+
+export function deletionStageLabel(stage?: string): string {
+  if (!stage) return "";
+  return deleteStageLabels[stage] ?? "删除阶段未识别";
+}
+
+export function deletionPageStateLabel(pageState?: string): string {
+  if (!pageState) return "";
+  return deletePageStateLabels[pageState] ?? "删除进度未识别";
+}
+
+// deletionProgressSummary composes the stage, the state and the last readback into
+// one line. It renders only what Control Plane published and never infers that the
+// deletion advanced.
+export function deletionProgressSummary(stage?: string, pageState?: string, lastReadbackAt?: string): string {
+  const label = deletionStageLabel(stage);
+  if (!label) return "";
+  const state = deletionPageStateLabel(pageState);
+  const readback = lastReadbackAt ? `；最近读回 ${formatObservationTime(lastReadbackAt)}` : "";
+  return state ? `${label}（${state}${readback}）` : `${label}${readback}`;
+}
+
+export function formatObservationTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().replace("T", " ").slice(0, 19);
+}

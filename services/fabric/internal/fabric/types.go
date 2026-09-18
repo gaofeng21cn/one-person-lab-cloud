@@ -185,26 +185,38 @@ type ComputeAllocationInput struct {
 // ComputeAllocation is the legacy provider-fact model used by existing Fabric
 // resource routes. New Control Plane launch callers use WorkspaceLaunchResources.
 type ComputeAllocation struct {
-	ID                    string                        `json:"id"`
-	OperationID           string                        `json:"operationId,omitempty"`
-	AccountID             string                        `json:"accountId"`
-	WorkspaceID           string                        `json:"workspaceId"`
-	PackageID             string                        `json:"packageId"`
-	Status                string                        `json:"status"`
-	Provider              string                        `json:"provider"`
-	ProviderResourceID    string                        `json:"providerResourceId,omitempty"`
-	ProviderRequestID     string                        `json:"providerRequestId"`
-	PoolID                string                        `json:"poolId,omitempty"`
-	NodePoolID            string                        `json:"nodePoolId,omitempty"`
-	InstanceID            string                        `json:"instanceId,omitempty"`
-	CVMInstanceID         string                        `json:"cvmInstanceId,omitempty"`
-	NodeName              string                        `json:"nodeName,omitempty"`
-	MachineName           string                        `json:"machineName,omitempty"`
-	PrivateIP             string                        `json:"privateIp,omitempty"`
-	PublicIP              string                        `json:"publicIp,omitempty"`
-	InstanceType          string                        `json:"instanceType,omitempty"`
-	Zone                  string                        `json:"zone,omitempty"`
-	CVMStatus             string                        `json:"cvmStatus,omitempty"`
+	ID                 string `json:"id"`
+	OperationID        string `json:"operationId,omitempty"`
+	AccountID          string `json:"accountId"`
+	WorkspaceID        string `json:"workspaceId"`
+	PackageID          string `json:"packageId"`
+	Status             string `json:"status"`
+	Provider           string `json:"provider"`
+	ProviderResourceID string `json:"providerResourceId,omitempty"`
+	ProviderRequestID  string `json:"providerRequestId"`
+	PoolID             string `json:"poolId,omitempty"`
+	NodePoolID         string `json:"nodePoolId,omitempty"`
+	InstanceID         string `json:"instanceId,omitempty"`
+	CVMInstanceID      string `json:"cvmInstanceId,omitempty"`
+	NodeName           string `json:"nodeName,omitempty"`
+	MachineName        string `json:"machineName,omitempty"`
+	PrivateIP          string `json:"privateIp,omitempty"`
+	PublicIP           string `json:"publicIp,omitempty"`
+	InstanceType       string `json:"instanceType,omitempty"`
+	Zone               string `json:"zone,omitempty"`
+	CVMStatus          string `json:"cvmStatus,omitempty"`
+	TKEStatus          string `json:"tkeStatus,omitempty"`
+	// MachinePresent is the provider-authoritative machine presence fact for a
+	// destroyed Workspace compute. Nil means the provider did not report it.
+	MachinePresent *bool `json:"machinePresent,omitempty"`
+	// DestroyState classifies an unfinished compute deletion. It is set only when
+	// the deletion is retryable, and never for a completed or failed deletion.
+	DestroyState string `json:"destroyState,omitempty"`
+	// ObservedAt is when Fabric read this compute fact back, and ReadbackID names
+	// that readback. Both are set only on a readback result, never on a persisted
+	// resource record.
+	ObservedAt            string                        `json:"observedAt,omitempty"`
+	ReadbackID            string                        `json:"readbackId,omitempty"`
 	ChargeType            string                        `json:"chargeType,omitempty"`
 	RenewFlag             string                        `json:"renewFlag,omitempty"`
 	Deadline              string                        `json:"deadline,omitempty"`
@@ -282,24 +294,39 @@ type StorageVolumeInput struct {
 // StorageVolume remains the legacy provider-fact model. Provider-specific facts
 // are not part of the typed Workspace launch contract.
 type StorageVolume struct {
-	ID                 string            `json:"id"`
-	OperationID        string            `json:"operationId,omitempty"`
-	AccountID          string            `json:"accountId,omitempty"`
-	WorkspaceID        string            `json:"workspaceId"`
-	Status             string            `json:"status"`
-	Provider           string            `json:"provider,omitempty"`
-	ProviderResourceID string            `json:"providerResourceId,omitempty"`
-	ProviderRequestID  string            `json:"providerRequestId"`
-	SizeGB             int               `json:"sizeGb,omitempty"`
-	StorageClass       string            `json:"storageClass,omitempty"`
-	CBSStatus          string            `json:"cbsStatus,omitempty"`
-	DiskType           string            `json:"diskType,omitempty"`
-	RenewFlag          string            `json:"renewFlag,omitempty"`
-	Deadline           string            `json:"deadline,omitempty"`
-	Zone               string            `json:"zone,omitempty"`
-	ProviderData       map[string]string `json:"providerData,omitempty"`
-	CostTags           map[string]string `json:"costTags,omitempty"`
-	CreatedAt          time.Time         `json:"createdAt"`
+	ID                 string `json:"id"`
+	OperationID        string `json:"operationId,omitempty"`
+	AccountID          string `json:"accountId,omitempty"`
+	WorkspaceID        string `json:"workspaceId"`
+	Status             string `json:"status"`
+	Provider           string `json:"provider,omitempty"`
+	ProviderResourceID string `json:"providerResourceId,omitempty"`
+	ProviderRequestID  string `json:"providerRequestId"`
+	SizeGB             int    `json:"sizeGb,omitempty"`
+	StorageClass       string `json:"storageClass,omitempty"`
+	CBSStatus          string `json:"cbsStatus,omitempty"`
+	// ObservedAt is when Fabric read this storage fact back, and ReadbackID names
+	// that readback. Both are set only on a readback result, never on a persisted
+	// resource record, so a caller can record a real observation instead of its own
+	// save time or an unrelated transaction identity.
+	ObservedAt string `json:"observedAt,omitempty"`
+	ReadbackID string `json:"readbackId,omitempty"`
+	// DestroyState is the stable classification of one storage deletion outcome.
+	// It distinguishes "still converging, a later attempt may still terminate" from
+	// "a terminate RPC may already have been sent", so callers never turn a
+	// retryable wait into a terminal failure and never re-send an uncertain
+	// provider mutation. Empty means the deletion completed or was not attempted.
+	DestroyState string `json:"destroyState,omitempty"`
+	// BindingPresent is the provider-authoritative mount binding (PV/PVC)
+	// presence fact. Nil means the provider did not report it.
+	BindingPresent *bool             `json:"bindingPresent,omitempty"`
+	DiskType       string            `json:"diskType,omitempty"`
+	RenewFlag      string            `json:"renewFlag,omitempty"`
+	Deadline       string            `json:"deadline,omitempty"`
+	Zone           string            `json:"zone,omitempty"`
+	ProviderData   map[string]string `json:"providerData,omitempty"`
+	CostTags       map[string]string `json:"costTags,omitempty"`
+	CreatedAt      time.Time         `json:"createdAt"`
 }
 
 type StorageAttachmentInput struct {
@@ -495,6 +522,10 @@ type WorkspaceRuntimeDeleteObservation struct {
 	State         string                           `json:"state"`
 	WorkspaceID   string                           `json:"workspaceId"`
 	Residuals     []WorkspaceRuntimeDeleteResidual `json:"residuals,omitempty"`
+	// ObservedAt is when Fabric read the labelled Runtime objects back.
+	ObservedAt string `json:"observedAt,omitempty"`
+	// ReadbackID identifies this readback observation.
+	ReadbackID string `json:"readbackId,omitempty"`
 }
 
 type ProviderFactInput struct {

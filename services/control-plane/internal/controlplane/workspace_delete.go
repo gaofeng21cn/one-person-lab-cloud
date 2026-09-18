@@ -47,12 +47,22 @@ func (s *Service) DestroyWorkspaceCompute(ctx context.Context, accountID, worksp
 	return client.DestroyComputeAllocation(ctx, accountID, workspaceID, computeID, idempotencyKey)
 }
 
+// ReadWorkspaceDeleteStorage re-reads the Workspace storage owner facts after the
+// deletion so Control Plane never decides a refund from a cached destroy result.
+func (s *Service) ReadWorkspaceDeleteStorage(ctx context.Context, storageID string) (clients.StorageVolume, error) {
+	client, err := s.workspaceDeleteFabric()
+	if err != nil {
+		return clients.StorageVolume{}, err
+	}
+	return client.ReadStorageVolume(ctx, storageID)
+}
+
 func (s *Service) WorkspaceDeleteComputeStatus(ctx context.Context, computeID string) (clients.ComputeAllocation, error) {
 	client, err := s.workspaceDeleteFabric()
 	if err != nil {
 		return clients.ComputeAllocation{}, err
 	}
-	return client.ReadComputeAllocation(ctx, computeID)
+	return client.ReadComputeDestroyStatus(ctx, computeID)
 }
 
 func (s *Service) workspaceDeleteObservationFabric() (clients.FabricWorkspaceDeleteObservationClient, error) {

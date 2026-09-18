@@ -303,8 +303,11 @@ require('node:http').createServer((request, response) => {
 	service = NewServiceWithOperationStore(provider, store)
 	revision := contracts.WorkspaceApplicationRevision{
 		SchemaVersion: 1, ApplicationID: "fixture-opl-app", Version: "1.0.0", Platform: applicationPlatform,
-		// The fixture consumes each of these credentials; declare their actual
-		// requirements instead of relying on implicit Gateway-only injection.
+		// The fixture consumes each of these credentials: the OPL WebUI ABI reads the
+		// derived credential files at the paths its configuration names, so the
+		// revision declares its actual requirements instead of relying on implicit
+		// Gateway-only injection. The platform creates and mounts exactly what a
+		// revision declares, at the target that credential declares.
 		Credentials: []contracts.WorkspaceApplicationCredential{
 			{Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/run/secrets/opl_gateway_api_key"},
 			{Name: "admin-password", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/run/secrets/opl_webui_password", Username: "opl"},
@@ -329,6 +332,9 @@ require('node:http').createServer((request, response) => {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The image reads the Gateway key, so the revision declares the Gateway credential
+	// at the path the image reads; the platform mounts each declared credential at the
+	// target that credential declares.
 	runtimeInput.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: gateway.SecretRef, Version: gateway.Version, Key: "opl_gateway_api_key"}}
 	runtimeInput.Configuration.Environment = map[string]string{"OPL_WEBUI_DEPLOYMENT_MODE": "cloud", "OPL_WEBUI_AUTH_MODE": "password", "OPL_WEBUI_USERNAME": "opl", "OPL_WEBUI_PASSWORD_FILE": "/run/secrets/opl_webui_password", "OPL_WEBUI_SESSION_SECRET_FILE": "/run/secrets/webui_session_secret", "OPL_GATEWAY_API_KEY_FILE": "/run/secrets/opl_gateway_api_key", "FIXTURE_GATEWAY_DIGEST": stableSuffix(fixtureGatewayKey)}
 	runtimeInput.Configuration.CredentialVersion = "explicit-integration-credential-v1"

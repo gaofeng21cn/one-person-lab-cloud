@@ -551,6 +551,12 @@ func (p *LocalDockerProvider) ReadComputeAllocation(ctx context.Context, allocat
 	}
 	if !exists {
 		allocation.Status = "external_deleted"
+		// This provider owns no TKE machine, CVM or CBS disk: after the local
+		// compute and volume are gone those resources do not exist in its scope.
+		absent := false
+		allocation.MachinePresent = &absent
+		allocation.CVMStatus = "NOT_FOUND"
+		allocation.TKEStatus = "NOT_FOUND"
 		return allocation, fmt.Errorf("local_docker_compute_not_found")
 	}
 	expected := localDockerLabels(allocation.AccountID, allocation.WorkspaceID, allocation.ID, "", "compute")
@@ -578,6 +584,17 @@ func (p *LocalDockerProvider) ReadComputeProviderFacts(ctx context.Context, allo
 		Status:        readback.Status,
 		ExpiresAt:     readback.Deadline,
 	}, nil
+}
+
+// ReadComputeDestroyStatus answers the read-only absence readback for the local
+// provider. It owns no TKE machine, CVM or CBS disk, so a missing local compute
+// and volume are the complete absence facts for its scope.
+func (p *LocalDockerProvider) ReadComputeDestroyStatus(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
+	readback, err := p.ReadComputeAllocation(ctx, allocation)
+	if err != nil && readback.Status != "external_deleted" {
+		return readback, err
+	}
+	return readback, nil
 }
 
 func (p *LocalDockerProvider) SyncComputeAllocation(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
@@ -712,7 +729,14 @@ func (p *LocalDockerProvider) ReadStorageProviderFacts(ctx context.Context, volu
 func (p *LocalDockerProvider) ReadStorageVolumeStatus(ctx context.Context, volume StorageVolume) (StorageVolume, error) {
 	readback, err := p.ReadStorageVolume(ctx, volume)
 	if errors.Is(err, ErrWorkspaceLaunchResourceAbsent) {
+		readback.CBSStatus = "NOT_FOUND"
+		absent := false
+		readback.BindingPresent = &absent
 		return readback, nil
+	}
+	if err == nil {
+		present := true
+		readback.BindingPresent = &present
 	}
 	return readback, err
 }

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
+
 	"opl-cloud/services/control-plane/internal/clients"
 	"opl-cloud/services/control-plane/internal/controlplane"
 )
@@ -82,9 +84,14 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 		}
 		var projected map[string]any
 		var projectedOK bool
-		if receipt.Type == "workspace.created" {
+		switch receipt.Type {
+		case "workspace.created":
 			projected, projectedOK = projectWorkspaceCreatedReceipt(receipt)
-		} else {
+		case "workspace.deleted.v1":
+			// The Workspace deletion status publishes this receipt id to its owner, so
+			// the owner must be able to retrieve exactly that receipt.
+			projected, projectedOK = projectWorkspaceDeletedReceipt(receipt)
+		default:
 			projected, projectedOK = app.projectCustomerBillingReceipt(r.Context(), receipt)
 		}
 		if !projectedOK {
@@ -274,6 +281,56 @@ func projectWorkspaceCreatedReceipt(receipt clients.Receipt) (map[string]any, bo
 		"receiptId": receipt.ReceiptID, "type": receipt.Type, "status": receipt.Status,
 		"workspaceId": receipt.WorkspaceID, "createdAt": receipt.CreatedAt,
 	}, true
+}
+
+// projectWorkspaceDeletedReceipt exposes the deletion evidence that the Workspace
+// owner may retrieve by the receipt id Control Plane publishes on the deletion
+// status. A deletion receipt carries no money: it records the owner-confirmed
+// absence of the Workspace resources and the delete operation it belongs to, so
+// the projection publishes only those facts. A receipt whose recorded absences
+// are incomplete is refused instead of published with missing evidence.
+func projectWorkspaceDeletedReceipt(receipt clients.Receipt) (map[string]any, bool) {
+	if strings.TrimSpace(receipt.ReceiptID) == "" || receipt.Type != "workspace.deleted.v1" || receipt.Status != "completed" ||
+		receipt.Surface != "control_plane" || strings.TrimSpace(receipt.AccountID) == "" || strings.TrimSpace(receipt.WorkspaceID) == "" {
+		return nil, false
+	}
+	if _, err := time.Parse(time.RFC3339, receipt.CreatedAt); err != nil {
+		return nil, false
+	}
+	operationID := strings.TrimSpace(receipt.RequestID)
+	if operationID == "" {
+		return nil, false
+	}
+	resourceStatus := map[string]any{}
+	for _, field := range []string{"runtimeStatus", "gatewaySecretStatus", "attachmentStatus", "storageStatus", "computeStatus", "workspaceStatus"} {
+		value := stringValue(receipt.OutputRefs[field])
+		if value != "absent" {
+			return nil, false
+		}
+		resourceStatus[field] = value
+	}
+	body := map[string]any{
+		"receiptId": receipt.ReceiptID, "type": receipt.Type, "status": receipt.Status,
+		"workspaceId": receipt.WorkspaceID, "createdAt": receipt.CreatedAt, "operationId": operationID,
+		"resourceType": "workspace", "resourceId": receipt.WorkspaceID, "resourceStatus": resourceStatus,
+	}
+	if launchReceiptID := stringValue(receipt.InputRefs["launchReceiptId"]); launchReceiptID != "" {
+		body["launchReceiptId"] = launchReceiptID
+	}
+	// The stage evidence summary is what makes the deletion auditable: it carries
+	// each stage's confirmation and the time the observing owner observed it. Only
+	// the redacted summary is projected; private provider and readback identities
+	// stay in Ledger.
+	if summary, present := receipt.Execution["stageEvidence"]; present {
+		// The summary is decoded and validated against the frozen contract before it
+		// reaches the owner. A malformed or partial summary is refused, not published.
+		digests, ok := contracts.WorkspaceDeleteStageEvidenceDigestList(summary)
+		if !ok || !contracts.ValidWorkspaceDeleteStageEvidenceDigests(digests) {
+			return nil, false
+		}
+		body["stageEvidence"] = digests
+	}
+	return body, true
 }
 
 func projectCustomerBillingReceipt(receipt clients.Receipt) (map[string]any, bool) {

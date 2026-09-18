@@ -76,6 +76,24 @@ func RevisionDigest(revision contracts.WorkspaceApplicationRevision) (string, er
 	return fmt.Sprintf("%x", sum), nil
 }
 
+// ContentDigest returns the digest of a revision's content — its image and every
+// declared run fact — with the identity fields cleared.
+//
+// It answers "do these two descriptions describe the same deployment content?",
+// which is what a platform-generated version must be derived from: the version is
+// part of the identity it feeds, so hashing the identity would be circular. It does
+// not validate the revision.
+func ContentDigest(revision contracts.WorkspaceApplicationRevision) (string, error) {
+	content := revision
+	content.ApplicationID, content.Version = "", ""
+	encoded, err := json.Marshal(content)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", sum), nil
+}
+
 // AdmissionDecision is the outcome of admitting one revision against the
 // already-admitted revision with the same identity, if any.
 type AdmissionDecision string

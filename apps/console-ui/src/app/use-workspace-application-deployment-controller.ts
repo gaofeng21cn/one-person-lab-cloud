@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
 import {
-  admitOperatorApplicationRevision,
   createOperatorWorkspaceApplicationDeployment,
   getOperatorWorkspaceApplicationDeployment,
   listOperatorRegistryRepositories,
@@ -71,10 +70,20 @@ export interface WorkspaceApplicationDeploymentCapability {
   resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: WorkspaceApplicationIntentDTO | null;
   busy: boolean;
-  admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
   retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;
+}
+
+// workspaceApplicationRevisionIdentity reads the identity a parsed revision declares.
+// The JSON description is untrusted input, so the identity is taken only when both
+// fields are non-empty strings instead of being cast.
+export function workspaceApplicationRevisionIdentity(value: unknown): { applicationId: string; version: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const applicationId = typeof record.applicationId === "string" ? record.applicationId.trim() : "";
+  const version = typeof record.version === "string" ? record.version.trim() : "";
+  return applicationId && version ? { applicationId, version } : null;
 }
 
 export function useWorkspaceApplicationDeploymentController({
@@ -300,37 +309,27 @@ export function useWorkspaceApplicationDeploymentController({
     void tick();
   }, [currentMutationRequest, flash, refreshWorkspace]);
 
-  const admitRevision = useCallback(async (): Promise<boolean> => {
-    if (!session || busy) return false;
-    const validation = validateWorkspaceApplicationRevisionDraft(draft);
-    if (registrationMode === "form" && !validation.ok || registrationMode === "json" && revisionJSONError) {
-      flash("请先修正表单中标红的字段", "danger");
-      return false;
-    }
-    const requestStillCurrent = currentMutationRequest();
-    const generation = ++requestGeneration.current;
-    const csrfToken = session.csrfToken;
-    setBusy(true);
-    try {
-      const revision = registrationMode === "json" ? parseWorkspaceApplicationRevisionJSON(revisionJSON) : composeWorkspaceApplicationRevision(draft);
-      const result = await admitOperatorApplicationRevision(revision, csrfToken, `${revision.applicationId}@${revision.version}`);
-      if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
-      setApplicationId(result.revision.applicationId);
-      setTargetRevision(result.revision.version);
-      flash(`应用版本已准入（${result.decision === "identical" ? "与既有版本一致，幂等重放" : "新版本"}）：${result.revision.digest.slice(0, 16)}…`);
-      return true;
-    } catch (error) {
-      if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (generation === requestGeneration.current && requestStillCurrent()) setBusy(false);
-    }
-  }, [busy, currentMutationRequest, draft, flash, mutationError, registrationMode, revisionJSON, revisionJSONError, session]);
-
   const deploy = useCallback(async (workspaceId: string): Promise<boolean> => {
     if (!session || busy || !workspaceId || workspaceId !== selectedWorkspaceId.current) return false;
-    if (!applicationId || !targetRevision) {
-      flash("请先填写应用 ID 与目标版本", "danger");
+    // The deployment command carries the description it targets, so the operator
+    // never registers the version as a separate step. Control Plane admits this
+    // revision into its single revision owner inside the same command: a version
+    // already admitted identically is an idempotent replay, and different content
+    // under the same identity is refused by the owner instead of overwritten here.
+    const revision = registrationMode === "json"
+      ? (revisionJSONError ? null : parseWorkspaceApplicationRevisionJSON(revisionJSON))
+      : validateWorkspaceApplicationRevisionDraft(draft).ok
+        ? composeWorkspaceApplicationRevision(draft)
+        : null;
+    // The revision's own identity is authoritative for what is being deployed. When
+    // neither the description nor the operator named one, both stay empty and the
+    // platform derives a stable internal identity from the resolved digest, so the
+    // operator is never asked to name the application before deploying it.
+    const parsedIdentity = workspaceApplicationRevisionIdentity(revision);
+    const deployApplicationId = parsedIdentity?.applicationId || applicationId;
+    const deployTargetRevision = parsedIdentity?.version || targetRevision;
+    if (!revision && (!deployApplicationId || !deployTargetRevision)) {
+      flash("请选择镜像并填写运行描述，或填写已准入的部署目标", "danger");
       return false;
     }
     const requestStillCurrent = currentMutationRequest();
@@ -338,20 +337,9 @@ export function useWorkspaceApplicationDeploymentController({
     const csrfToken = session.csrfToken;
     setBusy(true);
     try {
-      // The deployment command carries the image description it targets, so an
-      // operator does not have to register the version as a separate step first.
-      // Control Plane admits this revision into its single revision owner inside
-      // the same command; a version that is already admitted identically is an
-      // idempotent replay, and different content under the same identity is
-      // refused by the owner rather than silently overwritten here.
-      const revision = registrationMode === "json"
-        ? parseWorkspaceApplicationRevisionJSON(revisionJSON)
-        : validateWorkspaceApplicationRevisionDraft(draft).ok
-          ? composeWorkspaceApplicationRevision(draft)
-          : null;
       const { configuration, secretBindings } = parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON);
       const result = await createOperatorWorkspaceApplicationDeployment(
-        workspaceId, applicationId, targetRevision, configuration, csrfToken,
+        workspaceId, deployApplicationId, deployTargetRevision, configuration, csrfToken,
         `wsad-${crypto.randomUUID()}`, secretBindings, revision ?? undefined
       );
       if (generation !== requestGeneration.current || workspaceId !== selectedWorkspaceId.current || !requestStillCurrent()) return false;
@@ -399,6 +387,6 @@ export function useWorkspaceApplicationDeploymentController({
     addDependency, removeDependency, setDraftListItem, setDraftDependency,
     registryCatalog, registryTags, registryResolution, registryBusy,
     browseRegistryRepositories, browseRegistryTags, resolveRegistryTag,
-    intent, busy, admitRevision, deploy, retry, reset
+    intent, busy, deploy, retry, reset
   };
 }

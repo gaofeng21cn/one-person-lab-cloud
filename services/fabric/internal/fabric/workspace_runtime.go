@@ -497,6 +497,8 @@ func (s *Service) ObserveWorkspaceRuntimeDelete(ctx context.Context, workspaceID
 	}
 	if provider := s.optionalProviders.workspaceRuntimeDeleteObservation; provider != nil {
 		result, err := provider.ObserveWorkspaceRuntimeDelete(ctx, observation.WorkspaceID)
+		result.ObservedAt = s.now().Format(time.RFC3339Nano)
+		result.ReadbackID = stableID("workspace-runtime-delete-readback", observation.WorkspaceID, result.ObservedAt)
 		if err != nil {
 			if errors.Is(err, ErrLaunchStageBindingConflict) {
 				observation.State = WorkspaceOwnerObservationConflict

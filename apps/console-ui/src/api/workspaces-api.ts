@@ -166,12 +166,26 @@ export async function deleteWorkspace(
   }
 }
 
+const workspaceDeletionStages = ["runtime_absent", "attachment_absent", "storage_absent", "compute_absent", "workspace_absent", "receipt_recorded"];
+const workspaceDeletionPageStates = ["waiting", "retrying", "blocked", "completed"];
+const workspaceDeleteRefundStates = ["blocked", "pending", "manual_review", "succeeded", "not_due"];
+
 export async function getWorkspaceDeletion(workspaceId: string): Promise<WorkspaceDeletionDTO | null> {
   const value = await getJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/deletion`);
   if (value === null) return null;
   const dto = decodeDto<WorkspaceDeletionDTO>(value);
   if (dto.workspaceId !== workspaceId || !dto.operationId?.trim() || !dto.phase?.trim()
     || !["pending", "manual_review", "deleted"].includes(dto.status)) throw new Error("invalid_workspace_deletion_response");
+  // A published stage and page state must come from the platform vocabulary, so a
+  // response carrying an unknown token is rejected instead of rendered.
+  if (dto.stage !== undefined && !workspaceDeletionStages.includes(dto.stage)) throw new Error("invalid_workspace_deletion_response");
+  if (dto.pageState !== undefined && !workspaceDeletionPageStates.includes(dto.pageState)) throw new Error("invalid_workspace_deletion_response");
+  if (dto.refundStatus !== undefined && !workspaceDeleteRefundStates.includes(dto.refundStatus)) throw new Error("invalid_workspace_deletion_response");
+  // A published timestamp must be a real time, so a malformed readback time is
+  // rejected instead of rendered as a plausible-looking value.
+  for (const value of [dto.lastReadbackAt, dto.nextRetryAt]) {
+    if (value !== undefined && Number.isNaN(new Date(value).getTime())) throw new Error("invalid_workspace_deletion_response");
+  }
   return dto;
 }
 
