@@ -201,6 +201,41 @@ function billingReceipt() {
   };
 }
 
+function billingSettlementDay(offset: number) {
+  const date = new Date(NOW);
+  date.setUTCDate(date.getUTCDate() - offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function billingSettlementTrend() {
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const offset = 13 - index;
+    const date = billingSettlementDay(offset);
+    // 近 3 天有一笔开通扣款，昨天有一笔关联退款
+    const charged = offset === 2 ? 52_580_000 : 0;
+    const refunded = offset === 1 ? 3_000_000 : 0;
+    return { date, chargedUsdMicros: charged, refundedUsdMicros: refunded, netUsdMicros: charged - refunded, chargeCount: charged ? 1 : 0, refundCount: refunded ? 1 : 0 };
+  });
+  const chargedUsdMicros = days.reduce((total, day) => total + day.chargedUsdMicros, 0);
+  const refundedUsdMicros = days.reduce((total, day) => total + day.refundedUsdMicros, 0);
+  return {
+    timezone: "Asia/Shanghai",
+    asOf: NOW,
+    windowStart: `${days[0].date}T00:00:00+08:00`,
+    windowEnd: `${billingSettlementDay(-1)}T00:00:00+08:00`,
+    days,
+    chargedUsdMicros,
+    refundedUsdMicros,
+    netUsdMicros: chargedUsdMicros - refundedUsdMicros,
+    settledCount: days.filter((day) => day.chargeCount + day.refundCount > 0).length,
+    inFlightCount: 0,
+    unconfirmedCount: 0,
+    unattributedCount: 0,
+    outOfWindowCount: 0,
+    complete: true
+  };
+}
+
 function pendingWorkspaceLaunch() {
   return {
     operationId: "launch-fixture-pending", status: "pending", phase: "runtime",
@@ -577,6 +612,9 @@ export async function apiFixture(route, state, session = state) {
   if (path === "/api/billing/receipts") {
     const receipts = state.workspaces.some((item) => item.id === "ws-1" && item.ownerAccountId === session.accountId) ? [billingReceipt()] : [];
     return fulfillJson(route, source({ receipts, nextCursor: "", hasMore: false }, "ledger", receipts.length ? "available" : "empty"));
+  }
+  if (path === "/api/billing/workspace-settlements") {
+    return fulfillJson(route, source(billingSettlementTrend(), "control_plane"));
   }
   if (path === "/api/billing/receipts/receipt-fixture") {
     return state.workspaces.some((item) => item.id === "ws-1" && item.ownerAccountId === session.accountId)

@@ -597,6 +597,26 @@ charges, refunds and expiry without a charge, and explains that monthly fees and
 API use share the account balance. Ledger's query remains policy-free; Console
 receives a safe customer projection without upstream transaction codes.
 
+The customer overview Workspace net-charge trend is a different fact and has a
+different owner: `/api/billing/workspace-settlements` (read-only) reuses
+`projectBillingSettlements` over the account's retained launch, renewal and
+business-refund operations, confirms each movement against the Sub2API balance
+record that applied the money, and returns one fixed 14-day window with its
+`asOf`, `Asia/Shanghai` calendar and pre-bucketed days. Amounts and days come
+from the owner; Console only renders them. A charged Renewal whose fulfillment
+was cancelled keeps a confirmed debit with only a refund receipt, which is why a
+receipt-based trend cannot report it. The trend also reads the one refund a retired
+Workspace delete recorded on its own operation row instead of a business-refund
+adjustment, since that row keeps the wallet refund code, user, amount and
+confirmation and names the original purchase order. Movements the owner cannot
+confirm from this account's records, wallet identity, amount and stored code stay
+`unconfirmed` and never enter the totals; a movement whose order names another
+account is reported unresolved rather than counted, and a refund that would push
+an order's confirmed refunds past its confirmed charge stays unconfirmed instead
+of being added. Receipts, service periods and provider purchase cost are not
+money movement and are excluded. Movements dated before the window are counted
+separately so an empty window is never read as "never happened".
+
 Wallet adjustment persistence owns refund admission and progress. Initial
 creation locks the account and original order in a PostgreSQL transaction,
 validates the original charge/account, and counts all associated completed and

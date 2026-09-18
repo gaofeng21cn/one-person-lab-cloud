@@ -261,6 +261,11 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   line-height: 1.5;
 }
 
+/* 资金变动无法确认时，汇总不再是完整结果 */
+.overview-trend .trend-note--warning {
+  color: #b45309;
+}
+
 @media (max-width: 620px) {
   /* 窄屏压缩条形而非隐藏日期，卡片标注的“近 14 天”与实际渲染范围保持一致。 */
   .overview-trend .trend-chart {

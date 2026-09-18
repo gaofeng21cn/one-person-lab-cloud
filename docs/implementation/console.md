@@ -44,6 +44,7 @@ and replacement-preview errors cannot overwrite each other.
 | Gateway Account Read | Wallet, monthly account usage, endpoint and 20-item balance-history pages; a failed page never advances the committed page |
 | Gateway Usage | Searchable/paginated Key query, independently selected Key, period/committed Usage page and separate Usage/Summary generations; only authoritative single-Key absence clears an established selection |
 | Billing / Receipt | Ledger list/detail, selected Receipt and opaque cursor stack; Overview requests 3 without adopting Billing cursor state, Billing requests 20 |
+| Workspace Settlement Trend | One owner read of the fixed 14-day Workspace wallet-movement window; Console renders the returned days and totals without re-bucketing and keeps unconfirmed, in-flight, unattributed and out-of-window counts separate from them |
 | Operator Resource Read | Resource page, selected Workspace detail, image policy and replacement preview; each projection has independent identity/freshness and failure settlement |
 
 The root owns the independent Workspace Budget lease and starts budget lookup

@@ -585,6 +585,37 @@ export interface BillingReceiptPage {
   hasMore: boolean;
 }
 
+/**
+ * Control Plane projection of confirmed Workspace wallet movement. The owner
+ * dates each movement by the wallet record that applied the money and buckets it
+ * in `timezone`; Console renders the returned days without re-bucketing.
+ */
+export interface WorkspaceSettlementTrendDay {
+  date: string;
+  chargedUsdMicros: number;
+  refundedUsdMicros: number;
+  netUsdMicros: number;
+  chargeCount: number;
+  refundCount: number;
+}
+
+export interface WorkspaceSettlementTrend {
+  timezone: string;
+  asOf: string;
+  windowStart: string;
+  windowEnd: string;
+  days: WorkspaceSettlementTrendDay[];
+  chargedUsdMicros: number;
+  refundedUsdMicros: number;
+  netUsdMicros: number;
+  settledCount: number;
+  inFlightCount: number;
+  unconfirmedCount: number;
+  unattributedCount: number;
+  outOfWindowCount: number;
+  complete: boolean;
+}
+
 export interface WorkspaceBillingReceiptDTO {
   receiptId: string;
   type: "billing.workspace_purchased.v1" | "billing.workspace_renewed.v1" |

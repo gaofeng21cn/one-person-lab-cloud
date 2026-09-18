@@ -8,6 +8,7 @@ import type {
   WorkspaceApplicationRevisionAdmissionDTO,
   BillingReceipt,
   BillingReceiptPage,
+  WorkspaceSettlementTrend,
   CreateGatewayKeyRequest,
   GatewayAccountUsageSummaryDTO,
   GatewayBalanceHistoryPageDTO,
@@ -175,6 +176,11 @@ export function getBillingReceipts(cursor = "", limit = 20, signal?: AbortSignal
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return sourceGet<BillingReceiptPage>(`/api/billing/receipts?${params}`, signal);
+}
+
+/** Reads the owner's confirmed Workspace wallet movements for its fixed window. */
+export function getWorkspaceSettlementTrend(signal?: AbortSignal): Promise<SourceEnvelope<WorkspaceSettlementTrend>> {
+  return sourceGet<WorkspaceSettlementTrend>("/api/billing/workspace-settlements", signal);
 }
 
 export function getBillingReceipt(receiptId: string, signal?: AbortSignal): Promise<SourceEnvelope<BillingReceipt>> {

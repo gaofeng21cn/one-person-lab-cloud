@@ -93,6 +93,40 @@ func registerBillingRoutes(mux *http.ServeMux, app *controlPlaneServer, service 
 		}
 		writeSourceEnvelope(w, http.StatusOK, "ledger", "available", projected)
 	}))
+	mux.HandleFunc("GET /api/billing/workspace-settlements", app.protected(false, func(w http.ResponseWriter, r *http.Request) {
+		user, ok := app.sessionUserContext(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "not_authenticated")
+			return
+		}
+		accountID := stringValue(user["accountId"])
+		trend, err := app.projectWorkspaceSettlementTrend(r.Context(), service, accountID, time.Now())
+		if err != nil {
+			writeSourceEnvelope(w, http.StatusBadGateway, "control_plane", "unavailable", nil)
+			return
+		}
+		days := make([]any, 0, len(trend.days))
+		for _, day := range trend.days {
+			days = append(days, map[string]any{
+				"date": day.date, "chargedUsdMicros": day.chargedUSDMicros, "refundedUsdMicros": day.refundedUSDMicros,
+				"netUsdMicros": day.chargedUSDMicros - day.refundedUSDMicros, "chargeCount": day.chargeCount, "refundCount": day.refundCount,
+			})
+		}
+		status := "available"
+		// A window with nothing in scope is genuinely empty; a window whose
+		// movements happen to net to zero is not.
+		if trend.settledCount == 0 && trend.unconfirmedCount == 0 && trend.inFlightCount == 0 && trend.unattributedCount == 0 {
+			status = "empty"
+		}
+		writeSourceEnvelope(w, http.StatusOK, "control_plane", status, map[string]any{
+			"timezone": workspaceSettlementTrendTimezone, "asOf": trend.asOf.Format(time.RFC3339Nano),
+			"windowStart": trend.windowStart.Format(time.RFC3339), "windowEnd": trend.windowEnd.Format(time.RFC3339),
+			"days": days, "chargedUsdMicros": trend.chargedUSDMicros, "refundedUsdMicros": trend.refundedUSDMicros, "netUsdMicros": trend.netUSDMicros(),
+			"settledCount": trend.settledCount, "inFlightCount": trend.inFlightCount, "unconfirmedCount": trend.unconfirmedCount,
+			"unattributedCount": trend.unattributedCount, "outOfWindowCount": trend.outOfWindowCount,
+			"complete": trend.unconfirmedCount == 0,
+		})
+	}))
 	mux.HandleFunc("POST /api/billing/reconciliation", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		input := decodeJSON(r)
 		if !confirmed(input, "confirm") {

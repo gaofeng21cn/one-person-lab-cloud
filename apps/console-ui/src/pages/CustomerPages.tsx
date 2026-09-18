@@ -18,11 +18,10 @@ import {
   presentBalanceHistoryType,
   presentBillingReceiptType,
   presentBillingReceiptAmount,
-  presentBillingStatus,
-  type BillingSpendTrend
+  presentBillingStatus
 } from "../app/customer-experience-model.ts";
 import { presentWorkspaceRenewal } from "../app/workspace-experience-model.ts";
-import type { AnnouncementDTO, SourceEnvelope } from "../api/dtos.ts";
+import type { AnnouncementDTO, SourceEnvelope, WorkspaceSettlementTrend } from "../api/dtos.ts";
 import { GatewayUsagePage } from "../components/gateway-usage/GatewayUsagePage.tsx";
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPage.tsx";
@@ -50,29 +49,58 @@ function Metric({ label, value, note, emphasis }: { label: string; value: string
   return <article className={`band-metric ${emphasis ? "available-metric" : ""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
 }
 
-function TrendChart({ trend }: { trend: BillingSpendTrend }) {
-  // 条形图高度取当日净额绝对值；净退款日以独立配色标出，避免退款被读成扣款。
+/**
+ * Workspace net charges over the owner's fixed window. Bars show the net amount
+ * the wallet actually moved on the day the money was applied; a net refund day
+ * keeps its own colour so a reversal is never read as a charge.
+ */
+function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
   const peak = trend.days.reduce((max, day) => Math.max(max, Math.abs(day.netUsdMicros)), 0);
-  const zeroLabel = trend.unknownReceiptCount > 0 ? "无已确认扣款" : "无扣款";
+  const mixedLabel = trend.timezone === "Asia/Shanghai" ? "北京时间" : trend.timezone;
   return <>
-    <div className="trend-chart" role="img" aria-label={`近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : zeroLabel}`}>
-      {trend.days.map((day) => (
-        <div className="trend-col" key={day.key} title={`${day.label} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
+    <div className="trend-chart" role="img" aria-label={`工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : "无扣款"}`}>
+      {trend.days.map((day, index) => (
+        <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
           <span
             className="trend-bar"
             data-empty={day.netUsdMicros === 0}
             data-refund={day.netUsdMicros < 0}
             style={day.netUsdMicros !== 0 && peak ? { height: `${Math.max(6, Math.round(Math.abs(day.netUsdMicros) / peak * 100))}%` } : undefined}
           />
-          <small>{day.shortLabel}</small>
+          <small>{settlementDayShortLabel(day.date, index, trend.days.length)}</small>
         </div>
       ))}
     </div>
     <p className="trend-note">
-      近 {trend.days.length} 天{trend.unknownReceiptCount > 0 ? "已确认" : ""}扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
-      {trend.unknownReceiptCount > 0 ? `；另有 ${trend.unknownReceiptCount} 笔金额待确认，未计入汇总` : ""}
+      近 {trend.days.length} 天扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
+      （按资金发生日 · {mixedLabel}）
     </p>
+    {trend.unconfirmedCount > 0
+      ? <p className="trend-note trend-note--warning">另有 {trend.unconfirmedCount} 笔资金变动暂不可确认，未计入上述汇总。</p>
+      : null}
+    {trend.inFlightCount > 0
+      ? <p className="trend-note">另有 {trend.inFlightCount} 笔开通或续费仍在处理中，尚未产生资金变动。</p>
+      : null}
+    {trend.unattributedCount > 0
+      ? <p className="trend-note">另有 {trend.unattributedCount} 笔人工余额调整没有工作空间订单归属，不属于本趋势范围。</p>
+      : null}
+    {trend.outOfWindowCount > 0
+      ? <p className="trend-note">另有 {trend.outOfWindowCount} 笔已确认的资金变动发生在这 14 天之前，未计入上述汇总。</p>
+      : null}
   </>;
+}
+
+/** Settlement days arrive as owner-dated `YYYY-MM-DD` keys; Console only labels them. */
+function settlementDayLabel(date: string): string {
+  const [year, month, day] = date.split("-");
+  return year && month && day ? `${Number(month)}/${Number(day)}` : date;
+}
+
+function settlementDayShortLabel(date: string, index: number, total: number): string {
+  const day = Number(date.split("-")[2]);
+  if (!Number.isFinite(day)) return "";
+  const offset = total - 1 - index;
+  return offset % 2 === 0 || offset === total - 1 ? `${day}日` : "";
 }
 
 function PageLink({ children, controller, path, className = "" }: { children: ReactNode; controller: ConsoleController; path: string; className?: string }) {
@@ -118,18 +146,21 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
       </section>
 
-      <section className="panel overview-trend" aria-label="近期费用趋势">
-        <div className="panel-title"><div><h2>近期费用趋势</h2><span>近 14 天 · 扣款减退款净额</span></div><Button onClick={() => controller.navigate("/console/api/usage")} size="sm" variant="ghost">查看用量<ArrowRight aria-hidden size={15} /></Button></div>
+      <section className="panel overview-trend" aria-label="工作空间净扣款趋势">
+        <div className="panel-title">
+          <div><h2>工作空间净扣款趋势</h2><span>近 14 天 · 开通与续费扣款、关联退款（按资金发生日）</span></div>
+          <Button onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} size="sm" variant="ghost">查看账单记录<ArrowRight aria-hidden size={15} /></Button>
+        </div>
         <SourceState
-          emptyDescription="该时间范围内没有费用回执。"
-          emptyTitle="近 14 天没有费用记录"
+          emptyDescription="这段时间内该账户没有工作空间开通、续费扣款或关联退款。"
+          emptyTitle="近 14 天没有工作空间扣款或退款"
           error={controller.billing.trend.error}
-          errorDescription="暂时无法读取近 14 天费用，请稍后重试。"
+          errorDescription="暂时无法确认工作空间扣款与退款，请稍后重试。"
           loading={controller.billing.trend.loading}
           onRetry={() => void controller.billing.refresh()}
           source={controller.billing.trend.value}
-          unavailableDescription="暂时无法确认近 14 天费用，请稍后重试。"
-          unavailableTitle="近 14 天费用暂不可用"
+          unavailableDescription="暂时无法从钱包资金记录确认工作空间扣款与退款，请稍后重试。"
+          unavailableTitle="工作空间扣款趋势暂不可用"
         >
           {(trend) => <TrendChart trend={trend} />}
         </SourceState>

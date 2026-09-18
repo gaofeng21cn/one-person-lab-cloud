@@ -252,6 +252,37 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 	return nil
 }
 
+// projectWorkspaceDeleteLegacySettlements explains the one refund a retired
+// Workspace delete wrote on its own operation row instead of creating a
+// business-refund adjustment. The retained row keeps the refund code, wallet
+// user, amount and confirmation, and names the original purchase order, so the
+// movement is owned evidence rather than a new rule. A delete that attempted a
+// refund but never reached a confirmed terminal state keeps the movement
+// unconfirmed instead of dropping it.
+func projectWorkspaceDeleteLegacySettlements(row map[string]any) []billingSettlement {
+	operation, err := decodeWorkspaceDeleteLegacyOperation(row)
+	if err != nil {
+		return nil
+	}
+	refund := billingSettlement{
+		accountID: operation.AccountID, operationID: operation.OperationID, workspaceID: operation.WorkspaceID,
+		kind: "refund", code: operation.RefundCode, userID: operation.Sub2APIUserID, amount: operation.TotalUSDMicros,
+		relatedOperationID: operation.LaunchOperationID, receiptID: operation.RefundReceiptID,
+	}
+	if validWorkspaceDeleteLegacyTerminal(operation) {
+		return []billingSettlement{refund}
+	}
+	if !operation.RefundAttempted && operation.RefundConfirmation == nil {
+		// No refund dispatch happened, so this delete moved no money.
+		return nil
+	}
+	// The dispatch happened and no confirmed refund exists. Reading its wallet
+	// record still proves the movement when the owner wrote one; otherwise the
+	// trend reports it as unconfirmed rather than assuming zero.
+	refund.receiptID = ""
+	return []billingSettlement{refund}
+}
+
 func validSettlementPeriod(start, end string) bool {
 	from, err := time.Parse(time.RFC3339, start)
 	through, endErr := time.Parse(time.RFC3339, end)
