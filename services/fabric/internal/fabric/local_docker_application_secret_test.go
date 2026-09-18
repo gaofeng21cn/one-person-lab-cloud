@@ -255,22 +255,113 @@ func TestLocalDockerApplicationSecretEnvCleanup(t *testing.T) {
 	}
 }
 
+// A platform-issued credential is mounted at the target that credential declares,
+// not at a fixed path, and only when the revision declares it. Both providers must
+// agree on this, because a revision that asks for its credential elsewhere would
+// otherwise receive it at the wrong place, or receive a file for a capability it
+// never asked for.
+func TestLocalDockerApplicationCredentialTargetsFollowTheDeclaration(t *testing.T) {
+	p, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	input := applicationRuntimeInput("credential-targets", applicationRevisionForTest())
+	binding := localDockerGatewayMetadata{AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, SecretRef: "gateway-secret", Version: "v1"}
+	input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{Name: "gateway", SecretRef: binding.SecretRef, Version: binding.Version, Key: localDockerGatewayKeyFile}}
+
+	// Nothing declared: no credential file is mounted at all.
+	input.Revision.Credentials = nil
+	files, metadata, err := p.applicationSecretFiles(input)
+	if err != nil || len(files) != 0 || metadata.SecretRef != "" {
+		t.Fatalf("undeclared credentials produced mounts: files=%#v metadata=%#v err=%v", files, metadata, err)
+	}
+
+	// Declared at a non-default target: the mount follows the declaration.
+	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
+		{Name: "admin", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/etc/app/admin_password", Username: "opl"},
+		{Name: "session", Kind: contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret, Target: "/etc/app/session_key"},
+	}
+	files, _, err = p.applicationSecretFiles(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 || !strings.HasSuffix(files["/etc/app/admin_password"], localDockerWebUIPasswordFile) ||
+		!strings.HasSuffix(files["/etc/app/session_key"], localDockerWebUISessionSecretFile) {
+		t.Fatalf("credential targets ignored: files=%#v", files)
+	}
+	for target := range files {
+		if strings.HasPrefix(target, "/run/secrets/") {
+			t.Fatalf("a credential was mounted at a fixed default instead of its declared target: %#v", files)
+		}
+	}
+
+	// A revision that declares only a derived credential still receives it: the
+	// Gateway credential is not a precondition for the platform credentials it does
+	// not declare.
+	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{
+		{Name: "admin", Kind: contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, Target: "/etc/app/admin_password", Username: "opl"},
+	}
+	files, _, err = p.applicationSecretFiles(input)
+	if err != nil || len(files) != 1 || !strings.HasSuffix(files["/etc/app/admin_password"], localDockerWebUIPasswordFile) {
+		t.Fatalf("a derived-only revision did not receive its credential: files=%#v err=%v", files, err)
+	}
+}
+
+// A Gateway credential is mounted at the target that credential declares, so a
+// revision does not have to repeat the same path as a separate secret input.
+func TestLocalDockerGatewayCredentialMountsAtItsDeclaredTarget(t *testing.T) {
+	provider, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+	input := applicationRuntimeInput("gateway-target", applicationRevisionForTest())
+	const key = "synthetic-gateway-target-key"
+	gateway, err := provider.UpsertGatewaySecret(context.Background(), GatewaySecretInput{
+		AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, WorkspaceAPIKeyID: 7,
+		GatewayAPIKey: key, Fingerprint: "sha256:" + stableSuffix(key),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Revision.SecretInputs = nil
+	input.Revision.Credentials = []contracts.WorkspaceApplicationCredential{{
+		Name: "gateway", Kind: contracts.WorkspaceApplicationCredentialGatewayKey, Target: "/etc/app/gateway_key",
+	}}
+	input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
+		Name: "gateway", SecretRef: gateway.SecretRef, Version: gateway.Version, Key: localDockerGatewayKeyFile,
+	}}
+	files, metadata, err := provider.applicationSecretFiles(input)
+	if err != nil || metadata.SecretRef != gateway.SecretRef {
+		t.Fatalf("gateway mount files=%#v metadata=%#v err=%v", files, metadata, err)
+	}
+	source, ok := files["/etc/app/gateway_key"]
+	if !ok || len(files) != 1 {
+		t.Fatalf("gateway credential did not land at its declared target: %#v", files)
+	}
+	if body, err := os.ReadFile(source); err != nil || string(body) != key {
+		t.Fatalf("gateway credential content mismatch: %v", err)
+	}
+}
+
+// Each declared credential set mounts exactly its own files, and nothing else. A
+// Gateway credential does not imply the derived credentials, and the derived
+// credentials do not require the Gateway key, so every combination stands alone.
 func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 	for _, kinds := range [][]string{
 		{contracts.WorkspaceApplicationCredentialGatewayKey},
+		{contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword},
+		{contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
 		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword},
 		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
+		{contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
 		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
 	} {
 		t.Run(strings.Join(kinds, "+"), func(t *testing.T) {
 			provider, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
 			input := applicationRuntimeInput("declared-credentials", applicationRevisionForTest())
+			input.Revision.Credentials = nil
+			declaresGateway := false
 			for _, kind := range kinds {
 				credential := contracts.WorkspaceApplicationCredential{Name: kind, Kind: kind, Target: "/run/declared/" + kind}
 				if kind == contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword {
 					credential.Username = "opl"
 				}
 				input.Revision.Credentials = append(input.Revision.Credentials, credential)
+				declaresGateway = declaresGateway || kind == contracts.WorkspaceApplicationCredentialGatewayKey
 			}
 			const key = "synthetic-declared-credential-key"
 			gateway, err := provider.UpsertGatewaySecret(context.Background(), GatewaySecretInput{
@@ -280,10 +371,12 @@ func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
-				Name: contracts.WorkspaceApplicationCredentialGatewayKey, SecretRef: gateway.SecretRef,
-				Version: gateway.Version, Key: localDockerGatewayKeyFile,
-			}}
+			if declaresGateway {
+				input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
+					Name: contracts.WorkspaceApplicationCredentialGatewayKey, SecretRef: gateway.SecretRef,
+					Version: gateway.Version, Key: localDockerGatewayKeyFile,
+				}}
+			}
 			input.Configuration.CredentialVersion = "declared-credential-version"
 			if err := provider.applicationCredentialFiles(input, true); err != nil {
 				t.Fatal(err)
@@ -293,7 +386,7 @@ func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(files) != len(kinds) {
-				t.Fatalf("mounted %d files for %d declared credentials", len(files), len(kinds))
+				t.Fatalf("mounted %d files for %d declared credentials: %#v", len(files), len(kinds), files)
 			}
 			for _, credential := range input.Revision.Credentials {
 				source, ok := files[credential.Target]

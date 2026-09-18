@@ -420,6 +420,16 @@ func newFabricMux(service *fabric.Service) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, allocation)
 	})
+	mux.HandleFunc("GET /fabric/compute-allocations/{id}/destroy-status", func(w http.ResponseWriter, r *http.Request) {
+		allocation, err := service.ReadComputeDestroyStatus(r.Context(), strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// An unfinished deletion returns its typed facts so the caller can retry
+		// the same operation; a completed absence returns the absence evidence.
+		writeJSON(w, http.StatusOK, allocation)
+	})
 	mux.HandleFunc("POST /fabric/compute-allocations/{id}/destroy", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Idempotency-Key") == "" {
 			writeError(w, http.StatusBadRequest, "missing Idempotency-Key")
@@ -472,6 +482,14 @@ func newFabricMux(service *fabric.Service) http.Handler {
 			return
 		}
 		volume, err := service.DestroyStorageVolume(r.Context(), strings.TrimSpace(r.PathValue("id")))
+		if errors.Is(err, fabric.ErrWorkspaceLaunchPending) && volume.DestroyState != "" {
+			// A classified storage deletion outcome is not a failure: the CBS is
+			// still there (or its terminate is unconfirmed) and the owning operation
+			// must retry from the returned facts instead of recording a terminal
+			// result. Unclassified provider errors stay failures.
+			writeJSON(w, http.StatusAccepted, volume)
+			return
+		}
 		writeResult(w, volume, err)
 	})
 	mux.HandleFunc("POST /fabric/storage-attachments", func(w http.ResponseWriter, r *http.Request) {

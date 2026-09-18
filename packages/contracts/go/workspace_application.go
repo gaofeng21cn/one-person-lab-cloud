@@ -320,6 +320,16 @@ func ValidateWorkspaceApplicationRevision(revision WorkspaceApplicationRevision)
 			return errors.New("workspace_application_entry_port_invalid")
 		}
 	}
+	// A publishing exposure policy must name the port the platform publishes. The
+	// reverse proxy cannot guess which port an image listens on, so a missing entry
+	// is refused here instead of being filled with a fabricated default or silently
+	// producing an application with no reachable entry. cloud_private publishes
+	// nothing and therefore declares no entry port.
+	if revision.ExposurePolicy != "cloud_private" {
+		if _, found := WorkspaceApplicationEntryPort(revision); !found {
+			return errors.New("workspace_application_entry_port_required")
+		}
+	}
 	if err := ValidateWorkspaceApplicationCompute(revision.Compute); err != nil {
 		return err
 	}

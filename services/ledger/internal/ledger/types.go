@@ -257,6 +257,26 @@ func validWorkspaceLaunchReceipt(input ReceiptInput) bool {
 	return input.Type == "billing.workspace_purchased.v1"
 }
 
+// validWorkspaceDeletionStageEvidenceSummary validates the versioned evidence
+// summary a deletion receipt carries. Ledger checks the structure and the stage
+// completeness; it never re-judges the provider facts themselves.
+func validWorkspaceDeletionStageEvidenceSummary(evidence any, version any) bool {
+	if evidence == nil {
+		// A receipt retained from before the evidence contract carries no summary. Its
+		// absence is explicit and is never back-filled.
+		return version == nil
+	}
+	versionNumber, ok := integerValue(version)
+	if !ok || versionNumber != 1 {
+		return false
+	}
+	digests, ok := contracts.WorkspaceDeleteStageEvidenceDigestList(evidence)
+	if !ok {
+		return false
+	}
+	return contracts.ValidWorkspaceDeleteStageEvidenceDigests(digests)
+}
+
 func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
 	if !validCanonicalWorkspaceResourceReceiptIdentity(input) || input.IdempotencyKey != input.RequestID+":deletion-receipt" || len(input.InputRefs) != 1 || !validWorkspaceDeletionOutputShape(input) || len(input.Cost) != 0 || input.SupersedesReceiptID != "" ||
 		len(input.Actor) != 0 || len(input.Plan) != 0 || len(input.Environment) != 0 || len(input.ReviewerChecks) != 0 || len(input.Continuation) != 0 {
@@ -275,6 +295,12 @@ func validWorkspaceDeletionReceipt(input ReceiptInput) bool {
 		if containsWorkspaceDeletionFinancialField(value) {
 			return false
 		}
+	}
+	// The stage evidence summary is the deletion's own confirmation record. Ledger
+	// checks its shape and stage completeness so a partial or mislabelled summary
+	// cannot be recorded as a completed deletion.
+	if !validWorkspaceDeletionStageEvidenceSummary(input.Execution["stageEvidence"], input.Execution["stageEvidenceSchemaVersion"]) {
+		return false
 	}
 	return true
 }
@@ -303,6 +329,17 @@ func validCanonicalWorkspaceResourceReceiptIdentity(input ReceiptInput) bool {
 			return false
 		}
 		identityFields--
+	}
+	// The versioned stage evidence summary is an optional part of the same receipt
+	// contract, so it does not count as an identity field. Its own validator decides
+	// whether it is well formed.
+	evidence, hasEvidence := input.Execution["stageEvidence"]
+	version, hasVersion := input.Execution["stageEvidenceSchemaVersion"]
+	if hasEvidence || hasVersion {
+		if input.Type != "workspace.deleted.v1" || !validWorkspaceDeletionStageEvidenceSummary(evidence, version) {
+			return false
+		}
+		identityFields -= 2
 	}
 	if mode, exists := input.Execution["provisioningMode"]; exists {
 		if mode != string(contracts.WorkspaceProvisioningResourceOnly) || identityFields != 7 {
