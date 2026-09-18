@@ -237,6 +237,10 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   background: #e2e8f0;
 }
 
+.trend-bar[data-refund="true"] {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+}
+
 .trend-col small {
   color: #94a3b8;
   font-size: 10px;
@@ -244,14 +248,23 @@ body .ui-button[data-color="primary"]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+.overview-trend .trend-note {
+  margin: 0 20px 16px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 620px) {
+  /* 窄屏压缩条形而非隐藏日期，卡片标注的“近 14 天”与实际渲染范围保持一致。 */
   .overview-trend .trend-chart {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
     height: 120px;
+    padding: 14px 12px 8px;
   }
 
-  .overview-trend .trend-col:nth-child(n + 8) {
-    display: none;
+  .overview-trend .trend-note {
+    margin: 0 12px 12px;
   }
 }
 

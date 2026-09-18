@@ -618,3 +618,125 @@ test("customers distinguish a closed unfulfilled order from its refund and can i
     await demo.close();
   }
 });
+
+function localNoon(daysAgo: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - daysAgo);
+  return date.toISOString();
+}
+
+function trendReceipt(receiptId: string, overrides: Partial<BillingReceipt> = {}): BillingReceipt {
+  return { ...receipt(receiptId), status: "completed", createdAt: localNoon(0), ...overrides };
+}
+
+function listLimit(route: Route): number {
+  return Number(new URL(route.request().url()).searchParams.get("limit"));
+}
+
+function listCursor(route: Route): string {
+  return new URL(route.request().url()).searchParams.get("cursor") || "";
+}
+
+test("Overview trend reports a completed Workspace charge from typed receipt micros", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const charge = trendReceipt("trend-charge", { totalUsdMicros: 52_580_000 });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/billing/receipts?*", (route) => fulfill(route, receiptSource([charge])));
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $52.58、退款 $0.00，净额 $52.58", { exact: true }).waitFor({ state: "visible" });
+
+    assert.equal(await trend.locator(".trend-chart").getAttribute("aria-label"), "近 14 天每日净扣款条形图，最高 $52.58");
+    assert.equal(await trend.locator('.trend-bar[data-empty="false"]').count(), 1);
+    assert.equal(await trend.getByText("无扣款", { exact: true }).count(), 0);
+    assert.equal(await trend.getByText("无消费", { exact: false }).count(), 0);
+    assert.equal(await trend.getByText("金额待确认", { exact: false }).count(), 0);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend follows Ledger cursors until the 14-day window is covered", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const recentList = trendReceipt("trend-recent-only", { createdAt: localNoon(30), totalUsdMicros: 250_000_000 });
+  const pageOne = trendReceipt("trend-page-1", { createdAt: localNoon(5), totalUsdMicros: 10_000_000 });
+  const pageTwo = trendReceipt("trend-page-2", { createdAt: localNoon(2), totalUsdMicros: 20_000_000 });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/billing/receipts?*", (route) => {
+      if (listLimit(route) === 3) return fulfill(route, receiptSource([recentList]));
+      if (listCursor(route) === "trend-page-2") return fulfill(route, receiptSource([pageTwo]));
+      return fulfill(route, receiptSource([pageOne], { nextCursor: "trend-page-2", hasMore: true }));
+    });
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $30.00、退款 $0.00，净额 $30.00", { exact: true }).waitFor({ state: "visible" });
+
+    assert.equal(await trend.getByText("$250.00", { exact: false }).count(), 0);
+    assert.equal(await trend.locator('.trend-bar[data-empty="false"]').count(), 2);
+    assert.equal(await page.locator(".overview-receipts").getByText("扣款 $250.00", { exact: true }).count(), 1);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend reports an unavailable Ledger read instead of zero spend", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const charge = trendReceipt("trend-unavailable", { totalUsdMicros: 52_580_000 });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/billing/receipts?*", async (route) => {
+      if (listLimit(route) === 3) {
+        await fulfill(route, receiptSource([charge]));
+        return;
+      }
+      await fail(route);
+    });
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天费用暂不可用", { exact: true }).waitFor({ state: "visible" });
+    await trend.getByRole("button", { name: "重试", exact: true }).waitFor({ state: "visible" });
+
+    assert.equal(await trend.locator(".trend-chart").count(), 0);
+    assert.equal(await trend.getByText("无扣款", { exact: true }).count(), 0);
+    assert.equal(await page.locator(".overview-receipts").getByText("扣款 $52.58", { exact: true }).count(), 1);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend keeps unconfirmed amounts out of the day totals", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const unconfirmed = trendReceipt("trend-unconfirmed", { status: "pending", totalUsdMicros: 52_580_000 });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/billing/receipts?*", (route) => fulfill(route, receiptSource([unconfirmed])));
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天已确认扣款 $0.00、退款 $0.00，净额 $0.00；另有 1 笔金额待确认，未计入汇总", { exact: true })
+      .waitFor({ state: "visible" });
+
+    assert.equal(
+      await trend.locator(".trend-chart").getAttribute("aria-label"),
+      "近 14 天每日净扣款条形图，最高 无已确认扣款"
+    );
+    assert.equal(await trend.locator('.trend-bar[data-empty="false"]').count(), 0);
+    assert.equal(await trend.getByText("无扣款", { exact: true }).count(), 0);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});

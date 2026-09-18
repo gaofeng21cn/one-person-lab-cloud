@@ -1,8 +1,8 @@
 # 决策结论
 
-Console UI（`apps/console-ui`）的呈现层完成一轮系统性整改：统一现代 SaaS 视觉（teal 主色 + 胶囊徽章 + 卡片化信息架构）、修复客户侧与管理侧共 10 处排版缺陷、降低运维页面的信息密度，并修复 SDK 组件 theme 变量未被编译的基建缺陷。
+Console UI（`apps/console-ui`）完成一轮系统性整改（以呈现层为主）：统一现代 SaaS 视觉（teal 主色 + 胶囊徽章 + 卡片化信息架构）、修复客户侧与管理侧共 10 处排版缺陷、降低运维页面的信息密度，并修复 SDK 组件 theme 变量未被编译的基建缺陷。
 
-本 PR 只改呈现层。API 合同、业务逻辑、后端语义、测试断言的业务文本零改动。
+本 PR 以呈现层为主，但不是纯样式改动：客户概览的费用趋势聚合、余额操作的确认交互属于 Console 侧逻辑，已按下述口径修正并在本 PR 内补齐测试。API 合同、后端语义、测试断言的业务文本零改动。
 
 ## 当前问题
 
@@ -26,7 +26,9 @@ Console UI（`apps/console-ui`）的呈现层完成一轮系统性整改：统�
 
 ### 客户侧
 
-- 概览：KPI 数字提升至 30px/700 加粗负字距；新增「近期费用趋势」卡——由费用回执按日聚合的 14 天纯 CSS 条形图（无图表库依赖，移动端自动收成 7 天）；消息横幅在窄面板内动作按钮换行，不再裁切。
+- 概览：KPI 数字提升至 30px/700 加粗负字距；新增「近期费用趋势」卡——14 天纯 CSS 条形图（无图表库依赖，桌面与移动端都渲染完整 14 天）；消息横幅在窄面板内动作按钮换行，不再裁切。
+- 概览费用趋势口径：金额只读 Ledger 投影的 typed micros 字段（`totalUsdMicros` / `refundUsdMicros` / `chargeUsdMicros`），不从展示文案反解；只有 `completed` 回执产生已确认金额，`billing.workspace_expired.v1` 与 `chargeUsdMicros: 0` 的结案回执按未扣款计零，其余状态与类型一律计入「金额待确认」且不进入汇总；按本地日历日聚合扣款减退款净额，退款日以独立配色标出。
+- 概览费用趋势范围：概览额外沿 Ledger cursor 读取费用回执（`limit=100`），逐页读到早于窗口起点的回执为止，覆盖完整 14 天；读取失败、来源不可用或不完整时该卡显示对应状态与重试入口，不显示「无消费」或完整汇总。
 - 工作空间详情：事实卡由"背景 + 1px gap"分隔改为逐项边框（消除条目不满时的灰块）；免责声明加内边距；轮换密码按钮对齐。
 - Gateway 服务信息：指标条改 3 列等分。
 - 新建工作空间：SDK Checkbox 对齐修正；移动端概览按钮布局改为弹性分配。
@@ -56,17 +58,30 @@ Console UI（`apps/console-ui`）的呈现层完成一轮系统性整改：统�
 | API 请求/响应形状 | 否 | `confirmationAccountId` 仍随请求体发送，值由控制器从目标账户参数自动填入 |
 | 测试断言的业务文本 | 否 | `运行中/已停止/待人工确认/安装镜像目标一致性` 等全部原样保留 |
 | 测试定位器依赖的 DOM | 否 | `.operator-*-table tbody tr`、heading 层级、`getByLabel` 字段标签均在 |
+| 概览的费用读取 | 是 | 概览新增一次覆盖完整 14 天窗口的费用回执读取（`limit=100` + cursor 分页）；「最近费用」列表仍读取原先的 `limit=3` 第一页 |
+| 趋势金额口径 | 是 | 由解析 `presentBillingReceiptAmount` 的展示文案改为读取 typed micros；`扣款 $52.58` 不再被算成 0 |
 | 唯一删除的 QA 步骤 | 是 | `tools/console-browser-qa.ts` 中对已移除的「再次确认 Account ID」输入框的一行 fill |
 
 ## 验收标准
 
-- [x] `npm test` 213/213 通过。
-- [x] `npm run test:browser:suite` 106/106 通过（含桌面 1440 与移动 390 双视口、无横向溢出断言）。
+- [x] `npm test` 217/217 通过（较上一版新增 2 组 typing 口径与 2 组窗口/边界测试）。
+- [x] `npm run test:browser:suite` 110/110 通过（含桌面 1440 与移动 390 双视口、无横向溢出断言；新增 4 条概览趋势链路：typed 金额、cursor 覆盖完整窗口、来源不可用、金额待确认）。
+- [x] `npm run verify:local` 通过。
 - [x] `tests/ui/console-browser-acceptance.test.ts` 3/3 通过（含完整钱包提交流程，验证自动填入的字段值随请求发出）。
 - [x] `npm run typecheck` / `npm run lint` / `npm run build` / `git diff --check` / `npm run validate:product-boundary` 通过。
 - [x] 资源列表在 1440 视口内列宽规则化后末列按钮完整可见，页面级横向溢出为 0。
 - [x] 首页产品图由 1.7MB PNG 瘦身为 230KB JPEG（1280px/质量 70）。
 - [ ] 白皮书构建（`node --experimental-strip-types scripts/build-opl-cloud-whitepaper.ts`）：需要 `OPL_FRAMEWORK_REPO` 指向本地框架仓库与 xelatex；与本次 UI 改动无关，CI 环境自带 TeX 工具链。
+
+## 审核后的修正（2026-09-18）
+
+上一轮审核在 `25b26ee6` 上复现了三个问题，均已在本次修正中处理：
+
+1. 趋势图通过 `presentBillingReceiptAmount(...).startsWith("$")` 反解展示文案，而正常回执返回 `扣款 $52.58`，导致真实扣款被算成 0。现改为读取 typed micros，并明确扣款/退款/未扣款/待确认的统计口径。
+2. 趋势图只使用概览的 `limit=3` 第一页，无法代表 14 天。现按 Ledger cursor 分页读到窗口起点，覆盖完整范围并明确本地日历日边界。
+3. 来源不可用或读取失败时图表仍渲染 14 个零值并标注「无消费」。现区分加载、不可用、读取失败、成功空结果、金额待确认与已确认零金额。
+
+新测试先在 `25b26ee6` 上失败（4 条浏览器用例超时；探针显示完成态扣款回执的图表仍为「最高 无记录 / 无消费」），修正后全部通过。
 
 ## PR 终态
 
