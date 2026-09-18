@@ -254,3 +254,56 @@ func TestLocalDockerApplicationSecretEnvCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalDockerApplicationCredentialsMountOnlyDeclaredFiles(t *testing.T) {
+	for _, kinds := range [][]string{
+		{contracts.WorkspaceApplicationCredentialGatewayKey},
+		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword},
+		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
+		{contracts.WorkspaceApplicationCredentialGatewayKey, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret},
+	} {
+		t.Run(strings.Join(kinds, "+"), func(t *testing.T) {
+			provider, _, _ := applicationRuntimeProviderFixture(t, "workspace-alpha")
+			input := applicationRuntimeInput("declared-credentials", applicationRevisionForTest())
+			for _, kind := range kinds {
+				credential := contracts.WorkspaceApplicationCredential{Name: kind, Kind: kind, Target: "/run/declared/" + kind}
+				if kind == contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword {
+					credential.Username = "opl"
+				}
+				input.Revision.Credentials = append(input.Revision.Credentials, credential)
+			}
+			const key = "synthetic-declared-credential-key"
+			gateway, err := provider.UpsertGatewaySecret(context.Background(), GatewaySecretInput{
+				AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, WorkspaceAPIKeyID: 7,
+				GatewayAPIKey: key, Fingerprint: "sha256:" + stableSuffix(key),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			input.SecretBindings = []contracts.WorkspaceApplicationRuntimeSecretBinding{{
+				Name: contracts.WorkspaceApplicationCredentialGatewayKey, SecretRef: gateway.SecretRef,
+				Version: gateway.Version, Key: localDockerGatewayKeyFile,
+			}}
+			input.Configuration.CredentialVersion = "declared-credential-version"
+			if err := provider.applicationCredentialFiles(input, true); err != nil {
+				t.Fatal(err)
+			}
+			files, _, err := provider.applicationSecretFiles(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(files) != len(kinds) {
+				t.Fatalf("mounted %d files for %d declared credentials", len(files), len(kinds))
+			}
+			for _, credential := range input.Revision.Credentials {
+				source, ok := files[credential.Target]
+				if !ok {
+					t.Fatalf("declared credential target missing: %s", credential.Target)
+				}
+				if _, err := os.Stat(source); err != nil {
+					t.Fatalf("declared credential file missing: %v", err)
+				}
+			}
+		})
+	}
+}

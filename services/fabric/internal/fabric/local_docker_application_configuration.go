@@ -31,14 +31,15 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	if !contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
+	gateway, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey)
+	if !declared {
 		return files, localDockerGatewayMetadata{}, nil
 	}
 	binding, err := workspaceApplicationGatewayBinding(input)
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	_, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
+	directory, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
 	if err != nil {
 		return nil, metadata, err
 	}
@@ -46,9 +47,16 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 		return nil, metadata, ErrLaunchStageBindingConflict
 	}
 
+	// A Gateway credential does not imply WebUI credentials. Mount only the
+	// revision's declared consumers, at the targets owned by that declaration.
+	files[gateway.Target] = filepath.Join(directory, localDockerGatewayKeyFile)
 	credentialPath := filepath.Join(p.gatewaySecretRoot, "application-credentials", applicationRuntimeID(input))
-	files["/run/secrets/opl_webui_password"] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
-	files["/run/secrets/webui_session_secret"] = filepath.Join(credentialPath, localDockerWebUISessionSecretFile)
+	if credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword); declared {
+		files[credential.Target] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
+	}
+	if credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret); declared {
+		files[credential.Target] = filepath.Join(credentialPath, localDockerWebUISessionSecretFile)
+	}
 	return files, metadata, nil
 }
 
