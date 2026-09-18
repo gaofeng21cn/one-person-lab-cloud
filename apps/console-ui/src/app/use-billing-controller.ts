@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getBillingReceipt, getBillingReceipts } from "../api/console-read-api.ts";
+import { getBillingReceipt, getBillingReceipts, getWorkspaceSettlementTrend } from "../api/console-read-api.ts";
 import type {
   AuthSession,
   BillingReceipt,
   BillingReceiptPage,
-  SourceEnvelope
+  SourceEnvelope,
+  WorkspaceSettlementTrend
 } from "../api/dtos.ts";
 import type {
   BillingController,
@@ -38,6 +39,7 @@ export function useBillingController({
 }: BillingDependencies): BillingCapability {
   const [view, setView] = useState<BillingView>("terms");
   const [receipts, setReceipts] = useState<RemoteState<SourceEnvelope<BillingReceiptPage>>>(emptyRemote);
+  const [trend, setTrend] = useState<RemoteState<SourceEnvelope<WorkspaceSettlementTrend>>>(emptyRemote);
   const [detail, setDetail] = useState<RemoteState<SourceEnvelope<BillingReceipt>>>(emptyRemote);
   const [selectedReceiptId, setSelectedReceiptId] = useState("");
   const [cursorStack, setCursorStack] = useState<string[]>([]);
@@ -47,6 +49,7 @@ export function useBillingController({
   const cursorStackRef = useRef<string[]>([]);
   const selectedReceiptIdRef = useRef("");
   const listGeneration = useRef(0);
+  const trendGeneration = useRef(0);
   const detailGeneration = useRef(0);
   routeRef.current = route;
 
@@ -76,14 +79,17 @@ export function useBillingController({
 
   const reset = useCallback(() => {
     listGeneration.current += 1;
+    trendGeneration.current += 1;
     setView("terms");
     setReceipts(emptyRemote());
+    setTrend(emptyRemote());
     closeReceipt();
     resetPagination();
   }, [closeReceipt, resetPagination]);
 
   useEffect(() => {
     listGeneration.current += 1;
+    trendGeneration.current += 1;
     detailGeneration.current += 1;
   }, [route]);
 
@@ -119,12 +125,43 @@ export function useBillingController({
     }
   }, [closeReceipt, friendlyError, requestOwnsScope, unavailableSource]);
 
+  // The trend is one owner read: Control Plane projects confirmed Workspace
+  // wallet movements from its retained orders and the wallet record that
+  // applied the money. Console never re-buckets days or re-derives money.
+  const loadTrend = useCallback(async (
+    session: AuthSession,
+    expectedRoute: Exclude<BillingRoute, "">
+  ) => {
+    if (routeRef.current !== expectedRoute) return;
+    const generation = ++trendGeneration.current;
+    const userId = session.user.id;
+    const csrfToken = session.csrfToken;
+    setTrend((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const result = await getWorkspaceSettlementTrend();
+      if (generation !== trendGeneration.current
+        || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      setTrend({ value: result, loading: false, error: "" });
+    } catch (error) {
+      if (generation !== trendGeneration.current
+        || !requestOwnsScope(userId, csrfToken, expectedRoute)) return;
+      setTrend({
+        value: unavailableSource<WorkspaceSettlementTrend>("control_plane"),
+        loading: false,
+        error: friendlyError(error)
+      });
+    }
+  }, [friendlyError, requestOwnsScope, unavailableSource]);
+
   const loadOverview = useCallback(async () => {
     const session = currentSession();
     if (!session || routeRef.current !== "overview") return;
     resetPagination();
-    await loadList(session, "overview", "", 3);
-  }, [currentSession, loadList, resetPagination]);
+    await Promise.all([
+      loadList(session, "overview", "", 3),
+      loadTrend(session, "overview")
+    ]);
+  }, [currentSession, loadList, loadTrend, resetPagination]);
 
   const loadBilling = useCallback(async () => {
     const session = currentSession();
@@ -193,6 +230,7 @@ export function useBillingController({
     view,
     setView,
     receipts,
+    trend,
     detail,
     selectedReceiptId,
     pageNumber: cursorStack.length + 1,

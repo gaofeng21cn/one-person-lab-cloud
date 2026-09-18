@@ -1,6 +1,7 @@
 import {
   Activity,
   Ban,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -99,8 +100,9 @@ function SourceBadge({ source }: { source: SourceEnvelope<unknown> | null | unde
   return <Badge color={sourceTone(source?.status)}>{sourceStatusLabel(source?.status)}</Badge>;
 }
 
-function SourceValue<T>({ source, children }: { source: SourceEnvelope<T> | null | undefined; children: (data: T) => ReactNode }) {
+function SourceValue<T>({ source, children, detail = false }: { source: SourceEnvelope<T> | null | undefined; children: (data: T) => ReactNode; detail?: boolean }) {
   if (!source?.available) return <span className="source-value source-value--unavailable">暂不可用{source?.status === "unavailable" ? <small>{observationReason(source.reasonCode)}</small> : null}</span>;
+  if (!detail) return <span className="source-value"><strong>{children(source.data)}</strong></span>;
   return (
     <span className="source-value">
       <strong>{children(source.data)}</strong>
@@ -144,10 +146,10 @@ function overallHealth(source: SourceEnvelope<OperatorHealthDTO> | null | undefi
 function SourceTable({ rows }: { rows: Array<{ label: string; source: SourceEnvelope<unknown> }> }) {
   return (
     <div className="table-wrap">
-      <table>
+      <table className="ops-table source-table">
         <thead><tr><th>来源</th><th>状态</th><th>Console 读回</th><th>权威更新时间</th></tr></thead>
         <tbody>{rows.map(({ label, source }) => (
-          <tr key={label}>
+          <tr key={label} data-state={source.status === "available" ? "active" : source.status === "empty" ? "" : "manual_review"}>
             <td><strong>{label}</strong><small>{source.source}</small></td>
             <td><SourceBadge source={source} /></td>
             <td>{source.fetchedAt ? formatDate(source.fetchedAt, true) : "暂不可用"}</td>
@@ -241,13 +243,22 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
     { label: "Ledger 计费复核", source: overview.reconciliation },
     { label: "系统健康", source: overview.health }
   ] : [];
+  const accountsTotal = overview?.accounts.available ? overview.accounts.data.total : null;
+  const accountsActive = overview?.accounts.available ? overview.accounts.data.active : null;
+  const accountsDisabled = overview?.accounts.available ? overview.accounts.data.disabled : null;
+  const healthOk = health.label === "正常";
+  const attentionItems = [
+    reconciliationCount && reconciliationCount > 0 ? { key: "reconciliation", tone: "warning", title: `${formatCount(reconciliationCount)} 个项目等待计费复核`, description: "到计费复核处理开通结案与退款确认。", actionLabel: "去复核", path: "/admin/billing" } : null,
+    !healthOk ? { key: "health", tone: "danger", title: `系统健康：${health.label}`, description: "五个服务域按最差真实状态汇总。", actionLabel: "看详情", path: "/admin/system" } : null,
+    rows.some(({ source }) => source.status === "unavailable") ? { key: "sources", tone: "warning", title: "部分权威来源暂不可用", description: "相关值未显示为零，避免误读。", actionLabel: "", path: "" } : null
+  ].filter(Boolean) as Array<{ key: string; tone: "warning" | "danger"; title: string; description: string; actionLabel: string; path: string }>;
 
   return (
     <section className="admin-dashboard" data-slide="A-OV-01 A-OV-02">
       <section className="account-band">
         <div className="account-band-copy"><h2>运营总览</h2></div>
         <div className="band-metrics operator-metrics">
-          <Metric label="计费账户" note={overview?.accounts.available ? `正常 ${formatCount(overview.accounts.data.active)} · 停用 ${formatCount(overview.accounts.data.disabled)}` : "来源暂不可用"} value={overview?.accounts.available ? formatCount(overview.accounts.data.total) : "暂不可用"} />
+          <Metric label="计费账户" note={accountsTotal === null ? "来源暂不可用" : `正常 ${formatCount(accountsActive ?? 0)} · 停用 ${formatCount(accountsDisabled ?? 0)}`} value={accountsTotal === null ? "暂不可用" : formatCount(accountsTotal)} />
           <Metric label="Workspace" note="Control Plane" value={overview?.workspaces.available ? formatCount(overview.workspaces.data.total) : "暂不可用"} />
           <Metric label="资源" note="Fabric 聚合" value={overview?.resources.available ? formatCount(overview.resources.data.total) : "暂不可用"} />
           <Metric label="待复核" note="Ledger / Control Plane" value={reconciliationCount === null ? "暂不可用" : formatCount(reconciliationCount)} />
@@ -261,15 +272,18 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
               <article><WalletCards aria-hidden size={22} /><span>汇总余额<strong>{data.wallet.available ? formatUsdMicros(data.wallet.data.usdMicros) : "暂不可用"}</strong><small>OPL 账户 · Gateway 权威余额</small>{data.wallet.status === "unavailable" ? <small>{observationReason(data.wallet.reasonCode)}</small> : null}</span></article>
               <article><Server aria-hidden size={22} /><span>Key 总数<strong>{data.keys.available ? formatCount(data.keys.data.total) : "暂不可用"}</strong><small>OPL 账户 · Gateway Key 汇总</small>{data.keys.status === "unavailable" ? <small>{observationReason(data.keys.reasonCode)}</small> : null}</span></article>
               <article><CircleDollarSign aria-hidden size={22} /><span>累计 API 实际费用<strong>{data.usage.available ? formatUsdMicros(data.usage.data.totalActualCostUsdMicros) : "暂不可用"}</strong><small>OPL 账户 · {data.usage.available ? `今日 ${formatUsdMicros(data.usage.data.todayActualCostUsdMicros)}` : data.usage.status === "unavailable" ? observationReason(data.usage.reasonCode) : "暂不可用"}</small></span></article>
-              <article><Activity aria-hidden size={22} /><span>总体健康状态<strong>{health.label}</strong><small>五个服务域的最差真实状态</small></span></article>
+              <article className={healthOk ? "metric-ok" : "metric-warn"}><Activity aria-hidden size={22} /><span>总体健康<strong>{health.label}</strong><small>五个服务域的最差真实状态</small></span><span className="metric-gauge" aria-hidden="true"><span className={`metric-gauge__fill ${healthOk ? "is-ok" : "is-warn"}`} style={{ width: healthOk ? "100%" : "38%" }} /></span></article>
             </section>
 
             <section className="panel">
               <div className="panel-title"><div><h2>注意事项</h2><span>按复核、健康和来源状态排序</span></div>{attentionPath ? <Button color="primary" onClick={() => controller.navigate(attentionPath)} size="sm">进入处理</Button> : null}</div>
-              {reconciliationCount && reconciliationCount > 0 ? <div className="inline-notice"><span>{formatCount(reconciliationCount)} 个项目等待计费复核。</span><Button onClick={() => controller.navigate("/admin/billing")} size="sm" variant="ghost">查看</Button></div> : null}
-              {health.label !== "正常" ? <div className="inline-notice"><span>系统健康状态：{health.label}。</span><Button onClick={() => controller.navigate("/admin/system")} size="sm" variant="ghost">查看</Button></div> : null}
-              {rows.some(({ source }) => source.status === "unavailable") ? <div className="inline-notice"><span>存在权威来源暂不可用，相关值未显示为零。</span></div> : null}
-              {!attentionPath && !rows.some(({ source }) => source.status === "unavailable") ? <div className="empty-panel">当前没有待处理事项。</div> : null}
+              {attentionItems.length ? <div className="attention-list">{attentionItems.map((item) => (
+                <div className={`attention-card attention-card--${item.tone}`} key={item.key}>
+                  <span className="attention-card__dot" aria-hidden="true" />
+                  <div className="attention-card__body"><strong>{item.title}</strong><small>{item.description}</small></div>
+                  {item.actionLabel && item.path ? <Button onClick={() => controller.navigate(item.path)} size="sm" variant="outline">{item.actionLabel}</Button> : null}
+                </div>
+              ))}</div> : <div className="empty-panel">当前没有待处理事项。</div>}
             </section>
 
             <section className="panel">
@@ -485,24 +499,36 @@ function WalletOperationReadback({ controller }: { controller: ConsoleController
   const operation = controller.walletAdjustmentOperation;
   if (!operation) return null;
   const recoverable = operation.status === "manual_review" && operation.allowedActions?.includes("recover_wallet_adjustment");
+  const settled = operation.status === "succeeded" || operation.status === "failed";
+  const facts = [
+    { label: "操作 ID", value: operation.operationId },
+    { label: "调整前余额", value: operation.beforeBalance.available ? formatUsdMicros(operation.beforeBalance.data.usdMicros) : "暂不可用" },
+    { label: "调整后余额", value: operation.afterBalance.available ? formatUsdMicros(operation.afterBalance.data.usdMicros) : "暂不可用" },
+    { label: "原因", value: operation.reason },
+    { label: "关联操作", value: operation.relatedOperationId || "—" },
+    { label: "余额历史引用", value: operation.balanceHistoryRef || "—" },
+    { label: "回执 ID", value: operation.receiptId || "—" },
+    { label: "操作人", value: operation.actor || "暂不可用" },
+    { label: "错误码", value: operation.errorCode || "—" },
+    { label: "上游阶段 / HTTP", value: operation.upstreamFailure ? `${operation.upstreamFailure.phase} / ${operation.upstreamFailure.httpStatus ?? "暂不可用"}` : "—" },
+    { label: "上游错误码 / 请求 ID", value: operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "—" },
+    { label: "允许动作", value: operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无" }
+  ];
   return (
     <section className="wallet-adjustment-readback">
-      <div className="inline-notice"><span>操作结果：{statusLabel(operation.status)}</span><Button onClick={() => void controller.refreshWalletOperation()} size="sm" variant="ghost"><RefreshCw aria-hidden size={15} />刷新</Button></div>
-      <dl className="data-list">
-        <div><dt>operation ID</dt><dd>{operation.operationId}</dd></div>
-        <div><dt>phase</dt><dd>{operation.phase || "暂不可用"}</dd></div>
-        <div><dt>调整前余额</dt><dd><SourceValue source={operation.beforeBalance}>{(data) => formatUsdMicros(data.usdMicros)}</SourceValue></dd></div>
-        <div><dt>调整后余额</dt><dd><SourceValue source={operation.afterBalance}>{(data) => formatUsdMicros(data.usdMicros)}</SourceValue></dd></div>
-        <div><dt>原因</dt><dd>{operation.reason}</dd></div>
-        <div><dt>关联操作</dt><dd>{operation.relatedOperationId || "暂不可用"}</dd></div>
-        <div><dt>余额历史引用</dt><dd>{operation.balanceHistoryRef || "暂不可用"}</dd></div>
-        <div><dt>Receipt ID</dt><dd>{operation.receiptId || "暂不可用"}</dd></div>
-        <div><dt>actor</dt><dd>{operation.actor || "暂不可用"}</dd></div>
-        <div><dt>errorCode</dt><dd>{operation.errorCode || "暂不可用"}</dd></div>
-        <div><dt>上游 phase / HTTP</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.phase} / ${operation.upstreamFailure.httpStatus ?? "暂不可用"}` : "暂不可用"}</dd></div>
-        <div><dt>上游 errorCode / requestId</dt><dd>{operation.upstreamFailure ? `${operation.upstreamFailure.errorCode} / ${operation.upstreamFailure.requestId || "暂不可用"}` : "暂不可用"}</dd></div>
-        <div><dt>allowedActions</dt><dd>{operation.allowedActions?.length ? operation.allowedActions.join(", ") : "无"}</dd></div>
-      </dl>
+      <div className="wallet-readback-banner" data-status={operation.status}>
+        <div className="wallet-readback-banner__main">
+          <strong>{settled ? (operation.status === "succeeded" ? "操作完成" : "操作失败") : "结果待确认"}</strong>
+          <small>操作 ID {operation.operationId} · 当前状态：{statusLabel(operation.status)}</small>
+        </div>
+        {settled ? null : <Button onClick={() => void controller.refreshWalletOperation()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />刷新</Button>}
+      </div>
+      <details className="wallet-readback-facts" open={settled ? false : true}>
+        <summary>操作详情与证据引用</summary>
+        <dl className="wallet-readback-grid">
+          {facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
+        </dl>
+      </details>
       {recoverable ? <div className="page-actions"><span>仅核对原操作结果，不会再次扣款或退款。</span><Button busy={controller.walletAdjustmentBusy} color="primary" onClick={() => void controller.recoverWalletOperation()}>重新核验</Button></div> : null}
     </section>
   );
@@ -524,12 +550,12 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
       kind: form.kind,
       amountUsd: form.amountUsd.trim(),
       reason: form.reason.trim(),
-      confirmationAccountId: form.confirmationAccountId.trim(),
+      confirmationAccountId: account.accountId,
       ...(form.kind === "business_refund" && form.relatedOperationId?.trim() ? { relatedOperationId: form.relatedOperationId.trim() } : {})
     };
     void controller.submitWalletAdjustment(account.accountId, input);
   };
-  const valid = Boolean(account && form.confirmationAccountId.trim() === account.accountId && form.amountUsd.trim() && form.reason.trim() && (form.kind !== "business_refund" || form.relatedOperationId?.trim()));
+  const valid = Boolean(account && form.amountUsd.trim() && form.reason.trim() && (form.kind !== "business_refund" || form.relatedOperationId?.trim()));
   return (
     <Modal
       className="modal wallet-adjustment-modal"
@@ -541,13 +567,23 @@ function WalletAdjustmentModal({ account, controller, onClose }: { account: Oper
     >
       {account ? (
         <div data-slide="A-ACC-03">
-          <form id="wallet-adjustment-form" onSubmit={submit}>
-            <Field autoFocus description="必须与目标 Account ID 完全一致。" label="再次确认 Account ID" onChange={(event) => updateForm("confirmationAccountId", event.currentTarget.value)} required value={form.confirmationAccountId} />
-            <Select label="操作类型" onChange={(kind) => setForm((value) => ({ ...value, kind: kind as WalletAdjustmentRequest["kind"] }))} options={[{ value: "recharge", label: "充值" }, { value: "debit", label: "扣减" }, { value: "business_refund", label: "业务退款" }]} value={form.kind} />
-            <Field inputMode="decimal" label="金额（USD）" min="0.000001" onChange={(event) => updateForm("amountUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.amountUsd} />
-            <Field label="业务原因" maxLength={200} multiline onChange={(event) => updateForm("reason", event.currentTarget.value)} required rows={4} value={form.reason} />
-            {form.kind === "business_refund" ? <Field label="关联 operation ID" onChange={(event) => updateForm("relatedOperationId", event.currentTarget.value)} required value={form.relatedOperationId || ""} /> : null}
-          </form>
+          {controller.walletAdjustmentOperation ? null : <>
+            <div className="wallet-target-card">
+              <div className="wallet-target-card__id"><small>目标账户</small><code>{account.accountId}</code></div>
+              <div className="wallet-target-card__balance"><AccountFact source={account.wallet}>{(wallet) => <><small>当前余额</small><strong>{formatUsdMicros(wallet.usdMicros)}</strong></>}</AccountFact></div>
+            </div>
+            <form id="wallet-adjustment-form" onSubmit={submit}>
+              <div className="wallet-kind-picker">
+                <span className="wallet-kind-picker__label">操作类型</span>
+                <SegmentedControl ariaLabel="操作类型" block onChange={(kind) => setForm((value) => ({ ...value, kind: kind as WalletAdjustmentRequest["kind"] }))} options={[{ value: "recharge", label: "充值" }, { value: "debit", label: "扣减" }, { value: "business_refund", label: "业务退款" }]} value={form.kind} />
+              </div>
+              <div className="wallet-amount-row">
+                <Field inputMode="decimal" label="金额（USD）" min="0.000001" onChange={(event) => updateForm("amountUsd", event.currentTarget.value)} required step="0.000001" type="number" value={form.amountUsd} />
+              </div>
+              <Field label="业务原因" maxLength={200} multiline onChange={(event) => updateForm("reason", event.currentTarget.value)} required rows={3} value={form.reason} />
+              {form.kind === "business_refund" ? <Field label="关联 operation ID" onChange={(event) => updateForm("relatedOperationId", event.currentTarget.value)} required value={form.relatedOperationId || ""} /> : null}
+            </form>
+          </>}
           <WalletOperationReadback controller={controller} />
         </div>
       ) : null}
@@ -571,12 +607,12 @@ function AccountsPage({ controller }: { controller: ConsoleController }) {
       <div className="panel-title operator-accounts-panel-title"><div className="operator-accounts-title"><h2>客户与计费账户</h2></div><Button color="primary" onClick={() => setDialog("provision")}><Plus aria-hidden size={16} />开通用户</Button></div>
       <SourceState empty={accounts.length === 0} emptyTitle="暂无用户" error={accountController.accounts.error} loading={accountController.accounts.loading} onRetry={() => void accountController.refresh()} source={accountController.accounts.value} unavailableTitle="账户数据暂不可用">
         {(data) => <>
-          <div className="table-wrap operator-account-table"><table><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
-            <tr key={account.accountId}>
+          <div className="table-wrap operator-account-table"><table className="ops-table"><thead><tr><th>用户</th><th>账户映射</th><th>余额</th><th>API 费用</th><th>资源</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.items.map((account) => (
+            <tr key={account.accountId} data-state={account.status}>
               <td>
                 <span className="operator-account-identity">
-                  <strong>{account.email}</strong>
-                  <small>{account.role === "admin" ? "管理员" : account.role}</small>
+                  <span className="account-avatar" aria-hidden="true">{(account.email[0] || "?").toUpperCase()}</span>
+                  <span className="operator-account-identity__text"><strong>{account.email}</strong><small>{account.role === "admin" ? "管理员" : account.role}</small></span>
                 </span>
               </td>
               <td><span className="account-mapping-stack"><span><small>OPL Account</small><code>{account.accountId}</code></span><span><small>Console User</small><code>{account.consoleUserId}</code></span><span><small>Sub2API User</small><code>{account.sub2apiUserId}</code></span></span></td>
@@ -602,17 +638,17 @@ function ReviewDetails({ review }: { review: OperatorReconciliationItemDTO }) {
   return (
     <div>
       <section className="data-section"><h2>Control Plane</h2><dl className="data-list">
-        <div><dt>Account</dt><dd>{review.accountId || "暂不可用"}</dd></div>
-        <div><dt>Workspace</dt><dd>暂不可用</dd></div>
-        <div><dt>billing operation</dt><dd>{review.billingOperationId || "暂不可用"}</dd></div>
+        <div><dt>账户</dt><dd>{review.accountId || "暂不可用"}</dd></div>
+        <div><dt>工作空间</dt><dd>暂不可用</dd></div>
+        <div><dt>计费操作</dt><dd>{review.billingOperationId || "暂不可用"}</dd></div>
         <div><dt>报价 / 扣款意图</dt><dd>暂不可用</dd></div>
-        <div><dt>phase</dt><dd>{review.phase || "暂不可用"}</dd></div>
-        <div><dt>errorCode</dt><dd>{review.errorCode || "暂不可用"}</dd></div>
-        <div><dt>operation reference</dt><dd>{review.operationRef || "暂不可用"}</dd></div>
+        <div><dt>阶段</dt><dd>{review.phase || "暂不可用"}</dd></div>
+        <div><dt>错误码</dt><dd>{review.errorCode || "暂不可用"}</dd></div>
+        <div><dt>操作引用</dt><dd>{review.operationRef || "暂不可用"}</dd></div>
       </dl></section>
       <section className="data-section"><h2>Gateway</h2><dl className="data-list"><div><dt>权威余额</dt><dd>暂不可用</dd></div><div><dt>余额历史证据</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Fabric</h2><dl className="data-list"><div><dt>Compute / Storage / Attachment</dt><dd>暂不可用</dd></div><div><dt>provider ID / Zone / 最近读回</dt><dd>暂不可用</dd></div></dl></section>
-      <section className="data-section"><h2>Ledger</h2><dl className="data-list"><div><dt>Receipt reference</dt><dd>{review.receiptRef || "暂不可用"}</dd></div><div><dt>reconciliation exception</dt><dd>{review.status || "暂不可用"}</dd></div></dl></section>
+      <section className="data-section"><h2>Fabric</h2><dl className="data-list"><div><dt>计算 / 存储 / 挂载</dt><dd>暂不可用</dd></div><div><dt>provider ID / 可用区 / 最近读回</dt><dd>暂不可用</dd></div></dl></section>
+      <section className="data-section"><h2>Ledger</h2><dl className="data-list"><div><dt>回执引用</dt><dd>{review.receiptRef || "暂不可用"}</dd></div><div><dt>复核异常</dt><dd>{review.status || "暂不可用"}</dd></div></dl></section>
     </div>
   );
 }
@@ -751,9 +787,22 @@ function ReconciliationPage({ controller }: { controller: ConsoleController }) {
     <section className="panel" data-slide="A-REC-01 A-REC-02">
       <div className="panel-title"><div><h2>计费复核</h2></div><span>服务端队列</span></div>
       <SourceState empty={reviews.length === 0} emptyTitle="暂无待复核项目" error={controller.sources.operatorReconciliation.error} loading={controller.sources.operatorReconciliation.loading} onRetry={() => void controller.refreshCurrentPage()} source={controller.sources.operatorReconciliation.value} unavailableTitle="复核数据暂不可用">
-        {(data) => <div className="table-wrap"><table><thead><tr><th>Account</th><th>资源类型</th><th>状态</th><th>billing operation</th><th>phase</th><th>errorCode</th><th>operation reference</th><th>Receipt reference</th><th>allowedActions</th><th>操作</th></tr></thead><tbody>{data.items.map((review) => {
-          return <tr key={review.id}><td>{review.accountId || "暂不可用"}</td><td>{review.resourceType}</td><td><Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge></td><td>{review.billingOperationId || "暂不可用"}</td><td>{review.phase || "暂不可用"}</td><td>{review.errorCode || "暂不可用"}</td><td>{review.operationRef || "暂不可用"}</td><td>{review.receiptRef || "暂不可用"}</td><td>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</td><td><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></td></tr>;
-        })}</tbody></table></div>}
+        {(data) => <div className="review-list">{data.items.map((review) => {
+          return <article className="review-card" key={review.id}>
+            <header className="review-card__head">
+              <div className="review-card__identity"><strong>{review.accountId || "账户暂不可用"}</strong><small>{review.resourceType} · {review.billingOperationId || "计费操作暂不可用"}</small></div>
+              <Badge color={statusTone(review.status)}>{statusLabel(review.status)}</Badge>
+            </header>
+            <dl className="review-card__facts">
+              <div><dt>阶段</dt><dd><code>{review.phase || "暂不可用"}</code></dd></div>
+              <div><dt>错误码</dt><dd><code>{review.errorCode || "—"}</code></dd></div>
+              <div><dt>允许动作</dt><dd>{review.allowedActions.length ? review.allowedActions.join(", ") : "无"}</dd></div>
+              <div><dt>操作引用</dt><dd><code>{review.operationRef || "暂不可用"}</code></dd></div>
+              <div><dt>回执引用</dt><dd><code>{review.receiptRef || "暂不可用"}</code></dd></div>
+            </dl>
+            <footer className="review-card__actions"><Button onClick={() => setSelectedReview(review)} size="sm" variant="ghost">查看证据</Button></footer>
+          </article>;
+        })}</div>}
       </SourceState>
       <ReviewModal controller={controller} intent={recoveryIntent} onClose={() => setSelectedReview(null)} review={selectedReview} />
     </section>
@@ -778,20 +827,30 @@ function WorkspaceResourceObservations({ resources }: { resources: OperatorResou
 
 function ResourceRow({ resource }: { resource: OperatorResourceDTO }) {
   return (
-    <tr>
-      <td><SourceValue source={resource.ownerAccount}>{(data) => data.id}</SourceValue></td>
-      <td><SourceValue source={resource.ownerUser}>{(data) => `${data.email} · ${data.id}`}</SourceValue></td>
-      <td><SourceValue source={resource.workspace}>{(data) => data.name || data.id}</SourceValue></td>
-      <td><SourceValue source={resource.resourceType}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.packageOrSpec}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.providerId}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.zone}>{(data) => data}</SourceValue></td>
-      <td><ResourceObservation resource={resource} /></td>
-      <td><SourceValue source={resource.createdAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.expiresAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.lastReadAt}>{(data) => formatDate(data, true)}</SourceValue></td>
-      <td><SourceValue source={resource.operationRef}>{(data) => data}</SourceValue></td>
-      <td><SourceValue source={resource.receiptRef}>{(data) => data}</SourceValue></td>
+    <tr className="resource-detail-row">
+      <td colSpan={13}>
+        <div className="resource-detail-card">
+          <div className="resource-detail-card__head">
+            <span className="resource-detail-card__identity">
+              <SourceValue source={resource.workspace}>{(data) => <strong>{data.name || data.id}</strong>}</SourceValue>
+              <small><SourceValue source={resource.ownerUser}>{(data) => data.email}</SourceValue> · <SourceValue source={resource.ownerAccount}>{(data) => data.id}</SourceValue></small>
+            </span>
+            <span className="resource-detail-card__type">
+              <SourceValue source={resource.resourceType}>{(data) => ({ compute: "计算资源", storage: "存储", attachment: "挂载", runtime: "运行环境" } as Record<string, string>)[data] || data}</SourceValue>
+              <SourceValue source={resource.packageOrSpec}>{(data) => data}</SourceValue>
+            </span>
+            <ResourceObservation resource={resource} showReadTime />
+          </div>
+          <dl className="resource-detail-card__facts">
+            <div><dt>provider ID</dt><dd><SourceValue source={resource.providerId}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>可用区</dt><dd><SourceValue source={resource.zone}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>创建时间</dt><dd><SourceValue source={resource.createdAt}>{(data) => formatDate(data, true)}</SourceValue></dd></div>
+            <div><dt>到期时间</dt><dd><SourceValue source={resource.expiresAt}>{(data) => formatDate(data, true)}</SourceValue></dd></div>
+            <div><dt>操作引用</dt><dd><SourceValue source={resource.operationRef}>{(data) => data}</SourceValue></dd></div>
+            <div><dt>回执引用</dt><dd><SourceValue source={resource.receiptRef}>{(data) => data}</SourceValue></dd></div>
+          </dl>
+        </div>
+      </td>
     </tr>
   );
 }
@@ -842,7 +901,7 @@ function ResourceDetail({ controller, release, replacement, deployment }: { cont
             <div><dt>Workspace Key 累计实际费用</dt><dd><SourceValue source={detail.workspaceKeyUsage}>{(data) => `${formatUsdMicros(data.totalActualCostUsdMicros)} · ${data.keyId}`}</SourceValue></dd></div>
           </dl>
           {detail.resources.length ? <>
-            <div className="table-wrap operator-resource-detail-table"><table><thead><tr><th>owner Account</th><th>owner User</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
+            <div className="table-wrap operator-resource-detail-table"><table className="ops-table resource-detail-cards"><thead><tr className="sr-only"><th>归属账户</th><th>归属用户</th><th>Workspace</th><th>资源类型</th><th>套餐 / 规格</th><th>provider ID</th><th>Zone</th><th>实时状态</th><th>创建时间</th><th>到期时间</th><th>最近 provider 读回</th><th>operation reference</th><th>Receipt reference</th></tr></thead><tbody>{detail.resources.map((resource, index) => <ResourceRow key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</tbody></table></div>
             <div className="operator-resource-mobile-list">{detail.resources.map((resource, index) => <OperatorResourceMobileCard key={`${index}-${resource.providerId.source}-${resource.operationRef.source}`} resource={resource} />)}</div>
           </> : <div className="empty-panel">暂无资源</div>}
         </>}
@@ -903,15 +962,10 @@ function OperatorWorkspaceMobileCard({ controller, item }: { controller: Operato
         <SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue>
       </header>
       <dl className="operator-object-card__facts">
-        <div><dt>owner Account</dt><dd><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></dd></div>
-        <div><dt>owner User</dt><dd><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></dd></div>
-        <div><dt>套餐 / 月度总价</dt><dd><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></dd></div>
-        <div><dt>创建时间</dt><dd><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></dd></div>
+        <div><dt>套餐 / 月费</dt><dd><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></dd></div>
         <div><dt>权益截止</dt><dd><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></dd></div>
-        <div><dt>续费状态</dt><dd><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></dd></div>
         <div><dt>业务状态</dt><dd><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></dd></div>
         <div className="operator-object-card__wide"><dt>资源现态</dt><dd><WorkspaceResourceObservations resources={item.resources} /></dd></div>
-        <div><dt>Receipt ID</dt><dd><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></dd></div>
         <div className="operator-object-card__wide"><dt>Key 累计实际费用</dt><dd><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></dd></div>
       </dl>
       <div className="operator-card-actions">
@@ -930,10 +984,11 @@ function ResourcesPage({ controller, release, replacement, deployment }: { contr
         <div className="panel-title"><div><h2>Workspace 资源列表</h2></div><span>当前页资源状态</span></div>
         <SourceState empty={workspaces.length === 0} emptyTitle="暂无 Workspace" error={controller.workspaces.error} loading={controller.workspaces.loading} onRetry={() => void controller.refresh()} source={controller.workspaces.value} unavailableTitle="Workspace 资源暂不可用">
           {(data) => <>
-            <div className="table-wrap operator-workspace-table"><table><thead><tr><th>Workspace</th><th>owner Account</th><th>owner User</th><th>套餐 / 月度总价</th><th>创建时间</th><th>paidThrough</th><th>续费状态</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>URL</th><th>Receipt ID</th><th>Key 累计实际费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
+            <div className="table-wrap operator-workspace-table"><table className="ops-table"><thead><tr><th>Workspace</th><th>归属</th><th>套餐 / 月费</th><th>权益截止</th><th>业务状态</th><th>资源现态 / 读取时间</th><th>入口</th><th>Key 累计费用</th><th>操作</th></tr></thead><tbody>{data.items.map((item, index) => {
               const workspace = sourceData(item.workspace);
               const id = workspace?.id || "";
-              return <tr key={id || index}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue></td><td><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => formatDate(value.createdAt, true)}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.renewalStatus || "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => statusLabel(value.state)}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.receipt}>{(value) => value.receiptId}</SourceValue></td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
+              const state = sourceData(item.workspace)?.state;
+              return <tr key={id || index} data-state={state || ""}><td><SourceValue source={item.workspace}>{(value) => `${value.name || value.id} · ${value.id}`}</SourceValue></td><td><span className="ops-owner"><SourceValue source={item.ownerAccount}>{(value) => value.id}</SourceValue><small><SourceValue source={item.ownerUser}>{(value) => value.email}</SourceValue></small></span></td><td><SourceValue source={item.workspace}>{(value) => `${value.packageId?.toUpperCase() || "暂不可用"} · ${value.totalUsdMicros === undefined ? "暂不可用" : formatUsdMicros(value.totalUsdMicros)}`}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => value.paidThrough ? formatDate(value.paidThrough) : "暂不可用"}</SourceValue></td><td><SourceValue source={item.workspace}>{(value) => <Badge color={statusTone(value.state)}>{statusLabel(value.state)}</Badge>}</SourceValue></td><td><WorkspaceResourceObservations resources={item.resources} /></td><td>{workspace?.url ? <a href={workspace.url} rel="noreferrer" target="_blank">打开<ExternalLink aria-hidden size={14} /></a> : "暂不可用"}</td><td><SourceValue source={item.workspaceKeyUsage}>{(value) => formatUsdMicros(value.totalActualCostUsdMicros)}</SourceValue></td><td><Button disabled={!id} onClick={() => id && void controller.selectWorkspace(id)} size="sm" variant="outline">查看资源</Button></td></tr>;
             })}</tbody></table></div>
             <div className="operator-workspace-mobile-list">{data.items.map((item, index) => <OperatorWorkspaceMobileCard controller={controller} item={item} key={sourceData(item.workspace)?.id || index} />)}</div>
           </>}
@@ -1023,10 +1078,29 @@ function SystemPage({ controller }: { controller: ConsoleController }) {
         <div className="panel-title"><div><h2>服务健康</h2><Badge color={summary.tone}>{summary.label}</Badge></div><Button onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={16} />刷新</Button></div>
         <SourceState error={controller.sources.operatorHealth.error} loading={controller.sources.operatorHealth.loading} onRetry={() => void controller.refreshCurrentPage()} source={healthSource} unavailableTitle="系统状态暂不可用">
           {(health) => <>
-            <div className="table-wrap operator-health-table"><table><thead><tr><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
+            <div className="operator-health-table">
+              <table className="ops-table health-cards">
+                <thead><tr className="sr-only"><th>服务</th><th>状态</th><th>来源观测时间</th><th>Console 读回时间</th><th>诊断</th><th>操作</th></tr></thead><tbody>{healthServices.map(({ key, name, icon: Icon }) => {
               const service = health[key];
               const state = healthStatus(service, key);
-              return <tr key={key}><td><span className="resource-type"><Icon aria-hidden size={16} />{name}</span></td><td><Badge color={state.tone}>{state.label}</Badge></td><td>{formatDate(healthObservedAt(service, key), true)}</td><td>{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</td><td><HealthDiagnostics service={service} serviceKey={key} /></td><td>{key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}<Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" uniform variant="ghost"><RefreshCw aria-hidden size={15} /></Button></td></tr>;
+              const stateKey = state.tone === "success" ? "active" : state.tone === "danger" ? "disabled" : "manual_review";
+              return <tr key={key} data-state={stateKey} className="health-card-row"><td colSpan={6}>
+                <div className="health-card">
+                  <span className={`health-card__icon health-card__icon--${state.tone}`} aria-hidden="true"><Icon size={20} /></span>
+                  <div className="health-card__main">
+                    <div className="health-card__head"><strong>{name}</strong><Badge color={state.tone}>{state.label}</Badge></div>
+                    <HealthDiagnostics service={service} serviceKey={key} />
+                  </div>
+                  <div className="health-card__meta">
+                    <small>来源观测：{formatDate(healthObservedAt(service, key), true)}</small>
+                    <small>Console 读回：{service.fetchedAt ? formatDate(service.fetchedAt, true) : "暂不可用"}</small>
+                  </div>
+                  <div className="operator-card-actions">
+                    {key === "runtime" ? <Button onClick={() => setRuntimeDetailsOpen(true)} size="sm" variant="outline">查看 Runtime 明细</Button> : null}
+                    <Button aria-label={`刷新 ${name}`} onClick={() => void controller.refreshCurrentPage()} size="sm" variant="outline"><RefreshCw aria-hidden size={15} />刷新</Button>
+                  </div>
+                </div>
+              </td></tr>;
             })}</tbody></table></div>
             <div className="operator-health-mobile-list">{healthServices.map(({ key, name, icon }) => <OperatorHealthMobileCard controller={controller} icon={icon} key={key} name={name} onRuntimeDetails={() => setRuntimeDetailsOpen(true)} service={health[key]} serviceKey={key} />)}</div>
           </>}
@@ -1061,7 +1135,9 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
   const [registryNamespace, setRegistryNamespace] = useState("oplcloud");
   const [registryRepository, setRegistryRepository] = useState("");
   const [registryTag, setRegistryTag] = useState("");
-  return <section className="panel"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
+  return <section className="panel panel-disclosure"><div className="panel-title"><div><h2>应用版本登记</h2></div><span>版本一经准入即不可变更；重复提交一致内容为幂等操作</span></div>
+    <details className="application-registration-details" open>
+      <summary><span>收起 / 展开登记表单：从镜像仓库选择版本、填写运行要求并提交准入</span><ChevronDown aria-hidden size={16} className="application-registration-details__chevron" /></summary>
     <div className="application-form-section"><h3>从镜像仓库选择</h3>
       <div className="application-form-grid">
         <Field label="命名空间" description="服务器限定的目录命名空间，如 oplcloud" disabled={deployment.registryBusy} value={registryNamespace} onChange={(event) => { setRegistryNamespace(event.target.value); setRegistryRepository(""); setRegistryTag(""); deployment.resetRegistrySelection("namespace"); }} />
@@ -1129,6 +1205,7 @@ function WorkspaceApplicationRegistration({ deployment }: { deployment: Workspac
     </div>
     </>}
     <Button busy={deployment.busy} color="primary" disabled={deployment.busy || (deployment.registrationMode === "json" ? Boolean(deployment.revisionJSONError) : !deployment.validation.ok)} onClick={() => void deployment.admitRevision()}>登记应用版本</Button>
+    </details>
   </section>;
 }
 

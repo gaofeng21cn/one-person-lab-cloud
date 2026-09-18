@@ -21,7 +21,7 @@ import {
   presentBillingStatus
 } from "../app/customer-experience-model.ts";
 import { presentWorkspaceRenewal } from "../app/workspace-experience-model.ts";
-import type { AnnouncementDTO, SourceEnvelope } from "../api/dtos.ts";
+import type { AnnouncementDTO, SourceEnvelope, WorkspaceSettlementTrend } from "../api/dtos.ts";
 import { GatewayUsagePage } from "../components/gateway-usage/GatewayUsagePage.tsx";
 import { KeysPanel } from "../components/keys/KeysPanel.tsx";
 import { WorkspaceDetailPage } from "../components/workspaces/WorkspaceDetailPage.tsx";
@@ -47,6 +47,65 @@ function ReceiptWorkspaceIdentity({ workspaceId, workspaceName }: { workspaceId?
 
 function Metric({ label, value, note, emphasis }: { label: string; value: string; note: string; emphasis?: boolean }) {
   return <article className={`band-metric ${emphasis ? "available-metric" : ""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
+}
+
+/**
+ * Workspace net charges over the owner's fixed window. Bars show the net amount
+ * the wallet actually moved on the day the money was applied; a net refund day
+ * keeps its own colour so a reversal is never read as a charge.
+ */
+function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
+  const peak = trend.days.reduce((max, day) => Math.max(max, Math.abs(day.netUsdMicros)), 0);
+  const mixedLabel = trend.timezone === "Asia/Shanghai" ? "北京时间" : trend.timezone;
+  // 资金结果未知时，图上只可能是「已确认部分」，不能宣称没有扣款。
+  const incomplete = trend.complete === false;
+  const chartLabel = incomplete
+    ? `工作空间近 ${trend.days.length} 天每日净扣款条形图（已确认部分），另有 ${trend.unconfirmedCount} 笔资金结果待确认`
+    : `工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : "无扣款"}`;
+  return <>
+    <div className="trend-chart" role="img" aria-label={chartLabel}>
+      {trend.days.map((day, index) => (
+        <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
+          <span
+            className="trend-bar"
+            data-empty={day.netUsdMicros === 0}
+            data-refund={day.netUsdMicros < 0}
+            style={day.netUsdMicros !== 0 && peak ? { height: `${Math.max(6, Math.round(Math.abs(day.netUsdMicros) / peak * 100))}%` } : undefined}
+          />
+          <small>{settlementDayShortLabel(day.date, index, trend.days.length)}</small>
+        </div>
+      ))}
+    </div>
+    <p className={`trend-note${incomplete ? " trend-note--warning" : ""}`}>
+      近 {trend.days.length} 天{incomplete ? "已确认部分：" : ""}扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
+      （按资金发生日 · {mixedLabel}）
+    </p>
+    {trend.unconfirmedCount > 0
+      ? <p className="trend-note trend-note--warning">另有 {trend.unconfirmedCount} 笔资金结果待确认（请求已发出，钱包记录尚不可用），未计入上述汇总；这些笔可能已经发生扣款或退款。</p>
+      : null}
+    {trend.inFlightCount > 0
+      ? <p className="trend-note">另有 {trend.inFlightCount} 笔开通或续费仍在处理中，尚未发出扣款请求。</p>
+      : null}
+    {trend.unattributedCount > 0
+      ? <p className="trend-note">另有 {trend.unattributedCount} 笔人工余额调整没有工作空间订单归属，不属于本趋势范围。</p>
+      : null}
+    {trend.outOfWindowCount > 0
+      ? <p className="trend-note">另有 {trend.outOfWindowCount} 笔已确认的资金变动发生在这 14 天之前，未计入上述汇总。</p>
+      : null}
+  </>;
+}
+
+/** Settlement days arrive as owner-dated `YYYY-MM-DD` keys; Console only labels them. */
+function settlementDayLabel(date: string): string {
+  const [year, month, day] = date.split("-");
+  return year && month && day ? `${Number(month)}/${Number(day)}` : date;
+}
+
+function settlementDayShortLabel(date: string, index: number, total: number): string {
+  const day = Number(date.split("-")[2]);
+  if (!Number.isFinite(day)) return "";
+  const offset = total - 1 - index;
+  return offset % 2 === 0 || offset === total - 1 ? `${day}日` : "";
 }
 
 function PageLink({ children, controller, path, className = "" }: { children: ReactNode; controller: ConsoleController; path: string; className?: string }) {
@@ -90,6 +149,26 @@ function OverviewPage({ controller }: { controller: ConsoleController }) {
         <Metric label="本月 API 实际费用" note="请求实际消费" value={usage ? formatUsdMicros(usage.totalActualCostUsdMicros) : "暂不可用"} />
         <Metric label="本月请求次数" note="账号级汇总" value={usage ? formatCount(usage.totalRequests) : "暂不可用"} />
         <Metric label="工作空间" note="当前账户总数" value={workspaces ? formatCount(workspaces.total) : "暂不可用"} />
+      </section>
+
+      <section className="panel overview-trend" aria-label="工作空间净扣款趋势">
+        <div className="panel-title">
+          <div><h2>工作空间净扣款趋势</h2><span>近 14 天 · 开通与续费扣款、关联退款（按资金发生日）</span></div>
+          <Button onClick={() => { controller.billing.setView("receipts"); controller.navigate("/console/billing"); }} size="sm" variant="ghost">查看账单记录<ArrowRight aria-hidden size={15} /></Button>
+        </div>
+        <SourceState
+          emptyDescription="这段时间内该账户没有工作空间开通、续费扣款或关联退款。"
+          emptyTitle="近 14 天没有工作空间扣款或退款"
+          error={controller.billing.trend.error}
+          errorDescription="暂时无法确认工作空间扣款与退款，请稍后重试。"
+          loading={controller.billing.trend.loading}
+          onRetry={() => void controller.billing.refresh()}
+          source={controller.billing.trend.value}
+          unavailableDescription="暂时无法从钱包资金记录确认工作空间扣款与退款，请稍后重试。"
+          unavailableTitle="工作空间扣款趋势暂不可用"
+        >
+          {(trend) => <TrendChart trend={trend} />}
+        </SourceState>
       </section>
 
       <div className="overview-grid">

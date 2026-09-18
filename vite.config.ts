@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import type { Plugin as PostCSSPlugin } from "postcss";
 import { defineConfig } from "vite";
 
@@ -19,7 +20,7 @@ function omitUnusedAppsSdkKatex(): PostCSSPlugin {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   css: {
     postcss: {
       plugins: [omitUnusedAppsSdkKatex()]

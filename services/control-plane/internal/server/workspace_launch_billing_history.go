@@ -46,6 +46,7 @@ func historicalWorkspacePurchaseSettlements(row map[string]any, base billingSett
 	if history.ChargeConfirmation != nil {
 		base.userID = history.ChargeConfirmation.UserID
 	}
+	base.dispatched = history.ChargeAttempted || history.ChargeConfirmation != nil
 	base.invalid = history.AccountID == "" || history.AccountID != stringValue(row["accountId"]) || history.WorkspaceID == "" || history.WorkspaceID != stringValue(row["workspaceId"]) || history.OwnerUserID == "" || history.SchemaVersion != 2
 	if !base.pending {
 		charge := history.ChargeConfirmation
@@ -72,6 +73,7 @@ func historicalWorkspacePurchaseSettlements(row map[string]any, base billingSett
 		base.receiptID, base.expected = history.RefundReceiptID, []clients.ReceiptInput{input}
 		refund := base
 		refund.kind, refund.code, refund.relatedOperationID = "refund", history.RefundCode, base.operationID
+		refund.dispatched = history.RefundAttempted || history.RefundConfirmation != nil
 		return []billingSettlement{base, refund}
 	}
 	base.expected = []clients.ReceiptInput{input}

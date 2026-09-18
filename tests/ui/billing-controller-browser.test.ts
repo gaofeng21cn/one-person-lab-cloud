@@ -6,7 +6,8 @@ import { chromium, type Page, type Response, type Route } from "playwright";
 import type {
   BillingReceipt,
   BillingReceiptPage,
-  SourceEnvelope
+  SourceEnvelope,
+  WorkspaceSettlementTrend
 } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   CONSOLE_DEMO_CREDENTIALS,
@@ -613,6 +614,232 @@ test("customers distinguish a closed unfulfilled order from its refund and can i
       assert.deepEqual(externalRequests, []);
       await page.close();
     }
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+// settlementDay maps a day offset from the window's last day onto a fixed
+// calendar so the rendered labels stay deterministic.
+function settlementDay(offset: number): string {
+  const date = new Date(Date.UTC(2026, 8, 18));
+  date.setUTCDate(date.getUTCDate() - offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function settlementTrend(
+  days: Array<Partial<WorkspaceSettlementTrend["days"][number]>>,
+  overrides: Partial<WorkspaceSettlementTrend> = {}
+): WorkspaceSettlementTrend {
+  const filled = days.map((day, index) => ({
+    date: day.date || settlementDay(days.length - 1 - index),
+    chargedUsdMicros: day.chargedUsdMicros ?? 0,
+    refundedUsdMicros: day.refundedUsdMicros ?? 0,
+    netUsdMicros: (day.chargedUsdMicros ?? 0) - (day.refundedUsdMicros ?? 0),
+    chargeCount: day.chargeCount ?? (day.chargedUsdMicros ? 1 : 0),
+    refundCount: day.refundCount ?? (day.refundedUsdMicros ? 1 : 0)
+  }));
+  const chargedUsdMicros = filled.reduce((total, day) => total + day.chargedUsdMicros, 0);
+  const refundedUsdMicros = filled.reduce((total, day) => total + day.refundedUsdMicros, 0);
+  return {
+    timezone: "Asia/Shanghai",
+    asOf: fetchedAt,
+    windowStart: `${filled[0].date}T00:00:00+08:00`,
+    windowEnd: `${settlementDay(-1)}T00:00:00+08:00`,
+    days: filled,
+    chargedUsdMicros,
+    refundedUsdMicros,
+    netUsdMicros: chargedUsdMicros - refundedUsdMicros,
+    settledCount: filled.filter((day) => day.chargeCount + day.refundCount > 0).length,
+    inFlightCount: 0,
+    unconfirmedCount: 0,
+    unattributedCount: 0,
+    outOfWindowCount: 0,
+    complete: true,
+    ...overrides
+  };
+}
+
+function settlementSource(trend: WorkspaceSettlementTrend): SourceEnvelope<WorkspaceSettlementTrend> {
+  return { source: "control_plane", status: "available", available: true, fetchedAt, data: trend };
+}
+
+function fourteenDays(): Array<Partial<WorkspaceSettlementTrend["days"][number]>> {
+  return Array.from({ length: 14 }, () => ({}));
+}
+
+test("Overview trend counts the owner's confirmed Workspace charges", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.route("**/api/billing/workspace-settlements", (route) => fulfill(route, settlementSource(settlementTrend(
+      fourteenDays().map((day, index) => (index === 11 ? { chargedUsdMicros: 52_580_000 } : day))
+    ))));
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $52.58、退款 $0.00，净额 $52.58", { exact: false }).waitFor({ state: "visible" });
+
+    // 该卡是工作空间钱包净扣款，不是 API 用量
+    await trend.getByRole("heading", { name: "工作空间净扣款趋势", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await trend.getByRole("link", { name: "查看用量", exact: true }).count(), 0);
+    assert.equal(await trend.getByText("API", { exact: false }).count(), 0);
+    assert.equal(await trend.locator(".trend-chart").getAttribute("aria-label"), "工作空间近 14 天每日净扣款条形图，最高 $52.58");
+    assert.equal(await trend.locator(".trend-col").count(), 14);
+    assert.equal(await trend.locator('.trend-bar[data-empty="false"]').count(), 1);
+    assert.equal(await trend.getByText("暂无数据", { exact: true }).count(), 0);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend keeps a failed renewal charge and its full refund distinct", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    // 已确认扣款 $52.58 后全额退款：只有一张退款回执，但资金发生两次。
+    await page.route("**/api/billing/workspace-settlements", (route) => fulfill(route, settlementSource(settlementTrend(
+      fourteenDays().map((day, index) => (index === 13 ? { chargedUsdMicros: 52_580_000, refundedUsdMicros: 52_580_000 } : day))
+    ))));
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $52.58、退款 $52.58，净额 $0.00", { exact: false }).waitFor({ state: "visible" });
+    await trend.getByText("另有 0 笔", { exact: false }).waitFor({ state: "hidden" }).catch(() => {});
+
+    assert.equal(await trend.getByText("扣款 $0.00", { exact: false }).count(), 0);
+    // 同日扣退净额为 0：净额条形按零显示，但汇总与当日明细仍分别给出扣款与退款。
+    assert.equal(await trend.locator('.trend-bar[data-empty="true"]').count(), 14);
+    assert.equal(await trend.locator('.trend-bar[data-refund="true"]').count(), 0);
+    const dayTitles = await trend.locator(".trend-col").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("title") || ""));
+    assert.ok(dayTitles[13].includes("扣款 $52.58"), dayTitles[13]);
+    assert.ok(dayTitles[13].includes("退款 $52.58"), dayTitles[13]);
+    assert.ok(dayTitles[13].includes("净额 $0.00"), dayTitles[13]);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend renders the owner's days and never re-buckets them in the browser", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    // 服务端给出的窗口与浏览器本地日历不同（7 月），页面必须原样呈现。
+    const days = fourteenDays().map((day, index) => ({
+      date: `2026-07-${String(5 + index).padStart(2, "0")}`,
+      chargedUsdMicros: index === 3 ? 10_000_000 : 0,
+      refundedUsdMicros: index === 12 ? 3_000_000 : 0
+    }));
+    await page.route("**/api/billing/workspace-settlements", (route) => fulfill(route, settlementSource(settlementTrend(days, { outOfWindowCount: 1 }))));
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $10.00、退款 $3.00，净额 $7.00", { exact: false }).waitFor({ state: "visible" });
+
+    const titles = await trend.locator(".trend-col").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("title") || ""));
+    assert.equal(titles.length, 14);
+    assert.ok(titles[0].startsWith("7/5 "), titles[0]);
+    assert.ok(titles[13].startsWith("7/18 "), titles[13]);
+    assert.ok(titles[3].includes("扣款 $10.00"), titles[3]);
+    assert.ok(titles[12].includes("退款 $3.00"), titles[12]);
+    assert.equal(await trend.locator('.trend-bar[data-refund="true"]').count(), 1);
+    await trend.getByText("另有 1 笔已确认的资金变动发生在这 14 天之前，未计入上述汇总。", { exact: true }).waitFor({ state: "visible" });
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend separates unavailable, unconfirmed, in-flight and real zero", { timeout: 90_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    let mode: "unavailable" | "unconfirmed" | "in-flight" | "zero" = "unavailable";
+    await page.route("**/api/billing/workspace-settlements", async (route) => {
+      if (mode === "unavailable") {
+        await route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ source: "control_plane", status: "unavailable", available: false, fetchedAt, reasonCode: "control_plane_unavailable" }) });
+        return;
+      }
+      if (mode === "unconfirmed") {
+        await fulfill(route, settlementSource(settlementTrend(fourteenDays(), { unconfirmedCount: 1, complete: false })));
+        return;
+      }
+      if (mode === "in-flight") {
+        await fulfill(route, settlementSource(settlementTrend(fourteenDays(), { inFlightCount: 1 })));
+        return;
+      }
+      await fulfill(route, settlementSource(settlementTrend(fourteenDays().map((day, index) => (index === 13 ? { chargedUsdMicros: 52_580_000, refundedUsdMicros: 52_580_000 } : day)))));
+    });
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("工作空间扣款趋势暂不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await trend.locator(".trend-chart").count(), 0);
+    assert.equal(await trend.getByText("无扣款", { exact: true }).count(), 0);
+
+    mode = "unconfirmed";
+    await trend.getByRole("button", { name: "重试", exact: true }).click();
+    await trend.getByText("另有 1 笔资金结果待确认（请求已发出，钱包记录尚不可用），未计入上述汇总；这些笔可能已经发生扣款或退款。", { exact: true }).waitFor({ state: "visible" });
+    // 未知资金结果不能被读成“没有扣款”，汇总必须标为已确认部分。
+    await trend.getByText("近 14 天已确认部分：扣款 $0.00、退款 $0.00，净额 $0.00", { exact: false }).waitFor({ state: "visible" });
+    const unknownLabel = await trend.locator(".trend-chart").getAttribute("aria-label");
+    assert.ok(unknownLabel?.includes("已确认部分"), unknownLabel ?? "");
+    assert.ok(unknownLabel?.includes("1 笔资金结果待确认"), unknownLabel ?? "");
+    assert.equal(await trend.getByText("无扣款", { exact: false }).count(), 0);
+
+    mode = "in-flight";
+    await page.locator(".topbar").getByRole("button", { name: "刷新", exact: true }).click();
+    await trend.getByText("另有 1 笔开通或续费仍在处理中，尚未发出扣款请求。", { exact: true }).waitFor({ state: "visible" });
+    // 确认未派发：没有未知资金，汇总仍是完整结果。
+    assert.equal(await trend.getByText("已确认部分", { exact: false }).count(), 0);
+    assert.equal(await trend.locator(".trend-chart").getAttribute("aria-label"), "工作空间近 14 天每日净扣款条形图，最高 无扣款");
+
+    mode = "zero";
+    await page.locator(".topbar").getByRole("button", { name: "刷新", exact: true }).click();
+    await trend.getByText("近 14 天扣款 $52.58、退款 $52.58，净额 $0.00", { exact: false }).waitFor({ state: "visible" });
+    assert.equal(await trend.getByText("暂不可确认", { exact: false }).count(), 0);
+  } finally {
+    await browser.close();
+    await demo.close();
+  }
+});
+
+test("Overview trend reads only the owner projection, not receipts or paging", { timeout: 60_000 }, async () => {
+  const demo = await startConsoleDemoServer({ port: 0, log: false });
+  const browser = await chromium.launch({ headless: true });
+  const settlementRequests: string[] = [];
+  const receiptRequests: string[] = [];
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    // 「最近费用」列表只看到一张退款回执，而趋势仍须给出已确认的扣款。
+    const refundReceipt: BillingReceipt = { ...receipt("refund-only"), type: "gateway.wallet_adjustment.v1", kind: "business_refund", status: "completed", refundUsdMicros: 3_000_000 };
+    await page.route("**/api/billing/workspace-settlements", (route) => {
+      settlementRequests.push(route.request().url());
+      return fulfill(route, settlementSource(settlementTrend(fourteenDays().map((day, index) => (index === 13 ? { chargedUsdMicros: 52_580_000 } : day)))));
+    });
+    await page.route("**/api/billing/receipts?*", (route) => {
+      receiptRequests.push(route.request().url());
+      return fulfill(route, receiptSource([refundReceipt]));
+    });
+
+    await login(page, demo.origin);
+    const trend = page.locator(".overview-trend");
+    await trend.getByText("近 14 天扣款 $52.58、退款 $0.00，净额 $52.58", { exact: false }).waitFor({ state: "visible" });
+
+    assert.deepEqual(settlementRequests.filter((url) => !url.includes("limit=")), settlementRequests);
+    assert.equal(settlementRequests.length, 1);
+    // 趋势只读取一次，且不借回执分页拼凑金额。
+    for (const url of receiptRequests) {
+      assert.ok(url.includes("limit=3"), url);
+    }
+    assert.equal(await trend.getByText("$3.00", { exact: false }).count(), 0);
   } finally {
     await browser.close();
     await demo.close();
