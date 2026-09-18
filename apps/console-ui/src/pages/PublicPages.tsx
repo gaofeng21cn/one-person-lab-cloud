@@ -29,7 +29,7 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
           <p className="access-pilot"><LockKeyhole aria-hidden size={16} /><span>当前为 Pilot，账户由管理员开通；暂不支持公开注册和在线充值。</span></p>
         </section>
         <figure className="access-showcase">
-          <img alt="OPL Cloud 把本地项目、在线工作空间、AI 接入与账单连接为一条工作链" src="/opl-cloud-overview.png" loading="lazy" />
+          <img alt="OPL Cloud 把本地项目、在线工作空间、AI 接入与账单连接为一条工作链" src="/opl-cloud-overview.jpg" loading="lazy" />
         </figure>
         <ul aria-label="产品能力" className="access-features">
           <li><Cloud aria-hidden size={22} /><div><strong>在线 Workspace</strong><span>打开和管理你的云端工作空间。</span></div></li>
