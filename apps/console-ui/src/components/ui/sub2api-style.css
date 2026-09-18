@@ -444,6 +444,25 @@ body .topbar h1 {
   list-style: none;
 }
 
+/* 折叠体内内容与面板标题文字（18px）对齐；summary 自身 22px 内缩一档作次级层 */
+.panel-disclosure .application-registration-details > .application-form-section,
+.panel-disclosure .application-registration-details > .console-field,
+.panel-disclosure .application-registration-details > .application-form-grid,
+.panel-disclosure .application-registration-details > Button,
+.panel-disclosure .application-registration-details > button {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+
+.panel-disclosure .application-registration-details > .application-form-section:first-of-type {
+  margin-top: 16px;
+}
+
+.panel-disclosure .application-registration-details > .ui-button[data-color="primary"],
+.panel-disclosure .application-registration-details > .button.primary {
+  margin-bottom: 18px;
+}
+
 .panel-disclosure .application-registration-details summary::-webkit-details-marker {
   display: none;
 }
@@ -465,10 +484,6 @@ body .topbar h1 {
 
 .panel-disclosure .application-registration-details[open] summary {
   border-bottom: 1px solid #eef2f6;
-}
-
-.panel-disclosure .application-registration-details > .application-form-section:first-of-type {
-  margin-top: 16px;
 }
 
 /* ---------- 资源详情卡行（保留 table DOM 供测试定位） ---------- */
