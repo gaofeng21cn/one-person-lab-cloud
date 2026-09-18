@@ -530,13 +530,19 @@ func TestWorkspaceSettlementTrendIsolatesAccountsAndWritesNothing(t *testing.T) 
 	}
 }
 
-func TestWorkspaceSettlementTrendKeepsPendingRenewalInFlight(t *testing.T) {
+func TestWorkspaceSettlementTrendCountsNothingForAnUndispatchedRenewalOrder(t *testing.T) {
+	// No debit request was dispatched for this order, so the owner has no fund
+	// movement to report: it is processing, not unknown money.
 	harness := newSettlementTrendHarness(t, nil)
-	harness.save(t, settlementTrendRenewalRow(t, "renewal-pending", "debit_pending", false))
+	harness.save(t, settlementTrendRenewalRowWithDispatch(t, "renewal-not-dispatched", "claimed", false, false))
 
-	counts := settlementTrendCounts(harness.payload(t))
-	if counts["inFlightCount"] != 1 || counts["settledCount"] != 0 || counts["chargedUsdMicros"] != 0 || counts["unconfirmedCount"] != 0 {
-		t.Fatalf("pending renewal = %#v", counts)
+	status, envelope := harness.envelope(t)
+	counts := settlementTrendCounts(mapField(envelope, "data"))
+	if counts["inFlightCount"] != 0 || counts["unconfirmedCount"] != 0 || counts["settledCount"] != 0 || counts["chargedUsdMicros"] != 0 {
+		t.Fatalf("an undispatched renewal order = %#v", counts)
+	}
+	if status != http.StatusOK || envelope["status"] != "empty" {
+		t.Fatalf("an undispatched renewal order carries no movement: %#v", envelope)
 	}
 }
 
@@ -659,5 +665,155 @@ func TestWorkspaceSettlementTrendRejectsRefundsBeyondTheOriginalCharge(t *testin
 	}
 	if counts["unconfirmedCount"] != 1 || payload["complete"] != false {
 		t.Fatalf("overflow refund must stay open: %#v", payload)
+	}
+}
+
+// A Renewal worker persists ChargeAttempted=true, dispatches the debit and only
+// then learns that the result is unknown (ErrSub2APIChargeUnknown keeps the row
+// in debit_pending). The wallet may already have moved while its balance record
+// is not readable yet, so this movement is unknown, never "nothing happened".
+
+// settlementTrendRenewalRowWithDispatch keeps the owner's dispatch facts intact
+// so a test can model a request that was sent but has no confirmed result.
+func settlementTrendRenewalRowWithDispatch(t *testing.T, id, status string, chargeAttempted, refundAttempted bool) map[string]any {
+	t.Helper()
+	row := settlementTrendRenewalRow(t, id, status, false)
+	var facts map[string]any
+	if err := json.Unmarshal([]byte(stringValue(row["result"])), &facts); err != nil {
+		t.Fatal(err)
+	}
+	facts["chargeAttempted"] = chargeAttempted
+	if refundAttempted {
+		facts["refundAttempted"] = true
+		facts["sub2apiRefundCode"] = "opl:renewal-refund-" + id
+		facts["refundReceiptId"] = "receipt-renewal-refund-" + id
+	}
+	row["result"] = string(mustJSON(facts))
+	return row
+}
+
+// settlementTrendRefundAdjustmentRow models an operator business refund whose
+// request was dispatched but whose result is not readable yet.
+func settlementTrendRefundAdjustmentRow(t *testing.T, id string, amountUSDMicros int64, status string, adjustmentAttempted bool) map[string]any {
+	t.Helper()
+	operation := walletAdjustmentOperation{
+		RequestHash: "refund-hash-" + id, Phase: "adjustment", AccountID: "acct-alpha", Sub2APIUserID: 41,
+		Kind: "business_refund", AmountUSDMicros: amountUSDMicros, AmountUSD: "30.000000", ActorUserID: "usr-alpha",
+		RelatedOperationID: "renewal-refund-unknown", CanonicalRedeemCode: walletAdjustmentRedeemCode(id), RedeemCodeVersion: "v2",
+		CreatedAt: "2026-09-10T00:00:00Z", UpdatedAt: "2026-09-10T00:05:00Z", Status: status, AdjustmentAttempted: adjustmentAttempted,
+	}
+	row := walletAdjustmentRow(id, operation)
+	row["status"] = status
+	return row
+}
+
+func TestWorkspaceSettlementTrendKeepsAnUnknownRenewalDebitUnconfirmed(t *testing.T) {
+	// Real failure path: ChargeAttempted=true was persisted before the request,
+	// the request result is unknown, and the balance record is not readable yet.
+	harness := newSettlementTrendHarness(t, nil)
+	harness.save(t, settlementTrendRenewalRowWithDispatch(t, "renewal-debit-unknown", "debit_pending", true, false))
+
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["unconfirmedCount"] != 1 || counts["inFlightCount"] != 0 {
+		t.Fatalf("an unknown dispatched debit is not in flight: %#v", counts)
+	}
+	if payload["complete"] != false {
+		t.Fatalf("an unknown dispatched debit must not claim a complete summary: %#v", payload)
+	}
+	if counts["chargedUsdMicros"] != 0 || counts["netUsdMicros"] != 0 {
+		t.Fatalf("unknown money must not enter the totals: %#v", counts)
+	}
+}
+
+func TestWorkspaceSettlementTrendKeepsAConfirmedDebitWithoutEffectiveTimeUnconfirmed(t *testing.T) {
+	usedBy, at := int64(41), settlementTrendToday(1)
+	harness := newSettlementTrendHarness(t, map[int64][]clients.Sub2APIBalanceHistoryEntry{41: {
+		{Code: "opl:renewal-charge-renewal-no-effective-time", Type: "balance", ValueUSDMicros: -52_580_000, Status: "used", UsedBy: &usedBy, CreatedAt: at},
+	}})
+	harness.save(t, settlementTrendRenewalRowWithDispatch(t, "renewal-no-effective-time", "debited", true, false))
+
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["unconfirmedCount"] != 1 || counts["settledCount"] != 0 || payload["complete"] != false {
+		t.Fatalf("a confirmed debit without an effective time = %#v", counts)
+	}
+}
+
+func TestWorkspaceSettlementTrendKeepsAUnknownDispatchedRefundUnconfirmed(t *testing.T) {
+	chargedAt := time.Now().UTC().Add(-3 * 24 * time.Hour)
+	harness := newSettlementTrendHarness(t, map[int64][]clients.Sub2APIBalanceHistoryEntry{41: {
+		settlementTrendEntry("opl:renewal-charge-renewal-refund-unknown", -52_580_000, 41, chargedAt),
+	}})
+	harness.save(t, settlementTrendRenewalRowWithDispatch(t, "renewal-refund-unknown", "refund_pending", true, true))
+
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["refundedUsdMicros"] != 0 || counts["chargedUsdMicros"] != 52_580_000 {
+		t.Fatalf("an unknown dispatched refund must not enter the totals: %#v", counts)
+	}
+	if counts["unconfirmedCount"] != 1 || payload["complete"] != false {
+		t.Fatalf("an unknown dispatched refund must stay unconfirmed: %#v", counts)
+	}
+}
+
+func TestWorkspaceSettlementTrendKeepsAUnknownDispatchedAdjustmentUnconfirmed(t *testing.T) {
+	chargedAt := time.Now().UTC().Add(-3 * 24 * time.Hour)
+	original := settlementTrendRenewalRow(t, "renewal-refund-unknown", "active", false)
+	harness := newSettlementTrendHarness(t, map[int64][]clients.Sub2APIBalanceHistoryEntry{41: {
+		settlementTrendEntry("opl:renewal-charge-renewal-refund-unknown", -52_580_000, 41, chargedAt),
+	}})
+	harness.save(t, original)
+	harness.save(t, settlementTrendRefundAdjustmentRow(t, "refund-adjustment-unknown", 30_000_000, "pending", true))
+
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["unconfirmedCount"] != 1 || counts["inFlightCount"] != 0 || counts["refundedUsdMicros"] != 0 || payload["complete"] != false {
+		t.Fatalf("an unknown dispatched adjustment = %#v", counts)
+	}
+}
+
+func TestWorkspaceSettlementTrendKeepsAnUndispatchedOrderInFlight(t *testing.T) {
+	// No fund request was dispatched, so the order is processing rather than
+	// unknown. The owner facts, not the status name, decide this.
+	original := settlementTrendRenewalRow(t, "renewal-refund-unknown", "active", false)
+	harness := newSettlementTrendHarness(t, map[int64][]clients.Sub2APIBalanceHistoryEntry{41: {
+		settlementTrendEntry("opl:renewal-charge-renewal-refund-unknown", -52_580_000, 41, time.Now().UTC().Add(-3*24*time.Hour)),
+	}})
+	harness.save(t, original)
+	harness.save(t, settlementTrendRefundAdjustmentRow(t, "refund-not-dispatched", 30_000_000, "pending", false))
+
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["inFlightCount"] != 1 || counts["unconfirmedCount"] != 0 {
+		t.Fatalf("an undispatched pending refund is in flight: %#v", counts)
+	}
+	if payload["complete"] != true || counts["refundedUsdMicros"] != 0 {
+		t.Fatalf("an undispatched pending refund has no unknown money: %#v", payload)
+	}
+}
+
+func TestWorkspaceSettlementTrendRecoversAfterTheFundEvidenceArrives(t *testing.T) {
+	chargedAt := settlementTrendToday(1)
+	harness := newSettlementTrendHarness(t, nil)
+	harness.save(t, settlementTrendRenewalRowWithDispatch(t, "renewal-evidence-late", "debit_pending", true, false))
+
+	before := settlementTrendCounts(harness.payload(t))
+	if before["unconfirmedCount"] != 1 || before["chargedUsdMicros"] != 0 || harness.payload(t)["complete"] != false {
+		t.Fatalf("unknown debit before evidence = %#v", before)
+	}
+	// The wallet record becomes readable: the same row now resolves exactly.
+	harness.sub2API.history = map[int64][]clients.Sub2APIBalanceHistoryEntry{41: {
+		settlementTrendEntry("opl:renewal-charge-renewal-evidence-late", -52_580_000, 41, chargedAt),
+	}}
+	after := settlementTrendCounts(harness.payload(t))
+	if after["chargedUsdMicros"] != 52_580_000 || after["settledCount"] != 1 || after["unconfirmedCount"] != 0 {
+		t.Fatalf("unknown debit after evidence = %#v", after)
+	}
+	if harness.payload(t)["complete"] != true {
+		t.Fatalf("resolved debit must be complete: %#v", harness.payload(t))
+	}
+	if settlementTrendDayCounts(harness.payload(t))[settlementTrendDayKey(chargedAt)] != 52_580_000 {
+		t.Fatalf("resolved debit day = %#v", settlementTrendDayCounts(harness.payload(t)))
 	}
 }

@@ -786,11 +786,20 @@ test("Overview trend separates unavailable, unconfirmed, in-flight and real zero
 
     mode = "unconfirmed";
     await trend.getByRole("button", { name: "重试", exact: true }).click();
-    await trend.getByText("另有 1 笔资金变动暂不可确认，未计入上述汇总。", { exact: true }).waitFor({ state: "visible" });
+    await trend.getByText("另有 1 笔资金结果待确认（请求已发出，钱包记录尚不可用），未计入上述汇总；这些笔可能已经发生扣款或退款。", { exact: true }).waitFor({ state: "visible" });
+    // 未知资金结果不能被读成“没有扣款”，汇总必须标为已确认部分。
+    await trend.getByText("近 14 天已确认部分：扣款 $0.00、退款 $0.00，净额 $0.00", { exact: false }).waitFor({ state: "visible" });
+    const unknownLabel = await trend.locator(".trend-chart").getAttribute("aria-label");
+    assert.ok(unknownLabel?.includes("已确认部分"), unknownLabel ?? "");
+    assert.ok(unknownLabel?.includes("1 笔资金结果待确认"), unknownLabel ?? "");
+    assert.equal(await trend.getByText("无扣款", { exact: false }).count(), 0);
 
     mode = "in-flight";
     await page.locator(".topbar").getByRole("button", { name: "刷新", exact: true }).click();
-    await trend.getByText("另有 1 笔开通或续费仍在处理中，尚未产生资金变动。", { exact: true }).waitFor({ state: "visible" });
+    await trend.getByText("另有 1 笔开通或续费仍在处理中，尚未发出扣款请求。", { exact: true }).waitFor({ state: "visible" });
+    // 确认未派发：没有未知资金，汇总仍是完整结果。
+    assert.equal(await trend.getByText("已确认部分", { exact: false }).count(), 0);
+    assert.equal(await trend.locator(".trend-chart").getAttribute("aria-label"), "工作空间近 14 天每日净扣款条形图，最高 无扣款");
 
     mode = "zero";
     await page.locator(".topbar").getByRole("button", { name: "刷新", exact: true }).click();

@@ -20,6 +20,11 @@ type billingSettlement struct {
 	relatedOperationID, receiptID             string
 	expected                                  []clients.ReceiptInput
 	pending, invalid, refundable              bool
+	// dispatched records that the owner already sent this movement's fund
+	// request, whatever its result turned out to be. A missing wallet record is
+	// never proof that a dispatched request did not change the balance, because
+	// the audit record can be written after the balance update.
+	dispatched bool
 }
 
 type billingReconciliationException struct {
@@ -173,6 +178,7 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 		if !operation.boolFact("chargeAttempted") && attempt.Attempted == 0 && operation.raw["chargeConfirmation"] == nil && operation.Status != "succeeded" {
 			return nil
 		}
+		base.dispatched = operation.boolFact("chargeAttempted") || attempt.Attempted > 0 || attempt.Unknown > 0 || operation.raw["chargeConfirmation"] != nil
 		base.accountID, base.workspaceID = operation.stringFact("accountId"), operation.stringFact("workspaceId")
 		base.userID, base.amount, base.code = operation.int64Fact("sub2apiUserId"), operation.int64Fact("totalChargeUsdMicros"), operation.stringFact("sub2apiRedeemCode")
 		base.receiptID = operation.stringFact("receiptId")
@@ -218,6 +224,7 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 		if operation.ChargeConfirmation != nil && !monthlyChargeConfirmationMatches(operation.ChargeConfirmation, base.code, base.userID, base.amount) {
 			base.invalid = true
 		}
+		base.dispatched = operation.ChargeAttempted || operation.ChargeConfirmation != nil
 		base.expected = []clients.ReceiptInput{workspaceRenewalReceiptInput(operation, base.userID)}
 		if operation.RefundAttempted || operation.RefundConfirmation != nil || operation.Status == "refunded" {
 			// A cancelled fulfillment has one refund receipt binding both the debit
@@ -227,6 +234,7 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 			base.pending = operation.Status != "manual_review" && (operation.Status != "refunded" || operation.Phase != "complete")
 			refund := base
 			refund.kind, refund.code, refund.relatedOperationID = "refund", operation.RefundCode, operation.ID
+			refund.dispatched = operation.RefundAttempted || operation.RefundConfirmation != nil
 			return []billingSettlement{base, refund}
 		}
 		return []billingSettlement{base}
@@ -246,6 +254,7 @@ func projectBillingSettlements(row map[string]any) []billingSettlement {
 		}
 		base.relatedOperationID, base.receiptID = operation.RelatedOperationID, operation.ReceiptID
 		base.pending = operation.Status == "pending"
+		base.dispatched = operation.AdjustmentAttempted || operation.RecoveryAttempted || operation.UpstreamFailure != nil
 		base.expected = []clients.ReceiptInput{walletAdjustmentReceipt(base.operationID, operation)}
 		return []billingSettlement{base}
 	}
@@ -268,6 +277,7 @@ func projectWorkspaceDeleteLegacySettlements(row map[string]any) []billingSettle
 		accountID: operation.AccountID, operationID: operation.OperationID, workspaceID: operation.WorkspaceID,
 		kind: "refund", code: operation.RefundCode, userID: operation.Sub2APIUserID, amount: operation.TotalUSDMicros,
 		relatedOperationID: operation.LaunchOperationID, receiptID: operation.RefundReceiptID,
+		dispatched: operation.RefundAttempted || operation.RefundConfirmation != nil,
 	}
 	if validWorkspaceDeleteLegacyTerminal(operation) {
 		return []billingSettlement{refund}

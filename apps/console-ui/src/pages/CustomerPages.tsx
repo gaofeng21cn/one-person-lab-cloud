@@ -57,8 +57,13 @@ function Metric({ label, value, note, emphasis }: { label: string; value: string
 function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
   const peak = trend.days.reduce((max, day) => Math.max(max, Math.abs(day.netUsdMicros)), 0);
   const mixedLabel = trend.timezone === "Asia/Shanghai" ? "北京时间" : trend.timezone;
+  // 资金结果未知时，图上只可能是「已确认部分」，不能宣称没有扣款。
+  const incomplete = trend.complete === false;
+  const chartLabel = incomplete
+    ? `工作空间近 ${trend.days.length} 天每日净扣款条形图（已确认部分），另有 ${trend.unconfirmedCount} 笔资金结果待确认`
+    : `工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : "无扣款"}`;
   return <>
-    <div className="trend-chart" role="img" aria-label={`工作空间近 ${trend.days.length} 天每日净扣款条形图，最高 ${peak ? formatUsdMicros(peak) : "无扣款"}`}>
+    <div className="trend-chart" role="img" aria-label={chartLabel}>
       {trend.days.map((day, index) => (
         <div className="trend-col" key={day.date} title={`${settlementDayLabel(day.date)} · 扣款 ${formatUsdMicros(day.chargedUsdMicros)} · 退款 ${formatUsdMicros(day.refundedUsdMicros)} · 净额 ${formatUsdMicros(day.netUsdMicros)}`}>
           <span
@@ -71,15 +76,15 @@ function TrendChart({ trend }: { trend: WorkspaceSettlementTrend }) {
         </div>
       ))}
     </div>
-    <p className="trend-note">
-      近 {trend.days.length} 天扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
+    <p className={`trend-note${incomplete ? " trend-note--warning" : ""}`}>
+      近 {trend.days.length} 天{incomplete ? "已确认部分：" : ""}扣款 {formatUsdMicros(trend.chargedUsdMicros)}、退款 {formatUsdMicros(trend.refundedUsdMicros)}，净额 {formatUsdMicros(trend.netUsdMicros)}
       （按资金发生日 · {mixedLabel}）
     </p>
     {trend.unconfirmedCount > 0
-      ? <p className="trend-note trend-note--warning">另有 {trend.unconfirmedCount} 笔资金变动暂不可确认，未计入上述汇总。</p>
+      ? <p className="trend-note trend-note--warning">另有 {trend.unconfirmedCount} 笔资金结果待确认（请求已发出，钱包记录尚不可用），未计入上述汇总；这些笔可能已经发生扣款或退款。</p>
       : null}
     {trend.inFlightCount > 0
-      ? <p className="trend-note">另有 {trend.inFlightCount} 笔开通或续费仍在处理中，尚未产生资金变动。</p>
+      ? <p className="trend-note">另有 {trend.inFlightCount} 笔开通或续费仍在处理中，尚未发出扣款请求。</p>
       : null}
     {trend.unattributedCount > 0
       ? <p className="trend-note">另有 {trend.unattributedCount} 笔人工余额调整没有工作空间订单归属，不属于本趋势范围。</p>

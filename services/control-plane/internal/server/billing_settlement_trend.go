@@ -44,10 +44,10 @@ type workspaceSettlementTrend struct {
 	outOfWindowCount  int
 }
 
-// A Workspace order that has not produced a wallet movement yet is in flight,
-// not a defect: the owner promises no settled fund fact for it. Anything the
-// owner cannot explain from this account's records stays unconfirmed so the
-// page never presents an incomplete sum as complete.
+// A Workspace order is in flight only when the owner proves no fund request was
+// dispatched for it yet. Everything else the owner cannot explain from this
+// account's records stays unconfirmed, because a dispatched request whose wallet
+// record is not readable may still have moved money.
 type workspaceSettlementState string
 
 const (
@@ -163,6 +163,14 @@ func measureWorkspaceSettlement(
 		return workspaceSettlementMeasurement{state: workspaceSettlementUnconfirmed}
 	}
 	if state != "confirmed" {
+		// The wallet record is missing, unreadable or contradictory. A request
+		// the owner already dispatched may still have moved money: its audit
+		// record can be written after the balance update, so absence is never
+		// proof of no movement. Only an order with no dispatched request is
+		// merely processing.
+		if settlement.dispatched {
+			return workspaceSettlementMeasurement{state: workspaceSettlementUnconfirmed}
+		}
 		if settlement.pending {
 			return workspaceSettlementMeasurement{state: workspaceSettlementInFlight}
 		}
