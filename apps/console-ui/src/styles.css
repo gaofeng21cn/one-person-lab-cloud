@@ -1158,15 +1158,31 @@ a {
 }
 
 .operator-workspace-table table {
-  min-width: 1700px;
+  min-width: 1180px;
+  table-layout: fixed;
+}
+
+.operator-workspace-table th:nth-child(1) { width: 17%; }
+.operator-workspace-table th:nth-child(2) { width: 14%; }
+.operator-workspace-table th:nth-child(3) { width: 12%; }
+.operator-workspace-table th:nth-child(4) { width: 10%; }
+.operator-workspace-table th:nth-child(5) { width: 9%; }
+.operator-workspace-table th:nth-child(6) { width: 16%; }
+.operator-workspace-table th:nth-child(7) { width: 7%; }
+.operator-workspace-table th:nth-child(8) { width: 9%; }
+.operator-workspace-table th:nth-child(9) { width: 8%; }
+
+.operator-workspace-table td:last-child .button,
+.operator-workspace-table td:last-child .ui-button {
+  white-space: nowrap;
 }
 
 .operator-resource-detail-table table {
-  min-width: 1840px;
+  min-width: 0;
 }
 
 .operator-health-table table {
-  min-width: 980px;
+  min-width: 0;
 }
 
 .operator-account-mobile-list,
