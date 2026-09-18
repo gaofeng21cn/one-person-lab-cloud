@@ -1158,8 +1158,15 @@ a {
 }
 
 .operator-workspace-table table {
-  min-width: 1180px;
+  width: 100%;
+  min-width: 0;
   table-layout: fixed;
+}
+
+@media (max-width: 1180px) {
+  .operator-workspace-table table {
+    min-width: 1240px;
+  }
 }
 
 .operator-workspace-table th:nth-child(1) { width: 17%; }
@@ -1170,7 +1177,7 @@ a {
 .operator-workspace-table th:nth-child(6) { width: 16%; }
 .operator-workspace-table th:nth-child(7) { width: 7%; }
 .operator-workspace-table th:nth-child(8) { width: 9%; }
-.operator-workspace-table th:nth-child(9) { width: 8%; }
+.operator-workspace-table th:nth-child(9) { width: 96px; }
 
 .operator-workspace-table td:last-child .button,
 .operator-workspace-table td:last-child .ui-button {
