@@ -8,8 +8,6 @@ import (
 	"maps"
 	"strings"
 	"time"
-
-	contracts "opl-cloud/packages/contracts/go"
 )
 
 type normalLaunchMutationBudget struct {
@@ -457,56 +455,6 @@ func replayComputeAllocationOperation(operation FabricOperation, requestHash str
 		return allocation, nil
 	}
 	return allocation, ErrComputeOperationFailed
-}
-
-// ReadComputeDestroyStatus performs the provider's read-only, authoritative
-// absence readback for one retained compute allocation. It never mutates
-// provider resources, and an unavailable readback is reported as an error
-// instead of a cached success.
-func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID string) (ComputeAllocation, error) {
-	s.mu.Lock()
-	existing := cloneComputeAllocation(s.computes[allocationID])
-	s.mu.Unlock()
-	if existing.ID == "" {
-		if err := s.hydrateMissingResourceState(ctx); err != nil {
-			return ComputeAllocation{}, err
-		}
-		s.mu.Lock()
-		existing = cloneComputeAllocation(s.computes[allocationID])
-		s.mu.Unlock()
-	}
-	if existing.ID == "" {
-		return ComputeAllocation{}, fmt.Errorf("compute_allocation_not_found")
-	}
-	reader := s.optionalProviders.computeDestroyStatus
-	if reader == nil {
-		return ComputeAllocation{}, fmt.Errorf("compute_destroy_status_readback_unavailable")
-	}
-	readback, err := reader.ReadComputeDestroyStatus(ctx, cloneComputeAllocation(existing))
-	if err != nil {
-		return readback, err
-	}
-	if !sameComputeDestroyStableIdentity(existing, readback) {
-		return readback, fmt.Errorf("compute_destroy_status_readback_mismatch")
-	}
-	// An unfinished deletion keeps its classification so the owning Control Plane
-	// operation retries the same operation instead of recording a terminal result.
-	if readback.DestroyState != "" && !validTencentComputeDestroyRetryEvidence(readback) {
-		return readback, fmt.Errorf("compute_destroy_status_readback_mismatch")
-	}
-	// The observing owner stamps when it read the fact and names that readback, on
-	// the readback result only.
-	readback.ObservedAt = s.now().Format(time.RFC3339Nano)
-	readback.ReadbackID = stableID("compute-destroy-readback", allocationID, readback.ObservedAt)
-	return readback, nil
-}
-
-// validTencentComputeDestroyRetryEvidence bounds a retryable readback: a provider
-// may not classify an unfinished deletion while also claiming authoritative
-// absence evidence. The provider owns the classification itself; this only
-// prevents the two contradicting each other.
-func validTencentComputeDestroyRetryEvidence(readback ComputeAllocation) bool {
-	return !contracts.WorkspaceDeleteOutcomeRetryable(readback.DestroyState) || !validTencentComputeAbsenceEvidence(readback)
 }
 
 func (s *Service) GetComputeAllocation(ctx context.Context, allocationID string) (ComputeAllocation, bool) {

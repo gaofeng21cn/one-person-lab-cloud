@@ -331,38 +331,6 @@ func (app *controlPlaneServer) createWorkspaceApplicationDeploymentIntent(
 	return intent, nil
 }
 
-// workspaceApplicationDerivedIdentity derives the internal identity of a deployment
-// the operator described but did not name.
-//
-// The two halves answer different questions and must not be conflated:
-//
-//   - The application identity is stable for the Workspace's application slot, so
-//     updating the image of the same application keeps its data directory and its
-//     published entry instead of appearing as a different application.
-//   - The version is derived from the description's content — the image digest and
-//     every declared run fact — so a different image or a different legal run
-//     description is a new immutable version of that same application rather than a
-//     conflict, and an exact replay resolves to the version already admitted.
-func workspaceApplicationDerivedIdentity(workspaceID string, revision contracts.WorkspaceApplicationRevision) (string, string, error) {
-	if strings.TrimSpace(workspaceID) == "" || !contracts.ValidWorkspaceImageReference(revision.Image) {
-		return "", "", errors.New("workspace_application_image_identity_required")
-	}
-	// The description is validated without its identity, because the identity is
-	// exactly what is being derived from the description.
-	probe := revision
-	probe.ApplicationID, probe.Version = "identity-pending", "0"
-	if err := contracts.ValidateWorkspaceApplicationRevision(probe); err != nil {
-		return "", "", err
-	}
-	digest, err := application.ContentDigest(revision)
-	if err != nil {
-		return "", "", err
-	}
-	// "workspace-app-<12 hex>" is a valid application identity that is stable for
-	// this Workspace and cannot collide with an operator-named application.
-	return "workspace-app-" + stableID("workspace-application", workspaceID)[:12], "d" + digest[:16], nil
-}
-
 func decodeStringList(value any) []string {
 	items, ok := value.([]any)
 	if !ok {
@@ -387,47 +355,6 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		workspaceID, _ := input["workspaceId"].(string)
 		applicationID, _ := input["applicationId"].(string)
 		targetRevision, _ := input["targetRevision"].(string)
-		// The operator's flow is: choose the image, fill the run requirements,
-		// deploy. Naming the application identity is not part of it: when the
-		// command carries an image description without an identity, the platform
-		// derives a stable internal identity from that description's digest. The
-		// same image therefore always resolves to the same immutable revision, and
-		// an explicitly named identity keeps its own conflict rule below.
-		var inlineRevision *contracts.WorkspaceApplicationRevision
-		if rawRevision, supplied := input["revision"]; supplied {
-			encoded, err := json.Marshal(rawRevision)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
-				return
-			}
-			decoder := json.NewDecoder(bytes.NewReader(encoded))
-			decoder.DisallowUnknownFields()
-			var revision contracts.WorkspaceApplicationRevision
-			if err := decoder.Decode(&revision); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
-				return
-			}
-			if revision.ApplicationID == "" || revision.Version == "" {
-				derivedApplicationID, derivedVersion, deriveErr := workspaceApplicationDerivedIdentity(workspaceID, revision)
-				if deriveErr != nil {
-					writeError(w, http.StatusBadRequest, "invalid_application_revision")
-					return
-				}
-				if revision.ApplicationID == "" {
-					revision.ApplicationID = derivedApplicationID
-				}
-				if revision.Version == "" {
-					revision.Version = derivedVersion
-				}
-			}
-			if applicationID == "" {
-				applicationID = revision.ApplicationID
-			}
-			if targetRevision == "" {
-				targetRevision = revision.Version
-			}
-			inlineRevision = &revision
-		}
 		var configuration contracts.WorkspaceApplicationRuntimeConfiguration
 		rawConfiguration, configErr := json.Marshal(input["configuration"])
 		if configErr != nil {
@@ -549,8 +476,19 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		// step. The revision snapshot keeps its single owner: this branch writes
 		// the same admitted-revision row the registration route writes, and an
 		// already admitted identity with different content stays a conflict.
-		if inlineRevision != nil {
-			revision := *inlineRevision
+		if rawRevision, supplied := input["revision"]; supplied {
+			encoded, err := json.Marshal(rawRevision)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.DisallowUnknownFields()
+			var revision contracts.WorkspaceApplicationRevision
+			if err := decoder.Decode(&revision); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				return
+			}
 			if revision.ApplicationID != applicationID || revision.Version != targetRevision {
 				writeError(w, http.StatusBadRequest, "invalid_application_revision")
 				return

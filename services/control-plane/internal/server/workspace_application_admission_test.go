@@ -20,7 +20,7 @@ func TestApplicationRevisionAdmissionHTTP(t *testing.T) {
 	revision := func(imageDigest string) string {
 		return `{"schemaVersion":1,"applicationId":"knowledge-app","version":"1.0.0","platform":"linux/amd64",` +
 			`"image":"repo.example/apps/knowledge@sha256:` + imageDigest + `",` +
-			`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],"entryPort":"http",` +
+			`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
 			`"exposurePolicy":"application"}`
 	}
 
@@ -97,7 +97,7 @@ func TestApplicationRevisionAdmissionPostgres(t *testing.T) {
 
 	revision := `{"schemaVersion":1,"applicationId":"knowledge-app","version":"1.0.0","platform":"linux/amd64",` +
 		`"image":"repo.example/apps/knowledge@sha256:` + strings.Repeat("a", 64) + `",` +
-		`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],"entryPort":"http",` +
+		`"ports":[{"name":"http","port":8080,"protocol":"TCP"}],` +
 		`"exposurePolicy":"application"}`
 	first := requestWithMutationKeyForTest(t, server, operator, http.MethodPost, "/api/operator/application-revisions", revision, "admit-pg-first")
 	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"decision":"new"`) {

@@ -1133,19 +1133,6 @@ func validTencentComputeDeleteResponseProviderData(response, expected map[string
 	return true
 }
 
-// tencentComputeDestroyRetryState classifies an unfinished compute deletion from
-// Fabric's own retained dispatch evidence. Before a terminate was dispatched the
-// owning operation may still delete the node; afterwards its retry is
-// readback-only evidence reconciliation and must never re-dispatch.
-func tencentComputeDestroyRetryState(allocation ComputeAllocation) string {
-	switch allocation.ProviderData[tencentComputeDestroyPhaseKey] {
-	case tencentComputeDestroyPhaseDispatchAuthorized, tencentComputeDestroyPhaseAttempted:
-		return contracts.WorkspaceDeleteOutcomeUnconfirmedSend
-	default:
-		return contracts.WorkspaceDeleteOutcomePendingRetry
-	}
-}
-
 func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocation ComputeAllocation) (ComputeAllocation, error) {
 	if !validTencentComputeDestroyStableIdentity(allocation) {
 		return allocation, fmt.Errorf("compute_allocation_destroy_identity_required")
@@ -1172,23 +1159,8 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	if !response.OK {
 		return allocation, provisionerError(response)
 	}
-	// The readback always reports the facts it observed: a caller must never have
-	// to infer machine or CVM presence from a status string.
-	observed := cloneComputeAllocation(allocation)
-	observed.MachinePresent = response.MachinePresent
-	observed.TKEStatus = response.TKEStatus
-	if strings.TrimSpace(response.CVMStatus) != "" {
-		observed.CVMStatus = response.CVMStatus
-	}
 	if response.MachinePresent == nil || *response.MachinePresent {
-		observed.DestroyState = tencentComputeDestroyRetryState(allocation)
-		return observed, nil
-	}
-	if strings.TrimSpace(response.CVMStatus) != "" && !strings.EqualFold(strings.TrimSpace(response.CVMStatus), "NOT_FOUND") {
-		// The Machine is gone but its CVM is still being reclaimed. That is an
-		// ordinary convergence wait, not an absence and not a conflict.
-		observed.DestroyState = tencentComputeDestroyRetryState(allocation)
-		return observed, nil
+		return allocation, nil
 	}
 	if !validTencentComputeDestroyStatusAbsenceResponse(response, allocation) {
 		return allocation, fmt.Errorf("compute_destroy_status_readback_mismatch")
@@ -1197,10 +1169,6 @@ func (p *TencentProvider) ReadComputeDestroyStatus(ctx context.Context, allocati
 	confirmed.Status = "external_deleted"
 	confirmed.ProviderRequestID = response.ProviderRequestID
 	confirmed.CVMStatus = response.CVMStatus
-	// Typed absence facts for the caller: the machine is gone and TKE no longer
-	// resolves it. Control Plane consumes these instead of parsing provider data.
-	confirmed.MachinePresent = response.MachinePresent
-	confirmed.TKEStatus = response.TKEStatus
 	for key, value := range response.ProviderData {
 		if isTencentComputeDeleteEvidenceKey(key) {
 			confirmed.ProviderData[key] = value

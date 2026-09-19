@@ -2486,13 +2486,7 @@ func TestDestroyExternallyDeletedComputeRefusesCleanupWhileMachineIsPresent(t *t
 	input := canonicalTencentComputeDestroyFixture()
 	input.Status = "external_deleted"
 	allocation, err := provider.DestroyComputeAllocation(context.Background(), input)
-	// The readback carries the facts it observed and never claims absence while the
-	// Machine is present, so the deletion stays retryable instead of reporting a
-	// destroyed compute.
-	if err == nil || err.Error() != "compute_destroy_absence_evidence_invalid" ||
-		!sameComputeDestroyStableIdentity(input, allocation) || validTencentComputeAbsenceEvidence(allocation) ||
-		allocation.MachinePresent == nil || !*allocation.MachinePresent ||
-		!contracts.WorkspaceDeleteOutcomeRetryable(allocation.DestroyState) {
+	if err == nil || err.Error() != "compute_destroy_absence_evidence_invalid" || !reflect.DeepEqual(allocation, input) {
 		t.Fatalf("unconfirmed external deletion = %#v err=%v", allocation, err)
 	}
 }
@@ -3823,29 +3817,9 @@ func TestDestroyWorkspaceRuntimeDeletesOnlyWorkspaceResources(t *testing.T) {
 	if err != nil || runtime.Status != "destroyed" || runtime.WorkspaceID != "ws-alpha" || runtime.Access.Password != "" {
 		t.Fatalf("destroy runtime = %#v err=%v", runtime, err)
 	}
-	// Deletion targets are exactly the labelled owned objects, and the mutation
-	// waits: deleting a controller is not deleting a Pod.
-	target := d4DeleteCall(t, calls)
-	for _, want := range []string{"deployment/opl-compute-alpha", "service/opl-compute-alpha", "--wait=true", "--ignore-not-found=true"} {
-		if !slices.Contains(target, want) {
-			t.Fatalf("delete call %#v missing %q", target, want)
-		}
+	if len(calls) != 5 || calls[2][0] != "delete" || !slices.Contains(calls[2], "deployment/opl-compute-alpha") || !slices.Contains(calls[2], "service/opl-compute-alpha") || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[2], "secret/opl-compute-alpha-env") || slices.Contains(calls[2], "ingress/opl-cloud") {
+		t.Fatalf("kubectl calls = %#v", calls)
 	}
-	if slices.Contains(target, "ingress/opl-cloud") || slices.Contains(target, "networkpolicy/opl-compute-alpha") || slices.Contains(target, "secret/opl-compute-alpha-env") {
-		t.Fatalf("delete call removed unobserved objects: %#v", target)
-	}
-}
-
-// d4DeleteCall returns the single deletion issued during one destroy attempt.
-func d4DeleteCall(t *testing.T, calls [][]string) []string {
-	t.Helper()
-	for _, call := range calls {
-		if len(call) > 1 && call[0] == "delete" {
-			return call
-		}
-	}
-	t.Fatalf("no deletion in %#v", calls)
-	return nil
 }
 
 func TestDestroyWorkspaceRuntimeReturnsDiscoveryFailure(t *testing.T) {
@@ -3881,8 +3855,7 @@ func TestDestroyWorkspaceRuntimeDeletesSecretOnlyRemnant(t *testing.T) {
 	if _, err := provider.DestroyWorkspaceRuntime(context.Background(), "ws-alpha"); err != nil {
 		t.Fatal(err)
 	}
-	target := d4DeleteCall(t, calls)
-	if !slices.Contains(target, "secret/opl-compute-alpha-env") || slices.Contains(target, "ingress/opl-cloud") {
+	if len(calls) != 5 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") || !slices.Contains(calls[2], "secret/opl-compute-alpha-env") || slices.Contains(calls[2], "ingress/opl-cloud") {
 		t.Fatalf("kubectl calls = %#v", calls)
 	}
 }
@@ -3910,7 +3883,7 @@ func TestDestroyWorkspaceRuntimeDeletesNetworkPolicyOnlyRemnant(t *testing.T) {
 	if err != nil || runtime.Status != "destroyed" || runtime.ServiceName != "opl-compute-alpha" {
 		t.Fatalf("destroy policy-only runtime = %#v err=%v", runtime, err)
 	}
-	if target := d4DeleteCall(t, calls); !slices.Contains(target, "networkpolicy/opl-compute-alpha") {
+	if len(calls) != 5 || calls[0][1] != "deployment,service,networkpolicy,secret" || !slices.Contains(calls[2], "networkpolicy/opl-compute-alpha") {
 		t.Fatalf("kubectl calls = %#v", calls)
 	}
 }

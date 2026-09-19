@@ -81,55 +81,6 @@ current implementation documentation.
   an exception. Reconciliation observes money and fulfillment; it never repeats
   a payment, refund or provider mutation to manufacture a match.
 
-## Application Deployment
-
-- An operator never registers an application version as a separate step. The
-  deployment command carries the image reference and its run requirements, and the
-  owning revision store admits it inside that same command.
-- The application identity is an internal deployment fact. When the command does
-  not name one, the platform derives a stable identity from the immutable image
-  digest, so the same image always resolves to the same revision and different
-  content can never share an identity. A named identity keeps the conflict rule:
-  identical content is an idempotent replay and different content under one
-  identity is refused, never overwritten.
-- The platform declares only facts the image actually has. A port, health check,
-  persistent mount, dependency, Secret reference or derived credential is never
-  defaulted on the image's behalf: the runtime creates, mounts and exposes
-  exactly what the revision declares, each platform-issued credential lands at the
-  target that credential declares, and an image that needs none of them receives
-  none of them. Deriving a platform credential needs the installation seed and the
-  credential version, not another credential: a revision that declares only the
-  administrator password receives it without also declaring the Gateway key.
-- The application identity is stable for the Workspace's application slot and the
-  version is derived from the description's content, so updating an application's
-  image is a new immutable version of the same application — its data namespace
-  and published entry do not move — while a different legal run description is a
-  new version rather than a conflict.
-- A publishing exposure policy must name the TCP entry port it publishes, because
-  the reverse proxy cannot guess the target. An omitted entry is refused rather
-  than defaulted or silently published without a target; a policy that publishes
-  nothing declares no entry.
-
-## Platform Refund
-
-- The refund is computed from the confirmed charge that paid for the period the
-  Workspace was using: an in-force renewal takes precedence over the original
-  purchase, and the period start is the start of the paid period that charge
-  covers. A fully spent earlier purchase never makes a partly used current period
-  unrefundable, and a refund never exceeds what the order it is reserved against
-  charged, minus what that order already refunded.
-- An unresolved refund keeps the money facts it was created with. A later attempt
-  re-reads state and queries the original operation; it never recomputes the
-  amount or the identity key from a later clock, which would turn a recoverable
-  unknown response into a conflict. A recorded reservation is continued only when
-  it names the same account, paying user and order; the wallet owner's own
-  admission refuses a reservation against an order it cannot resolve, so the
-  platform never pays against a charge it cannot read back.
-- A refund is authorised only by a live, identity-bound provider readback: the
-  readback must report the exact CBS, machine and CVM identity this Delete
-  operation destroyed. A readback that omits an identity is refused, and an
-  expected identity is never substituted for an observed one.
-
 ## Workspace Lifecycle
 
 References to the original Runtime apply to retained Launch contracts. New
@@ -158,25 +109,6 @@ resource-only provisioning and selected-application behavior follow the
   Gateway Keys may remain; neither deletion nor failed-Launch closeout requires
   their deletion, disabled state, or permanent revocation. Delete is independent
   from refund and performs no automatic wallet mutation.
-- Every deletion stage persists the observation it made — the stage, the result,
-  the resource identity, the time the observing owner observed the fact, the
-  readback record, and its read and mutation attempts — in the same owner write
-  that advances the phase. A stage that is still waiting or that failed is
-  recorded too, so a stalled deletion is explainable from state; only the result
-  the frozen contract requires for that stage is a confirmation. An attempt that
-  returned no usable readback is recorded as unavailable: it names no readback,
-  carries no invented provider observation time, and is never a confirmation. A recorded confirmation is append-only and is
-  never rewritten, dropped, or back-filled. A local state transition is never
-  presented as a provider readback, and a query never stands in for a destroy.
-- The deletion receipt carries the persisted stage evidence summary and may only
-  be written from confirmations already recorded; a partial summary cannot
-  produce a receipt. Each summary entry also carries an opaque reference derived
-  from the resource identity, the readback record and the observation time, so a
-  different resource or a different readback can never produce the same receipt
-  while private provider identifiers stay with their owner. A receipt retained from before this contract keeps its
-  original shape and is not back-filled. The refund precondition is decided by a
-  fresh Fabric readback after the deletion, so the receipt is necessary history
-  and never a substitute for that readback.
 - Unpaid expiry denies new access, ends existing proxied access, and stops the
   original Runtime through Fabric. It does not authorize new procurement or
   silently extend entitlement. Stop/resume preserves storage and Key identity.

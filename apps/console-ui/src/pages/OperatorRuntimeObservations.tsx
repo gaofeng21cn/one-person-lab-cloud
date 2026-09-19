@@ -6,7 +6,7 @@ import type { OperatorRuntimeObservationsDTO, SourceEnvelope } from "../api/dtos
 import { SourceState } from "../components/source/SourceState.tsx";
 import { Badge, Button, Modal } from "../components/ui/index.ts";
 import { formatCount, formatDate } from "../console-model.ts";
-import { deletionProgressSummary, formatObservationTime, observationLabel, observationReason } from "./operator-observation-presentation.ts";
+import { observationLabel, observationReason } from "./operator-observation-presentation.ts";
 
 export function OperatorRuntimeObservations({ onClose, refreshKey, sessionIdentity }: {
   onClose: () => void;
@@ -72,15 +72,6 @@ export function OperatorRuntimeObservations({ onClose, refreshKey, sessionIdenti
               <div><dt>实际状态</dt><dd>{observationLabel(item.observedState)}</dd></div>
               <div><dt>归属</dt><dd>{observationLabel(item.ownership)}</dd></div>
             </dl>
-            {/* A Workspace being deleted publishes its persisted stage, state, stable
-                cause, most recent readback and scheduled retry. There is no manual
-                completion control here: the worker continues the original operation. */}
-            {item.deleteStage ? <dl className="operator-object-card__facts" data-operator-delete-progress>
-              <div><dt>删除阶段</dt><dd>{deletionProgressSummary(item.deleteStage, item.deletePageState, item.deleteLastReadbackAt)}</dd></div>
-              <div><dt>删除原因</dt><dd><code>{item.deleteReasonCode || "-"}</code>{item.deleteReasonCode ? ` ${observationReason(item.deleteReasonCode)}` : ""}</dd></div>
-              <div><dt>自动重试</dt><dd>{item.deleteNextRetryAt ? formatObservationTime(item.deleteNextRetryAt) : item.deletePageState === "blocked" ? "已暂停，等待管理员核对" : "等待下一次自动重试"}</dd></div>
-              <div><dt>删除回执</dt><dd><code>{item.deleteReceiptId || "-"}</code></dd></div>
-            </dl> : null}
             {item.reasonCode ? <p>{observationReason(item.reasonCode)}</p> : null}
           </article>)}</div> : <div className="empty-panel">{view === "attention" ? "当前没有需要处理的 Runtime 对象。" : "当前没有 Runtime 观测对象。"}</div>}
         </>;

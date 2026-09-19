@@ -1152,11 +1152,6 @@ func (f *fakeFabricClient) CreateComputeAllocation(_ context.Context, input clie
 	return clients.ComputeAllocation{ID: input.ID, AccountID: input.AccountID, WorkspaceID: input.WorkspaceID, PackageID: input.PackageID, Status: "running", Provider: "fabric", ProviderResourceID: "resource-from-fabric", ProviderRequestID: "compute-request-from-fabric", Zone: "provider-zone", Deadline: "2099-01-01T00:00:00Z"}, nil
 }
 
-func (f *fakeFabricClient) ReadComputeDestroyStatus(_ context.Context, id string) (clients.ComputeAllocation, error) {
-	f.record("fabric.compute-destroy-status")
-	return clients.ComputeAllocation{ID: id, Status: "external_deleted", Provider: "fabric", ProviderRequestID: "compute-destroy-status-from-fabric"}, nil
-}
-
 func (f *fakeFabricClient) SyncComputeAllocation(_ context.Context, id string) (clients.ComputeAllocation, error) {
 	f.record("fabric.compute-sync")
 	return clients.ComputeAllocation{ID: id, Status: "external_deleted", Provider: "fabric", ProviderRequestID: "compute-sync-from-fabric"}, nil

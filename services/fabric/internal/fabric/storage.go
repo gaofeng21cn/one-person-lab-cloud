@@ -7,61 +7,12 @@ import (
 	"reflect"
 	"strings"
 	"time"
-
-	contracts "opl-cloud/packages/contracts/go"
 )
 
 var errStorageDestroyRecoveryUnconfirmed = errors.New("storage_destroy_recovery_unconfirmed")
 
 const storageDestroyPhaseDispatchAuthorized = "dispatch_authorized_uncertain"
 const storageDestroyPhaseBindingDeletePending = "binding_delete_pending"
-const storageDestroyPhaseNotAttempted = "terminate_not_attempted"
-const storageDestroyPhasePreconditionUnconfirmed = "precondition_unconfirmed"
-const storageDestroyPhaseTerminateAttempted = "terminate_attempted"
-const storageDestroyPhaseAbsenceConfirmed = "absence_confirmed"
-
-// Storage deletion classifications share one owner with Control Plane:
-// contracts.WorkspaceDeleteOutcome*.
-const (
-	StorageDestroyStatePendingRetry    = contracts.WorkspaceDeleteOutcomePendingRetry
-	StorageDestroyStateUnconfirmedSend = contracts.WorkspaceDeleteOutcomeUnconfirmedSend
-)
-
-// storageDestroyMayDispatch reports whether the persisted deletion evidence
-// proves that no CBS terminate RPC was dispatched, so this operation may still
-// issue exactly one. dispatch_authorized_uncertain is excluded: Fabric records it
-// immediately before the send and cannot prove the RPC never left.
-func storageDestroyMayDispatch(volume StorageVolume) bool {
-	if volume.ProviderData["storageDestroyMutationCount"] != "0" {
-		return false
-	}
-	switch volume.ProviderData["storageDestroyPhase"] {
-	case storageDestroyPhaseNotAttempted, storageDestroyPhasePreconditionUnconfirmed, storageDestroyPhaseBindingDeletePending:
-		return true
-	default:
-		return false
-	}
-}
-
-// storageDestroyMayHaveBeenSent reports whether a CBS terminate RPC may already
-// have been dispatched for this volume.
-func storageDestroyMayHaveBeenSent(volume StorageVolume) bool {
-	switch volume.ProviderData["storageDestroyPhase"] {
-	case storageDestroyPhaseDispatchAuthorized, storageDestroyPhaseTerminateAttempted:
-		return true
-	case storageDestroyPhaseAbsenceConfirmed:
-		return volume.ProviderData["storageDestroyMutationCount"] == "1"
-	default:
-		return false
-	}
-}
-
-// storageDestroyCbsDetachable reports whether a provider readback proves the disk
-// still exists and is detached, which is the precondition for terminating it. An
-// unknown or attached state never authorizes a destroy.
-func storageDestroyCbsDetachable(volume StorageVolume) bool {
-	return strings.EqualFold(strings.TrimSpace(volume.CBSStatus), "UNATTACHED")
-}
 
 type workspaceStorageDeleteOwnerContextKey struct{}
 
@@ -210,12 +161,6 @@ func (s *Service) ReadStorageVolume(ctx context.Context, volumeID string) (Stora
 	if volume.ProviderRequestID == "" {
 		volume.ProviderRequestID = existing.ProviderRequestID
 	}
-	// The observing owner stamps when it read the fact. It is set only here, on the
-	// readback result, so it can never masquerade as a persisted resource field.
-	if err == nil {
-		volume.ObservedAt = s.now().Format(time.RFC3339Nano)
-		volume.ReadbackID = stableID("storage-volume-readback", volumeID, volume.ObservedAt)
-	}
 	return volume, err
 }
 
@@ -302,15 +247,7 @@ func (s *Service) dispatchStorageDestroy(ctx context.Context, operation FabricOp
 		return err
 	}
 	if providerErr != nil {
-		// A well-formed provider refusal carries its own stable deletion
-		// classification. That makes the same operation retryable instead of
-		// terminal, while an unverifiable or invalid provider response (which sets
-		// no classification) stays a hard failure.
 		_ = s.recordOperation(ctx, operation, "failed", volume, providerErr)
-		if volume.DestroyState != "" {
-			*result = volume
-			return errors.Join(ErrWorkspaceLaunchPending, providerErr)
-		}
 		return providerErr
 	}
 	if err := s.recordOperation(ctx, operation, "succeeded", volume, nil); err != nil {
@@ -365,10 +302,6 @@ func isStorageDestroyEvidenceKey(key string) bool {
 	}
 }
 
-// recoverStorageDestroyByReadback resumes one retained storage deletion from the
-// provider's current facts instead of a cached result. It never re-sends a CBS
-// terminate RPC that may already have been dispatched, and it never reports
-// success without authoritative absence evidence.
 func (s *Service) recoverStorageDestroyByReadback(ctx context.Context, operation FabricOperation, existing, persisted StorageVolume, result *StorageVolume) error {
 	reader := s.optionalProviders.storageVolumeStatus
 	if reader == nil {
@@ -384,61 +317,27 @@ func (s *Service) recoverStorageDestroyByReadback(ctx context.Context, operation
 	if readErr != nil && !residualBinding {
 		return fmt.Errorf("%w: %v", errStorageDestroyRecoveryUnconfirmed, readErr)
 	}
-	if storageDestroyReadbackConfirmsAbsence(readback) && !residualBinding {
-		if err := s.recordOperation(ctx, operation, "succeeded", readback, nil); err != nil {
-			return err
+	if !storageDestroyReadbackConfirmsAbsence(readback) || residualBinding {
+		if residualBinding || operation.Status == "failed" && persisted.Provider == "tencent-tke" &&
+			persisted.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending && persisted.ProviderData["storageDestroyMutationCount"] == "0" &&
+			readback.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending && readback.ProviderData["storageDestroyMutationCount"] == "0" {
+			request := cloneStorageVolume(readback)
+			request.Status = "destroying"
+			request.ProviderData["storageDestroyPhase"] = storageDestroyPhaseDispatchAuthorized
+			if err := s.recordOperation(ctx, operation, "started", request, nil); err != nil {
+				return err
+			}
+			return s.dispatchStorageDestroy(ctx, operation, existing, request, result)
 		}
-		s.mu.Lock()
-		s.volumes[existing.ID] = cloneStorageVolume(readback)
-		s.mu.Unlock()
-		return nil
+		return errStorageDestroyRecoveryUnconfirmed
 	}
-	// The disk is not gone yet. Re-dispatch only when the persisted evidence
-	// proves no CBS terminate RPC was dispatched and the provider now reports the
-	// disk detached, or when the retained phase continues a binding deletion that
-	// never sent an RPC.
-	if residualBinding || storageDestroyMayDispatch(persisted) &&
-		(storageDestroyCbsDetachable(readback) || storageDestroyReadbackContinuesBindingDeletion(persisted, readback)) {
-		request := cloneStorageVolume(readback)
-		request.Status = "destroying"
-		if request.ProviderData == nil {
-			request.ProviderData = map[string]string{}
-		}
-		request.ProviderData["storageDestroyPhase"] = storageDestroyPhaseDispatchAuthorized
-		if residualBinding {
-			request.ProviderData["storageDestroyPhase"] = storageDestroyPhaseBindingDeletePending
-			request.ProviderData["storageDestroyMutationCount"] = "0"
-		}
-		if err := s.recordOperation(ctx, operation, "started", request, nil); err != nil {
-			return err
-		}
-		return s.dispatchStorageDestroy(ctx, operation, existing, request, result)
+	if err := s.recordOperation(ctx, operation, "succeeded", readback, nil); err != nil {
+		return err
 	}
-	// No CBS terminate RPC was dispatched, but the provider precondition is not
-	// met yet: keep the deletion retryable on the same operation.
-	if storageDestroyMayDispatch(persisted) {
-		classified := cloneStorageVolume(readback)
-		classified.DestroyState = StorageDestroyStatePendingRetry
-		*result = classified
-		return ErrWorkspaceLaunchPending
-	}
-	// A terminate RPC may already have been sent. Only a later authoritative
-	// absence readback may converge it; this attempt must not re-send.
-	if storageDestroyMayHaveBeenSent(persisted) {
-		classified := cloneStorageVolume(readback)
-		classified.DestroyState = StorageDestroyStateUnconfirmedSend
-		*result = classified
-		return ErrWorkspaceLaunchPending
-	}
-	return errStorageDestroyRecoveryUnconfirmed
-}
-
-// storageDestroyReadbackContinuesBindingDeletion reports the retained phase where
-// the PV/PVC binding deletion is still propagating and no CBS RPC was sent.
-func storageDestroyReadbackContinuesBindingDeletion(persisted, readback StorageVolume) bool {
-	return persisted.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending &&
-		readback.ProviderData["storageDestroyPhase"] == storageDestroyPhaseBindingDeletePending &&
-		readback.ProviderData["storageDestroyMutationCount"] == "0"
+	s.mu.Lock()
+	s.volumes[existing.ID] = cloneStorageVolume(readback)
+	s.mu.Unlock()
+	return nil
 }
 
 func storageDestroyReadbackConfirmsAbsence(volume StorageVolume) bool {

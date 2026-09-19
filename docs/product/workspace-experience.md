@@ -136,10 +136,8 @@ readiness are both confirmed; uncertain results continue the same operation.
 Permanent deletion confirms the customer's intent once and continues in the
 background. Reopening details reads the original deletion progress. Removing a
 Workspace from the list is insufficient to show success while its deletion
-Receipt is pending. Deletion and the platform refund are reported separately: a
-refund exists only after the platform confirms the Workspace resources are gone,
-and its progress is shown independently of the deletion result. There is no new
-customer backup platform, resource replacement or free retention capability.
+Receipt is pending. Normal deletion has no refund. There is no new customer
+backup platform, resource replacement or free retention capability.
 
 ## Availability
 

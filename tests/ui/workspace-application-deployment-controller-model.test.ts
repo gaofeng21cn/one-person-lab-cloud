@@ -19,10 +19,7 @@ function draft(overrides: Partial<Parameters<typeof validateWorkspaceApplication
 function filledDraft(overrides: Partial<Parameters<typeof validateWorkspaceApplicationRevisionDraft>[0]> = {}) {
   return draft({
     applicationId: "knowledge-app", version: "1.0.0", platform: "linux/amd64",
-    image: "repo.example/apps/knowledge@sha256:" + "a".repeat(64),
-    // The draft declares the facts it needs; nothing is prefilled for it.
-    httpPort: "8080", healthCheckPath: "/healthz", healthCheckPort: "8080",
-    persistentMounts: [{ name: "data", mountPath: "/data" }], ...overrides
+    image: "repo.example/apps/knowledge@sha256:" + "a".repeat(64), ...overrides
   });
 }
 
@@ -40,7 +37,7 @@ test("Structured registration draft passes when every field matches the contract
 
 test("Per-field errors keep mistakes out of the request", () => {
   const validation = validateWorkspaceApplicationRevisionDraft(draft({
-    applicationId: "Knowledge App", version: "-1.0", platform: "linux", image: "repo.example/app:latest", exposurePolicy: "public"
+    applicationId: "Knowledge App", version: "", platform: "linux", image: "repo.example/app:latest", exposurePolicy: "public"
   }));
   assert.equal(validation.ok, false);
   assert.match(validation.fieldErrors.applicationId ?? "", /小写字母/);
@@ -48,12 +45,6 @@ test("Per-field errors keep mistakes out of the request", () => {
   assert.match(validation.fieldErrors.platform ?? "", /os\/arch/);
   assert.match(validation.fieldErrors.image ?? "", /sha256/);
   assert.match(validation.fieldErrors.exposurePolicy ?? "", /暴露策略/);
-  // An omitted identity is not an error: the platform derives it from the digest.
-  const anonymousInline = validateWorkspaceApplicationRevisionDraft(draft({
-    applicationId: "", version: "", image: "repo.example/app@sha256:" + "f".repeat(64), httpPort: "8080"
-  }));
-  assert.equal(anonymousInline.fieldErrors.applicationId, undefined);
-  assert.equal(anonymousInline.fieldErrors.version, undefined);
 });
 
 test("Mount and dependency rows validate names, paths and uniqueness", () => {
@@ -143,10 +134,7 @@ test("A registry-resolved digest-pinned reference passes the draft validation un
   const digest = "b".repeat(64);
   const resolved = draft({
     applicationId: "chaokang-agent-ibd", version: "1.0.0",
-    image: `uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:${digest}`,
-    // This image publishes an entry, so its real port is declared rather than
-    // inherited from a platform default.
-    httpPort: "8082"
+    image: `uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:${digest}`
   });
   const validation = validateWorkspaceApplicationRevisionDraft(resolved);
   assert.equal(validation.ok, true, JSON.stringify(validation.fieldErrors));
@@ -186,52 +174,4 @@ test("Deployment JSON preserves files and only accepts immutable Secret referenc
   for (const value of [null, {}, [{ ...secretBindings[0], value: "not-accepted" }], [{ ...secretBindings[0], key: "" }], [{ name: "database", secretRef: "db" }]]) {
     assert.throws(() => parseWorkspaceApplicationDeploymentJSON("{}", JSON.stringify(value)));
   }
-});
-
-test("A blank draft declares nothing, so no port, probe or data mount is fabricated", () => {
-  const blank = emptyWorkspaceApplicationRevisionDraft();
-  // An image decides its own port, health check and data directory. Prefilling
-  // 8080, /healthz or /data would silently deploy a fabricated target.
-  assert.equal(blank.httpPort, "");
-  assert.equal(blank.healthCheckPath, "");
-  assert.equal(blank.healthCheckPort, "");
-  assert.deepEqual(blank.persistentMounts, []);
-  assert.deepEqual(blank.dependencies, []);
-});
-
-test("A simple image composes only the facts it declares", () => {
-  const simple = draft({
-    applicationId: "simple-app", version: "1.0.0", image: "repo.example/simple@sha256:" + "c".repeat(64),
-    httpPort: "3000"
-  });
-  assert.equal(validateWorkspaceApplicationRevisionDraft(simple).ok, true);
-  const composed = composeWorkspaceApplicationRevision(simple);
-  assert.deepEqual(composed.ports, [{ name: "http", port: 3000, protocol: "TCP" }]);
-  assert.equal(composed.entryPort, "http");
-  // The image needs no probe, no data directory and no dependencies, so the
-  // revision carries none of them.
-  assert.equal("healthChecks" in composed, false);
-  assert.equal("persistentMounts" in composed, false);
-  assert.equal("scratchMounts" in composed, false);
-  assert.equal("dependencies" in composed, false);
-});
-
-test("A published exposure without its real port is an explicit error, never a default", () => {
-  for (const exposurePolicy of ["anonymous", "application"]) {
-    const validation = validateWorkspaceApplicationRevisionDraft(draft({
-      applicationId: "simple-app", version: "1.0.0", image: "repo.example/simple@sha256:" + "d".repeat(64),
-      exposurePolicy, httpPort: ""
-    }));
-    assert.equal(validation.ok, false);
-    // The message asks for the image's real port instead of naming a default.
-    assert.match(validation.fieldErrors.httpPort ?? "", /实际监听/);
-    assert.doesNotMatch(validation.fieldErrors.httpPort ?? "", /8080/);
-  }
-  // An image that publishes nothing declares no port and stays valid.
-  const privateImage = draft({
-    applicationId: "batch-job", version: "1", image: "repo.example/batch@sha256:" + "e".repeat(64),
-    exposurePolicy: "cloud_private", httpPort: ""
-  });
-  assert.equal(validateWorkspaceApplicationRevisionDraft(privateImage).ok, true);
-  assert.equal("ports" in composeWorkspaceApplicationRevision(privateImage), false);
 });

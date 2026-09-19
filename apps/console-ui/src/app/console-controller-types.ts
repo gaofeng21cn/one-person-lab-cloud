@@ -329,6 +329,7 @@ export interface WorkspaceApplicationDeploymentController {
   resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: import("../api/dtos.ts").WorkspaceApplicationIntentDTO | null;
   busy: boolean;
+  admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
   retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;

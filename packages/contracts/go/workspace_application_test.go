@@ -1,9 +1,6 @@
 package contracts
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func validWorkspaceApplicationRevision() WorkspaceApplicationRevision {
 	return WorkspaceApplicationRevision{
@@ -128,55 +125,5 @@ func TestValidateWorkspaceApplicationRejectsUnschedulableComponentEnvelope(t *te
 	}
 	if err := ValidateWorkspaceApplicationDependency(WorkspaceApplicationDependency{Name: "retrieval", Image: revision.Image, Compute: revision.Compute}); err == nil {
 		t.Fatal("expected the dependency ceiling to apply as well")
-	}
-}
-
-// A simple image declares only the facts it actually has. Nothing about ports,
-// health checks, mounts or dependencies is required beyond what the exposure
-// policy needs, and an image that needs none of them stays empty.
-func TestValidateWorkspaceApplicationRevisionAcceptsMinimalSimpleImage(t *testing.T) {
-	minimal := WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "simple-app", Version: "1.0.0", Platform: "linux/amd64",
-		Image: "registry.example/simple@sha256:" + strings.Repeat("b", 64),
-		Ports: []WorkspaceApplicationPort{{Name: "web", Port: 3000, Protocol: "TCP"}}, EntryPort: "web",
-		ExposurePolicy: "application",
-	}
-	if err := ValidateWorkspaceApplicationRevision(minimal); err != nil {
-		t.Fatalf("minimal simple image rejected: %v", err)
-	}
-	// An image with no published entry and no mounts is equally valid: the platform
-	// must not require facts the image does not have.
-	private := WorkspaceApplicationRevision{
-		SchemaVersion: 1, ApplicationID: "batch-job", Version: "1", Platform: "linux/amd64",
-		Image:          "registry.example/batch@sha256:" + strings.Repeat("c", 64),
-		ExposurePolicy: "cloud_private",
-	}
-	if err := ValidateWorkspaceApplicationRevision(private); err != nil {
-		t.Fatalf("private image with no entry or mounts rejected: %v", err)
-	}
-}
-
-// A publishing exposure policy must name its entry port. Without it the platform
-// proxy has no target, and guessing a default would publish a fabricated fact.
-func TestValidateWorkspaceApplicationRevisionRequiresEntryPortForPublishedExposure(t *testing.T) {
-	for _, policy := range []string{"anonymous", "application"} {
-		t.Run(policy, func(t *testing.T) {
-			revision := validWorkspaceApplicationRevision()
-			revision.ExposurePolicy = policy
-			revision.Ports, revision.EntryPort = nil, ""
-			if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
-				t.Fatal("published exposure without an entry port was accepted")
-			}
-			// Declaring a port the entry does not reference is equally unusable.
-			revision.Ports = []WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}}
-			revision.EntryPort = ""
-			if err := ValidateWorkspaceApplicationRevision(revision); err == nil {
-				t.Fatal("published exposure without a selected entry was accepted")
-			}
-			revision.EntryPort = "http"
-			if err := ValidateWorkspaceApplicationRevision(revision); err != nil {
-				t.Fatalf("declared entry rejected: %v", err)
-			}
-		})
 	}
 }

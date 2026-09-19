@@ -21,15 +21,6 @@ type operatorRuntimeObservation struct {
 	Ownership     contracts.RuntimeOwnership      `json:"ownership,omitempty"`
 	Status        string                          `json:"status"`
 	ReasonCode    string                          `json:"reasonCode,omitempty"`
-	// Deletion progress, published from the persisted delete operation. The admin
-	// Runtime detail reads the same platform facts the customer deletion page does,
-	// so neither has to interpret the durable operation phase.
-	DeleteStage          string `json:"deleteStage,omitempty"`
-	DeletePageState      string `json:"deletePageState,omitempty"`
-	DeleteReasonCode     string `json:"deleteReasonCode,omitempty"`
-	DeleteLastReadbackAt string `json:"deleteLastReadbackAt,omitempty"`
-	DeleteNextRetryAt    string `json:"deleteNextRetryAt,omitempty"`
-	DeleteReceiptID      string `json:"deleteReceiptId,omitempty"`
 }
 
 type operatorRuntimeObservations struct {
@@ -107,7 +98,6 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 			continue
 		}
 		item.BusinessState = firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))
-		item.DeleteStage, item.DeletePageState, item.DeleteReasonCode, item.DeleteLastReadbackAt, item.DeleteNextRetryAt, item.DeleteReceiptID = operatorRuntimeDeleteProgress(byWorkspace[observation.WorkspaceID])
 		accountID := firstNonEmpty(stringValue(workspace["ownerAccountId"]), stringValue(workspace["accountId"]))
 		switch {
 		case observation.Ownership == contracts.RuntimeOwnershipConflict:
@@ -129,7 +119,6 @@ func (app *controlPlaneServer) operatorRuntimeObservations(ctx context.Context, 
 			continue
 		}
 		item := operatorRuntimeObservation{ObservedState: contracts.ResourceObservedAbsent, WorkspaceID: id, RuntimeID: stringValue(workspace["runtimeId"]), BusinessState: firstNonEmpty(stringValue(workspace["state"]), stringValue(workspace["status"]))}
-		item.DeleteStage, item.DeletePageState, item.DeleteReasonCode, item.DeleteLastReadbackAt, item.DeleteNextRetryAt, item.DeleteReceiptID = operatorRuntimeDeleteProgress(byWorkspace[id])
 		item.Status, item.ReasonCode = operatorRuntimeState(workspace, byWorkspace[id], nil, now)
 		appendItem(item)
 	}
@@ -151,16 +140,8 @@ func operatorRuntimeState(workspace map[string]any, operations []map[string]any,
 			if err != nil {
 				return "attention", "workspace_delete_state_invalid"
 			}
-			// A deletion that stopped on an identity conflict needs a human, so it is
-			// attention. Everything still converging stays pending and keeps retrying.
-			if operation.Status == "failed" || operation.Status == "manual_review" {
-				if workspaceDeleteBlockClass(operation.LastErrorCode) == workspaceDeleteBlockIdentity {
-					return "attention", "workspace_delete_identity_conflict"
-				}
-				return "pending", "workspace_delete_retrying"
-			}
-			if operation.Phase == "complete" {
-				return "attention", "workspace_delete_complete_with_workspace"
+			if operation.Status == "failed" || operation.Status == "manual_review" || operation.Phase == "complete" {
+				return "attention", "workspace_delete_incomplete"
 			}
 			return "pending", "workspace_delete_in_progress"
 		}
@@ -235,26 +216,6 @@ func operatorRuntimeState(workspace map[string]any, operations []map[string]any,
 		return "pending", "runtime_not_ready"
 	}
 	return "attention", "runtime_not_ready"
-}
-
-// operatorRuntimeDeleteProgress publishes the persisted deletion progress of one
-// Workspace. It reads the same stage projection and page state the customer
-// deletion page uses, so the admin detail explains a stalled deletion the same way
-// instead of collapsing every stop into one generic reason.
-func operatorRuntimeDeleteProgress(operations []map[string]any) (stage, pageState, reasonCode, lastReadbackAt, nextRetryAt, receiptID string) {
-	for _, row := range operations {
-		if !workspaceDeleteBlocksRenewal(row) {
-			continue
-		}
-		operation, err := decodeWorkspaceDeleteOperation(row)
-		if err != nil {
-			return "", "", "workspace_delete_state_invalid", "", "", ""
-		}
-		nextRetryAt = operation.ComputeReadbackNotBefore
-		return workspaceDeleteStageInProgress(operation), workspaceDeletePageState(operation), operation.LastErrorCode,
-			workspaceDeleteLastReadbackAt(operation), nextRetryAt, operation.DeletionReceiptID
-	}
-	return "", "", "", "", "", ""
 }
 
 func operatorRuntimeTransitionPending(workspace map[string]any, operations []map[string]any) bool {

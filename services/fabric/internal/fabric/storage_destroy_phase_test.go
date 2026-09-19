@@ -88,10 +88,7 @@ func appendSucceededStorageCreate(t *testing.T, store OperationStore, volume Sto
 	}
 }
 
-// A refusal that provably dispatched no CBS RPC keeps the deletion on the same
-// operation. Once the provider reports the disk detached, exactly one terminate
-// is dispatched; the persisted evidence then prevents any further attempt.
-func TestDestroyStorageVolumeResumesRefusedTerminateNotAttemptedPhase(t *testing.T) {
+func TestDestroyStorageVolumeDoesNotRedispatchFailedTerminateNotAttemptedPhase(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryOperationStore()
 	resource := storageDestroyTestVolume("storage-destroy-safe-redispatch")
@@ -99,32 +96,18 @@ func TestDestroyStorageVolumeResumesRefusedTerminateNotAttemptedPhase(t *testing
 	failed := storageDestroyPhaseResult(resource, "terminate_not_attempted", "0", "ready", "ATTACHED")
 	appendFailedStorageDestroy(t, store, failed)
 
-	attached := storageDestroyPhaseResult(resource, "terminate_not_attempted", "0", "ready", "ATTACHED")
-	provider := &phasedStorageDestroyProvider{readback: attached, destroyResult: exactStorageDestroyAbsence(resource)}
+	present := storageDestroyPhaseResult(resource, "terminate_not_attempted", "0", "ready", "UNATTACHED")
+	provider := &phasedStorageDestroyProvider{readback: present, destroyResult: exactStorageDestroyAbsence(resource)}
 	service := NewServiceWithOperationStore(provider, store)
 
-	// The disk is still attached: no terminate may be dispatched.
 	result, err := service.DestroyStorageVolume(ctx, resource.ID)
-	if !errors.Is(err, ErrWorkspaceLaunchPending) || result.ID != resource.ID || provider.readbackCalls.Load() != 1 || provider.destroyCalls.Load() != 0 {
-		t.Fatalf("attached result=%#v err=%v readbacks=%d destroys=%d", result, err, provider.readbackCalls.Load(), provider.destroyCalls.Load())
+	if err == nil || !strings.Contains(err.Error(), "storage_destroy_recovery_unconfirmed") || result.ID != resource.ID || provider.readbackCalls.Load() != 1 || provider.destroyCalls.Load() != 0 {
+		t.Fatalf("at-most-once result=%#v err=%v readbacks=%d destroys=%d", result, err, provider.readbackCalls.Load(), provider.destroyCalls.Load())
 	}
-	if result.DestroyState != StorageDestroyStatePendingRetry {
-		t.Fatalf("attached classification=%#v", result)
-	}
-
-	// The provider now reports the disk detached: exactly one terminate.
-	detached := storageDestroyPhaseResult(resource, "terminate_not_attempted", "0", "ready", "UNATTACHED")
-	provider.readback = detached
-	result, err = service.DestroyStorageVolume(ctx, resource.ID)
-	if err != nil || result.Status != "external_deleted" || provider.destroyCalls.Load() != 1 {
-		t.Fatalf("detached convergence result=%#v err=%v readbacks=%d destroys=%d", result, err, provider.readbackCalls.Load(), provider.destroyCalls.Load())
-	}
-
-	// The attempt is now uncertain or complete: no further terminate.
 	provider.readback = exactStorageDestroyAbsence(resource)
 	result, err = service.DestroyStorageVolume(ctx, resource.ID)
-	if err != nil || result.Status != "external_deleted" || provider.destroyCalls.Load() != 1 {
-		t.Fatalf("replay result=%#v err=%v destroys=%d", result, err, provider.destroyCalls.Load())
+	if err != nil || result.Status != "external_deleted" || provider.readbackCalls.Load() != 2 || provider.destroyCalls.Load() != 0 {
+		t.Fatalf("absence convergence result=%#v err=%v readbacks=%d destroys=%d", result, err, provider.readbackCalls.Load(), provider.destroyCalls.Load())
 	}
 }
 
@@ -178,16 +161,7 @@ func TestStorageDispatchAuthorizationSurvivesRestartWithoutRedispatch(t *testing
 				}
 				return
 			}
-			// A provider readback that never arrived is a read failure, not a
-			// classified deletion outcome. Only the retained send-uncertain state is
-			// reported as a retryable wait.
-			if testCase.readbackErr != nil {
-				if err == nil || !strings.Contains(err.Error(), "storage_destroy_recovery_unconfirmed") || result.ID != resource.ID {
-					t.Fatalf("unavailable readback result=%#v err=%v", result, err)
-				}
-				return
-			}
-			if !errors.Is(err, ErrWorkspaceLaunchPending) || result.ID != resource.ID || result.DestroyState != StorageDestroyStateUnconfirmedSend {
+			if err == nil || !strings.Contains(err.Error(), "storage_destroy_recovery_unconfirmed") || result.ID != resource.ID {
 				t.Fatalf("unconfirmed result=%#v err=%v", result, err)
 			}
 		})
@@ -229,7 +203,7 @@ func TestDestroyStorageVolumeNeverRedispatchesFailedTerminateAttemptedPhase(t *t
 	service := NewServiceWithOperationStore(provider, store)
 
 	result, err := service.DestroyStorageVolume(ctx, resource.ID)
-	if !errors.Is(err, ErrWorkspaceLaunchPending) || result.ID != resource.ID || result.DestroyState != StorageDestroyStateUnconfirmedSend || provider.readbackCalls.Load() != 1 || provider.destroyCalls.Load() != 0 {
+	if err == nil || !strings.Contains(err.Error(), "storage_destroy_recovery_unconfirmed") || result.ID != resource.ID || provider.readbackCalls.Load() != 1 || provider.destroyCalls.Load() != 0 {
 		t.Fatalf("attempted phase result=%#v err=%v readbacks=%d destroys=%d", result, err, provider.readbackCalls.Load(), provider.destroyCalls.Load())
 	}
 
