@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   candidate:
-    if: ${{ github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    if: ${{ github.repository == 'gaofeng21cn/one-person-lab-cloud' && github.ref == 'refs/heads/codex/candidate-f91f8e56-20260919' && github.actor == 'RenDeHuang' && github.triggering_actor == 'RenDeHuang' && inputs.product_sha == 'f91f8e565ed1554cc5479da89a9e9073008d3501' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
