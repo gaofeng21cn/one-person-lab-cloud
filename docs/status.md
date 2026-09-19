@@ -22,6 +22,34 @@ registration, deployed Renewal/Delete qualification, alert and restore qualifica
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
+## Workspace Deletion and Hourly Refund
+
+The Control Plane persists each deletion stage's exact resource identity, result,
+observation time and readback reference with its progress. Fabric confirms
+storage absence through a fresh read after destruction and accepts multiple
+owned Pods and ReplicaSets from normal rollouts while rejecting identity
+conflicts. Console customer and operator views read the same persisted stages.
+
+Automatic platform refund is a separate operation admitted only after all
+required absence evidence and the exact `workspace.deleted.v1` Ledger receipt.
+It uses the original charge and account, the 720-hour policy, prior refund
+reservations and the existing wallet replay mechanism. Unknown money outcomes
+remain pending; deletion completion does not imply refund completion.
+
+Focused regressions exercise missing, stale, future and conflicting storage
+readbacks, multiple owned rollout children, unsafe refund rejection, and
+idempotent recovery. Source tests (226), typecheck, lint, build and required
+PostgreSQL checks pass with no required database skips. Browser checks pass
+113 of 114 cases; the overview layout assertion also fails on pristine base
+`36b8647885cc87c937290c01e2daf8d6bfa140dc` with the same browser. The real Local
+Docker gate reaches successful application login, replacement and isolation,
+then fails an unchanged exact-image retirement assertion; the same test fails
+on that pristine base. These two existing failures remain separate Console
+layout and Fabric image-retirement followups; full local verification is not
+reported as all green. Production Tencent/TKE deletion and actual wallet
+results remain Instance-owned qualification obligations for the adopted
+Candidate.
+
 ## Launch Resource Readback
 
 Fabric resource reads now recover missing in-memory projections from the existing

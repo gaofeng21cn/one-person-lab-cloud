@@ -257,7 +257,10 @@ test("Workspace deletion survives closing the page and remains pending until its
         writes += 1;
         assert.ok(route.request().headers()["idempotency-key"]);
         assert.ok(route.request().headers()["x-opl-csrf"]);
-        deletion = { workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "runtime" };
+        deletion = {
+          workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "runtime_secret_absent",
+          stage: "runtime_absent", pageState: "waiting", refundStatus: "blocked"
+        };
         await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(deletion) });
       });
       let page = await context.newPage();
@@ -280,22 +283,41 @@ test("Workspace deletion survives closing the page and remains pending until its
       assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
       await page.close();
 
-      deletion = { workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "compute" };
+      // A converging readback is retrying: the page names the stage, the scheduled
+      // retry and the separate refund status instead of a generic "pending".
+      deletion = {
+        workspaceId: "ws-1", operationId: "delete-original-ws-1", status: "pending", phase: "storage_absent",
+        stage: "storage_absent", pageState: "retrying", nextRetryAt: new Date(Date.now() + 60_000).toISOString(), refundStatus: "blocked"
+      };
       page = await context.newPage();
       await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "domcontentloaded" });
-      await page.getByRole("heading", { name: "正在删除工作空间", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { name: "正在重试删除", exact: true }).waitFor({ state: "visible" });
+      await page.getByText("正在等待数据盘解绑并销毁", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("退款等待资源删除确认", { exact: true }).waitFor({ state: "visible" });
       assert.equal(writes, 1, "reopening reads the original operation without resubmitting DELETE");
-      absent = true;
-      deletion = { ...deletion, phase: "receipt" };
-      await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
-      await page.getByRole("heading", { name: "正在删除工作空间", exact: true }).waitFor({ state: "visible" });
-      assert.equal(await page.getByText("Workspace 已删除", { exact: true }).count(), 0);
-      deletion = { ...deletion, status: "manual_review" };
-      await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
-      await page.getByRole("heading", { name: "删除需要核对", exact: true }).waitFor({ state: "visible" });
       assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
+      absent = true;
+      deletion = { ...deletion, phase: "workspace_absent", stage: "workspace_absent" };
+      await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
+      await page.getByRole("heading", { name: "正在重试删除", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.getByText("Workspace 已删除", { exact: true }).count(), 0);
+      // An identity conflict blocks the deletion, keeps the refund out of reach and
+      // offers no manual completion control.
+      deletion = {
+        ...deletion, status: "manual_review", phase: "storage_absent", stage: "storage_absent", pageState: "blocked",
+        reasonCode: "fabric_storage_identity_conflict", nextRetryAt: undefined
+      };
+      await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
+      await page.getByRole("heading", { name: "删除已暂停，需要核对", exact: true }).waitFor({ state: "visible" });
+      await page.getByText("数据盘身份与原始开通记录不一致", { exact: false }).first().waitFor({ state: "visible" });
+      await page.getByText("fabric_storage_identity_conflict", { exact: true }).first().waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("button", { name: "删除工作空间", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: /确认删除完成|强制完成/ }).count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-      deletion = { ...deletion, status: "deleted", phase: "complete", receiptId: "receipt-delete-original-ws-1" };
+      deletion = {
+        ...deletion, status: "deleted", phase: "complete", stage: "receipt_recorded", pageState: "completed",
+        reasonCode: undefined, receiptId: "receipt-delete-original-ws-1", refundStatus: "succeeded"
+      };
       await page.getByRole("button", { name: "刷新删除状态", exact: true }).click();
       await page.waitForURL(/\/console\/workspaces$/);
       await page.getByText("Workspace 已删除", { exact: true }).waitFor({ state: "visible" });

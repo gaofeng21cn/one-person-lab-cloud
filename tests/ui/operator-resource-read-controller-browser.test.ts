@@ -912,6 +912,7 @@ test("System health separates Fabric service from release and opens a read-only 
   const browser = await chromium.launch({ headless: true });
   let observationReads = 0;
   let includeUnmatched = false;
+  let includeDeleting = false;
   let imageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified";
   let strictReleaseReady: boolean | undefined;
   const writes: string[] = [];
@@ -928,6 +929,20 @@ test("System health separates Fabric service from release and opens a read-only 
         data.attentionCount = 1;
         data.unmatchedCount = 1;
         data.items.push({ workspaceId: "workspace-unmatched", objectRef: "object-unmatched", desiredState: "running", observedState: "pending", ownership: "unregistered", status: "attention", reasonCode: "runtime_unmatched_workspace" });
+      }
+      if (includeDeleting) {
+        // A deleting Workspace publishes the persisted deletion progress: the stage
+        // it is working on, the stable cause, the last readback and the scheduled
+        // retry. The admin detail renders these instead of one generic reason.
+        data.ready = false;
+        data.observedTotal = includeUnmatched ? 3 : 2;
+        data.pendingCount = 1;
+        data.items.push({
+          workspaceId: "workspace-deleting", objectRef: "object-deleting", runtimeId: "", desiredState: "", observedState: "absent",
+          ownership: "verified", status: "pending", reasonCode: "workspace_delete_in_progress",
+          deleteStage: "compute_absent", deletePageState: "retrying", deleteReasonCode: "",
+          deleteLastReadbackAt: "2026-09-18T05:00:00.000Z", deleteNextRetryAt: "2026-09-18T05:00:30.000Z"
+        });
       }
       return fulfill(route, source(data, "control-plane+fabric"));
     });
@@ -970,6 +985,19 @@ test("System health separates Fabric service from release and opens a read-only 
     assert.match(await dialog.innerText(), /来源：control-plane\+fabric/);
     assert.equal(await dialog.getByText("workspace-paused", { exact: true }).count(), 0);
     assert.equal(observationReads, initialReads + 1);
+    // The admin detail names the deletion stage and its persisted facts instead of a
+    // generic "deletion incomplete", and offers no manual completion control.
+    includeDeleting = true;
+    await dialog.getByRole("button", { name: "全部", exact: true }).click();
+    await dialog.getByRole("button", { name: "刷新观测", exact: true }).click();
+    await dialog.getByText("workspace-deleting", { exact: true }).waitFor();
+    const deleteProgress = dialog.locator("[data-operator-delete-progress]");
+    assert.match(await deleteProgress.innerText(), /正在等待计算资源删除结果/);
+    assert.match(await deleteProgress.innerText(), /自动重试中/);
+    assert.match(await deleteProgress.innerText(), /2026-09-18 05:00:00/);
+    assert.match(await deleteProgress.innerText(), /2026-09-18 05:00:30/);
+    assert.doesNotMatch(await dialog.innerText(), /Workspace 删除尚未完成/);
+    assert.equal(await dialog.getByRole("button", { name: /确认删除完成|强制完成|重试原操作/ }).count(), 0);
     assert.deepEqual(writes, []);
   } finally {
     await browser.close();

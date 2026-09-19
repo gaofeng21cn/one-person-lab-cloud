@@ -1749,7 +1749,12 @@ func TestPostgresDestroyStorageVolumeNeverRedispatchesDispatchUncertainTencentMu
 	defer reopenedStore.client.Close()
 	restarted := NewServiceWithOperationStore(provider, reopenedStore)
 	replayed, err := restarted.DestroyStorageVolume(ctx, resource.ID)
-	if !errors.Is(err, errStorageDestroyRecoveryUnconfirmed) || replayed.CBSStatus != "UNATTACHED" || replayed.ProviderData["storageDestroyPhase"] != storageDestroyPhaseDispatchAuthorized ||
+	// The retained evidence proves a terminate may already have been sent while the
+	// disk is still present. That is a stable readback-only wait, not a terminal
+	// failure: replay must not re-send the mutation, and the classification must say
+	// so instead of collapsing into one opaque error.
+	if !errors.Is(err, ErrWorkspaceLaunchPending) || replayed.DestroyState != StorageDestroyStateUnconfirmedSend ||
+		replayed.CBSStatus != "UNATTACHED" || replayed.ProviderData["storageDestroyPhase"] != storageDestroyPhaseDispatchAuthorized ||
 		destroyActions.Load() != 1 || readbackCalls.Load() != 2 {
 		t.Fatalf("reopened present readback=%#v first=%#v err=%v actions=%d readback=%d", replayed, firstResult, err, destroyActions.Load(), readbackCalls.Load())
 	}

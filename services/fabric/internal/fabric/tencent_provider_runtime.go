@@ -248,8 +248,25 @@ func (p *TencentProvider) readWorkspaceRuntime(ctx context.Context, input Worksp
 	return runtime, nil
 }
 
+// DestroyWorkspaceRuntime retires the whole owned Runtime tree. Controller
+// deletion is not Pod deletion: every labelled object of this Workspace is
+// removed, and the Runtime only reports destroyed after a fresh readback proves
+// the controller and all of its children are gone. A surviving object returns
+// ErrWorkspaceLaunchPending so the owning operation retries instead of claiming
+// completion. Ownership is verified before the first mutation and an ambiguous
+// or foreign Runtime fails closed.
 func (p *TencentProvider) DestroyWorkspaceRuntime(ctx context.Context, workspaceID string) (WorkspaceRuntime, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return WorkspaceRuntime{}, nil
+	}
+	// Ownership conflicts are refused before any mutation.
 	serviceName, err := p.workspaceRuntimeResourceNameForDestroy(ctx, workspaceID)
+	if err != nil {
+		return WorkspaceRuntime{}, err
+	}
+	// The labelled object set is the exact ownership evidence for this deletion.
+	observation, err := p.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
 	if err != nil {
 		return WorkspaceRuntime{}, err
 	}
@@ -257,8 +274,24 @@ func (p *TencentProvider) DestroyWorkspaceRuntime(ctx context.Context, workspace
 	if secretErr != nil && !errors.Is(secretErr, ErrWorkspaceLaunchResourceAbsent) {
 		return WorkspaceRuntime{}, secretErr
 	}
-	if serviceName != "" {
-		if _, err := p.callKubectl(ctx, []string{"delete", "deployment/" + serviceName, "service/" + serviceName, "networkpolicy/" + serviceName, "secret/" + serviceName + "-env", "--ignore-not-found=true"}, nil, protectedresource.Target{}); err != nil {
+	gatewaySecretRef := gatewaySecretName(workspaceID)
+	targets := make([]string, 0, len(observation.Residuals))
+	for _, residual := range observation.Residuals {
+		// The Gateway Secret is retired through its verified mutation path below,
+		// which journals the attempt and reads back the exact digest.
+		if residual.Kind == "Secret" && residual.Name == gatewaySecretRef {
+			continue
+		}
+		kind, ok := workspaceRuntimeDeleteKubectlKind(residual.Kind)
+		if !ok {
+			return WorkspaceRuntime{}, fmt.Errorf("workspace_runtime_delete_unknown_resource")
+		}
+		targets = append(targets, kind+"/"+residual.Name)
+	}
+	if len(targets) > 0 {
+		args := append([]string{"delete"}, targets...)
+		args = append(args, "--ignore-not-found=true", "--wait=true")
+		if _, err := p.callKubectl(ctx, args, nil, protectedresource.Target{}); err != nil {
 			return WorkspaceRuntime{}, err
 		}
 	}
@@ -267,11 +300,32 @@ func (p *TencentProvider) DestroyWorkspaceRuntime(ctx context.Context, workspace
 			return WorkspaceRuntime{}, err
 		}
 	}
-	observation, err := p.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
+	observation, err = p.ObserveWorkspaceRuntimeDelete(ctx, workspaceID)
 	if err != nil || observation.State != WorkspaceOwnerObservationAbsent {
 		return WorkspaceRuntime{}, firstNonNil(err, ErrWorkspaceLaunchPending)
 	}
 	return WorkspaceRuntime{WorkspaceID: workspaceID, Status: "destroyed", ServiceName: serviceName}, nil
+}
+
+// workspaceRuntimeDeleteKubectlKind maps one observed labelled residual kind to
+// its kubectl resource name. An unknown kind fails closed.
+func workspaceRuntimeDeleteKubectlKind(kind string) (string, bool) {
+	switch kind {
+	case "Deployment":
+		return "deployment", true
+	case "ReplicaSet":
+		return "replicaset", true
+	case "Pod":
+		return "pod", true
+	case "Service":
+		return "service", true
+	case "NetworkPolicy":
+		return "networkpolicy", true
+	case "Secret":
+		return "secret", true
+	default:
+		return "", false
+	}
 }
 
 func (p *TencentProvider) ObserveWorkspaceRuntimeDelete(ctx context.Context, workspaceID string) (WorkspaceRuntimeDeleteObservation, error) {
@@ -283,7 +337,10 @@ func (p *TencentProvider) ObserveWorkspaceRuntimeDelete(ctx context.Context, wor
 	if observation.WorkspaceID == "" {
 		return observation, nil
 	}
-	raw, err := p.callKubectl(ctx, []string{"get", "deployment,service,networkpolicy,secret", "-l", "oplcloud.cn/workspace-id=" + observation.WorkspaceID, "-o", "json"}, nil, protectedresource.Target{})
+	// ReplicaSet and Pod are read back with their controller: deleting a Pod is not
+	// deleting the Workspace Runtime, and a surviving child object means the
+	// Runtime has not been retired yet.
+	raw, err := p.callKubectl(ctx, []string{"get", "deployment,replicaset,pod,service,networkpolicy,secret", "-l", "oplcloud.cn/workspace-id=" + observation.WorkspaceID, "-o", "json"}, nil, protectedresource.Target{})
 	if err != nil {
 		return observation, err
 	}
@@ -312,6 +369,7 @@ func (p *TencentProvider) ObserveWorkspaceRuntimeDelete(ctx context.Context, wor
 
 func workspaceRuntimeDeleteResidualsFromItems(items []any, workspaceID string) ([]WorkspaceRuntimeDeleteResidual, error) {
 	seenKinds := map[string]bool{}
+	seenResources := map[string]bool{}
 	residuals := make([]WorkspaceRuntimeDeleteResidual, 0)
 	for _, item := range items {
 		resource, ok := item.(map[string]any)
@@ -320,10 +378,16 @@ func workspaceRuntimeDeleteResidualsFromItems(items []any, workspaceID string) (
 		}
 		kind := stringValue(resource["kind"])
 		name := stringValue(nested(resource, "metadata", "name"))
-		if kind == "" || name == "" || seenKinds[kind] {
+		// Deployment rollouts retain historical ReplicaSets and can overlap Pods.
+		// Those children are distinct owned resources; the remaining Runtime
+		// kinds still have one canonical object per Workspace.
+		multipleChildren := kind == "ReplicaSet" || kind == "Pod"
+		resourceKey := kind + "/" + name
+		if kind == "" || name == "" || seenResources[resourceKey] || seenKinds[kind] && !multipleChildren {
 			return nil, ErrLaunchStageBindingConflict
 		}
 		seenKinds[kind] = true
+		seenResources[resourceKey] = true
 		residuals = append(residuals, WorkspaceRuntimeDeleteResidual{Kind: kind, Name: name})
 	}
 	sort.Slice(residuals, func(i, j int) bool {

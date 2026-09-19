@@ -107,8 +107,10 @@ resource-only provisioning and selected-application behavior follow the
 - Workspace deletion removes owned Runtime, Secret, attachment, storage,
   and compute state through Fabric before removing the Workspace projection.
   Gateway Keys may remain; neither deletion nor failed-Launch closeout requires
-  their deletion, disabled state, or permanent revocation. Delete is independent
-  from refund and performs no automatic wallet mutation.
+  their deletion, disabled state, or permanent revocation. Delete and refund
+  remain distinct operations: only complete, fresh, identity-bound absence
+  evidence plus the Ledger deletion receipt permits automatic hourly refund
+  dispatch through the existing original-charge reservation and wallet owner.
 - Unpaid expiry denies new access, ends existing proxied access, and stops the
   original Runtime through Fabric. It does not authorize new procurement or
   silently extend entitlement. Stop/resume preserves storage and Key identity.

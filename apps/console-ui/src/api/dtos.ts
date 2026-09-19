@@ -166,12 +166,43 @@ export interface WorkspaceDeleteResponse {
   operationId?: string;
 }
 
+// Platform deletion stage vocabulary. Control Plane projects its durable
+// operation phase onto these stages; Console never interprets the phase itself.
+export type WorkspaceDeletionStage =
+  | "runtime_absent"
+  | "attachment_absent"
+  | "storage_absent"
+  | "compute_absent"
+  | "workspace_absent"
+  | "receipt_recorded";
+
+export type WorkspaceDeletionPageState = "waiting" | "retrying" | "blocked" | "completed";
+
 export interface WorkspaceDeletionDTO {
   workspaceId: string;
   operationId: string;
   status: "pending" | "manual_review" | "deleted";
+  /** Platform deletion stage reached by this operation. */
+  stage?: WorkspaceDeletionStage;
+  /** Durable operation phase, retained for the technical panel only. */
   phase: string;
+  /** Customer-visible progress state. */
+  pageState?: WorkspaceDeletionPageState;
+  /** Stable block reason when the operation stopped. */
+  reasonCode?: string;
+  /** Most recent observation recorded by the persisted stage evidence. */
+  lastReadbackAt?: string;
+  /** When the worker's next scheduled readback is due. */
+  nextRetryAt?: string;
   receiptId?: string;
+  /** Resource deletion and the platform refund are reported separately. */
+  refundStatus?: "blocked" | "pending" | "manual_review" | "succeeded" | "not_due";
+  refundReasonCode?: string;
+  refundOperationId?: string;
+  refundReceiptId?: string;
+  refundUsdMicros?: number;
+  originalChargeUsdMicros?: number;
+  refundPolicyVersion?: string;
 }
 
 export type WorkspaceDeleteCommandResult =
@@ -972,6 +1003,13 @@ export interface OperatorRuntimeObservationDTO {
   ownership?: string;
   status: "running" | "suspended" | "pending" | "attention";
   reasonCode?: string;
+  /** Persisted deletion progress, published by Control Plane from the operation. */
+  deleteStage?: WorkspaceDeletionStage;
+  deletePageState?: WorkspaceDeletionPageState;
+  deleteReasonCode?: string;
+  deleteLastReadbackAt?: string;
+  deleteNextRetryAt?: string;
+  deleteReceiptId?: string;
 }
 
 export interface OperatorRuntimeObservationsDTO extends OperatorRuntimeHealthDTO {
@@ -1042,6 +1080,13 @@ export interface WorkspaceApplicationRuntimeObservationDTO {
   components: WorkspaceApplicationComponentStateDTO[];
 }
 
+// Retained for the current admission flow; the deployment-entry simplification
+// that removes it is scoped separately and has not landed here.
+export interface WorkspaceApplicationRevisionAdmissionDTO {
+  decision: string;
+  revision: { id: string; applicationId: string; version: string; digest: string };
+}
+
 export interface WorkspaceApplicationIntentDTO {
   operationId: string;
   workspaceId: string;
@@ -1056,11 +1101,6 @@ export interface WorkspaceApplicationIntentDTO {
   activationAt?: string;
   receiptId?: string;
   lastError?: string;
-}
-
-export interface WorkspaceApplicationRevisionAdmissionDTO {
-  decision: string;
-  revision: { id: string; applicationId: string; version: string; digest: string };
 }
 
 export interface WorkspaceApplicationConfigurationDTO {
