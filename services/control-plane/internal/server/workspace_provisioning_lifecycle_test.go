@@ -67,7 +67,10 @@ func seedResourceOnlyRenewalLaunch(t *testing.T, store controlPlaneTableStore, w
 func newResourceOnlyWorkspaceLifecycleFixture(t *testing.T) (workspaceDeleteFixture, *workspaceDeleteSub2API, *workspaceDeleteLedger, *workspaceDeleteEvents) {
 	t.Helper()
 	events := &workspaceDeleteEvents{}
-	fabric := &workspaceDeleteFabric{events: events}
+	// A resource-only purchase created no Runtime objects, so Fabric's labelled
+	// readback reports them absent. The deletion now reads that back before it
+	// records the runtime stage evidence.
+	fabric := &workspaceDeleteFabric{events: events, residualObserveState: clients.WorkspaceOwnerObservationAbsent}
 	store := workspaceDeleteEventStore{controlPlaneTableStore: newMemoryTableStore(), events: events}
 	sub2API := &workspaceDeleteSub2API{
 		testSub2APIClient: &testSub2APIClient{balance: 1_000_000_000_000, charges: map[string]int64{}},
@@ -194,6 +197,10 @@ func TestWorkspaceDeleteCompletesResourceOnlyWorkspaceWithoutApplicationFacts(t 
 	}
 	wantEvents := []string{
 		"ledger:purchase-get",
+		// A resource-only purchase created no Runtime, but its absence is still a
+		// provider readback: Fabric reads the labelled Runtime objects back before
+		// the stage evidence is recorded.
+		"fabric:runtime-residual-read",
 		"fabric:attachment", "fabric:storage", "fabric:compute", "fabric:compute-read",
 		"control-plane:workspace-absent", "ledger:deletion-receipt",
 	}

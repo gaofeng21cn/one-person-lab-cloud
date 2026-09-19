@@ -74,8 +74,12 @@ type FabricWorkspaceDeleteClient interface {
 	DestroyWorkspaceRuntime(context.Context, string, string, string) (WorkspaceRuntime, error)
 	DetachStorageAttachment(context.Context, string, string, string, string) (StorageAttachment, error)
 	DestroyStorageVolume(context.Context, string, string, string, string) (StorageVolume, error)
+	ReadStorageVolume(context.Context, string) (StorageVolume, error)
 	DestroyComputeAllocation(context.Context, string, string, string, string) (ComputeAllocation, error)
 	ReadComputeAllocation(context.Context, string) (ComputeAllocation, error)
+	// ReadComputeDestroyStatus is the provider-authoritative, read-only absence
+	// readback for a destroyed Workspace compute.
+	ReadComputeDestroyStatus(context.Context, string) (ComputeAllocation, error)
 }
 
 type FabricWorkspaceDeleteObservationClient interface {
@@ -149,25 +153,39 @@ type MonthlyPreflight struct {
 }
 
 type ComputeAllocation struct {
-	ID                 string            `json:"id"`
-	AccountID          string            `json:"accountId"`
-	WorkspaceID        string            `json:"workspaceId"`
-	PackageID          string            `json:"packageId"`
-	Status             string            `json:"status"`
-	Provider           string            `json:"provider"`
-	ProviderResourceID string            `json:"providerResourceId"`
-	ProviderRequestID  string            `json:"providerRequestId"`
-	OperationID        string            `json:"operationId,omitempty"`
-	NodePoolID         string            `json:"nodePoolId,omitempty"`
-	InstanceID         string            `json:"instanceId,omitempty"`
-	CVMInstanceID      string            `json:"cvmInstanceId,omitempty"`
-	InstanceType       string            `json:"instanceType,omitempty"`
-	Zone               string            `json:"zone,omitempty"`
-	ChargeType         string            `json:"chargeType,omitempty"`
-	RenewFlag          string            `json:"renewFlag,omitempty"`
-	Deadline           string            `json:"deadline,omitempty"`
-	ProviderData       map[string]string `json:"providerData,omitempty"`
-	CostTags           map[string]string `json:"costTags,omitempty"`
+	ID                 string `json:"id"`
+	AccountID          string `json:"accountId"`
+	WorkspaceID        string `json:"workspaceId"`
+	PackageID          string `json:"packageId"`
+	Status             string `json:"status"`
+	Provider           string `json:"provider"`
+	ProviderResourceID string `json:"providerResourceId"`
+	ProviderRequestID  string `json:"providerRequestId"`
+	OperationID        string `json:"operationId,omitempty"`
+	NodePoolID         string `json:"nodePoolId,omitempty"`
+	InstanceID         string `json:"instanceId,omitempty"`
+	CVMInstanceID      string `json:"cvmInstanceId,omitempty"`
+	InstanceType       string `json:"instanceType,omitempty"`
+	Zone               string `json:"zone,omitempty"`
+	// CVMStatus, TKEStatus and MachinePresent are the provider-authoritative
+	// absence facts Fabric owns for a destroyed Workspace compute. They are read
+	// back for the platform refund precondition and are never inferred locally.
+	CVMStatus   string `json:"cvmStatus,omitempty"`
+	MachineName string `json:"machineName,omitempty"`
+	// DestroyState is Fabric's stable classification of a compute deletion
+	// outcome. It is set only for an unfinished, retryable deletion.
+	DestroyState string `json:"destroyState,omitempty"`
+	// ObservedAt is when Fabric read this compute fact back, set only on a readback
+	// result.
+	ObservedAt     string            `json:"observedAt,omitempty"`
+	ReadbackID     string            `json:"readbackId,omitempty"`
+	TKEStatus      string            `json:"tkeStatus,omitempty"`
+	MachinePresent *bool             `json:"machinePresent,omitempty"`
+	ChargeType     string            `json:"chargeType,omitempty"`
+	RenewFlag      string            `json:"renewFlag,omitempty"`
+	Deadline       string            `json:"deadline,omitempty"`
+	ProviderData   map[string]string `json:"providerData,omitempty"`
+	CostTags       map[string]string `json:"costTags,omitempty"`
 }
 
 type StorageVolumeInput struct {
@@ -180,22 +198,33 @@ type StorageVolumeInput struct {
 }
 
 type StorageVolume struct {
-	ID                 string            `json:"id"`
-	OperationID        string            `json:"operationId,omitempty"`
-	AccountID          string            `json:"accountId,omitempty"`
-	Provider           string            `json:"provider,omitempty"`
-	ProviderResourceID string            `json:"providerResourceId,omitempty"`
-	ProviderRequestID  string            `json:"providerRequestId"`
-	WorkspaceID        string            `json:"workspaceId"`
-	Status             string            `json:"status"`
-	SizeGB             int               `json:"sizeGb,omitempty"`
-	CBSStatus          string            `json:"cbsStatus,omitempty"`
-	DiskType           string            `json:"diskType,omitempty"`
-	RenewFlag          string            `json:"renewFlag,omitempty"`
-	Deadline           string            `json:"deadline,omitempty"`
-	Zone               string            `json:"zone,omitempty"`
-	ProviderData       map[string]string `json:"providerData,omitempty"`
-	CostTags           map[string]string `json:"costTags,omitempty"`
+	ID                 string `json:"id"`
+	OperationID        string `json:"operationId,omitempty"`
+	AccountID          string `json:"accountId,omitempty"`
+	Provider           string `json:"provider,omitempty"`
+	ProviderResourceID string `json:"providerResourceId,omitempty"`
+	ProviderRequestID  string `json:"providerRequestId"`
+	WorkspaceID        string `json:"workspaceId"`
+	Status             string `json:"status"`
+	SizeGB             int    `json:"sizeGb,omitempty"`
+	CBSStatus          string `json:"cbsStatus,omitempty"`
+	// BindingPresent reports whether the Workspace mount binding (PV/PVC) still
+	// exists in the provider scope. Fabric is the only writer.
+	BindingPresent *bool `json:"bindingPresent,omitempty"`
+	// DestroyState is Fabric's stable classification of a storage deletion
+	// outcome. It is set only for a retryable wait, never for a completed deletion
+	// or an unverifiable provider response.
+	DestroyState string `json:"destroyState,omitempty"`
+	// ObservedAt is when Fabric read this storage fact back, set only on a readback
+	// result. Control Plane records it as the stage's observation time.
+	ObservedAt   string            `json:"observedAt,omitempty"`
+	ReadbackID   string            `json:"readbackId,omitempty"`
+	DiskType     string            `json:"diskType,omitempty"`
+	RenewFlag    string            `json:"renewFlag,omitempty"`
+	Deadline     string            `json:"deadline,omitempty"`
+	Zone         string            `json:"zone,omitempty"`
+	ProviderData map[string]string `json:"providerData,omitempty"`
+	CostTags     map[string]string `json:"costTags,omitempty"`
 }
 
 type StorageAttachmentInput struct {
@@ -285,6 +314,28 @@ type WorkspaceRuntimeGatewaySecretObservation struct {
 	Binding       *WorkspaceRuntimeGatewaySecretBinding `json:"binding,omitempty"`
 }
 
+// Storage deletion outcome classifications live in the shared contract owner.
+// They keep a still-converging CBS deletion retryable instead of terminal, and
+// they never authorize re-sending a terminate RPC that may already have been
+// dispatched.
+const (
+	StorageDestroyStatePendingRetry    = contracts.WorkspaceDeleteOutcomePendingRetry
+	StorageDestroyStateUnconfirmedSend = contracts.WorkspaceDeleteOutcomeUnconfirmedSend
+)
+
+// StorageVolumeDeletionPending reports whether Fabric classified this storage
+// deletion outcome as an unfinished, retryable wait on the same operation.
+func StorageVolumeDeletionPending(volume StorageVolume) bool {
+	return contracts.WorkspaceDeleteOutcomeRetryable(volume.DestroyState)
+}
+
+// ComputeAllocationDeletionPending reports whether Fabric classified this
+// compute deletion outcome as an unfinished, retryable wait on the same
+// operation.
+func ComputeAllocationDeletionPending(allocation ComputeAllocation) bool {
+	return contracts.WorkspaceDeleteOutcomeRetryable(allocation.DestroyState)
+}
+
 const WorkspaceRuntimeDeleteObservationSchemaVersion = 1
 
 const WorkspaceRuntimeDeleteObservationPresent = "present"
@@ -299,6 +350,10 @@ type WorkspaceRuntimeDeleteObservation struct {
 	State         string                           `json:"state"`
 	WorkspaceID   string                           `json:"workspaceId"`
 	Residuals     []WorkspaceRuntimeDeleteResidual `json:"residuals,omitempty"`
+	// ObservedAt and ReadbackID identify when Fabric read the labelled Runtime
+	// objects back and which readback this was.
+	ObservedAt string `json:"observedAt,omitempty"`
+	ReadbackID string `json:"readbackId,omitempty"`
 }
 
 type ProviderFactInput struct {
@@ -487,6 +542,22 @@ func (c *fabricHTTPClient) DestroyStorageVolume(ctx context.Context, accountID, 
 		AccountID: accountID, WorkspaceID: workspaceID, ResourceKind: "storage_volume", ResourceID: id, Action: "destroy_storage_volume",
 	}, &result)
 	return result, err
+}
+
+func (c *fabricHTTPClient) ReadComputeDestroyStatus(ctx context.Context, id string) (ComputeAllocation, error) {
+	var result ComputeAllocation
+	if err := c.get(ctx, "/fabric/compute-allocations/"+url.PathEscape(id)+"/destroy-status", &result); err != nil {
+		return ComputeAllocation{}, err
+	}
+	return result, nil
+}
+
+func (c *fabricHTTPClient) ReadStorageVolume(ctx context.Context, id string) (StorageVolume, error) {
+	var result StorageVolume
+	if err := c.get(ctx, "/fabric/storage-volumes/"+url.PathEscape(id), &result); err != nil {
+		return StorageVolume{}, err
+	}
+	return result, nil
 }
 
 func (c *fabricHTTPClient) CreateStorageAttachment(ctx context.Context, input StorageAttachmentInput, idempotencyKey string) (StorageAttachment, error) {
