@@ -34,19 +34,11 @@ export function fabricRuntimeReadSourceMatchesScope(
   scope: FabricRuntimeReadScope,
   source: SourceEnvelope<WorkspaceRuntimeDTO>
 ): boolean {
-  if (!isRecord(scope) || !scope.workspaceId || !isRecord(source)) return false;
-  if (source.source === "fabric") {
-    if (source.available === false) return true;
-    return source.available === true && isRecord(source.data) && source.data.workspaceId === scope.workspaceId;
-  }
-  // Control Plane owns the absence of an application binding after resource-only
-  // provisioning; it does not report Fabric Runtime availability or identity.
-  if (source.source !== "control-plane" || source.available !== true || source.status !== "available"
-    || !isRecord(source.data) || source.data.workspaceId !== scope.workspaceId) return false;
-  const data = source.data;
-  return data.status === "not_found" && data.ready === false && data.currentApplication === null
-    && Array.isArray(data.checks) && data.checks.length === 0
-    && !["runtimeId", "url", "serviceName", "access"].some((field) => field in data);
+  if (!isRecord(scope) || !scope.workspaceId || !isRecord(source) || source.source !== "fabric") return false;
+  if (source.available === false) return true;
+  return source.available === true
+    && isRecord(source.data)
+    && source.data.workspaceId === scope.workspaceId;
 }
 
 export interface FabricRuntimeReadState {

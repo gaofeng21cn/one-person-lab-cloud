@@ -22,38 +22,6 @@ registration, deployed Renewal/Delete qualification, alert and restore qualifica
 one exact-current Local plus Tencent/TKE Candidate cohort, and same-byte public
 promotion remain open. The only public Product Release is the older `v0.1.7`.
 
-## Static CBS Replay And Empty Application Readback
-
-Tencent static CBS bindings do not require a dynamic StorageClass. Fabric's
-Launch-resource projection previously rejected their successful persisted storage
-stage for an empty StorageClass, also preventing its dependent attachment from
-being reconstructed. The owning replay predicate now accepts that provider-owned
-shape while retaining record digest, account/Workspace identity and predecessor
-binding checks. Tests execute the Tencent storage/attachment adapters, retain the
-original stage records, and recover their public resource reads both in process
-and after store/service reconstruction without another provider mutation or journal
-rewrite. Full and resource-only Launch contracts are covered; foreign-account
-reads remain refused.
-
-Console also rejected the Control Plane-owned, available empty-application response
-from resource-only provisioning, turning a successful read into fabric_unavailable.
-The scoped read model now accepts only that exact no-application shape; it still
-rejects other owners, foreign Workspaces and fabricated Runtime/entry/credential
-facts. Model/browser checks reproduce the original failure and preserve actual
-Fabric-outage handling. These are local source findings, not proof of production
-repair. Instance must adopt the exact Candidate and read the original identities
-before deploying an application to an affected Workspace.
-The repair passes `npm run verify:local:full` including the four PostgreSQL owners
-and Local-Docker integration with zero required skips. The full log is retained in
-`output/resource-readback-repair-20260919-U6FVe6/verify-local-full.log`
-(SHA-256 `9853537f4c3445674f24275fb0d3e5c3cfe8373360df60cb37e737bac2d05745`). Instance's read-only run 35449511678
-confirms that the affected static storage stage is succeeded, its StorageClass is
-empty, and its persisted account/Workspace/predecessor binding checks match.
-Run 35449584697 independently confirms a successful Control Plane no-application
-HTTP response for the exact customer; its opening acceptance remains blocked on
-resource readback and the old test's unconditional Key requirement. Neither run
-claims the repair has been deployed or a new resource has been bought.
-
 ## Launch Resource Readback
 
 Fabric resource reads now recover missing in-memory projections from the existing

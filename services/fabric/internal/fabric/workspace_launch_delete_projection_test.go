@@ -3,14 +3,11 @@ package fabric
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	contracts "opl-cloud/packages/contracts/go"
 )
 
 type workspaceLaunchDeleteProjectionProvider struct {
@@ -372,126 +369,5 @@ func TestWorkspaceLaunchDeleteHydrationDoesNotOverwriteConcurrentResourceState(t
 		service.volumes[resources.StorageID].ProviderRequestID != concurrentStorage.ProviderRequestID ||
 		service.attachments[resources.AttachmentID].ProviderRequestID != concurrentAttachment.ProviderRequestID {
 		t.Fatalf("hydrate overwrote concurrent state compute=%#v storage=%#v attachment=%#v", service.computes[resources.ComputeAllocationID], service.volumes[resources.StorageID], service.attachments[resources.AttachmentID])
-	}
-}
-
-// Static Tencent CBS bindings deliberately have no dynamic StorageClass. Exercise
-// the real adapter's successful storage/attachment stages, not a synthetic volume
-// that fills this optional field, then recover the persisted authority unchanged.
-func TestTencentStaticLaunchResourcesRecoverForReads(t *testing.T) {
-	for _, mode := range []string{"", string(contracts.WorkspaceProvisioningResourceOnly)} {
-		for _, reopen := range []bool{false, true} {
-			t.Run(mode+"/restart="+map[bool]string{false: "false", true: "true"}[reopen], func(t *testing.T) {
-				ctx := context.Background()
-				service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
-				if mode != "" {
-					admission, err := service.workspaceLaunchPreflight(ctx, preflight.ProviderBindingRef)
-					if err != nil {
-						t.Fatal(err)
-					}
-					admission.Input.ProvisioningMode, admission.Input.WorkspaceImageDigest = mode, ""
-					admission.ProviderBindingRef = workspaceLaunchPreflightBindingRef(admission)
-					if err := service.persistWorkspaceLaunchPreflight(ctx, admission); err != nil {
-						t.Fatal(err)
-					}
-					preflight.ProviderBindingRef = admission.ProviderBindingRef
-					image = ""
-				}
-				computeInput := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{})
-				compute := ComputeAllocation{
-					ID: workspaceLaunchComputeID(computeInput.Binding), OperationID: computeInput.Binding.FabricOperationID,
-					AccountID: "acct-alpha", WorkspaceID: "ws-alpha", PackageID: "basic", NodePoolID: "np-basic", Status: "running",
-					MachineName: "machine-alpha", NodeName: "node-alpha", InstanceID: "ins-alpha", Zone: "ap-guangzhou-3", Provider: "tencent-tke",
-					ProviderResourceID: "ins-alpha", ProviderRequestID: "req-compute", InstanceType: "SA5.MEDIUM4", ChargeType: "PREPAID",
-				}
-				resources := WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: computeInput.Binding.FabricOperationID}
-				seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{}, resources, tencentWorkspaceLaunchState{Compute: &compute}, 0)
-				mutations := 0
-				var manifest []byte
-				provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
-					if request.Action == "create_storage_volume" {
-						mutations++
-					} else if request.Action != "sync_storage_volume" {
-						t.Fatalf("unexpected provider mutation/action %s", request.Action)
-					}
-					return provisionerResponse{OK: true, Status: "ready", StorageVolumeID: "disk-alpha", CBSStatus: "UNATTACHED", ProviderRequestID: "req-cbs-read",
-						ProviderData: map[string]string{"diskType": "CLOUD_BSSD", "zone": compute.Zone, "sizeGb": "10", "renewFlag": "NOTIFY_AND_MANUAL_RENEW", "deadline": "2026-10-19T00:00:00Z", "region": "ap-guangzhou"}}, nil
-				}
-				provider.kubectl = func(_ context.Context, args []string, stdin []byte) ([]byte, error) {
-					if len(args) > 0 && args[0] == "apply" {
-						mutations++
-						manifest = append([]byte(nil), stdin...)
-						return nil, nil
-					}
-					if len(args) > 2 && args[0] == "get" && strings.HasPrefix(args[1], "pv/") && strings.HasPrefix(args[2], "pvc/") {
-						return tencentStorageBindingReadback(t, manifest, false), nil
-					}
-					t.Fatalf("unexpected kubectl mutation/action %#v", args)
-					return nil, nil
-				}
-				for _, stage := range []struct{ name, action string }{{"storage", "ensure_storage"}, {"attachment", "ensure_attachment"}} {
-					input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, stage.name, stage.action, resources)
-					input.ProvisioningMode = mode
-					result, err := service.EnsureWorkspaceLaunchStage(ctx, input)
-					if err != nil || result.State != "ready" {
-						t.Fatalf("%s result=%#v err=%v", stage.name, result, err)
-					}
-					resources = result.Resources
-				}
-				before, err := store.List(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, op := range before {
-					candidate, _, _, isCandidate, valid := canonicalWorkspaceLaunchDeleteStage(op, "storage")
-					if isCandidate && (!valid || candidate.volume.StorageClass != "") {
-						t.Fatalf("real static storage stage rejected or invented class: valid=%v volume=%#v", valid, candidate.volume)
-					}
-				}
-				originalMutations := mutations
-				if reopen {
-					reopened := NewMemoryOperationStore()
-					for _, op := range before {
-						if err := reopened.Append(ctx, op); err != nil {
-							t.Fatal(err)
-						}
-					}
-					store = reopened
-					service = NewServiceWithOperationStore(provider, store)
-				}
-				if _, found := service.GetComputeAllocation(ctx, resources.ComputeAllocationID); !found {
-					t.Fatal("compute not recovered")
-				}
-				inputs := ProviderFactsBatchInput{Items: []ProviderFactInput{
-					{AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID, ResourceType: "storage", ResourceID: resources.StorageID},
-					{AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID, ResourceType: "attachment", ResourceID: resources.AttachmentID},
-				}}
-				facts, err := service.ProviderFactsBatch(ctx, inputs)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, fact := range facts.Items {
-					if !fact.Available || fact.ErrorCode != "" {
-						t.Fatalf("resource read failed: %#v", fact)
-					}
-				}
-				for i := range inputs.Items {
-					inputs.Items[i].AccountID = "foreign-account"
-				}
-				facts, err = service.ProviderFactsBatch(ctx, inputs)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, fact := range facts.Items {
-					if fact.Available || fact.ErrorCode != "provider_fact_identity_mismatch" {
-						t.Fatalf("foreign resource accepted: %#v", fact)
-					}
-				}
-				after, err := store.List(ctx)
-				if err != nil || !reflect.DeepEqual(before, after) || mutations != originalMutations {
-					t.Fatalf("read rewrote authority or dispatched mutation: err=%v mutations=%d/%d", err, mutations, originalMutations)
-				}
-			})
-		}
 	}
 }

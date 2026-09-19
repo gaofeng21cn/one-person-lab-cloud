@@ -88,14 +88,6 @@ business and persistence evidence is recorded in [status](status.md). Exact-Cand
 Instance readback must still prove convergence of the affected Workspace and no
 impact to the running control; authorized historical Runtime retirement remains
 an Instance operation with separate immutable evidence.
-The static-CBS replay and empty-application readback repair is source-local;
-[owner evidence](status.md#static-cbs-replay-and-empty-application-readback)
-records the reproduced failure and focused checks. Instance must verify that the
-same original purchase/storage/attachment identities become readable without
-new procurement or mutation of the retained Launch journal. That readback and
-subsequent application deployment remain external acceptance, not a new Cloud
-orchestration capability.
-
 ## Workspace Application Decoupling
 
 最终用户结果是：管理员在现有 Console 中选择一个已开通的 Workspace，
