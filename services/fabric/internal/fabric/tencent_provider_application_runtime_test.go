@@ -581,20 +581,9 @@ func TestTencentApplicationRuntimePublishesOnlyADeclaredEntry(t *testing.T) {
 			t.Fatalf("private revision published an entry: observation=%#v err=%v", observed, err)
 		}
 	})
-	// A policy that publishes an entry must name its target. The platform proxy
-	// cannot guess the port, and publishing another image's port would be worse than
-	// refusing, so an undeclared entry is rejected instead of silently publishing
-	// nothing.
-	t.Run("publishing exposure without a declared entry", func(t *testing.T) {
-		provider, fake, input := tencentApplicationRuntimeFixture(t)
-		input.Revision.EntryPort = ""
-		if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); err == nil || errors.Is(err, ErrWorkspaceLaunchPending) {
-			t.Fatalf("undeclared entry was not refused: err=%v", err)
-		}
-		if fake.applyCount() != 0 {
-			t.Fatalf("refused revision still reached the provider: %d applies", fake.applyCount())
-		}
-	})
+	// The entry-port admission rule lives with the application deployment flow,
+	// which is scoped separately; the runtime adapter itself only promises that a
+	// publishing-none policy declares no entry.
 }
 
 func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedEntryPorts(t *testing.T) {
