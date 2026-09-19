@@ -1080,6 +1080,13 @@ export interface WorkspaceApplicationRuntimeObservationDTO {
   components: WorkspaceApplicationComponentStateDTO[];
 }
 
+// Retained for the current admission flow; the deployment-entry simplification
+// that removes it is scoped separately and has not landed here.
+export interface WorkspaceApplicationRevisionAdmissionDTO {
+  decision: string;
+  revision: { id: string; applicationId: string; version: string; digest: string };
+}
+
 export interface WorkspaceApplicationIntentDTO {
   operationId: string;
   workspaceId: string;

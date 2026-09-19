@@ -329,6 +329,9 @@ export interface WorkspaceApplicationDeploymentController {
   resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: import("../api/dtos.ts").WorkspaceApplicationIntentDTO | null;
   busy: boolean;
+  // Retained for the current admission flow; the deployment-entry simplification
+  // that removes it is scoped separately and has not landed here.
+  admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
   retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;
