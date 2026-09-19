@@ -1138,6 +1138,16 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusConflict, blockReason)
 		return
 	}
+	// The entitlement projection deliberately does not read the application: it
+	// reports not openable until something reads the binding's live availability.
+	// That read belongs here, at the boundary that serves the entry, so a Workspace
+	// whose entry is its application is admitted by the application's own readback
+	// rather than refused as not ready.
+	if response["openable"] != true && stringValue(workspace["currentApplicationDeploymentId"]) != "" {
+		if current, _, err := app.readWorkspaceCurrentApplication(r.Context(), service, workspace); err == nil && current != nil {
+			projectWorkspaceCurrentApplication(workspace, response, current)
+		}
+	}
 	if response["openable"] != true {
 		writeError(w, http.StatusConflict, "workspace_runtime_not_ready")
 		return
