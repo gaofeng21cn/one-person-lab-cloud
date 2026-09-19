@@ -12,3 +12,5 @@ npm-debug.log*
 .codegraph/
 /tmp/
 docs/site/latest/
+# Local handoff and task material: readable in a checkout, never product truth.
+docs/plans/
