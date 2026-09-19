@@ -369,6 +369,7 @@ func (p *TencentProvider) ObserveWorkspaceRuntimeDelete(ctx context.Context, wor
 
 func workspaceRuntimeDeleteResidualsFromItems(items []any, workspaceID string) ([]WorkspaceRuntimeDeleteResidual, error) {
 	seenKinds := map[string]bool{}
+	seenResources := map[string]bool{}
 	residuals := make([]WorkspaceRuntimeDeleteResidual, 0)
 	for _, item := range items {
 		resource, ok := item.(map[string]any)
@@ -377,10 +378,16 @@ func workspaceRuntimeDeleteResidualsFromItems(items []any, workspaceID string) (
 		}
 		kind := stringValue(resource["kind"])
 		name := stringValue(nested(resource, "metadata", "name"))
-		if kind == "" || name == "" || seenKinds[kind] {
+		// Deployment rollouts retain historical ReplicaSets and can overlap Pods.
+		// Those children are distinct owned resources; the remaining Runtime
+		// kinds still have one canonical object per Workspace.
+		multipleChildren := kind == "ReplicaSet" || kind == "Pod"
+		resourceKey := kind + "/" + name
+		if kind == "" || name == "" || seenResources[resourceKey] || seenKinds[kind] && !multipleChildren {
 			return nil, ErrLaunchStageBindingConflict
 		}
 		seenKinds[kind] = true
+		seenResources[resourceKey] = true
 		residuals = append(residuals, WorkspaceRuntimeDeleteResidual{Kind: kind, Name: name})
 	}
 	sort.Slice(residuals, func(i, j int) bool {

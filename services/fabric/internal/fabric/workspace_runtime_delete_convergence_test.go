@@ -66,7 +66,10 @@ func TestTencentDestroyWorkspaceRuntimeRemovesControllerAndChildren(t *testing.T
 	stub := &runtimeDeleteKubectlStub{workspaceID: "ws-alpha", persist: true, objects: []map[string]any{
 		labelledRuntimeObject("Deployment", "opl-compute-alpha", "ws-alpha"),
 		labelledRuntimeObject("ReplicaSet", "opl-compute-alpha-7d6c", "ws-alpha"),
+		// A normal rolling update retains its old ReplicaSet and may overlap Pods.
+		labelledRuntimeObject("ReplicaSet", "opl-compute-alpha-previous", "ws-alpha"),
 		labelledRuntimeObject("Pod", "opl-compute-alpha-7d6c-4xk9", "ws-alpha"),
+		labelledRuntimeObject("Pod", "opl-compute-alpha-previous-6qh2", "ws-alpha"),
 		labelledRuntimeObject("Service", "opl-compute-alpha", "ws-alpha"),
 		labelledRuntimeObject("NetworkPolicy", "opl-compute-alpha", "ws-alpha"),
 		labelledRuntimeObject("Secret", "opl-compute-alpha-env", "ws-alpha"),
@@ -79,7 +82,7 @@ func TestTencentDestroyWorkspaceRuntimeRemovesControllerAndChildren(t *testing.T
 		t.Fatalf("runtime=%#v err=%v", runtime, err)
 	}
 	target := stub.deleteTarget()
-	for _, want := range []string{"deployment/opl-compute-alpha", "replicaset/opl-compute-alpha-7d6c", "pod/opl-compute-alpha-7d6c-4xk9", "service/opl-compute-alpha", "networkpolicy/opl-compute-alpha", "secret/opl-compute-alpha-env", "--wait=true"} {
+	for _, want := range []string{"deployment/opl-compute-alpha", "replicaset/opl-compute-alpha-7d6c", "replicaset/opl-compute-alpha-previous", "pod/opl-compute-alpha-7d6c-4xk9", "pod/opl-compute-alpha-previous-6qh2", "service/opl-compute-alpha", "networkpolicy/opl-compute-alpha", "secret/opl-compute-alpha-env", "--wait=true"} {
 		if !slices.Contains(target, want) {
 			t.Fatalf("delete %#v missing %q", target, want)
 		}
@@ -159,6 +162,10 @@ func TestTencentDestroyWorkspaceRuntimeRejectsForeignOrAmbiguousOwnershipBeforeM
 		{"two distinct runtime names", []map[string]any{
 			labelledRuntimeObject("Deployment", "opl-compute-alpha", "ws-alpha"),
 			labelledRuntimeObject("Deployment", "opl-compute-other", "ws-alpha"),
+		}},
+		{"duplicate child identity", []map[string]any{
+			labelledRuntimeObject("ReplicaSet", "opl-compute-alpha-7d6c", "ws-alpha"),
+			labelledRuntimeObject("ReplicaSet", "opl-compute-alpha-7d6c", "ws-alpha"),
 		}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

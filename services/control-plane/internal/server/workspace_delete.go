@@ -1116,6 +1116,25 @@ func (app *controlPlaneServer) runWorkspaceDelete(ctx context.Context, service *
 			if !workspaceDeleteStorageMatches(operation, storage) {
 				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_unconfirmed")
 			}
+			// A destroy response may be a retained operation result. Confirm this
+			// stage only from Fabric's fresh read surface, which owns the observation
+			// time and reference, before persisting an immutable confirmation.
+			storage, err = service.ReadWorkspaceDeleteStorage(ctx, operation.StorageID)
+			if err != nil {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_readback_unavailable")
+			}
+			if !workspaceDeleteStorageOwned(operation, storage) {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_identity_conflict")
+			}
+			observedAt, observedErr := time.Parse(time.RFC3339Nano, storage.ObservedAt)
+			createdAt, createdErr := time.Parse(time.RFC3339Nano, operation.CreatedAt)
+			now := time.Now().UTC()
+			if observedErr != nil || createdErr != nil || strings.TrimSpace(storage.ReadbackID) == "" ||
+				observedAt.Before(createdAt) || observedAt.After(now) || now.Sub(observedAt) > workspaceDeleteRefundReadbackMaxAge ||
+				strings.TrimSpace(storage.ProviderResourceID) == "" || !workspaceDeleteStorageMatches(operation, storage) ||
+				storage.BindingPresent == nil || *storage.BindingPresent || storage.CBSStatus != contracts.WorkspaceDeleteProviderStatusNotFound {
+				return app.markWorkspaceDeleteUnconfirmed(ctx, operation, "fabric_storage_unconfirmed")
+			}
 			next := confirmStageEvidence(operation, contracts.WorkspaceDeleteStageStorageAbsent, contracts.WorkspaceDeleteEvidenceAbsent, contracts.WorkspaceDeleteEvidenceProviderReadback,
 				operation.StorageID, firstNonEmpty(storage.ProviderResourceID, operation.StorageProviderResourceID),
 				storage.ObservedAt, storage.ReadbackID, 1)

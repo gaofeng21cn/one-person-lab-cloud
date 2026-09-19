@@ -757,8 +757,9 @@ Core completion requires a real Workspace create, readback, access, and delete
 path on a supported Linux Docker host. Starting the Cloud control services with
 Compose is distribution plumbing and cannot satisfy this boundary. Console
 remains limited to the Workspace, balance, and usage controls needed by that
-path. Delete performs no wallet mutation; Sub2API remains the only spendable
-wallet, and Ledger does not become a second wallet or accounting engine.
+path. Delete records resource absence before a separate refund operation may
+settle the original paid period. Sub2API remains the only spendable wallet,
+and Ledger does not become a second wallet or accounting engine.
 
 Extensions include Tencent/TKE and generic Kubernetes provider adapters,
 managed or institution-owned resources, OPL Serve, customer-operated payment,
@@ -829,10 +830,17 @@ Plane compute, storage, and attachment projections. Every stage preserves the
 same account, operation, Workspace, Launch Receipt, Runtime, current Key, and
 provider-neutral resource identities. Fabric owns resource/Secret observations,
 mutation, and authoritative absence; Gateway Keys remain in Sub2API, and this
-operation performs no Gateway or wallet mutation; Ledger records the
-non-financial deletion Receipt. Delete and Key Rotation are durably mutually
+deletion operation performs no Gateway or wallet mutation; Ledger records the
+non-financial deletion Receipt. Stage evidence and progress are persisted in
+one owner write. Storage confirmation uses a fresh Fabric read after destruction,
+and Runtime absence includes every owned Pod and ReplicaSet retained by rollouts.
+Delete and Key Rotation are durably mutually
 exclusive before either claim can cross an external mutation boundary. Delete,
-Cancel Renewal, and Refund are independent operations. Any typed pending,
+Cancel Renewal, and Refund are independent operations. After complete absence
+evidence and the exact deletion receipt, the worker may dispatch the separate
+platform refund using the original charge, 720-hour paid period, prior refunds,
+and stable deletion/policy identity. Unknown money outcomes query the original
+operation; refund failure does not undo deletion completion. Any typed pending,
 conflict, or error that cannot authoritatively converge fails closed.
 
 The persisted customer Delete authorizes background continuation after the

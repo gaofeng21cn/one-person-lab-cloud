@@ -88,8 +88,8 @@ func TestStorageWaitIsPersistedWithItsObservation(t *testing.T) {
 	if !present || evidence.Result != contracts.WorkspaceDeleteEvidenceWaiting || evidence.Confirmed() {
 		t.Fatalf("waiting storage observation not persisted: phase=%s reason=%q evidence=%#v", operation.Phase, operation.LastErrorCode, evidence)
 	}
-	if evidence.ReasonCode != contracts.WorkspaceDeleteOutcomePendingRetry || evidence.ReadbackID == "" {
-		t.Fatalf("waiting observation lacks its cause or readback: %#v", evidence)
+	if evidence.ReasonCode != contracts.WorkspaceDeleteOutcomePendingRetry || evidence.ReadbackID != "" || evidence.EvidenceKind != contracts.WorkspaceDeleteEvidenceUnavailable {
+		t.Fatalf("destroy response without a readback was presented as a provider observation: %#v", evidence)
 	}
 }
 

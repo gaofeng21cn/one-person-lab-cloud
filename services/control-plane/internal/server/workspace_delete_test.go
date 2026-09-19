@@ -44,6 +44,10 @@ type workspaceDeleteFabric struct {
 	residualObservedAt         string
 	residualReadbackID         *string
 	storageResults             []workspaceDeleteStorageResult
+	storageDestroyed           bool
+	storageReadbackResults     []clients.StorageVolume
+	storageReadObservedAt      *string
+	storageReadbackID          *string
 	computeReadbackResults     []clients.ComputeAllocation
 	computeDestroyResults      []clients.ComputeAllocation
 	storageReadStatus          string
@@ -268,11 +272,13 @@ func (f *workspaceDeleteFabric) DestroyStorageVolume(_ context.Context, _, _, st
 		result.Status, result.DestroyState = "unknown", ""
 	}
 	providerResourceID := f.storageDestroyResourceID
+	if result.Status == "destroyed" || result.Status == "external_deleted" {
+		f.storageDestroyed = true
+	}
 	f.mu.Unlock()
 	return clients.StorageVolume{
 		ID: storageID, WorkspaceID: workspaceID, Status: result.Status, ProviderResourceID: providerResourceID,
-		DestroyState: result.DestroyState, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		ReadbackID: "storage-readback-" + storageID, ProviderRequestID: "req-storage-destroy",
+		DestroyState: result.DestroyState, ProviderRequestID: "req-storage-destroy",
 	}, nil
 }
 
@@ -295,8 +301,16 @@ func (f *workspaceDeleteFabric) ReadStorageVolume(_ context.Context, storageID s
 	status, cbsStatus, provider := f.storageReadStatus, f.storageReadCBSStatus, f.storageReadProvider
 	providerResourceID, bindingPresent := f.storageProviderResourceID, f.storageBindingPresent
 	mismatch := f.mismatchStage == "storage-read"
+	storageDestroyed := f.storageDestroyed
+	observedAt, readbackID := f.storageReadObservedAt, f.storageReadbackID
+	var queued *clients.StorageVolume
+	if len(f.storageReadbackResults) > 0 {
+		readback := f.storageReadbackResults[0]
+		queued = &readback
+		f.storageReadbackResults = f.storageReadbackResults[1:]
+	}
 	f.mu.Unlock()
-	if readErr != nil {
+	if readErr != nil && queued == nil {
 		return clients.StorageVolume{}, readErr
 	}
 	workspaceID := "ws-alpha"
@@ -306,15 +320,30 @@ func (f *workspaceDeleteFabric) ReadStorageVolume(_ context.Context, storageID s
 	if provider == "" {
 		provider = "fabric"
 	}
+	if status == "" && storageDestroyed {
+		status, cbsStatus = "external_deleted", contracts.WorkspaceDeleteProviderStatusNotFound
+	}
+	if providerResourceID == "" && provider == "fabric" {
+		providerResourceID = "volume-" + storageID
+	}
 	volume := clients.StorageVolume{ID: storageID, WorkspaceID: workspaceID, Provider: provider, ProviderResourceID: providerResourceID, Status: status, CBSStatus: cbsStatus}
 	if bindingPresent != nil {
 		volume.BindingPresent = bindingPresent
-	} else if destroyed {
+	} else if destroyed || storageDestroyed {
 		absent := false
 		volume.BindingPresent = &absent
 	}
+	if queued != nil {
+		volume = *queued
+	}
 	volume.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	volume.ReadbackID = "storage-readback-" + storageID
+	if observedAt != nil {
+		volume.ObservedAt = *observedAt
+	}
+	if readbackID != nil {
+		volume.ReadbackID = *readbackID
+	}
 	return volume, nil
 }
 
@@ -833,8 +862,9 @@ func TestWorkspaceDeleteCompletesExactOwnerChain(t *testing.T) {
 	wantEvents := []string{
 		"ledger:purchase-get",
 		"fabric:runtime-read", "fabric:secret-read", "fabric:runtime", "fabric:runtime-read", "fabric:secret-read", "fabric:runtime-residual-read",
-		"fabric:attachment", "fabric:storage", "fabric:compute", "fabric:compute-read",
+		"fabric:attachment", "fabric:storage", "fabric:storage-read", "fabric:compute", "fabric:compute-read",
 		"control-plane:workspace-absent", "ledger:deletion-receipt",
+		"fabric:runtime-read", "fabric:secret-read", "fabric:runtime-residual-read", "fabric:storage-read", "fabric:compute-read", "ledger:purchase-get",
 	}
 	if got := events.snapshot(); strings.Join(got, "\n") != strings.Join(wantEvents, "\n") {
 		t.Fatalf("owner completion events=%#v want=%#v", got, wantEvents)
@@ -1139,7 +1169,7 @@ func TestWorkspaceDeleteComputePendingKeepsSameOperationAndOneMutation(t *testin
 			computeReads++
 		}
 	}
-	if computeMutations != 1 || computeReads != 2 || sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 || len(ledger.receipts) != 1 {
+	if computeMutations != 1 || computeReads != 3 || sub2API.keyDeletes != 0 || len(sub2API.refunds) != 0 || len(ledger.receipts) != 1 {
 		t.Fatalf("continued delete mutations=%d reads=%d keyDeletes=%d refunds=%d receipts=%d calls=%#v", computeMutations, computeReads, sub2API.keyDeletes, len(sub2API.refunds), len(ledger.receipts), fabric.recordedCalls())
 	}
 }
@@ -1190,7 +1220,7 @@ func TestWorkspaceDeleteComputePendingWaitsForServerScheduleWithoutConsumingRead
 			computeReads++
 		}
 	}
-	if computeMutations != 1 || computeReads != 2 {
+	if computeMutations != 1 || computeReads != 3 {
 		t.Fatalf("terminal mutations=%d reads=%d calls=%#v", computeMutations, computeReads, fabric.recordedCalls())
 	}
 }
@@ -1382,7 +1412,9 @@ func TestWorkspaceDeleteResponseLossAndReceiptOnlyRecovery(t *testing.T) {
 			t.Fatalf("Workspace must already be absent before receipt retry found=%v err=%v", found, err)
 		}
 		second := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-receipt-failure-replay")
-		if second.Code != http.StatusOK || len(sub2API.refunds) != 0 || sub2API.keyDeletes != 0 || len(ledger.receipts) != 2 || len(fixture.fabric.recordedCalls()) != fabricCalls {
+		// Completing the receipt enables the independent refund's five read-only
+		// owner observations; no resource mutation may be repeated.
+		if second.Code != http.StatusOK || len(sub2API.refunds) != 0 || sub2API.keyDeletes != 0 || len(ledger.receipts) != 2 || len(fixture.fabric.recordedCalls()) != fabricCalls+5 {
 			t.Fatalf("replay status=%d refunds=%d keyDeletes=%d receipts=%d Fabric calls=%d/%d", second.Code, len(sub2API.refunds), sub2API.keyDeletes, len(ledger.receipts), len(fixture.fabric.recordedCalls()), fabricCalls)
 		}
 		if ledger.keys[0] != ledger.keys[1] || ledger.keys[1] != workspaceDeleteOperationID("ws-alpha")+":deletion-receipt" {
@@ -1598,7 +1630,13 @@ func TestWorkspaceDeleteOwnerCommandIsOrderedDurableAndIdempotent(t *testing.T) 
 		"runtime-residual-read:ws-alpha:",
 		"attachment:attachment-alpha:" + operationID + ":attachment",
 		"storage:storage-alpha:" + operationID + ":storage",
+		"storage-read:storage-alpha:",
 		"compute:compute-alpha:" + operationID + ":compute",
+		"compute-read:compute-alpha:",
+		"runtime-read:ws-alpha:",
+		"secret-read:ws-alpha:",
+		"runtime-residual-read:ws-alpha:",
+		"storage-read:storage-alpha:",
 		"compute-read:compute-alpha:",
 	}
 	if strings.Join(fabric.recordedCalls(), "\n") != strings.Join(wantCalls, "\n") {
@@ -1629,7 +1667,7 @@ func TestWorkspaceDeleteOwnerCommandIsOrderedDurableAndIdempotent(t *testing.T) 
 	}
 
 	replayed := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, key+":new-session")
-	if replayed.Code != http.StatusOK || len(fabric.recordedCalls()) != len(wantCalls) {
+	if replayed.Code != http.StatusOK || len(fabric.recordedCalls()) != len(wantCalls)+5 {
 		t.Fatalf("replay status=%d body=%s calls=%#v", replayed.Code, replayed.Body.String(), fabric.recordedCalls())
 	}
 }
@@ -1660,8 +1698,8 @@ func TestWorkspaceDeletePartialFabricResultResumesWithNewTransportKey(t *testing
 		t.Fatalf("resumed operation payload=%#v err=%v", payload, err)
 	}
 	calls := fabric.recordedCalls()
-	if len(calls) != 11 || calls[7] != calls[8] || !strings.HasPrefix(calls[7], "storage:") ||
-		!strings.HasPrefix(calls[9], "compute:") || !strings.HasPrefix(calls[10], "compute-read:") {
+	if len(calls) != 17 || calls[7] != calls[8] || !strings.HasPrefix(calls[7], "storage:") ||
+		!strings.HasPrefix(calls[9], "storage-read:") || !strings.HasPrefix(calls[10], "compute:") || !strings.HasPrefix(calls[11], "compute-read:") {
 		t.Fatalf("resume calls=%#v", calls)
 	}
 }

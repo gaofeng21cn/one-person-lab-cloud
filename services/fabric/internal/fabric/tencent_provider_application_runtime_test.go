@@ -566,24 +566,25 @@ func TestTencentApplicationRuntimeReadbackRequiresCurrentOwnedReadyImage(t *test
 	}
 }
 
-func TestTencentApplicationRuntimePublishesOnlyADeclaredEntry(t *testing.T) {
-	// A policy that publishes nothing declares no entry, and the runtime accepts it
-	// and publishes none.
-	t.Run("cloud private", func(t *testing.T) {
-		provider, fake, input := tencentApplicationRuntimeFixture(t)
-		input.Revision.ExposurePolicy = "cloud_private"
-		if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
-			t.Fatal(err)
-		}
-		completeTencentApplicationStartup(t, provider, fake, input)
-		observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
-		if err != nil || observed.Status != "ready" || observed.Components[0].State != "ready" || observed.Entry != nil {
-			t.Fatalf("private revision published an entry: observation=%#v err=%v", observed, err)
-		}
-	})
-	// The entry-port admission rule lives with the application deployment flow,
-	// which is scoped separately; the runtime adapter itself only promises that a
-	// publishing-none policy declares no entry.
+func TestTencentApplicationRuntimeDoesNotRequireAnUndeclaredOrPrivateEntry(t *testing.T) {
+	for _, scenario := range []string{"no entry", "cloud private"} {
+		t.Run(scenario, func(t *testing.T) {
+			provider, fake, input := tencentApplicationRuntimeFixture(t)
+			if scenario == "no entry" {
+				input.Revision.EntryPort = ""
+			} else {
+				input.Revision.ExposurePolicy = "cloud_private"
+			}
+			if _, err := provider.EnsureWorkspaceApplicationRuntime(context.Background(), input, tencentApplicationCompute(), tencentApplicationVolume()); !errors.Is(err, ErrWorkspaceLaunchPending) {
+				t.Fatal(err)
+			}
+			completeTencentApplicationStartup(t, provider, fake, input)
+			observed, err := provider.ReadWorkspaceApplicationRuntime(context.Background(), input)
+			if err != nil || observed.Status != "ready" || observed.Components[0].State != "ready" || observed.Entry != nil {
+				t.Fatalf("entry not required: observation=%#v err=%v", observed, err)
+			}
+		})
+	}
 }
 
 func TestTencentApplicationRuntimeManifestDeclaresOnlySelectedEntryPorts(t *testing.T) {

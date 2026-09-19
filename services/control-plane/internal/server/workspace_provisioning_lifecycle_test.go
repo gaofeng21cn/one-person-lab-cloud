@@ -201,8 +201,9 @@ func TestWorkspaceDeleteCompletesResourceOnlyWorkspaceWithoutApplicationFacts(t 
 		// provider readback: Fabric reads the labelled Runtime objects back before
 		// the stage evidence is recorded.
 		"fabric:runtime-residual-read",
-		"fabric:attachment", "fabric:storage", "fabric:compute", "fabric:compute-read",
+		"fabric:attachment", "fabric:storage", "fabric:storage-read", "fabric:compute", "fabric:compute-read",
 		"control-plane:workspace-absent", "ledger:deletion-receipt",
+		"fabric:runtime-read", "fabric:secret-read", "fabric:runtime-residual-read", "fabric:storage-read", "fabric:compute-read",
 	}
 	if got := events.snapshot(); strings.Join(got, "\n") != strings.Join(wantEvents, "\n") {
 		t.Fatalf("resource-only deletion events=%#v want=%#v", got, wantEvents)

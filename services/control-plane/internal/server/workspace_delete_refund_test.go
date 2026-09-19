@@ -19,6 +19,12 @@ func newWorkspaceDeleteRefundFabric() *workspaceDeleteFabric {
 	absent := false
 	return &workspaceDeleteFabric{
 		destroyed: true, clearObservationsOnDestroy: true,
+		// The deletion stage observes absence before the independent refund read.
+		// Refund tests may vary that later read without changing the earlier fact.
+		storageReadbackResults: []clients.StorageVolume{{
+			ID: "storage-alpha", WorkspaceID: "ws-alpha", Provider: "tencent-tke", ProviderResourceID: "disk-alpha",
+			Status: "external_deleted", CBSStatus: contracts.WorkspaceDeleteProviderStatusNotFound, BindingPresent: &absent,
+		}},
 		storageDestroyResourceID:  "disk-alpha",
 		storageProviderResourceID: "disk-alpha",
 		storageReadProvider:       "tencent-tke",
@@ -178,9 +184,20 @@ func TestWorkspaceDeleteRefundNeverReadHidesLegacyOperationWithoutProviderIdenti
 	// A Delete operation that never recorded the provider identity cannot bind a
 	// refund. Control Plane refuses without reading, and never refunds.
 	fabric := newWorkspaceDeleteRefundFabric()
-	fabric.storageDestroyResourceID = ""
+	fabric.storageReadErr = errWorkspaceDeleteUnconfirmed
 	fixture, sub2API, _ := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
 	deleteWorkspaceRefundForTest(t, fixture, "delete-refund-legacy-identity")
+	operation := mustWorkspaceDeleteOperation(t, fixture)
+	operation.StorageProviderResourceID = ""
+	fabric.storageReadErr = nil
+	handler := fixture.server.(*controlPlaneHTTPHandler)
+	callsBefore := len(fabric.recordedCalls())
+	if err := handler.app.runWorkspaceDeleteRefund(context.Background(), handler.service, operation); err != nil {
+		t.Fatal(err)
+	}
+	if len(fabric.recordedCalls()) != callsBefore {
+		t.Fatal("identity-incomplete retained operation caused provider reads")
+	}
 	if len(sub2API.refunds) != 0 {
 		t.Fatalf("legacy deletion refunded: %#v", sub2API.refunds)
 	}

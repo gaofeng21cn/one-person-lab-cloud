@@ -60,6 +60,74 @@ func TestWorkspaceDeleteRecordsStageEvidenceForEveryStage(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDeleteStorageRequiresFreshOwnerReadbackBeforeAdvancing(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		mutate func(*workspaceDeleteFabric)
+	}{
+		{"unavailable", func(f *workspaceDeleteFabric) {
+			f.storageReadbackResults = nil
+			f.storageReadErr = errWorkspaceDeleteUnconfirmed
+		}},
+		{"missing observation time", func(f *workspaceDeleteFabric) { value := ""; f.storageReadObservedAt = &value }},
+		{"stale observation", func(f *workspaceDeleteFabric) {
+			value := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+			f.storageReadObservedAt = &value
+		}},
+		{"future observation", func(f *workspaceDeleteFabric) {
+			value := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+			f.storageReadObservedAt = &value
+		}},
+		{"missing readback reference", func(f *workspaceDeleteFabric) { value := ""; f.storageReadbackID = &value }},
+		{"different volume", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].ID = "storage-other" }},
+		{"different workspace", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].WorkspaceID = "ws-other" }},
+		{"different provider resource", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].ProviderResourceID = "disk-other" }},
+		{"missing provider resource", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].ProviderResourceID = "" }},
+		{"disk still attached", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].CBSStatus = "ATTACHED" }},
+		{"unknown binding", func(f *workspaceDeleteFabric) { f.storageReadbackResults[0].BindingPresent = nil }},
+		{"binding present", func(f *workspaceDeleteFabric) { present := true; f.storageReadbackResults[0].BindingPresent = &present }},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			fabric := newWorkspaceDeleteRefundFabric()
+			testCase.mutate(fabric)
+			fixture, sub2API, ledger := newWorkspaceDeleteCompletionFixtureWith(t, newMemoryTableStore(), fabric)
+			// Bind the original disk before deletion; a readback cannot rebind it.
+			storage, _, err := fixture.store.GetStorage(context.Background(), "storage-alpha")
+			if err != nil {
+				t.Fatal(err)
+			}
+			storage["providerResourceId"] = "disk-alpha"
+			if err := fixture.store.SaveStorage(context.Background(), storage); err != nil {
+				t.Fatal(err)
+			}
+			response := requestWithMutationKeyForTest(t, fixture.server, fixture.session, http.MethodDelete, "/api/workspaces/ws-alpha", `{}`, "delete-storage-readback")
+			if response.Code != http.StatusBadGateway {
+				t.Fatalf("unconfirmed readback status=%d body=%s", response.Code, response.Body.String())
+			}
+			operation := mustWorkspaceDeleteOperation(t, fixture)
+			if operation.Phase != "attachment_absent" || operation.StorageStatus != "" || operation.DeletionReceiptID != "" {
+				t.Fatalf("unconfirmed readback advanced deletion: %#v", operation)
+			}
+			if evidence, found := contracts.WorkspaceDeleteStageEvidenceLatest(operation.StageEvidence, contracts.WorkspaceDeleteStageStorageAbsent); found && evidence.Confirmed() {
+				t.Fatalf("invalid immutable confirmation: %#v", evidence)
+			}
+			for _, call := range fabric.recordedCalls() {
+				if strings.HasPrefix(call, "compute:") {
+					t.Fatalf("compute destruction preceded valid storage evidence: %s", call)
+				}
+			}
+			for _, receipt := range ledger.receipts {
+				if receipt.Type == "workspace.deleted.v1" {
+					t.Fatal("unconfirmed storage was recorded as deleted")
+				}
+			}
+			if len(sub2API.refunds) != 0 {
+				t.Fatal("unconfirmed storage dispatched a refund")
+			}
+		})
+	}
+}
+
 // A recorded confirmation is append-only: a later write can never rewrite or drop
 // the binding the receipt and the refund gate already rely on.
 func TestWorkspaceDeleteEvidenceIsAppendOnly(t *testing.T) {

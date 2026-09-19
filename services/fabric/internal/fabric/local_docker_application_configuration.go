@@ -26,44 +26,18 @@ func applicationEnvironmentArgs(input WorkspaceApplicationRuntimeInput) []string
 	return args
 }
 
-// applicationSecretFiles resolves the bind-mounted secret files of the main
-// component. It handles two independent kinds of material:
-//
-//   - The application's own declared secret inputs, resolved by name from the
-//     Workspace's provisioned secret material.
-//   - The platform-issued credentials the revision declares, each mounted at the
-//     target that credential declares.
-//
-// The two are independent: a revision that asks only for the derived administrator
-// password receives it without also declaring the Gateway key, and a revision that
-// declares nothing receives no credential file at all. Mounting a credential the
-// revision never declared would bind a file this provider does not create.
 func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationRuntimeInput) (map[string]string, localDockerGatewayMetadata, error) {
 	files, _, err := p.applicationDeclaredSecrets(input, input.Revision.SecretInputs)
 	if err != nil {
 		return nil, localDockerGatewayMetadata{}, err
 	}
-	metadata := localDockerGatewayMetadata{}
-	// Every declared platform credential is mounted at the target that credential
-	// declares, and only when the revision declares it. A Gateway credential does not
-	// imply the WebUI credentials, and a derived credential does not require the
-	// Gateway key to be declared as well: a revision that asks for the administrator
-	// password alone still receives it, and a revision that declares nothing receives
-	// no credential file at all.
-	credentialPath := filepath.Join(p.gatewaySecretRoot, "application-credentials", applicationRuntimeID(input))
-	if admin, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword); declared {
-		files[admin.Target] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
-	}
-	if session, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret); declared {
-		files[session.Target] = filepath.Join(credentialPath, localDockerWebUISessionSecretFile)
-	}
 	gateway, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey)
 	if !declared {
-		return files, metadata, nil
+		return files, localDockerGatewayMetadata{}, nil
 	}
 	binding, err := workspaceApplicationGatewayBinding(input)
 	if err != nil {
-		return nil, metadata, err
+		return nil, localDockerGatewayMetadata{}, err
 	}
 	directory, metadata, err := p.applicationGatewayVersion(binding.SecretRef, binding.Version)
 	if err != nil {
@@ -72,8 +46,16 @@ func (p *LocalDockerProvider) applicationSecretFiles(input WorkspaceApplicationR
 	if metadata.AccountID != input.AccountID || metadata.WorkspaceID != input.WorkspaceID || metadata.Version != binding.Version {
 		return nil, metadata, ErrLaunchStageBindingConflict
 	}
-	if gateway.Target != "" {
-		files[gateway.Target] = filepath.Join(directory, localDockerGatewayKeyFile)
+
+	// A Gateway credential does not imply WebUI credentials. Mount only the
+	// revision's declared consumers, at the targets owned by that declaration.
+	files[gateway.Target] = filepath.Join(directory, localDockerGatewayKeyFile)
+	credentialPath := filepath.Join(p.gatewaySecretRoot, "application-credentials", applicationRuntimeID(input))
+	if credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceAdminPassword); declared {
+		files[credential.Target] = filepath.Join(credentialPath, localDockerWebUIPasswordFile)
+	}
+	if credential, declared := contracts.WorkspaceApplicationDeclaredCredential(input.Revision, contracts.WorkspaceApplicationCredentialWorkspaceSessionSecret); declared {
+		files[credential.Target] = filepath.Join(credentialPath, localDockerWebUISessionSecretFile)
 	}
 	return files, metadata, nil
 }
@@ -195,12 +177,10 @@ func (p *LocalDockerProvider) applicationGatewayVersion(secretRef, version strin
 	return filepath.Join(p.gatewaySecretRoot, secretRef, localDockerGatewayVersionsDir, selected), metadata, nil
 }
 
-// applicationWebUICredentials derives the credentials the installation issues for
-// one Workspace. They depend only on the installation seed and the credential
-// version the revision runs under, so declaring a derived credential is its own
-// requirement: the Gateway key is resolved where a revision declares it, and a
-// revision that declares the administrator password alone still receives it.
 func applicationWebUICredentials(input WorkspaceApplicationRuntimeInput) (localDockerWebUICredentials, error) {
+	if _, err := workspaceApplicationGatewayBinding(input); err != nil {
+		return localDockerWebUICredentials{}, err
+	}
 	seed := strings.TrimSpace(os.Getenv("OPL_AIONUI_ADMIN_PASSWORD_SEED"))
 	if seed == "" {
 		return localDockerWebUICredentials{}, errors.New("workspace_application_webui_credential_seed_required")
