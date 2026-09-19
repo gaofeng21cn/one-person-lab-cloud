@@ -363,6 +363,8 @@ func validWorkspaceLaunchDeleteStorage(candidate workspaceLaunchDeleteStageCandi
 	Storage    *StorageVolume     `json:"storage,omitempty"`
 	Attachment *StorageAttachment `json:"attachment,omitempty"`
 }) bool {
+	// StorageClass is optional: the Tencent adapter owns static PV/PVC bindings
+	// with no dynamic class. Replay validates the persisted owner and disk facts.
 	binding, record, volume := candidate.binding, candidate.record, candidate.volume
 	request := WorkspaceLaunchResources{ComputeAllocationID: record.RequestResources.ComputeAllocationID, ComputeBindingRef: record.RequestResources.ComputeBindingRef}
 	expected := request
@@ -370,7 +372,7 @@ func validWorkspaceLaunchDeleteStorage(candidate workspaceLaunchDeleteStageCandi
 	return request.ComputeAllocationID != "" && request.ComputeBindingRef != "" && record.RequestResources == request && record.Resources == expected &&
 		state.Compute == nil && state.Storage != nil && state.Attachment == nil && volume.ID == expected.StorageID && volume.OperationID == binding.IdempotencyKey &&
 		volume.AccountID == binding.AccountID && volume.WorkspaceID == binding.WorkspaceID && volume.Provider == record.ProviderProfileRef &&
-		volume.ProviderResourceID != "" && volume.ProviderRequestID != "" && volume.SizeGB > 0 && volume.StorageClass != "" && volume.DiskType != "" && volume.Zone != "" && isReadyResourceStatus(volume.Status)
+		volume.ProviderResourceID != "" && volume.ProviderRequestID != "" && volume.SizeGB > 0 && volume.DiskType != "" && volume.Zone != "" && isReadyResourceStatus(volume.Status)
 }
 
 func validWorkspaceLaunchDeleteAttachment(candidate workspaceLaunchDeleteStageCandidate, state struct {
