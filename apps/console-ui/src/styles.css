@@ -2947,20 +2947,6 @@ tbody tr:last-child td {
   border-top: 1px solid var(--line);
 }
 
-/* Deletion progress publishes a stage, a stable reason code and a separate
-   refund state. Long codes must wrap instead of widening the page. */
-.workspace-delete-panel .data-list > div {
-  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
-}
-
-.workspace-delete-panel .data-list dd {
-  overflow-wrap: anywhere;
-}
-
-.workspace-delete-panel .data-list code {
-  overflow-wrap: anywhere;
-}
-
 .workspace-detail-content > .workspace-delete-panel {
   border-color: #efc6c2;
   background: #fffafa;
@@ -3049,12 +3035,6 @@ tbody tr:last-child td {
   .workspace-identity-panel {
     /* 与窄屏 .panel-title 的 14px 左右内边距一致 */
     padding: 18px 14px;
-  }
-
-  .workspace-delete-panel .data-list > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-    padding: 12px 16px;
   }
 
   .workspace-entry-actions,

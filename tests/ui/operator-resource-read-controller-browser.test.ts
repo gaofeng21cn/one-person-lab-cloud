@@ -283,10 +283,8 @@ test("Application deployment retries its accepted operation and ignores another 
     await openResources(page, demo.origin);
     await selectWorkspace(page, "workspace-alpha");
     const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
-    // This path deploys an already admitted version, so it names the deployment
-    // target instead of describing the application again.
-    await deployment.getByLabel("部署目标应用").fill("knowledge-app");
-    await deployment.getByLabel("部署目标版本").fill("1.2.3");
+    await deployment.getByLabel("应用 ID").fill("knowledge-app");
+    await deployment.getByLabel("目标版本").fill("1.2.3");
     assert.equal(await deployment.getByLabel("配置摘要").count(), 0);
     await deployment.getByRole("button", { name: "部署到 workspace-alpha 工作区", exact: true }).click();
     await alphaReadStarted.promise;
@@ -914,7 +912,6 @@ test("System health separates Fabric service from release and opens a read-only 
   const browser = await chromium.launch({ headless: true });
   let observationReads = 0;
   let includeUnmatched = false;
-  let includeDeleting = false;
   let imageStatus: OperatorFabricHealthDTO["workspaceImageStatus"] = "workspace_targets_verified";
   let strictReleaseReady: boolean | undefined;
   const writes: string[] = [];
@@ -931,20 +928,6 @@ test("System health separates Fabric service from release and opens a read-only 
         data.attentionCount = 1;
         data.unmatchedCount = 1;
         data.items.push({ workspaceId: "workspace-unmatched", objectRef: "object-unmatched", desiredState: "running", observedState: "pending", ownership: "unregistered", status: "attention", reasonCode: "runtime_unmatched_workspace" });
-      }
-      if (includeDeleting) {
-        // A deleting Workspace publishes the persisted deletion progress: the stage
-        // it is working on, the stable cause, the last readback and the scheduled
-        // retry. The admin detail renders these instead of one generic reason.
-        data.ready = false;
-        data.observedTotal = includeUnmatched ? 3 : 2;
-        data.pendingCount = 1;
-        data.items.push({
-          workspaceId: "workspace-deleting", objectRef: "object-deleting", runtimeId: "", desiredState: "", observedState: "absent",
-          ownership: "verified", status: "pending", reasonCode: "workspace_delete_in_progress",
-          deleteStage: "compute_absent", deletePageState: "retrying", deleteReasonCode: "",
-          deleteLastReadbackAt: "2026-09-18T05:00:00.000Z", deleteNextRetryAt: "2026-09-18T05:00:30.000Z"
-        });
       }
       return fulfill(route, source(data, "control-plane+fabric"));
     });
@@ -987,19 +970,6 @@ test("System health separates Fabric service from release and opens a read-only 
     assert.match(await dialog.innerText(), /来源：control-plane\+fabric/);
     assert.equal(await dialog.getByText("workspace-paused", { exact: true }).count(), 0);
     assert.equal(observationReads, initialReads + 1);
-    // The admin detail names the deletion stage and its persisted facts instead of a
-    // generic "deletion incomplete", and offers no manual completion control.
-    includeDeleting = true;
-    await dialog.getByRole("button", { name: "全部", exact: true }).click();
-    await dialog.getByRole("button", { name: "刷新观测", exact: true }).click();
-    await dialog.getByText("workspace-deleting", { exact: true }).waitFor();
-    const deleteProgress = dialog.locator("[data-operator-delete-progress]");
-    assert.match(await deleteProgress.innerText(), /正在等待计算资源删除结果/);
-    assert.match(await deleteProgress.innerText(), /自动重试中/);
-    assert.match(await deleteProgress.innerText(), /2026-09-18 05:00:00/);
-    assert.match(await deleteProgress.innerText(), /2026-09-18 05:00:30/);
-    assert.doesNotMatch(await dialog.innerText(), /Workspace 删除尚未完成/);
-    assert.equal(await dialog.getByRole("button", { name: /确认删除完成|强制完成|重试原操作/ }).count(), 0);
     assert.deepEqual(writes, []);
   } finally {
     await browser.close();
@@ -1084,46 +1054,45 @@ test("Registry selection admits a complete publisher revision and deploys its fi
     await login(page, demo.origin);
     await openResources(page, demo.origin);
     await selectWorkspace(page, id);
-    // One flow: choose the image, describe the runtime, deploy. There is no separate
-    // registration step, and the panel below is the only deployment surface.
-    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
+    const registration = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用版本登记", exact: true }) }).last();
     const choose = async (label: string, value: string) => {
-      await deployment.locator(".console-field").filter({ has: page.locator("label", { hasText: new RegExp(`^${label}$`) }) }).getByRole("button").click();
+      await registration.locator(".console-field").filter({ has: page.locator("label", { hasText: new RegExp(`^${label}$`) }) }).getByRole("button").click();
       await page.getByRole("option", { name: value, exact: true }).click();
     };
-    assert.equal(await page.getByRole("heading", { name: "应用版本登记", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "登记应用版本", exact: true }).count(), 0);
-    await choose("描述方式", "发布者完整描述 JSON");
-    await deployment.getByLabel("完整应用描述 JSON").fill("{");
-    assert.equal(await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).isDisabled(), true);
-    assert.equal(writes.length, 0);
-    await deployment.getByLabel("完整应用描述 JSON").fill(JSON.stringify(revision));
-    await deployment.getByRole("button", { name: "列出仓库", exact: true }).click();
+    await choose("登记方式", "发布者完整描述 JSON");
+    await registration.getByLabel("完整应用描述 JSON").fill("{");
+    assert.equal(await registration.getByRole("button", { name: "登记应用版本", exact: true }).isDisabled(), true);
+    assert.equal(admitted.length, 0);
+    await registration.getByLabel("完整应用描述 JSON").fill(JSON.stringify(revision));
+    await registration.getByRole("button", { name: "列出仓库", exact: true }).click();
     await choose("repository", repository);
-    await deployment.getByRole("button", { name: "列出 tag", exact: true }).click();
+    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
     await choose("tag/版本", "verified");
     await choose("repository", otherRepository);
-    assert.equal(await deployment.getByRole("button", { name: "解析 digest", exact: true }).isDisabled(), true);
+    assert.equal(await registration.getByRole("button", { name: "解析 digest", exact: true }).isDisabled(), true);
     await choose("repository", repository);
-    await deployment.getByRole("button", { name: "列出 tag", exact: true }).click();
+    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
     await choose("tag/版本", "verified");
-    await deployment.getByRole("button", { name: "解析 digest", exact: true }).click();
+    await registration.getByRole("button", { name: "解析 digest", exact: true }).click();
     await resolutionStarted.promise;
-    assert.equal(await deployment.getByLabel("完整应用描述 JSON").isDisabled(), true);
+    assert.equal(await registration.getByLabel("完整应用描述 JSON").isDisabled(), true);
     releaseResolution.resolve();
-    await deployment.getByText("已解析", { exact: false }).waitFor();
+    await registration.getByText("已解析", { exact: false }).waitFor();
     await choose("repository", otherRepository);
-    const cleared = JSON.parse(await deployment.getByLabel("完整应用描述 JSON").inputValue());
+    const cleared = JSON.parse(await registration.getByLabel("完整应用描述 JSON").inputValue());
     assert.equal("image" in cleared, false);
     assert.deepEqual(cleared.dependencies, revision.dependencies);
     await choose("repository", repository);
-    await deployment.getByRole("button", { name: "列出 tag", exact: true }).click();
+    await registration.getByRole("button", { name: "列出 tag", exact: true }).click();
     await choose("tag/版本", "verified");
-    await deployment.getByRole("button", { name: "解析 digest", exact: true }).click();
-    await deployment.getByText("已解析", { exact: false }).waitFor();
-    // Selecting a tag and resolving it never registers anything: the digest travels
-    // with the deployment command.
-    assert.equal(admitted.length, 0);
+    await registration.getByRole("button", { name: "解析 digest", exact: true }).click();
+    await registration.getByText("已解析", { exact: false }).waitFor();
+    await registration.getByRole("button", { name: "登记应用版本", exact: true }).click();
+    await page.getByText("应用版本已准入", { exact: false }).waitFor();
+    assert.deepEqual(admitted, [{ ...revision, image: resolvedImage }]);
+    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
+    assert.equal(await deployment.getByLabel("应用 ID").inputValue(), revision.applicationId);
+    assert.equal(await deployment.getByLabel("目标版本").inputValue(), revision.version);
     await deployment.getByLabel("运行配置 JSON").fill(JSON.stringify(configuration));
     await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify([{ ...secretBindings[0], value: "forbidden" }]));
     assert.equal(await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).isDisabled(), true);
@@ -1131,95 +1100,14 @@ test("Registry selection admits a complete publisher revision and deploys its fi
     await deployment.getByLabel("Secret 引用 JSON").fill(JSON.stringify(secretBindings));
     await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).click();
     await deployment.getByText("receipt-publisher", { exact: true }).waitFor();
-    // One deployment command carries the resolved image description, so the
-    // operator never performs a separate registration step.
+    // One deployment command carries the image description, so the operator
+    // does not have to register the version as a separate preceding step.
     assert.deepEqual(writes, [{
       workspaceId: id, applicationId: revision.applicationId, targetRevision: revision.version,
       configuration, secretBindings, revision: { ...revision, image: resolvedImage }
     }]);
-    assert.equal(admitted.length, 0);
   } finally {
     releaseResolution.resolve();
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("A simple image deploys with only the facts it declares, and no default port, probe or data mount", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
-  const id = "workspace-simple";
-  const registryHost = "registry.example";
-  const repository = "simple";
-  const resolvedImage = `${registryHost}/oplcloud/${repository}@${targetDigest}`;
-  const admitted: unknown[] = [];
-  const writes: unknown[] = [];
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/operator/workspaces?*", (route) => fulfill(route, workspacePage([operatorWorkspace(id, "Simple")], 1)));
-    await page.route("**/api/operator/workspace-runtime-image-policy", (route) => fulfill(route, policy()));
-    await page.route("**/api/operator/workspaces/**", (route) => fulfill(route, source(new URL(route.request().url()).pathname.endsWith("/preview") ? preview(id) : operatorWorkspace(id, "Simple"))));
-    await page.route("**/api/operator/registry/repositories?*", (route) => fulfill(route, { host: registryHost, namespaces: ["oplcloud"], items: [{ namespace: "oplcloud", repository }] }));
-    await page.route("**/api/operator/registry/tags/**", (route) => fulfill(route, { namespace: "oplcloud", repository, tags: [{ tag: "stable" }] }));
-    await page.route("**/api/operator/registry/resolve", (route) => fulfill(route, { host: registryHost, namespace: "oplcloud", repository, tag: "stable", digest: targetDigest, reference: resolvedImage }));
-    await page.route("**/api/operator/application-revisions", (route) => { admitted.push(route.request().postDataJSON()); return fulfill(route, { decision: "new", revision: { id: "revision-simple", applicationId: "simple-app", version: "1.0.0", digest: targetDigest } }); });
-    await page.route("**/api/operator/application-deployments", (route) => {
-      const body = route.request().postDataJSON();
-      writes.push(body);
-      return fulfill(route, { intent: { operationId: "deployment-simple", workspaceId: id, phase: "active", applicationId: "simple-app", targetRevision: "1.0.0", currentBinding: "opl_app", expectedWorkspaceVersion: 0, createdAt: fetchedAt, receiptId: "receipt-simple" } }, 202);
-    });
-    await page.route("**/api/operator/application-deployments/*", (route) => fulfill(route, source({ status: "succeeded", intent: { operationId: "deployment-simple", workspaceId: id, phase: "active", applicationId: "simple-app", targetRevision: "1.0.0", currentBinding: "opl_app", expectedWorkspaceVersion: 0, createdAt: fetchedAt, receiptId: "receipt-simple" } })));
-
-    await login(page, demo.origin);
-    await openResources(page, demo.origin);
-    await selectWorkspace(page, id);
-    const deployment = page.locator("section.panel").filter({ has: page.getByRole("heading", { name: "应用部署", exact: true }) }).last();
-    const choose = async (label: string, value: string) => {
-      await deployment.locator(".console-field").filter({ has: page.locator("label", { hasText: new RegExp(`^${label}$`) }) }).getByRole("button").click();
-      await page.getByRole("option", { name: value, exact: true }).click();
-    };
-    // The simple form is the default path and starts empty: no port, probe or data
-    // mount is prefilled for the image.
-    assert.equal(await deployment.getByLabel("HTTP 服务端口").inputValue(), "");
-    assert.equal(await deployment.getByLabel("健康检查路径").inputValue(), "");
-    assert.equal(await deployment.getByLabel("持久挂载 1 名称").count(), 0);
-    // The operator never names the application identity: it is derived by the
-    // platform from the resolved digest.
-    assert.equal(await deployment.getByLabel("应用 ID", { exact: true }).count(), 0);
-    assert.equal(await deployment.getByLabel("版本", { exact: true }).count(), 0);
-    await deployment.getByRole("button", { name: "列出仓库", exact: true }).click();
-    await choose("repository", repository);
-    await deployment.getByRole("button", { name: "列出 tag", exact: true }).click();
-    await choose("tag/版本", "stable");
-    await deployment.getByRole("button", { name: "解析 digest", exact: true }).click();
-    await deployment.getByText("已解析", { exact: false }).waitFor();
-    // The image publishes an entry, so the operator states its real port. Without it
-    // the deployment is refused instead of inheriting a fabricated 8080.
-    assert.equal(await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).isDisabled(), true);
-    await deployment.getByLabel("HTTP 服务端口").fill("3000");
-    await deployment.getByRole("button", { name: `部署到 ${id} 工作区`, exact: true }).click();
-    await deployment.getByText("receipt-simple", { exact: true }).waitFor();
-
-    assert.equal(writes.length, 1);
-    const body = writes[0] as { applicationId: string; targetRevision: string; revision: Record<string, unknown>; configuration: unknown; secretBindings?: unknown };
-    assert.equal(body.revision.image, resolvedImage);
-    // The command carries no identity: Control Plane derives the stable internal
-    // identity from the resolved digest.
-    assert.equal(body.applicationId, "");
-    assert.equal(body.targetRevision, "");
-    assert.deepEqual(body.revision.ports, [{ name: "http", port: 3000, protocol: "TCP" }]);
-    assert.equal(body.revision.entryPort, "http");
-    // Nothing the image did not declare is fabricated for it.
-    for (const absent of ["healthChecks", "persistentMounts", "scratchMounts", "dependencies"]) {
-      assert.equal(absent in body.revision, false, `${absent} must not be fabricated`);
-    }
-    const serialized = JSON.stringify(body);
-    assert.doesNotMatch(serialized, /8080/);
-    assert.doesNotMatch(serialized, /\/healthz/);
-    assert.doesNotMatch(serialized, /"\/data"/);
-    // Resolving a tag still registers nothing: one deployment command carries it.
-    assert.deepEqual(admitted, []);
-  } finally {
     await browser.close();
     await demo.close();
   }

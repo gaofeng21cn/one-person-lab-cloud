@@ -13,7 +13,6 @@ func validRevision() contracts.WorkspaceApplicationRevision {
 		SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
 		Image:            "repo.example/apps/knowledge@sha256:" + repeat('a', 64),
 		Ports:            []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}},
-		EntryPort:        "http",
 		PersistentMounts: []contracts.WorkspaceApplicationMount{{Name: "data", MountPath: "/data"}},
 		ExposurePolicy:   "application",
 	}

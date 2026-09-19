@@ -83,7 +83,7 @@ backend command implements server-side replay.
 | Command owner | Required completion |
 | --- | --- |
 | Workspace Launch | Stable input/key, zero or one recoverable operation, bounded polling, then authoritative paged Workspace confirmation before navigation; `manual_review`, terminal and refunded results stop polling |
-| Workspace Delete | Paged Control Plane Workspace read proves final absence; Control Plane reports the deletion result and the platform refund status separately, and Console infers no refund or wallet conclusion by itself |
+| Workspace Delete | Paged Control Plane Workspace read proves final absence; no refund or wallet conclusion is inferred |
 | Workspace Renewal | Returned setting and authoritative Workspace projection match `autoRenew`; command scheduling and lifecycle projection remain separate |
 | Workspace Budget | Exact Workspace/Key and requested stable policy fields match the Gateway owner readback |
 | Operator Account | Provision/disable/purchase-eligibility response and authoritative paged Account projection match target identity and fields |

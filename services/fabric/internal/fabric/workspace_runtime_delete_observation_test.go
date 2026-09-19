@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
-	"time"
 )
 
 type workspaceRuntimeDeleteObservationProviderForTest struct {
@@ -30,18 +28,8 @@ func TestObserveWorkspaceRuntimeDeleteUsesTypedProviderObservation(t *testing.T)
 	}
 	service := NewService(workspaceRuntimeDeleteObservationProviderForTest{observation: want})
 	got := service.ObserveWorkspaceRuntimeDelete(context.Background(), "workspace-alpha")
-	// The observing owner stamps when it read the fact, so the returned observation
-	// carries its own observation time and readback identity on top of the provider
-	// result. Everything the provider reported must survive unchanged.
-	want.ObservedAt, want.ReadbackID = got.ObservedAt, got.ReadbackID
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("observation=%#v want=%#v", got, want)
-	}
-	if _, err := time.Parse(time.RFC3339Nano, got.ObservedAt); err != nil || strings.TrimSpace(got.ReadbackID) == "" {
-		t.Fatalf("observation lacks a real readback time or identity: %#v", got)
-	}
-	if got.ObservedAt != got.ObservedAt || got.ReadbackID == want.WorkspaceID {
-		t.Fatalf("observation readback identity is not derived from the readback: %#v", got)
 	}
 }
 

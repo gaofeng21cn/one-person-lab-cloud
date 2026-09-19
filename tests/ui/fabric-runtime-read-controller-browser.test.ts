@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { chromium, type Page, type Route } from "playwright";
-import { decodeSource } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
   SourceEnvelope,
@@ -133,53 +132,6 @@ async function openDisclosure(page: Page, selector: string) {
   const details = page.locator(selector);
   if (await details.getAttribute("open") === null) await details.locator("summary").click();
 }
-
-test("resource-only Workspace accepts Control Plane's empty application readback without a Fabric outage", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
-  const value = workspace("ws-1", "Resource-only Workspace", "");
-  value.applicationBinding = "empty";
-  delete value.url;
-  delete value.workspaceApiKeyId;
-  let fabricUnavailable = false;
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await page.route("**/api/workspaces?*", async (route) => {
-      const query = new URL(route.request().url()).searchParams;
-      await fulfill(route, source<WorkspaceListData>({
-        items: [value], total: 1, page: Number(query.get("page")), pageSize: Number(query.get("pageSize"))
-      }, "control-plane"));
-    });
-    await page.route("**/api/workspaces/ws-1/renewal", async (route) => fulfill(route, {
-      autoRenew: false, effectiveAfter: value.paidThrough, nextRenewalAt: value.paidThrough,
-      paidThrough: value.paidThrough, renewalStatus: "manual",
-      recovery: { state: "not_required", reason: "workspace_paid_period_active" }
-    } satisfies WorkspaceRenewalReadDTO));
-    await page.route("**/api/workspaces/ws-1/runtime-status", async (route) => {
-      if (fabricUnavailable) return fulfill(route, unavailable<WorkspaceRuntimeDTO>("fabric"), 502);
-      await fulfill(route, decodeSource<WorkspaceRuntimeDTO>({
-        source: "control-plane", status: "available", available: true, fetchedAt,
-        data: { workspaceId: value.id, status: "not_found", ready: false, currentApplication: null, checks: [] }
-      }));
-    });
-    await login(page, demo.origin);
-    await navigate(page, "/console/workspaces/ws-1");
-    await page.getByRole("heading", { name: value.name, exact: true }).waitFor({ state: "visible" });
-    await openDisclosure(page, "details.workspace-technical-details");
-    const details = page.locator("details.workspace-technical-details");
-    await details.getByText("not_found", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await details.getByText("fabric_unavailable", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("入口暂不可用", { exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).isDisabled(), true);
-    // A genuine Fabric failure still settles as unavailable on the same route.
-    fabricUnavailable = true;
-    await page.getByRole("main").getByRole("button", { name: "刷新", exact: true }).click();
-    await details.getByText("fabric_unavailable", { exact: true }).waitFor({ state: "visible" });
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
 
 test("Fabric Runtime Read rejects late Workspace and refresh responses and settles failure independently", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });

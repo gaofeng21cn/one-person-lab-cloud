@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeSource } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
   SourceEnvelope,
@@ -70,44 +69,13 @@ function scope(overrides: Partial<FabricRuntimeReadScope> = {}): FabricRuntimeRe
   });
 }
 
-test("Fabric owns Runtime readback and unavailable facts for the requested Workspace", () => {
+test("Fabric Runtime source accepts only Fabric and the requested Workspace identity", () => {
   const activeScope = scope();
 
   assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, source(runtime("workspace-alpha"))), true);
   assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, source(runtime("workspace-beta"))), false);
   assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, source(runtime("workspace-alpha"), "control-plane")), false);
   assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, unavailable()), true);
-  assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, unavailable("control-plane")), false);
-});
-
-test("Control Plane confirms an empty resource-only application without inventing a Fabric outage", () => {
-  const activeScope = scope();
-  const empty = decodeSource<WorkspaceRuntimeDTO>({
-    source: "control-plane", status: "available", available: true, fetchedAt,
-    data: { workspaceId: activeScope.workspaceId, status: "not_found", ready: false, currentApplication: null, checks: [] }
-  });
-  assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, empty), true);
-  const result = applyFabricRuntimeReadCompletion(createFabricRuntimeReadState(), {
-    activeScope, responseScope: activeScope, source: empty
-  });
-  assert.deepEqual(result?.runtime, { value: empty, loading: false, error: "" });
-  assert.equal(applyFabricRuntimeReadCompletion(createFabricRuntimeReadState(), {
-    activeScope: scope({ requestGeneration: 8 }), responseScope: activeScope, source: empty
-  }), null);
-});
-
-test("Control Plane's empty application projection cannot claim runtime ownership or another Workspace", () => {
-  const activeScope = scope();
-  const data = { workspaceId: activeScope.workspaceId, status: "not_found", ready: false, currentApplication: null, checks: [] };
-  const matches = (candidate: Record<string, unknown>, sourceName = "control-plane") => fabricRuntimeReadSourceMatchesScope(activeScope,
-    decodeSource<WorkspaceRuntimeDTO>({ source: sourceName, status: "available", available: true, fetchedAt, data: candidate }));
-  for (const changed of [
-    { workspaceId: "workspace-beta" }, { status: "running" }, { ready: true },
-    { currentApplication: {} }, { currentApplication: undefined }, { checks: [{ name: "ready", ok: true }] },
-    { checks: null }, { runtimeId: "runtime-alpha" }, { url: "https://example.invalid" },
-    { serviceName: "runtime-alpha" }, { access: {} }
-  ]) assert.equal(matches({ ...data, ...changed }), false, JSON.stringify(changed));
-  assert.equal(matches(data, "ledger"), false);
   assert.equal(fabricRuntimeReadSourceMatchesScope(activeScope, unavailable("control-plane")), false);
 });
 

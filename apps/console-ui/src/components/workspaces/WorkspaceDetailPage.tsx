@@ -7,7 +7,6 @@ import {
   formatWorkspaceBudgetUsdInput, parseWorkspaceBudgetUsdInput,
   presentWorkspaceApplicationBinding, presentWorkspaceApplicationInstallation, presentWorkspaceBudget, presentWorkspaceRecovery, presentWorkspaceRenewal, presentWorkspaceRuntime
 } from "../../app/workspace-experience-model.ts";
-import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
@@ -38,7 +37,7 @@ type WorkspaceDetailController = Pick<ConsoleController,
 >;
 type WorkspaceBudgetViewController = Pick<WorkspaceDetailController, "refreshCurrentPage" | "sources" | "updateWorkspaceBudget" | "workspaceBudgetBusy">;
 type WorkspaceMaintenanceController = Pick<WorkspaceDetailController, "updateWorkspaceBudget" | "workspaceBudgetBusy">;
-type WorkspaceTechnicalViewController = Pick<WorkspaceDetailController, "fabricRuntimeRead" | "sources" | "workspaceDeleteIssue" | "workspaceDeletion" | "workspaceRenewalIssue">;
+type WorkspaceTechnicalViewController = Pick<WorkspaceDetailController, "fabricRuntimeRead" | "sources" | "workspaceDeleteIssue" | "workspaceRenewalIssue">;
 
 function SecretRow({ busy, label, purpose, onCopy, onHide, onReveal, revealed, value }: { busy: boolean; label: string; purpose: string; onCopy: () => void; onHide: () => void; onReveal: () => void; revealed: boolean; value?: string }) {
   return <div><dt><span>{label}</span><small>{purpose}</small></dt><dd className="credential-actions"><code>{revealed ? value || "-" : "••••••••••••"}</code>{revealed ? <><Button aria-label="隐藏" onClick={onHide} size="sm" uniform variant="ghost"><EyeOff aria-hidden size={16} /></Button><Button aria-label="复制" onClick={onCopy} size="sm" uniform variant="ghost"><Copy aria-hidden size={16} /></Button></> : <Button aria-label="显示" busy={busy} onClick={onReveal} size="sm" variant="outline"><Eye aria-hidden size={16} />显示</Button>}</dd></div>;
@@ -165,13 +164,6 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
         <div><dt>runtime source reason</dt><dd><code>{runtimeSource?.available === false ? runtimeSource.reasonCode : controller.fabricRuntimeRead.runtime.error || "-"}</code></dd></div>
         <div><dt>budget source reason</dt><dd><code>{budgetSource?.available === false ? budgetSource.reasonCode : controller.sources.workspaceBudget.error || "-"}</code></dd></div>
         <div><dt>delete reason</dt><dd><code>{controller.workspaceDeleteIssue === "unavailable" ? "workspace_delete_unavailable" : controller.workspaceDeleteIssue || "-"}</code></dd></div>
-        <div><dt>delete stage</dt><dd><code>{controller.workspaceDeletion?.stage || "-"}</code></dd></div>
-        <div><dt>delete phase</dt><dd><code>{controller.workspaceDeletion?.phase || "-"}</code></dd></div>
-        <div><dt>delete block reason</dt><dd><code>{controller.workspaceDeletion?.reasonCode || "-"}</code></dd></div>
-        <div><dt>delete last readback</dt><dd><code>{controller.workspaceDeletion?.lastReadbackAt || "-"}</code></dd></div>
-        <div><dt>delete next retry</dt><dd><code>{controller.workspaceDeletion?.nextRetryAt || "-"}</code></dd></div>
-        <div><dt>refund status</dt><dd><code>{controller.workspaceDeletion?.refundStatus || "-"}</code></dd></div>
-        <div><dt>refund receipt</dt><dd><code>{controller.workspaceDeletion?.refundReceiptId || "-"}</code></dd></div>
         <div><dt>renewal issue</dt><dd><code>{controller.workspaceRenewalIssue || "-"}</code></dd></div>
       </dl>
       <div className="workspace-runtime-checks">
@@ -189,32 +181,18 @@ export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetai
   const runtime = sourceData(runtimeRead.runtime.value);
   const deletion = controller.workspaceDeletion;
   if (deletion || controller.workspaceDeleteBusy || controller.workspaceDeletionLoading || controller.workspaceDeleteIssue === "unconfirmed") {
-    const presentation = presentWorkspaceDelete(deletion);
     const title = controller.workspaceDeleteBusy ? "正在提交删除请求"
-      : controller.workspaceDeleteIssue === "unconfirmed" ? "删除状态暂不可读"
-      : presentation ? presentation.title
-      : "正在确认工作空间状态";
+      : controller.workspaceDeleteIssue === "unconfirmed" ? "删除结果待确认"
+      : deletion?.status === "manual_review" ? "删除需要核对"
+      : deletion?.status === "deleted" ? "正在确认删除结果"
+      : deletion ? "正在删除工作空间" : "正在确认工作空间状态";
     const description = controller.workspaceDeleteIssue === "unconfirmed" ? "暂时无法确认原删除操作，请刷新状态。请勿重复删除或另行申请退款。"
-      : presentation ? presentation.detail
+      : deletion?.status === "manual_review" ? "删除尚未完成，需要管理员核对。您可以关闭页面后再查看；此操作不会自动退款。"
+      : deletion || controller.workspaceDeleteBusy ? "删除在后台继续处理，可以关闭页面后再查看。删除后的数据无法恢复，此操作不会自动退款。"
       : "正在读取工作空间是否有未完成的删除操作。";
-    const deleteReasonText = presentWorkspaceDeleteReason(deletion?.reasonCode);
-    const deleteRetryText = deletion?.nextRetryAt ? `将于 ${formatDate(deletion.nextRetryAt)} 自动重试`
-      : deletion?.pageState === "blocked" ? "已暂停，等待管理员核对"
-      : deletion?.pageState === "completed" ? "无需重试"
-      : "等待下一次自动重试";
     return <section className="workspace-detail-page" data-slide="C-WS-05">
       <Button onClick={() => controller.navigate("/console/workspaces")} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />工作空间列表</Button>
       <section className="panel workspace-delete-panel"><h2>{title}</h2><p>{description}</p>
-        {/* Stage, reason, automatic retry and the separate refund status are the
-            platform's published facts. There is no manual completion control. */}
-        <dl className="data-list" data-workspace-delete-progress>
-          <div><dt>删除阶段</dt><dd>{presentation?.stageLabel ?? "-"}</dd></div>
-          <div><dt>稳定原因</dt><dd><code>{deletion?.reasonCode || "-"}</code>{deleteReasonText ? ` ${deleteReasonText}` : ""}</dd></div>
-          <div><dt>最近读回</dt><dd>{presentation?.lastReadbackLabel || "-"}</dd></div>
-          <div><dt>自动重试</dt><dd>{deleteRetryText}</dd></div>
-          <div><dt>退款状态</dt><dd>{presentation?.refundLabel || "尚未进入退款"}</dd></div>
-          <div><dt>删除回执</dt><dd><code>{deletion?.receiptId || "-"}</code></dd></div>
-        </dl>
         <Button busy={controller.workspaceDeletionLoading} disabled={controller.workspaceDeleteBusy} onClick={() => void controller.refreshWorkspaceDeletion()} variant="outline">刷新删除状态</Button>
       </section>
     </section>;

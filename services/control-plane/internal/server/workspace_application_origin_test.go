@@ -3,7 +3,6 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
-	contracts "opl-cloud/packages/contracts/go"
 	"strings"
 	"testing"
 )
@@ -275,47 +274,5 @@ func TestWorkspaceExternalOriginIsOneInstallationFact(t *testing.T) {
 	}
 	if entry := workspaceGatewayEntryURL("ws-alpha"); entry != "" {
 		t.Fatalf("retained entry url was published without an external origin: %q", entry)
-	}
-}
-
-// A binding origin must serve the application it publishes. The entitlement
-// projection alone cannot decide that: it deletes the entry and reports not
-// openable until the application's own live readback says otherwise. A ready
-// application whose origin refuses with a not-ready conflict is an entry that
-// no customer can ever reach.
-func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
-	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
-	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
-	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
-	app := fixture.server.(*controlPlaneHTTPHandler).app
-	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
-	revision := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
-		Image: "registry.example/knowledge-app@sha256:" + strings.Repeat("a", 64), ExposurePolicy: "application",
-		EntryPort: "http", Ports: []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}}}
-	components := contracts.WorkspaceApplicationRuntimeComponents(revision)
-	for index := range components {
-		components[index].State = "ready"
-	}
-	// What the provider reports for a ready publishing revision: the components are
-	// ready and the destination the installation gateway serves is stated.
-	fixture.fabric.applicationRuntimeObservation = contracts.WorkspaceApplicationRuntimeObservation{
-		SchemaVersion: 1, WorkspaceID: "ws-alpha", RuntimeID: contracts.WorkspaceApplicationRuntimeID(intent.OperationID + ":runtime"),
-		Status: "ready", Entry: applicationGatewayEntry(revision), Components: components,
-	}
-
-	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
-	if !ok {
-		t.Fatal("origin host was not derived")
-	}
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Host = host
-	rec := httptest.NewRecorder()
-	fixture.server.ServeHTTP(rec, req)
-	// Reaching the application is a different question from the upstream being
-	// reachable in this unit fixture, but the published entry must not refuse the
-	// binding as not ready while Fabric reports the application ready.
-	if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "workspace_runtime_not_ready") {
-		t.Fatalf("a ready application's own origin refused it: %d %s", rec.Code, rec.Body.String())
 	}
 }

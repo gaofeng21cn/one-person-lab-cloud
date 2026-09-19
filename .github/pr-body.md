@@ -1,45 +1,34 @@
 ## Summary
 
-- Gate the platform refund behind one fresh, identity-bound Fabric readback of the same Delete operation, and dispatch it only when every resource of that Workspace is confirmed gone and the deletion receipt is recorded.
-- Persist each deletion stage's own observation — result, resource identity, observation time, readback reference and attempts — in the same owner write that advances the phase, and carry that evidence into the final deletion receipt.
-- Deploy an application in one command: select a Registry repository/tag, resolve the immutable digest, describe only what the image actually needs, deploy. No separate version-registration step remains.
-- Fix the Runtime delete wait that recorded a provider observation it had never read.
-- Integrate current `main` (#566) without dropping its Console layout, financial projection, billing trend or credential-binding work.
+- Refresh the Console presentation, responsive layouts, tables and operator views; compile the Apps SDK theme through Tailwind's Vite integration.
+- Present a Workspace net-charge trend backed by a read-only Control Plane query, not by parsing receipt labels or summing receipt rows in the browser.
+- Correct the Local-Docker credential declaration/mount mismatch uncovered by the complete integration gate.
 
-## Platform refund precondition
+## Financial projection and ownership
 
-`packages/contracts/go/workspace_delete.go` owns the deletion stages, the typed readback facts, the 720-hour versioned refund policy and the single `PlatformRefundDispatchAllowed` gate. Control Plane evaluates that gate over a fresh, read-only, identity-bound Fabric readback of the same original Delete operation: Runtime and Gateway Secret absent, no residual Deployment/ReplicaSet/Pod/Service/NetworkPolicy/environment Secret, the TKE mount binding released, PVC/PV absent, CBS `NOT_FOUND`, Machine absent and CVM `NOT_FOUND`. Only when all of them hold, and `workspace.deleted.v1` is recorded, does it create and dispatch the platform refund.
+Console owns the customer-facing experience. Control Plane exposes the account-scoped query over retained Workspace order identities and Sub2API-confirmed money movements; Sub2API remains the wallet and usage authority, while Ledger remains the receipt/evidence owner.
 
-Refusal is the default. CVM `SHUTDOWN`, a `suspended` Workspace, `autoRenew=false`, `data_deleted`, a single absent resource, a Runtime that is gone while CBS/CVM are unconfirmed, an unavailable or stale or partial readback, an identity mismatch, an unfinished delete operation and a missing deletion receipt all leave the refund blocked instead of dispatching one. The readback must report the exact CBS, machine and CVM identity this operation destroyed; a readback that omits an identity is refused, and an expected identity is never substituted for an observed one. A refusal never rewrites the deletion result.
+The trend includes Workspace purchase/renewal debits and their related refunds, excluding API usage, top-ups, gifts, unrelated adjustments and provider costs. Movements use the confirmed wallet effective time and a fixed fourteen-day Asia/Shanghai window. A reversed renewal contributes its original debit and refund independently even when only one refund receipt exists.
 
-The refund is settled from the confirmed charge that paid for the period in use — an in-force renewal over the original purchase — with the period start taken from that order, bounded by what that order charged minus what it already refunded, in USD micros under the versioned policy and a deterministic idempotency key. An unresolved refund keeps the money facts it was created with and queries the original refund operation rather than dispatching again. Fabric performs the provider mutation and the authoritative readback, Control Plane decides and computes, Sub2API executes the wallet movement, and Ledger records the deletion and the refund receipt. Control Plane never calls a Tencent Cloud API, merchant refunds are excluded from customer refund decisions, and no operation centre, second wallet or global workflow was added.
+The projection distinguishes undispatched work, dispatched-but-unconfirmed money and confirmed movements. Missing audit history never proves that no money moved. Incomplete totals are explicitly labelled as the confirmed portion, including accessible chart text. The actual debit/refund execution and idempotency rules are unchanged.
 
-## Deletion evidence
+## Local-Docker root-cause correction
 
-Every stage records the observation it made in the owner write that advances the phase: the stage, the result, the resource identity, the time the observing owner observed it, the readback record, and separate read and mutation attempts. A waiting or failed stage is recorded too, so a stalled deletion is explainable from state. A recorded confirmation is append-only; a local state transition is never presented as a provider readback, and a query never stands in for a destroy. The deletion receipt carries the persisted evidence summary, is written only from complete confirmations, and gives each entry an opaque reference derived from the resource identity, the readback and the time. Polling adds no Ledger receipt, and the refund reuses the existing `business_refund` receipt.
+The former `bind source path does not exist` failure was not established as a generic macOS sharing limitation: ordinary bind probes passed, and the real failure reproduced with an explicit shared temporary directory. A Gateway-only declaration implicitly mounted WebUI password/session files that were never created. The adapter now mounts only declared credential consumers at their declared targets, including the immutable Gateway key. The integration fixture declares the three credentials its application actually reads.
 
-The Runtime wait previously recorded an observation it had not read yet: `markStageWaiting` filled the missing observation time from the local clock and left the readback reference empty, so the persisted entry claimed a provider readback while naming none and failed its own validator. The wait now records the readback the owning `ObserveWorkspaceDeleteRuntimeResiduals` call actually returned, and an attempt that returned no usable readback is recorded with an explicit `unavailable` kind — no invented provider time, never a confirmation, never part of a receipt.
-
-## Single-command deployment
-
-The operator flow is select Workspace → select Registry repository/tag → resolve digest → fill the necessary configuration → deploy. The deployment command admits the revision inside that same command, and the Console registration card and its admission call are gone. The application identity is an internal deployment fact: the platform derives a stable identity for the Workspace's application slot and derives the version from the description's content, so the same image always resolves to the same identity, a different legal run description is a new version instead of a conflict, and an image update keeps the data namespace and published entry because a different description cannot overwrite the version.
-
-The platform declares only facts the image actually has. No port, health check, persistent mount, dependency, Secret reference or derived credential is defaulted on the image's behalf; a publishing exposure policy that omits its entry port is refused rather than guessed; and an image that needs none of them receives none. Each declared credential is created, mounted and exposed at the target that credential declares, and deriving a credential no longer requires the Gateway credential to be declared as well. That declaration/mount mismatch, not a Docker directory-sharing limitation, is what previously failed the Local-Docker integration case, and one earlier attribution in `docs/status.md` was corrected accordingly.
-
-The internal revision and deployment-snapshot model is deliberately kept: the deployment command and the default application policy still write through the revision owner, so only the Console dead code was removed.
-
-## Main integration
-
-Current `origin/main` (#566) was integrated, not re-derived. `AdminPages.tsx` keeps main's whole-file layout refactor together with this branch's single-command deployment panel, now presented through main's disclosure pattern. `local_docker_application_configuration.go` keeps both declared-credential fixes, and the secret and runtime integration tests keep both owners' cases. `styles.css` keeps main's file plus this branch's narrow-screen deletion rule. Files changed only on main were taken verbatim. No file was resolved by whole-file ours/theirs, and no current change was dropped.
+No path-prefix heuristic, skipped test, weakened assertion, new service or second wallet was introduced.
 
 ## Verification
 
-Full local verification was run on the integrated tree, not on either side alone.
+Full behavioral verification was run on `ad8d23d30cdd01a0df5c998b1a7f6e466245f5ef` (tree `90b5a20db9092533d058ecd1bc0061408dfe7a3e`), including the current `main` base. The subsequent closeout change updates only this description and `docs/status.md`.
 
-- `npm run verify:local:full`: **PASS**, exit `0`, including PostgreSQL and real Docker integration, on the integrated tree whose base is `7661b3a9`.
-- Node source tests: **227/227**; Console browser suite: **114/114**.
+- `npm run verify:local:full`: **PASS**, including PostgreSQL and real Docker integration.
+- Node source tests: **216/216**; Console browser suite: **113/113**.
+- Separate Console browser acceptance: **3/3**.
 - PostgreSQL module packages: migration helper **1**, Ledger **3**, Control Plane **8**, Fabric **6**; **zero required skips**.
-- The Runtime wait regression fails before the fix and passes after it: a wait records exactly the observation time and readback reference its own read returned, a failed owner read and a readback naming no reference both record `unavailable` with no provider time, and an unavailable entry never satisfies the receipt.
-- `git diff --check` is clean and `package-lock.json` matches `main`.
+- Credential regression tests fail before the fix and pass after it; real Docker verifies credential/session behavior, data retention, application isolation, replacement, stop/resume/delete and image retirement.
+- Full-gate log SHA-256: `8ac1b8848dba724a91b3cc0aa9d5e2c77237a65f8dd946c540df4ed1877e8ffd`.
 
-`docs/status.md` records the owner evidence. This is source and local-integration verification only: no Product Release, Instance deployment, production acceptance, cloud-resource mutation or real-money operation is included, and Instance qualification of these bytes remains an external obligation.
+Earlier failed attempts are retained in local verification evidence. A whole-host capacity collision was resolved by serializing tests that share the Docker daemon; a later transient browser startup failure was diagnosed and the unmodified full gate was rerun successfully.
+
+`docs/status.md` records owner evidence. This is source/local-integration verification only, not a Product Release, Instance deployment, production acceptance, cloud-resource mutation or real-money operation.

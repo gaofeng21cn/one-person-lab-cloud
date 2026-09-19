@@ -465,11 +465,7 @@ func (p *TencentProvider) ReadStorageVolumeStatus(ctx context.Context, volume St
 			if bindingErr != nil {
 				return volume, bindingErr
 			}
-			// The binding (PV/PVC) presence is a typed fact for the caller, not a
-			// conclusion the caller may draw from an unrelated status string.
-			bindingPresent := len(remaining) != 0
-			volume.BindingPresent = &bindingPresent
-			if volume.Status == "external_deleted" && bindingPresent {
+			if volume.Status == "external_deleted" && len(remaining) != 0 {
 				return volume, ErrWorkspaceLaunchPending
 			}
 			return volume, nil
@@ -643,20 +639,6 @@ func (p *TencentProvider) DestroyStorageVolume(ctx context.Context, volume Stora
 		return result, fmt.Errorf("storage_volume_destroy_readback_mismatch")
 	}
 	if !response.OK {
-		// The provider refused a well-formed deletion. Classify it so the owning
-		// operation can retry instead of recording a terminal failure: a refusal
-		// that provably dispatched no CBS terminate RPC may still terminate the
-		// disk later, while an attempted terminate must only converge from a later
-		// authoritative absence readback.
-		switch {
-		case storageDestroyMayDispatch(result):
-			result.DestroyState = StorageDestroyStatePendingRetry
-		case storageDestroyMayHaveBeenSent(result):
-			result.DestroyState = StorageDestroyStateUnconfirmedSend
-		}
-		if result.DestroyState != "" {
-			return result, errors.Join(ErrWorkspaceLaunchPending, provisionerError(response))
-		}
 		return result, provisionerError(response)
 	}
 	if response.StorageVolumeID != expectedProviderResourceID || !storageDestroyReadbackConfirmsAbsence(result) {

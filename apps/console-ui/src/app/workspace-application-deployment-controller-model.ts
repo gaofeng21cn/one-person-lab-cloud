@@ -27,16 +27,11 @@ export interface WorkspaceApplicationRevisionDraft {
   dependencies: WorkspaceApplicationRevisionDependencyDraft[];
 }
 
-// emptyWorkspaceApplicationRevisionDraft starts with nothing declared. A port,
-// health check and persistent mount are facts about the image, not platform
-// defaults: prefilling 8080, /healthz or /data would silently deploy a fabricated
-// target for a simple image. The operator declares only what the image needs, and
-// an image that needs none of them leaves them empty.
 export function emptyWorkspaceApplicationRevisionDraft(): WorkspaceApplicationRevisionDraft {
   return {
     applicationId: "", version: "", platform: "linux/amd64", image: "",
-    exposurePolicy: "application", httpPort: "", healthCheckPath: "", healthCheckPort: "",
-    persistentMounts: [],
+    exposurePolicy: "application", httpPort: "8080", healthCheckPath: "/healthz", healthCheckPort: "8080",
+    persistentMounts: [{ name: "data", mountPath: "/data" }],
     scratchMounts: [], dependencies: []
   };
 }
@@ -85,21 +80,12 @@ function validateMountDrafts(mounts: WorkspaceApplicationRevisionMountDraft[]): 
 // the browser request.
 export function validateWorkspaceApplicationRevisionDraft(draft: WorkspaceApplicationRevisionDraft): WorkspaceApplicationRevisionDraftValidation {
   const fieldErrors: Partial<Record<WorkspaceApplicationRevisionField, string>> = {};
-  // The application identity is an internal deployment fact, not an operator input:
-  // when it is omitted the platform derives a stable value from the resolved image
-  // digest. A value the operator did provide must still match the owner's pattern.
-  if (draft.applicationId !== "" && !applicationIdPattern.test(draft.applicationId)) fieldErrors.applicationId = "小写字母开头，仅含小写字母、数字或连字符";
-  if (draft.version !== "" && !applicationVersionPattern.test(draft.version)) fieldErrors.version = "字母或数字开头，仅含字母、数字与 . _ + -";
+  if (!applicationIdPattern.test(draft.applicationId)) fieldErrors.applicationId = "小写字母开头，仅含小写字母、数字或连字符";
+  if (!applicationVersionPattern.test(draft.version)) fieldErrors.version = "字母或数字开头，仅含字母、数字与 . _ + -";
   if (!applicationPlatformPattern.test(draft.platform)) fieldErrors.platform = "格式为 os/arch，如 linux/amd64";
   if (!imageDigestPattern.test(draft.image)) fieldErrors.image = "需为 repository@sha256:<64位十六进制>";
   if (!exposurePolicies.includes(draft.exposurePolicy)) fieldErrors.exposurePolicy = "选择一种暴露策略";
   if (draft.httpPort !== "" && !validPort(draft.httpPort)) fieldErrors.httpPort = "端口为 1-65535 的数字";
-  // A publishing exposure policy needs the port the platform proxy targets. The
-  // Console refuses to submit what the owner would reject instead of inventing a
-  // port, so a simple image states its real port rather than inheriting 8080.
-  if (exposurePolicies.includes(draft.exposurePolicy) && draft.exposurePolicy !== "cloud_private" && draft.httpPort === "") {
-    fieldErrors.httpPort = "请填写该镜像实际监听的入口端口";
-  }
   if (draft.healthCheckPath !== "" && !draft.healthCheckPath.startsWith("/")) fieldErrors.healthCheckPath = "健康检查路径需以 / 开头";
   if (draft.healthCheckPort !== "" && !validPort(draft.healthCheckPort)) fieldErrors.healthCheckPort = "端口为 1-65535 的数字";
   if (draft.healthCheckPath !== "" && draft.healthCheckPort === "") fieldErrors.healthCheckPort = "请填写健康检查端口";
