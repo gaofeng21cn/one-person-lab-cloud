@@ -114,3 +114,44 @@ func TestProviderMutationStateRoundTripStillFailsClosed(t *testing.T) {
 		}
 	})
 }
+
+func TestDirectApplicationRuntimeProviderMutationBindingAdmitsTheRuntimeOperationOnly(t *testing.T) {
+	operation := FabricOperation{
+		ID: "fop_app_runtime_claim_alpha", OperationID: "fop_app_runtime_claim_alpha",
+		CallerService: "control-plane", Action: "create_workspace_application_runtime",
+		ResourceKind: "workspace_application_runtime", ResourceID: "runtime-alpha",
+		AccountID: "acct-alpha", WorkspaceID: "ws-alpha",
+		IdempotencyKey: "launch-alpha:application-runtime", RequestHash: "sha256:alpha",
+	}
+	binding, ok := directApplicationRuntimeProviderMutationBinding(operation)
+	if !ok {
+		t.Fatal("application runtime operation must receive a direct provider mutation binding")
+	}
+	if binding.Stage != "runtime" || binding.Action != "ensure_runtime" ||
+		binding.FabricOperationID != operation.OperationID || binding.IdempotencyKey != operation.IdempotencyKey {
+		t.Fatalf("binding=%#v", binding)
+	}
+	if !validWorkspaceLaunchStageBinding(binding) {
+		t.Fatal("derived binding must satisfy the launch stage binding contract")
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*FabricOperation)
+	}{
+		{name: "other caller", mutate: func(o *FabricOperation) { o.CallerService = "runner" }},
+		{name: "other action", mutate: func(o *FabricOperation) { o.Action = "create_workspace_runtime" }},
+		{name: "other resource kind", mutate: func(o *FabricOperation) { o.ResourceKind = "workspace_runtime" }},
+		{name: "missing idempotency key", mutate: func(o *FabricOperation) { o.IdempotencyKey = "" }},
+		{name: "untrimmed request hash", mutate: func(o *FabricOperation) { o.RequestHash = " sha256:alpha" }},
+		{name: "missing workspace", mutate: func(o *FabricOperation) { o.WorkspaceID = "" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := operation
+			test.mutate(&candidate)
+			if _, ok := directApplicationRuntimeProviderMutationBinding(candidate); ok {
+				t.Fatalf("operation %#v must not receive a direct provider mutation binding", candidate)
+			}
+		})
+	}
+}
