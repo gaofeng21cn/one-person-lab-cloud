@@ -111,6 +111,30 @@ development and qualification, use the repository-owned tooling and
 [developer guide](../DEV_GUIDE.md); do not present a locally generated Candidate
 as a public Release.
 
+## Local Qualification Fixture Balance Envelope
+
+`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
+Sub2API authority fixture so a Local installation can be qualified without an
+external wallet backend. The fixture models one qualification run rather than a
+general wallet: its state file holds **one debit and one refund**, each refused
+by name once used (`debit_identity_conflict` / `refund_identity_conflict`).
+
+The envelope is deliberate. It is what makes a second charge under a different
+code impossible to mistake for a missing one, which is the property a
+qualification run must be able to prove. A repeat of the *same* code replays
+idempotently instead of charging again.
+
+Consequences an operator must plan for:
+
+- A qualification run consumes the envelope. `OPL_QUALIFICATION_STATE_PATH` is
+  the reset boundary: start a fresh run from a fresh state file rather than
+  retrying the dispatch that was refused.
+- Scenarios that need a second debit against the same state file — a second
+  Workspace purchase, or a monthly renewal — are outside the fixture's envelope.
+  Qualify those against a live authority instead.
+- `customer_owned` installations do not debit resource charges at all, so the
+  envelope does not constrain them.
+
 ## Upgrade and Rollback
 
 For an admitted Product Release, set `OPL_CLOUD_IMAGE` to the immutable digest

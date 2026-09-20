@@ -284,3 +284,52 @@ test("qualification authority provides one persistent user, key, and exact debit
   assert.equal(afterDelete.keys.length, 0);
   assert.deepEqual(afterDelete.writeCounts, { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 1 });
 });
+
+test("qualification authority declares its one-debit and one-refund envelope", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-local-sub2api-envelope-"));
+  const statePath = join(directory, "authority.json");
+  t.after(async () => rm(directory, { recursive: true, force: true }));
+
+  const config = {
+    host: "0.0.0.0",
+    port: 0,
+    userId: 41,
+    ...credentials,
+    initialUsdMicros: "100000000",
+    statePath
+  };
+  const authority = await startQualificationAuthority(config);
+  t.after(async () => authority.close());
+
+  const adjust = (code, balance, operation) => jsonRequest(authority.origin, "/api/v1/admin/users/41/balance", {
+    method: "POST",
+    token: credentials.userToken,
+    idempotencyKey: code,
+    body: { balance, operation, notes: `OPL Cloud balance adjustment: ${code}` }
+  });
+
+  const debit = assertSuccess(await adjust("opl:qualification:envelope:debit", 52.58, "subtract"));
+  assert.equal(debit.balance, 47.42);
+
+  // The same code replays instead of charging twice.
+  const replay = assertSuccess(await adjust("opl:qualification:envelope:debit", 52.58, "subtract"));
+  assert.equal(replay.balance, 47.42);
+
+  // A different code for the same kind is refused by name, so a second charge
+  // can never be mistaken for a missing one.
+  const secondDebit = await adjust("opl:qualification:envelope:debit-2", 52.58, "subtract");
+  assert.equal(secondDebit.status, 409);
+  assert.equal(secondDebit.payload.code, "debit_identity_conflict");
+
+  // The refund half of the envelope is independent of the debit half.
+  const refund = assertSuccess(await adjust("opl:qualification:envelope:refund", 52.58, "add"));
+  assert.equal(refund.balance, 100);
+
+  const secondRefund = await adjust("opl:qualification:envelope:refund-2", 10, "add");
+  assert.equal(secondRefund.status, 409);
+  assert.equal(secondRefund.payload.code, "refund_identity_conflict");
+
+  // The refused attempts must not have moved the wallet.
+  const wallet = assertSuccess(await jsonRequest(authority.origin, "/api/v1/admin/users/41", { token: credentials.userToken }));
+  assert.equal(wallet.balance, 100);
+});

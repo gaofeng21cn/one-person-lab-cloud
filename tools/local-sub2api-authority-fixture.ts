@@ -602,6 +602,13 @@ export async function startQualificationAuthority(input) {
             return prior.requestHash === hash ? { status: "replayed", adjustment: prior } : { status: "payload_conflict" };
           }
           const kind = BigInt(valueUsdMicros) < 0n ? "debit" : "refund";
+          // Envelope, not a bug: one debit and one refund per state file. The
+          // authority refuses a second adjustment of a kind it already holds so
+          // that a double charge with a different code cannot pass unnoticed,
+          // and the refusal is named so operators can tell it apart from a
+          // missing adjustment. OPL_QUALIFICATION_STATE_PATH is the reset
+          // boundary: a qualification that needs a fresh envelope starts from a
+          // fresh state file, never from a retried dispatch.
           if (current.adjustments.some((candidate) => (BigInt(candidate.valueUsdMicros) < 0n ? "debit" : "refund") === kind)) {
           return { status: "identity_conflict", code: kind === "debit" ? "debit_identity_conflict" : "refund_identity_conflict" };
           }
