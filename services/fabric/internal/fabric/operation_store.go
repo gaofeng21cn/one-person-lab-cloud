@@ -53,6 +53,7 @@ type OperationStore interface {
 	OperationByResourceActionIdempotency(ctx context.Context, resourceKind, resourceID, action, idempotencyKey string) (FabricOperation, bool, error)
 	LatestResourceOperation(ctx context.Context, resourceKind, resourceID string) (FabricOperation, bool, error)
 	WorkspaceRuntimeIdentityCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
+	WorkspaceApplicationRuntimeOwnerCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
 	SaveJobHeartbeat(ctx context.Context, operation FabricOperation) (FabricOperation, error)
 	ComputeClaimTerminalOperation(ctx context.Context, approvalID, idempotencyKey string) (FabricOperation, bool, error)
 	ClaimComputePoolRuntime(ctx context.Context, operation FabricOperation) (FabricOperation, bool, error)
@@ -237,6 +238,23 @@ func (s *MemoryOperationStore) WorkspaceRuntimeIdentityCandidates(_ context.Cont
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return workspaceRuntimeIdentityCandidatesFromOperations(s.operation, workspaceID)
+}
+
+// WorkspaceApplicationRuntimeOwnerCandidates returns the durable
+// workspace_application_runtime records of one workspace. The legacy runtime
+// candidate semantics above stay untouched: application runtimes are a
+// different resource kind with a different record shape, so ownership reads
+// them through their own typed query instead of widening the legacy one.
+func (s *MemoryOperationStore) WorkspaceApplicationRuntimeOwnerCandidates(_ context.Context, workspaceID string) ([]FabricOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	candidates := make([]FabricOperation, 0, 1)
+	for _, operation := range s.operation {
+		if operation.WorkspaceID == workspaceID && operation.ResourceKind == "workspace_application_runtime" {
+			candidates = append(candidates, operation)
+		}
+	}
+	return candidates, nil
 }
 
 type canonicalWorkspaceRuntimeParent struct {
@@ -1308,6 +1326,29 @@ func (s *PostgresOperationStore) WorkspaceRuntimeIdentityCandidates(ctx context.
 		operations = append(operations, fabricOperationFromEnt(row))
 	}
 	return workspaceRuntimeIdentityCandidatesFromOperations(operations, workspaceID)
+}
+
+// WorkspaceApplicationRuntimeOwnerCandidates reads the durable
+// workspace_application_runtime records of one workspace. It deliberately does
+// not widen WorkspaceRuntimeIdentityCandidates: every legacy consumer decodes
+// those candidates as a WorkspaceRuntime, and an application record is a
+// different typed resource.
+func (s *PostgresOperationStore) WorkspaceApplicationRuntimeOwnerCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error) {
+	rows, err := s.client.FabricOperation.Query().
+		Where(
+			fabricoperation.WorkspaceID(workspaceID),
+			fabricoperation.ResourceKind("workspace_application_runtime"),
+		).
+		Order(fabricent.Asc(fabricoperation.FieldCreatedAt, fabricoperation.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	operations := make([]FabricOperation, 0, len(rows))
+	for _, row := range rows {
+		operations = append(operations, fabricOperationFromEnt(row))
+	}
+	return operations, nil
 }
 
 func (s *PostgresOperationStore) SaveJobHeartbeat(ctx context.Context, operation FabricOperation) (FabricOperation, error) {

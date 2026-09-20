@@ -19,6 +19,12 @@ type runtimeProviderObservation struct {
 	bindingValid         bool
 	desiredFromOperation bool
 	legacyReady          bool
+	// application marks a deployment of an admitted workspace application
+	// revision, declared by its publisher manifest labels. Its ownership is
+	// resolved against the durable workspace_application_runtime record, never
+	// against the legacy WorkspaceRuntime shape.
+	application  bool
+	componentName string
 }
 
 type runtimeObservationsProvider interface {
@@ -39,6 +45,7 @@ func (s *Service) RuntimeObservations(ctx context.Context) (contracts.RuntimeObs
 	result := contracts.RuntimeObservations{Items: make([]contracts.RuntimeObservation, 0, len(discovered))}
 	seenObjects := map[string]bool{}
 	ownersByWorkspace := map[string][]FabricOperation{}
+	applicationOwnersByWorkspace := map[string][]FabricOperation{}
 	for _, item := range discovered {
 		if item.ObjectRef == "" || seenObjects[item.ObjectRef] {
 			return contracts.RuntimeObservations{}, fmt.Errorf("runtime_observations_identity_invalid")
@@ -47,6 +54,16 @@ func (s *Service) RuntimeObservations(ctx context.Context) (contracts.RuntimeObs
 		item.Ownership = contracts.RuntimeOwnershipConflict
 		if !item.bindingValid {
 			item.ReasonCode = "runtime_binding_conflict"
+		} else if item.application {
+			owners, cached := applicationOwnersByWorkspace[item.WorkspaceID]
+			if !cached {
+				owners, err = s.runtimeRead.applicationOwners.WorkspaceApplicationRuntimeOwnerCandidates(readCtx, item.WorkspaceID)
+				if err != nil {
+					return contracts.RuntimeObservations{}, err
+				}
+				applicationOwnersByWorkspace[item.WorkspaceID] = owners
+			}
+			item.Ownership, item.ReasonCode = verifyApplicationRuntimeOwner(owners, item)
 		} else {
 			owners, cached := ownersByWorkspace[item.WorkspaceID]
 			if !cached {
@@ -123,4 +140,63 @@ func runtimeInventoryLegacySummary(items []runtimeProviderObservation) (RuntimeH
 		}
 	}
 	return result, nil
+}
+
+// verifyApplicationRuntimeOwner resolves one discovered application component
+// against the durable workspace_application_runtime records of its workspace.
+// Ownership is verified only when one succeeded creation record matches the
+// physical identity exactly (account, workspace, runtime, operation), carries
+// the request hash that the claim computed from that input, and declares the
+// observed component in its revision. Every other shape - missing record,
+// mismatched identity, corrupted record, undeclared component - fails closed:
+// the platform does not guess an owner for a workload it did not record.
+func verifyApplicationRuntimeOwner(owners []FabricOperation, item runtimeProviderObservation) (contracts.RuntimeOwnership, string) {
+	if len(owners) == 0 {
+		return contracts.RuntimeOwnershipUnregistered, ""
+	}
+	matches := 0
+	verified := false
+	for _, owner := range owners {
+		var record workspaceApplicationRuntimeRecord
+		if !decodeOperationResource(owner, &record) {
+			continue
+		}
+		if record.RuntimeID != item.RuntimeID || record.WorkspaceID != item.WorkspaceID ||
+			record.Input.AccountID != item.AccountID || owner.AccountID != item.AccountID ||
+			record.Input.RuntimeOperationID != item.operationID {
+			continue
+		}
+		matches++
+		if owner.Status != "succeeded" || owner.RequestHash == "" || hashInput(record.Input) != owner.RequestHash {
+			continue
+		}
+		if !applicationRevisionDeclaresComponent(record.Input, item.componentName, item.serviceName) {
+			continue
+		}
+		verified = true
+	}
+	if matches == 0 {
+		return contracts.RuntimeOwnershipUnregistered, ""
+	}
+	if matches > 1 || !verified {
+		return contracts.RuntimeOwnershipConflict, "runtime_owner_conflict"
+	}
+	return contracts.RuntimeOwnershipVerified, ""
+}
+
+// applicationRevisionDeclaresComponent ties the observed physical deployment to
+// one component the admitted revision actually declared. The deployment name is
+// the revision-derived component resource name, so both identities must agree;
+// several components of one revision are legitimate and each verifies on its
+// own identity, never as an owner conflict.
+func applicationRevisionDeclaresComponent(input WorkspaceApplicationRuntimeInput, componentName, serviceName string) bool {
+	if componentName == "" {
+		return false
+	}
+	for _, component := range contracts.WorkspaceApplicationRuntimeComponents(input.Revision) {
+		if component.Name == componentName && workspaceApplicationComponentResourceName(input, componentName) == serviceName {
+			return true
+		}
+	}
+	return false
 }

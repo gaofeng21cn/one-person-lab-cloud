@@ -1528,6 +1528,55 @@ func TestPostgresWorkspaceRuntimeIdentityCandidatesCanonicalRestart(t *testing.T
 	}
 }
 
+// A durable workspace_application_runtime record must survive a store restart
+// with its typed identity intact: the owner candidates query reads it back
+// with the same request hash and payload it was claimed with, which is what
+// lets ownership observation verify a running application after a restart.
+func TestPostgresWorkspaceApplicationRuntimeOwnerCandidatesRestart(t *testing.T) {
+	databaseURL := fabricTestDatabaseURL(t)
+	ctx := context.Background()
+	first, err := newTestPostgresOperationStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := applicationRevisionForTest()
+	revision.Dependencies = nil
+	input := applicationRuntimeInput("app-owner-pg-restart", revision)
+	record := workspaceApplicationRuntimeRecord{RuntimeID: applicationRuntimeID(input), WorkspaceID: input.WorkspaceID, Input: input}
+	operation := newOperation("create_workspace_application_runtime", "workspace_application_runtime", input.WorkspaceID,
+		input.AccountID, input.WorkspaceID, input.IdempotencyKey, hashInput(input), time.Date(2026, 9, 19, 16, 8, 0, 0, time.UTC))
+	operation.ID = "fop_app_runtime_pg_restart"
+	operation.Status = "succeeded"
+	fillOperationResource(&operation, record)
+	if err := first.Append(ctx, operation); err != nil {
+		_ = first.client.Close()
+		t.Fatal(err)
+	}
+	if err := first.client.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted, err := newTestPostgresOperationStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.client.Close()
+	candidates, err := restarted.WorkspaceApplicationRuntimeOwnerCandidates(ctx, input.WorkspaceID)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("owner candidates=%#v err=%v", candidates, err)
+	}
+	owner := candidates[0]
+	var retained workspaceApplicationRuntimeRecord
+	if owner.Status != "succeeded" || owner.AccountID != input.AccountID || !decodeOperationResource(owner, &retained) ||
+		retained.RuntimeID != applicationRuntimeID(input) || retained.Input.RuntimeOperationID != input.RuntimeOperationID ||
+		hashInput(retained.Input) != owner.RequestHash {
+		t.Fatalf("restarted owner=%#v record=%#v", owner, retained)
+	}
+	if other, err := restarted.WorkspaceApplicationRuntimeOwnerCandidates(ctx, "workspace-other"); err != nil || len(other) != 0 {
+		t.Fatalf("workspace scoping leaked after restart: %#v err=%v", other, err)
+	}
+}
+
 func TestPostgresServiceReplaysCanonicalLaunchAttachmentFromParentAfterRestart(t *testing.T) {
 	databaseURL := fabricTestDatabaseURL(t)
 	ctx := context.Background()

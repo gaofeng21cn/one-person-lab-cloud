@@ -123,6 +123,14 @@ func (p *TencentProvider) readRuntimeObservations(ctx context.Context) ([]runtim
 		if stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/runtime-operation-id")) != k8sCostLabelValue(observation.operationID) {
 			observation.bindingValid = false
 		}
+		// A publisher manifest declares every component deployment with this
+		// label pair. The component name is required for the typed ownership
+		// match; an application deployment without it is a binding conflict.
+		observation.application = stringValue(nested(deployment, "metadata", "labels", "app.kubernetes.io/name")) == "opl-workspace-application"
+		observation.componentName = stringValue(nested(deployment, "metadata", "labels", "oplcloud.cn/component-name"))
+		if observation.application && observation.componentName == "" {
+			observation.bindingValid = false
+		}
 		replicas, validReplicas := nested(deployment, "spec", "replicas").(float64)
 		if !validReplicas || replicas != 0 && replicas != 1 {
 			observation.ReasonCode = "runtime_desired_replicas_invalid"
