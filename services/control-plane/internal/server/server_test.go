@@ -172,13 +172,15 @@ func TestConsoleStaticDelivery(t *testing.T) {
 	asset := []byte(`console.log("hashed asset")`)
 	index := []byte(`<!doctype html><html><body><div id="root"></div></body></html>`)
 	icon := []byte("\x89PNG\r\n\x1a\nfixture")
+	overview := []byte("\xff\xd8\xff\xe0JFIF fixture")
 	if err := os.MkdirAll(filepath.Join(dist, "assets"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for path, content := range map[string][]byte{
-		"assets/hash.js":   asset,
-		"index.html":       index,
-		"opl-app-icon.png": icon,
+		"assets/hash.js":         asset,
+		"index.html":             index,
+		"opl-app-icon.png":       icon,
+		"opl-cloud-overview.jpg": overview,
 	} {
 		if err := os.WriteFile(filepath.Join(dist, path), content, 0o644); err != nil {
 			t.Fatal(err)
@@ -250,6 +252,29 @@ func TestConsoleStaticDelivery(t *testing.T) {
 		}
 		if !bytes.HasPrefix(rec.Body.Bytes(), []byte("\x89PNG\r\n\x1a\n")) {
 			t.Fatalf("icon does not have PNG magic: %x", rec.Body.Bytes())
+		}
+	})
+
+	t.Run("root overview image is served as JPEG", func(t *testing.T) {
+		rec := request(http.MethodGet, "/opl-cloud-overview.jpg", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Content-Type"); got != "image/jpeg" {
+			t.Fatalf("Content-Type = %q, want image/jpeg", got)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "public,max-age=86400" {
+			t.Fatalf("Cache-Control = %q", got)
+		}
+		if !bytes.Equal(rec.Body.Bytes(), overview) {
+			t.Fatalf("image body = %q, want %q", rec.Body.Bytes(), overview)
+		}
+	})
+
+	t.Run("unknown extension is not an SPA fallback", func(t *testing.T) {
+		rec := request(http.MethodGet, "/missing-asset.png", nil)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
 		}
 	})
 

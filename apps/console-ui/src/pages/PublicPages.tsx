@@ -26,7 +26,6 @@ export function PublicHome({ controller }: { controller: ConsoleController }) {
           <div className="access-actions">
             <Button color="primary" onClick={() => controller.navigate("/login")}>登录 OPL Cloud<ArrowRight aria-hidden size={17} /></Button>
           </div>
-          <p className="access-pilot"><LockKeyhole aria-hidden size={16} /><span>当前为 Pilot，账户由管理员开通；暂不支持公开注册和在线充值。</span></p>
         </section>
         <figure className="access-showcase">
           <img alt="OPL Cloud 把本地项目、在线工作空间、AI 接入与账单连接为一条工作链" src="/opl-cloud-overview.jpg" loading="lazy" />
@@ -60,7 +59,6 @@ export function LoginPage({ controller }: { controller: ConsoleController }) {
           {controller.authError ? <p className="form-error" role="alert">{controller.authError}</p> : null}
           <Button busy={controller.authStatus === "checking"} color="primary" type="submit">登录</Button>
         </form>
-        <p className="login-footnote"><LockKeyhole aria-hidden size={14} /><span>当前为 Pilot，账户由管理员开通。</span></p>
       </section>
     </main>
   );
