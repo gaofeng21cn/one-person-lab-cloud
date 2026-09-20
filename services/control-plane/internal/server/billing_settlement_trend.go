@@ -276,23 +276,23 @@ func (app *controlPlaneServer) projectWorkspaceSettlementTrend(
 			originals[settlement.operationID] = settlement
 		}
 	}
-	history := map[string]clients.Sub2APIBalanceHistoryEntry{}
+	observation := clients.Sub2APIFinancialBalanceHistoryObservation{}
 	if len(codes) > 0 {
 		sort.Strings(codes)
-		history, err = service.FinancialBalanceHistoryByCodes(ctx, userID, codes)
+		observation, err = service.ObserveFinancialBalanceHistoryByCodes(ctx, userID, codes)
 		if err != nil {
 			return trend, err
 		}
 	}
 	overflow := refundOverflowOperations(settlements)
 	for _, settlement := range settlements {
-		// A refund that would exceed its order's confirmed charge is not
-		// explainable, so its own movement stays unconfirmed.
-		if settlement.kind == "refund" && overflow[settlement.operationID] {
+		// Unreadable or contradictory per-code evidence stays unconfirmed,
+		// as does a refund exceeding its order's confirmed charge.
+		if observation.UnconfirmedCodes[settlement.code] || (settlement.kind == "refund" && overflow[settlement.operationID]) {
 			trend.record(workspaceSettlementMeasurement{state: workspaceSettlementUnconfirmed})
 			continue
 		}
-		trend.record(measureWorkspaceSettlement(settlement, originals, history, userID, codeCounts))
+		trend.record(measureWorkspaceSettlement(settlement, originals, observation.Entries, userID, codeCounts))
 	}
 	return trend, nil
 }

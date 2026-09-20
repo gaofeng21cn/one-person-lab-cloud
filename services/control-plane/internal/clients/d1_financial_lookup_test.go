@@ -193,6 +193,65 @@ func TestSub2APIFinancialHistoryUnavailableIsNotEmptyEvidence(t *testing.T) {
 	}
 }
 
+func TestSub2APIFinancialObservationKeepsConflictingCodesUnconfirmed(t *testing.T) {
+	good := d1HistoryRecord("confirmed", -1_000_000, 41)
+	duplicate := d1HistoryRecord("ambiguous", -2_000_000, 41)
+	other := duplicate
+	other.Code = "another-wallet-adjustment"
+	wrongUser := d1HistoryRecord("wrong-user", -3_000_000, 42)
+	validAfterWrongUser := d1HistoryRecord("wrong-user", -3_000_000, 41)
+	client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/auth/login" {
+			writeD1Sub2APILogin(t, w)
+			return
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("observation attempted a write: %s", r.Method)
+		}
+		if r.URL.Query().Get("type") == "admin_balance" {
+			writeD1HistoryPage(t, w, r, []sub2APIBalanceHistoryRecord{good, duplicate, other, duplicate, wrongUser, validAfterWrongUser})
+			return
+		}
+		writeD1HistoryPage(t, w, r, nil)
+	}, time.Second)
+	observed, err := client.ObserveFinancialBalanceHistoryByCodes(context.Background(), 41, []string{"confirmed", "ambiguous", "wrong-user"})
+	if err != nil || len(observed.Entries) != 1 || observed.Entries["confirmed"].ValueUSDMicros != -1_000_000 || len(observed.UnconfirmedCodes) != 2 || !observed.UnconfirmedCodes["ambiguous"] || !observed.UnconfirmedCodes["wrong-user"] {
+		t.Fatalf("invalid evidence was restored or valid evidence lost: observed=%+v err=%v", observed, err)
+	}
+	if _, err := client.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{"confirmed", "ambiguous", "wrong-user"}); !errors.Is(err, ErrSub2APIChargeConflict) {
+		t.Fatalf("strict conflict semantics changed: %v", err)
+	}
+}
+
+func TestSub2APIFinancialObservationRejectsIncompleteHistoryPages(t *testing.T) {
+	for _, malformedPage := range []bool{false, true} {
+		t.Run(fmt.Sprintf("malformed_page_%t", malformedPage), func(t *testing.T) {
+			client := newSub2APITestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/auth/login" {
+					writeD1Sub2APILogin(t, w)
+					return
+				}
+				if r.Method != http.MethodGet {
+					t.Errorf("observation attempted a write: %s", r.Method)
+				}
+				if r.URL.Query().Get("type") == "admin_balance" {
+					writeD1HistoryPage(t, w, r, []sub2APIBalanceHistoryRecord{d1HistoryRecord("confirmed", -1_000_000, 41)})
+					return
+				}
+				if malformedPage {
+					writeSub2APISuccess(t, w, sub2APIBalanceHistoryRecordsPage{Total: 1, Page: 1, PageSize: 100, Pages: 1})
+					return
+				}
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}, time.Second)
+			observed, err := client.ObserveFinancialBalanceHistoryByCodes(context.Background(), 41, []string{"confirmed", "missing"})
+			if err == nil || len(observed.Entries) != 0 || len(observed.UnconfirmedCodes) != 0 {
+				t.Fatalf("incomplete history accepted as partial evidence: observed=%+v err=%v", observed, err)
+			}
+		})
+	}
+}
+
 func TestSub2APIAdjustmentNeverRepostsOrRefreshesAfterDispatch(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusConflict, http.StatusInternalServerError, http.StatusTemporaryRedirect} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
