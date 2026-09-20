@@ -128,6 +128,33 @@ control-services profile, but Docker Desktop is not a supported Local-Docker
 Workspace host under the current project-quota contract. Secrets remain in the
 selected secret owner, never in the instance repository.
 
+### Deployment Model
+
+Cloud keeps three independent dimensions. `OPL_DEPLOYMENT_MODE` records the
+deployment owner as `platform_owned`, `managed_tke`, or `customer_owned`;
+`managed_tke` remains the current `opl-instance-medopl` contract value.
+`OPL_FABRIC_PROVIDER` selects the Fabric execution adapter and accepts only
+`local-docker` or `tencent-tke`. The `admin` and `customer` user surfaces come
+from the authenticated session and Console route; there is no user-surface
+environment variable and Customer cannot choose a provider.
+
+| Deployment owner | Fabric provider | Current meaning |
+| --- | --- | --- |
+| `platform_owned` | `tencent-tke` | allowed hosted/managed target |
+| `managed_tke` | `tencent-tke` | allowed current medopl path |
+| `customer_owned` | `local-docker` | allowed local/self-deployed path |
+| `customer_owned` | `tencent-tke` | retained support target; no new business flow |
+| `managed_tke` | `local-docker` | rejected until an owner and operations workflow exist |
+| `platform_owned` | `local-docker` | local qualification only, not a production claim |
+
+Control Plane compares its configured `OPL_FABRIC_PROVIDER` with the provider
+reported by Fabric readiness before new Workspace Launch admission. A mismatch
+is a readiness failure and performs no provider mutation. Existing Launches
+continue to use the Fabric preflight `providerProfileRef` persisted with the
+operation. Where an Instance verification path provides both
+`OPL_RUNTIME_PROVIDER` and `OPL_FABRIC_PROVIDER`, it only verifies that they
+agree; `OPL_RUNTIME_PROVIDER` is not a third Provider.
+
 ## Development And Supply-Chain Authority
 
 GitHub Actions, dependency scanners, code scanners, and cloud coding agents are

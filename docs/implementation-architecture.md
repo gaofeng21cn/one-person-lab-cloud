@@ -360,6 +360,14 @@ actual Instance adoption remain separate roadmap outcomes.
 Fabric exposes one Go `Provider` port paid by both `local-docker` and
 `tencent-tke`. Process startup requires an explicit `OPL_FABRIC_PROVIDER`;
 `local-docker` and `tencent-tke` are the only accepted current values.
+
+Control Plane retains its configured value and compares it with the typed
+`FabricReadiness.Provider` readback before admitting a new Workspace Launch.
+Disagreement is reported as `provider_consistency_failure`, marks readiness
+unready, and stops before preflight persistence, billing admission, or provider
+mutation. A successful Fabric preflight still returns the exact
+`providerProfileRef`, which remains the durable binding for that Launch and its
+later stages. Existing customer/admin routing remains session-derived.
 The Fabric CI job enables the real local Docker integration test, which verifies
 the provider writes and owner-authoritative readback rather than treating an
 interface or control-service health check as portability evidence.

@@ -47,6 +47,14 @@ func TestDeploymentProfileRequiresExplicitInstallationInputs(t *testing.T) {
 	}
 }
 
+func TestDeploymentProfileRejectsManagedTKEWithLocalDocker(t *testing.T) {
+	t.Setenv("OPL_DEPLOYMENT_MODE", "managed_tke")
+	t.Setenv("OPL_FABRIC_PROVIDER", "local-docker")
+	if _, err := deploymentProfileFromEnv(); err == nil || err.Error() != "managed_tke requires tencent-tke" {
+		t.Fatalf("managed_tke/local-docker was accepted: %v", err)
+	}
+}
+
 func TestWorkspaceDomainDoesNotSynthesizeInstallationHostname(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "")
 	if got := workspaceDomain(); got != "" {
@@ -385,8 +393,8 @@ func TestUnavailablePackageStopsPreviewAndLaunchBeforeExternalCalls(t *testing.T
 		t.Fatalf("Pro launch status=%d body=%s", launch.Code, launch.Body.String())
 	}
 	for _, call := range calls {
-		if call != "fabric.catalog" {
-			t.Fatalf("unavailable Pro crossed read-only catalog: calls=%#v", calls)
+		if call != "fabric.catalog" && call != "fabric.readiness" {
+			t.Fatalf("unavailable Pro crossed read-only Fabric calls: calls=%#v", calls)
 		}
 	}
 }
@@ -1007,7 +1015,29 @@ type internalReadinessFabricClient struct {
 }
 
 func (internalReadinessFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
-	return contracts.FabricReadiness{Provider: "fabric", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{"INTERNAL_SECRET"}}, nil
+	return contracts.FabricReadiness{Provider: "local-docker", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{"INTERNAL_SECRET"}}, nil
+}
+
+type mismatchedReadinessFabricClient struct {
+	fakeFabricClient
+}
+
+func (f *mismatchedReadinessFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
+	f.record("fabric.readiness")
+	return contracts.FabricReadiness{Provider: "tencent-tke", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true}, nil
+}
+
+func TestProviderMismatchBlocksWorkspaceLaunchBeforeFabricMutation(t *testing.T) {
+	calls := []string{}
+	server := NewServer(newTestService(fakeLedgerClient{}, &mismatchedReadinessFabricClient{fakeFabricClient{calls: &calls}}))
+	session := tenantAdminSessionForTest(t, server)
+	response := requestWithMutationKeyForTest(t, server, session, http.MethodPost, "/api/workspace-launches", `{"name":"Mismatch","packageId":"basic","autoRenew":false}`, "provider-mismatch")
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"error":"provider_consistency_failure"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !slices.Equal(calls, []string{"fabric.readiness"}) {
+		t.Fatalf("provider mismatch crossed read-only readiness gate: calls=%#v", calls)
+	}
 }
 
 type catalogFabricClient struct {
@@ -1291,7 +1321,7 @@ func (f *fakeFabricClient) RevealWorkspaceRuntimeCredentials(ctx context.Context
 
 func (f *fakeFabricClient) Readiness(_ context.Context) (contracts.FabricReadiness, error) {
 	f.record("fabric.readiness")
-	return contracts.FabricReadiness{Provider: "fabric", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{}, MissingTools: []string{}, FailedChecks: []string{}}, nil
+	return contracts.FabricReadiness{Provider: "local-docker", Ready: true, ServiceReady: true, CloudImagesReady: true, WorkspaceImagesReady: true, ImmutableImagesReady: true, MissingEnv: []string{}, MissingTools: []string{}, FailedChecks: []string{}}, nil
 }
 
 func explicitOperatorTestPath(path string) bool {
@@ -1767,7 +1797,7 @@ func TestProductionReadinessReturnsOnlyCustomerSafeImmutableImageFacts(t *testin
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil {
 		t.Fatalf("production readiness = %d %s", rec.Code, rec.Body.String())
 	}
-	want := map[string]any{"provider": "fabric", "ready": true, "cloudImagesReady": true, "workspaceImagesReady": true, "immutableImagesReady": true, "checks": []any{}}
+	want := map[string]any{"provider": "local-docker", "ready": true, "cloudImagesReady": true, "workspaceImagesReady": true, "immutableImagesReady": true, "checks": []any{}}
 	if !reflect.DeepEqual(body, want) {
 		t.Fatalf("production readiness leaked internal facts: got %#v want %#v", body, want)
 	}

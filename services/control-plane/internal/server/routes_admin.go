@@ -1488,6 +1488,7 @@ func (app *controlPlaneServer) operatorHealth(ctx context.Context, service *cont
 		result["gateway"] = sourceEnvelope("sub2api", "available", map[string]any{"ready": true, "version": version}, "")
 	}
 	if readiness, err := service.RuntimeReadiness(ctx); err == nil {
+		readiness, _ = normalizeFabricReadiness(readiness, app.deployment.FabricProvider)
 		facts := map[string]any{
 			"ready": readiness.ServiceReady, "serviceReady": readiness.ServiceReady, "releaseReady": readiness.Ready, "provider": readiness.Provider,
 			"cloudImagesReady": readiness.CloudImagesReady, "workspaceImagesReady": readiness.WorkspaceImagesReady,

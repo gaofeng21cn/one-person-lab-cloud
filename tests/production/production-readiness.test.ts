@@ -57,6 +57,7 @@ test("productionReadiness passes only when the TKE production runtime, images, p
   assert.deepEqual(report.failedChecks, []);
   assert.deepEqual(report.checks.map((check) => `${check.id}:${check.ok}`), [
     "runtime_provider:true",
+    "provider_consistency:true",
     "registry_images:true",
     "workspace_image_releases:true",
     "opl_app_contract:true",
@@ -67,6 +68,15 @@ test("productionReadiness passes only when the TKE production runtime, images, p
     "live_mutation_guard:true",
     "tools:true"
   ]);
+});
+
+test("productionReadiness rejects disagreement between runtime and fabric providers when both are supplied", async () => {
+  const report = await productionReadiness({
+    env: { ...tkeProductionEnv, OPL_FABRIC_PROVIDER: "local-docker" },
+    commandExists: (command) => command === "kubectl" || command === "/usr/local/bin/opl-tencent-provisioner"
+  });
+  assert.equal(report.ready, false);
+  assert.ok(report.failedChecks.includes("provider_consistency"));
 });
 
 test("productionReadiness requires the AionUI admin password seed for managed WebUI login", async () => {

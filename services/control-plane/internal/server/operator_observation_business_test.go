@@ -309,7 +309,7 @@ func TestOperatorRuntimeObservationEndpointIsAdministratorOnly(t *testing.T) {
 type operatorIndependentReadinessFabric struct{ fakeFabricClient }
 
 func (operatorIndependentReadinessFabric) Readiness(context.Context) (contracts.FabricReadiness, error) {
-	return contracts.FabricReadiness{ServiceReady: true, Ready: false, CloudImagesReady: true, WorkspaceImageStatus: contracts.WorkspaceImageTargetsVerified, FailedChecks: []string{"workspace_image_id"}}, nil
+	return contracts.FabricReadiness{Provider: "local-docker", ServiceReady: true, Ready: false, CloudImagesReady: true, WorkspaceImageStatus: contracts.WorkspaceImageTargetsVerified, FailedChecks: []string{"workspace_image_id"}}, nil
 }
 
 func TestOperatorFabricServiceReadyDoesNotPromoteReleaseReadiness(t *testing.T) {

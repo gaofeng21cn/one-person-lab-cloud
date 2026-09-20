@@ -154,6 +154,14 @@ func registerWorkspaceLaunchRoutes(mux *http.ServeMux, app *controlPlaneServer, 
 			writeError(w, http.StatusConflict, "billing_reconciliation_blocked")
 			return
 		}
+		if _, err := app.fabricReadiness(r.Context(), service); err != nil {
+			if errors.Is(err, errProviderConsistencyFailure) {
+				writeError(w, http.StatusServiceUnavailable, errProviderConsistencyFailure.Error())
+				return
+			}
+			writeUpstreamError(w, err)
+			return
+		}
 		computePools, ok := fabricComputePools(w, r, service)
 		if !ok {
 			return

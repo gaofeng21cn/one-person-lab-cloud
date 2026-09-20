@@ -156,6 +156,7 @@ export function productionManifestRequiredEnv() {
 export function validateProductionManifest({ env = {} } = {}) {
   const values = Object.fromEntries(Object.entries(env).map(([key, entry]) => [key, valueOf(entry)]));
   const provider = values.OPL_RUNTIME_PROVIDER || "";
+  const fabricProvider = String(values.OPL_FABRIC_PROVIDER || "").trim();
   const providerConfig = PROVIDER_CONFIG[provider] || { requiredEnv: [], secretEnv: [] };
   const requiredEnv = [
     ...REQUIRED_COMMON_ENV,
@@ -178,6 +179,7 @@ export function validateProductionManifest({ env = {} } = {}) {
     check("required_env", missingEnv.length === 0, "Every production launch variable must be declared"),
     check("secret_refs", inlineSecretEnv.length === 0, "Sensitive production values must use secretRef"),
     check("runtime_provider", provider === PROVIDERS.TENCENT_TKE, "OPL_RUNTIME_PROVIDER must be tencent-tke"),
+    check("provider_consistency", !fabricProvider || fabricProvider === provider, "OPL_FABRIC_PROVIDER must match OPL_RUNTIME_PROVIDER when both are supplied"),
     check("tencent_provider_profile", hasValidTencentProviderProfile(values.OPL_FABRIC_TENCENT_TKE_PROVIDER_PROFILE_JSON, values.OPL_SYSTEM_COMPUTE_NODE_POOL_ID), "Tencent Provider Profile must contain executable package and NodePool bindings"),
     check("verification_mutation_authority", !hasVerificationMutationAuthority, "Ordinary production manifests must not carry real-verification approvals or write flags"),
     check("system_compute_identity", hasDedicatedNodePoolIdentity(values), "System compute identity must be explicit and valid"),
