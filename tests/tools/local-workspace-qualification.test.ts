@@ -17,6 +17,8 @@ import {
   loadJ0ReadyReceipt,
   loadSub2APISecretFile,
   localBuildProxyArgs,
+  localDockerInstallationInputs,
+  localQualificationComposeFiles,
   qualificationEnvFileEntries,
   qualificationComposeEnvironment,
   parseLocalQualificationArgs,
@@ -192,6 +194,96 @@ test("source image tag inspection hands off one exact immutable RepoDigest", () 
     "invalid image identity": { Id: "sha256:not-a-digest", RepoDigests: [exact] }
   })) {
     assert.throws(() => exactRepoDigestFromInspection(repository, inspection), /source-built image/, name);
+  }
+});
+
+test("qualification selects the current Candidate overlay set", async () => {
+  const fixture = localQualificationComposeFiles("fixture");
+  assert.deepEqual(fixture, [
+    "compose.yaml",
+    "deploy/portable/compose.deployment-platform-owned.yaml",
+    "deploy/portable/compose.fabric-local-docker.yaml",
+    "deploy/portable/compose.local-workspace.yaml",
+    "deploy/portable/compose.local-qualification.yaml"
+  ]);
+  assert.deepEqual(localQualificationComposeFiles("live"), [
+    ...fixture.slice(0, -1),
+    "deploy/portable/compose.local-qualification-live.yaml"
+  ]);
+  assert.throws(() => localQualificationComposeFiles("staging"), /authority mode/);
+
+  // The selected overlays are the ones that carry the deployment mode and the
+  // Fabric provider the script fixes in its own environment, so a future split
+  // that moves either selection fails here instead of at provider startup.
+  const repository = new URL("../../", import.meta.url);
+  const [deployment, fabric] = await Promise.all([
+    readFile(new URL("deploy/portable/compose.deployment-platform-owned.yaml", repository), "utf8"),
+    readFile(new URL("deploy/portable/compose.fabric-local-docker.yaml", repository), "utf8")
+  ]);
+  assert.match(deployment, /OPL_DEPLOYMENT_MODE: platform_owned\b/);
+  assert.match(fabric, /OPL_FABRIC_PROVIDER: local-docker\b/);
+  for (const file of fixture) {
+    await readFile(new URL(file, repository), "utf8");
+  }
+});
+
+test("qualification requires the installation-owned Local-Docker inputs", () => {
+  const profile = JSON.stringify({
+    schemaVersion: 1,
+    packages: [{ id: "basic", name: "Basic Workspace", available: true, compute: { id: "local-basic", server: "2c4g", cpu: 2, memoryGb: 4, instanceType: "local-2c4g" }, storage: { sizeGb: 10, quotaPolicy: "linux-project" } }]
+  });
+  assert.throws(() => localDockerInstallationInputs({}), (error) => error.code === "local_docker_storage_root_missing");
+  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "relative/storage" }), (error) => error.code === "local_docker_storage_root_invalid");
+  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces" }), (error) => error.code === "local_docker_provider_profile_missing");
+  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces", OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: "{" }), (error) => error.code === "local_docker_provider_profile_invalid");
+  assert.throws(() => localDockerInstallationInputs({ OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "/srv/opl-workspaces", OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: '{"schemaVersion":1,"packages":[]}' }), (error) => error.code === "local_docker_provider_profile_invalid");
+  assert.deepEqual(localDockerInstallationInputs({
+    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: "  /srv/opl-workspaces  ",
+    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: profile
+  }), { storageRoot: "/srv/opl-workspaces", providerProfileJSON: profile });
+});
+
+test("qualification stops at the installation preflight before it invokes Docker", async () => {
+  const root = await mkdtemp(join(tmpdir(), "opl-installation-preflight-test-"));
+  const receiptPath = join(root, "receipt.json");
+  const previous = {
+    storageRoot: process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT,
+    profile: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
+  };
+  let sourceReads = 0;
+  try {
+    delete process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT;
+    delete process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON;
+    await assert.rejects(() => runLocalWorkspaceQualification({
+      sourceSha: sha,
+      cloudImage: `ghcr.io/example/cloud@${cloudDigest}`,
+      workspaceImage: workspaceReference,
+      receiptPath,
+      buildSourceImages: false,
+      authorityMode: "fixture"
+    }, {
+      readSourceIdentity: async () => {
+        sourceReads += 1;
+        return { sha, tree: sha, clean: true };
+      }
+    }), (error) => error.code === "local_docker_storage_root_missing");
+    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+    assert.equal(receipt.status, "NOT_READY");
+    assert.equal(receipt.stage, "installation_preflight");
+    assert.equal(receipt.errorCode, "local_docker_storage_root_missing");
+    // Source identity is admitted first, and nothing beyond that runs: the
+    // script never reaches Docker, image admission, or Compose.
+    assert.equal(sourceReads, 1);
+    assert.equal(receipt.images.cloud.digest, cloudDigest);
+  } finally {
+    for (const [name, value] of Object.entries({
+      OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: previous.storageRoot,
+      OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: previous.profile
+    })) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -786,12 +878,23 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
   const j0Path = join(j0Root, "ready.json");
   const outputPath = join(j0Root, "j1.json");
   await writeFile(j0Path, JSON.stringify(j0ReadyReceipt(sha, "d".repeat(40))), { mode: 0o600 });
+  const installation = {
+    OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT: process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT,
+    OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON: process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON
+  };
   try {
     const options = parseLocalQualificationArgs([
       "--source-sha", sha, "--cloud-image", `ghcr.io/example/cloud@${cloudDigest}`,
       "--workspace-image", workspaceReference, "--receipt", outputPath,
       "--authority-mode", "live", "--j0-ready-receipt", j0Path
     ]);
+    // The store stack binds the installation-owned Local-Docker facts, so a run
+    // that starts it has to supply them before Compose is invoked.
+    process.env.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT = "/srv/opl-workspaces";
+    process.env.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON = JSON.stringify({
+      schemaVersion: 1,
+      packages: [{ id: "basic", name: "Basic Workspace", available: true, compute: { id: "local-basic", server: "2c4g", cpu: 2, memoryGb: 4, instanceType: "local-2c4g" }, storage: { sizeGb: 10, quotaPolicy: "linux-project" } }]
+    });
     const result = await runLocalWorkspaceQualification(options, {
       loadLiveAuthority: async () => ({ baseURL: "https://sandbox.example.test", adminEmail: "admin@example.test", adminPassword: "admin-password", authorityClass: "sandbox", qualificationUserEmail: "admin@example.test", qualificationUserPassword: "admin-password" }),
       readSourceIdentity: async () => ({ sha, tree: "d".repeat(40), clean: true }),
@@ -821,6 +924,10 @@ test("canonical J1 HTTP preview covers every live stage and validates exact loca
     assert.equal(requests.some((request) => request.method === "DELETE"), false);
     assert.equal(requests.some((request) => request.path.includes("refund")), false);
   } finally {
+    for (const [name, value] of Object.entries(installation)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     await new Promise((resolvePromise) => server.close(() => resolvePromise()));
     await rm(j0Root, { recursive: true, force: true });
   }
