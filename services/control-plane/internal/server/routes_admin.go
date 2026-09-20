@@ -35,6 +35,7 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	registerApplicationRevisionRoutes(mux, app)
 	registerApplicationDataMaterialRoutes(mux, app)
 	registerApplicationDeploymentRoutes(mux, app, service)
+	registerWorkspaceApplicationInstallationRoutes(mux, app, service)
 	registerWorkspaceApplicationRecoveryRoutes(mux, app, service)
 	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {

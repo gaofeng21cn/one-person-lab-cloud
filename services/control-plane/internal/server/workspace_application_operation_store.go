@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	contracts "opl-cloud/packages/contracts/go"
 	controlplaneent "opl-cloud/services/control-plane/ent"
 	"opl-cloud/services/control-plane/ent/runtimeoperation"
 	"opl-cloud/services/control-plane/ent/workspace"
@@ -91,6 +92,79 @@ func validateWorkspaceApplicationOperationPersistence(current map[string]any, ex
 		return errWorkspaceApplicationOperationCASConflict
 	}
 	return nil
+}
+
+// A resource-only Launch deliberately carries no installation request: the
+// Console Launch delivers capacity, and the application is installed afterwards
+// as its own authorized operation. This is that operation's admission rule. It
+// binds the request to the Workspace that is already running, to the single
+// succeeded resource-only Launch that created it, and to that Workspace's open
+// entitlement window, so a start can neither invent a Workspace nor inherit a
+// full Launch's application facts.
+func validateWorkspaceApplicationInstallationStart(workspaceRow, desiredRow map[string]any, operations []map[string]any) error {
+	request, err := decodeWorkspaceDefaultApplication(desiredRow)
+	if err != nil || workspaceRow == nil || request.Phase != "credentials_required" {
+		return errWorkspaceApplicationOperationCASConflict
+	}
+	if stringValue(workspaceRow["id"]) != request.WorkspaceID ||
+		firstNonEmpty(stringValue(workspaceRow["accountId"]), stringValue(workspaceRow["ownerAccountId"])) != request.AccountID ||
+		!workspaceApplicationEntitlementOpen(workspaceRow, time.Now().UTC()) {
+		return errWorkspaceApplicationOperationCASConflict
+	}
+	for _, row := range operations {
+		if stringValue(row["action"]) == workspaceDefaultApplicationAction || workspaceDeleteBlocksRotation(row) || workspaceKeyRotationBlocksDelete(row) {
+			return errWorkspaceApplicationOperationCASConflict
+		}
+	}
+	launch, err := decodeWorkspaceLaunchReconcileOperation(findRecord(operations, request.LaunchOperationID))
+	if err != nil || launch.ID != request.LaunchOperationID ||
+		launch.provisioningMode() != contracts.WorkspaceProvisioningResourceOnly || launch.Status != contracts.StatusSucceeded ||
+		launch.stringFact("accountId") != request.AccountID || launch.stringFact("workspaceId") != request.WorkspaceID ||
+		launch.stringFact("ownerUserId") != request.OwnerUserID || launch.int64Fact("sub2apiUserId") != request.Sub2APIUserID ||
+		launch.stringFact("workspaceKeyGroupId") != "" || launch.stringFact("workspaceImageDigest") != "" {
+		return errWorkspaceApplicationOperationCASConflict
+	}
+	return nil
+}
+
+// CreateWorkspaceApplicationOperation inserts the one installation request a
+// resource-only Workspace may carry. The workspace and its operations are
+// locked first, so a start cannot race an in-flight deletion or key rotation,
+// and the request ID is the constraint that makes a second concurrent start
+// fail instead of overwriting the accepted one.
+func (s *postgresEntStateStore) CreateWorkspaceApplicationOperation(ctx context.Context, desiredRow map[string]any) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	workspaceID := stringValue(desiredRow["workspaceId"])
+	workspaceEntity, workspaceErr := tx.Workspace.Query().Where(workspace.IDEQ(workspaceID), lockRowForUpdate).Only(ctx)
+	if workspaceErr != nil && !controlplaneent.IsNotFound(workspaceErr) {
+		return workspaceErr
+	}
+	var workspaceRow map[string]any
+	if workspaceErr == nil {
+		workspaceRow = recordFromEnt(workspaceEntity, workspaceEntFields)
+	}
+	entities, err := tx.RuntimeOperation.Query().Where(runtimeoperation.WorkspaceIDEQ(workspaceID), lockRowForUpdate).All(ctx)
+	if err != nil {
+		return err
+	}
+	operations := make([]map[string]any, 0, len(entities))
+	for _, entity := range entities {
+		operations = append(operations, recordFromEnt(entity, runtimeOpEntFields))
+	}
+	if err := validateWorkspaceApplicationInstallationStart(workspaceRow, desiredRow, operations); err != nil {
+		return err
+	}
+	if err := saveRecord(ctx, stringValue(desiredRow["id"]), desiredRow, tx.RuntimeOperation.Create(), runtimeOpEntFields); err != nil {
+		if controlplaneent.IsConstraintError(err) {
+			return errWorkspaceApplicationOperationCASConflict
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *postgresEntStateStore) PersistWorkspaceApplicationOperation(ctx context.Context, expectedResult string, desiredRow map[string]any) error {

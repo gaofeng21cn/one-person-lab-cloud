@@ -305,6 +305,26 @@ test("Current application status and declared capabilities replace legacy Worksp
       await page.getByText("应用安装中", { exact: true }).waitFor({ state: "visible" });
       assert.equal(installationResumes, 1);
       assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
+      // A resource-only Workspace carries no installation request until the
+      // customer deploys the application, and that entry is what the Console
+      // offers instead of an unreachable "not installed" state.
+      let installationStarts = 0;
+      await page.route("**/api/workspaces/ws-1/application-installation", async (route) => {
+        assert.equal(route.request().method(), "POST");
+        assert.deepEqual(route.request().postDataJSON(), {});
+        assert.equal((route.request().headers()["idempotency-key"] || "").startsWith("application-installation:"), true);
+        installationStarts += 1;
+        detail.applicationInstallation = { operationId: "install-started", applicationId: "opl-app", revision: "1.2.3", status: "pending", canResume: false };
+        await route.fulfill({ status: 202, json: { workspaceId: "ws-1", applicationInstallation: detail.applicationInstallation } });
+      });
+      delete detail.applicationInstallation;
+      await refresh.click();
+      const deploy = page.getByRole("button", { name: "部署应用", exact: true });
+      await deploy.waitFor({ state: "visible" });
+      await deploy.click();
+      await page.getByText("应用等待安装", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(installationStarts, 1);
+      await page.getByText("尚未安装应用", { exact: true }).waitFor({ state: "detached" });
       detail.applicationBinding = "knowledge-app@1.2.3";
       detail.currentApplication = application;
       delete detail.applicationInstallation;

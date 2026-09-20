@@ -24,6 +24,14 @@ import { deleteJson, postJson, getJson, patchJson, type ApiError } from "./conso
 
 const terminalLaunchStatuses = new Set(["succeeded", "failed", "refunded"]);
 
+// The Console Launch is resource-only: it delivers capacity, and the
+// application is installed afterwards as its own authorized operation. This is
+// that operation's entry; repeating it is the same request, never a second one.
+export function startWorkspaceApplicationInstallation(workspaceId: string, csrfToken: string): Promise<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }> {
+  return postJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation`, {}, csrfToken, `application-installation:${workspaceId}`)
+    .then(decodeDto<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }>);
+}
+
 export function resumeWorkspaceApplicationInstallation(workspaceId: string, operationId: string, csrfToken: string): Promise<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }> {
   return postJson<unknown>(`/api/workspaces/${encodeURIComponent(workspaceId)}/application-installation/resume`, {}, csrfToken, `application-resume:${operationId}`)
     .then(decodeDto<{ workspaceId: string; applicationInstallation: WorkspaceApplicationInstallationDTO | null }>);

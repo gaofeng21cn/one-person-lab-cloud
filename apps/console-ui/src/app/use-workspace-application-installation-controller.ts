@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AuthSession, WorkspaceDTO } from "../api/dtos.ts";
-import { resumeWorkspaceApplicationInstallation } from "../api/workspaces-api.ts";
+import { resumeWorkspaceApplicationInstallation, startWorkspaceApplicationInstallation } from "../api/workspaces-api.ts";
 
 interface WorkspaceApplicationInstallationDependencies {
   session: AuthSession | null;
@@ -51,5 +51,26 @@ export function useWorkspaceApplicationInstallationController({ session, workspa
       if (ownsRequest()) setBusy(false);
     }
   }, [busy, currentMutationRequest, flash, installation, mutationError, refreshWorkspace, session, workspaceId]);
-  return { busy, resume, reset };
+  const install = useCallback(async (): Promise<boolean> => {
+    if (!session || busy || installation || !workspaceId) return false;
+    const request = ++generation.current;
+    const requestStillCurrent = currentMutationRequest();
+    const ownsRequest = () => request === generation.current && requestStillCurrent() && scope.current.workspaceId === workspaceId
+      && scope.current.userId === session.user.id && scope.current.csrfToken === session.csrfToken;
+    setBusy(true);
+    try {
+      const result = await startWorkspaceApplicationInstallation(workspaceId, session.csrfToken);
+      if (!ownsRequest()) return false;
+      if (result.workspaceId !== workspaceId) throw new Error("workspace_application_installation_identity_mismatch");
+      await refreshWorkspace();
+      if (ownsRequest()) flash("已提交应用部署");
+      return ownsRequest();
+    } catch (error) {
+      if (ownsRequest()) flash(mutationError(error), "danger");
+      return false;
+    } finally {
+      if (ownsRequest()) setBusy(false);
+    }
+  }, [busy, currentMutationRequest, flash, installation, mutationError, refreshWorkspace, session, workspaceId]);
+  return { busy, install, resume, reset };
 }

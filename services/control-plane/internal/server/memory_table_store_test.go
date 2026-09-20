@@ -1128,6 +1128,26 @@ func (s *memoryTableStore) SaveRuntimeOperation(_ context.Context, row map[strin
 	return nil
 }
 
+func (s *memoryTableStore) CreateWorkspaceApplicationOperation(_ context.Context, desiredRow map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	workspaceID := stringValue(desiredRow["workspaceId"])
+	operations := make([]map[string]any, 0)
+	for _, row := range s.runtimeOps {
+		if stringValue(row["workspaceId"]) == workspaceID {
+			operations = append(operations, row)
+		}
+	}
+	if err := validateWorkspaceApplicationInstallationStart(s.workspaces[workspaceID], desiredRow, operations); err != nil {
+		return err
+	}
+	if findRecord(s.runtimeOps, stringValue(desiredRow["id"])) != nil {
+		return errWorkspaceApplicationOperationCASConflict
+	}
+	s.runtimeOps = append(s.runtimeOps, cloneMap(desiredRow))
+	return nil
+}
+
 func (s *memoryTableStore) PersistWorkspaceApplicationOperation(_ context.Context, expectedResult string, desiredRow map[string]any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

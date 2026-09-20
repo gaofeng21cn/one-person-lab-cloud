@@ -276,6 +276,11 @@ func seedResourceOnlyActivatedWorkspace(t *testing.T, store controlPlaneTableSto
 	t.Helper()
 	command := workspaceLaunchResourceOnlyUnitCommand()
 	command.OperationID, command.AccountID, command.WorkspaceID = operationID, "acct-alpha", workspaceID
+	seedResourceOnlyActivatedWorkspaceFor(t, store, command)
+}
+
+func seedResourceOnlyActivatedWorkspaceFor(t *testing.T, store controlPlaneTableStore, command workspaceLaunchReconcileCreate) {
+	t.Helper()
 	operation, err := newWorkspaceLaunchReconcileOperation(command)
 	if err != nil {
 		t.Fatal(err)
