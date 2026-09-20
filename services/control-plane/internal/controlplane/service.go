@@ -328,6 +328,14 @@ func (s *Service) FinancialBalanceHistoryByCodes(ctx context.Context, userID int
 	return client.FinancialBalanceHistoryByCodes(ctx, userID, codes)
 }
 
+func (s *Service) ObserveFinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (clients.Sub2APIFinancialBalanceHistoryObservation, error) {
+	client, ok := s.sub2API.(clients.Sub2APIFinancialBalanceHistoryObserver)
+	if !ok {
+		return clients.Sub2APIFinancialBalanceHistoryObservation{}, errors.New("sub2api_balance_history_unavailable")
+	}
+	return client.ObserveFinancialBalanceHistoryByCodes(ctx, userID, codes)
+}
+
 func (s *Service) AdminUserKeyCount(ctx context.Context, userID int64) (int, error) {
 	client, ok := s.sub2API.(clients.Sub2APIAdminUserKeyCountClient)
 	if !ok {

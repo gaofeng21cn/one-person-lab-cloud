@@ -622,7 +622,10 @@ totals; a movement whose order names another account is reported unresolved
 rather than counted, and a refund that would push an order's confirmed refunds
 past its confirmed charge stays unconfirmed instead of being added. Console
 labels an incomplete window as its confirmed part and never states that no charge
-happened. Receipts, service periods and provider purchase cost are not
+happened. The read-only history observation retains verified entries beside
+per-code unconfirmed evidence, while transport or page-shape failures make the
+entire read unavailable and financial mutations keep the strict lookup.
+Receipts, service periods and provider purchase cost are not
 money movement and are excluded. Movements dated before the window are counted
 separately so an empty window is never read as "never happened".
 

@@ -106,6 +106,17 @@ type Sub2APIFinancialBalanceHistoryLookupClient interface {
 	FinancialBalanceHistoryByCodes(context.Context, int64, []string) (map[string]Sub2APIBalanceHistoryEntry, error)
 }
 
+// Financial observations are for incomplete read projections only. Financial
+// mutations continue to use the strict lookup capability above.
+type Sub2APIFinancialBalanceHistoryObserver interface {
+	ObserveFinancialBalanceHistoryByCodes(context.Context, int64, []string) (Sub2APIFinancialBalanceHistoryObservation, error)
+}
+
+type Sub2APIFinancialBalanceHistoryObservation struct {
+	Entries          map[string]Sub2APIBalanceHistoryEntry
+	UnconfirmedCodes map[string]bool
+}
+
 type Sub2APIAdminUserKeyCountClient interface {
 	AdminUserKeyCount(context.Context, int64) (int, error)
 }
@@ -1839,25 +1850,38 @@ const sub2APIBalanceAdjustmentNotePrefix = "OPL Cloud balance adjustment: "
 // result is never proof that an attempted adjustment did not change the wallet:
 // upstream writes its admin audit record after the atomic balance update.
 func (c *Sub2APIHTTPClient) FinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (map[string]Sub2APIBalanceHistoryEntry, error) {
+	observation, err := c.financialBalanceHistoryByCodes(ctx, userID, codes, false)
+	return observation.Entries, err
+}
+
+// ObserveFinancialBalanceHistoryByCodes retains verified money alongside
+// explicitly unconfirmed codes. It never supplies evidence for financial writes.
+// Transport and page-shape failures still invalidate the entire observation.
+func (c *Sub2APIHTTPClient) ObserveFinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (Sub2APIFinancialBalanceHistoryObservation, error) {
+	return c.financialBalanceHistoryByCodes(ctx, userID, codes, true)
+}
+
+func (c *Sub2APIHTTPClient) financialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string, observe bool) (Sub2APIFinancialBalanceHistoryObservation, error) {
 	if userID <= 0 || len(codes) == 0 {
-		return nil, errors.New("sub2api user ID and adjustment codes are required")
+		return Sub2APIFinancialBalanceHistoryObservation{}, errors.New("sub2api user ID and adjustment codes are required")
 	}
 	targets := make(map[string]struct{}, len(codes))
 	for _, code := range codes {
 		if code == "" || len(code) > 200 || strings.TrimSpace(code) != code {
-			return nil, errors.New("invalid sub2api adjustment code")
+			return Sub2APIFinancialBalanceHistoryObservation{}, errors.New("invalid sub2api adjustment code")
 		}
 		targets[code] = struct{}{}
 	}
 	lookupCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	matches := make(map[string]Sub2APIBalanceHistoryEntry, len(targets))
+	unconfirmed := make(map[string]bool)
 	remoteCodes := make(map[string]string, len(targets))
 	for _, recordType := range []string{"admin_balance", "balance"} {
 		for page := 1; ; page++ {
 			data, err := c.balanceHistoryRecordsPage(lookupCtx, userID, page, 100, recordType)
 			if err != nil {
-				return nil, fmt.Errorf("sub2api balance adjustment history unavailable: %w", err)
+				return Sub2APIFinancialBalanceHistoryObservation{}, fmt.Errorf("sub2api balance adjustment history unavailable: %w", err)
 			}
 			for _, item := range data.Items {
 				code := item.Code
@@ -1870,29 +1894,23 @@ func (c *Sub2APIHTTPClient) FinancialBalanceHistoryByCodes(ctx context.Context, 
 				if _, wanted := targets[code]; !wanted {
 					continue
 				}
-				if item.Type != recordType || item.Code == "" || item.Status != "used" || item.UsedBy == nil || *item.UsedBy != userID || item.UsedAt == nil || item.UsedAt.IsZero() {
-					return nil, fmt.Errorf("%w: balance adjustment identity or state differs", ErrSub2APIChargeConflict)
+				if unconfirmed[code] {
+					continue
 				}
-				// Normalize the upstream admin adjustment into the existing owner DTO.
-				// Retained redeem records require their original applied-money fact;
-				// official records without it cannot prove a historical full debit.
-				normalized := item
-				normalized.Code, normalized.Type = code, "balance"
-				entry, err := sub2APIBalanceHistoryEntry(normalized, userID)
-				if err != nil || entry.ValueUSDMicros == 0 {
-					return nil, fmt.Errorf("%w: invalid balance adjustment amount", ErrSub2APIChargeConflict)
-				}
-				if recordType == "balance" {
-					if err := confirmSub2APIAppliedValue(item.BalanceAppliedValue, entry.ValueUSDMicros); err != nil {
-						return nil, err
-					}
-				}
-				if previous, exists := matches[code]; exists {
-					// Concurrent insertions can repeat a row across offset pages.
-					// A second actual adjustment with the same operation is a conflict.
+				entry, entryErr := confirmedSub2APIFinancialHistoryEntry(item, recordType, code, userID)
+				if previous, exists := matches[code]; entryErr == nil && exists {
+					// Exact repeated pagination rows are not another adjustment.
 					if remoteCodes[code] != item.Code || previous.ValueUSDMicros != entry.ValueUSDMicros || !previous.CreatedAt.Equal(entry.CreatedAt) || !previous.UsedAt.Equal(*entry.UsedAt) {
-						return nil, fmt.Errorf("%w: duplicate balance adjustment evidence", ErrSub2APIChargeConflict)
+						entryErr = fmt.Errorf("%w: duplicate balance adjustment evidence", ErrSub2APIChargeConflict)
 					}
+				}
+				if entryErr != nil {
+					if !observe {
+						return Sub2APIFinancialBalanceHistoryObservation{}, entryErr
+					}
+					// A later valid-looking row cannot erase conflicting evidence.
+					delete(matches, code)
+					unconfirmed[code] = true
 					continue
 				}
 				matches[code], remoteCodes[code] = entry, item.Code
@@ -1902,7 +1920,27 @@ func (c *Sub2APIHTTPClient) FinancialBalanceHistoryByCodes(ctx context.Context, 
 			}
 		}
 	}
-	return matches, nil
+	return Sub2APIFinancialBalanceHistoryObservation{Entries: matches, UnconfirmedCodes: unconfirmed}, nil
+}
+
+func confirmedSub2APIFinancialHistoryEntry(item sub2APIBalanceHistoryRecord, recordType, code string, userID int64) (Sub2APIBalanceHistoryEntry, error) {
+	if item.Type != recordType || item.Code == "" || item.Status != "used" || item.UsedBy == nil || *item.UsedBy != userID || item.UsedAt == nil || item.UsedAt.IsZero() {
+		return Sub2APIBalanceHistoryEntry{}, fmt.Errorf("%w: balance adjustment identity or state differs", ErrSub2APIChargeConflict)
+	}
+	// Native admin adjustments record the applied delta. Retained redeem
+	// records additionally require their original applied-money fact.
+	normalized := item
+	normalized.Code, normalized.Type = code, "balance"
+	entry, err := sub2APIBalanceHistoryEntry(normalized, userID)
+	if err != nil || entry.ValueUSDMicros == 0 {
+		return Sub2APIBalanceHistoryEntry{}, fmt.Errorf("%w: invalid balance adjustment amount", ErrSub2APIChargeConflict)
+	}
+	if recordType == "balance" {
+		if err := confirmSub2APIAppliedValue(item.BalanceAppliedValue, entry.ValueUSDMicros); err != nil {
+			return Sub2APIBalanceHistoryEntry{}, err
+		}
+	}
+	return entry, nil
 }
 
 func sub2APIBalanceHistoryEntry(item sub2APIBalanceHistoryRecord, userID int64) (Sub2APIBalanceHistoryEntry, error) {

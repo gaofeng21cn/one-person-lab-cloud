@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,7 +32,7 @@ type settlementTrendHarness struct {
 	fabricCalls *[]string
 }
 
-func newSettlementTrendHarness(t *testing.T, history map[int64][]clients.Sub2APIBalanceHistoryEntry) *settlementTrendHarness {
+func newSettlementTrendHarness(t *testing.T, history map[int64][]clients.Sub2APIBalanceHistoryEntry, lookup ...*clients.Sub2APIHTTPClient) *settlementTrendHarness {
 	t.Helper()
 	ledger := &customerFactsLedger{}
 	calls := &[]string{}
@@ -38,13 +40,79 @@ func newSettlementTrendHarness(t *testing.T, history map[int64][]clients.Sub2API
 		testSub2APIClient: &testSub2APIClient{balance: 1_000_000_000, charges: map[string]int64{}},
 		history:           history,
 	}
-	service := controlplane.NewService(ledger, &customerFactsFabric{fakeFabricClient: fakeFabricClient{calls: calls}}, sub2API)
+	var gateway clients.Sub2APIClient = sub2API
+	if len(lookup) > 0 {
+		gateway = &settlementTrendHTTPGateway{customerFactsSub2API: sub2API, lookup: lookup[0]}
+	}
+	service := controlplane.NewService(ledger, &customerFactsFabric{fakeFabricClient: fakeFabricClient{calls: calls}}, gateway)
 	server := NewServer(service)
 	app := server.(*controlPlaneHTTPHandler).app
 	mustStore(t, app.tables.CreateProvisionedAccount(context.Background(),
 		map[string]any{"id": "acct-alpha", "ownerUserId": "usr-alpha", "sub2apiUserId": int64(41), "status": "active", "workspacePurchaseEnabled": true},
 		map[string]any{"id": "usr-alpha", "email": settlementTrendOwnerEmail, "accountId": "acct-alpha", "role": "owner", "status": "active"}))
 	return &settlementTrendHarness{server: server, service: service, app: app, sub2API: sub2API, ledger: ledger, fabricCalls: calls}
+}
+
+type settlementTrendHTTPGateway struct {
+	*customerFactsSub2API
+	lookup *clients.Sub2APIHTTPClient
+}
+
+func (g *settlementTrendHTTPGateway) FinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (map[string]clients.Sub2APIBalanceHistoryEntry, error) {
+	return g.lookup.FinancialBalanceHistoryByCodes(ctx, userID, codes)
+}
+
+func (g *settlementTrendHTTPGateway) ObserveFinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (clients.Sub2APIFinancialBalanceHistoryObservation, error) {
+	return g.lookup.ObserveFinancialBalanceHistoryByCodes(ctx, userID, codes)
+}
+
+func (c *customerFactsSub2API) ObserveFinancialBalanceHistoryByCodes(ctx context.Context, userID int64, codes []string) (clients.Sub2APIFinancialBalanceHistoryObservation, error) {
+	entries, err := c.FinancialBalanceHistoryByCodes(ctx, userID, codes)
+	return clients.Sub2APIFinancialBalanceHistoryObservation{Entries: entries}, err
+}
+
+func TestWorkspaceSettlementTrendKeepsConfirmedHistoryBesideUnverifiedLegacyMoney(t *testing.T) {
+	purchase, purchaseCode, purchaseCharge := settlementTrendPurchaseRow(t)
+	renewal := settlementTrendRenewalRow(t, "legacy-unknown", "active", false)
+	usedAt := time.Now().UTC().Add(-time.Hour)
+	requests := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/auth/login" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]string{"access_token": "synthetic-access"}})
+			return
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/users/41/balance-history" {
+			t.Errorf("unexpected wallet mutation or route: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		requests++
+		entry := d1FinancialTransaction{Code: "upstream-confirmed", Type: "admin_balance", Value: json.Number(fmt.Sprintf("-%d.%06d", purchaseCharge/1_000_000, purchaseCharge%1_000_000)), Status: "used", UsedBy: 41, UsedAt: usedAt, CreatedAt: usedAt, Notes: "OPL Cloud balance adjustment: " + purchaseCode}
+		if r.URL.Query().Get("type") == "balance" {
+			entry.Code, entry.Type, entry.Notes = "opl:renewal-charge-legacy-unknown", "balance", ""
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"items": []d1FinancialTransaction{entry}, "total": 1, "page": 1, "page_size": 100, "pages": 1}})
+	}))
+	t.Cleanup(remote.Close)
+	lookup, err := clients.NewSub2APIHTTPClient(clients.Sub2APIConfig{BaseURL: remote.URL, AdminEmail: "admin@example.test", AdminPassword: "synthetic", Timeout: time.Second}, remote.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := newSettlementTrendHarness(t, nil, lookup)
+	harness.save(t, purchase)
+	harness.save(t, renewal)
+	payload := harness.payload(t)
+	counts := settlementTrendCounts(payload)
+	if counts["chargedUsdMicros"] != purchaseCharge || counts["settledCount"] != 1 || counts["unconfirmedCount"] != 1 || payload["complete"] != false {
+		t.Fatalf("confirmed part lost or legacy amount invented: counts=%#v complete=%v", counts, payload["complete"])
+	}
+	if requests != 2 {
+		t.Fatalf("history requests=%d; want one scan of each record type", requests)
+	}
+	if _, err := lookup.FinancialBalanceHistoryByCodes(context.Background(), 41, []string{purchaseCode, "opl:renewal-charge-legacy-unknown"}); !errors.Is(err, clients.ErrSub2APIChargeUnknown) {
+		t.Fatalf("strict financial lookup accepted unverified money: %v", err)
+	}
 }
 
 func (h *settlementTrendHarness) get(t *testing.T) *httptest.ResponseRecorder {
