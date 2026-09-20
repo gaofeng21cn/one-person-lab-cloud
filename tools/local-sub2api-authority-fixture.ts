@@ -389,6 +389,15 @@ export async function startQualificationAuthority(input) {
         return;
       }
 
+      if (method === "GET" && url.pathname === "/api/v1/auth/me") {
+        if (config.admin && bearer(request, config.admin.token)) {
+          success(response, { id: qualificationAdminUserID, email: config.admin.email, status: "active" });
+          return;
+        }
+        success(response, { id: qualificationUserID, email: config.email, status: "active" });
+        return;
+      }
+
       if (method === "GET" && url.pathname === `/api/v1/admin/users/${qualificationUserID}`) {
         success(response, userPayload(state));
         return;

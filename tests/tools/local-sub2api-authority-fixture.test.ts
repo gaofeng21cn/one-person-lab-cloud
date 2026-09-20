@@ -284,3 +284,40 @@ test("qualification authority provides one persistent user, key, and exact debit
   assert.equal(afterDelete.keys.length, 0);
   assert.deepEqual(afterDelete.writeCounts, { keyCreates: 1, keyDeletes: 1, debits: 1, refunds: 1 });
 });
+
+test("qualification authority reads the bearer's own identity back for delegated credentials", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "opl-local-sub2api-identity-"));
+  const statePath = join(directory, "authority.json");
+  t.after(async () => rm(directory, { recursive: true, force: true }));
+
+  const admin = Object.freeze({
+    email: "qualification-owner@example.test",
+    password: "qualification-owner-password-32-chars",
+    token: "qualification-admin-token-32-characters"
+  });
+  const config = {
+    host: "0.0.0.0",
+    port: 0,
+    userId: 41,
+    ...credentials,
+    initialUsdMicros: "100000000",
+    statePath,
+    admin
+  };
+  const authority = await startQualificationAuthority(config);
+  t.after(async () => authority.close());
+
+  const userIdentity = assertSuccess(await jsonRequest(authority.origin, "/api/v1/auth/me", { token: credentials.userToken }));
+  assert.deepEqual(userIdentity, { id: 41, email: credentials.email, status: "active" });
+
+  const adminIdentity = assertSuccess(await jsonRequest(authority.origin, "/api/v1/auth/me", { token: admin.token }));
+  assert.deepEqual(adminIdentity, { id: 1, email: admin.email, status: "active" });
+
+  const anonymous = await jsonRequest(authority.origin, "/api/v1/auth/me");
+  assert.equal(anonymous.status, 401);
+  assert.equal(anonymous.payload.code, "unauthorized");
+
+  const wrongToken = await jsonRequest(authority.origin, "/api/v1/auth/me", { token: "qualification-wrong-token-32-characters" });
+  assert.equal(wrongToken.status, 401);
+  assert.equal(wrongToken.payload.code, "unauthorized");
+});

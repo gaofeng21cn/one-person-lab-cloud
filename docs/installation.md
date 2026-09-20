@@ -111,6 +111,24 @@ development and qualification, use the repository-owned tooling and
 [developer guide](../DEV_GUIDE.md); do not present a locally generated Candidate
 as a public Release.
 
+## Local Qualification Fixture
+
+`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
+Sub2API authority fixture, so a Local installation can be qualified without an
+external wallet backend. The fixture serves one qualification user and one
+optional qualification admin, including the delegated identity read that
+`customer_owned` requires. Both deployment modes can therefore be qualified
+against it:
+
+- `platform_owned` and `managed_tke` authenticate with
+  `OPL_SUB2API_ADMIN_EMAIL` / `OPL_SUB2API_ADMIN_PASSWORD`.
+- `customer_owned` additionally requires `OPL_SUB2API_USER_EMAIL` /
+  `OPL_SUB2API_USER_PASSWORD` and signs in as that configured user.
+
+The fixture is qualification-only. It carries no real balance authority, holds
+no production credential, and keeps its state in the
+`opl-qualification-sub2api` volume.
+
 ## Upgrade and Rollback
 
 For an admitted Product Release, set `OPL_CLOUD_IMAGE` to the immutable digest
