@@ -219,23 +219,6 @@ a {
   min-height: 46px;
 }
 
-.access-pilot {
-  display: flex;
-  max-width: 680px;
-  align-items: flex-start;
-  gap: 9px;
-  margin: 20px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.access-pilot svg {
-  flex: 0 0 16px;
-  margin-top: 2px;
-  color: var(--teal);
-}
-
 .access-showcase {
   display: grid;
   width: min(1080px, 100%);
@@ -347,20 +330,6 @@ a {
 
 .login-brand strong {
   font-size: 20px;
-}
-
-.login-footnote {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 18px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.login-footnote svg {
-  flex: 0 0 14px;
-  color: var(--teal);
 }
 
 .login-brand span {
@@ -2389,10 +2358,6 @@ tbody tr:last-child td {
   .access-lede {
     font-size: 16px;
     line-height: 1.65;
-  }
-
-  .access-pilot {
-    font-size: 12px;
   }
 
   .access-features {
