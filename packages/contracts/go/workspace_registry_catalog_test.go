@@ -105,3 +105,31 @@ func TestWorkspaceRegistryDeclaredRepositories(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitWorkspaceImageReference(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	host, namespace, repository, gotDigest, err := SplitWorkspaceImageReference("uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@" + digest)
+	if err != nil || host != "uswccr.ccs.tencentyun.com" || namespace != "oplcloud" || repository != "chaokang_agent_ibd" || gotDigest != digest {
+		t.Fatalf("split = %q %q %q %q err=%v", host, namespace, repository, gotDigest, err)
+	}
+	// A nested repository keeps everything after the namespace separator.
+	if _, _, nested, _, nestedErr := SplitWorkspaceImageReference("registry.example/oplcloud/team/app@" + digest); nestedErr != nil || nested != "team/app" {
+		t.Fatalf("nested repository = %q err=%v", nested, nestedErr)
+	}
+	for _, value := range []string{
+		"", "oplcloud/app@" + digest, "uswccr.ccs.tencentyun.com/oplcloud/app", "uswccr.ccs.tencentyun.com/oplcloud/app@latest",
+		"uswccr.ccs.tencentyun.com/app@" + digest, "https://uswccr.ccs.tencentyun.com/oplcloud/app@" + digest,
+		"uswccr.ccs.tencentyun.com/oplcloud/Uppercase@" + digest,
+	} {
+		if _, _, _, _, err := SplitWorkspaceImageReference(value); err == nil {
+			t.Fatalf("reference %q was accepted", value)
+		}
+	}
+	// Reading a reference is not an installation decision: a namespace outside
+	// the catalog parses, and the registry boundary refuses it separately.
+	if _, namespace, repository, _, err := SplitWorkspaceImageReference("uswccr.ccs.tencentyun.com/library/app@" + digest); err != nil || namespace != "library" || repository != "app" {
+		t.Fatalf("shape parse = %q %q err=%v", namespace, repository, err)
+	} else if err := ValidateWorkspaceRegistryRepository(namespace, repository); err == nil {
+		t.Fatal("the catalog namespace boundary must reject an outside namespace")
+	}
+}

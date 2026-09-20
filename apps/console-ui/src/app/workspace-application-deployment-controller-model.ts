@@ -1,138 +1,98 @@
 import type { WorkspaceApplicationConfigurationDTO, WorkspaceApplicationSecretBindingDTO, WorkspaceApplicationComponentStateDTO, WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
 
-export interface WorkspaceApplicationRevisionMountDraft {
-  name: string;
-  mountPath: string;
-}
-
-export interface WorkspaceApplicationRevisionDependencyDraft {
-  name: string;
-  image: string;
-}
-
-// The structured registration draft: every field an administrator fills by
-// hand. The model composes the authoritative revision object from it, so the
-// form never touches revision JSON directly.
-export interface WorkspaceApplicationRevisionDraft {
-  applicationId: string;
-  version: string;
+// The operator selects one image and states how it is exposed. Everything else
+// a deployment needs is either the image's own declared fact (its ports, data
+// paths and process identity, read by Control Plane from the pinned image) or an
+// optional advanced description. No operator types an application identity, and
+// no version is registered as a separate step.
+export interface WorkspaceApplicationDeploymentSelection {
   platform: string;
   image: string;
   exposurePolicy: string;
-  httpPort: string;
   healthCheckPath: string;
   healthCheckPort: string;
-  persistentMounts: WorkspaceApplicationRevisionMountDraft[];
-  scratchMounts: WorkspaceApplicationRevisionMountDraft[];
-  dependencies: WorkspaceApplicationRevisionDependencyDraft[];
+  healthCheckInitialDelaySeconds: string;
 }
 
-export function emptyWorkspaceApplicationRevisionDraft(): WorkspaceApplicationRevisionDraft {
+export interface WorkspaceApplicationDeploymentForm {
+  selection: WorkspaceApplicationDeploymentSelection;
+  advancedJSON: string;
+}
+
+export type WorkspaceApplicationDeploymentField = keyof WorkspaceApplicationDeploymentSelection;
+
+export interface WorkspaceApplicationDeploymentValidation {
+  ok: boolean;
+  fieldErrors: Partial<Record<WorkspaceApplicationDeploymentField, string>>;
+  advancedJSONError: string;
+}
+
+export function emptyWorkspaceApplicationDeploymentSelection(): WorkspaceApplicationDeploymentSelection {
   return {
-    applicationId: "", version: "", platform: "linux/amd64", image: "",
-    exposurePolicy: "application", httpPort: "8080", healthCheckPath: "/healthz", healthCheckPort: "8080",
-    persistentMounts: [{ name: "data", mountPath: "/data" }],
-    scratchMounts: [], dependencies: []
+    platform: "linux/amd64", image: "", exposurePolicy: "application",
+    healthCheckPath: "", healthCheckPort: "", healthCheckInitialDelaySeconds: ""
   };
 }
 
-const applicationIdPattern = /^[a-z][a-z0-9-]{0,62}$/;
-const applicationVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 const applicationPlatformPattern = /^[a-z0-9]+\/[a-z0-9._-]+$/;
 const imageDigestPattern = /^[^@\s]+@sha256:[0-9a-f]{64}$/;
 const exposurePolicies = ["anonymous", "application", "cloud_private"];
-const mountNamePattern = /^[a-z][a-z0-9-]{0,30}$/;
-const componentNamePattern = /^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
-const mountPathPattern = /^\/[A-Za-z0-9._/-]+$/;
-
-export type WorkspaceApplicationRevisionField = keyof Pick<
-  WorkspaceApplicationRevisionDraft,
-  "applicationId" | "version" | "platform" | "image" | "exposurePolicy" | "httpPort" | "healthCheckPath" | "healthCheckPort"
->;
-
-export interface WorkspaceApplicationRevisionDraftValidation {
-  ok: boolean;
-  fieldErrors: Partial<Record<WorkspaceApplicationRevisionField, string>>;
-  mountErrors: Record<number, string>;
-  scratchMountErrors: Record<number, string>;
-  dependencyErrors: Record<number, string>;
-}
 
 function validPort(value: string): boolean {
   return /^[0-9]{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535;
 }
 
-function validateMountDrafts(mounts: WorkspaceApplicationRevisionMountDraft[]): Record<number, string> {
-  const errors: Record<number, string> = {};
-  const seen = new Set<string>();
-  mounts.forEach((mount, index) => {
-    if (!mountNamePattern.test(mount.name)) errors[index] = "挂载名需为小写字母开头的短标识";
-    else if (!mountPathPattern.test(mount.mountPath)) errors[index] = "挂载路径需为绝对路径";
-    else if (seen.has(mount.name)) errors[index] = "挂载名重复";
-    seen.add(mount.name);
-  });
-  return errors;
+// validateWorkspaceApplicationDeploymentForm keeps the operator's own mistakes
+// out of the request. Control Plane stays the authority for the description it
+// completes; this only refuses what the selection itself cannot express.
+export function validateWorkspaceApplicationDeploymentForm(form: WorkspaceApplicationDeploymentForm): WorkspaceApplicationDeploymentValidation {
+  const fieldErrors: Partial<Record<WorkspaceApplicationDeploymentField, string>> = {};
+  const { selection } = form;
+  if (!applicationPlatformPattern.test(selection.platform)) fieldErrors.platform = "格式为 os/arch，如 linux/amd64";
+  if (!imageDigestPattern.test(selection.image)) fieldErrors.image = "先选择命名空间、repository 与 tag，解析出固定 digest";
+  if (!exposurePolicies.includes(selection.exposurePolicy)) fieldErrors.exposurePolicy = "选择一种暴露策略";
+  if (selection.healthCheckPath !== "" && !selection.healthCheckPath.startsWith("/")) fieldErrors.healthCheckPath = "健康检查路径需以 / 开头";
+  if (selection.healthCheckPort !== "" && !validPort(selection.healthCheckPort)) fieldErrors.healthCheckPort = "端口为 1-65535 的数字";
+  if (selection.healthCheckPath !== "" && selection.healthCheckPort === "") fieldErrors.healthCheckPort = "请填写健康检查端口";
+  if (selection.healthCheckPort !== "" && selection.healthCheckPath === "") fieldErrors.healthCheckPath = "请填写健康检查路径";
+  if (selection.healthCheckInitialDelaySeconds !== "" && !/^[0-9]{1,5}$/.test(selection.healthCheckInitialDelaySeconds)) {
+    fieldErrors.healthCheckInitialDelaySeconds = "初始延迟为秒数";
+  }
+  let advancedJSONError = "";
+  try { parseWorkspaceApplicationAdvancedJSON(form.advancedJSON); } catch (error) { advancedJSONError = (error as Error).message; }
+  return { ok: Object.keys(fieldErrors).length === 0 && advancedJSONError === "", fieldErrors, advancedJSONError };
 }
 
-// validateWorkspaceApplicationRevisionDraft mirrors the authoritative Control
-// Plane admission contract for every field the administrator fills. The
-// backend stays the admission authority; per-field errors keep mistakes out of
-// the browser request.
-export function validateWorkspaceApplicationRevisionDraft(draft: WorkspaceApplicationRevisionDraft): WorkspaceApplicationRevisionDraftValidation {
-  const fieldErrors: Partial<Record<WorkspaceApplicationRevisionField, string>> = {};
-  if (!applicationIdPattern.test(draft.applicationId)) fieldErrors.applicationId = "小写字母开头，仅含小写字母、数字或连字符";
-  if (!applicationVersionPattern.test(draft.version)) fieldErrors.version = "字母或数字开头，仅含字母、数字与 . _ + -";
-  if (!applicationPlatformPattern.test(draft.platform)) fieldErrors.platform = "格式为 os/arch，如 linux/amd64";
-  if (!imageDigestPattern.test(draft.image)) fieldErrors.image = "需为 repository@sha256:<64位十六进制>";
-  if (!exposurePolicies.includes(draft.exposurePolicy)) fieldErrors.exposurePolicy = "选择一种暴露策略";
-  if (draft.httpPort !== "" && !validPort(draft.httpPort)) fieldErrors.httpPort = "端口为 1-65535 的数字";
-  if (draft.healthCheckPath !== "" && !draft.healthCheckPath.startsWith("/")) fieldErrors.healthCheckPath = "健康检查路径需以 / 开头";
-  if (draft.healthCheckPort !== "" && !validPort(draft.healthCheckPort)) fieldErrors.healthCheckPort = "端口为 1-65535 的数字";
-  if (draft.healthCheckPath !== "" && draft.healthCheckPort === "") fieldErrors.healthCheckPort = "请填写健康检查端口";
-  if (draft.healthCheckPort !== "" && draft.healthCheckPath === "") fieldErrors.healthCheckPath = "请填写健康检查路径";
-  const mountErrors = validateMountDrafts(draft.persistentMounts);
-  const scratchMountErrors = validateMountDrafts(draft.scratchMounts);
-  const dependencyErrors: Record<number, string> = {};
-  const seenDependencies = new Set<string>();
-  draft.dependencies.forEach((dependency, index) => {
-    if (!componentNamePattern.test(dependency.name)) dependencyErrors[index] = "服务名需为小写字母开头、字母或数字结尾的短标识";
-    else if (dependency.name === "main") dependencyErrors[index] = "main 为主应用保留名称";
-    else if (seenDependencies.has(dependency.name)) dependencyErrors[index] = "服务名重复";
-    else if (!imageDigestPattern.test(dependency.image)) dependencyErrors[index] = "镜像需为 repository@sha256:<64位十六进制>";
-    seenDependencies.add(dependency.name);
-  });
-  const ok = Object.keys(fieldErrors).length === 0 && Object.keys(mountErrors).length === 0
-    && Object.keys(scratchMountErrors).length === 0 && Object.keys(dependencyErrors).length === 0;
-  return { ok, fieldErrors, mountErrors, scratchMountErrors, dependencyErrors };
+// Preserve the publisher's optional description. It carries the run
+// requirements an image does not declare for itself, such as supporting
+// components, configuration/Secret interfaces or resource limits.
+export function parseWorkspaceApplicationAdvancedJSON(text: string): Record<string, unknown> {
+  if (text.trim() === "") return {};
+  const value = parseApplicationJSON(text);
+  if (!applicationJSONObject(value)) throw new Error("高级运行描述需为 JSON 对象");
+  for (const identity of ["applicationId", "version"]) {
+    if (identity in value) throw new Error("高级运行描述不填写应用标识与版本；它们由平台从镜像确定");
+  }
+  return value;
 }
 
-// composeWorkspaceApplicationRevision builds the authoritative revision
-// object from the structured draft: the main component carries the declared
-// readiness probe and resources; dependencies become private services.
-export function composeWorkspaceApplicationRevision(draft: WorkspaceApplicationRevisionDraft): Record<string, unknown> {
+// composeWorkspaceApplicationRevision builds the description this one command
+// deploys. The selected image and exposure policy are the operator's visible
+// choice and always win; the advanced description supplies everything else, and
+// a health check the operator filled is added on top.
+export function composeWorkspaceApplicationRevision(form: WorkspaceApplicationDeploymentForm): Record<string, unknown> {
+  const { selection } = form;
   const revision: Record<string, unknown> = {
     schemaVersion: 1,
-    applicationId: draft.applicationId,
-    version: draft.version,
-    platform: draft.platform,
-    image: draft.image,
-    exposurePolicy: draft.exposurePolicy
+    ...parseWorkspaceApplicationAdvancedJSON(form.advancedJSON),
+    platform: selection.platform,
+    image: selection.image,
+    exposurePolicy: selection.exposurePolicy
   };
-  if (draft.httpPort !== "") {
-    revision.ports = [{ name: "http", port: Number(draft.httpPort), protocol: "TCP" }];
-    revision.entryPort = "http";
-  }
-  if (draft.healthCheckPath !== "" && draft.healthCheckPort !== "") {
-    revision.healthChecks = [{ port: Number(draft.healthCheckPort), path: draft.healthCheckPath, initialDelaySeconds: 5 }];
-  }
-  if (draft.persistentMounts.length > 0) {
-    revision.persistentMounts = draft.persistentMounts;
-  }
-  if (draft.scratchMounts.length > 0) {
-    revision.scratchMounts = draft.scratchMounts;
-  }
-  if (draft.dependencies.length > 0) {
-    revision.dependencies = draft.dependencies;
+  if (selection.healthCheckPath !== "" && selection.healthCheckPort !== "") {
+    const healthCheck: Record<string, unknown> = { port: Number(selection.healthCheckPort), path: selection.healthCheckPath };
+    if (selection.healthCheckInitialDelaySeconds !== "") healthCheck.initialDelaySeconds = Number(selection.healthCheckInitialDelaySeconds);
+    revision.healthChecks = [healthCheck];
   }
   return revision;
 }

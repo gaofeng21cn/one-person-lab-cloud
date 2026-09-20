@@ -25,6 +25,12 @@ type workspaceRegistryStub struct {
 	tagsErr       error
 	resolution    contracts.WorkspaceRegistryImageResolution
 	resolutionErr error
+	facts         clients.WorkspaceRegistryImageFacts
+	factsErr      error
+}
+
+func (stub *workspaceRegistryStub) ImageFacts(_ context.Context, _, _, _, _ string) (clients.WorkspaceRegistryImageFacts, error) {
+	return stub.facts, stub.factsErr
 }
 
 func (stub *workspaceRegistryStub) ListTags(_ context.Context, _, _ string) ([]contracts.WorkspaceRegistryTag, error) {

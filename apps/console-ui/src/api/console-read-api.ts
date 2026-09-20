@@ -5,7 +5,6 @@ import type {
   AnnouncementDTO,
   AnnouncementReadDTO,
   WorkspaceApplicationIntentDTO,
-  WorkspaceApplicationRevisionAdmissionDTO,
   BillingReceipt,
   BillingReceiptPage,
   WorkspaceSettlementTrend,
@@ -367,34 +366,22 @@ export function getProductionReadiness(): Promise<ReadinessFact> {
   return getJson<unknown>("/api/production/readiness").then(decodeDto<ReadinessFact>);
 }
 
-export function admitOperatorApplicationRevision(
-  revision: unknown,
-  csrfToken: string,
-  idempotencyKey: string
-): Promise<WorkspaceApplicationRevisionAdmissionDTO> {
-  return postJson<unknown>(
-    "/api/operator/application-revisions", revision, csrfToken, idempotencyKey
-  ).then(decodeDto<WorkspaceApplicationRevisionAdmissionDTO>);
-}
-
 export function createOperatorWorkspaceApplicationDeployment(
   workspaceId: string,
-  applicationId: string,
-  targetRevision: string,
   configuration: WorkspaceApplicationConfigurationDTO,
   csrfToken: string,
   idempotencyKey: string,
   secretBindings: WorkspaceApplicationSecretBindingDTO[] = [],
   revision?: unknown
 ): Promise<{ intent: WorkspaceApplicationIntentDTO }> {
-  // An inline revision lets one deployment command carry the image and its run
-  // requirements. The Control Plane admits that revision into its single
-  // revision owner as part of the same command; sending the publisher
-  // description is not a second, separate business step for the operator.
+  // The command names the Workspace and the description it deploys. Control
+  // Plane owns the application identity and reads the run requirements the
+  // image declares, so one command deploys an image that was never registered
+  // and no operator types an internal identity.
   return postJson<unknown>(
     "/api/operator/application-deployments",
     {
-      workspaceId, applicationId, targetRevision, configuration,
+      workspaceId, configuration,
       ...(secretBindings.length ? { secretBindings } : {}),
       ...(revision === undefined ? {} : { revision })
     },

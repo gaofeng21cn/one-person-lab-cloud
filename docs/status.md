@@ -91,7 +91,7 @@ and deliverables belong to [roadmap](roadmap.md#implementation-sequence).
 | Persistent storage | Stable application data bindings survive compatible updates and reinstallations; different applications have separate namespaces. Historical layouts require the original runtime identity and readback. | General data import/restore and CBS/TKE qualification remain open. |
 | Application entry | One gateway serves the OPL App and every admitted application under the installation's existing workspace route. The executing provider reports the resolved destination or URL, the Control Plane owns the route, and an application without a published entry has no Open action. `cloud_private` publishes no external entry. | Target-installation end-to-end routing, application assets under the route's path prefix, Cookie/API/SSE behavior and Instance qualification remain open. No platform-authenticated private access is claimed. |
 | Existing lifecycle consumers | Access and credential capabilities use the selected profile. Suspension/deletion inventory current and incomplete generations; resume starts only the selection. Delete confirms Runtime and owned Secret absence before resources, retaining external source Secrets and Sub2API Keys. | Instance verification and Tencent node-image collection remain external obligations. |
-| Administrator UI | Structured registration, real configuration, selection progress, operator retry and owner default-installation resume are implemented. The registration form browses `repository` and tag lists from the catalog namespace and fills the digest-pinned reference after server-side resolution. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
+| Administrator UI | One command deploys a selected image: the panel cascades catalogue → repository → tag → resolved digest automatically, takes the exposure policy and an optional health check or advanced description, and never asks for an application identity or a registration step. Real configuration, selection progress, operator retry and owner default-installation resume remain implemented. Navigation rejects delayed responses from a different Workspace; application changes clear revealed passwords. | Registry browsing shows one flat repository list; multi-platform digest selection remains open. |
 
 ### Default Application Replacement Verification
 
@@ -366,10 +366,11 @@ admitted identity with different content remains a conflict and never rewrites
 the stored revision, and a request whose envelope identity disagrees with the
 inline revision is rejected.
 
-The Console deployment action sends that inline revision, so one operator
-action deploys an image that was never pre-registered. The separate "register an
-application version" action remains for a publisher who wants to pre-stage a
-revision; it is no longer a prerequisite.
+The Console sends that inline revision, so one operator action deploys an image
+that was never pre-registered; its panel exposes no separate registration action
+at all. The admission route remains the owner's API for a publisher pre-staging
+a revision, and its read route is what an applying owner uses to confirm the
+admitted payload.
 
 Evidence: `go test ./internal/server/ -run
 'TestApplicationDeploymentAcceptsInlineRevision|TestApplicationDeploymentIntentHTTP'`
@@ -379,6 +380,57 @@ payload, and that a mismatched envelope identity is a bad request. The browser
 suite `npm run test:browser:operator-resource-read` passes 13 cases, and its
 deployment assertion now requires the command to carry the resolved image
 description.
+
+### Deployment Description Completion (Local Development)
+
+An operator deploys an image version instead of registering one. A deployment
+command whose description omits the application identity is completed by Control
+Plane before admission:
+
+- the application identity is derived from the image's repository inside the
+  approved namespace, so one repository's new digest is a new version that keeps
+  the Workspace's data binding and origin, while another repository is another
+  application with its own data directory;
+- the version is derived from the completed description's content, so an exact
+  replay resolves to the version already admitted and a real change is a new one;
+- the run requirements the image declares for itself — its TCP ports, the paths
+  it marks as data, and the process identity it expects — are read from the
+  digest-pinned image config through the existing OCI Distribution API client.
+  Stated values always win, and nothing is defaulted.
+
+An image the installation did not approve (another host, or a repository outside
+`OPL_WORKSPACE_REGISTRY_REPOSITORIES`) is refused as
+`workspace_application_image_not_approved`; an installation without a registry
+endpoint answers `workspace_registry_unconfigured`; a publishing exposure whose
+entry port neither the operator nor the image declares is refused as
+`workspace_application_entry_port_required`. A description that states its own
+identity is a publisher's immutable statement: it is admitted exactly as written
+and never completed from the image.
+
+The Console drives one cascade — catalogue, repository, tag, resolved digest —
+against the same single catalogue the deployment path reads, so the two cannot
+disagree about the approved registry. It sends no application identity. The
+registry catalogue is read only for a deployment the operator is preparing, so a
+surface with no deployment panel never calls an administrator registry route.
+
+Focused evidence: contracts `SplitWorkspaceImageReference` (round trip, nested
+repository, rejected shapes, and the separate namespace boundary); clients
+`ImageFacts` (index resolved to the requested platform, declared ports, data
+paths and process identity, unsupported platform and unpinned digest refused);
+server route cases for a completed operator description, an unapproved image, an
+unconfigured registry, a stated description that still deploys without a
+registry, an undeterminable entry port, and a publisher statement admitted
+unchanged; Console model cases for the selection, the advanced description and
+the visible-selection-wins rule; and a browser case that selects a version and
+asserts the single command Control Plane receives.
+
+| Source-check evidence | Exact value |
+| --- | --- |
+| Implementation base | `50520e27a6b9a630eefdc2df7da3e5ec498d28a0` (canonical `main` at branch point) |
+| Command | `GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full` |
+| Result | exit 0; 228 source tests and 114 browser cases pass; PostgreSQL owners 8 control-plane, 6 fabric, 3 ledger, 1 migration helper with zero skips |
+| Full log SHA-256 | `c6d1d40835215126a2d46d1f37da61be721d9a51a97dfb5e26e426b3c4811656` |
+| Completed at | 2026-09-20 (Asia/Shanghai) |
 
 ### Image Reference Identity (Local Development)
 
@@ -486,11 +538,13 @@ protection: `GET /api/operator/registry/repositories`,
 `POST /api/operator/registry/resolve`. Error mapping is explicit: the
 registry's 401/403 is 401 access denied, `NAME_UNKNOWN` is 404 target unknown,
 transport and timeout failures are 502, and nothing degrades into invented
-catalog rows. The Console registration form gains a
-namespace → 列出仓库 → 列出 tag → 解析 digest flow; a successful resolution
-writes the digest-pinned reference into the draft image field and the form's
-existing validation then gates admission unchanged. Tag references never
-validate as images.
+catalog rows. The Console deployment panel then drove a
+namespace → 列出仓库 → 列出 tag → 解析 digest flow with one button per step; a
+successful resolution wrote the digest-pinned reference into the image field, and
+tag references never validate as images. That flow is now one automatic cascade
+in the same panel (see [deployment description
+completion](#deployment-description-completion-local-development)); the routes,
+their error mapping and the reference identity above are unchanged.
 
 Focused evidence: contracts 6 cases, clients 9 cases (namespace filtering,
 tag ordering, digest pinning, tag rejection, credential negotiation, invalid

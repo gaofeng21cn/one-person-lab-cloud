@@ -247,8 +247,12 @@ relying on a server default. Retained Launch contracts keep the completion
 obligations recorded in their own operation.
 
 In the initial scope, an authorized administrator selects a target Workspace,
-registry connection, repository and image version, supplies the required
-startup/configuration/data bindings and deploys onto those existing resources.
+its exposure policy and one image version from the installation's approved
+registry, and deploys onto those existing resources. The platform owns the
+internal application identity and reads the run requirements the image declares
+for itself, so selecting a version is the whole deployment input; the administrator
+states only what the image cannot: how the application is exposed, its optional
+health check, its non-secret run configuration and its Secret references.
 Account ownership alone does not grant application distribution authority;
 customer self-service deployment is outside this scope. Deployment can fail or
 be retried without repeating the purchase or reclassifying fulfilled resources

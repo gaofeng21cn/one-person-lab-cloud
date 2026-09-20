@@ -117,17 +117,42 @@ func (catalog *workspaceApplicationRegistryCatalog) tags(ctx context.Context, na
 	return catalog.client.ListTags(ctx, namespace, repository)
 }
 
+// imageFacts reads the declared runtime facts of one image on the configured
+// registry. The image must live on the catalog's own host: a reference this
+// installation cannot read is not a description the platform may complete by
+// guessing, so it is refused explicitly.
+func (catalog *workspaceApplicationRegistryCatalog) imageFacts(ctx context.Context, host, namespace, repository, digest, platform string) (clients.WorkspaceRegistryImageFacts, error) {
+	if host != catalog.host || !catalog.declares(namespace, repository) {
+		return clients.WorkspaceRegistryImageFacts{}, errWorkspaceApplicationImageNotApproved
+	}
+	return catalog.client.ImageFacts(ctx, namespace, repository, digest, platform)
+}
+
+// declares reports whether this installation approved one repository for
+// deployment. The declared set is the statement of what may run here, so it is
+// checked rather than assumed from a caller's reference.
+func (catalog *workspaceApplicationRegistryCatalog) declares(namespace, repository string) bool {
+	for _, declared := range catalog.declared {
+		if declared.Namespace == namespace && declared.Repository == repository {
+			return true
+		}
+	}
+	return false
+}
+
 func (catalog *workspaceApplicationRegistryCatalog) resolve(ctx context.Context, namespace, repository, tag string) (contracts.WorkspaceRegistryImageResolution, error) {
 	return catalog.client.ResolveTag(ctx, namespace, repository, tag)
 }
 
-func registerWorkspaceRegistryCatalogRoutes(mux *http.ServeMux, app *controlPlaneServer) {
+// mustWorkspaceRegistryCatalog builds this installation's one registry catalog.
+// A registry misconfiguration must fail startup, not browse time, so an error
+// here is not recoverable.
+func mustWorkspaceRegistryCatalog() *workspaceApplicationRegistryCatalog {
 	catalog, err := workspaceRegistryCatalogFromEnv()
 	if err != nil {
-		// A registry misconfiguration must fail startup, not browse time.
 		panic(err)
 	}
-	registerWorkspaceRegistryCatalogRoutesWithCatalog(mux, app, catalog)
+	return catalog
 }
 
 // registerWorkspaceRegistryCatalogRoutesWithCatalog registers the registry
@@ -190,6 +215,12 @@ func registerWorkspaceRegistryCatalogRoutesWithCatalog(mux *http.ServeMux, app *
 		})
 	}))
 }
+
+// errWorkspaceRegistryUnconfigured reports an installation whose registry
+// endpoint and credential are not configured. Image selection and every
+// derivation that reads an image are absent capabilities there, not empty
+// results.
+var errWorkspaceRegistryUnconfigured = errors.New("workspace_registry_unconfigured")
 
 // requireWorkspaceRegistryCatalog answers the explicit unconfigured result.
 // It keeps every registry route on one reason instead of letting an absent

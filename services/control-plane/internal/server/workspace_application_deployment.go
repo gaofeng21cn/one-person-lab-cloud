@@ -345,7 +345,14 @@ func decodeStringList(value any) []string {
 	return list
 }
 
-func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service) {
+func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneServer, service *controlplane.Service, catalog *workspaceApplicationRegistryCatalog) {
+	// A nil catalog is an absent installation capability, not an empty one: the
+	// interface stays nil so a description that needs the image's own facts is
+	// refused explicitly instead of reading from an unconfigured registry.
+	var factsReader workspaceApplicationImageFactsReader
+	if catalog != nil {
+		factsReader = catalog
+	}
 	mux.HandleFunc("POST /api/operator/application-deployments", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		input := decodeJSON(r)
 		key, ok := requiredMutationKey(w, r)
@@ -355,6 +362,40 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		workspaceID, _ := input["workspaceId"].(string)
 		applicationID, _ := input["applicationId"].(string)
 		targetRevision, _ := input["targetRevision"].(string)
+		if workspaceID == "" {
+			writeError(w, http.StatusBadRequest, errWorkspaceApplicationDeploymentInvalid.Error())
+			return
+		}
+		// The operator selects an image and how it is exposed; the platform
+		// completes the description, so no separate registration step exists and
+		// no operator types an internal application identity.
+		var completedRevision *contracts.WorkspaceApplicationRevision
+		if rawRevision, supplied := input["revision"]; supplied {
+			encoded, err := json.Marshal(rawRevision)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, errWorkspaceApplicationRevisionInvalid.Error())
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.DisallowUnknownFields()
+			var revision contracts.WorkspaceApplicationRevision
+			if err := decoder.Decode(&revision); err != nil {
+				writeError(w, http.StatusBadRequest, errWorkspaceApplicationRevisionInvalid.Error())
+				return
+			}
+			completed, err := app.completeWorkspaceApplicationDeploymentRevision(r.Context(), factsReader, workspaceID, revision)
+			if err != nil {
+				writeWorkspaceApplicationDescriptionError(w, err)
+				return
+			}
+			completedRevision = &completed
+			if applicationID == "" {
+				applicationID = completed.ApplicationID
+			}
+			if targetRevision == "" {
+				targetRevision = completed.Version
+			}
+		}
 		var configuration contracts.WorkspaceApplicationRuntimeConfiguration
 		rawConfiguration, configErr := json.Marshal(input["configuration"])
 		if configErr != nil {
@@ -395,8 +436,8 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 			writeError(w, http.StatusBadRequest, "client_data_binding_forbidden")
 			return
 		}
-		if workspaceID == "" || applicationID == "" || targetRevision == "" {
-			writeError(w, http.StatusBadRequest, "invalid_application_deployment")
+		if applicationID == "" || targetRevision == "" {
+			writeError(w, http.StatusBadRequest, errWorkspaceApplicationDeploymentInvalid.Error())
 			return
 		}
 		clientConfiguration, err := json.Marshal(configuration)
@@ -434,6 +475,11 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 		}
 		secretBindings := requestedBindings
 		var workspaceAPIKeyID int64
+		// The platform resolves an application's own credential configuration once
+		// per command: a completed description may be admitted here and then
+		// resolved below, and provisioning the Workspace's Gateway Secret twice in
+		// one command would be a duplicate side effect.
+		platformCredentialsApplied := false
 		// OPL credentials are resolved by the CP owner, never accepted as arbitrary application input.
 		revisionRow, admitted, revisionErr := app.tables.AdmittedApplicationRevision(r.Context(), applicationID, targetRevision)
 		if revisionErr != nil {
@@ -469,32 +515,16 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 					configuration.Environment[name] = value
 				}
 				configuration.Files = requestedFiles
+				platformCredentialsApplied = true
 			}
 		}
-		// An operator may describe the image and its run requirements in this one
-		// command instead of pre-registering the revision in a separate business
-		// step. The revision snapshot keeps its single owner: this branch writes
-		// the same admitted-revision row the registration route writes, and an
-		// already admitted identity with different content stays a conflict.
-		if rawRevision, supplied := input["revision"]; supplied {
-			encoded, err := json.Marshal(rawRevision)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
-				return
-			}
-			decoder := json.NewDecoder(bytes.NewReader(encoded))
-			decoder.DisallowUnknownFields()
-			var revision contracts.WorkspaceApplicationRevision
-			if err := decoder.Decode(&revision); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
-				return
-			}
+		// The completed description keeps its single owner: this branch writes the
+		// same admitted-revision row the registration route writes, and an already
+		// admitted identity with different content stays a conflict.
+		if completedRevision != nil {
+			revision := *completedRevision
 			if revision.ApplicationID != applicationID || revision.Version != targetRevision {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
-				return
-			}
-			if err := contracts.ValidateWorkspaceApplicationRevision(revision); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid_application_revision")
+				writeError(w, http.StatusBadRequest, errWorkspaceApplicationRevisionInvalid.Error())
 				return
 			}
 			user, ok := app.sessionUserContext(r)
@@ -521,7 +551,7 @@ func registerApplicationDeploymentRoutes(mux *http.ServeMux, app *controlPlaneSe
 				writeError(w, http.StatusConflict, "workspace_application_revision_invalid")
 				return
 			}
-			if contracts.WorkspaceApplicationRequiresPlatformCredentials(admittedRevision) {
+			if contracts.WorkspaceApplicationRequiresPlatformCredentials(admittedRevision) && !platformCredentialsApplied {
 				if len(requestedBindings) > 0 {
 					writeError(w, http.StatusBadRequest, "workspace_application_owned_configuration_conflict")
 					return

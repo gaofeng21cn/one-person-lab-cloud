@@ -158,3 +158,38 @@ func WorkspaceRegistryImageReference(host, namespace, repository, digest string)
 	}
 	return strings.TrimPrefix(endpoint, "https://") + "/" + namespace + "/" + repository + "@" + digest, nil
 }
+
+// SplitWorkspaceImageReference is the inverse of WorkspaceRegistryImageReference:
+// it reads the registry host, the repository path inside the cataloged
+// namespace, and the pinned digest out of one executable image reference. The
+// caller decides what the host and repository are allowed to be; this function
+// only refuses a reference that cannot be read back into those parts.
+func SplitWorkspaceImageReference(value string) (host, namespace, repository, digest string, err error) {
+	value = strings.TrimSpace(value)
+	repositoryPath, digest, found := strings.Cut(value, "@")
+	if !found || !workspaceImageDigestPattern.MatchString(digest) {
+		return "", "", "", "", errors.New("workspace_registry_image_reference_invalid")
+	}
+	host, repositoryPath, found = strings.Cut(repositoryPath, "/")
+	if !found {
+		return "", "", "", "", errors.New("workspace_registry_image_reference_invalid")
+	}
+	// The host carries no scheme and no path of its own; the endpoint validator
+	// rejects anything a registry host cannot be.
+	host = strings.TrimPrefix(host, "https://")
+	if _, err = WorkspaceRegistryEndpoint(host); err != nil {
+		return "", "", "", "", errors.New("workspace_registry_image_reference_invalid")
+	}
+	namespace, repository, found = strings.Cut(repositoryPath, "/")
+	if !found {
+		return "", "", "", "", errors.New("workspace_registry_image_reference_invalid")
+	}
+	// This is the reference's shape, not an installation's approval: which
+	// namespaces a registry request may browse and which repositories an
+	// installation approves for deployment are decided by the caller that owns
+	// that boundary, not by reading a reference.
+	if !workspaceRegistryNamespacePattern.MatchString(namespace) || !workspaceRegistryRepositoryPattern.MatchString(repository) {
+		return "", "", "", "", errors.New("workspace_registry_image_reference_invalid")
+	}
+	return host, namespace, repository, digest, nil
+}

@@ -291,47 +291,35 @@ export interface CustomerAnnouncementController {
 }
 
 export interface WorkspaceApplicationDeploymentController {
-  registrationMode: "form" | "json";
-  setRegistrationMode: (value: "form" | "json") => void;
-  revisionJSON: string;
-  setRevisionJSON: (value: string) => void;
-  revisionJSONError: string;
+  registryNamespace: string;
+  setRegistryNamespace: (value: string) => void;
+  registryRepository: string;
+  setRegistryRepository: (value: string) => void;
+  registryTag: string;
+  setRegistryTag: (value: string) => void;
+  registryCatalog: import("../api/console-read-api.ts").WorkspaceRegistryRepositoryCatalogDTO | null;
+  repositoryOptions: string[];
+  registryTags: import("../api/console-read-api.ts").WorkspaceRegistryTagDTO[] | null;
+  registryResolution: import("../api/console-read-api.ts").WorkspaceRegistryResolutionDTO | null;
+  registryBusy: boolean;
+  registryError: string;
+
+  selection: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationDeploymentSelection;
+  setSelectionField: <K extends keyof import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationDeploymentSelection>(
+    field: K, value: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationDeploymentSelection[K]
+  ) => void;
+  advancedJSON: string;
+  setAdvancedJSON: (value: string) => void;
+  validation: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationDeploymentValidation;
+
   configurationJSON: string;
   setConfigurationJSON: (value: string) => void;
   secretBindingsJSON: string;
   setSecretBindingsJSON: (value: string) => void;
   deploymentJSONError: string;
-  resetRegistrySelection: (level: "namespace" | "repository" | "tag") => void;
 
-  applicationId: string;
-  targetRevision: string;
-  setApplicationId: (value: string) => void;
-  setTargetRevision: (value: string) => void;
-  draft: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft;
-  validation: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraftValidation;
-  setDraftField: <K extends keyof import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft>(
-    field: K, value: import("./workspace-application-deployment-controller-model.ts").WorkspaceApplicationRevisionDraft[K]
-  ) => void;
-  addPersistentMount: () => void;
-  removePersistentMount: (index: number) => void;
-  addScratchMount: () => void;
-  removeScratchMount: (index: number) => void;
-  addDependency: () => void;
-  removeDependency: (index: number) => void;
-  setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
-  setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
-  registryCatalog: import("../api/console-read-api.ts").WorkspaceRegistryRepositoryCatalogDTO | null;
-  registryTags: import("../api/console-read-api.ts").WorkspaceRegistryTagDTO[] | null;
-  registryResolution: import("../api/console-read-api.ts").WorkspaceRegistryResolutionDTO | null;
-  registryBusy: boolean;
-  browseRegistryRepositories: (namespace: string) => Promise<boolean>;
-  browseRegistryTags: (namespace: string, repository: string) => Promise<boolean>;
-  resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: import("../api/dtos.ts").WorkspaceApplicationIntentDTO | null;
   busy: boolean;
-  // Retained for the current admission flow; the deployment-entry simplification
-  // that removes it is scoped separately and has not landed here.
-  admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
   retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;

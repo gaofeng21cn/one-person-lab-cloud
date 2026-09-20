@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WorkspaceApplicationIntentDTO } from "../api/dtos.ts";
 import {
-  admitOperatorApplicationRevision,
   createOperatorWorkspaceApplicationDeployment,
   getOperatorWorkspaceApplicationDeployment,
   listOperatorRegistryRepositories,
@@ -15,11 +14,10 @@ import {
 } from "../api/console-read-api.ts";
 import {
   composeWorkspaceApplicationRevision,
-  parseWorkspaceApplicationRevisionJSON,
+  emptyWorkspaceApplicationDeploymentSelection,
   parseWorkspaceApplicationDeploymentJSON,
-  emptyWorkspaceApplicationRevisionDraft,
-  validateWorkspaceApplicationRevisionDraft,
-  type WorkspaceApplicationRevisionDraft
+  validateWorkspaceApplicationDeploymentForm,
+  type WorkspaceApplicationDeploymentSelection
 } from "./workspace-application-deployment-controller-model.ts";
 
 const deploymentPollInterval = 2000;
@@ -34,44 +32,38 @@ export interface WorkspaceApplicationDeploymentDependencies {
   currentMutationRequest: () => () => boolean;
 }
 
+// The deployment form is one command: pick the image, state how it is exposed,
+// deploy. Control Plane owns the application identity and reads what the image
+// declares about itself, so there is no separate registration step and no
+// operator-typed application or version.
 export interface WorkspaceApplicationDeploymentCapability {
-  registrationMode: "form" | "json";
-  setRegistrationMode: (value: "form" | "json") => void;
-  revisionJSON: string;
-  setRevisionJSON: (value: string) => void;
-  revisionJSONError: string;
+  registryNamespace: string;
+  setRegistryNamespace: (value: string) => void;
+  registryRepository: string;
+  setRegistryRepository: (value: string) => void;
+  registryTag: string;
+  setRegistryTag: (value: string) => void;
+  registryCatalog: WorkspaceRegistryRepositoryCatalogDTO | null;
+  repositoryOptions: string[];
+  registryTags: WorkspaceRegistryTagDTO[] | null;
+  registryResolution: WorkspaceRegistryResolutionDTO | null;
+  registryBusy: boolean;
+  registryError: string;
+
+  selection: WorkspaceApplicationDeploymentSelection;
+  setSelectionField: <K extends keyof WorkspaceApplicationDeploymentSelection>(field: K, value: WorkspaceApplicationDeploymentSelection[K]) => void;
+  advancedJSON: string;
+  setAdvancedJSON: (value: string) => void;
+  validation: ReturnType<typeof validateWorkspaceApplicationDeploymentForm>;
+
   configurationJSON: string;
   setConfigurationJSON: (value: string) => void;
   secretBindingsJSON: string;
   setSecretBindingsJSON: (value: string) => void;
   deploymentJSONError: string;
-  resetRegistrySelection: (level: "namespace" | "repository" | "tag") => void;
 
-  applicationId: string;
-  targetRevision: string;
-  setApplicationId: (value: string) => void;
-  setTargetRevision: (value: string) => void;
-  draft: WorkspaceApplicationRevisionDraft;
-  validation: ReturnType<typeof validateWorkspaceApplicationRevisionDraft>;
-  setDraftField: <K extends keyof WorkspaceApplicationRevisionDraft>(field: K, value: WorkspaceApplicationRevisionDraft[K]) => void;
-  addPersistentMount: () => void;
-  removePersistentMount: (index: number) => void;
-  addScratchMount: () => void;
-  removeScratchMount: (index: number) => void;
-  addDependency: () => void;
-  removeDependency: (index: number) => void;
-  setDraftListItem: (list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => void;
-  setDraftDependency: (index: number, field: "name" | "image", value: string) => void;
-  registryCatalog: WorkspaceRegistryRepositoryCatalogDTO | null;
-  registryTags: WorkspaceRegistryTagDTO[] | null;
-  registryResolution: WorkspaceRegistryResolutionDTO | null;
-  registryBusy: boolean;
-  browseRegistryRepositories: (namespace: string) => Promise<boolean>;
-  browseRegistryTags: (namespace: string, repository: string) => Promise<boolean>;
-  resolveRegistryTag: (namespace: string, repository: string, tag: string) => Promise<boolean>;
   intent: WorkspaceApplicationIntentDTO | null;
   busy: boolean;
-  admitRevision: () => Promise<boolean>;
   deploy: (workspaceId: string) => Promise<boolean>;
   retry: (workspaceId: string, operationId: string) => Promise<boolean>;
   reset: () => void;
@@ -85,30 +77,42 @@ export function useWorkspaceApplicationDeploymentController({
   mutationError,
   currentMutationRequest
 }: WorkspaceApplicationDeploymentDependencies): WorkspaceApplicationDeploymentCapability {
-  const [draft, setDraft] = useState<WorkspaceApplicationRevisionDraft>(emptyWorkspaceApplicationRevisionDraft());
-  const [registrationMode, setRegistrationMode] = useState<"form" | "json">("form");
-  const [revisionJSON, setRevisionJSON] = useState("");
+  const [selection, setSelection] = useState<WorkspaceApplicationDeploymentSelection>(emptyWorkspaceApplicationDeploymentSelection);
+  const [advancedJSON, setAdvancedJSON] = useState("");
   const [configurationJSON, setConfigurationJSON] = useState('{"environment":{}}');
   const [secretBindingsJSON, setSecretBindingsJSON] = useState("[]");
-  let revisionJSONError = "";
   let deploymentJSONError = "";
-  try { parseWorkspaceApplicationRevisionJSON(revisionJSON); } catch (error) { revisionJSONError = (error as Error).message; }
   try { parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON); } catch (error) { deploymentJSONError = (error as Error).message; }
-  const [applicationId, setApplicationId] = useState("");
-  const [targetRevision, setTargetRevision] = useState("");
+
+  // Registry selection: the approved namespace and its declared repositories are
+  // read once, then a repository's tags, then one tag's digest. Each step loads
+  // the next automatically, so an operator selects a version instead of driving
+  // three technical requests by hand.
+  const [registryCatalog, setRegistryCatalog] = useState<WorkspaceRegistryRepositoryCatalogDTO | null>(null);
+  const [registryNamespace, setRegistryNamespaceState] = useState("");
+  const [registryRepository, setRegistryRepositoryState] = useState("");
+  const [registryTag, setRegistryTagState] = useState("");
+  const [registryTags, setRegistryTags] = useState<WorkspaceRegistryTagDTO[] | null>(null);
+  const [registryResolution, setRegistryResolution] = useState<WorkspaceRegistryResolutionDTO | null>(null);
+  const [registryBusy, setRegistryBusy] = useState(false);
+  const [registryError, setRegistryError] = useState("");
+
   const [intent, setIntent] = useState<WorkspaceApplicationIntentDTO | null>(null);
   const [busy, setBusy] = useState(false);
   const requestGeneration = useRef(0);
+  const registryGeneration = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedWorkspaceId = useRef(workspaceId);
   selectedWorkspaceId.current = workspaceId;
 
   const reset = useCallback(() => {
     requestGeneration.current += 1;
+    registryGeneration.current += 1;
     if (pollTimer.current) clearTimeout(pollTimer.current);
     pollTimer.current = null;
     setIntent(null);
     setBusy(false);
+    setRegistryBusy(false);
   }, []);
 
   useEffect(() => {
@@ -118,123 +122,101 @@ export function useWorkspaceApplicationDeploymentController({
     return reset;
   }, [reset, session?.csrfToken, session?.user.id, workspaceId]);
 
-  const setDraftField = useCallback(<K extends keyof WorkspaceApplicationRevisionDraft>(field: K, value: WorkspaceApplicationRevisionDraft[K]) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+  const setSelectionField = useCallback(<K extends keyof WorkspaceApplicationDeploymentSelection>(field: K, value: WorkspaceApplicationDeploymentSelection[K]) => {
+    setSelection((current) => ({ ...current, [field]: value }));
   }, []);
 
-  const addPersistentMount = useCallback(() => {
-    setDraft((current) => ({ ...current, persistentMounts: [...current.persistentMounts, { name: "", mountPath: "" }] }));
-  }, []);
-  const removePersistentMount = useCallback((index: number) => {
-    setDraft((current) => ({ ...current, persistentMounts: current.persistentMounts.filter((_, i) => i !== index) }));
-  }, []);
-  const addScratchMount = useCallback(() => {
-    setDraft((current) => ({ ...current, scratchMounts: [...current.scratchMounts, { name: "", mountPath: "" }] }));
-  }, []);
-  const removeScratchMount = useCallback((index: number) => {
-    setDraft((current) => ({ ...current, scratchMounts: current.scratchMounts.filter((_, i) => i !== index) }));
-  }, []);
-  const addDependency = useCallback(() => {
-    setDraft((current) => ({ ...current, dependencies: [...current.dependencies, { name: "", image: "" }] }));
-  }, []);
-  const removeDependency = useCallback((index: number) => {
-    setDraft((current) => ({ ...current, dependencies: current.dependencies.filter((_, i) => i !== index) }));
-  }, []);
-  const setDraftListItem = useCallback((list: "persistentMounts" | "scratchMounts", index: number, field: "name" | "mountPath", value: string) => {
-    setDraft((current) => ({
-      ...current,
-      [list]: current[list].map((item, i) => i === index ? { ...item, [field]: value } : item)
-    }));
-  }, []);
-  const setDraftDependency = useCallback((index: number, field: "name" | "image", value: string) => {
-    setDraft((current) => ({
-      ...current,
-      dependencies: current.dependencies.map((item, i) => i === index ? { ...item, [field]: value } : item)
-    }));
-  }, []);
+  const repositoryOptions = (registryCatalog?.items || [])
+    .filter((item) => item.namespace === (registryNamespace || registryCatalog?.namespaces[0] || ""))
+    .map((item) => item.repository);
 
-  // Registry selection state: the administrator browses the approved
-  // namespace's repositories, then a repository's tags, then resolves one tag
-  // to its digest-pinned reference. Resolution writes the reference into the
-  // draft image field; the admission contract stays digest-only.
-  const [registryCatalog, setRegistryCatalog] = useState<WorkspaceRegistryRepositoryCatalogDTO | null>(null);
-  const [registryTags, setRegistryTags] = useState<WorkspaceRegistryTagDTO[] | null>(null);
-  const [registryBusy, setRegistryBusy] = useState(false);
-  const [registryResolution, setRegistryResolution] = useState<WorkspaceRegistryResolutionDTO | null>(null);
+  const ownsRegistryRequest = (generation: number) => generation === registryGeneration.current && currentMutationRequest()();
 
-  const registryGeneration = useRef(0);
-  const resetRegistrySelection = useCallback((level: "namespace" | "repository" | "tag") => {
-    registryGeneration.current += 1;
-    setRegistryBusy(false);
-    if (level === "namespace") setRegistryCatalog(null);
-    if (level !== "tag") setRegistryTags(null);
-    setRegistryResolution(null);
-    if (registryResolution) {
-      setDraft((current) => current.image === registryResolution.reference ? { ...current, image: "" } : current);
-      setRevisionJSON((current) => {
-        let revision: Record<string, unknown>;
-        try { revision = parseWorkspaceApplicationRevisionJSON(current); } catch { return current; }
-        if (revision.image !== registryResolution.reference) return current;
-        delete revision.image;
-        return JSON.stringify(revision, null, 2);
-      });
-    }
-  }, [registryResolution]);
-
-  const browseRegistryRepositories = useCallback(async (namespace: string): Promise<boolean> => {
+  const loadRegistryCatalog = useCallback(async (): Promise<boolean> => {
     if (!session || registryBusy) return false;
-    const requestStillCurrent = currentMutationRequest();
     const generation = ++registryGeneration.current;
-    const ownsRequest = () => generation === registryGeneration.current && requestStillCurrent();
     setRegistryBusy(true);
     try {
-      const catalog = await listOperatorRegistryRepositories(namespace);
-      if (!ownsRequest()) return false;
+      // One read returns the installation's catalog namespaces and the
+      // repositories it approved in them, so switching namespace never needs a
+      // second request and an empty list is never confused with a failure.
+      const catalog = await listOperatorRegistryRepositories("");
+      if (!ownsRegistryRequest(generation)) return false;
       setRegistryCatalog(catalog);
-      setRegistryTags(null);
-      setRegistryResolution(null);
+      setRegistryError("");
+      setRegistryNamespaceState((current) => current || catalog.namespaces[0] || "");
       return true;
     } catch (error) {
-      if (ownsRequest()) flash(mutationError(error), "danger");
+      if (ownsRegistryRequest(generation)) {
+        const message = mutationError(error);
+        setRegistryError(message);
+        flash(message, "danger");
+      }
       return false;
     } finally {
-      if (ownsRequest()) setRegistryBusy(false);
+      if (ownsRegistryRequest(generation)) setRegistryBusy(false);
     }
   }, [currentMutationRequest, flash, mutationError, registryBusy, session]);
 
-  const browseRegistryTags = useCallback(async (namespace: string, repository: string): Promise<boolean> => {
-    if (!session || registryBusy) return false;
-    const requestStillCurrent = currentMutationRequest();
+  useEffect(() => {
+    // The catalogue is read for a deployment this operator is preparing, so it
+    // belongs to a selected Workspace: a surface that renders no deployment
+    // panel never calls an administrator registry route.
+    if (!session || !workspaceId) return;
+    void loadRegistryCatalog();
+  }, [session?.csrfToken, session?.user.id, workspaceId]);
+
+  const selectNamespace = useCallback((namespace: string) => {
+    registryGeneration.current += 1;
+    setRegistryNamespaceState(namespace);
+    setRegistryRepositoryState("");
+    setRegistryTagState("");
+    setRegistryTags(null);
+    setRegistryResolution(null);
+    setSelection((current) => ({ ...current, image: "" }));
+  }, []);
+
+  const loadRegistryTags = useCallback(async (namespace: string, repository: string): Promise<boolean> => {
+    if (!session || !namespace || !repository) return false;
     const generation = ++registryGeneration.current;
-    const ownsRequest = () => generation === registryGeneration.current && requestStillCurrent();
     setRegistryBusy(true);
     try {
       const result = await listOperatorRegistryTags(namespace, repository);
-      if (!ownsRequest()) return false;
-      if (result.namespace !== namespace || result.repository !== repository) {
-        throw new Error("workspace_registry_readback_mismatch");
-      }
+      if (!ownsRegistryRequest(generation)) return false;
+      if (result.namespace !== namespace || result.repository !== repository) throw new Error("workspace_registry_readback_mismatch");
       setRegistryTags(result.tags);
-      setRegistryResolution(null);
+      setRegistryError("");
       return true;
     } catch (error) {
-      if (ownsRequest()) flash(mutationError(error), "danger");
+      if (ownsRegistryRequest(generation)) {
+        const message = mutationError(error);
+        setRegistryError(message);
+        flash(message, "danger");
+      }
       return false;
     } finally {
-      if (ownsRequest()) setRegistryBusy(false);
+      if (ownsRegistryRequest(generation)) setRegistryBusy(false);
     }
-  }, [currentMutationRequest, flash, mutationError, registryBusy, session]);
+  }, [currentMutationRequest, flash, mutationError, session]);
 
-  const resolveRegistryTag = useCallback(async (namespace: string, repository: string, tag: string): Promise<boolean> => {
-    if (!session || busy || registryBusy) return false;
-    const requestStillCurrent = currentMutationRequest();
-    const generation = ++requestGeneration.current;
-    const registryRequest = ++registryGeneration.current;
+  const selectRepository = useCallback((repository: string) => {
+    registryGeneration.current += 1;
+    setRegistryRepositoryState(repository);
+    setRegistryTagState("");
+    setRegistryTags(null);
+    setRegistryResolution(null);
+    setSelection((current) => ({ ...current, image: "" }));
+    void loadRegistryTags(registryNamespace, repository);
+  }, [loadRegistryTags, registryNamespace]);
+
+  const resolveTag = useCallback(async (namespace: string, repository: string, tag: string): Promise<boolean> => {
+    if (!session || !namespace || !repository || !tag) return false;
+    const generation = ++registryGeneration.current;
     const csrfToken = session.csrfToken;
     setRegistryBusy(true);
     try {
       const resolution = await resolveOperatorRegistryImage(namespace, repository, tag, csrfToken, `registry-resolve:${namespace}/${repository}@${tag}`);
-      if (generation !== requestGeneration.current || registryRequest !== registryGeneration.current || !requestStillCurrent()) return false;
+      if (!ownsRegistryRequest(generation)) return false;
       // The registry reference is Control Plane's fact: it is
       // host/namespace/repository@digest. Confirming it means comparing the
       // whole returned reference against the identity Control Plane reported,
@@ -245,18 +227,30 @@ export function useWorkspaceApplicationDeploymentController({
         throw new Error("workspace_registry_resolution_unconfirmed");
       }
       setRegistryResolution(resolution);
-      if (registrationMode === "json") {
-        const revision = parseWorkspaceApplicationRevisionJSON(revisionJSON);
-        setRevisionJSON(JSON.stringify({ ...revision, image: resolution.reference }, null, 2));
-      } else setDraft((current) => ({ ...current, image: resolution.reference }));
+      setRegistryError("");
+      setSelection((current) => ({ ...current, image: resolution.reference }));
       return true;
     } catch (error) {
-      if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
+      if (ownsRegistryRequest(generation)) {
+        const message = mutationError(error);
+        setRegistryError(message);
+        flash(message, "danger");
+      }
       return false;
     } finally {
-      if (generation === requestGeneration.current && registryRequest === registryGeneration.current && requestStillCurrent()) setRegistryBusy(false);
+      if (ownsRegistryRequest(generation)) setRegistryBusy(false);
     }
-  }, [busy, currentMutationRequest, flash, mutationError, registrationMode, revisionJSON, registryBusy, session]);
+  }, [currentMutationRequest, flash, mutationError, session]);
+
+  const selectTag = useCallback((tag: string) => {
+    setRegistryTagState(tag);
+    setRegistryResolution(null);
+    setSelection((current) => ({ ...current, image: "" }));
+    void resolveTag(registryNamespace, registryRepository, tag);
+  }, [registryNamespace, registryRepository, resolveTag]);
+
+  const setRegistryRepository = useCallback((repository: string) => selectRepository(repository), [selectRepository]);
+  const setRegistryTag = useCallback((tag: string) => selectTag(tag), [selectTag]);
 
   const pollIntent = useCallback((operationId: string, targetWorkspaceId: string, generation: number) => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -300,37 +294,16 @@ export function useWorkspaceApplicationDeploymentController({
     void tick();
   }, [currentMutationRequest, flash, refreshWorkspace]);
 
-  const admitRevision = useCallback(async (): Promise<boolean> => {
-    if (!session || busy) return false;
-    const validation = validateWorkspaceApplicationRevisionDraft(draft);
-    if (registrationMode === "form" && !validation.ok || registrationMode === "json" && revisionJSONError) {
-      flash("请先修正表单中标红的字段", "danger");
-      return false;
-    }
-    const requestStillCurrent = currentMutationRequest();
-    const generation = ++requestGeneration.current;
-    const csrfToken = session.csrfToken;
-    setBusy(true);
-    try {
-      const revision = registrationMode === "json" ? parseWorkspaceApplicationRevisionJSON(revisionJSON) : composeWorkspaceApplicationRevision(draft);
-      const result = await admitOperatorApplicationRevision(revision, csrfToken, `${revision.applicationId}@${revision.version}`);
-      if (generation !== requestGeneration.current || !requestStillCurrent()) return false;
-      setApplicationId(result.revision.applicationId);
-      setTargetRevision(result.revision.version);
-      flash(`应用版本已准入（${result.decision === "identical" ? "与既有版本一致，幂等重放" : "新版本"}）：${result.revision.digest.slice(0, 16)}…`);
-      return true;
-    } catch (error) {
-      if (generation === requestGeneration.current && requestStillCurrent()) flash(mutationError(error), "danger");
-      return false;
-    } finally {
-      if (generation === requestGeneration.current && requestStillCurrent()) setBusy(false);
-    }
-  }, [busy, currentMutationRequest, draft, flash, mutationError, registrationMode, revisionJSON, revisionJSONError, session]);
+  const validation = validateWorkspaceApplicationDeploymentForm({ selection, advancedJSON });
 
   const deploy = useCallback(async (workspaceId: string): Promise<boolean> => {
     if (!session || busy || !workspaceId || workspaceId !== selectedWorkspaceId.current) return false;
-    if (!applicationId || !targetRevision) {
-      flash("请先填写应用 ID 与目标版本", "danger");
+    if (!validation.ok) {
+      flash(validation.fieldErrors.image ?? Object.values(validation.fieldErrors)[0] ?? validation.advancedJSONError ?? "请先选择镜像并修正表单", "danger");
+      return false;
+    }
+    if (deploymentJSONError) {
+      flash(deploymentJSONError, "danger");
       return false;
     }
     const requestStillCurrent = currentMutationRequest();
@@ -338,21 +311,10 @@ export function useWorkspaceApplicationDeploymentController({
     const csrfToken = session.csrfToken;
     setBusy(true);
     try {
-      // The deployment command carries the image description it targets, so an
-      // operator does not have to register the version as a separate step first.
-      // Control Plane admits this revision into its single revision owner inside
-      // the same command; a version that is already admitted identically is an
-      // idempotent replay, and different content under the same identity is
-      // refused by the owner rather than silently overwritten here.
-      const revision = registrationMode === "json"
-        ? parseWorkspaceApplicationRevisionJSON(revisionJSON)
-        : validateWorkspaceApplicationRevisionDraft(draft).ok
-          ? composeWorkspaceApplicationRevision(draft)
-          : null;
       const { configuration, secretBindings } = parseWorkspaceApplicationDeploymentJSON(configurationJSON, secretBindingsJSON);
+      const revision = composeWorkspaceApplicationRevision({ selection, advancedJSON });
       const result = await createOperatorWorkspaceApplicationDeployment(
-        workspaceId, applicationId, targetRevision, configuration, csrfToken,
-        `wsad-${crypto.randomUUID()}`, secretBindings, revision ?? undefined
+        workspaceId, configuration, csrfToken, `wsad-${crypto.randomUUID()}`, secretBindings, revision
       );
       if (generation !== requestGeneration.current || workspaceId !== selectedWorkspaceId.current || !requestStillCurrent()) return false;
       if (result.intent.workspaceId !== workspaceId) throw new Error("workspace_application_deployment_identity_mismatch");
@@ -366,9 +328,8 @@ export function useWorkspaceApplicationDeploymentController({
       }
       return false;
     }
-  }, [applicationId, busy, configurationJSON, draft, registrationMode, revisionJSON, secretBindingsJSON, currentMutationRequest, flash, mutationError, pollIntent, session, targetRevision]);
+  }, [advancedJSON, busy, configurationJSON, currentMutationRequest, deploymentJSONError, flash, mutationError, pollIntent, secretBindingsJSON, selection, session, validation]);
 
-  const validation = validateWorkspaceApplicationRevisionDraft(draft);
   const retry = useCallback(async (targetWorkspaceId: string, operationId: string): Promise<boolean> => {
     if (!session || busy || !operationId || !targetWorkspaceId || selectedWorkspaceId.current !== targetWorkspaceId) return false;
     const requestStillCurrent = currentMutationRequest();
@@ -390,15 +351,15 @@ export function useWorkspaceApplicationDeploymentController({
       return false;
     }
   }, [busy, currentMutationRequest, flash, mutationError, pollIntent, session]);
+
   return {
-    registrationMode, setRegistrationMode, revisionJSON, setRevisionJSON, revisionJSONError,
-    configurationJSON, setConfigurationJSON, secretBindingsJSON, setSecretBindingsJSON, deploymentJSONError, resetRegistrySelection,
-    applicationId, targetRevision, setApplicationId, setTargetRevision,
-    draft, validation, setDraftField,
-    addPersistentMount, removePersistentMount, addScratchMount, removeScratchMount,
-    addDependency, removeDependency, setDraftListItem, setDraftDependency,
-    registryCatalog, registryTags, registryResolution, registryBusy,
-    browseRegistryRepositories, browseRegistryTags, resolveRegistryTag,
-    intent, busy, admitRevision, deploy, retry, reset
+    registryNamespace: registryNamespace || registryCatalog?.namespaces[0] || "",
+    setRegistryNamespace: selectNamespace,
+    registryRepository, setRegistryRepository,
+    registryTag, setRegistryTag,
+    registryCatalog, repositoryOptions, registryTags, registryResolution, registryBusy, registryError,
+    selection, setSelectionField, advancedJSON, setAdvancedJSON, validation,
+    configurationJSON, setConfigurationJSON, secretBindingsJSON, setSecretBindingsJSON, deploymentJSONError,
+    intent, busy, deploy, retry, reset
   };
 }

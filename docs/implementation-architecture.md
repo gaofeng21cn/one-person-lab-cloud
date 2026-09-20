@@ -241,6 +241,23 @@ original purchase facts. Workspace/operation transactions and result CAS prevent
 a competing command or a delayed worker response from overwriting selection or
 completed progress. A successor does not create resources or charge the wallet.
 
+An operator deploys by selecting an image version, not by registering one. A
+deployment command whose description omits the application identity is completed
+by Control Plane before admission: the application identity is derived from the
+image's repository (so a new digest of the same repository is a new version that
+keeps the Workspace's data binding and origin, while another repository is
+another application), the version is derived from the completed description's
+content, and the run requirements the image declares for itself — its TCP ports,
+the paths it marks as data, and the process identity it expects — are read from
+the digest-pinned image config on the approved registry. Nothing is defaulted:
+an image the installation did not approve, a registry it cannot read, or a
+publishing exposure whose entry port neither the operator nor the image declares
+is refused by name. A description that states its own identity is a publisher's
+immutable statement and is admitted exactly as written, never completed.
+Controller-side, the Console drives one cascade — catalogue, repository, tag,
+resolved digest — and never asks the operator to name an application or a
+version.
+
 `OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED=1` enables both default
 installation and deployment recovery. The base Compose forwards this setting;
 the local Workspace overlay enables it. With the switch off, accepted requests

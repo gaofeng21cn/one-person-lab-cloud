@@ -29,10 +29,11 @@ export const goModules = Object.freeze([
 export const databaseFreeGoTestSpecs = Object.freeze([
   { cwd: "packages/contracts/go", packages: ["./..."] },
   { cwd: "services/control-plane", packages: ["./cmd/control-plane", "./internal/clients"] },
-  // The customer settlement trend owner tests live in internal/server, whose
-  // PostgreSQL-gated suites need the full lane. This bounded run keeps the new
-  // read surface gated without a database.
-  { cwd: "services/control-plane", run: "^TestWorkspaceSettlementTrend", packages: ["./internal/server"] },
+  // The customer settlement trend owner tests and the deployment description
+  // completion tests live in internal/server, whose PostgreSQL-gated suites need
+  // the full lane. This bounded run keeps those owner behaviours gated without a
+  // database and without pulling in the PostgreSQL-only cases.
+  { cwd: "services/control-plane", run: "^(TestWorkspaceSettlementTrend|TestApplicationDeployment)", skip: "Postgres", packages: ["./internal/server"] },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./internal/protectedresource"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
   { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] }
@@ -54,7 +55,7 @@ export const localVerificationSteps = Object.freeze([
   ...databaseFreeGoTestSpecs.map((spec) => ({
     name: `${spec.cwd} database-free tests`,
     command: "go",
-    args: ["test", "-count=1", ...(spec.run ? ["-run", spec.run] : []), ...spec.packages],
+    args: ["test", "-count=1", ...(spec.run ? ["-run", spec.run] : []), ...(spec.skip ? ["-skip", spec.skip] : []), ...spec.packages],
     cwd: spec.cwd
   })),
   { name: "Git whitespace", command: "git", args: ["diff", "--check"] }

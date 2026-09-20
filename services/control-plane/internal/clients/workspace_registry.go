@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +29,19 @@ import (
 type WorkspaceRegistryClient interface {
 	ListTags(ctx context.Context, namespace, repository string) ([]contracts.WorkspaceRegistryTag, error)
 	ResolveTag(ctx context.Context, namespace, repository, tag string) (contracts.WorkspaceRegistryImageResolution, error)
+	ImageFacts(ctx context.Context, namespace, repository, digest, platform string) (WorkspaceRegistryImageFacts, error)
+}
+
+// WorkspaceRegistryImageFacts is what one digest-pinned image declares about
+// its own runtime shape: the TCP ports it exposes, the filesystem paths it
+// marks as data, and the process identity it expects. A deployment description
+// can then be derived from the image instead of being invented by the platform
+// or retyped by an operator. The image is read through the Distribution API
+// only; nothing here mutates registry state.
+type WorkspaceRegistryImageFacts struct {
+	Ports   []int
+	Volumes []string
+	User    string
 }
 
 type WorkspaceRegistryConfig struct {
@@ -43,6 +58,10 @@ type RegistryCredential struct {
 	Username string
 	Password string
 }
+
+// registryDigestPattern is the pinned-digest shape every registry reference in
+// this client must carry. Tags are discovery input and never reach here.
+var registryDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 const (
 	maxRegistryResponseBytes = 8 << 20 // 8 MiB: bounded catalog/tag/manifest reads
@@ -388,4 +407,144 @@ func (c *workspaceRegistryHTTPClient) ResolveTag(ctx context.Context, namespace,
 
 func registryHostOf(endpoint string) string {
 	return strings.TrimPrefix(endpoint, "https://")
+}
+
+// registryManifestIndexMediaTypes are the manifest media types that list
+// per-platform children instead of describing one image directly.
+var registryImageIndexMediaTypes = map[string]struct{}{
+	"application/vnd.oci.image.index.v1+json":                   {},
+	"application/vnd.docker.distribution.manifest.list.v2+json": {},
+}
+
+// ImageFacts reads the declared runtime facts of one digest-pinned image for
+// the requested platform. An index is resolved to its child manifest for that
+// platform first, so the facts always describe the image the deployment will
+// actually run. A repository, digest or platform the registry cannot answer for
+// is an explicit error; nothing is defaulted.
+func (c *workspaceRegistryHTTPClient) ImageFacts(ctx context.Context, namespace, repository, digest, platform string) (WorkspaceRegistryImageFacts, error) {
+	facts := WorkspaceRegistryImageFacts{}
+	if err := contracts.ValidateWorkspaceRegistryRepository(namespace, repository); err != nil {
+		return facts, err
+	}
+	if !registryDigestPattern.MatchString(digest) {
+		return facts, &RegistryAPIError{Operation: "facts", Code: "image_digest_invalid"}
+	}
+	operatingSystem, architecture, found := strings.Cut(strings.TrimSpace(platform), "/")
+	if !found || operatingSystem == "" || architecture == "" {
+		return facts, &RegistryAPIError{Operation: "facts", Code: "image_platform_invalid"}
+	}
+	scope := "repository:" + namespace + "/" + repository + ":pull"
+	manifest, err := c.fetchManifest(ctx, scope, namespace, repository, digest)
+	if err != nil {
+		return facts, err
+	}
+	if _, isIndex := registryImageIndexMediaTypes[stringValueOf(manifest["mediaType"])]; isIndex {
+		child, err := registryImageIndexChild(manifest, operatingSystem, architecture)
+		if err != nil {
+			return facts, err
+		}
+		if manifest, err = c.fetchManifest(ctx, scope, namespace, repository, child); err != nil {
+			return facts, err
+		}
+	}
+	configDigest := stringValueOf(nestedMapValue(manifest, "config", "digest"))
+	if !registryDigestPattern.MatchString(configDigest) {
+		return facts, &RegistryAPIError{Operation: "facts", Code: "image_config_digest_missing"}
+	}
+	_, body, err := c.authorize(ctx, "config", scope, func(bearer string) (*http.Response, []byte, error) {
+		return c.get(ctx, "config", "/v2/"+namespace+"/"+repository+"/blobs/"+configDigest, nil, []string{"application/json"})
+	})
+	if err != nil {
+		return facts, err
+	}
+	return decodeRegistryImageFacts(body)
+}
+
+func (c *workspaceRegistryHTTPClient) fetchManifest(ctx context.Context, scope, namespace, repository, reference string) (map[string]any, error) {
+	_, body, err := c.authorize(ctx, "manifest", scope, func(bearer string) (*http.Response, []byte, error) {
+		return c.get(ctx, "manifest", "/v2/"+namespace+"/"+repository+"/manifests/"+reference, nil, registryManifestAccept)
+	})
+	if err != nil {
+		return nil, err
+	}
+	var manifest map[string]any
+	if json.Unmarshal(body, &manifest) != nil {
+		return nil, &RegistryAPIError{Operation: "manifest", Code: "manifest_response_invalid"}
+	}
+	return manifest, nil
+}
+
+// registryImageIndexChild selects the one child manifest that matches the
+// requested platform. An index that carries no such child cannot be deployed on
+// that platform, so it is refused rather than guessed.
+func registryImageIndexChild(manifest map[string]any, operatingSystem, architecture string) (string, error) {
+	children, _ := manifest["manifests"].([]any)
+	for _, candidate := range children {
+		entry, ok := candidate.(map[string]any)
+		if !ok {
+			continue
+		}
+		childPlatform, _ := entry["platform"].(map[string]any)
+		if stringValueOf(childPlatform["os"]) != operatingSystem || stringValueOf(childPlatform["architecture"]) != architecture {
+			continue
+		}
+		digest := stringValueOf(entry["digest"])
+		if registryDigestPattern.MatchString(digest) {
+			return digest, nil
+		}
+	}
+	return "", &RegistryAPIError{Operation: "manifest", Code: "image_platform_unsupported"}
+}
+
+func decodeRegistryImageFacts(body []byte) (WorkspaceRegistryImageFacts, error) {
+	facts := WorkspaceRegistryImageFacts{}
+	var payload struct {
+		Config struct {
+			User         string              `json:"User"`
+			ExposedPorts map[string]struct{} `json:"ExposedPorts"`
+			Volumes      map[string]struct{} `json:"Volumes"`
+		} `json:"config"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return facts, &RegistryAPIError{Operation: "config", Code: "image_config_response_invalid"}
+	}
+	seenPorts := map[int]bool{}
+	for exposed := range payload.Config.ExposedPorts {
+		portText, protocol, found := strings.Cut(exposed, "/")
+		port, err := strconv.Atoi(portText)
+		if !found || err != nil || strings.ToLower(protocol) != "tcp" || port < 1 || port > 65535 || seenPorts[port] {
+			continue
+		}
+		seenPorts[port] = true
+		facts.Ports = append(facts.Ports, port)
+	}
+	sort.Ints(facts.Ports)
+	seenVolumes := map[string]bool{}
+	for path := range payload.Config.Volumes {
+		if !strings.HasPrefix(path, "/") || strings.Contains(path, "..") || seenVolumes[path] {
+			continue
+		}
+		seenVolumes[path] = true
+		facts.Volumes = append(facts.Volumes, path)
+	}
+	sort.Strings(facts.Volumes)
+	facts.User = strings.TrimSpace(payload.Config.User)
+	return facts, nil
+}
+
+func stringValueOf(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func nestedMapValue(value map[string]any, keys ...string) any {
+	current := any(value)
+	for _, key := range keys {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = object[key]
+	}
+	return current
 }

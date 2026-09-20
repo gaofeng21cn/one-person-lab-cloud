@@ -32,10 +32,15 @@ Workspace identity is independent of its selected application; the
 owns that decision. Resource provisioning and deployment have independent
 progress and success states. A provisioned empty Workspace is usable for later
 installation; an application failure does not make the resource purchase fail.
-An authorized administrator selects the target Workspace, registry connection,
-repository and image/tag,
-resolves the immutable version, then supplies startup/configuration/Secret
-inputs, persistent mounts, exposure policy and optional data restoration.
+An authorized administrator selects the target Workspace, its exposure policy
+and one image version from the installation's approved registry, then deploys.
+The platform derives the application identity and version from that selection and
+reads the run requirements the image declares for itself, so startup ports, data
+paths and process identity are facts of the image rather than fields to retype;
+an image whose declared facts are not enough (a publishing deployment with no
+determinable entry, or an unapproved repository) is refused by name. Deployment
+inputs remain explicit: exposure policy, an optional health check, the
+non-secret run configuration and Secret references.
 Resource-fit preview precedes deployment onto the existing Workspace. One
 application can include several private services. OPL App is the
 default selection, and its Package/task controls appear only when applicable.

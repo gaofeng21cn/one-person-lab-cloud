@@ -34,9 +34,13 @@ func registerAdminRoutes(mux *http.ServeMux, app *controlPlaneServer, service *c
 	registerWorkspaceRuntimeGatewayNetworkRecoveryRoutes(mux, app, service)
 	registerApplicationRevisionRoutes(mux, app)
 	registerApplicationDataMaterialRoutes(mux, app)
-	registerApplicationDeploymentRoutes(mux, app, service)
+	// One registry catalog serves both the administrator's image selection and
+	// the deployment description completion that reads an image's own declared
+	// facts, so the two can never disagree about the approved registry.
+	catalog := mustWorkspaceRegistryCatalog()
+	registerWorkspaceRegistryCatalogRoutesWithCatalog(mux, app, catalog)
+	registerApplicationDeploymentRoutes(mux, app, service, catalog)
 	registerWorkspaceApplicationRecoveryRoutes(mux, app, service)
-	registerWorkspaceRegistryCatalogRoutes(mux, app)
 	mux.HandleFunc("GET /api/operator/workspace-launches/{operationId}/recovery", app.protected(true, func(w http.ResponseWriter, r *http.Request) {
 		row, found, err := app.tables.GetRuntimeOperation(r.Context(), strings.TrimSpace(r.PathValue("operationId")))
 		if err != nil {

@@ -19,7 +19,17 @@ type registryFixture struct {
 	basicPass   string
 	bearerRealm string
 	tokenIssued int
+	// imageFacts turns the fixture into a digest-pinned multi-platform image:
+	// the tag/digest names an index whose amd64 child is childDigest, and that
+	// child's config blob is configBody.
+	imageFacts bool
+	configBody string
 }
+
+const (
+	registryFixtureChildDigest  = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	registryFixtureConfigDigest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+)
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -50,7 +60,21 @@ func (f *registryFixture) handler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"oplcloud/one-person-lab-app","tags":["v1.0.0","latest","v1.1.0-rc1"]}`))
 	case strings.HasPrefix(r.URL.Path, "/v2/oplcloud/one-person-lab-app/manifests/"):
 		w.Header().Set("Docker-Content-Digest", testDigest)
-		_, _ = w.Write([]byte(`{}`))
+		if !f.imageFacts {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, registryFixtureChildDigest):
+			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			_, _ = w.Write([]byte(`{"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"digest":"` + registryFixtureConfigDigest + `"}}`))
+		default:
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			_, _ = w.Write([]byte(`{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"digest":"` + registryFixtureChildDigest + `","platform":{"os":"linux","architecture":"amd64"}}]}`))
+		}
+	case r.URL.Path == "/v2/oplcloud/one-person-lab-app/blobs/"+registryFixtureConfigDigest:
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(f.configBody))
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -167,5 +191,37 @@ func TestCredentialMismatchFailsConstruction(t *testing.T) {
 		Credential: RegistryCredential{Username: "operator"},
 	}, nil); err == nil {
 		t.Fatal("username without password must fail construction")
+	}
+}
+
+// ImageFacts reads what the digest-pinned image declares about its own runtime
+// shape. The index is resolved to the requested platform's child first, so the
+// facts always describe the image the deployment would actually run.
+func TestImageFactsReadTheImageOwnDeclarations(t *testing.T) {
+	fixture := newRegistryFixture(t)
+	fixture.imageFacts = true
+	fixture.configBody = `{"architecture":"amd64","os":"linux","config":{"User":"10001:10001","ExposedPorts":{"8082/tcp":{}},"Volumes":{"/data":{}}}}`
+	facts, err := fixture.client.ImageFacts(context.Background(), "oplcloud", "one-person-lab-app", testDigest, "linux/amd64")
+	if err != nil {
+		t.Fatalf("ImageFacts failed: %v", err)
+	}
+	if len(facts.Ports) != 1 || facts.Ports[0] != 8082 || len(facts.Volumes) != 1 || facts.Volumes[0] != "/data" || facts.User != "10001:10001" {
+		t.Fatalf("facts = %+v", facts)
+	}
+}
+
+// An image that carries no manifest for the requested platform is refused: the
+// facts would otherwise describe an image this deployment cannot run.
+func TestImageFactsRefuseAnUnsupportedPlatform(t *testing.T) {
+	fixture := newRegistryFixture(t)
+	fixture.imageFacts = true
+	fixture.configBody = `{"config":{}}`
+	if _, err := fixture.client.ImageFacts(context.Background(), "oplcloud", "one-person-lab-app", testDigest, "linux/arm64"); err == nil {
+		t.Fatal("an index without the requested platform must not resolve")
+	}
+	for _, digest := range []string{"", "latest", "sha256:abc"} {
+		if _, err := fixture.client.ImageFacts(context.Background(), "oplcloud", "one-person-lab-app", digest, "linux/amd64"); err == nil {
+			t.Fatalf("digest %q must not be read as a pinned image", digest)
+		}
 	}
 }

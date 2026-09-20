@@ -4,6 +4,33 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-20: Deploying An Image Needs No Registration Step
+
+An administrator deploys by selecting one image version from the installation's
+approved registry. The platform completes the rest of the description instead of
+asking an operator to type it:
+
+- The application identity is derived from the image's repository in the
+  approved namespace. Deployment therefore never requires a separate
+  "register an application version" step, and the identity stays the property of
+  the deployment's own owner: one repository's new digest is a new version that
+  keeps the Workspace's data binding and origin, while another repository is
+  another application.
+- The version is derived from the completed description's content, so the same
+  image and the same declared run facts always resolve to the same immutable
+  version.
+- Run requirements the image declares for itself — its TCP ports, the paths it
+  marks as data, and the process identity it expects — are read from the
+  digest-pinned image config on the approved registry. Stated values win, and
+  the platform never substitutes a default for an image fact it cannot read. An
+  image the installation did not approve, a registry it cannot read, and a
+  publishing exposure whose entry port is undeterminable are refused by name.
+
+A description that states its own identity is a publisher's immutable statement:
+it is admitted exactly as written and never completed from the image. The
+admission route itself remains the revision owner's API for pre-staging; what is
+retired is the operator flow that required it before deploying.
+
 ## 2026-09-17: A Customer Launch Delivers Resources, Not An Application
 
 A Workspace purchase ends at resource fulfillment. The customer Console path

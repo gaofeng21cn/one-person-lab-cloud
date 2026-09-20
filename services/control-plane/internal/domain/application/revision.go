@@ -76,6 +76,22 @@ func RevisionDigest(revision contracts.WorkspaceApplicationRevision) (string, er
 	return fmt.Sprintf("%x", sum), nil
 }
 
+// ContentDigest is the identity-free content digest of one revision. Two
+// descriptions that differ only in the identity the platform derived for them
+// share it, so the platform can derive an immutable version from what the
+// description actually says: the same image and the same declared run facts
+// always resolve to the same version, and any change to either is a new one.
+func ContentDigest(revision contracts.WorkspaceApplicationRevision) (string, error) {
+	probe := revision
+	probe.ApplicationID, probe.Version = "", ""
+	encoded, err := json.Marshal(probe)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", sum), nil
+}
+
 // AdmissionDecision is the outcome of admitting one revision against the
 // already-admitted revision with the same identity, if any.
 type AdmissionDecision string
