@@ -33,6 +33,10 @@ type controlPlaneServer struct {
 	// ponytail: per-process limiter; move to Redis when login traffic spans multiple replicas.
 	loginRateLimits map[string]loginFailure
 	deployment      deploymentProfile
+	// workspaceProxyTransport stays nil in production, keeping the reverse
+	// proxy's default transport; tests substitute it to prove a request
+	// genuinely reaches the destination the binding states.
+	workspaceProxyTransport http.RoundTripper
 }
 
 func (app *controlPlaneServer) lockResource(resourceType, id string) func() {

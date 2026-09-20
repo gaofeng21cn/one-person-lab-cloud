@@ -1217,6 +1217,7 @@ func (app *controlPlaneServer) proxyWorkspaceTo(w http.ResponseWriter, r *http.R
 	// not be steerable by its caller.
 	externalHost := r.Host
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = app.workspaceProxyTransport
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)

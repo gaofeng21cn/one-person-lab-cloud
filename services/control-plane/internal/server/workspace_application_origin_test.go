@@ -1,12 +1,20 @@
 package server
 
 import (
+	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	contracts "opl-cloud/packages/contracts/go"
 	"strings"
 	"testing"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // A binding's origin is a pure function of its identity: deriving it twice gives
 // the same name, and the name can be turned back into the binding for routing.
@@ -280,9 +288,10 @@ func TestWorkspaceExternalOriginIsOneInstallationFact(t *testing.T) {
 
 // A binding origin must serve the application it publishes. The entitlement
 // projection alone cannot decide that: it deletes the entry and reports not
-// openable until the application's own live readback says otherwise. A ready
-// application whose origin refuses with a not-ready conflict is an entry that
-// no customer can ever reach.
+// openable until the application's own live readback says otherwise. This test
+// therefore requires more than the absence of a refusal: the gateway must
+// forward the request to the destination the binding states and return the
+// application's real response.
 func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
 	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
 	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
@@ -304,6 +313,102 @@ func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
 		Status: "ready", Entry: applicationGatewayEntry(revision), Components: components,
 	}
 
+	// The real application behind the destination: it answers with its own body
+	// and records what the gateway actually forwarded to it.
+	type forwardedRequest struct {
+		host, forwardedHost, forwardedProto, path, rawQuery string
+		platformCSRF, platformCookie                        string
+	}
+	forwarded := make([]forwardedRequest, 0, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = append(forwarded, forwardedRequest{
+			host: r.Host, forwardedHost: r.Header.Get("X-Forwarded-Host"), forwardedProto: r.Header.Get("X-Forwarded-Proto"),
+			path: r.URL.Path, rawQuery: r.URL.RawQuery,
+			platformCSRF: r.Header.Get("X-OPL-CSRF"), platformCookie: r.Header.Get("Cookie"),
+		})
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Add("Set-Cookie", "app_session=abc; Domain=example.com; Path=/")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "knowledge-app-live-response")
+	}))
+	defer upstream.Close()
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.workspaceProxyTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme, r.URL.Host = upstreamURL.Scheme, upstreamURL.Host
+		return http.DefaultTransport.RoundTrip(r)
+	})
+
+	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
+	if !ok {
+		t.Fatal("origin host was not derived")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/chat?session=alpha", nil)
+	req.Host = host
+	// Platform credentials travel on the shared host and must never reach the
+	// application, no matter which admission path let the request in.
+	req.Header.Set("X-OPL-CSRF", "platform-csrf-token")
+	req.Header.Set("X-OPL-CSRF-Token", "platform-csrf-token")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "platform-session"})
+	req.AddCookie(&http.Cookie{Name: "opl_ws_active", Value: "platform-active"})
+	req.AddCookie(&http.Cookie{Name: workspaceGatewayRuntimeSessionCookieName("ws-alpha"), Value: "runtime-session"})
+	rec := httptest.NewRecorder()
+	fixture.server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Body.String() != "knowledge-app-live-response" {
+		t.Fatalf("the origin did not return the application's own response: %d %q", rec.Code, rec.Body.String())
+	}
+	if len(forwarded) != 1 {
+		t.Fatalf("the gateway forwarded %d requests, want exactly one", len(forwarded))
+	}
+	got := forwarded[0]
+	if got.host != "app-entry-main:8080" {
+		t.Fatalf("the request was not addressed to the binding's stated destination: Host %q", got.host)
+	}
+	if got.forwardedHost != host || got.forwardedProto != workspaceExternalScheme() {
+		t.Fatalf("external identity headers = %q/%q, want %q/%q", got.forwardedHost, got.forwardedProto, host, workspaceExternalScheme())
+	}
+	if got.path != "/chat" || got.rawQuery != "session=alpha" {
+		t.Fatalf("the forwarded target = %q?%q, want the requested path and query", got.path, got.rawQuery)
+	}
+	if got.platformCSRF != "" || strings.Contains(got.platformCookie, "opl_session") ||
+		strings.Contains(got.platformCookie, "opl_ws_active") || strings.Contains(got.platformCookie, "opl_ws_session_") {
+		t.Fatalf("platform credentials reached the application: csrf=%q cookie=%q", got.platformCSRF, got.platformCookie)
+	}
+	// The application's own cookie passes, confined to the origin host.
+	cookie := rec.Header().Get("Set-Cookie")
+	if !strings.Contains(cookie, "app_session=abc") || strings.Contains(cookie, "Domain=") {
+		t.Fatalf("the application cookie was not confined to the origin: %q", cookie)
+	}
+	// Admission is driven by the application's live readback, exactly once.
+	if len(fixture.fabric.applicationRuntimeInputs) != 1 {
+		t.Fatalf("live application reads = %d, want exactly one", len(fixture.fabric.applicationRuntimeInputs))
+	}
+}
+
+// An application Fabric has not reported ready is refused with the same
+// not-ready conflict: the origin never forwards on a stale or absent readiness.
+func TestWorkspaceApplicationOriginRefusesAnUnreadyApplication(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	intent := seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
+	revision := contracts.WorkspaceApplicationRevision{SchemaVersion: 1, ApplicationID: "knowledge-app", Version: "1.0.0", Platform: "linux/amd64",
+		Image: "registry.example/knowledge-app@sha256:" + strings.Repeat("a", 64), ExposurePolicy: "application",
+		EntryPort: "http", Ports: []contracts.WorkspaceApplicationPort{{Name: "http", Port: 8080, Protocol: "TCP"}}}
+	components := contracts.WorkspaceApplicationRuntimeComponents(revision)
+	for index := range components {
+		components[index].State = "pending"
+	}
+	fixture.fabric.applicationRuntimeObservation = contracts.WorkspaceApplicationRuntimeObservation{
+		SchemaVersion: 1, WorkspaceID: "ws-alpha", RuntimeID: contracts.WorkspaceApplicationRuntimeID(intent.OperationID + ":runtime"),
+		Status: "pending", Entry: applicationGatewayEntry(revision), Components: components,
+	}
+
 	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
 	if !ok {
 		t.Fatal("origin host was not derived")
@@ -312,10 +417,66 @@ func TestWorkspaceApplicationOriginServesItsReadyApplication(t *testing.T) {
 	req.Host = host
 	rec := httptest.NewRecorder()
 	fixture.server.ServeHTTP(rec, req)
-	// Reaching the application is a different question from the upstream being
-	// reachable in this unit fixture, but the published entry must not refuse the
-	// binding as not ready while Fabric reports the application ready.
-	if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "workspace_runtime_not_ready") {
-		t.Fatalf("a ready application's own origin refused it: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "workspace_runtime_not_ready") {
+		t.Fatalf("an unready application was not refused as not ready: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// When the live readback itself fails, the origin refuses rather than admits on
+// the entitlement projection alone: no read, no entry.
+func TestWorkspaceApplicationOriginRefusesWhenItsReadbackFails(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
+	fixture.fabric.applicationRuntimeErr = errors.New("injected_runtime_read_unavailable")
+
+	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
+	if !ok {
+		t.Fatal("origin host was not derived")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	fixture.server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "workspace_runtime_not_ready") {
+		t.Fatalf("a failed readback was not refused as not ready: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A suspended Workspace keeps its lifecycle refusal at the origin too: the
+// live-read admission path never bypasses it, and no application read is even
+// attempted.
+func TestWorkspaceApplicationOriginKeepsTheSuspendedRefusal(t *testing.T) {
+	t.Setenv("OPL_WORKSPACE_DOMAIN", "workspace.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DOMAIN", "application.example")
+	t.Setenv("OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED", "0")
+	fixture, _, _, _ := newResourceOnlyWorkspaceLifecycleFixture(t)
+	app := fixture.server.(*controlPlaneHTTPHandler).app
+	seedCurrentApplicationForLifecycle(t, app, "ws-alpha", "knowledge-app", true)
+	workspace, found, err := app.tables.GetWorkspace(context.Background(), "ws-alpha")
+	if err != nil || !found {
+		t.Fatal("missing workspace", err)
+	}
+	workspace["state"] = "suspended"
+	if err := app.tables.SaveWorkspace(context.Background(), workspace); err != nil {
+		t.Fatal(err)
+	}
+
+	host, ok := workspaceApplicationOriginHost("ws-alpha", "knowledge-app")
+	if !ok {
+		t.Fatal("origin host was not derived")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	fixture.server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "workspace_suspended") {
+		t.Fatalf("a suspended workspace lost its refusal: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(fixture.fabric.applicationRuntimeInputs) != 0 {
+		t.Fatalf("a suspended workspace triggered %d application reads, want none", len(fixture.fabric.applicationRuntimeInputs))
 	}
 }
