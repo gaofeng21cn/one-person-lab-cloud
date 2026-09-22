@@ -5,10 +5,30 @@ must agree on bytes or a stable public identity. Runtime behavior, internal
 fields, retired alternatives, current progress, and implementation layout stay
 in source, focused tests, or documentation.
 
-The `go/` module is also a live runtime dependency of Control Plane and Fabric.
+The `go/` module is a build-time dependency of Control Plane, Fabric and Ledger,
+and its shared runtime types are consumed by Control Plane and Fabric.
 It owns their shared stage/status, resource, provider, operation and protocol
 types. Keep service-local types in the service; a test fixture alone does not
 justify adding a cross-owner type.
+
+## v2.26 Contract Layout
+
+The single Cloud GitHub repository retains one shared Go contracts module at
+`packages/contracts/go/go.mod`. W01 places production proto source in
+`packages/contracts/proto/` and generated Go bindings in
+`packages/contracts/go/v226/`; that generated package is not another Go module.
+The v2.26 schema under `docs/spec/v2.26/contracts/` remains the specification
+owner. W01 must verify the production schema against that owner, lock generation
+tools and record the schema hash; merely adding this layout does not complete
+W01 or implement its consumers.
+
+Cloud services consume the contract revision from the same source commit, not
+independently floating repository tags. Necessary consumer `go.mod`/`go.sum`
+changes are included and verified with the contract revision. Do not create a
+second contracts module only to avoid dependency-file changes, or add legacy
+compatibility fields merely to satisfy old tests. Cross-service contracts do
+not authorize service implementation imports or shared domain persistence.
+External authorities and artifact consumers keep their explicit version pins.
 
 ## Current Contracts
 

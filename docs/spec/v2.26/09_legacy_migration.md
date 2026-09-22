@@ -4,9 +4,11 @@
 
 ## 1. 来源与目标，不混淆证据层
 
-当前源码基线：one-person-lab-cloud main，50520e27a6b9a630eefdc2df7da3e5ec498d28a0（2026-09-20）。当前Console固定resource_only；Control Plane/Fabric/Ledger是三个现有进程/schema Owner。当前文档保留的Instance证据不能自动覆盖此SHA。
+历史取证源码基线：one-person-lab-cloud main，50520e27a6b9a630eefdc2df7da3e5ec498d28a0（2026-09-20）。当前Console固定resource_only；Control Plane/Fabric/Ledger是三个现有进程/schema Owner。当前文档保留的Instance证据不能自动覆盖此SHA。
 
-读取依据（绝对路径）：
+以下绝对路径是该SHA的历史读取依据，保留原文以便复核，不是当前开发写入位置。当前Cloud产品统一在`opl-cloud`仓库内按01/14的相对路径实施；更名或移动checkout不重写历史SHA、回执或来源引用。
+
+历史读取依据（绝对路径）：
 
 - /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts:105
 - /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_provisioning.go:24
@@ -16,7 +18,7 @@
 - /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_delete.go:650
 - /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/types.go:210
 
-目标：客户选择Agent版本和套餐，Workspace Service编排完成可用部署。把现有职责逐领域移交，而不是清空重建、改ID、再次购买或由BFF兼容猜状态。
+目标：客户选择Agent版本和套餐，Workspace Service编排完成可用部署。在同一`opl-cloud`仓库内把现有职责逐领域移交到01规定的独立module/服务，而不是创建领域GitHub仓库、清空重建、改ID、再次购买或由BFF兼容猜状态。`services/control-plane`仅作为未移交能力的原Owner，不与新Owner永久双写；Instance/Sub2API/Framework等外部权威不因单仓库决定并入Cloud。
 
 ## 2. 按旧对象类型明确客户迁移体验
 
@@ -89,7 +91,7 @@
 
 当前包是已确认目标的执行规格，当前源码文档是未迁移实现。实施第一个PR必须：
 
-1. 在docs/architecture.md及docs/decisions.md记录新客户Agent+套餐目标、领域拆分和逐域移交，明确替代2026-09-17“客户只买资源”作为新客户默认入口的决定；保留该决定为历史Launch解释。
+1. 在docs/architecture.md及docs/decisions.md记录新客户Agent+套餐目标、单一`opl-cloud`仓库内的领域独立module/服务和逐域移交，明确替代2026-09-17“客户只买资源”作为新客户默认入口的决定；保留该决定为历史Launch解释。
 2. docs/implementation-architecture.md仍描述实际已迁移模块，不把目标提前填成现行架构。
 3. docs/status.md写每个来源SHA/测试/迁移证据；docs/roadmap.md对应F功能与未完成Instance义务。
 4. docs/README.md指向唯一目标/实施/迁移Owner；退休重复当前writer，不保留两套同名“最终架构”。

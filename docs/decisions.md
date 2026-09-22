@@ -18,12 +18,30 @@ Each domain owns its data, its API, and its writes. The target domains are
 `tenant` (CloudIdentity), `capability`, `build`, `workspace`,
 `runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
 `fabric`, and `ledger`; `console`/BFF is the browser aggregation surface.
+All Cloud product code lives in the single GitHub repository `opl-cloud`.
 `Capability`, `Build`, `Workspace`, `Runtime Control`, `Resource Catalog`, and
-`Gateway Integration` may become separate repositories. `Fabric` and `Ledger`
-keep their execution and evidence authority.
+`Gateway Integration` are service modules inside that repository, not new
+GitHub repositories. `Fabric` and `Ledger` keep their execution and evidence
+authority. The physical target map is owned by
+[Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 
 The remaining target decisions are:
 
+- Each business service keeps its own Go module, process, and service boundary.
+  CloudIdentity (`tenant`) remains inside the Gateway Integration module and
+  deployment unit, with a separate database/writer boundary from `gateway`.
+  Proto service groups are API groups, not extra processes. The old Control
+  Plane is a bounded migration source, not a permanent parallel writer.
+- Shared wire contracts use the existing `packages/contracts/go/go.mod` module:
+  proto source belongs in `packages/contracts/proto/`, and generated v2.26 Go
+  bindings belong in `packages/contracts/go/v226/`. No independent v2.26 Go
+  module or contracts GitHub repository is introduced. Cloud consumers and
+  contracts are revised atomically at one source commit, with schema hashes
+  and locked generation tools. Necessary consumer dependency-file changes are
+  part of W01; unchanged dependency files are not an architectural boundary.
+- Consolidation covers Cloud product code only. Instance deployment, Sub2API
+  wallet/Gateway authority, and Framework remain outside this repository;
+  their exact artifact references and authority boundaries remain intact.
 - Each data owner has its own PostgreSQL database and owner/writer roles. Cross-
   owner references use opaque identifiers only; there are no cross-domain
   foreign keys, joins, or transactions.
@@ -251,6 +269,10 @@ Instance adoption requirement. The native API wire binding belongs to
 [implementation architecture](./implementation-architecture.md).
 
 ## 2026-08-20: Cloud Owns The Product; Instances Own Installations
+
+> The repository name below is historical. The 2026-09-22 decision uses
+> `opl-cloud` for the single Cloud GitHub repository and keeps this
+> product/Instance authority boundary unchanged.
 
 `one-person-lab-cloud` is the single product and implementation repository for
 Console, Control Plane, Fabric, Ledger, reusable provider adapters, portable

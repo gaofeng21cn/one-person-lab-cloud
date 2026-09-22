@@ -1,6 +1,6 @@
 # OPL Cloud Architecture
 
-Owner: `one-person-lab-cloud`
+Owner: `opl-cloud`
 Purpose: `architecture_boundary`
 State: `active_target_reference`
 Machine boundary: Canonical human-readable target architecture; implementation
@@ -115,12 +115,57 @@ This repository is the product and implementation repository for the target
 domain-separated Agent SaaS architecture. The target domains are `tenant`
 (CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
 `resource_catalog`, `gateway` (Gateway Integration), `fabric`, and `ledger`,
-with `console-ui` and a Console BFF as the browser surface. `Capability`,
-`Build`, `Workspace`, `Runtime Control`, `Resource Catalog`, and `Gateway
-Integration` may live in their own repositories; `Fabric` and `Ledger` keep
-their execution and evidence authority. The migration of the current
-Control Plane, Fabric, and Ledger implementation into this target is tracked by
-the v2.26 work packages.
+with `console-ui` and a Console BFF as the browser surface. All Cloud product
+code belongs to this one GitHub repository, `opl-cloud`; service boundaries are
+not repository boundaries. `Fabric` and `Ledger` retain their execution and
+evidence authority. The v2.26 work packages track the migration from the current
+Control Plane, Fabric, and Ledger implementation, not creation of domain repos.
+
+### Target Directory And Service Map
+
+This is the target layout, not evidence that the new modules already exist:
+
+| In-repository path | Module / deployment boundary | Data and responsibility owner |
+| --- | --- | --- |
+| `apps/console-ui/` | React/TypeScript application | Presentation; calls Console BFF only |
+| `apps/console-bff/` | Independent Go module and process | Browser REST, server-side session security and DTO aggregation; no business persistence or business Saga |
+| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity and `gateway` integration: two distinct database/writer owners in one deployment unit; Sub2API remains the external wallet/Gateway authority |
+| `services/capability/` | Independent Go module and process | `capability`: publishers, Packages, versions and catalog metadata |
+| `services/build/` | Independent Go module and process | `build`: build jobs, immutable input references and artifact evidence |
+| `services/workspace/` | Independent Go module and process | `workspace`: Workspace lifecycle and business Saga |
+| `services/runtime-control/` | Independent Go module and process | `runtime_control`: desired configuration, deployments, runtime lifecycle and routing intent |
+| `services/resource-catalog/` | Independent Go module and process | `resource_catalog`: product plans and pricing rules |
+| `services/fabric/` | Existing independent Go module and process | `fabric`: provider mutation, resources and execution readback |
+| `services/ledger/` | Existing independent Go module and process | `ledger`: receipts, evidence and reconciliation |
+| `packages/contracts/go/` | One shared Go module, no process or database | Cross-owner wire contracts and generated `v226/` bindings |
+| `services/internal/` | Existing narrowly scoped, policy-free shared infrastructure | Only reusable mechanisms with at least two real service callers |
+| `services/control-plane/` | Existing independent Go module and process during migration | Retained capabilities until their callers and obligations move to the target owner; not a permanent second writer |
+
+Each business data owner has its own database and writer roles. Co-location in
+one repository does not permit cross-service implementation imports, direct
+access to another owner's database, cross-owner joins, or shared business state.
+CloudIdentity and Gateway Integration stay in one service module and deployment
+unit while retaining two data owners; a proto `service` declaration does not
+create a process. The BFF owns no business Saga; Workspace does.
+
+This adds six planned business-service modules and one BFF module to the
+repository, rather than new GitHub repositories. Fabric, Ledger, Console UI and
+the existing contracts module are retained. The Control Plane is migrated one
+live capability at a time: switch its real callers and preserve historical data
+obligations before retiring each old write path. This decision does not add an
+orchestrator, event bus, shared policy layer, or a second Gateway.
+
+W01 uses `packages/contracts/proto/` for production proto source and
+`packages/contracts/go/v226/` for generated bindings under the existing
+`packages/contracts/go/go.mod`; it does not create a second contracts module.
+Contracts and internal consumers use the same Cloud source commit, recorded
+schema hashes, and locked generation tools. Consumer `go.mod` and `go.sum`
+changes required by that dependency graph are part of the contract change, not
+a reason to invent another module. Service-local domain models remain local.
+Independent Instance, Sub2API and Framework authorities are not merged into
+Cloud; their external integration and exact artifact pins remain unchanged.
+
+### Current Implementation And Instance Boundary
 
 The current implementation still runs the earlier Control Plane, Fabric, and
 Ledger services. Their boundaries are described below and remain authoritative

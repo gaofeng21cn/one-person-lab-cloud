@@ -51,7 +51,8 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
   surfaces; they do not become a second security, product, or status owner.
 - `one-person-lab` owns the reusable development method. Instance identity,
   provider profile and deployment receipts belong to the instance repository;
-  `opl-cloud` remains an internal artifact identifier.
+  `opl-cloud` is the single Cloud product repository as well as its existing
+  internal artifact identifier; external owner repositories are not merged.
 
 ## Active Navigation
 
