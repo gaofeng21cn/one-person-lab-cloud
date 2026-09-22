@@ -16,13 +16,14 @@
 - Cloud 拥有 Workspace 套餐价格/报价/订阅编排，Gateway 拥有模型价格与钱包记账。资源套餐报价不是 Token 定价。
 - Ledger 保存不可变业务证据，不重复维护可消费钱包。
 - Framework/OPL App 拥有 Runtime 实现；Cloud 只做 Runtime Control。Instance 拥有生产配置、Secrets、部署/回滚和资格回执。
+- 单一GitHub仓库只覆盖Cloud产品：`apps/`、`services/`和`packages/`共同演进；不合并Instance、Sub2API、Framework/OPL App等外部Owner。领域服务独立不等于独立仓库，目录/module/进程映射以01第3节为准。
 
 ## 2. 本次收敛决定（不是等待再次选择的选项）
 
 | ID | 决定 | 依据/约束 |
 |---|---|---|
 | D01 | 新客户入口是选 Agent 版本+套餐后部署，不再仅购买裸资源 | 当前用户明确确认；旧路径按 09 迁移 |
-| D02 | 终局领域独立服务；Capability、Build、Workspace、Runtime Control、Gateway Integration 可独立仓库；Fabric/Ledger 保留其执行/证据权威 | 原用户9月21日微服务方向；不得以旧三服务实现否定目标 |
+| D02 | 全部Cloud产品代码位于唯一GitHub仓库`opl-cloud`；领域服务在仓库内保持独立Go module、进程和数据写入边界，CloudIdentity与Gateway Integration按01共module/进程但分数据库/角色；Fabric/Ledger保留权威 | 2026-09-22用户明确单仓库决定；替代原多仓库落点，不改变v2.26领域职责或字段 |
 | D03 | 每个数据 Owner 独立 PostgreSQL database/独立角色；可共 PostgreSQL 实例；跨 Owner 只传不透明 ID，不建跨域 FK/JOIN/事务 | 消除旧稿独立数据库与跨 schema FK 矛盾 |
 | D04 | 外部浏览器 API 统一由 Console BFF 提供 REST；内部 typed gRPC/protobuf；可靠事件用本域 PostgreSQL Outbox→消费者 gRPC Inbox | 落实已讨论的内部协议和 Outbox；当前链路无须增加 NATS 运行依赖 |
 | D05 | BFF 仅鉴权、授权上下文与产品 DTO 聚合；Workspace Service 拥有业务 Saga | 不把前端聚合层变第二编排器 |
@@ -43,7 +44,7 @@
 | 文件 | 唯一负责内容 |
 |---|---|
 | 00（本文） | 范围、决定、术语、统一状态词与功能ID |
-| 01_domain_ownership_matrix.md | Owner、服务/仓库边界、真实调用、插件/适配契约 |
+| 01_domain_ownership_matrix.md | Owner、单仓库内目录/module/服务边界、真实调用、插件/适配契约 |
 | 02_database_schema_complete.md + contracts/schema.sql | 字段、约束、索引、删除保护和保留；SQL是字段的可执行投影 |
 | 03_api_contract_complete.yaml | 所有客户/管理员REST操作、DTO、权限、错误及幂等 |
 | contracts/internal.proto + contracts/events.json | 内部调用与Outbox事件的机器可检查规格 |
@@ -172,4 +173,4 @@
 
 这不是只有架构图、API列表或一条演示链：产品、UI/UX、字段、接口、跨Domain闭环、迁移、角色验收和开发执行任务均在同一包内。14为全部当前API、Owner表和内部RPC分配实现任务；每个任务可开始的依赖和最终验收依赖分开，不用所有人互相等待。
 
-所有工作包目前仍标not_implemented。本轮只补方案；后续按实际代码/数据库/浏览器/Instance证据逐项交付，不把规划完成说成软件完成。原始source路径以本次机器为基线，其他开发机映射相同逻辑Owner的checkout；实施时如source SHA已变，W00核对真实caller差异，但不重复讨论已批准产品规则。
+本任务书描述计划覆盖而非进度账本；`not_implemented`仅表示生成器不认证实施完成，不覆盖后续实施证据。实际完成状态以当前`docs/status.md`及Owner绑定的源码、验证与回执为准。本轮只修正规划落点；后续按实际代码/数据库/浏览器/Instance证据逐项交付，不把规划完成说成软件完成。原始source路径及SHA只描述取证时的迁移基线，不是当前写入指令；Cloud当前执行路径统一为同一`opl-cloud` checkout内的相对路径，按01/14映射。外部Owner仍使用各自checkout与授权流程；实施时如source SHA已变，W00核对真实caller差异，但不重复讨论已批准产品规则。

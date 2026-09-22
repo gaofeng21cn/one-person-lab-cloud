@@ -22,7 +22,7 @@ evidence that the target is implemented.
 | Adopting repository | `RenDeHuang/opl-cloud` |
 | Start-point SHA | `50520e27a6b9a630eefdc2df7da3e5ec498d28a0` |
 | Provenance | `gaofeng21cn/one-person-lab-cloud` at that SHA |
-| Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`, `services/internal` |
+| Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`; shared infrastructure: `services/internal/postgresmigrate` |
 | Current latest control-plane migration | `202609130001_workspace_application_selection.sql` |
 | Current latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
 | Current latest ledger migration | `202609080001_receipt_request_lookup.sql` |
@@ -38,11 +38,14 @@ The target is not the current implementation. Per
 [01_domain_ownership_matrix.md](./spec/v2.26/01_domain_ownership_matrix.md), the
 gaps between them are:
 
-- Current implementation is three services plus Console; the target is nine
-  domain services plus a Console BFF. The six planned delivery names
-  (`opl-cloud-capability`, `opl-cloud-build`, `opl-cloud-workspace`,
-  `opl-cloud-runtime-control`, `opl-cloud-gateway-integration`,
-  `opl-cloud-resource-catalog`) do not exist as repositories yet.
+- Current implementation is three services plus Console. The target keeps all
+  Cloud product code in `RenDeHuang/opl-cloud`: eight backend service modules
+  plus a Console BFF serve nine data owners. CloudIdentity and Gateway
+  Integration share one module/process but retain separate databases/roles.
+  The six new domain service directories and BFF remain planned; their exact
+  placement is owned by [01](./spec/v2.26/01_domain_ownership_matrix.md).
+  Control Plane remains the migration source, not an additional permanent
+  writer. No domain GitHub repositories are required.
 - Current integration is typed public HTTP; the target is typed gRPC/protobuf
   with per-domain PostgreSQL Outbox delivery.
 - Current client entry is resource purchase plus separate administrator
@@ -55,6 +58,35 @@ gaps between them are:
 
 Existing `resource_only` Launch obligations and historical purchases, Keys, and
 receipts remain valid and are carried by the migration, not discarded.
+
+## v2.26 Single-Repository Specification Alignment
+
+The 2026-09-22 single-repository decision is reconciled across canonical owners,
+v2.26 ownership/delivery/migration documents, and the generated W00–W31 plan.
+The plan derives Cloud paths from its containing checkout. It retains one
+contracts module and permits necessary consumer dependency updates; it does not
+create a domain repository or change business fields.
+
+[Source-check receipt](./spec/v2.26/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
+binds the base SHA and exact changed-source hashes. Verification passed:
+
+- Plan coverage: 32 work packages, 17 features, 108 REST operations, 96 tables,
+  and 172 internal RPCs; no dependency cycle or missing existing source path.
+- Five isolated plan-validator tests cover the current layout, sibling-repo
+  rejection, the CloudIdentity/Gateway deployment exception, and unauthorized
+  external writes including path traversal. Regeneration has no output drift.
+- Ten specification check groups and 56 D17 cases pass. Handoff evidence is
+  `ready_for_implementation`; unchanged exact-hash historical DB/UI evidence is
+  reused, not reported as newly executed qualification.
+- `npm run verify:local` passes: 226 source tests, 114 browser tests, TypeScript
+  typecheck/lint, Console build, existing Go module compilation and database-free
+  tests. The first attempt lacked installed Node dependencies; `npm ci` restored
+  the lockfile-defined environment without changing dependency manifests.
+
+No product Go/TypeScript source, SQL, API/message field, or existing migration
+was changed. No service scaffold, deployment, production access or publication
+was performed. W01 production contracts/consumer adoption and W02 service
+implementation remain open; the pre-existing untracked proto input is preserved.
 
 ## Conclusion
 

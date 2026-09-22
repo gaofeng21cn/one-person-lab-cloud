@@ -37,7 +37,7 @@ v2.21–v2.25是规划阶段标签，不代表这些版本已经发布。以下�
 | P4 旧路径迁移（v2.24） | F16批次切换 | P0试迁移+P1-P3能力与反例 | 每批单writer、历史不丢、已购资源沿用、回滚可验证 |
 | P5 生产资格（v2.25） | F17/全链真实质量 | 同一精确Candidate、Instance授权环境 | Local/Instance真实证据齐全，按已授权流程发布同字节 |
 
-P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、receipt、quote、provisioning形态从P0就必须兼容已有义务。没有必要同时建完所有新仓库再验证首条链。
+P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、receipt、quote、provisioning形态从P0就必须兼容已有义务。全部Cloud开发都在同一`opl-cloud`仓库内，按01的独立module/进程映射逐个落实；没有必要同时建完所有空服务再验证首条链。
 
 ## 4. 后端按Owner的必交能力
 
@@ -53,7 +53,7 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 | Ledger | typed append-only receipt与查询、迁移证据 | 无Workspace build类型明确准入，原单/删除/退款精确绑定 |
 | BFF | 会话/CSRF、REST产品DTO、owner路由 | 不跨库、不做Saga、不缓存钱包为权威、不泄露内部token |
 
-每个新跨模块类型必须同时更新生产consumer、测试和契约。不能为旧测试额外增加兼容字段/旁路；旧历史义务由09明确迁移。
+每个新跨模块类型必须在同一Cloud commit同时更新真实consumer、测试和共享契约。消费者必要的`go.mod`/`go.sum`更新属于契约工作写集，不因触及其他服务目录就视为无关改动；应证明依赖链与受影响构建。不能为旧测试额外增加兼容字段/旁路；旧历史义务由09明确迁移。
 
 ## 5. 必须关闭的现有实现缺口（不是待拍板产品选项）
 
@@ -99,11 +99,11 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 | Local资格 | 干净合格Linux Local-Docker、固定Candidate | 本provider运行/存储/生命周期 | Tencent与实际Instance部署 |
 | Instance资格 | 保护runner、原Candidate digest、实际owner readback/新receipt | 指定实例/时间/输入的采用 | 其他版本/环境普遍可用 |
 
-源码实施按仓库规则先focused，再verify:local；跨模块/数据库/provider结构用verify:local:full。测试失败必须记录，不以“通常没问题”跳过。本轮只改外部规格包，所以不运行无关产品构建冒充文档验证。
+源码实施按仓库规则先focused，再verify:local；跨模块/数据库/provider结构用verify:local:full。测试失败必须记录，不以“通常没问题”跳过。规格文档变更执行相应一致性检查，不以无关产品构建冒充文档验证；后续实现再按实际写集执行上述源码验证。
 
 ## 8. 并行分工与合并要求
 
-- API/schema/共享状态是一个版本，先定名字再并行UI/DB；同文件或同contract revision必须串行。
+- API/schema/共享状态是一个版本；v2.26已确定的字段不重新设计。按01的单仓库目录及独立Owner写集并行UI/DB/服务；同文件、共享contract revision、公共构建配置及canonical main由协调者串行整合。
 - 同一功能的前后端不各写一份DTO，以03生成/导入typed client；02映射写入Owner，04消费这些字段。
 - 一个PR按一个活能力切换真实caller，再退休旧路径；Migration/Instance切换按09单独证据。
 - 不为流程强制worktree、固定TDD轮数、个人签字或每步批准；涉及真实钱/资源/生产时仍须原有授权范围。
@@ -131,4 +131,4 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 
 每个实施任务从14领取W编号；F编号、operationId、表及RPC直接引用冻结规格。进入任务前确认对应source/write set和依赖；完成时交代码、focused结果、真实caller证据和本层未验证项。每个PR保持一个可验收能力的切换，不强制额外worktree/审批轮次，不一次重写所有Owner。
 
-W00–W02是起点；W09与W15形成前两条真实纵向链；W19–W21完成生命周期；W25/W30负责试迁移与真实切换；W27–W31负责候选/资格/同字节发布，不能让Cloud代替Instance执行生产工作。
+W00收齐目标与迁移口径；W01在现有contracts module落实协议、固定工具/schema hash并验证消费者，不止生成成功；W02按01在同仓库逐域建立模块、进程及数据库隔离，不创建领域GitHub仓库。实际开始/验收依赖以14为准，不因此重复添加审批门槛。W09与W15形成前两条真实纵向链；W19–W21完成生命周期；W25/W30负责试迁移与真实切换；W27–W31负责候选/资格/同字节发布，不能让Cloud代替Instance执行生产工作。

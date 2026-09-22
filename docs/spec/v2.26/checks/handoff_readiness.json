@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-09-22T03:09:02.727471+00:00",
+  "timestamp": "2026-09-22T14:52:51.781198+00:00",
   "status": "ready_for_implementation",
   "technicalClosureVerified": true,
   "pendingUserDecisions": [],
@@ -19,7 +19,7 @@
     "R10": "closed_in_spec"
   },
   "evidence": {
-    "static": "checks/runs/20260922T030902602990Z.json",
+    "static": "checks/runs/20260922T145251554308Z.json",
     "crossDomain": "checks/runs/cross-domain-20260921T192502.004890Z.json",
     "publisherSource": "checks/runs/publisher-source-20260921T175446754962Z.json",
     "contractSemantics": "checks/handoff_contract_semantics.json",
