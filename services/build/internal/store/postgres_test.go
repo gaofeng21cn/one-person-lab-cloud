@@ -34,10 +34,21 @@ func openOwnerDatabase(t *testing.T) *sql.DB {
 	for _, statement := range []string{
 		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='opl_build_owner') THEN CREATE ROLE opl_build_owner NOLOGIN; END IF; END $$;`,
 		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='opl_build_writer') THEN CREATE ROLE opl_build_writer NOLOGIN; END IF; END $$;`,
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='opl_build') THEN CREATE DATABASE opl_build; END IF; END $$;`,
 	} {
 		if _, err := admin.ExecContext(context.Background(), statement); err != nil {
-			t.Fatalf("provision owner database/roles: %v", err)
+			t.Fatalf("provision owner roles: %v", err)
+		}
+	}
+	// CREATE DATABASE cannot run inside a function or a transaction block, so the
+	// existence check and the statement are separate calls.
+	var databaseExists bool
+	if err := admin.QueryRowContext(context.Background(),
+		`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='opl_build')`).Scan(&databaseExists); err != nil {
+		t.Fatalf("inspect owner database: %v", err)
+	}
+	if !databaseExists {
+		if _, err := admin.ExecContext(context.Background(), `CREATE DATABASE opl_build`); err != nil {
+			t.Fatalf("create owner database: %v", err)
 		}
 	}
 	ownerDSN := replaceDatabase(t, maintenance, "opl_build")
@@ -211,33 +222,36 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 	}
 
 	// Each consumer is acknowledged independently.
-	pending, err := owner.PendingDeliveries(ctx, "capability", 10)
+	// The owner database is a reusable fixture, so each assertion selects this
+	// run's event instead of assuming an otherwise empty queue.
+	pending, err := owner.PendingDeliveries(ctx, "capability", 1000)
 	if err != nil {
 		t.Fatalf("list pending deliveries: %v", err)
 	}
-	if len(pending) != 1 || pending[0].Event.ID != event.ID {
-		t.Fatalf("pending capability deliveries = %+v", pending)
+	capabilityDelivery := pendingForEvent(pending, event.ID)
+	if capabilityDelivery == nil {
+		t.Fatalf("capability delivery for %s must be pending, got %+v", event.ID, pending)
 	}
-	if pending[0].Event.AggregateType != "build_job" {
-		t.Fatalf("pending delivery lost the producer-supplied aggregate type: %+v", pending[0].Event)
+	if capabilityDelivery.Event.AggregateType != "build_job" {
+		t.Fatalf("pending delivery lost the producer-supplied aggregate type: %+v", capabilityDelivery.Event)
 	}
 	if err := owner.AcknowledgeDelivery(ctx, "capability", event.ID); err != nil {
 		t.Fatalf("acknowledge delivery: %v", err)
 	}
-	afterCapability, err := owner.PendingDeliveries(ctx, "capability", 10)
+	afterCapability, err := owner.PendingDeliveries(ctx, "capability", 1000)
 	if err != nil {
 		t.Fatalf("list pending deliveries: %v", err)
 	}
-	if len(afterCapability) != 0 {
-		t.Fatalf("capability should be acknowledged, got %+v", afterCapability)
+	if pendingForEvent(afterCapability, event.ID) != nil {
+		t.Fatalf("capability delivery for %s must be acknowledged", event.ID)
 	}
 	// Acknowledging one consumer must not mark the other delivered.
-	pendingLedger, err := owner.PendingDeliveries(ctx, "ledger", 10)
+	pendingLedger, err := owner.PendingDeliveries(ctx, "ledger", 1000)
 	if err != nil {
 		t.Fatalf("list pending deliveries: %v", err)
 	}
-	if len(pendingLedger) != 1 {
-		t.Fatalf("ledger delivery must remain pending, got %+v", pendingLedger)
+	if pendingForEvent(pendingLedger, event.ID) == nil {
+		t.Fatalf("ledger delivery for %s must remain pending, got %+v", event.ID, pendingLedger)
 	}
 
 	// Idempotency replays the same identity and rejects a changed body.
@@ -339,4 +353,118 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 	if storedHash != event.PayloadSHA256() {
 		t.Fatal("the first recorded fact must not be overwritten by a conflicting delivery")
 	}
+}
+
+func pendingForEvent(pending []PendingDelivery, eventID string) *PendingDelivery {
+	for i := range pending {
+		if pending[i].Event.ID == eventID {
+			return &pending[i]
+		}
+	}
+	return nil
+}
+
+// The owner's DDL grants the runtime writer DML on its own schema and revokes
+// UPDATE/DELETE on append-only facts. This proves the role boundary W02 requires
+// rather than only proving the tables exist.
+func TestWriterRoleCannotRewriteAppendOnlyFacts(t *testing.T) {
+	db := openOwnerDatabase(t)
+	owner := New(db)
+	if err := owner.Install(context.Background()); err != nil {
+		t.Fatalf("install owner schema: %v", err)
+	}
+	ctx := context.Background()
+	suffix := time.Now().UTC().Format("20060102150405.000000000")
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin transaction: %v", err)
+	}
+	if err := AppendEvent(ctx, tx, Event{
+		ID:                "evt-priv-" + suffix,
+		EventType:         "build.artifact_confirmed.v1",
+		SchemaVersion:     1,
+		AggregateType:     "build_job",
+		AggregateID:       "job-priv-" + suffix,
+		AggregateRevision: 1,
+		CorrelationID:     "req-priv-" + suffix,
+		Payload:           json.RawMessage(`{"buildJobId":"job-priv"}`),
+		OccurredAt:        time.Now().UTC(),
+	}, []string{"ledger"}); err != nil {
+		t.Fatalf("append outbox event: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// The DDL creates NOLOGIN owner/writer group roles; the deployment owner gives a
+	// runtime LOGIN role the writer role and nothing else, so this connects as that
+	// runtime login rather than as the group role itself.
+	if _, err := db.ExecContext(ctx, `
+		DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='opl_build_runtime') THEN
+				CREATE ROLE opl_build_runtime LOGIN;
+			END IF;
+		END $$;`); err != nil {
+		t.Fatalf("provision runtime login role: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `GRANT opl_build_writer TO opl_build_runtime`); err != nil {
+		t.Fatalf("grant the writer role to the runtime login: %v", err)
+	}
+
+	writer, err := sql.Open("postgres", writerDSN(t))
+	if err != nil {
+		t.Fatalf("open writer connection: %v", err)
+	}
+	defer writer.Close()
+
+	// The writer may write its own domain's rows through the real typed path.
+	writerTx, err := writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin writer transaction: %v", err)
+	}
+	if _, err := CreateOperation(ctx, writerTx, OperationInput{
+		ID:         "op-priv-" + suffix,
+		ActorID:    "actor-1",
+		Kind:       "build",
+		ResourceID: "job-priv-" + suffix,
+		Stage:      "queued",
+		RequestID:  "req-priv-" + suffix,
+	}); err != nil {
+		t.Fatalf("writer must be able to insert its own domain rows: %v", err)
+	}
+	if err := writerTx.Commit(); err != nil {
+		t.Fatalf("commit writer transaction: %v", err)
+	}
+
+	// Append-only facts are not rewritable by the runtime writer.
+	if _, err := writer.ExecContext(ctx,
+		`UPDATE build.outbox_events SET event_type = 'tampered' WHERE id = $1`, "evt-priv-"+suffix); err == nil {
+		t.Fatal("the runtime writer must not update outbox_events")
+	}
+	if _, err := writer.ExecContext(ctx,
+		`DELETE FROM build.outbox_events WHERE id = $1`, "evt-priv-"+suffix); err == nil {
+		t.Fatal("the runtime writer must not delete outbox_events")
+	}
+
+	// Schema ownership stays with the owner role, not the runtime writer.
+	if _, err := writer.ExecContext(ctx, `CREATE TABLE build.illegal_writer_table (id text)`); err == nil {
+		t.Fatal("the runtime writer must not create tables in the owner schema")
+	}
+
+	// A different owner's schema is not reachable from this database at all.
+	if _, err := writer.ExecContext(ctx, `SELECT 1 FROM opl_ledger.receipts LIMIT 1`); err == nil {
+		t.Fatal("the build owner's connection must not reach another owner's schema")
+	}
+}
+
+func writerDSN(t *testing.T) string {
+	t.Helper()
+	ownerDSN := replaceDatabase(t, maintenanceDSN(t), "opl_build")
+	parsed, err := url.Parse(ownerDSN)
+	if err != nil {
+		t.Fatalf("parse owner dsn: %v", err)
+	}
+	parsed.User = url.User("opl_build_runtime")
+	return parsed.String()
 }

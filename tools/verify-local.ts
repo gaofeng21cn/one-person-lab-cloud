@@ -23,7 +23,15 @@ export const goModules = Object.freeze([
   "services/control-plane",
   "services/fabric",
   "services/ledger",
-  "services/internal/postgresmigrate"
+  "services/internal/postgresmigrate",
+  // v2.26 domain services. Each is an independent Go module and process; the
+  // repository is the source-collaboration boundary, not a build boundary.
+  "services/capability",
+  "services/build",
+  "services/workspace",
+  "services/runtime-control",
+  "services/resource-catalog",
+  "services/gateway-integration"
 ]);
 
 export const databaseFreeGoTestSpecs = Object.freeze([
@@ -35,7 +43,18 @@ export const databaseFreeGoTestSpecs = Object.freeze([
   { cwd: "services/control-plane", run: "^TestWorkspaceSettlementTrend", packages: ["./internal/server"] },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./internal/protectedresource"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
-  { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] }
+  { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] },
+  // Owners whose PostgreSQL suites are gated by OPL_POSTGRES_TESTS=1 keep the
+  // same bounded pattern: run the packages that are database-free.
+  { cwd: "services/capability", packages: ["./cmd/server", "./internal/store", "./internal/transport"] },
+  { cwd: "services/build", packages: ["./cmd/server", "./internal/store", "./internal/transport"] },
+  { cwd: "services/workspace", packages: ["./cmd/server", "./internal/store", "./internal/transport"] },
+  { cwd: "services/runtime-control", packages: ["./cmd/server", "./internal/store", "./internal/transport"] },
+  { cwd: "services/resource-catalog", packages: ["./cmd/server", "./internal/store", "./internal/transport"] },
+  {
+    cwd: "services/gateway-integration",
+    packages: ["./cmd/server", "./internal/transport", "./internal/identity", "./internal/tenant/store", "./internal/gateway/store"]
+  }
 ]);
 
 export const localVerificationSteps = Object.freeze([
@@ -66,7 +85,15 @@ export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/control-plane", timeout: "15m" },
   // The application replacement scenario has a 15-minute overall budget;
   // leave time for the other Fabric tests and exact fixture cleanup as well.
-  { cwd: "services/fabric", timeout: "20m" }
+  { cwd: "services/fabric", timeout: "20m" },
+  // v2.26 domain owners. Each provisions its own database and roles inside the
+  // temporary server and applies its own DDL on its own connection.
+  { cwd: "services/capability" },
+  { cwd: "services/build" },
+  { cwd: "services/workspace" },
+  { cwd: "services/runtime-control" },
+  { cwd: "services/resource-catalog" },
+  { cwd: "services/gateway-integration" }
 ]);
 
 export function parseVerifyLocalArgs(args = process.argv.slice(2)) {
