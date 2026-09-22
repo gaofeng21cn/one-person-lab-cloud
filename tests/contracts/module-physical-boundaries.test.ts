@@ -37,7 +37,19 @@ function goModulePath(source) {
 test("Go services remain physically isolated behind typed HTTP contracts", async () => {
   const sharedModulePath = goModulePath(await text("services/internal/postgresmigrate/go.mod"));
   const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];
-  for (const service of ["control-plane", "fabric", "ledger"]) {
+  // Every Cloud service module stays physical: it imports only itself and the
+  // narrow policy-free shared module, never another service's implementation.
+  for (const service of [
+    "control-plane",
+    "fabric",
+    "ledger",
+    "capability",
+    "build",
+    "workspace",
+    "runtime-control",
+    "resource-catalog",
+    "gateway-integration"
+  ]) {
     const directory = `services/${service}`;
     const moduleFile = await text(`${directory}/go.mod`);
     const modulePath = goModulePath(moduleFile);

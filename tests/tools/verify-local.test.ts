@@ -85,11 +85,19 @@ test("full local gate covers every PostgreSQL owner with the CI-only extensions"
   assert.equal(postgresImage, compose.services.postgres.image);
   assert.match(postgresImage, /^postgres:[^\s@]+@sha256:[0-9a-f]{64}$/);
   assert.notEqual(postgresImage, "postgres:16");
+  // Every owner that owns a PostgreSQL database must be covered by the full
+  // lane, including the v2.26 domain services.
   assert.deepEqual(postgresVerificationSpecs.map((spec) => spec.cwd), [
     "services/internal/postgresmigrate",
     "services/ledger",
     "services/control-plane",
-    "services/fabric"
+    "services/fabric",
+    "services/capability",
+    "services/build",
+    "services/workspace",
+    "services/runtime-control",
+    "services/resource-catalog",
+    "services/gateway-integration"
   ]);
   assert.equal(postgresVerificationSpecs[0].race, true);
   assert.equal(postgresVerificationSpecs[2].timeout, "15m");
