@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-21T16:25:10.397621+00:00",
+  "result": "passed",
+  "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
+  "checks": [
+    {
+      "name": "openapi_and_operation_inventory",
+      "passed": true,
+      "details": {
+        "operations": 98,
+        "schemas": 118
+      }
+    },
+    {
+      "name": "sql_ast_database_boundary_and_inventory",
+      "passed": true,
+      "details": {
+        "databases": 9,
+        "tables": 88,
+        "columns": 1151,
+        "indexes": 137,
+        "sqlStatements": 361,
+        "execution": "parser only; no database connected"
+      }
+    },
+    {
+      "name": "isolated_postgresql_execution_receipt",
+      "passed": true,
+      "details": {
+        "receipt": "checks/db_execution_subscription_alignment.json",
+        "tests": 69,
+        "databases": 9,
+        "scope": "temporary PostgreSQL16-alpine, --network none, tmpfs only; no current DB/volume touched",
+        "cleanup": {
+          "passed": true,
+          "containerAbsent": true,
+          "storage": "tmpfs; no named volume or bind mount created",
+          "confirmedAt": "2026-09-21T16:22:20.169525+00:00"
+        }
+      }
+    },
+    {
+      "name": "api_database_field_sources",
+      "passed": true,
+      "details": {
+        "persistedFieldMappings": 234,
+        "derivedFieldMappings": 55
+      }
+    },
+    {
+      "name": "ui_fields_actions_feature_coverage",
+      "passed": true,
+      "details": {
+        "features": 17,
+        "uiFieldReferences": 1066,
+        "actions": 56
+      }
+    },
+    {
+      "name": "feature_traceability",
+      "passed": true,
+      "details": {
+        "features": 17
+      }
+    },
+    {
+      "name": "protobuf_compilation",
+      "passed": true,
+      "details": {
+        "services": 19,
+        "messages": 266,
+        "methods": 135,
+        "compilerWarnings": ""
+      }
+    },
+    {
+      "name": "event_payload_schemas",
+      "passed": true,
+      "details": {
+        "events": 13,
+        "payloadSchemas": 13,
+        "explicitPositiveNegativeCases": 5
+      }
+    },
+    {
+      "name": "contract_positive_negative_cases",
+      "passed": true,
+      "details": {
+        "explicitPositiveNegativeCases": 39
+      }
+    }
+  ],
+  "errors": [],
+  "toolVersions": {
+    "openapi-spec-validator": "0.7.2",
+    "grpcio-tools": "1.80.0",
+    "pglast": "8.3",
+    "PyYAML": "6.0.3",
+    "jsonschema": "4.25.1"
+  },
+  "artifacts": {
+    "00_master_index.md": "69e8b1b9bba0571dd1aab54eb4a45d52b01f73184fd552fe5e0f30573bec548a",
+    "01_domain_ownership_matrix.md": "5823a2a67effb1fa9620a0e16aeaaff51a1c3f9d01c3f1de0ff869b0884eef65",
+    "02_database_schema_complete.md": "1343f8d6a2eb2fc46a35f86489fe00571acc95df37cb4cd5a54a9c57aa11c839",
+    "03_api_contract_complete.yaml": "4855d207f7850c71b5f31a1a8c08e4492f10cbdbd2df8d8d38925a9d873606bc",
+    "04_frontend_interaction_spec.md": "db29803f97b9522ab27358f6dc01105ba6ed9292a7bd0428f2ae19321acedb36",
+    "05_build_service_technical_spec.md": "149f530f54b28520b8b635648f363bc7921936018d026be4d160de0cc101fb98",
+    "06_data_flow_and_state_machine.md": "5cd300f45a711f8471cc4501faf03a7c824ece2cc6db7ebd92cf876c535f602e",
+    "07_error_handling_matrix.md": "7f0ac34d9d633191f60057756e850992829e8c737e2974a7cfc2618f45ab112c",
+    "08_delivery_checklist_per_role.md": "4b12a9b42970dc241727197f8120cba45e60157a885440c650583f2e1aebc46b",
+    "09_legacy_migration.md": "53a8768352088a9646392ad5bc0b935eabd74b667cd74abc5aa438f799d04ab3",
+    "10_feature_traceability.md": "a8a395911526fd3af8eb6b7f4a957cb2b1028c868eafd70ed2bebd3316282807",
+    "checks/contract_cases.json": "3d646c98f3f1118a3c0ad29d71d48e23d42c0576185a672c36773e0c3207a002",
+    "checks/db_execution.json": "e7baca6ed68b0b2a522afcae22eef597dfded23112f6a24537fb76fd446ceb30",
+    "checks/db_execution_subscription_alignment.json": "8efda17b9b1fd268494da2ca86c92b57e05e33d72dc7f6626b8ba1455bfc1604",
+    "checks/event_cases.json": "8cd11139e96a3e9b86fd65a739ed34b7ee6e469b819881298e7d75d6486eea7c",
+    "checks/render_traceability.py": "8a7c4e19ac7b2780d69b1d622b97b8ac0ade192d925fc96dbf7d4079c7126348",
+    "checks/requirements.txt": "1af6585d1505ebf0aa79faa63405a9be59c939f44620a09ee6b9f5bd53cec264",
+    "checks/validate_spec.py": "8914d67d8d2d66ec0260a6afb254aa7d2579df61a52df910191939213a8e3078",
+    "contracts/api_inventory.json": "099bf0e79cf9d30e65a1287df60c33960ce91f590dc6f71bece292be2f2aa6be",
+    "contracts/db_inventory.json": "28c8bdfb47968121882414972fccd35d420f0cacd4b06935fa07e4e0349d3ae6",
+    "contracts/events.json": "1b41bc88defbfe5183062f84e10fb1dc37c43dc081ba18f6ddb752ecb3b16c05",
+    "contracts/internal.proto": "eaef3e747c2657e3f0a22719f3e7b1d3becb37181201b78c63d2daa47f10f401",
+    "contracts/schema.sql": "7d2e2415d07c28381bb8f64b0acd0db21295693c5589aae993a27283254fa7f0",
+    "contracts/traceability.json": "4fe06aed9c5094009ce3b303662d5dde393f6e99c843bfeb2b15f55f605ccd97",
+    "contracts/ui_inventory.json": "8af0be2b1ac17d7fb8d3390a15872be7fe5227c420b0fbc98be5353b746e654e"
+  }
+}

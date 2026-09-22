@@ -1,0 +1,69 @@
+{
+  "policyVersion": "workspace-plan-change-v1",
+  "cases": [
+    {
+      "name": "half_month",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "40000000",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "1296000000",
+      "expectedSupplementUSDMicros": "10000000"
+    },
+    {
+      "name": "real_31_day_month",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "50000000",
+      "periodMilliseconds": "2678400000",
+      "remainingMilliseconds": "1728000000",
+      "expectedSupplementUSDMicros": "19354839"
+    },
+    {
+      "name": "full_remaining",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "40000000",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "2592000000",
+      "expectedSupplementUSDMicros": "20000000"
+    },
+    {
+      "name": "sequential_upgrade_uses_current_rate",
+      "oldMonthlyUSDMicros": "40000000",
+      "newMonthlyUSDMicros": "60000000",
+      "periodMilliseconds": "2419200000",
+      "remainingMilliseconds": "604800000",
+      "expectedSupplementUSDMicros": "5000000"
+    },
+    {
+      "name": "one_final_rounding",
+      "oldMonthlyUSDMicros": "0",
+      "newMonthlyUSDMicros": "2",
+      "periodMilliseconds": "3",
+      "remainingMilliseconds": "1",
+      "expectedSupplementUSDMicros": "1"
+    },
+    {
+      "name": "free_increment_no_negative_credit",
+      "oldMonthlyUSDMicros": "40000000",
+      "newMonthlyUSDMicros": "30000000",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "1296000000",
+      "expectedSupplementUSDMicros": "0"
+    },
+    {
+      "name": "int64_max_intermediate_must_not_overflow",
+      "oldMonthlyUSDMicros": "0",
+      "newMonthlyUSDMicros": "9223372036854775807",
+      "periodMilliseconds": "2678400000",
+      "remainingMilliseconds": "2678400000",
+      "expectedSupplementUSDMicros": "9223372036854775807"
+    }
+  ],
+  "invalidCases": [
+    "T before S",
+    "T at or after E",
+    "D <= 0",
+    "mixed transition",
+    "unsupported storage shrink"
+  ],
+  "note": "Independent expected values; test the actual owner calculator/mapping, not an arbitrary reference copy. These arithmetic vectors alone do not prove money was charged or resources changed."
+}

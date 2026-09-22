@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "opl-cross-domain-execution/v1",
+  "executedAt": "2026-09-21T18:55:51.086200+00:00",
+  "completedAt": "2026-09-21T18:55:54.544447+00:00",
+  "passed": false,
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "d4c4cbfe4510a1db0f10a6a44a9b0fbae816ab690953568669c4499df7dc19bb",
+    "contracts/schema.sql": "825ac63638c8db3b987dde2b27ba8b0f65def3027280c8efff83d254a359b516",
+    "contracts/db_inventory.json": "4d7025f7941456769985d2d56f60ebe8a78c8fee26a8bd1c13806d0e45b5b4ea",
+    "contracts/internal.proto": "6c6c4c520d379a9be9b8d18262283be44b1eed871594125ff949b376e8906aab",
+    "contracts/publisher-contract.schema.json": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+    "checks/semantics_cases.json": "67a0aa074e934ce645f9f352daf114886bf5f73921dfdd520b67ab55e024ab81",
+    "checks/validate_cross_domain.py": "84d832e210f9c9c304d355b3163c76e9c0871919d0200064a9c6bcd1660d8020",
+    "13_plan_change_policy.md": "6e1cb911a1cb510f4fa89283cfd442344c49b4e3bc551dfbf7764e6be09e381c",
+    "contracts/plan-change-policy.json": "7f53490c9c5990d86894b760b761505b3e3290e22bcda78c79f357b8d7b0f7b1"
+  },
+  "sourceUnchangedDuringRun": true,
+  "sourceHashesAtEnd": {
+    "03_api_contract_complete.yaml": "d4c4cbfe4510a1db0f10a6a44a9b0fbae816ab690953568669c4499df7dc19bb",
+    "contracts/schema.sql": "825ac63638c8db3b987dde2b27ba8b0f65def3027280c8efff83d254a359b516",
+    "contracts/db_inventory.json": "4d7025f7941456769985d2d56f60ebe8a78c8fee26a8bd1c13806d0e45b5b4ea",
+    "contracts/internal.proto": "6c6c4c520d379a9be9b8d18262283be44b1eed871594125ff949b376e8906aab",
+    "contracts/publisher-contract.schema.json": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+    "checks/semantics_cases.json": "67a0aa074e934ce645f9f352daf114886bf5f73921dfdd520b67ab55e024ab81",
+    "checks/validate_cross_domain.py": "84d832e210f9c9c304d355b3163c76e9c0871919d0200064a9c6bcd1660d8020",
+    "13_plan_change_policy.md": "6e1cb911a1cb510f4fa89283cfd442344c49b4e3bc551dfbf7764e6be09e381c",
+    "contracts/plan-change-policy.json": "7f53490c9c5990d86894b760b761505b3e3290e22bcda78c79f357b8d7b0f7b1"
+  },
+  "image": {
+    "name": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoTags": [
+      "postgres:16-alpine"
+    ],
+    "id": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "metadata": {
+    "actualDatabaseFields": 1351
+  },
+  "setupError": "RuntimeError: Direct semantic field mapping mismatches:\nPricePolicyVersion.planChangePolicy: missing direct source resource_catalog.price_policy_versions.adjustment_rules\nWalletOperation.originalChargeOperationId: missing direct source gateway.wallet_operations.original_charge_operation_id",
+  "cases": [],
+  "sqlInvocations": 27,
+  "cleanup": {
+    "containerName": "opl-spec-semantic-1790016951",
+    "containerAbsent": true,
+    "stopSucceeded": true,
+    "removalReadbackPolls": 1,
+    "storage": "tmpfs only; no host mounts/named volumes",
+    "network": "none; no host ports"
+  },
+  "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+  "notProven": [
+    "real service handlers/Saga workers",
+    "production or Instance adoption",
+    "real Gateway/provider charges or resources",
+    "actual implementation/provider/Instance acceptance remain separate from approved D17 specification"
+  ]
+}

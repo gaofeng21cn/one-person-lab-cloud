@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-09-21T18:27:41.126809+00:00",
+  "scope": "read-only official public API reference; no provider account action",
+  "references": [
+    {
+      "url": "https://www.tencentcloud.com/document/api/213/15744",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://www.tencentcloud.com/document/api/362/16310",
+      "sha256": "970ba7145a8572a1ed1a62beaff293129bf350e2fe03e7b48ae189ab8487ec19",
+      "confirmedAction": "ResizeDisk",
+      "findings": [
+        "Official CBS disk-expansion endpoint exists; response carries RequestId, not a proof that filesystem/application are resized."
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/TencentCloud/tencentcloud-sdk-go/master/tencentcloud/cvm/v20170312/client.go",
+      "sha256": "765d74ad3ddf00ac5040cd912e89ebf93bd8ae0ecf77338a7f982f008912e1be",
+      "confirmedMethods": [
+        "ResetInstancesType",
+        "InquiryPriceResetInstance",
+        "DescribeInstancesModification"
+      ],
+      "scope": "public official SDK only; methods present does not qualify a concrete prepaid TKE instance"
+    }
+  ],
+  "officialSdkSnapshots": [
+    {
+      "url": "https://raw.githubusercontent.com/TencentCloud/tencentcloud-sdk-go/master/tencentcloud/cvm/v20170312/client.go",
+      "sha256": "765d74ad3ddf00ac5040cd912e89ebf93bd8ae0ecf77338a7f982f008912e1be",
+      "confirmedRelevantMethods": [
+        "DescribeInstancesModification",
+        "InquiryPriceResetInstancesType",
+        "ResetInstancesType"
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/TencentCloud/tencentcloud-sdk-go/master/tencentcloud/cbs/v20170312/client.go",
+      "sha256": "635b322cd9f887cb86b4959edc1a4ad7f474aef155d67b47fe3f7eb620ba5004",
+      "confirmedRelevantMethods": [
+        "InquiryPriceResizeDisk",
+        "ResizeDisk"
+      ]
+    }
+  ],
+  "findings": [
+    "CVM SDK exposes exact supported-type query, type-reset inquiry and asynchronous reset; accepted RequestId is not completion.",
+    "CBS ResizeDisk is expansion-only; attached disk online expansion depends on disk capability; actual partition/filesystem work must be verified separately.",
+    "No current Fabric resize implementation was found in the scoped source search; adapter implementation/Instance qualification remain future engineering work."
+  ]
+}

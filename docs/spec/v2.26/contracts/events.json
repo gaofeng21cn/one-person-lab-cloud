@@ -1,0 +1,2575 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opl:cloud:v226:events",
+  "title": "OPL Cloud versioned owner events",
+  "description": "严格事件payload，无密码/Key/credentials/private endpoints。int64在JSON以string编码。Outbox事务提交→gRPC Inbox事务去重ACK。",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "package.uploaded.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "capability"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/PackageUploaded"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "ledger"
+      ],
+      "description": "仅审计，不自动创建Build；客户必须显式createBuild。"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "build.artifact_confirmed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "build"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/BuildArtifactConfirmed"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "capability",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "capability.version_registered.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "capability"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/CapabilityVersionRegistered"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "build",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "build.failed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "build"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/BuildFailed"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "wallet.operation_observed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "gateway"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/WalletOperationObserved"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "fabric.resources_observed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "fabric"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/ResourcesObserved"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "runtime_control",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "runtime.readiness_observed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "runtime_control"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/RuntimeReadinessObserved"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "workspace.state_changed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "workspace"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/WorkspaceStateChanged"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "workspace.deletion_confirmed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "workspace"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/WorkspaceDeletionConfirmed"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "tenant",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "tenant.access_revoked.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "tenant"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/TenantAccessRevoked"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "capability",
+        "build",
+        "workspace",
+        "gateway",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "tenant.restored.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "tenant"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/TenantRestored"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "capability",
+        "build",
+        "gateway",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "ledger.receipt_recorded.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "ledger"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/ReceiptRecorded"
+        },
+        "scope": {
+          "enum": [
+            "tenant",
+            "platform"
+          ]
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "catalog.policy_changed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "resource_catalog"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/CatalogPolicyChanged"
+        },
+        "scope": {
+          "const": "platform"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "tenant.reenabled.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "tenant"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/TenantReenabled"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "gateway",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "subscription.renewal_settings_changed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "workspace"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/RenewalSettingsChanged"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "tenant",
+        "gateway",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "fabric.route_observed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "fabric"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/RouteObserved"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "workspace",
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "workspace.plan_change_state_changed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "workspace"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/PlanChangeStateChanged"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "ledger"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "workspace.period_obligation_changed.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "owner": {
+          "const": "workspace"
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+          "not": {
+            "const": "0"
+          }
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/PeriodObligationChanged"
+        },
+        "scope": {
+          "const": "tenant"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "owner",
+        "aggregateId",
+        "aggregateVersion",
+        "occurredAt",
+        "requestId",
+        "payload",
+        "scope"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "scope": {
+                  "const": "tenant"
+                }
+              },
+              "required": [
+                "tenantId"
+              ]
+            },
+            {
+              "properties": {
+                "scope": {
+                  "const": "platform"
+                }
+              },
+              "not": {
+                "required": [
+                  "tenantId"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "x-consumers": [
+        "gateway",
+        "ledger"
+      ]
+    }
+  ],
+  "$defs": {
+    "PackageUploaded": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "packageVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        }
+      },
+      "required": [
+        "packageVersionId",
+        "packageId",
+        "sha256",
+        "sizeBytes"
+      ],
+      "description": "Package上传实际校验通过"
+    },
+    "BuildArtifactConfirmed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "buildJobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "webuiVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "artifactReceiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deploymentDescriptorDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "buildJobId",
+        "packageVersionId",
+        "runtimeVersionId",
+        "webuiVersionId",
+        "artifactDigest",
+        "artifactReceiptId",
+        "deploymentDescriptorDigest"
+      ],
+      "description": "制品已push并读回，Capability唯一writer登记version"
+    },
+    "CapabilityVersionRegistered": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capabilityVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "buildJobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "capabilityVersionId",
+        "buildJobId",
+        "artifactDigest"
+      ],
+      "description": "Capability ready已提交，Build据此确认succeeded"
+    },
+    "BuildFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "buildJobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "errorCode": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "VALIDATION_FAILED",
+            "UNAUTHENTICATED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "CSRF_INVALID",
+            "ORIGIN_REJECTED",
+            "IDEMPOTENCY_REQUIRED",
+            "IDEMPOTENCY_CONFLICT",
+            "VERSION_CONFLICT",
+            "LAST_OWNER",
+            "INVITATION_INVALID",
+            "TENANT_INACTIVE",
+            "TENANT_RESTORE_EXPIRED",
+            "GATEWAY_UNAVAILABLE",
+            "OWNER_CAPABILITY_UNAVAILABLE",
+            "WALLET_BINDING_REQUIRED",
+            "INSUFFICIENT_BALANCE",
+            "QUOTE_EXPIRED",
+            "QUOTE_MISMATCH",
+            "POLICY_UNCONFIGURED",
+            "CAPACITY_UNAVAILABLE",
+            "PROVIDER_CAPABILITY_UNSUPPORTED",
+            "RUNTIME_REVOKED",
+            "WEBUI_INCOMPATIBLE",
+            "MODEL_NOT_ALLOWED",
+            "PACKAGE_ARCHIVED",
+            "UPLOAD_EXPIRED",
+            "UPLOAD_PART_MISMATCH",
+            "UPLOAD_CHECKSUM_MISMATCH",
+            "PACKAGE_INVALID",
+            "BUILD_INPUT_REJECTED",
+            "BUILD_FAILED",
+            "ARTIFACT_REFERENCED",
+            "ARTIFACT_UNAVAILABLE",
+            "INCOMPATIBLE_VERSION",
+            "DATA_MIGRATION_REQUIRED",
+            "ROLLBACK_UNSAFE",
+            "WORKSPACE_NOT_READY",
+            "WORKSPACE_EXPIRED",
+            "OPERATION_IN_PROGRESS",
+            "EXTERNAL_OUTCOME_UNKNOWN",
+            "RESOURCE_DELETE_UNCONFIRMED",
+            "REFUND_PENDING",
+            "KEY_REVEAL_FORBIDDEN",
+            "APP_ACCESS_UNAVAILABLE",
+            "RATE_LIMITED",
+            "DEPENDENCY_UNAVAILABLE",
+            "INSTANCE_AUTHORIZATION_REQUIRED",
+            "INTERNAL_ERROR",
+            "PUBLISHER_NAMESPACE_MISMATCH",
+            "PUBLISHER_CONTRACT_INVALID",
+            "REFERENCE_CLAIM_INVALID",
+            "AUTHORIZATION_CONTEXT_EXPIRED",
+            "AUTHORIZATION_REVOKED",
+            "AUTHORIZATION_AUDIENCE_MISMATCH",
+            "ROUTE_GENERATION_CONFLICT",
+            "STALE_EXECUTION_EPOCH",
+            "TENANT_NOT_SUSPENDED",
+            "RENEWAL_PERIOD_ELAPSED",
+            "PLAN_CHANGE_EXISTS",
+            "PLAN_CHANGE_NOT_CANCELLABLE",
+            "PLAN_CHANGE_QUOTE_STALE",
+            "PLAN_TRANSITION_NOT_SUPPORTED",
+            "PLAN_TRANSITION_MIXED",
+            "PLAN_CHANGE_NO_OP",
+            "STORAGE_SHRINK_UNSUPPORTED",
+            "SUBSCRIPTION_VERSION_CONFLICT",
+            "PLAN_CHANGE_PAYMENT_REQUIRED",
+            "PLAN_CHANGE_PERIOD_ELAPSED",
+            "REFUND_ORIGINAL_CHARGE_CONFLICT",
+            "FUTURE_PERIOD_COMMITTED",
+            "SCHEDULED_PLAN_APPLICATION_CONFLICT"
+          ]
+        }
+      },
+      "required": [
+        "buildJobId",
+        "errorCode"
+      ],
+      "description": "确定性构建失败；unknown不发布此事件"
+    },
+    "WalletOperationObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "walletOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "charge",
+            "refund"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "requested",
+            "confirmed",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "amountUSDMicros": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "externalReference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "base_period",
+            "upgrade_supplement",
+            "base_period_delete",
+            "upgrade_failure_full",
+            "supplement_delete_unused",
+            "next_period_plan_failure_full",
+            "recharge"
+          ]
+        },
+        "planChangeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalChargeOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverageStart": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "coverageEnd": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "walletOperationId",
+        "workspaceId",
+        "kind",
+        "status",
+        "amountUSDMicros"
+      ],
+      "description": "原付款/退款观察结果，unknown不是失败"
+    },
+    "ResourcesObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resourceSetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceActionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "confirmed",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "absenceConfirmed": {
+          "type": "boolean"
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "resourceSetId",
+        "workspaceId",
+        "resourceActionId",
+        "outcome",
+        "absenceConfirmed"
+      ],
+      "description": "实际资源或删除absence结果"
+    },
+    "RuntimeReadinessObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeInstanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deploymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "confirmed",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "applicationAvailable": {
+          "type": "boolean"
+        },
+        "credentialInjectionVerified": {
+          "type": "boolean"
+        },
+        "appliedModelConfigurationVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "runtimeInstanceId",
+        "workspaceId",
+        "deploymentId",
+        "outcome",
+        "applicationAvailable",
+        "credentialInjectionVerified",
+        "appliedModelConfigurationVersion"
+      ],
+      "description": "Runtime应用及凭据注入真实读回"
+    },
+    "WorkspaceStateChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "provisioning",
+            "active",
+            "updating",
+            "suspended",
+            "deleting",
+            "deleted",
+            "failed",
+            "needs_attention"
+          ]
+        },
+        "activeDeploymentId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "workspaceId",
+        "operationId",
+        "status"
+      ],
+      "description": "Workspace权威状态提交"
+    },
+    "WorkspaceDeletionConfirmed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceDeletionReceiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataDeletionReceiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deletedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "operationId",
+        "resourceDeletionReceiptId",
+        "dataDeletionReceiptId",
+        "deletedAt"
+      ],
+      "description": "删除确认不代表退款成功"
+    },
+    "TenantAccessRevoked": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetTenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "suspended",
+            "deleting",
+            "deleted"
+          ]
+        },
+        "restoreUntil": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "targetTenantId",
+        "tenantOperationId",
+        "status"
+      ],
+      "description": "Tenant访问立即撤销，消费者清除访问准入"
+    },
+    "TenantRestored": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetTenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "restoredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "targetTenantId",
+        "tenantOperationId",
+        "restoredAt"
+      ],
+      "description": "恢复身份和保留制品权限，不复活资源"
+    },
+    "ReceiptRecorded": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceOwner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerEvidenceReference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "receiptId",
+        "sourceOwner",
+        "ownerEvidenceReference",
+        "evidenceDigest"
+      ],
+      "description": "不可变证据已落盘"
+    },
+    "CatalogPolicyChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policyVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validFrom": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "policyVersionId",
+        "policyKind",
+        "validFrom"
+      ],
+      "description": "新准入采用新policy，不覆盖既有Quote"
+    },
+    "TenantReenabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetTenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalTenantSuspendOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabledAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "targetTenantId",
+        "tenantOperationId",
+        "originalTenantSuspendOperationId",
+        "enabledAt"
+      ],
+      "description": "访问恢复与受限Workspace复机分开，不进入删除restore窗口"
+    },
+    "RenewalSettingsChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "consentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renewalMode": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "manual",
+            "automatic"
+          ]
+        },
+        "settingsVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "subscriptionId",
+        "renewalMode",
+        "settingsVersion"
+      ],
+      "description": "仅原明确consent及设置版本；新的扣费还需同步读取当前consent，不以事件延迟当仍授权"
+    },
+    "RouteObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "switchId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionKind": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "fence",
+            "activate",
+            "rollback"
+          ]
+        },
+        "routeGeneration": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "executionEpoch": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "providerRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetExecutionResourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "confirmed",
+            "rejected",
+            "unknown"
+          ]
+        },
+        "routeReceiptId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "workspaceId",
+        "switchId",
+        "actionKind",
+        "routeGeneration",
+        "executionEpoch",
+        "providerRevision",
+        "outcome"
+      ],
+      "description": "路由fence/CAS实际读回，Workspace选中提交仍由Workspace owner负责"
+    },
+    "PlanChangeStateChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "planChangeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "upgrade_immediate",
+            "downgrade_next_period"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "requested",
+            "scheduled",
+            "awaiting_payment",
+            "applying",
+            "applied",
+            "failed",
+            "needs_attention",
+            "cancelled"
+          ]
+        },
+        "scheduleVersion": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "deliveryOutcome": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "pending",
+            "applied",
+            "failed",
+            "unknown"
+          ]
+        },
+        "resourceOutcome": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "unchanged",
+            "target_confirmed",
+            "restored",
+            "irreversible_residual",
+            "unknown"
+          ]
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "appliedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "workspace-plan-change-v1"
+          ]
+        }
+      },
+      "required": [
+        "planChangeId",
+        "workspaceId",
+        "kind",
+        "status",
+        "scheduleVersion",
+        "deliveryOutcome",
+        "resourceOutcome",
+        "operationId",
+        "policyVersion"
+      ],
+      "description": "PlanChange业务状态与初次/执行Operation分别记录；只有真实目标读回才applied",
+      "oneOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "applied"
+              ]
+            },
+            "deliveryOutcome": {
+              "enum": [
+                "applied"
+              ]
+            },
+            "resourceOutcome": {
+              "enum": [
+                "target_confirmed"
+              ]
+            }
+          },
+          "required": [
+            "appliedAt",
+            "executionOperationId"
+          ]
+        },
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "requested",
+                "scheduled",
+                "awaiting_payment",
+                "applying",
+                "failed",
+                "needs_attention",
+                "cancelled"
+              ]
+            }
+          },
+          "not": {
+            "required": [
+              "appliedAt"
+            ]
+          }
+        }
+      ]
+    },
+    "PeriodObligationChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "obligationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "periodStart": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "periodEnd": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "planChangeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "awaiting_payment",
+            "accepted",
+            "confirmed",
+            "failed",
+            "needs_attention"
+          ]
+        },
+        "targetPricePolicyVersionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amountUSDMicros": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$"
+        },
+        "walletOperationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "obligationId",
+        "workspaceId",
+        "subscriptionId",
+        "periodStart",
+        "periodEnd",
+        "status",
+        "targetPricePolicyVersionId",
+        "amountUSDMicros"
+      ],
+      "description": "manual/automatic/boundary共用原周期义务，目标价一次性付款；零金额无Gateway动作"
+    }
+  },
+  "x-delivery": {
+    "transport": "typed gRPC DomainInbox.Deliver",
+    "outboxAtomicity": "owner mutation + outbox row in same PostgreSQL transaction",
+    "inboxAtomicity": "unique producer/eventId + consumer mutation + emitted events in same transaction before ACK",
+    "ordering": "Gaps are legitimate for partial subscriptions. Immutable facts deduplicate eventId+business identity. Mutable projections monotonic-CAS aggregateVersion, no stale overwrite. Dependent effects check explicit predecessor facts/receipts; missing facts remain unprocessed, never infer loss from a version gap. ACK duplicates without reapply.",
+    "unknown": "external timeout records unknown and schedules readback; never repeats financial/provider action blindly",
+    "retention": "retain deduplication for original obligation lifetime; no short TTL for financial events",
+    "schemaEvolution": "eventType includes version, immutable payload schema; unknown version rejects and needs_attention; no permissive map",
+    "outboxFieldMap": {
+      "eventId": "outbox_events.id",
+      "eventType": "outbox_events.event_type",
+      "schemaVersion": "outbox_events.schema_version",
+      "owner": "authenticated owner process",
+      "scope": "tenant_id NULL means platform, otherwise tenant",
+      "tenantId": "outbox_events.tenant_id",
+      "aggregateId": "outbox_events.aggregate_id",
+      "aggregateVersion": "outbox_events.aggregate_revision",
+      "occurredAt": "outbox_events.occurred_at",
+      "requestId": "outbox_events.correlation_id",
+      "payload": "outbox_events.payload"
+    },
+    "registrationFlow": "build.artifact_confirmed.v1 → Capability Inbox reads BuildCoordination.ReadArtifact including exact DeploymentDescriptor/claim inputs → atomic Capability ready+outbox → capability.version_registered.v1 → Build succeeded; no direct second registration writer"
+  }
+}

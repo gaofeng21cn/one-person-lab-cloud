@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "id": "D17",
+      "feature": "F11",
+      "status": "accepted",
+      "question": "是否同意：中途升级立即生效，保留原到期日，按剩余已付周期补差；降配下个账期生效，不退当期费用？",
+      "reason": "改变客户收费、生效时间及退款义务，不能由工程默认值替用户决定。",
+      "blocks": null,
+      "doesNotBlock": [
+        "UI结构及原型",
+        "领域协议",
+        "API/DB语义一致",
+        "迁移协议",
+        "其余已批准功能规格"
+      ],
+      "approvedText": "中途升级立即生效、保留原到期日，按剩余已付周期补差；降配下个账期生效，不退当期费用。",
+      "approvalSource": "当前用户直接确认，随后要求完善实现逻辑并给出定稿结论",
+      "policyOwner": "13_plan_change_policy.md"
+    }
+  ],
+  "rule": "D17已由用户直接确认；全量READY仍须以同步后的契约、跨层语义、UI和证据合并检查为准，不能仅改本状态。"
+}

@@ -1,0 +1,2080 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opl:publisher-contract:v1",
+  "$ref": "#/$defs/PublisherContract",
+  "$defs": {
+    "ImagePlatform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": {
+          "type": "string",
+          "enum": [
+            "linux"
+          ]
+        },
+        "architecture": {
+          "type": "string",
+          "enum": [
+            "amd64",
+            "arm64"
+          ]
+        },
+        "variant": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "os",
+        "architecture"
+      ]
+    },
+    "ArtifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?/[a-z0-9]+(?:[._/-][a-z0-9]+)*$",
+          "maxLength": 512,
+          "description": "完整Registry/repository，无scheme、tag或digest；所属publisher namespace按路径段严格比较，不使用字符串模糊前缀。"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "platform": {
+          "$ref": "#/$defs/ImagePlatform"
+        }
+      },
+      "required": [
+        "repository",
+        "digest",
+        "platform"
+      ],
+      "description": "可定位不可变OCI image身份；读取manifest必须精确匹配三个字段，不用latest或静默跨平台。"
+    },
+    "RecipeArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?/[a-z0-9]+(?:[._/-][a-z0-9]+)*$",
+          "maxLength": 512,
+          "description": "完整Registry/repository，无scheme、tag或digest；所属publisher namespace按路径段严格比较，不使用字符串模糊前缀。"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mediaType": {
+          "type": "string",
+          "enum": [
+            "application/vnd.opl.build-recipe.v1+tar"
+          ]
+        },
+        "dockerfilePath": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(/|$))[A-Za-z0-9_./-]+$",
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "repository",
+        "digest",
+        "mediaType",
+        "dockerfilePath"
+      ],
+      "description": "由发布者准入的不可变BuildKit recipe归档，不是客户任意Dockerfile；校验归档路径/recipe摘要。"
+    },
+    "PackageBuildInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contextName": {
+          "type": "string",
+          "enum": [
+            "agent_package"
+          ]
+        },
+        "formatVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "sourceRoot": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(/|$))[A-Za-z0-9_./-]+$",
+          "maxLength": 512
+        },
+        "targetPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "contextName",
+        "formatVersion",
+        "sourceRoot",
+        "targetPath",
+        "uid",
+        "gid"
+      ]
+    },
+    "WebuiBuildInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contextName": {
+          "type": "string",
+          "enum": [
+            "webui"
+          ]
+        },
+        "sourcePath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "targetPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "gid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "contextName",
+        "sourcePath",
+        "targetPath",
+        "uid",
+        "gid"
+      ]
+    },
+    "BuildRecipeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "enum": [
+            "opl-build-recipe/v1"
+          ]
+        },
+        "frontend": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "recipe": {
+          "$ref": "#/$defs/RecipeArtifact"
+        },
+        "runtimeContextName": {
+          "type": "string",
+          "enum": [
+            "runtime"
+          ]
+        },
+        "packageInput": {
+          "$ref": "#/$defs/PackageBuildInput"
+        },
+        "webuiInput": {
+          "$ref": "#/$defs/WebuiBuildInput"
+        },
+        "networkPolicy": {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        "outputPlatform": {
+          "$ref": "#/$defs/ImagePlatform"
+        },
+        "outputImageCommand": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "entrypoint": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "cmd": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 4096
+              }
+            }
+          },
+          "required": [
+            "entrypoint",
+            "cmd"
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "frontend",
+        "recipe",
+        "runtimeContextName",
+        "packageInput",
+        "webuiInput",
+        "networkPolicy",
+        "outputPlatform",
+        "outputImageCommand"
+      ],
+      "description": "BuildKit三个命名context严格runtime/agent_package/webui；发布者recipe只能消费这些输入，网络none。需要联网依赖须由发布者预置在已批准digest中。输出平台必须等于Runtime与WebUI平台；准入执行官方/第三方契约测试，不推测COPY路径。"
+    },
+    "ModelConfigurationContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "opl-model-config/v1"
+          ]
+        },
+        "portName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "applyPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "readbackPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "requestFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "version",
+              "selections"
+            ]
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "readbackFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "appliedVersion",
+              "selections"
+            ]
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "authorizationSecretInputName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "protocol",
+        "portName",
+        "applyPath",
+        "readbackPath",
+        "requestFields",
+        "readbackFields",
+        "authorizationSecretInputName"
+      ],
+      "description": "PUT applyPath提交ModelConfigurationPayload{version:int64 string,selections:[{slot,modelId}]}，GET readbackPath返回ModelConfigurationReadback；重复同version同payload返回同结果，异payload冲突；不能借此写应用任意JSON。 portName引用applicationRevisionTemplate.ports；authorizationSecretInputName引用其SecretInputs，不另发明SecretSlot或用Gateway Key代替控制凭据。"
+    },
+    "ApplicationAccessContract": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ApplicationOwnedAccessContract"
+        },
+        {
+          "$ref": "#/$defs/CloudPrivateAccessContract"
+        },
+        {
+          "$ref": "#/$defs/AnonymousAccessContract"
+        }
+      ]
+    },
+    "DataUpgradeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "compatible",
+            "publisher_migration"
+          ]
+        },
+        "compatibleFromSchemaVersions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "migrationArtifact": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "backupRequired": {
+          "type": "boolean"
+        },
+        "backupFormatVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "mode",
+        "compatibleFromSchemaVersions",
+        "backupRequired"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "publisher_migration"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "migrationArtifact",
+              "backupFormatVersion"
+            ],
+            "properties": {
+              "backupRequired": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DataRollbackContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "safe": {
+          "type": "boolean"
+        },
+        "compatibleSchemaVersions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "required": [
+        "safe",
+        "compatibleSchemaVersions"
+      ]
+    },
+    "DataContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "upgrade": {
+          "$ref": "#/$defs/DataUpgradeContract"
+        },
+        "rollback": {
+          "$ref": "#/$defs/DataRollbackContract"
+        },
+        "mountPolicies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataMountPolicy"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "upgrade",
+        "rollback",
+        "mountPolicies"
+      ],
+      "description": "数据schema由发布者拥有；存在read_write且不支持并发的mount时更新必须停止旧writer再挂新实例，不能双写。迁移/备份是明确artifact与格式，不启发式转换。"
+    },
+    "RuntimePublisherContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "enum": [
+            "opl-publisher-contract/v1"
+          ]
+        },
+        "publisherNamespaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "image": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "runtime"
+          ]
+        },
+        "runtimeAbiVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "packageFormatVersions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "buildRecipe": {
+          "$ref": "#/$defs/BuildRecipeContract"
+        },
+        "modelConfiguration": {
+          "$ref": "#/$defs/ModelConfigurationContract"
+        },
+        "applicationAccess": {
+          "$ref": "#/$defs/ApplicationAccessContract"
+        },
+        "data": {
+          "$ref": "#/$defs/DataContract"
+        },
+        "applicationRevisionTemplate": {
+          "$ref": "#/$defs/WorkspaceApplicationRevision"
+        },
+        "packageFormatContracts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PackageFormatContractReference"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "publisherNamespaceId",
+        "image",
+        "kind",
+        "runtimeAbiVersion",
+        "packageFormatVersions",
+        "buildRecipe",
+        "modelConfiguration",
+        "applicationAccess",
+        "data",
+        "applicationRevisionTemplate",
+        "packageFormatContracts"
+      ]
+    },
+    "WebuiPublisherContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "enum": [
+            "opl-publisher-contract/v1"
+          ]
+        },
+        "publisherNamespaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "image": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "webui"
+          ]
+        },
+        "runtimeAbiVersions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "uiProtocolVersion": {
+          "type": "string",
+          "enum": [
+            "opl-webui/v1"
+          ]
+        },
+        "integrationMode": {
+          "type": "string",
+          "enum": [
+            "bundled_static"
+          ]
+        },
+        "staticRoot": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "entryFile": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(/|$))[A-Za-z0-9_./-]+$",
+          "maxLength": 512
+        },
+        "assetBasePath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "apiBasePath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$",
+          "maxLength": 512
+        },
+        "authenticationProtocol": {
+          "type": "string",
+          "enum": [
+            "opl-application-session/v1"
+          ]
+        },
+        "supportsSse": {
+          "type": "boolean"
+        },
+        "supportsWebsocket": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "publisherNamespaceId",
+        "image",
+        "kind",
+        "runtimeAbiVersions",
+        "uiProtocolVersion",
+        "integrationMode",
+        "staticRoot",
+        "entryFile",
+        "assetBasePath",
+        "apiBasePath",
+        "authenticationProtocol",
+        "supportsSse",
+        "supportsWebsocket"
+      ],
+      "description": "本期WebUI合入单一OCI；不支持独立服务WebUI，必须显式拒绝而非自建服务。staticRoot由Runtime buildRecipe.webuiInput.sourcePath逐字段相等；entryFile必须存在，路由/静态/SSE测试通过。"
+    },
+    "PublisherContract": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuntimePublisherContract"
+        },
+        {
+          "$ref": "#/$defs/WebuiPublisherContract"
+        }
+      ]
+    },
+    "PublisherContractReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publisherNamespaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "runtime",
+            "webui"
+          ]
+        },
+        "descriptorDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "descriptorObjectRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "publisherNamespaceId",
+        "versionId",
+        "kind",
+        "descriptorDigest",
+        "descriptorObjectRef"
+      ],
+      "description": "Capability typed解析后编码一次并把确切UTF-8 bytes写入不可变Storage对象，计算SHA256；digest/objectRef都由Owner返回，客户端不报。JSONB仅结构投影，Resolver校验存储原字节，禁止重新序列化JSONB猜摘要。"
+    },
+    "DeploymentDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "enum": [
+            "opl-deployment-descriptor/v1"
+          ]
+        },
+        "artifact": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "runtimeContract": {
+          "$ref": "#/$defs/RuntimePublisherContract"
+        },
+        "runtimeContractReference": {
+          "$ref": "#/$defs/PublisherContractReference"
+        },
+        "webuiContract": {
+          "$ref": "#/$defs/WebuiPublisherContract"
+        },
+        "webuiContractReference": {
+          "$ref": "#/$defs/PublisherContractReference"
+        },
+        "packageVersionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "buildInputDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "build",
+            "legacy_application"
+          ]
+        },
+        "legacyApplicationRevisionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "applicationRevision": {
+          "$ref": "#/$defs/WorkspaceApplicationRevision"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "artifact",
+        "provenance",
+        "applicationRevision"
+      ],
+      "description": "Build产物不可变快照：applicationRevision从Runtime template逐字段复制，只按Build批准转换替换image/version/applicationId及recipe声明的输入绑定；其余变动一律重新发布契约。运行只消费applicationRevision，不重复解释template执行字段。legacy直接保留既有canonical revision，不改路径/Key/入口。 legacy_application分支只保留artifact+applicationRevision+旧revision ID；禁止伪造Runtime/WebUI发布描述、Package或recipe。",
+      "oneOf": [
+        {
+          "properties": {
+            "provenance": {
+              "const": "build"
+            }
+          },
+          "required": [
+            "runtimeContract",
+            "runtimeContractReference",
+            "webuiContract",
+            "webuiContractReference",
+            "packageVersionId",
+            "buildInputDigest"
+          ],
+          "not": {
+            "required": [
+              "legacyApplicationRevisionId"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "provenance": {
+              "const": "legacy_application"
+            }
+          },
+          "required": [
+            "legacyApplicationRevisionId"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "runtimeContract"
+                ]
+              },
+              {
+                "required": [
+                  "runtimeContractReference"
+                ]
+              },
+              {
+                "required": [
+                  "webuiContract"
+                ]
+              },
+              {
+                "required": [
+                  "webuiContractReference"
+                ]
+              },
+              {
+                "required": [
+                  "packageVersionId"
+                ]
+              },
+              {
+                "required": [
+                  "buildInputDigest"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "WorkspaceApplicationExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "userId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "groupId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "init": {
+          "type": "boolean"
+        },
+        "seccompProfile": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [],
+      "x-canonical-source": "packages/contracts/go/workspace_application_execution.go#WorkspaceApplicationExecution"
+    },
+    "WorkspaceApplicationCompute": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpuRequestMilli": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128000
+        },
+        "cpuLimitMilli": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128000
+        },
+        "memoryRequestBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        },
+        "memoryLimitBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        }
+      },
+      "required": [],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationCompute"
+    },
+    "WorkspaceApplicationCredential": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-z][a-z0-9-]{0,30}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "workspace_admin_password",
+            "workspace_session_secret",
+            "gateway_key"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,63}$"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "target"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationCredential"
+    },
+    "WorkspaceApplicationPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-z][a-z0-9-]{0,14}$"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "TCP",
+            "UDP"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "port",
+        "protocol"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationPort"
+    },
+    "WorkspaceApplicationHealthCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "port",
+        "path"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationHealthCheck"
+    },
+    "WorkspaceApplicationMount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "mountPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "userId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "groupId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        },
+        "executable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "mountPath"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationMount"
+    },
+    "WorkspaceApplicationSecretInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ],
+          "not": {
+            "required": [
+              "env"
+            ]
+          }
+        },
+        {
+          "required": [
+            "env"
+          ],
+          "not": {
+            "required": [
+              "target"
+            ]
+          }
+        }
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationSecretInput"
+    },
+    "WorkspaceApplicationConfigInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationConfigInput"
+    },
+    "WorkspaceApplicationDependencyCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4096
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4096
+          },
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+          }
+        }
+      },
+      "required": [],
+      "description": "源Go contract允许的明确environment string map，不是任意domain JSON；Secret值禁止进入env，必须SecretInputs。",
+      "x-canonical-source": "packages/contracts/go/workspace_application_dependency.go#WorkspaceApplicationDependencyCommand"
+    },
+    "WorkspaceApplicationDependencyHealthCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "tcp",
+            "http",
+            "exec"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4096
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "type",
+        "port"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "exec"
+            },
+            "port": {
+              "const": 0
+            },
+            "command": {
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "not": {
+            "required": [
+              "path"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "tcp"
+            },
+            "port": {
+              "minimum": 1
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "path"
+                ]
+              },
+              {
+                "required": [
+                  "command"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "port": {
+              "minimum": 1
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "not": {
+            "required": [
+              "command"
+            ]
+          }
+        }
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application_dependency.go#WorkspaceApplicationDependencyHealthCheck"
+    },
+    "WorkspaceApplicationDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"
+        },
+        "execution": {
+          "$ref": "#/$defs/WorkspaceApplicationExecution"
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationPort"
+          }
+        },
+        "healthChecks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationDependencyHealthCheck"
+          }
+        },
+        "persistentMounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationMount"
+          }
+        },
+        "scratchMounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationMount"
+          }
+        },
+        "command": {
+          "$ref": "#/$defs/WorkspaceApplicationDependencyCommand"
+        },
+        "secretInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationSecretInput"
+          }
+        },
+        "configInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationConfigInput"
+          }
+        },
+        "compute": {
+          "$ref": "#/$defs/WorkspaceApplicationCompute"
+        }
+      },
+      "required": [
+        "name",
+        "image"
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationDependency"
+    },
+    "WorkspaceApplicationRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "applicationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
+        },
+        "platform": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+/[a-z0-9._-]+$"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"
+        },
+        "execution": {
+          "$ref": "#/$defs/WorkspaceApplicationExecution"
+        },
+        "credentials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationCredential"
+          }
+        },
+        "entrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationPort"
+          }
+        },
+        "entryPort": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "healthChecks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationHealthCheck"
+          }
+        },
+        "persistentMounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationMount"
+          }
+        },
+        "scratchMounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationMount"
+          }
+        },
+        "secretInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationSecretInput"
+          }
+        },
+        "configInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationConfigInput"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkspaceApplicationDependency"
+          }
+        },
+        "exposurePolicy": {
+          "type": "string",
+          "enum": [
+            "anonymous",
+            "application",
+            "cloud_private"
+          ]
+        },
+        "compute": {
+          "$ref": "#/$defs/WorkspaceApplicationCompute"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "applicationId",
+        "version",
+        "platform",
+        "image",
+        "exposurePolicy"
+      ],
+      "description": "现有packages/contracts/go/workspace_application.go WorkspaceApplicationRevision的wire投影，不是平行应用格式。所有新输入必须同时通过当前Go ValidateWorkspaceApplicationRevision/StartupOrder/Inputs/Execution。image=repository@digest；platform来自ArtifactReference精确拼接。main使用entrypoint覆盖，main默认CMD来自批准镜像；依赖command.entrypoint/args/env保持原语义。",
+      "x-canonical-source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationRevision"
+    },
+    "DataMountPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mountName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "concurrentWritersSupported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mountName",
+        "concurrentWritersSupported"
+      ],
+      "description": "引用applicationRevisionTemplate.persistentMounts的name，不重复mountPath/mode事实。"
+    },
+    "ApplicationOwnedAccessContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "application"
+          ]
+        },
+        "loginPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "logoutPath": {
+          "type": "string",
+          "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]*$"
+        },
+        "usernameCredentialName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "mode",
+        "loginPath",
+        "logoutPath"
+      ],
+      "description": "应用自有会话/登录协议，保持现有WorkspaceApplicationCredential密码与session-secret能力；Cloud不把平台cookie传应用。"
+    },
+    "CloudPrivateAccessContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cloud_private"
+          ]
+        },
+        "entryContract": {
+          "type": "string",
+          "enum": [
+            "WorkspaceApplicationEntry"
+          ]
+        },
+        "admissionReceiptId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "mode",
+        "entryContract",
+        "admissionReceiptId"
+      ],
+      "description": "复用当前canonical exposurePolicy与WorkspaceApplicationEntry；provider未具受保护入口能力时准入拒绝，不自行发App session、GatewayOIDC或改应用登录。Source当前cloud_private不发布公网入口，不能伪装可打开。"
+    },
+    "AnonymousAccessContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "anonymous"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "description": "仅发布者明确声明且平台准入允许；不因访问故障降级为anonymous。"
+    },
+    "WorkspaceApplicationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "serviceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "serviceName",
+            "port"
+          ],
+          "not": {
+            "required": [
+              "url"
+            ]
+          }
+        },
+        {
+          "required": [
+            "url"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "serviceName"
+                ]
+              },
+              {
+                "required": [
+                  "port"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "x-canonical-source": "packages/contracts/go/workspace_application_runtime.go#WorkspaceApplicationEntry"
+    },
+    "PackageFormatContractReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": "string",
+          "enum": [
+            "framework"
+          ]
+        },
+        "formatVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "schemaObjectRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "schemaDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "validatorArtifact": {
+          "$ref": "#/$defs/ArtifactReference"
+        },
+        "admissionReceiptId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "owner",
+        "formatVersion",
+        "schemaObjectRef",
+        "schemaDigest",
+        "validatorArtifact",
+        "admissionReceiptId"
+      ],
+      "description": "引用Framework/OMA当前发布者验证器与schema，不在Cloud定义另一种包格式。生产准入必须Owner release/readback与签名收据吻合；例子的formatVersion/仓库都是合成fixture，不表示已发布标准。"
+    }
+  },
+  "examples": [
+    {
+      "schemaVersion": "opl-publisher-contract/v1",
+      "publisherNamespaceId": "pub_official",
+      "image": {
+        "repository": "registry.example/official/runtime",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "platform": {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      },
+      "kind": "runtime",
+      "runtimeAbiVersion": "opl-runtime/v1",
+      "packageFormatVersions": [
+        "framework-fixture-format-1"
+      ],
+      "buildRecipe": {
+        "version": "opl-build-recipe/v1",
+        "frontend": {
+          "repository": "registry.example/builders/dockerfile",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "platform": {
+            "os": "linux",
+            "architecture": "amd64"
+          }
+        },
+        "recipe": {
+          "repository": "registry.example/official/recipes",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "mediaType": "application/vnd.opl.build-recipe.v1+tar",
+          "dockerfilePath": "Dockerfile"
+        },
+        "runtimeContextName": "runtime",
+        "packageInput": {
+          "contextName": "agent_package",
+          "formatVersion": "framework-fixture-format-1",
+          "sourceRoot": "package",
+          "targetPath": "/opt/opl/agent",
+          "uid": 1000,
+          "gid": 1000
+        },
+        "webuiInput": {
+          "contextName": "webui",
+          "sourcePath": "/web",
+          "targetPath": "/opt/opl/web",
+          "uid": 1000,
+          "gid": 1000
+        },
+        "networkPolicy": "none",
+        "outputPlatform": {
+          "os": "linux",
+          "architecture": "amd64"
+        },
+        "outputImageCommand": {
+          "entrypoint": [
+            "/opt/opl/bin/runtime"
+          ],
+          "cmd": [
+            "serve"
+          ]
+        }
+      },
+      "modelConfiguration": {
+        "protocol": "opl-model-config/v1",
+        "portName": "control",
+        "applyPath": "/control/models",
+        "readbackPath": "/control/models",
+        "requestFields": [
+          "version",
+          "selections"
+        ],
+        "readbackFields": [
+          "appliedVersion",
+          "selections"
+        ],
+        "authorizationSecretInputName": "control_token"
+      },
+      "applicationAccess": {
+        "mode": "application",
+        "loginPath": "/login",
+        "logoutPath": "/logout",
+        "usernameCredentialName": "app-admin"
+      },
+      "data": {
+        "schemaVersion": "agent-data/v1",
+        "upgrade": {
+          "mode": "compatible",
+          "compatibleFromSchemaVersions": [
+            "agent-data/v1"
+          ],
+          "backupRequired": false
+        },
+        "rollback": {
+          "safe": true,
+          "compatibleSchemaVersions": [
+            "agent-data/v1"
+          ]
+        },
+        "mountPolicies": [
+          {
+            "mountName": "workspace-data",
+            "concurrentWritersSupported": false
+          }
+        ]
+      },
+      "applicationRevisionTemplate": {
+        "schemaVersion": 1,
+        "applicationId": "opl-runtime",
+        "version": "1.0.0",
+        "platform": "linux/amd64",
+        "image": "registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "execution": {
+          "userId": 1000,
+          "groupId": 1000,
+          "init": true
+        },
+        "entrypoint": [
+          "/opt/opl/bin/runtime"
+        ],
+        "ports": [
+          {
+            "name": "app",
+            "port": 8080,
+            "protocol": "TCP"
+          },
+          {
+            "name": "control",
+            "port": 8081,
+            "protocol": "TCP"
+          }
+        ],
+        "entryPort": "app",
+        "healthChecks": [
+          {
+            "port": 8081,
+            "path": "/health/readiness",
+            "initialDelaySeconds": 0
+          }
+        ],
+        "persistentMounts": [
+          {
+            "name": "workspace-data",
+            "mountPath": "/var/lib/opl",
+            "readOnly": false
+          }
+        ],
+        "scratchMounts": [
+          {
+            "name": "tmp",
+            "mountPath": "/tmp",
+            "readOnly": false,
+            "mode": 448,
+            "userId": 1000,
+            "groupId": 1000,
+            "sizeBytes": 67108864
+          }
+        ],
+        "credentials": [
+          {
+            "name": "gateway-key",
+            "kind": "gateway_key",
+            "target": "/run/opl/gateway-key",
+            "env": "OPL_GATEWAY_KEY"
+          },
+          {
+            "name": "app-admin",
+            "kind": "workspace_admin_password",
+            "target": "/run/opl/admin-password",
+            "username": "admin"
+          },
+          {
+            "name": "app-session",
+            "kind": "workspace_session_secret",
+            "target": "/run/opl/session-secret"
+          }
+        ],
+        "secretInputs": [
+          {
+            "name": "control_token",
+            "target": "/run/opl/control"
+          }
+        ],
+        "configInputs": [
+          {
+            "name": "models",
+            "target": "/etc/opl/models.json"
+          }
+        ],
+        "dependencies": [],
+        "exposurePolicy": "application",
+        "compute": {
+          "cpuRequestMilli": 500,
+          "cpuLimitMilli": 2000,
+          "memoryRequestBytes": 268435456,
+          "memoryLimitBytes": 2147483648
+        }
+      },
+      "packageFormatContracts": [
+        {
+          "owner": "framework",
+          "formatVersion": "framework-fixture-format-1",
+          "schemaObjectRef": "fixture-framework-schema",
+          "schemaDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "validatorArtifact": {
+            "repository": "registry.example/framework-fixtures/package-validator",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "platform": {
+              "os": "linux",
+              "architecture": "amd64"
+            }
+          },
+          "admissionReceiptId": "fixture-not-a-production-admission"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "opl-publisher-contract/v1",
+      "publisherNamespaceId": "pub_official",
+      "image": {
+        "repository": "registry.example/official/webui",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "platform": {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      },
+      "kind": "webui",
+      "runtimeAbiVersions": [
+        "opl-runtime/v1"
+      ],
+      "uiProtocolVersion": "opl-webui/v1",
+      "integrationMode": "bundled_static",
+      "staticRoot": "/web",
+      "entryFile": "index.html",
+      "assetBasePath": "/assets/",
+      "apiBasePath": "/api/",
+      "authenticationProtocol": "opl-application-session/v1",
+      "supportsSse": true,
+      "supportsWebsocket": false
+    },
+    {
+      "schemaVersion": "opl-publisher-contract/v1",
+      "publisherNamespaceId": "pub_acme",
+      "image": {
+        "repository": "registry.example/third-party/acme/runtime",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "platform": {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      },
+      "kind": "runtime",
+      "runtimeAbiVersion": "opl-runtime/v1",
+      "packageFormatVersions": [
+        "framework-fixture-format-1"
+      ],
+      "buildRecipe": {
+        "version": "opl-build-recipe/v1",
+        "frontend": {
+          "repository": "registry.example/builders/dockerfile",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "platform": {
+            "os": "linux",
+            "architecture": "amd64"
+          }
+        },
+        "recipe": {
+          "repository": "registry.example/third-party/acme/recipes",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "mediaType": "application/vnd.opl.build-recipe.v1+tar",
+          "dockerfilePath": "Dockerfile"
+        },
+        "runtimeContextName": "runtime",
+        "packageInput": {
+          "contextName": "agent_package",
+          "formatVersion": "framework-fixture-format-1",
+          "sourceRoot": "package",
+          "targetPath": "/opt/opl/agent",
+          "uid": 1000,
+          "gid": 1000
+        },
+        "webuiInput": {
+          "contextName": "webui",
+          "sourcePath": "/web",
+          "targetPath": "/opt/opl/web",
+          "uid": 1000,
+          "gid": 1000
+        },
+        "networkPolicy": "none",
+        "outputPlatform": {
+          "os": "linux",
+          "architecture": "amd64"
+        },
+        "outputImageCommand": {
+          "entrypoint": [
+            "/srv/acme/start"
+          ],
+          "cmd": [
+            "serve"
+          ]
+        }
+      },
+      "modelConfiguration": {
+        "protocol": "opl-model-config/v1",
+        "portName": "control",
+        "applyPath": "/control/models",
+        "readbackPath": "/control/models",
+        "requestFields": [
+          "version",
+          "selections"
+        ],
+        "readbackFields": [
+          "appliedVersion",
+          "selections"
+        ],
+        "authorizationSecretInputName": "control_token"
+      },
+      "applicationAccess": {
+        "mode": "application",
+        "loginPath": "/login",
+        "logoutPath": "/logout",
+        "usernameCredentialName": "app-admin"
+      },
+      "data": {
+        "schemaVersion": "agent-data/v1",
+        "upgrade": {
+          "mode": "compatible",
+          "compatibleFromSchemaVersions": [
+            "agent-data/v1"
+          ],
+          "backupRequired": false
+        },
+        "rollback": {
+          "safe": true,
+          "compatibleSchemaVersions": [
+            "agent-data/v1"
+          ]
+        },
+        "mountPolicies": [
+          {
+            "mountName": "workspace-data",
+            "concurrentWritersSupported": false
+          }
+        ]
+      },
+      "applicationRevisionTemplate": {
+        "schemaVersion": 1,
+        "applicationId": "acme-runtime",
+        "version": "1.0.0",
+        "platform": "linux/amd64",
+        "image": "registry.example/third-party/acme/runtime@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "execution": {
+          "userId": 1000,
+          "groupId": 1000,
+          "init": true
+        },
+        "entrypoint": [
+          "/srv/acme/start"
+        ],
+        "ports": [
+          {
+            "name": "app",
+            "port": 9090,
+            "protocol": "TCP"
+          },
+          {
+            "name": "control",
+            "port": 8081,
+            "protocol": "TCP"
+          }
+        ],
+        "entryPort": "app",
+        "healthChecks": [
+          {
+            "port": 8081,
+            "path": "/health/readiness",
+            "initialDelaySeconds": 0
+          }
+        ],
+        "persistentMounts": [
+          {
+            "name": "workspace-data",
+            "mountPath": "/var/lib/opl",
+            "readOnly": false
+          }
+        ],
+        "scratchMounts": [
+          {
+            "name": "tmp",
+            "mountPath": "/tmp",
+            "readOnly": false,
+            "mode": 448,
+            "userId": 1000,
+            "groupId": 1000,
+            "sizeBytes": 67108864
+          }
+        ],
+        "credentials": [
+          {
+            "name": "gateway-key",
+            "kind": "gateway_key",
+            "target": "/run/opl/gateway-key"
+          },
+          {
+            "name": "app-admin",
+            "kind": "workspace_admin_password",
+            "target": "/run/opl/admin-password",
+            "username": "admin"
+          },
+          {
+            "name": "app-session",
+            "kind": "workspace_session_secret",
+            "target": "/run/opl/session-secret"
+          }
+        ],
+        "secretInputs": [
+          {
+            "name": "control_token",
+            "target": "/run/opl/control"
+          }
+        ],
+        "configInputs": [
+          {
+            "name": "models",
+            "target": "/etc/opl/models.json"
+          }
+        ],
+        "dependencies": [],
+        "exposurePolicy": "application",
+        "compute": {
+          "cpuRequestMilli": 500,
+          "cpuLimitMilli": 2000,
+          "memoryRequestBytes": 268435456,
+          "memoryLimitBytes": 2147483648
+        }
+      },
+      "packageFormatContracts": [
+        {
+          "owner": "framework",
+          "formatVersion": "framework-fixture-format-1",
+          "schemaObjectRef": "fixture-framework-schema",
+          "schemaDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "validatorArtifact": {
+            "repository": "registry.example/framework-fixtures/package-validator",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "platform": {
+              "os": "linux",
+              "architecture": "amd64"
+            }
+          },
+          "admissionReceiptId": "fixture-not-a-production-admission"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "opl-publisher-contract/v1",
+      "publisherNamespaceId": "pub_acme",
+      "image": {
+        "repository": "registry.example/third-party/acme/webui",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "platform": {
+          "os": "linux",
+          "architecture": "amd64"
+        }
+      },
+      "kind": "webui",
+      "runtimeAbiVersions": [
+        "opl-runtime/v1"
+      ],
+      "uiProtocolVersion": "opl-webui/v1",
+      "integrationMode": "bundled_static",
+      "staticRoot": "/web",
+      "entryFile": "index.html",
+      "assetBasePath": "/assets/",
+      "apiBasePath": "/api/",
+      "authenticationProtocol": "opl-application-session/v1",
+      "supportsSse": true,
+      "supportsWebsocket": false
+    }
+  ],
+  "x-semantic-validation": [
+    "Source Go validators are mandatory for applicationRevisionTemplate and emitted applicationRevision; this schema supplements, never substitutes the canonical domain validation.",
+    "Runtime image repo@digest/platform equals its applicationRevisionTemplate image/platform. Emitted Revision image equals final ArtifactReference.",
+    "Ports, config/secret references, mounts, startup dependency DAG and compute envelopes must validate through canonical owner types.",
+    "ModelConfiguration portName resolves declared main port and authorizationSecretInputName resolves SecretInputs. Access mode exactly equals exposurePolicy; never replace application auth with fake Gateway OIDC.",
+    "Third-party repository path must be inside approved PublisherNamespace exact path components; no official namespace reuse.",
+    "BuildKit recipe and explicit command/CMD use immutable approved inputs; no network or arbitrary customer Dockerfile.",
+    "Canonical execution image preserves dependencies and main data path/credentials when imported from legacy; no fabricated Build or changed auth.",
+    "Capability serializes descriptor exactly once to immutable approved Storage, hashes original bytes, returns objectRef+digest; later JSONB readbacks do not recalculate from a new encoding.",
+    "packageFormatVersions and packageFormatContracts.formatVersion must match exactly; selected input format must resolve Framework-owned verified validator/schema, not an invented Cloud package format.",
+    "cloud_private follows current canonical provider entry/readback, does not silently introduce a new SSO service or app session authority."
+  ],
+  "x-canonical-runtime-contract": {
+    "sourceSha": "50520e27a6b9a630eefdc2df7da3e5ec498d28a0",
+    "source": "packages/contracts/go/workspace_application.go#WorkspaceApplicationRevision",
+    "validators": [
+      "ValidateWorkspaceApplicationRevision",
+      "ValidateWorkspaceApplicationExecution",
+      "ValidateWorkspaceApplicationStartupOrder",
+      "WorkspaceApplicationSecretInputs",
+      "WorkspaceApplicationConfigInputs"
+    ],
+    "binding": "New image/platform fields map exactly to revision.image/platform; dependencies/inputs/mounts/health/credentials/execution preserve source semantics. Build wrappers only add publisher namespace, pinned recipe and model/data evolution extension facts."
+  },
+  "x-example-status": "All examples are synthetic executable contract fixtures, NOT published official or third-party images, standards, recipes, validators or admission evidence."
+}
