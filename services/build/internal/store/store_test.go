@@ -69,8 +69,8 @@ func TestEventValidationRejectsIncompleteInputAndHashesPayload(t *testing.T) {
 		t.Fatal("payload hash must be stable for identical bytes")
 	}
 
-	// The aggregate type is an explicit producer-supplied field: an empty value
-	// must be rejected, never defaulted.
+	// The aggregate type is fixed by the specification for this exact event
+	// version, so an empty or different value is rejected rather than defaulted.
 	missingAggregateType := valid
 	missingAggregateType.AggregateType = ""
 	if err := missingAggregateType.validate(); err == nil {
