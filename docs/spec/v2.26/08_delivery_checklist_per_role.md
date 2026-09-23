@@ -30,12 +30,14 @@ v2.21–v2.25是规划阶段标签，不代表这些版本已经发布。以下�
 
 | 批次 | 主要功能 | 先决交付 | 本批终点 |
 |---|---|---|---|
-| P0 目标/契约/迁移基础 | 全部跨域契约；F01最小认证/Tenant；F16来源映射 | 当前SHA/现有contract只读事实 | 正式架构Owner同步；API/SQL/proto/事件一致；旧数据反例可执行 |
-| P1 Agent平台（v2.21） | F02/F03/F04/F05/F06 | P0+Storage/Registry/Runtime发布合约 | 真上传→构建→远端digest→唯一可部署版本→Console显示 |
+| P0 目标/契约/迁移基础 | 全部跨域契约；F01首链所需认证/Tenant；F16从首批能力开始的来源映射 | 当前SHA/现有contract只读事实 | 正式架构Owner同步；API/SQL/proto/事件一致；真实调用消费协议；旧数据反例可执行 |
+| P1 Agent平台（v2.21） | F02/F03/F04/F05/F06的首条链切片 | P0+Build收据类型+Storage/Registry/Runtime发布合约；不要求全量价格/资源目录 | 登录→真上传→构建→远端digest→唯一可部署版本→Console回读；F03价格目录未完成不称全F03/P1完成 |
 | P2 Workspace平台（v2.22） | F07/F08/F09/F10 | P1+Gateway原单授权/扣费、Fabric能力、Ledger新receipt支持 | 客户Agent+套餐部署可用；更新不重购不破坏数据 |
 | P3 商业/生命周期（v2.23） | F11/F12/F13/F14/F15 | P2+批准报价/退款/续费策略 | 周期不重复扣费，删除/退款分开、Tenant资产保留/权限闭合 |
 | P4 旧路径迁移（v2.24） | F16批次切换 | P0试迁移+P1-P3能力与反例 | 每批单writer、历史不丢、已购资源沿用、回滚可验证 |
 | P5 生产资格（v2.25） | F17/全链真实质量 | 同一精确Candidate、Instance授权环境 | Local/Instance真实证据齐全，按已授权流程发布同字节 |
+
+首条链的最小切片只证明Package/Build/ready版本/Console，不能宣称完整F03或完整W14；W06资源套餐和价格目录随第二条购买链验收。
 
 P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、receipt、quote、provisioning形态从P0就必须兼容已有义务。全部Cloud开发都在同一`opl-cloud`仓库内，按01的独立module/进程映射逐个落实；没有必要同时建完所有空服务再验证首条链。
 

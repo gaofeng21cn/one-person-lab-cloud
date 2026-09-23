@@ -2,6 +2,10 @@
 
 > F16唯一迁移规格。只定义后续实施动作；本轮没有读取生产数据库、创建仓库、发布、扣费或迁移任何客户资源。
 
+## 代码集成与数据迁移分开
+
+`opl-cloud`为上游`one-person-lab-cloud`的v2.26开发fork。用户验收后的Issue/PR合回属于代码集成；本文件M0–M5属于运行数据/权限/原单的Owner移交。两者不可互相冒充或自动触发。继承API和空库真实加载字段见[15](15_domain_alignment.md)，不以全量新DDL覆盖旧库来“迁移”。
+
 ## 1. 来源与目标，不混淆证据层
 
 历史取证源码基线：one-person-lab-cloud main，50520e27a6b9a630eefdc2df7da3e5ec498d28a0（2026-09-20）。当前Console固定resource_only；Control Plane/Fabric/Ledger是三个现有进程/schema Owner。当前文档保留的Instance证据不能自动覆盖此SHA。
@@ -85,7 +89,7 @@
 | control_plane_admin_audit_events/archived_* | Ledger或明确审计owner只读档案 | 历史原样/原actor/时间与来源摘要，秘密按现有边界处理 |
 | project_task_sync_heads/workspace_sync_events/announcements/reads/production_e2e_records | 保留在现有独立能力owner，未纳入本轮迁移则不删不改 | 新Agent链不能借“瘦身”丢掉无关客户历史与产品能力 |
 
-这张表不授权所有表一次大搬家。每个领域移交有独立写集；未移交能力继续由原Owner负责，真实调用方切换后才退休旧writer。
+这张表不授权所有表一次大搬家。每个领域移交有独立写集；未移交能力继续由原Owner负责。清退门槛是：逐字段/typed decoder及未决义务映射已验、真实caller已切换、原ID/资金/资源/receipt读回无损、单writer与回滚/重启反例通过，才退休旧写路径；不可凭新DDL或handler存在删除旧代码。
 
 ## 4. 首批实施需同步的正式仓库文档
 

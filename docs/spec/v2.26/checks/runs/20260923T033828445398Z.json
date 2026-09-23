@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-23T03:38:28.445398+00:00",
+  "result": "passed",
+  "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
+  "checks": [
+    {
+      "name": "openapi_and_operation_inventory",
+      "passed": true,
+      "details": {
+        "operations": 108,
+        "schemas": 178
+      }
+    },
+    {
+      "name": "sql_ast_database_boundary_and_inventory",
+      "passed": true,
+      "details": {
+        "databases": 9,
+        "tables": 96,
+        "columns": 1359,
+        "indexes": 154,
+        "sqlStatements": 400,
+        "execution": "parser only; no database connected"
+      }
+    },
+    {
+      "name": "isolated_postgresql_execution_receipt",
+      "passed": true,
+      "details": {
+        "receipt": "checks/runs/cross-domain-20260923T033425.156933Z.json",
+        "tests": 101,
+        "metadata": {
+          "actualDatabaseFields": 1359,
+          "directMappingsTypeAndEnumChecked": 311,
+          "optionalWireFieldMeansOmittedNotNull": true,
+          "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+          "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+        },
+        "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+        "cleanup": {
+          "containerName": "opl-spec-semantic-1790134465",
+          "containerAbsent": true,
+          "stopSucceeded": true,
+          "removalReadbackPolls": 2,
+          "storage": "tmpfs only; no host mounts/named volumes",
+          "network": "none; no host ports"
+        }
+      }
+    },
+    {
+      "name": "api_database_field_sources",
+      "passed": true,
+      "details": {
+        "persistedFieldMappings": 311,
+        "derivedFieldMappings": 78
+      }
+    },
+    {
+      "name": "ui_fields_actions_feature_coverage",
+      "passed": true,
+      "details": {
+        "features": 17,
+        "uiFieldReferences": 2586,
+        "actions": 62
+      }
+    },
+    {
+      "name": "error_and_stage_projections",
+      "passed": true,
+      "details": {
+        "errorCodes": 72,
+        "operationStages": 73
+      }
+    },
+    {
+      "name": "feature_traceability",
+      "passed": true,
+      "details": {
+        "features": 17
+      }
+    },
+    {
+      "name": "protobuf_compilation",
+      "passed": true,
+      "details": {
+        "services": 29,
+        "messages": 391,
+        "methods": 172,
+        "compilerWarnings": ""
+      }
+    },
+    {
+      "name": "event_payload_schemas",
+      "passed": true,
+      "details": {
+        "events": 18,
+        "payloadSchemas": 18,
+        "explicitPositiveNegativeCases": 6
+      }
+    },
+    {
+      "name": "contract_positive_negative_cases",
+      "passed": true,
+      "details": {
+        "explicitPositiveNegativeCases": 39
+      }
+    }
+  ],
+  "errors": [],
+  "toolVersions": {
+    "openapi-spec-validator": "0.7.2",
+    "grpcio-tools": "1.80.0",
+    "pglast": "8.3",
+    "PyYAML": "6.0.3",
+    "jsonschema": "4.25.1"
+  },
+  "artifacts": {
+    "00_master_index.md": "8e12ab8ee2b226cfcf1e883ff633a41ee84339ba04bcf8cd06c589ad702794e9",
+    "01_domain_ownership_matrix.md": "15a77ac2f551f57fb45b5da94fb0afc5dc1fc32931780c09f4c56e666c05ffe9",
+    "02_database_schema_complete.md": "22b3e9b22e97238c453d0502cf9e23f3c33494cfa99fdd1688f8dccab28300d2",
+    "03_api_contract_complete.yaml": "d3d3074f367982c150fce60152cc81cadf9bdfd29b3bb6273b3414d7255db63e",
+    "04_frontend_interaction_spec.md": "4c0d5fa04e7d51582cd1c79b181c7d8939d2d0875cefe333751f26e332cff269",
+    "05_build_service_technical_spec.md": "3e7558357c7e1df9ace7469998ee16286fc70186713fde8506ed67c5da1be1a7",
+    "06_data_flow_and_state_machine.md": "8e69b22948d39ef0b30cc67f0055e43f6b334d90d85917a167c1cbe66e207f35",
+    "07_error_handling_matrix.md": "be8ab84544cfe7e323d26bb956e4f670cf107b59d1ebabee3f08f9637fb24b66",
+    "08_delivery_checklist_per_role.md": "e62a062d642b976626992198858851ea167ea93b37f67ec6f838b993538f40ea",
+    "09_legacy_migration.md": "69b30d7b6533c30c9966e15a02ec91ec5b75c47d53c787c8eb6468dcb35ffbdf",
+    "10_feature_traceability.md": "50ba68a440a932d5e243d2658a601bf1e28121577a820052ecd184dc47d57abd",
+    "11_ui_ux_design.md": "c819e9c5a38baccfce44a5861bb9284b6c2027e1ecbd3d45ad2c2a4b5045cc94",
+    "12_product_spec.md": "02a3ac5bdb213e3fdcdc7f3e8bffea0cd40357a3b869fc076309d7b8253d1e29",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "14_implementation_work_packages.md": "ec20250a588c2eca3aebd32ad137a8471035ca773f98963cccfea24f581e3faf",
+    "15_domain_alignment.md": "6bb764044450832ead363110cc43c784e9d262e06cfb28ca05e6e9c6df8518d3",
+    "checks/README.md": "d8b989fb0628aa03c075da548268c39669e92e9ccf85845106aa2e4f70cb020a",
+    "checks/contract_cases.json": "4d936597d913749ad47443061a87958edb456cc58c4ce1f81ca175517fccd8d9",
+    "checks/d17_acceptance_vectors.json": "74d5d340dd5ed44fd2c3696f1d419979900272b696d08f80679bf9cd653708c5",
+    "checks/d17_contract_results.json": "7f3097205dfbf817c3af79dafa6b8ae620e7b3120460f77af55ff58f82623908",
+    "checks/d17_native_millis.go": "7876ce15e26731747f2ec699667f2b5c1fba13c9fd563faa9d40388b3e270d5c",
+    "checks/db_execution.json": "e7baca6ed68b0b2a522afcae22eef597dfded23112f6a24537fb76fd446ceb30",
+    "checks/db_execution_subscription_alignment.json": "8efda17b9b1fd268494da2ca86c92b57e05e33d72dc7f6626b8ba1455bfc1604",
+    "checks/decision_status.json": "1745a31a3f9fb04c893299de177e10f87f697f5bbee6d6937adf0f9f3ef4dcc9",
+    "checks/development_plan.json": "f1c57b19ec7820709bc01dabe2153300633a12a8c291edf443c8a543a7928e55",
+    "checks/development_plan_validation.json": "3cd3ca0abf9eb650a7fbb79d81e6bc755f2616dd0fcd60411c1aa4954d16adb8",
+    "checks/event_cases.json": "508e3b55aef19dcff4435aae96e3dd51d74841a5afeca831fd717fb67feea711",
+    "checks/extract_legacy_surface.go": "a187b65fc0c76393116d5667cade2588fc86d6e6dbf2f61888b89e3d638b2fde",
+    "checks/handoff_contract_semantics.json": "881b32f9a921c83e73486ab703e674192d75e0fad0b7f6f20f3a4f0f4a3af091",
+    "checks/handoff_readiness.json": "848005710d12683f69333c4726cad33054c9474dfe437e4111639d7c28704bb5",
+    "checks/legacy_schema_probe_test.go.tmpl": "9ffe39115d85d97b84868431ba792f2ae69ada05f9420edebdddbd0c7d21dc8a",
+    "checks/provider_reference_verification.json": "8a5c072dfa90ecb6f42e98497890e8e39514f804255ddf35eb0165f35fc657b6",
+    "checks/publisher_source_check.go": "36430675a2cac4bae3610a13cda3ddbfc3d41973de72d29720e1a2ebf6b67ce8",
+    "checks/render_development_plan.py": "b34eafd710913c6fce4cd08614fa63e2e304ab960f1cc44b8db1217ab62e4e56",
+    "checks/render_domain_flows.py": "9f2ed7169b388343334c678e1f513a471a9bbd1d5066b306f6f7f2f447e3e4ee",
+    "checks/render_domain_reference.py": "e4287fef10d68c995442440b6c028ac7efc75320d3acc79d262c178c513c19ce",
+    "checks/render_traceability.py": "e60b22e9d8a03675c2eee039f8e8dee5048b4bcc2dd7c0f16b831128e3f89543",
+    "checks/requirements.txt": "1af6585d1505ebf0aa79faa63405a9be59c939f44620a09ee6b9f5bd53cec264",
+    "checks/semantics_cases.json": "5fbb6a35344003d90edc24168a29d0dc6d79202468ebd96c8f02f1be55df24ff",
+    "checks/test_development_plan.py": "4bd502308a59c52b8ecaf148a4257ba403dc63f5523ab22e261129a38876cbdf",
+    "checks/test_domain_reference.py": "19a51cda226aa817531ca6ade760b3de17e2028d35af0cab85784b2ebe0c9e24",
+    "checks/ui_prototype_verification.json": "a87bc1e625c8cdb7c911af9f8b614548c2c82788bc51d6753c506dc81ba6a5b1",
+    "checks/validate_contract_semantics.py": "687d8a6845135ce81aede258fbea5cc81fa57600cb0d4649c3499bcd1e625906",
+    "checks/validate_cross_domain.py": "16894e47fd41e824bd4f6316df4a6b5316a7eb2197b2245a68fb47194ff015cc",
+    "checks/validate_d17_contract.py": "5497d9c59efbfa93b40981884256ec8f56e4934f14e064c180a163f5f6b7ec54",
+    "checks/validate_development_plan.py": "d0e3f313bc583a9bfcd74d3ac714593ae92ab0e3a18f451e33d732fc03cd978f",
+    "checks/validate_domain_reference.py": "b3c18f9802ebde42e82a9dfe5f97b8f1b438ca86af67051999ec68506a9795c1",
+    "checks/validate_handoff.py": "808ad4bd4a3fc484b4fbf27325d135fe33984e42683b6c56428a4777dafc3db2",
+    "checks/validate_publisher_source.py": "c06d06352e5ca6a60d4bd18d899283cb9aba0e106998b0581fafb44af9f2f1a9",
+    "checks/validate_spec.py": "d69915e7373b8484d627a1b1812ea3f46187b79d48d6362611bdb37d4dc131d5",
+    "contracts/api_inventory.json": "aea2e1ea7097a0a5ab9ffda1a3ff497671c1076c5ba6f5e56a93a289016764ac",
+    "contracts/db_inventory.json": "3bd38af4f2f586f455a6cade9b2dd9a50dc2c1b023376ac4e007c3900a64b135",
+    "contracts/domain_flows.json": "f2d16a75ceec293386740797776522d7149e1bbbfda74d1cd7957a48de7e358f",
+    "contracts/events.json": "a1f6d15b4bc4ca52c096f7f9ff58486cea0c07d1c1528aa28e680ce901e4c96b",
+    "contracts/internal.proto": "7805478d495fd747d39933e28b8ede35e9edd8b90571bd5055e8d9b77eed0d9b",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6",
+    "contracts/publisher-contract.schema.json": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+    "contracts/schema.sql": "292f4e9e056d165ce533ba98f3e85f072f1d6d09c0fb8f3573cf51dee401c6e2",
+    "contracts/traceability.json": "b13278fbe41dcb2df409c446b1cf8186d77563f73ddd8d98c5d23eadacbdf2b7",
+    "contracts/ui_inventory.json": "af55056b8b5ec0da5802b82b9683fb66e09831eea4ce63585bda52d0251e7415",
+    "reference/domain-bff.md": "f355781da31783127f41fa7c3ac63c50976d84fb8b5deff054290bd5c6ea7887",
+    "reference/domain-build.md": "1f2a763e2bf59a450e90bdb74385a231dee0517e2be53b428a37cfc5a1c2f971",
+    "reference/domain-capability.md": "19fc5019d056e0b215dc60047d0a9d721cd430ef9e7ad3633201a89b06e253d7",
+    "reference/domain-fabric.md": "9de31929485d2fd1648f355106b96befc4e80136778610c5c34cf03a8e92178d",
+    "reference/domain-gateway.md": "42720ec091148c730756e03fb8f2535f3a4249644035bbb670f2f8ec706b441a",
+    "reference/domain-ledger.md": "4bad35269df15299deabcc9ad07cb15f2d6294c383c740d7a3f7db8a5b04e029",
+    "reference/domain-resource_catalog.md": "256b0b3b321b0a2e8d9def560983b4e84c7da268e6eddb41721bc3b99bc05bc8",
+    "reference/domain-runtime_control.md": "16f50021ecf056fd1bb5faa9f82649dabbb8605da7962a68a5074333b61ffadf",
+    "reference/domain-tenant.md": "75682c2d3a953dc7770027fd00ec29096b45600f7b381a284b500b23fb656e44",
+    "reference/domain-workspace.md": "caf1a7622a00e674c9b9ba32d59724068b9f5d7c4dc7ccae39cde68ffaa4946c",
+    "reference/legacy-control-plane.md": "35e2069cd157c08718ee724fa36c341cef254dabb2b3667078a1c8b5a2a89c0f",
+    "reference/legacy-fabric.md": "a63d607723369444bc2ed15dd0e1996a99c58815584e3d998cddf9c9aaa22309",
+    "reference/legacy-ledger.md": "c969f3ae53c981ded4511967a1c2981a931dad7e0e1117667e253b8dac24d96a",
+    "reference/legacy-wire-types.md": "689e4fddef67a127b2c710400ab43c012ffc0d892edc8975f856b965737279ce",
+    "reference/rest-schemas.md": "994947ff1dc71c7059f782a0a456cee30b2c10e6c8a2f75db8619c3545c7be63",
+    "reference/rpc-messages.md": "db8765091439955d92402a93c70a063af3cae0da756c1710e30a0276e5bad641",
+    "ui-prototype/index.html": "4ceab69310fefd5966d40345beaee2415d52de6966ba94654ae87c0adb5ed41d",
+    "ui-prototype/screenshots/adopt-existing-desktop.png": "bc4acbb3acb26500d76dd0ce0c3e9973e7d78594ed587e76db5b0c1b11a8d640",
+    "ui-prototype/screenshots/build-failed-desktop.png": "77b6025d2c71661e4b3335f94ba1c769af529aae44fe7a72c7ce18d6a2aa3bc6",
+    "ui-prototype/screenshots/deploy-mobile.png": "372845a8a5c013afda3a31ade10627cd4ff28b0dfeda4dc9e1c1d44d0505ab65",
+    "ui-prototype/screenshots/deploy-quote-desktop.png": "babea6a1877e968915e6ef41d673d090508c48079ac62b3235ad2e9c446d4297",
+    "ui-prototype/screenshots/deploy-unknown-desktop.png": "075f85c21ac10b3ae1f2effd1f398e8aba34e3bc49a25d0d14591be596624277",
+    "ui-prototype/screenshots/overview-desktop.png": "967fc52993f5be656249cfa30577e8714a4b5f09985a75c42cc6262c7955d3a0",
+    "ui-prototype/screenshots/plan-boundary-mobile.png": "053e2a35d2af9161b8be42eea5c5d1f5c8e43b3c47ab05e7793d44e5eeff7090",
+    "ui-prototype/screenshots/plan-downgrade.png": "a42ad4cfe96014f6d4b15d87a80b6e2ee60fa4146b9429c56e92147cc2d1a9cb",
+    "ui-prototype/screenshots/plan-failure.png": "b7af298fde77b017596c3ef27af7864b75fd2a2f3d50bbcd1ada6b9d1a265522",
+    "ui-prototype/screenshots/plan-upgrade.png": "37f38d476ddb0296fbad40d31e34ca70ef0eb65954fb2904b1d6456cde0242f3",
+    "ui-prototype/screenshots/publisher-namespace-desktop.png": "b66f890232543aaee0ba362a1e398025f531f74b6c4467e06cf0e283bf3d3b21",
+    "ui-prototype/screenshots/tenant-reenable-desktop.png": "7741de1a07990d8224e9967231c78cc6074774155d4dd3f5c77ccc6ca3146455",
+    "ui-prototype/screenshots/workspace-delete-confirm-desktop.png": "18581cef3f6d3fe7a23fa717cc467139e653de319797d1718f180b790b30b6f8",
+    "ui-prototype/screenshots/workspaces-mobile.png": "7125ad4e69a0ad66f65ec03f924e61d248d6afe17f95a95d2c47b110001f840c"
+  }
+}

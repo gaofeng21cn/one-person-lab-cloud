@@ -20,24 +20,26 @@
 | cloud | `/Users/huangrende/Documents/ChatGPT/opl-cloud` | existing |
 | console | `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui` | existing |
 | bff | `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff` | planned_not_created |
-| gateway | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | planned_not_created |
-| capability | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability` | planned_not_created |
-| build | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build` | planned_not_created |
-| workspace | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace` | planned_not_created |
-| runtime_control | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control` | planned_not_created |
-| resource_catalog | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog` | planned_not_created |
+| gateway | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | existing |
+| capability | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability` | existing |
+| build | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build` | existing |
+| workspace | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace` | existing |
+| runtime_control | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control` | existing |
+| resource_catalog | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog` | existing |
 | fabric | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric` | existing |
 | ledger | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger` | existing |
-| tenant | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | planned_not_created |
+| tenant | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | existing |
 | instance | `/Users/huangrende/Documents/ChatGPT/opl-instance-medopl` | existing |
 
 所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。
 
 ## 3. 实施顺序、并行与完成依赖
 
-可立即启动第一批是W00→W01→W02；随后W03/W05/W06/W07/W10/W11/W12等按各自依赖并行。不是先做完所有微服务再看第一个用户结果。
+先读[15领域字段与继承对齐](15_domain_alignment.md)。当前六模块已存在不代表W02全部接受标准满足；先收齐W01/W02跨Owner身份与证据断点，再进入依赖这些契约的真实业务链。保留W编号及原产品依赖，不新增人工审批轮。通用Operation接口是BFF入口（x-owner=bff），路径/必填查询owner才是数据Owner；W13/W24维护入口，各域实现本域读回。
 
-- 第一条真实纵向闭环：W03/07/08/09/13/14，上传→构建→唯一版本→真实Console。
+现有W00→W02已具文档/绑定/六域骨架，不重建空服务；W01协议补齐与W02消费者适配仍未闭合。之后W03最小授权、W05当前Build证据、W07/08/09、W13/14按首切片先行；W06与其他不在首条链上的工作可按各自依赖推进，但不阻塞首切片。不是先做完所有微服务再看第一个用户结果。
+
+- 第一条真实纵向闭环：W01协议修复/W02消费者边界→W03最小授权与W05 Build证据→W07/08/09→W13/14首切片，登录→上传→真实构建→唯一ready版本→真实Console。W14的价格/资源目录不由此切片冒充完成。
 - 第二条真实纵向闭环：W04/05/06/10/11/15/16，Agent+套餐→付费fixture→真实Local应用。
 - 第三条：W17–W23，配置/切换/升降配/续费/删除与管理治理。
 - 迁移转换W25在契约/DB早期开始，生产切换在W30，不等最后才考虑旧ID和原单。
@@ -78,6 +80,8 @@
 | W30 生产客户逐批切换与旧writer退休 | Instance+数据Owner | W25,W26,W29 | 本任务依赖与边界即可 | F16,F17 |
 | W31 同字节正式发布与文档收尾 | Cloud发布Owner | W28,W29 | 本任务依赖与边界即可 | F17 |
 
+首链切片单独门槛：W14 `firstSliceAcceptAfter=W07,W08,W09,W13`；W14全包验收仍依赖W06/W07/W08/W09。任何切片通过不得把整包标为完成。
+
 ### 同文件与发布边界的串行点
 
 - W00独占canonical目标同步；W01独占同一shared contract revision及必要consumer依赖整合，消费者同commit吸收。W02并行任务不各自改写共享契约或根构建配置。
@@ -110,6 +114,7 @@
 **必须交付**：
 - 把已确认Agent+套餐目标、D17和逐域单writer迁移写入canonical owner，历史resource_only义务保留
 - 记录Cloud/Instance/Runtime publisher精确sourceSHA与schema版本；形成实现起点差异清单，不把目标写成现状
+- 明确fork→upstream集成关系：opl-cloud为当前开发checkout，最终经用户验收的Issue/PR合回one-person-lab-cloud；代码集成不等于数据迁移/Instance部署
 
 **验证**：
 - 对照00/09/13核对上下层无竞争writer
@@ -145,16 +150,21 @@
 - 单仓消费者与契约来自同一Cloud commit，绑定schema SHA与生成工具版本；外部Owner才按精确commit/tag或digest接入，不用moving main/latest
 - 沿用packages/contracts/go/go.mod；生成包为packages/contracts/go/v226，不为版本子包新建module；以锁定生成配置映射proto import到实际module路径，不手改生成代码
 - 必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块
+- ALIGN-01–04在规格层已定义，实施同源proto生成绑定/事件映射与真实消费者，完整传递owner+operationId/consumer及aggregate身份；BFF仅路由不持数据
+- 为每个活跨域API建立字段来源→wire→接收Owner验证→本域写入/读回映射；更新原02/03/proto/events与所有消费者，不另造平行DTO
+- 既有OwnerOperationRequest追加owner=3、DeliverEventRequest追加consumer_owner=3；18事件按精确事件版本固定aggregate_type及payload ID来源，不增加无必要的wire自由字符串，route_observed补真实routeBindingId。BFF三条通用Operation接口的x-owner是bff而不是Workspace writer。
 
 **验证**：
 - 编译Go/TS/protobuf客户端，按各自协议规则验证JSON/protobuf正反例、金额string/int64及source ms精度；仅生成成功不算消费者接入完成
 - 在同一checkout重放生成并检查无漂移，运行受影响服务回归与npm run verify:local:full；规格验证不替代消费者验证
 - 运行已有checks/validate_spec.py与validate_d17_contract.py作规格基线，不冒充实现测试
+- 真实decoder/gRPC适配边界：同ID不同Owner、错Owner零store调用、事件身份无损/冲突拒绝；字段目录完整不等于此链通过
 - 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1
 
 **完成判定**：
 - 双方消费者同一契约版本，金额string/int64与source ms精度一致
 - 契约升级在一组可回放变更中完成，不让旧测试驱动兼容字段
+- 规范定义与受影响消费者在同版接入；只有字段和生成包不算闭合，未接入的真实服务仍标未完成。
 
 ### W02 独立服务启动、DB角色及共同操作协议
 
@@ -210,6 +220,7 @@
 - 按01同仓目录启动独立服务module/进程/DB角色；tenant与gateway同module同部署单元但不同DB角色，不按每个RPC拆服务
 - 每Owner实现自己的Operation、幂等、Outbox/Inbox、健康/就绪与迁移入口；公共基础设施仅在有两个真实caller时共享
 - 为本地测试准备各Owner独立database/角色及隔离fixture进程；不以同schema代替跨Owner权限隔离，不复制钱包或造生产test-billing入口
+- 已有六模块骨架保留；逐项区分schema/存储协议、已注册port、Unimplemented与业务用例；修正跨Owner读取、空提交证据和Inbox元数据去重，不把纯readback叫完整reconcile
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.outbox_events`, `tenant.outbox_deliveries`, `tenant.inbox_events`, `tenant.idempotency_records`, `capability.outbox_events`, `capability.outbox_deliveries`, `capability.inbox_events`, `capability.idempotency_records`, `build.outbox_events`, `build.outbox_deliveries`, `build.inbox_events`, `build.idempotency_records`, `workspace.outbox_events`, `workspace.outbox_deliveries`, `workspace.inbox_events`, `workspace.idempotency_records`, `runtime_control.outbox_events`, `runtime_control.outbox_deliveries`, `runtime_control.inbox_events`, `runtime_control.idempotency_records`, `fabric.outbox_events`, `fabric.outbox_deliveries`, `fabric.inbox_events`, `fabric.idempotency_records`, `gateway.outbox_events`, `gateway.outbox_deliveries`, `gateway.inbox_events`, `gateway.idempotency_records`, `resource_catalog.outbox_events`, `resource_catalog.outbox_deliveries`, `resource_catalog.inbox_events`, `resource_catalog.idempotency_records`, `ledger.outbox_events`, `ledger.outbox_deliveries`, `ledger.inbox_events`, `ledger.idempotency_records`, `tenant.operations`, `capability.operations`, `build.operations`, `workspace.operations`, `gateway.operations`, `resource_catalog.operations`, `runtime_control.operations`, `fabric.operations`
 
@@ -223,6 +234,7 @@
 **完成判定**：
 - DB角色只写本域，无跨库FK/JOIN；同一writer无双写
 - readiness真实暴露依赖不就绪；未知结果不默认成功
+- 新DDL不表示Fabric/Ledger旧loader已迁移；每域真实迁移入口/角色/请求与协议一致；未完成的业务dispatch明确归后续Owner工作包
 
 ### W03 身份、Tenant成员及服务间授权
 
@@ -241,6 +253,7 @@
 - Gateway个人登录→Cloud session/Tenant/membership；平台权限与Tenant角色分离
 - 实现AuthorizeAction、OwnerCommitReadback验证、accepted-operation grant、权限版本/受众及撤权
 - 实现邀请/角色/最后owner保护；开发fixture使用已知测试Tenant，不向外部自动注册钱包
+- 把mTLS peer、受众/action/resource/Tenant校验接入真实服务边界；grant不得依据空accepted_input_digest/虚构committed_version签发
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`acceptInvitation`, `getLoginContext`, `getSession`, `getTenant`, `inviteMember`, `listInvitations`, `listMembers`, `login`, `logout`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
@@ -276,6 +289,7 @@
 - 沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回
 - 仅映射/操作证据，无余额镜像；unknown禁止新财务副作用
 - 个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createGatewayKey`, `getWallet`, `listGatewayKeys`, `listModels`, `listRechargeRecords`, `listUsage`, `listWorkspaceTransactions`, `revealGatewayKey`, `revokeGatewayKey`
 
@@ -312,6 +326,7 @@
 - 支持Build无Workspace收据、新计划变更/补差/迁移证据；精确原单和输入输出验证
 - 保留旧receipt字节/类型/ID与幂等义务，新索引只投影
 - 提供管理员只读证据和资格投影，不让Ledger编排业务
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getReceipt`, `listQualifications`, `listReceipts`
 
@@ -346,6 +361,7 @@
 - 资源plan先创建，组合价格后创建；版本/有效期/approved transition具有明确owner
 - 实现D17固定政策和base退款政策分离、实际周期/单次ceil、canonical毫秒，不写任意公式框架
 - 客户列表只投影有效已批准组合，容量仍由Fabric确认
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createComputePlan`, `createPricePolicyVersion`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `listComputePlans`, `listPricePolicyVersions`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listStoragePlans`, `setComputePlanAvailability`, `setStoragePlanAvailability`
 
@@ -483,6 +499,7 @@
 - Reserve稳定实例身份；完整descriptor贯通部署/模型reload/retire
 - 应用原登录与owner-only应用凭据reveal沿现行能力；不新增强制SSO
 - 数据兼容/单写挂载、健康/已应用配置与实际资源改配后的恢复
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_instances`, `runtime_control.runtime_actions`
 
@@ -517,6 +534,7 @@
 - 适配类型化执行计划、资源/Secret/挂载/运行、D17允许转换及实际quota
 - provider-side fence/conditional revision与实际路由读回，旧epoch不可生效
 - Linux存储/权限前提不满足明确失败，不把Mac Docker Desktop冒充Local资格
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`, `fabric.route_bindings`, `fabric.route_switches`
 
@@ -549,6 +567,7 @@
 - 报价前固定已资格的in-place或目标pool+原CBS重绑策略；预付包月，禁止POSTPAID_BY_HOUR
 - SDK询价/允许机型/异步变更/描述读回、TKE排空/恢复、磁盘/文件系统验证
 - 不支持缩容/性能类别/原子路由能力明确拒绝；ordinary CI无真钱采购/销毁
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricRuntimeExecution.ReadApplicationCredentials`, `FabricRuntimeExecution.StartRuntime`, `FabricRuntimeExecution.StopRuntime`, `FabricRuntimeExecution.ReloadRuntime`, `FabricRuntimeExecution.ObserveRuntime`, `FabricRouteExecution.FenceRouteEpoch`, `FabricRouteExecution.ActivateRoute`, `FabricRouteExecution.ObserveRoute`, `FabricRouteExecution.RollbackRoute`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
@@ -586,6 +605,7 @@
 - 同源REST/session/CSRF/Origin→typed Owner RPC；Operation按owner路径路由
 - 保留当前React/TypeScript/tokens；按11导航和状态/响应式/焦点，不按Domain铺菜单
 - secret no-store与内存清理；所有异步读取遵守owner提示，不自行认定成功
+- 通用Operation聚合只是BFF路由，不归Workspace数据writer；按显式owner访问唯一后端，不遍历库/服务猜归属
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getOperation`
 
@@ -621,6 +641,7 @@
 - 按04/11实现Agent目录、版本、分组、上传向导、构建日志/重试及publisher表单
 - fixtures只用于并行开发；最后换真实BFF读写并验证关闭/刷新恢复
 - 目录下架/物理清除文案不混，技术详情只给有权限的角色
+- 本包首条可验收切片仅为上传/构建/唯一版本/Console展示；资源套餐与价格目录属于W06及第二条购买链。全量F03目录体验仍须W06再验收，不拿首条切片宣称W14全完成。
 
 **前端消费API**：`archiveNamespace`, `archivePackage`, `completeUpload`, `createBuild`, `createComputePlan`, `createNamespace`, `createPackage`, `createPricePolicyVersion`, `createPublisherNamespace`, `createRefundPolicyVersion`, `createRetentionPolicyVersion`, `createStoragePlan`, `createUpload`, `createUploadPart`, `deleteCapabilityVersion`, `getBuild`, `getBuildRuntimePolicy`, `getCapabilityVersion`, `getOperation`, `getPackage`, `getPackageVersion`, `getUpload`, `listBuildLogs`, `listBuilds`, `listCapabilityVersions`, `listComputePlans`, `listModels`, `listNamespaces`, `listPackageVersions`, `listPackages`, `listPricePolicyVersions`, `listPublisherNamespaces`, `listRefundPolicyVersions`, `listRetentionPolicyVersions`, `listRuntimeVersions`, `listStoragePlans`, `listWebuiVersions`, `publishOfficialPackage`, `registerRuntimeVersion`, `registerWebuiVersion`, `retryBuild`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setComputePlanAvailability`, `setRuntimeVersionStatus`, `setStoragePlanAvailability`, `setWebuiVersionStatus`, `updateNamespace`, `updatePackage`
 
@@ -632,6 +653,7 @@
 **完成判定**：
 - 首包与新版本都可用；选择WebUI确实进入产物
 - 不把字段存在、静态原型或传输100%当构建完成
+- 首切片端到端经真实BFF与Owner回读，上传分片/Build进度/ready版本/权限/刷新可复现；全包仍须W06价格目录与其余F03页面独立验收。
 
 ### W15 准确报价与Agent+套餐Launch闭环
 
@@ -652,6 +674,7 @@
 - 只读准入→固定quote→CAS接受→原单扣款→Key→资源/挂载→完整运行→route确认→Ledger
 - 新入口必须有Agent；旧resource_only不能被默认Agent暗改
 - 每阶段原身份/原单/epoch持久化，已接受报价不因执行耗时重新计价
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createQuote`, `createWorkspace`, `getQuote`, `getWorkspace`, `listWorkspaces`
 
@@ -721,6 +744,7 @@
 - API→完整descriptor/引用保护→独立实例验证→Fence/Activate/Observe→本域CAS选择
 - 失败回滚须数据兼容/原route证据，不能只改active指针
 - 配置只更新允许模型；原购买历史/数据/Key边界保留
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getDeployment`, `getWorkspaceAccess`, `getWorkspaceModels`, `listDeployments`, `revealWorkspaceApplicationCredentials`, `rollbackWorkspace`, `updateWorkspaceModels`, `updateWorkspaceVersion`
 
@@ -758,6 +782,7 @@
 - 保留source billingAnchorDay/原paidThrough/自动授权；周期唯一资金义务
 - 到期不免费运行；原单/原资源续期回读后提交新周期
 - 手动/自动/恢复worker竞争同一义务，不因session过期丢原授权
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getSubscription`, `renewWorkspace`, `updateRenewalSettings`
 
@@ -797,6 +822,7 @@
 - 固定T、canonical毫秒、单次ceil、原E不变；下期目标价及取消/锁定边界按13
 - supplement失败全退及成功后T..E未用退款，与base720分开；原单防超额/unknown
 - 复用W18 worker执行due计划，不新建scheduler服务或资金预占钱包
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`cancelPlanChange`, `getPlanChange`, `listPlanChanges`, `resizeWorkspace`
 
@@ -833,6 +859,7 @@
 - 持久删除意图→逐资源确切absence→删除receipt→每个原单独立退款
 - base保留原policy；已applied升级supplement用自身coverage，不合并当整月款
 - 与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`deleteWorkspace`, `getWorkspaceDeletion`
 
@@ -866,6 +893,7 @@
 - 创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪
 - reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作
 - 删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源
+- 以15及reference继承盘点为基线，声明保留/提取/新增的真实caller和writer；优先复用现行owner decoder/规则，不按新表逐字段重写一套业务
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`bindTenantWallet`, `createTenant`, `deleteTenant`, `getAdminTenant`, `getTenantAssetCustody`, `getTenantLifecycleOperation`, `listTenants`, `reenableTenant`, `restoreTenant`, `suspendTenant`
 
@@ -974,6 +1002,7 @@
 **完成判定**：
 - 运营能知道真实失败点与唯一下一动作
 - 无新全局事件总线/中央workflow/第二lock authority
+- 管理员通用Operation列表必填owner仅查指定域；游标绑定Owner不可跨域复用。
 
 ### W25 逐域数据转换与迁移演练
 
@@ -998,6 +1027,7 @@
 - 按09对每张源表/字段确定target或保留档案，不丢未知历史
 - legacy_resource_only/legacy_application/legacy_import保留真实ID/原单/时间、未决义务/补差coverage
 - 隔离副本试迁移、hash/金额/周期/权限对账、single-writer fence及回滚演练
+- 逐原字段/typed payload建立目标Owner、转换、保留及拒绝映射；区分空库安装与客户数据转换；未纳入迁移的公告/sync/审计等保留原Owner不删
 - 修改真实migration加载链：CP ent_state_store→migrations.Apply*；Fabric/Ledger各自internal Owner的ent_migrations。不得只改展示SQL。
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`adoptWorkspace`
@@ -1177,6 +1207,7 @@
 - 仅在明确正式发布授权后，由允许actor从main提升同一资格制品，不重建
 - 实际公共制品/digest/资产回读；Cloud状态和外部Instance义务分别记录
 - 实施后更新canonical文档，完成工作清单转历史，保留未完成gap
+- fork代码按用户明确授权的Issue/PR策略合回上游；代码merge、Product Release和Instance采用分别验证，互不自动授权
 
 **验证**：
 - 当前release owner校验器与public artifact readback
@@ -1191,8 +1222,8 @@
 1. W00只统一目标/实施分层和source snapshot，不先改运行逻辑。
 2. W01把必要的契约及真实consumer类型接入现仓，先跑strict decoder/roundtrip/金额与epoch反例。
 3. W02按01的部署单元建立可启动、可迁移、可查询operation的最小服务；同进程的tenant/gateway仍分别验证DB权限、事务与写入边界。
-4. W03与W07/W08按依赖推进，随后W09形成第一条纵向闭环。不要先同时搬完所有Control Plane方法。
-5. 每个PR有明确F/W编号、真实caller切换、保留历史义务、focused checks和来源证据；只有用户要求才在实际任务中执行commit/push/PR。
+4. W03只接入首链会话/成员/服务授权，W05只完成Build所需证据；W07/08/09与W13/14首切片形成真实纵向闭环。W14中的资源价格UI依赖W06第二链；首切片不宣称W14全包完成。不要先同时搬完所有Control Plane方法。
+5. 每个用例列入口与caller、唯一事实Owner及本域事务、字段来源/消息/校验/读回、unknown恢复、旧writer切换/退出和验证证据；同仓共享契约串行落一版，领域实现按互不冲突文件分工。只有用户要求才执行commit/push/PR。
 
 ## 6. 五方怎样协同而不再次定义业务
 

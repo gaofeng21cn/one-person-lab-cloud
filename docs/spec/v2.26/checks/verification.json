@@ -1,7 +1,7 @@
 {
   "result": "passed",
-  "timestamp": "2026-09-22T15:22:00.856709+00:00",
-  "report": "checks/runs/20260922T152200856709Z.json",
+  "timestamp": "2026-09-23T03:58:57.082668+00:00",
+  "report": "checks/runs/20260923T035857082668Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -28,7 +28,7 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260921T192502.004890Z.json",
+        "receipt": "checks/runs/cross-domain-20260923T033425.156933Z.json",
         "tests": 101,
         "metadata": {
           "actualDatabaseFields": 1359,
@@ -39,10 +39,10 @@
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790018702",
+          "containerName": "opl-spec-semantic-1790134465",
           "containerAbsent": true,
           "stopSucceeded": true,
-          "removalReadbackPolls": 1,
+          "removalReadbackPolls": 2,
           "storage": "tmpfs only; no host mounts/named volumes",
           "network": "none; no host ports"
         }
@@ -96,7 +96,7 @@
       "details": {
         "events": 18,
         "payloadSchemas": 18,
-        "explicitPositiveNegativeCases": 5
+        "explicitPositiveNegativeCases": 6
       }
     },
     {

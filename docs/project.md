@@ -1,7 +1,8 @@
 # Project Scope
 
 This is the single `opl-cloud` GitHub product and implementation repository,
-derived from `one-person-lab-cloud`. It follows the development framework from
+developed as a fork of `one-person-lab-cloud`, the eventual upstream integration
+destination. v2.26 evolves inherited code rather than creating a second product. It follows the development framework from
 `one-person-lab`; `opl-cloud` also remains the package and runtime identifier.
 All target Cloud domain services stay in this repository with independent
 module, process and data-owner boundaries. The adopted target and detailed

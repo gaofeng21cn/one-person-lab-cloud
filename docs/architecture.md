@@ -100,6 +100,13 @@ Domain agents        domain strategy, quality verdict and delivery authority
 
 ## Repository And Instance Topology
 
+`opl-cloud` is the current v2.26 development fork of `one-person-lab-cloud`.
+This is one evolving product: inherit the upstream implementation, extract
+bounded capabilities, and integrate accepted increments back upstream. Source
+integration is distinct from owner-data migration and Instance adoption; see
+[the 2026-09-23 decision](decisions.md) and
+[field-level reconciliation](spec/v2.26/15_domain_alignment.md).
+
 ```text
 opl-cloud
   product architecture, whitepaper, roadmap
@@ -123,7 +130,9 @@ Control Plane, Fabric, and Ledger implementation, not creation of domain repos.
 
 ### Target Directory And Service Map
 
-This is the target layout, not evidence that the new modules already exist:
+This is the target ownership layout. Six new service modules now have W02
+scaffolds in the fork, not completed domain behavior; BFF remains planned. See
+[field reconciliation](spec/v2.26/15_domain_alignment.md) for current source facts:
 
 | In-repository path | Module / deployment boundary | Data and responsibility owner |
 | --- | --- | --- |

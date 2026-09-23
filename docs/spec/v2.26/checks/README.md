@@ -11,7 +11,7 @@ python3 -m venv /tmp/opl-spec-validation
 /tmp/opl-spec-validation/bin/python checks/validate_spec.py
 ```
 
-依赖锁定为本次实际使用版本，不要求更新到latest。脚本在失败时返回非零，并追加checks/runs/<UTC时间>.json；verification.json仅是最新结果索引，不覆盖此前失败记录。
+本轮对齐REST/proto/events权威规格后，先运行同仓生成器与字段检查，再按现有隔离PostgreSQL脚本重取绑定新hash的cross-domain回执；旧原型回执仅证明旧OpenAPI字节，handoff仍会报告`needs_correction`，须对当前字节重跑受影响UI原型后才能更新证据。生成绑定和六服务真实消费者尚需W01/W02完成，不能因规格静态PASS称它们已接入。依赖锁定为本次实际使用版本，不要求更新到latest。脚本在失败时返回非零，并追加checks/runs/<UTC时间>.json；verification.json仅是最新结果索引，不覆盖此前失败记录。
 
 ## 文件
 
@@ -67,3 +67,27 @@ python3 -m unittest discover -s checks -p 'test_development_plan.py'
 14与development_plan.json是同源任务书，不重复定义业务DTO。检查涵盖全部F/API/Owner表/内部RPC、现有代码路径、拟建位置和启动/验收依赖无环；同时拒绝Cloud领域落点逃出当前仓库、tenant/Gateway误拆模块和非Instance任务越界写入。生成器从当前checkout确定工作根；历史来源SHA和旧回执保持原样。只说明任务覆盖和计划可执行，不执行W00–W31的实现、部署或收费。
 
 既有协议/SQL/UI字节未改时复用其精确哈希证据，不为增加任务书重跑有副作用的资格流程。打包/签收忽略.DS_Store、__MACOSX、__pycache__及.pyc，这些是工作站元数据而不是产品规则。
+
+
+## 字段与领域对齐（2026-09-23）
+
+先读`../15_domain_alignment.md`。`../reference/`是可再生成的只读视图，原02/03/proto/events仍是字段Owner。每域第1节是人工核对的职责说明；第2节起由生成器从规范派生，不手工修改派生字段。
+
+```sh
+# 指定本机已安装requirements.txt的Python；输出必须是新文件，不覆盖旧receipt。
+python checks/render_domain_reference.py --report /tmp/domain-reference-new.json
+python checks/validate_domain_reference.py
+# 当前已知ALIGN-01–04会使上一个命令非零；只生成审计报告可用--allow-known-gaps，报告仍passed=false。
+python -m unittest discover -s checks -p 'test_domain_reference.py'
+```
+
+旧代码API注册和JSON类型按冻结SHA的Go AST抽取：
+
+```sh
+go run checks/extract_legacy_surface.go /absolute/path/to/frozen-baseline > /tmp/legacy-surface.json
+python checks/render_domain_reference.py --legacy-source-json /tmp/legacy-surface.json --report /tmp/domain-reference-with-baseline-new.json
+```
+
+旧DB不是解析展示SQL得到：在`git archive 50520e27 services packages`的隔离副本中，用`legacy_schema_probe_test.go.tmpl`调用各Owner真实loader，临时PostgreSQL16空库安装后读回系统目录。模板的`OWNERPACKAGE/INSTALL`替换分别是server/newTestPostgresEntStateStore、fabric/newTestPostgresOperationStore、ledger/NewPostgresStore(db).Install；准确调用记录在`runs/legacy-schema-audit-20260923.json`。仅修改副本、不触碰原源码或生产库，销毁本次容器。此读回不涵盖有客户数据的迁移。
+
+`validate_handoff.py`现在合并字段对齐回执，未关闭的跨Owner契约缺口不能被旧的静态PASS覆盖。更新任何绑定源后先运行计划/字段校验，再跑validate_spec，最后validate_handoff；保留失败记录，不通过修改回执假装完成。

@@ -2,6 +2,8 @@
 
 > 目标设计；范围和状态以00为准，字段以02/SQL为准，外部操作以03为准。Domain不等于插件或仓库；全部Cloud产品在唯一`opl-cloud`仓库内保持明确领域边界。
 
+详细[继承API/DB与九域字段对齐见15](15_domain_alignment.md)。`opl-cloud`为开发fork，最终合回`one-person-lab-cloud`；下文领域边界在fork/upstream一致，不把两仓当两个产品。
+
 ## 1. 目标调用图
 
 ```text
@@ -59,25 +61,25 @@ BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认�
 
 ### 3.2 目录、module、进程与数据Owner映射
 
-下表是**目标落点，不是新服务已实现声明**。本次核对时已存在Console UI、Control Plane、Fabric、Ledger及共享库；标“拟建”的路径按14依赖逐步实施。database/schema/角色的完整规则仍由02及SQL唯一负责。
+下表是**目标落点，不是新服务已实现声明**。当前fork已有Console UI、Control Plane、Fabric、Ledger、共享库及六个新服务的W02骨架；BFF仍拟建。骨架不是业务RPC/工作流已完成，精确状态见15与docs/status.md。database/schema/角色的完整规则仍由02及SQL唯一负责。
 
 | 仓库内路径 | 编译/依赖单元 | 目标运行单元 | 数据Owner / database | 当前定位 |
 |---|---|---|---|---|
 | `apps/console-ui` | React/TypeScript前端应用 | Console UI前端制品 | 无业务数据库 | 已有，逐页面迁移真实BFF调用 |
 | `apps/console-bff` | 独立Go module | Console BFF | 无业务database；仅session安全存储 | 拟建 |
-| `services/gateway-integration` | 独立Go module；内部CloudIdentity与Gateway适配子模块 | Gateway Integration | `tenant` / `opl_tenant`；`gateway` / `opl_gateway`，两套受限连接池 | 拟建，不另建tenant服务 |
-| `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 拟建 |
-| `services/build` | 独立Go module | Build | `build` / `opl_build` | 拟建 |
-| `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 拟建 |
-| `services/runtime-control` | 独立Go module | Runtime Control | `runtime_control` / `opl_runtime_control` | 拟建 |
-| `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 拟建 |
+| `services/gateway-integration` | 独立Go module；内部CloudIdentity与Gateway适配子模块 | Gateway Integration | `tenant` / `opl_tenant`；`gateway` / `opl_gateway`，两套受限连接池 | 已有W02骨架，身份/资金业务未完成；不另建tenant服务 |
+| `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 已有W02骨架，业务未完成 |
+| `services/build` | 独立Go module | Build | `build` / `opl_build` | 已有W02骨架，业务未完成 |
+| `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 已有W02骨架，业务未完成 |
+| `services/runtime-control` | 独立Go module | Runtime Control | `runtime_control` / `opl_runtime_control` | 已有W02骨架，业务未完成 |
+| `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 已有W02骨架，业务未完成 |
 | `services/fabric` | 保留独立Go module | Fabric | `fabric` / `opl_fabric` | 已有，目标数据库隔离按02/09实施 |
 | `services/ledger` | 保留独立Go module | Ledger | `ledger` / `opl_ledger` | 已有，目标数据库隔离按02/09实施 |
 | `services/control-plane` | 迁移期间保留现有Go module | 迁移期间的原Control Plane | 仅尚未移交的现有权威 | 已有来源，非第9个目标领域服务 |
 | `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，v2.26生成代码为其`v226`子包 |
 | `services/internal` | 现有policy-free共享基础设施目录，复用其中的窄module（如`postgresmigrate`） | 无进程 | 无业务数据Owner | 仅供至少两个真实服务调用，不承载共享业务规则 |
 
-目标目录树（`拟建`不表示W01要一次建立所有空服务）：
+目标目录树（六个新服务已有W02骨架；注释的目标module/服务不代表业务实现）：
 
 ```text
 opl-cloud/                         # 唯一Cloud产品GitHub仓库
@@ -85,12 +87,12 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 │   ├── console-ui/                # 已有React/TypeScript前端
 │   └── console-bff/               # 拟建独立Go module / BFF进程
 ├── services/
-│   ├── gateway-integration/       # 拟建；tenant + gateway共module/进程
-│   ├── capability/                # 拟建独立Go module / 服务
-│   ├── build/                     # 拟建独立Go module / 服务
-│   ├── workspace/                 # 拟建独立Go module / 服务
-│   ├── runtime-control/           # 拟建独立Go module / 服务
-│   ├── resource-catalog/          # 拟建独立Go module / 服务
+│   ├── gateway-integration/       # W02骨架；tenant + gateway共module/进程
+│   ├── capability/                # W02骨架；独立Go module / 服务
+│   ├── build/                     # W02骨架；独立Go module / 服务
+│   ├── workspace/                 # W02骨架；独立Go module / 服务
+│   ├── runtime-control/           # W02骨架；独立Go module / 服务
+│   ├── resource-catalog/          # W02骨架；独立Go module / 服务
 │   ├── fabric/                    # 保留独立Go module / 服务
 │   ├── ledger/                    # 保留独立Go module / 服务
 │   ├── control-plane/             # 迁移来源，逐能力退休旧writer
@@ -108,7 +110,7 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 ### 3.3 共享契约与同提交消费
 
 - W01采用现有`packages/contracts/go`共享module，生成代码落`packages/contracts/go/v226`；不新增`packages/contracts/v226/go.mod`，也不为每个领域复制一份契约module。
-- 规格`contracts/internal.proto`及其中字段是协议权威，产品协议落在`packages/contracts/proto/internal.proto`。原proto的`go_package`使用规格逻辑名；生成流程用固定的protobuf import mapping（`M`参数或等价生成配置）将其映射到`opl-cloud/packages/contracts/go/v226`，不手改生成结果、不为目录调整改消息字段或既有规格字节。
+- 规格`contracts/internal.proto`及其中字段是协议权威，产品协议落在`packages/contracts/proto/internal.proto`。原proto的`go_package`使用规格逻辑名；生成流程用固定的protobuf import mapping（`M`参数或等价生成配置）将其映射到`opl-cloud/packages/contracts/go/v226`，不手改生成结果；本次为闭合既有事件/操作身份缺口而调整的消息字段，须重生绑定并与消费者同版交付。
 - 同仓库消费者通过当前module关系使用同一checkout契约；契约、生成代码、消费者及边界测试随同一个Cloud commit交付。锁定生成工具/运行库版本并记录schema hash；不另造跨仓契约发布或独立tag消费流程。外部Owner继续按其真实契约版本与资格要求验证。
 - 必要的消费者`go.mod`/`go.sum`更新属于W01写集。记录实际依赖链和验证结果，不把必要更新当无关噪声；也不无依据升级、强压传递依赖或用兼容字段迁就旧测试。
 - contracts只承载有当前跨Owner消费者的wire/data-integrity事实；不得放领域编排、ORM实体、钱包/价格决策、服务实现或平行领域模型。新增服务模块是既定领域拆分，新增共享业务模块不是本次决定。
@@ -146,7 +148,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 签发、查询、验证、撤销、grant字段以及服务/动作allowlist都在proto对应消息和02 CloudIdentity表中实现；不再留下“authorization_context_id由研发自行解释”的空洞。
 
-操作查询采用/api/v2/operations/{owner}/{operationId}，保留原operationId。BFF按有限OperationOwner枚举路由，没有全局注册表或遍历多个服务猜归属。Ledger同步append/read receipt，不为统一形式创建闲置Operation服务。
+操作查询采用`/api/v2/operations/{owner}/{operationId}`，保留原operationId。03的`x-owner=bff`只表示REST入口；path owner或管理员必填query owner才是目标数据Owner（03的`x-target-owner`），BFF无Operation表。`OwnerOperationRequest.owner=3`在内部Read继续传递逻辑Owner；单Owner服务拒绝错Owner，共进程tenant/gateway只读指定数据库，不能遍历猜归属。Ledger同步append/read receipt，不为统一形式创建闲置Operation服务。
 
 ### 5.2 Domain互通矩阵：只保留有调用者的边
 
@@ -169,9 +171,9 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 
 ### 5.3 可靠事件
 
-1. producer在同一数据库事务写业务状态+Outbox记录；事件ID/aggregateVersion/payloadHash固定。
-2. dispatcher读取未确认记录，调用目标owner的typed Inbox；传输可以重复。
-3. consumer在同一事务插入唯一(producer,eventId) Inbox、验证payloadHash/版本、写本域结果与可能的新Outbox。
+1. producer在同一数据库事务写业务状态+Outbox记录；事件ID/aggregateVersion/payloadHash固定。`aggregate_type`由精确(eventType,schemaVersion)的events.json `x-aggregate-identity.type`唯一决定，aggregateId等于指定的必填payload ID；revision由该Owner聚合锁/原序列分配，不从路由代次/时间猜。
+2. dispatcher读取未确认记录，以`DeliverEventRequest.consumer_owner=3`选择一个订阅的逻辑Owner再调用其typed Inbox；同一进程也独立投递/ACK。producer身份由mTLS peer校验，body中的authenticated_producer仅供匹配，不是身份凭据；传输可以重复。
+3. consumer在自身独立数据库事务内按(source_owner,source_event_id)去重，并验证不可变的event type/schema/aggregate type/id/revision/payload整体一致；写本域业务结果及可能的新Outbox后才ACK。只接收row但未处理业务不得ACK committed。
 4. consumer提交成功再ack；producer收到ack再标投递成功。ack丢失重复投递不重复业务动作。
 5. 消费者只接收其订阅事件，因此aggregateVersion允许合法间隙，不要求n+1连续。不可变事实按eventId和业务身份去重；可变投影用aggregateVersion单调CAS防陈旧覆盖；依赖动作必须验证明确前置事实/receipt，未满足保留原事件不执行。投递失败保留原事件和可观察状态，不靠缺版本或扫描业务表“猜一个事件”补救。
 6. 每条事件限定消费者，不能把整个应用状态广播。事件不含Key、密码、客户包内容、完整provider响应或外部凭据。

@@ -2690,7 +2690,7 @@ paths:
       operationId: getOperation
       summary: getOperation
       tags:
-      - workspace
+      - operations
       x-feature-id:
       - F04
       - F06
@@ -2702,7 +2702,8 @@ paths:
       - F13
       - F15
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-target-owner: operation-path-owner
       x-permission:
       - member
       x-tables:
@@ -2739,7 +2740,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
-      description: workspace标签是查询入口；实际writer与权限验证在路径owner，BFF按owner路由typed GetOperation，不建registry或跨域JOIN。
+      description: BFF以路径owner与operationId路由唯一目标Owner；只读该Owner的Operation并在目标Owner验证资源归属和Tenant权限，不建registry或跨域JOIN。
       parameters:
       - name: owner
         in: path
@@ -3535,10 +3536,11 @@ paths:
       operationId: listAdminOperations
       summary: listAdminOperations
       tags:
-      - workspace
+      - operations
       x-feature-id:
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-target-owner: required-owner-query
       x-permission:
       - platform_admin
       x-tables:
@@ -3586,10 +3588,11 @@ paths:
       operationId: reconcileOperation
       summary: reconcileOperation
       tags:
-      - workspace
+      - operations
       x-feature-id:
       - F17
-      x-owner: workspace
+      x-owner: bff
+      x-target-owner: operation-path-owner
       x-permission:
       - platform_admin
       x-tables:

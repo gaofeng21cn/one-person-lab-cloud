@@ -94,7 +94,11 @@
       "x-consumers": [
         "ledger"
       ],
-      "description": "仅审计，不自动创建Build；客户必须显式createBuild。"
+      "description": "仅审计，不自动创建Build；客户必须显式createBuild。",
+      "x-aggregate-identity": {
+        "type": "package_version",
+        "idPayloadField": "packageVersionId"
+      }
     },
     {
       "type": "object",
@@ -186,7 +190,11 @@
       "x-consumers": [
         "capability",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "build_job",
+        "idPayloadField": "buildJobId"
+      }
     },
     {
       "type": "object",
@@ -278,7 +286,11 @@
       "x-consumers": [
         "build",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "capability_version",
+        "idPayloadField": "capabilityVersionId"
+      }
     },
     {
       "type": "object",
@@ -369,7 +381,11 @@
       ],
       "x-consumers": [
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "build_job",
+        "idPayloadField": "buildJobId"
+      }
     },
     {
       "type": "object",
@@ -461,7 +477,11 @@
       "x-consumers": [
         "workspace",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "wallet_operation",
+        "idPayloadField": "walletOperationId"
+      }
     },
     {
       "type": "object",
@@ -554,7 +574,11 @@
         "workspace",
         "runtime_control",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "resource_set",
+        "idPayloadField": "resourceSetId"
+      }
     },
     {
       "type": "object",
@@ -646,7 +670,11 @@
       "x-consumers": [
         "workspace",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "runtime_instance",
+        "idPayloadField": "runtimeInstanceId"
+      }
     },
     {
       "type": "object",
@@ -737,7 +765,11 @@
       ],
       "x-consumers": [
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "workspace",
+        "idPayloadField": "workspaceId"
+      }
     },
     {
       "type": "object",
@@ -829,7 +861,11 @@
       "x-consumers": [
         "tenant",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "workspace",
+        "idPayloadField": "workspaceId"
+      }
     },
     {
       "type": "object",
@@ -924,7 +960,11 @@
         "workspace",
         "gateway",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "tenant",
+        "idPayloadField": "targetTenantId"
+      }
     },
     {
       "type": "object",
@@ -1018,7 +1058,11 @@
         "build",
         "gateway",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "tenant",
+        "idPayloadField": "targetTenantId"
+      }
     },
     {
       "type": "object",
@@ -1112,7 +1156,11 @@
       ],
       "x-consumers": [
         "workspace"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "receipt",
+        "idPayloadField": "receiptId"
+      }
     },
     {
       "type": "object",
@@ -1204,7 +1252,11 @@
       "x-consumers": [
         "workspace",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "catalog_policy_version",
+        "idPayloadField": "policyVersionId"
+      }
     },
     {
       "type": "object",
@@ -1297,7 +1349,11 @@
         "workspace",
         "gateway",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "tenant",
+        "idPayloadField": "targetTenantId"
+      }
     },
     {
       "type": "object",
@@ -1390,7 +1446,11 @@
         "tenant",
         "gateway",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "subscription",
+        "idPayloadField": "subscriptionId"
+      }
     },
     {
       "type": "object",
@@ -1482,7 +1542,11 @@
       "x-consumers": [
         "workspace",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "route_binding",
+        "idPayloadField": "routeBindingId"
+      }
     },
     {
       "type": "object",
@@ -1573,7 +1637,11 @@
       ],
       "x-consumers": [
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "plan_change",
+        "idPayloadField": "planChangeId"
+      }
     },
     {
       "type": "object",
@@ -1665,7 +1733,11 @@
       "x-consumers": [
         "gateway",
         "ledger"
-      ]
+      ],
+      "x-aggregate-identity": {
+        "type": "period_obligation",
+        "idPayloadField": "obligationId"
+      }
     }
   ],
   "$defs": {
@@ -2285,6 +2357,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "routeBindingId": {
+          "type": "string",
+          "minLength": 1
+        },
         "workspaceId": {
           "type": "string",
           "minLength": 1
@@ -2333,6 +2409,7 @@
         }
       },
       "required": [
+        "routeBindingId",
         "workspaceId",
         "switchId",
         "actionKind",
@@ -2552,7 +2629,7 @@
   "x-delivery": {
     "transport": "typed gRPC DomainInbox.Deliver",
     "outboxAtomicity": "owner mutation + outbox row in same PostgreSQL transaction",
-    "inboxAtomicity": "unique producer/eventId + consumer mutation + emitted events in same transaction before ACK",
+    "inboxAtomicity": "unique authenticated producer/eventId per target consumer + complete immutable envelope equality + consumer mutation + emitted events in one Owner transaction before committed ACK; a pending receipt is not an applied ACK",
     "ordering": "Gaps are legitimate for partial subscriptions. Immutable facts deduplicate eventId+business identity. Mutable projections monotonic-CAS aggregateVersion, no stale overwrite. Dependent effects check explicit predecessor facts/receipts; missing facts remain unprocessed, never infer loss from a version gap. ACK duplicates without reapply.",
     "unknown": "external timeout records unknown and schedules readback; never repeats financial/provider action blindly",
     "retention": "retain deduplication for original obligation lifetime; no short TTL for financial events",
@@ -2564,12 +2641,15 @@
       "owner": "authenticated owner process",
       "scope": "tenant_id NULL means platform, otherwise tenant",
       "tenantId": "outbox_events.tenant_id",
-      "aggregateId": "outbox_events.aggregate_id",
-      "aggregateVersion": "outbox_events.aggregate_revision",
+      "aggregateId": "outbox_events.aggregate_id; equals required payload field named by x-aggregate-identity.idPayloadField",
+      "aggregateVersion": "outbox_events.aggregate_revision; positive Owner-local aggregate sequence allocated under the aggregate lock",
       "occurredAt": "outbox_events.occurred_at",
       "requestId": "outbox_events.correlation_id",
-      "payload": "outbox_events.payload"
+      "payload": "outbox_events.payload",
+      "aggregateType": "exact (eventType,schemaVersion) -> x-aggregate-identity.type -> outbox_events.aggregate_type; derived, not an extra wire field"
     },
-    "registrationFlow": "build.artifact_confirmed.v1 → Capability Inbox reads BuildCoordination.ReadArtifact including exact DeploymentDescriptor/claim inputs → atomic Capability ready+outbox → capability.version_registered.v1 → Build succeeded; no direct second registration writer"
+    "registrationFlow": "build.artifact_confirmed.v1 → Capability Inbox reads BuildCoordination.ReadArtifact including exact DeploymentDescriptor/claim inputs → atomic Capability ready+outbox → capability.version_registered.v1 → Build succeeded; no direct second registration writer",
+    "aggregateIdentity": "For each exact (eventType,schemaVersion), x-aggregate-identity.type is the only aggregate_type; aggregateId equals its required idPayloadField byte-for-byte. Reject unknown pairs or mismatches; do not infer from a name prefix or freely supplied type. Producer allocates positive aggregateVersion under the owning aggregate lock in its state+outbox transaction; retry preserves eventId/type/id/version/payload. A domain-specific generation, permissionVersion, or timestamp is not a generic aggregate revision.",
+    "consumerAddressing": "DeliverEventRequest.consumer_owner selects one subscribed logical Owner per call; tenant and gateway share one process but have separate databases, Inbox transactions, and ACKs. Reject UNSPECIFIED, unknown, unserved, unsubscribed or peer-mismatched producer; never infer consumer from payload or service address."
   }
 }

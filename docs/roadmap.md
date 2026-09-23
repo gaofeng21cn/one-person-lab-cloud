@@ -24,13 +24,15 @@ The target product and the delivery sequence are owned by the adopted
 Those files are the single writer for the target sequence. This file does not
 restate, renumber, or paraphrase them.
 
-The single-repository topology is decided, not an open A/B choice. W01 still
-requires the production contracts, reproducible generation, necessary consumer
-dependency updates and actual boundary verification in the same checkout. W02
-then creates the planned service modules and verifies owner-isolated startup;
-this documentation alignment does not mark either implementation outcome done.
-See [current evidence](./status.md#v226-single-repository-specification-alignment).
-
+The single-repository topology and fork/upstream relationship are decided. The
+current [field-level reconciliation](spec/v2.26/15_domain_alignment.md) has
+closed the four operation/event/BFF identity gaps in the authoritative v2.26
+specification. W01/W02 still require generated bindings and real consumers to
+adopt the new contract and prove Owner/Inbox isolation before they are complete. W03 adds actual identity/authorization; W13 uses owner-addressed routing;
+W25 maps inherited fields/obligations without a parallel rewrite. Keep the W
+numbers and existing product dependencies. Six module scaffolds do not close
+these acceptance outcomes. Current evidence is in
+[status](status.md#v226-fork-field-and-domain-reconciliation).
 
 The sections below describe the **current implementation** lane. They remain
 open until the v2.26 work packages replace them, and they are not the target

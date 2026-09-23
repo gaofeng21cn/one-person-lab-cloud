@@ -1,8 +1,28 @@
 # OPL Cloud v2.26 — 完整开发方案总索引
 
-> 定稿范围：本次确认的F01–F17，D17升级/降配规则已由用户确认。最终可开工结论以checks/handoff_readiness.json及其绑定证据为准。开发规格不等于业务代码已实现、已迁移或已上线。
+> 定稿产品范围为F01–F17，D17升级/降配规则已获确认。规格当前字段闭合以checks/validate_spec.py和validate_domain_reference.py的绑定结果为准；整包交接状态仍以checks/handoff_readiness.json及其绑定证据为准。任一通过都不是业务可用、客户迁移或生产资格证明。
 > 本轮目标：客户选择 Agent 版本和计算/存储套餐，完成 SaaS 部署；旧资源购买路径有明确迁移。
-> 用户批准范围：修齐方案、字段、API、前端展示、交互、迁移与验收；不修改业务代码，不部署，不进行真实扣费或资源采购。
+> 本次对齐范围：修正现有权威契约和W任务书供架构/前后端实施；尚未修改产品业务代码、部署、扣费或采购。
+
+## 当前开发与最终集成位置
+
+`opl-cloud`是`one-person-lab-cloud`的开发fork，v2.26在继承实现上演进，用户验收后经Issue/PR合回上游；不是另起产品。代码合回、09的客户数据迁移、Instance生产采用分别验证和授权。[15领域字段对齐](15_domain_alignment.md)列出继承API/DB、各域目标字段、交互和已发现契约断点；字段权威仍在02/03/proto/events，不由派生参考重复定义。本次已在这些权威文件修复操作/事件身份和BFF路由元数据；生成代码、真实服务消费者尚未同版接入，见14及status。
+
+## 开发 Index：W00–W31 的一处入口
+
+**执行入口**：[14 工作包与依赖](14_implementation_work_packages.md)；按功能追调用链看[10 功能追踪](10_feature_traceability.md)、[06 跨域状态机](06_data_flow_and_state_machine.md)，按 Owner 查[15 字段/继承对齐](15_domain_alignment.md)。14 的每包列主实现 API、Owner 表、RPC、前端消费 API、落点、验证与验收；它们是任务指针而非第二套字段定义。下表只作导航，不重新写 DTO/SQL。
+
+| 阶段 | 工作包（每项直达实施任务） | 可观察结果 |
+|---|---|---|
+| 基线与生产协议 | [W00 目标/来源](14_implementation_work_packages.md#w00) · [W01 契约/生成/消费者](14_implementation_work_packages.md#w01) · [W02 服务/独立 DB/操作协议](14_implementation_work_packages.md#w02) | 目标与现状分层，同版协议由真实 Owner 消费；已有骨架只补未闭合项 |
+| 首链基础 | [W03 身份授权](14_implementation_work_packages.md#w03) · [W05 Ledger 证据](14_implementation_work_packages.md#w05) · [W07 Publisher 准入](14_implementation_work_packages.md#w07) · [W08 Package 上传](14_implementation_work_packages.md#w08) · [W09 真实构建/注册](14_implementation_work_packages.md#w09) · [W13 BFF 基础](14_implementation_work_packages.md#w13) · [W14 Agent/Build 前端](14_implementation_work_packages.md#w14) | 登录→上传→真实 Build→唯一 ready 版本→BFF/Console 回读；W14 首切片不等于全包 |
+| 购买与部署 | [W04 Gateway 资金/Key](14_implementation_work_packages.md#w04) · [W06 资源/价格目录](14_implementation_work_packages.md#w06) · [W10 Runtime Control](14_implementation_work_packages.md#w10) · [W11 Local-Docker Fabric](14_implementation_work_packages.md#w11) · [W12 Tencent/TKE Fabric](14_implementation_work_packages.md#w12) · [W15 报价/Launch](14_implementation_work_packages.md#w15) · [W16 部署/Workspace 前端](14_implementation_work_packages.md#w16) | 精确报价→接受→原单→资源与运行读回；Local 和 Tencent 分别资格化 |
+| 生命周期与治理 | [W17 应用变更/回滚](14_implementation_work_packages.md#w17) · [W18 周期/续费](14_implementation_work_packages.md#w18) · [W19 D17 套餐变更](14_implementation_work_packages.md#w19) · [W20 删除/退款原单](14_implementation_work_packages.md#w20) · [W21 Tenant 生命周期](14_implementation_work_packages.md#w21) · [W22 费用/Key 前端](14_implementation_work_packages.md#w22) · [W23 管理员前端](14_implementation_work_packages.md#w23) · [W24 Owner 运维恢复](14_implementation_work_packages.md#w24) | 变更、续费、删除、Tenant 及运维各有唯一 Owner、原单与未知结果恢复 |
+| 迁移/验证/发布 | [W25 逐域迁移演练](14_implementation_work_packages.md#w25) · [W26 业务链/浏览器验收](14_implementation_work_packages.md#w26) · [W27 Candidate/CI](14_implementation_work_packages.md#w27) · [W28 Linux Local 资格](14_implementation_work_packages.md#w28) · [W29 Instance/Tencent 资格](14_implementation_work_packages.md#w29) · [W30 客户切换/旧 writer 退出](14_implementation_work_packages.md#w30) · [W31 同字节正式发布](14_implementation_work_packages.md#w31) | 旧 ID/原单先试迁移，真实链与环境分别验收；客户切换与正式发布不是同一动作 |
+
+**逐包实施规则**：从14选可开始的包→在01/02/03/proto/events/04/06/07/09/13核对该包真实 Owner、DB 列、API/消息字段、前端状态和失败/unknown 恢复→修改源 Owner 与真实调用者→按08验收并写状态证据。10/15/reference/development_plan 是读视图，不是另外一套业务字段。发现字段不存在、调用端未真正使用、外部能力不符或旧数据无法保真时，在权威 Owner 修改并同步消费者/任务书，不默许局部猜测。各包按14的 `startAfter` 与 `acceptAfter` 推进，**不是按数字机械串行**。
+
+**当前可开工但非可直接宣称完成**：W00 已有目标文档，W01 的协议字段已在规格中补齐但生产生成绑定/消费者未同版接入；W02 六域骨架不等于业务实现。既有 W25 来源映射需要随第一批能力推进。当前 `checks/handoff_readiness.json` 唯一规格交接阻点是 UI 原型回执仍绑定旧 OpenAPI hash；前端必须重测后留新证据，不能改旧回执冒充。`checks/development_plan.json` 的 `not_implemented` 是计划工具不追踪进度，不应据此重做已有代码；当前代码与测试事实看 `docs/status.md`。W29/W30 的 Instance 动作及 W31 正式发布均有独立授权与证据，开发任务书不自动授权执行。
 
 ## 1. 一句话产品与边界
 
@@ -27,6 +47,7 @@
 | D03 | 每个数据 Owner 独立 PostgreSQL database/独立角色；可共 PostgreSQL 实例；跨 Owner 只传不透明 ID，不建跨域 FK/JOIN/事务 | 消除旧稿独立数据库与跨 schema FK 矛盾 |
 | D04 | 外部浏览器 API 统一由 Console BFF 提供 REST；内部 typed gRPC/protobuf；可靠事件用本域 PostgreSQL Outbox→消费者 gRPC Inbox | 落实已讨论的内部协议和 Outbox；当前链路无须增加 NATS 运行依赖 |
 | D05 | BFF 仅鉴权、授权上下文与产品 DTO 聚合；Workspace Service 拥有业务 Saga | 不把前端聚合层变第二编排器 |
+| D05a | 通用Operation REST的`x-owner=bff`只标识入口；必填`owner`选择唯一领域Operation writer。BFF没有Operation表、不得遍历域猜ID；同进程tenant/gateway也按逻辑Owner访问各自数据库 | 03的路由元数据与proto OwnerOperationRequest/DeliverEventRequest必须保留目标身份 |
 | D06 | Capability 拥有 Package/版本/目录元数据；对象字节存 Storage Provider；Build 只读不可变引用并写自己的任务/制品证据 | 每份数据一个 writer；Build完成事件触发Capability唯一writer创建版本 |
 | D07 | Build 成功后才创建 ready Capability Version；构建中/失败只属于 Build Job | 不再要求没有digest的pending版本 |
 | D08 | Package、OCI引用和Build历史不随Workspace删除；Package归档不物理级联历史；无自动90天清除 | 遵守用户已明确的保留决定；显式制品删除需引用保护，历史记录不删除 |
@@ -59,6 +80,7 @@
 | 12_product_spec.md | 五方共同阅读的产品主说明、客户故事与角色/费用/数据承诺 |
 | 13_plan_change_policy.md + contracts/plan-change-policy.json | D17已确认的升级/预约降配、精确补差、失败与原单结算规则 |
 | 14_implementation_work_packages.md + checks/development_plan.json | 完整实施任务、真实/拟建代码落点、前后端分工、依赖、验证及交付顺序 |
+| 15_domain_alignment.md + reference/ | 继承实现→目标领域的字段/交互对照、规格层已关闭和消费者仍未完成的缺口；派生导航，不是第二契约 |
 | checks/development_plan_validation.json | API/表/RPC/F任务覆盖、路径真实性及无环依赖验证 |
 | contracts/domain_flows.json + checks/render_domain_flows.py | 17类业务链与实际typed RPC/Owner写入/终态证据映射 |
 | checks/validate_cross_domain.py + checks/semantics_cases.json | 真实API/protobuf→隔离PostgreSQL→读回的语义反例 |

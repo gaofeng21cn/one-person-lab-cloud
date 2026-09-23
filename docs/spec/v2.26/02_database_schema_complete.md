@@ -90,8 +90,9 @@
 | ledger | 对账差异/receipt可读回通知→来源Owner | 所有业务Owner receipt事件及对账命令 |
 
 - Outbox_events与业务变化同事务写；outbox_deliveries按每消费者分别ACK。不可用一个消费者成功标记整个事件已投递；投递至少一次，consumer必须幂等。
-- Inbox唯一(source_owner,source_event_id)，同ID异hash拒绝；去重记录、本Owner业务变更、processed_at、后续Outbox同事务。乱序按来源Owner版本与readback处理，不覆盖新事实，不静默丢事件。
+- Inbox唯一(source_owner,source_event_id)，同ID不同不可变envelope身份或payload均冲突拒绝；去重记录、本Owner业务变更、processed_at、后续Outbox同事务。乱序按来源Owner版本与readback处理，不覆盖新事实，不静默丢事件。
 - Aggregate revision仅在本Owner聚合锁内从原序列分配，不是跨库CAS。worker行锁/lease只作用本库；网络调用不占数据库长事务。持久command先于副作用，Owner readback后才在新事务确认。
+- 每条Outbox的`aggregate_type`由events.json按精确(eventType,schemaVersion)唯一派生，`aggregate_id`须等于该事件规定的必填payload ID；Inbox在同一目标Owner事务中验证身份/不可变元数据/payload一致，processed与业务提交同事务。`DeliverEventRequest.consumer_owner`指定逻辑目标，同进程tenant/gateway仍各用自己的Inbox/ACK；SQL非空列不授权服务自由指定类型。
 - Idempotency作用域tenant_scope+actor_scope+**稳定API operationId名称**+key，不是每次新建的Operation实体ID。规范化body hash一致重放同resourceId/operationId，不同hash返回冲突；义务未结束不以短TTL清理。
 - Idempotency response_body仅安全DTO；accepted_input亦只允许去密后的领域输入，禁止原始login密码、session cookie、恢复token、签名Upload URL或Storage临时凭据。Key创建/reveal响应不得把明文入表；只保留原Owner结果引用，单次Secret交付与重试语义由03明确。service credentials/Key不进入事件payload、日志或receipt。
 - `Operation.kind/stage`以03的OperationKind、OperationStage和每kind允许stage映射为唯一词汇；Owner写入前使用同typed契约验证，不能把任意provider英文日志当stage。数据库text不另复制一份过时枚举，SQL parser通过不等于应用校验已实现。

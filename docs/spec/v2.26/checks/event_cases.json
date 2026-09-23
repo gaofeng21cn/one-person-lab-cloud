@@ -124,6 +124,31 @@
         }
       },
       "valid": false
+    },
+    {
+      "name": "aggregate_id_mismatch_rejected_by_protocol",
+      "value": {
+        "eventId": "event-1",
+        "eventType": "build.artifact_confirmed.v1",
+        "schemaVersion": 1,
+        "owner": "build",
+        "tenantId": "tenant-1",
+        "aggregateId": "wrong-build-id",
+        "aggregateVersion": "1",
+        "occurredAt": "2026-09-21T00:00:00Z",
+        "requestId": "request-1",
+        "scope": "tenant",
+        "payload": {
+          "buildJobId": "build-1",
+          "packageVersionId": "pv-1",
+          "runtimeVersionId": "runtime-1",
+          "webuiVersionId": "webui-1",
+          "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "artifactReceiptId": "receipt-1",
+          "deploymentDescriptorDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "valid": false
     }
   ]
 }
