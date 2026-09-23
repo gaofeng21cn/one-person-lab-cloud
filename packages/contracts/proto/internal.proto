@@ -2261,7 +2261,9 @@ service LedgerProductService {
 }
 
 enum Observation { OBSERVATION_UNSPECIFIED = 0; OBSERVATION_CONFIRMED = 1; OBSERVATION_REJECTED = 2; OBSERVATION_UNKNOWN = 3; }
-message OwnerOperationRequest { CallContext context = 1; string operation_id = 2; }
+// The route-selected logical owner is required even for a single-owner endpoint.
+// An operation ID is unique only within its owning context.
+message OwnerOperationRequest { CallContext context = 1; string operation_id = 2; OperationOwnerEnum owner = 3; }
 message SourceObjectReference { string storage_object_id = 1; string version_id = 2; string sha256 = 3; int64 size_bytes = 4; }
 message BuildInputRequest { CallContext context = 1; string package_version_id = 2; string webui_version_id = 3; }
 message BuildInputSnapshot { string package_id = 1; string package_version_id = 2; SourceObjectReference package_object = 3; string runtime_version_id = 4; ArtifactReference runtime_artifact = 5; string webui_version_id = 6; ArtifactReference webui_artifact = 7; RuntimePublisherContract runtime_contract = 8; WebuiPublisherContract webui_contract = 9; string snapshot_digest = 10; PublisherContractReference runtime_contract_reference = 11; PublisherContractReference webui_contract_reference = 12; string package_claim_id = 13; string runtime_claim_id = 14; string webui_claim_id = 15; }
@@ -2691,6 +2693,7 @@ message RouteObservedEvent {
  optional string target_execution_resource_id = 7;
  string outcome = 8;
  optional string route_receipt_id = 9;
+ string route_binding_id = 10; // Exact Fabric route object; never inferred from workspace_id or switch_id.
 }
 
 message PlanChangeStateChangedEvent {
@@ -2758,7 +2761,9 @@ message EventEnvelope {
  PeriodObligationChangedEvent period_obligation_changed = 37;
  }
 }
-message DeliverEventRequest { EventEnvelope event = 1; string authenticated_producer = 2; }
+// Delivery targets one logical Inbox, even when two owners share one process.
+// The authenticated producer must match the transport peer; this field is not proof of identity.
+message DeliverEventRequest { EventEnvelope event = 1; string authenticated_producer = 2; OwnerEnum consumer_owner = 3; }
 message InboxAck { string event_id = 1; string consumer = 2; bool committed = 3; bool duplicate = 4; int64 applied_aggregate_version = 5; string rejection_code = 6; }
 service DomainInbox { rpc Deliver(DeliverEventRequest) returns (InboxAck); }
 
