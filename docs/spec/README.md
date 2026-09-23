@@ -3,17 +3,17 @@
 This directory holds retained development specifications that the product's
 canonical owners adopt by reference.
 
-## v2.26 Target Development Specification
+## target architecture Target Development Specification
 
-`v2.26/` is the accepted target and planning specification for the
+`target/` is the accepted target and planning specification for the
 domain-separated Agent SaaS architecture. The durable decision that adopts it is
 [2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture](../decisions.md).
 
-- Entry point: [00_master_index.md](./v2.26/00_master_index.md)
-- Product main description: [12_product_spec.md](./v2.26/12_product_spec.md)
-- Implementation work packages: [14_implementation_work_packages.md](./v2.26/14_implementation_work_packages.md)
-- Machine contracts: [`v2.26/contracts/`](./v2.26/contracts)
-- Verification receipts: [`v2.26/checks/`](./v2.26/checks)
+- Entry point: [00_master_index.md](./target/00_master_index.md)
+- Product main description: [12_product_spec.md](./target/12_product_spec.md)
+- Implementation work packages: [14_implementation_work_packages.md](./target/14_implementation_work_packages.md)
+- Machine contracts: [`target/contracts/`](./target/contracts)
+- Verification receipts: [`target/checks/`](./target/checks)
 
 ### Evidence Layer
 
@@ -39,5 +39,5 @@ This copy was frozen when the target architecture was adopted:
   operations, 96 tables, 172 internal RPCs, 32 work packages
 
 The specification ships its own `checks/validate_*.py` scripts and recorded
-receipts under `v2.26/checks/runs/`. Re-run them with the versions pinned in
-`v2.26/checks/requirements.txt`.
+receipts under `target/checks/runs/`. Re-run them with the versions pinned in
+`target/checks/requirements.txt`.

@@ -9,11 +9,11 @@ is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
 
-## v2.26 Migration Start Point
+## target architecture Migration Start Point
 
 The target architecture is adopted in
 [decisions.md](./decisions.md) and specified by
-[the v2.26 specification](./spec/v2.26/00_master_index.md). This section records
+[the target architecture specification](./spec/target/00_master_index.md). This section records
 the exact source facts that the migration starts from. It is a start point, not
 evidence that the target is implemented.
 
@@ -34,8 +34,8 @@ evidence that the target is implemented.
 ### Implementation Start-Point Gap List
 
 The target is not the current implementation. Per
-[09_legacy_migration.md](./spec/v2.26/09_legacy_migration.md) and
-[01_domain_ownership_matrix.md](./spec/v2.26/01_domain_ownership_matrix.md), the
+[09_legacy_migration.md](./spec/target/09_legacy_migration.md) and
+[01_domain_ownership_matrix.md](./spec/target/01_domain_ownership_matrix.md), the
 gaps between them are:
 
 - Current implementation is three services plus Console. The target keeps all
@@ -43,7 +43,7 @@ gaps between them are:
   plus a Console BFF serve nine data owners. CloudIdentity and Gateway
   Integration share one module/process but retain separate databases/roles.
   The six new domain service directories and BFF remain planned; their exact
-  placement is owned by [01](./spec/v2.26/01_domain_ownership_matrix.md).
+  placement is owned by [01](./spec/target/01_domain_ownership_matrix.md).
   Control Plane remains the migration source, not an additional permanent
   writer. No domain GitHub repositories are required.
 - Current integration is typed public HTTP; the target is typed gRPC/protobuf
@@ -59,15 +59,15 @@ gaps between them are:
 Existing `resource_only` Launch obligations and historical purchases, Keys, and
 receipts remain valid and are carried by the migration, not discarded.
 
-## v2.26 Single-Repository Specification Alignment
+## target architecture Single-Repository Specification Alignment
 
 The 2026-09-22 single-repository decision is reconciled across canonical owners,
-v2.26 ownership/delivery/migration documents, and the generated W00–W31 plan.
+target architecture ownership/delivery/migration documents, and the generated W00–W31 plan.
 The plan derives Cloud paths from its containing checkout. It retains one
 contracts module and permits necessary consumer dependency updates; it does not
 create a domain repository or change business fields.
 
-[Source-check receipt](./spec/v2.26/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
+[Source-check receipt](./spec/target/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
 binds the base SHA and exact changed-source hashes. Verification passed:
 
 - Plan coverage: 32 work packages, 17 features, 108 REST operations, 96 tables,

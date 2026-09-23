@@ -103,7 +103,7 @@ P4生产切换在后面，不意味着P0-P3可以不考虑旧数据；ID、recei
 
 ## 8. 并行分工与合并要求
 
-- API/schema/共享状态是一个版本；v2.26已确定的字段不重新设计。按01的单仓库目录及独立Owner写集并行UI/DB/服务；同文件、共享contract revision、公共构建配置及canonical main由协调者串行整合。
+- API/schema/共享状态是一个版本；target architecture已确定的字段不重新设计。按01的单仓库目录及独立Owner写集并行UI/DB/服务；同文件、共享contract revision、公共构建配置及canonical main由协调者串行整合。
 - 同一功能的前后端不各写一份DTO，以03生成/导入typed client；02映射写入Owner，04消费这些字段。
 - 一个PR按一个活能力切换真实caller，再退休旧路径；Migration/Instance切换按09单独证据。
 - 不为流程强制worktree、固定TDD轮数、个人签字或每步批准；涉及真实钱/资源/生产时仍须原有授权范围。

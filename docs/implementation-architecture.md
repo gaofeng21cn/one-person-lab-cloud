@@ -7,7 +7,7 @@ owning Cloud service.
 
 ## Target And Current Evidence
 
-This document describes the implementation that exists, not completed v2.26
+This document describes the implementation that exists, not completed target architecture
 migration. The adopted target keeps all Cloud product code in one GitHub
 repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
@@ -19,7 +19,7 @@ share one target service module/deployment unit but retain separate data owners.
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
 it must not create a permanent second writer. The existing contracts Go module
-will also contain generated v2.26 bindings under `v226/`, rather than a second
+will also contain generated target architecture bindings under `v226/`, rather than a second
 module. Consumer dependency updates are verified with that contract change.
 
 ## Request Path

@@ -102,11 +102,11 @@ admission阶段先由Runtime Control Reserve持久生成runtimeInstanceId但不�
 
 ## 8. F10：版本更新/回滚
 
-1. 用户选择同Tenant可访问版本或官方版本；现Workspace generation/activeDeploymentId作为前置。
+1. 用户选择同Tenant可访问版本或官方版本；现Workspace generation/currentAgentDeploymentId作为前置。
 2. 验证数据兼容、镜像平台、资源容量、模型与Secret契约；不可逆数据迁移必须已有发布者批准的迁移/备份与恢复规则，否则准入拒绝。
 3. 取得新版本claim并持久新Deployment；保留旧active指针和原购买事实。
 4. Runtime Control创建新实例或按发布者支持的停止旧实例后替换路径执行；同一可写数据卷不得同时被两个不支持并发的实例挂载写入。
-5. Workspace分配execution_epoch后，先调用FenceRouteEpoch并确认provider条件版本CAS更新epoch，再允许该epoch进行Activate/Rollback。首次路由须使用有证据的requireAbsent前置，不用空串表示任意版本；其余使用Fence返回的精确providerRevision。未知旧switch先按原id读回，不抢占。Fabric按workspace generation/epoch防旧worker竞争，验证新实例真实readiness后切换路由；Workspace在明确切换读回后更新activeDeploymentId，旧Deployment superseded。
+5. Workspace分配execution_epoch后，先调用FenceRouteEpoch并确认provider条件版本CAS更新epoch，再允许该epoch进行Activate/Rollback。首次路由须使用有证据的requireAbsent前置，不用空串表示任意版本；其余使用Fence返回的精确providerRevision。未知旧switch先按原id读回，不抢占。Fabric按workspace generation/epoch防旧worker竞争，验证新实例真实readiness后切换路由；Workspace在明确切换读回后更新currentAgentDeploymentId，旧Deployment superseded。
 6. 失败且旧数据仍兼容时进入rolling_back，重新验证旧实例/路由，确认后rolled_back；不能仅改DB指针当回滚成功。
 7. 旧Runtime的非活动保留至多1天是原讨论要求；执行清理前必须读回非选中、无数据/恢复义务，再删除运行资源并释放claim。超时不能强删仍活动实例。
 8. 更新镜像不再次扣Workspace购买费；若资源调整必要先走独立F11报价确认。新Runtime发布只显示可更新提示，不自动替换。
@@ -252,7 +252,7 @@ active/suspended→deleting：平台管理员确认影响清单；冻结新购/B
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；capability→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→capability / `CapabilityProductService.CreatePublisherNamespace` | `CreatePublisherNamespaceRpcRequest` → `PublisherNamespace` | capability.publisher_namespaces | 官方/第三方种类与Registry prefix确认；错误prefix/归属拒绝，不放进默认官方空间 |
-| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→capability / `CapabilityProductService.RegisterRuntimeVersion` | `RegisterRuntimeVersionRpcRequest` → `RuntimeVersion` | capability.runtime_versions | 完整PublisherContract schema+canonical Go validator+Registry读回通过；缺repository/platform/完整revision拒绝 |
+| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→runtime_control / `RuntimeControlProductService.RegisterRuntimeVersion` | `RegisterRuntimeVersionRpcRequest` → `RuntimeVersion` | runtime_control.runtime_releases | 完整PublisherContract schema+canonical Go validator+Registry读回通过；缺repository/platform/完整revision拒绝 |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→resource_catalog / `ResourceCatalogProductService.CreatePricePolicyVersion` | `CreatePricePolicyVersionRpcRequest` → `PricePolicyVersion` | resource_catalog.price_policy_versions | 套餐组合/单月/明确政策事实，pending调整策略不可报价；不补空JSON或猜默认金额 |
 
 **终点**：管理员提供实际可执行选项，客户不任意指定Runtime镜像
@@ -322,20 +322,20 @@ worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框�
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→resource_catalog / `CatalogCoordination.AcceptQuote` | `AcceptQuoteRequest` → `QuoteAcceptance` | resource_catalog.quotes | quoteID/inputDigest唯一绑定原operation；冲突拒绝，不能重报价后续跑原单 |
-| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimeCoordination.Reserve` | `RuntimeReservationCommand` → `RuntimeReservation` | runtime_control.runtime_instances | 预留稳定runtimeInstanceId而不启动；不因Key依赖Runtime ID产生循环 |
+| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Reserve` | `RuntimeReservationCommand` → `RuntimeReservation` | serve.agent_runtime_instances | 预留稳定runtimeInstanceId而不启动；不因Key依赖Runtime ID产生循环 |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.IssueAcceptedOperationGrant` | `AcceptedOperationGrantRequest` → `AcceptedOperationGrant` | tenant.accepted_operation_grants | 原Owner commit读回，有限actions/resource/period；不能伪造commit字符串或扩大到新Workspace |
 | 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→gateway / `GatewayCoordination.Debit` | `WalletDebitCommand` → `WalletOperation` | gateway.wallet_operations | 精确账户/Code/金额原单confirmed；unknown只ReadWalletAction，绝不重复扣费 |
 | 6 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→gateway / `GatewayCoordination.CreateManagedKey` | `ManagedKeyCommand` → `ManagedKeyBinding` | gateway.key_bindings | 原实例与允许模型/Key引用/版本一致；不盲建第二Key，不在DB/事件存明文 |
 | 7 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.EnsureResources` | `EnsureResourcesCommand` → `Operation` | fabric.resources, fabric.resource_sets, fabric.attachments | 批准预付资源与Workspace/原请求exact匹配；unknown查原provider动作，不重购 |
 | 8 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；runtime_control→fabric / `FabricCoordination.BindSecret` | `SecretBindingCommand` → `SecretBindingReadback` | fabric.secret_bindings | 完整发布描述指定的Secret引用实际注入；不把Gateway Key当任意环境变量公开 |
-| 9 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimeCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | runtime_control.runtime_actions | 完整DeploymentDescriptor送执行层并实际ready；非就绪不开放入口 |
-| 10 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricRouteExecution.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | fabric.route_bindings, fabric.route_switches | provider conditional revision确认新epoch；未知旧switch先读回，不抢占 |
-| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；runtime_control→fabric / `FabricRouteExecution.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | fabric.route_bindings, fabric.route_switches | epoch/revision/target精确，provider实际路由确认；旧epoch/旧revision拒绝，丢响应ObserveRoute |
+| 9 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | serve.agent_runtime_actions | 完整DeploymentDescriptor送执行层并实际ready；非就绪不开放入口 |
+| 10 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | provider conditional revision确认新epoch；未知旧switch先读回，不抢占 |
+| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | epoch/revision/target精确，provider实际路由确认；旧epoch/旧revision拒绝，丢响应ObserveRoute |
 | 12 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerCoordination.AppendReceipt` | `AppendReceiptRequest` → `Receipt` | ledger.receipts | 返回receipt身份，另ReadReceiptByReference核对原输入；同idempotency key读回，不填假Workspace或重写receipt |
 
-**终点**：Workspace本域CAS selectedDeployment/selected generation后，receipt核对；客户可打开当前应用
+**终点**：Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用
 
-Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉
+Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉
 
 ### F09 使用、模型配置与应用登录
 
@@ -344,10 +344,10 @@ Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威�
 | 索引 | 触发条件 / Caller→Owner / RPC | 输入→输出 | 接收Owner写入 | 完成证据 / 不确定处理 |
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
-| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.GetWorkspaceAccess` | `GetWorkspaceAccessRpcRequest` → `WorkspaceAccess` | 只读/由原Owner管理 | 当前部署/访问策略和运行事实一致；按canonical应用登录，不新增SSO |
+| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `ServeProductService.GetWorkspaceAccess` | `GetWorkspaceAccessRpcRequest` → `WorkspaceAccess` | 只读/由原Owner管理 | 当前部署/访问策略和运行事实一致；按canonical应用登录，不新增SSO |
 | 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.RevealWorkspaceApplicationCredentials` | `RevealWorkspaceApplicationCredentialsRpcRequest` → `WorkspaceApplicationCredentials` | 只读/由原Owner管理 | 所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码；no-store不缓存；不返回GatewayKey或session_secret |
-| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimeCoordination.ReloadModels` | `RuntimeReloadCommand` → `Operation` | runtime_control.runtime_actions | 目标配置版本+selections实际应用；保存成功不等于reload成功 |
-| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；runtime_control→fabric / `FabricRuntimeExecution.ObserveRuntime` | `RuntimeReadbackRequest` → `RuntimeReadback` | 只读/由原Owner管理 | appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置 |
+| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.ReloadModels` | `RuntimeReloadCommand` → `Operation` | serve.agent_runtime_actions | 目标配置版本+selections实际应用；保存成功不等于reload成功 |
+| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeRuntimeAdapter.ObserveRuntime` | `RuntimeReadbackRequest` → `RuntimeReadback` | 只读/由原Owner管理 | appliedVersion和选择相同，运行状态真实；unknown显示应用中/待核实，不覆盖已确认配置 |
 
 **终点**：打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示
 
@@ -359,10 +359,10 @@ Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威�
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
 | 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→capability / `CapabilityCoordination.ResolvePublisherContract` | `ResolvePublisherContractRequest` → `ResolvedPublisherContract` | 只读/由原Owner管理 | 目标版本完整契约与数据兼容；不支持安全回滚的迁移拒绝，不猜semver |
-| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricRouteExecution.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | fabric.route_switches, fabric.route_bindings | 新epoch先在provider确认；旧未知切换不被强行覆盖 |
-| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimeCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | runtime_control.runtime_instances, runtime_control.runtime_actions | 新实例实际验证且不违反可写卷并发限制；保留旧选中版本/原数据义务 |
-| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；runtime_control→fabric / `FabricRouteExecution.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | fabric.route_switches, fabric.route_bindings | 新target/provider revision确认；丢响应原switch读回 |
-| 6 | 新部署明确失败且旧数据/路由允许安全回滚；runtime_control→fabric / `FabricRouteExecution.RollbackRoute` | `RouteRollbackCommand` → `RouteReadback` | fabric.route_switches, fabric.route_bindings | 原目标+原switch证据+当前expected generation可核对；不能仅改DB指针称回滚成功 |
+| 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.FenceRouteEpoch` | `FenceRouteEpochCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新epoch先在provider确认；旧未知切换不被强行覆盖 |
+| 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Deploy` | `RuntimeDeployCommand` → `RuntimeReadback` | serve.agent_runtime_instances, serve.agent_runtime_actions | 新实例实际验证且不违反可写卷并发限制；保留旧选中版本/原数据义务 |
+| 5 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 新target/provider revision确认；丢响应原switch读回 |
+| 6 | 新部署明确失败且旧数据/路由允许安全回滚；serve→serve / `ServeAccessControl.RollbackRoute` | `RouteRollbackCommand` → `RouteReadback` | serve.access_switches, serve.access_bindings | 原目标+原switch证据+当前expected generation可核对；不能仅改DB指针称回滚成功 |
 
 **终点**：一个确认选中部署，无重复购买；失败时旧运行结果有实际证据
 
@@ -382,7 +382,7 @@ Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威�
 | 8 | downgrade_next_period的付款/执行分支，或其取消未付款义务；gateway→workspace / `WorkspacePlanChangeReadback.ReadNextPeriodObligation` | `ReadNextPeriodObligationRequest` → `NextPeriodObligation` | 只读/由原Owner管理 | downgrade到期资金动作绑定唯一workspace/nextPeriod原义务与consent；没有有效付款授权则awaiting_payment，不偷开自动续费 |
 | 9 | kind=downgrade_next_period且有效下期付款授权；不得提前降低资源；workspace→gateway / `GatewayPlanChangeSettlement.DebitScheduledPeriod` | `ScheduledPeriodChargeCommand` → `WalletOperation` | gateway.wallet_operations | 仅目标下一期已接受价格，提前付款也不提前减资源；不得先旧价扣再补救；manual未授权不调用 |
 | 10 | upgrade资金confirmed/zero；或downgrade已到E且目标期资金confirmed；workspace→fabric / `FabricCoordination.ResizeResources` | `ResizeResourcesCommand` → `Operation` | fabric.resource_actions, fabric.resources | 资金/ZeroFundingEvidence和固定executionPlan，原epoch/目标/资源读回一致；unknown原请求读回，部分不可逆事实独立保留不假缩容 |
-| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimePlanChangeControl.RestoreAfterResourceChange` | `RestorePlanChangeRuntimeCommand` → `PlanChangeRuntimeReadback` | runtime_control.runtime_actions | 现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable；已有应用不可用不得applied，不让客户skipRuntime |
+| 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServePlanChangeControl.RestoreAfterResourceChange` | `RestorePlanChangeRuntimeCommand` → `PlanChangeRuntimeReadback` | serve.agent_runtime_actions | 现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable；已有应用不可用不得applied，不让客户skipRuntime |
 | 12 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerPlanChangeEvidence.AppendPlanChangeReceipt` | `AppendPlanChangeReceiptRequest` → `Receipt` | ledger.receipts | 本域CAS appliedAt/active计划/原E不变或下期正确周期后精确receipt；已受理/预约成功不能当资源已生效 |
 | 13 | 用户显式取消且无新期资金accepted/资源执行；bff→workspace / `WorkspaceProductService.CancelPlanChange` | `CancelPlanChangeRpcRequest` → `Operation` | workspace.plan_changes, workspace.operations | 尚无新期资金accepted/执行时CAS取消；历史不改；付款或资源动作已开始拒绝，不能按低价付完再恢复高配 |
 | 14 | 确定失败/fence/资源证据完备；非unknown；原单有未退额；workspace→gateway / `GatewayPlanChangeSettlement.RefundFailure` | `PlanChangeFailureRefundCommand` → `WalletOperation` | gateway.wallet_operations | 确定交付失败+fence+实际资源证据，补偿原补差或原目标期款；unknown不退；部分不可逆成本归平台，不向客户擅收部分交付费 |
@@ -417,7 +417,7 @@ Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威�
 | 索引 | 触发条件 / Caller→Owner / RPC | 输入→输出 | 接收Owner写入 | 完成证据 / 不确定处理 |
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
-| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→runtime_control / `RuntimeCoordination.Retire` | `RuntimeStopCommand` → `Operation` | runtime_control.runtime_actions | 确切旧Runtime停止/不存在；unknown不继续声称全环境已删 |
+| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→serve / `ServeAgentCoordination.Retire` | `RuntimeStopCommand` → `Operation` | serve.agent_runtime_actions | 确切旧Runtime停止/不存在；unknown不继续声称全环境已删 |
 | 3 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→fabric / `FabricCoordination.DeleteResources` | `MutateResourcesCommand` → `Operation` | fabric.resource_actions, fabric.resources, fabric.attachments | 原资源/挂载/Secret及公开访问绑定确切absence；不依赖列表没看到推断不存在 |
 | 4 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerCoordination.AppendReceipt` | `AppendReceiptRequest` → `Receipt` | ledger.receipts | 返回receipt身份，另ReadReceiptByReference核对原输入；同idempotency key读回，不填假Workspace或重写receipt |
 | 5 | 原单可退且相应删除/失败证据完整，不是unknown；workspace→gateway / `GatewayCoordination.Refund` | `WalletRefundCommand` → `WalletOperation` | gateway.wallet_operations | 原单剩余可退金额+删除receipt+原钱包目标；unknown原退款读回，删除与退款分别显示 |
@@ -459,7 +459,7 @@ Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威�
 | 索引 | 触发条件 / Caller→Owner / RPC | 输入→输出 | 接收Owner写入 | 完成证据 / 不确定处理 |
 |---:|---|---|---|---|
 | 1 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→tenant / `CloudIdentityAuthorization.AuthorizeAction` | `AuthorizationRequest` → `AuthorizationDecision` | 只读/由原Owner管理 | session/grant/action/resource/audience/权限版本确切一致；deny不改用管理员；unknown不发后续副作用 |
-| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.AdoptWorkspace` | `AdoptWorkspaceRpcRequest` → `Operation` | workspace.workspaces, workspace.deployments, workspace.operations | 原资源/订阅/ID沿用，新的Agent契约符合旧资源；不执行购买debit/Ensure新资源，不伪造Quote或Build |
+| 2 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；bff→workspace / `WorkspaceProductService.AdoptWorkspace` | `AdoptWorkspaceRpcRequest` → `Operation` | workspace.workspaces, serve.agent_deployments, workspace.operations | 原资源/订阅/ID沿用，新的Agent契约符合旧资源；不执行购买debit/Ensure新资源，不伪造Quote或Build |
 
 **终点**：历史resource_only可装Agent，已有应用/账期/数据/Key不被迁移暗改
 

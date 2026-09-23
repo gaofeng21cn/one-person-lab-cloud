@@ -56,7 +56,7 @@ cannot yet follow is an explicit roadmap gap, not a competing SSOT.
 
 ## Active Navigation
 
-- [v2.26 target development specification](./spec/v2.26/00_master_index.md)
+- [target architecture target development specification](./spec/target/00_master_index.md)
 - [Workspace application delivery plan](./roadmap.md#workspace-application-decoupling)
 - [Final deliverables and owner handoff](./roadmap.md#required-deliverables)
 - [Workspace current capability baseline](./status.md#current-capability-baseline)

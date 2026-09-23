@@ -1,4 +1,4 @@
-# OPL Cloud v2.26 — 完整开发方案总索引
+# OPL Cloud target architecture — 完整开发方案总索引
 
 > 定稿范围：本次确认的F01–F17，D17升级/降配规则已由用户确认。最终可开工结论以checks/handoff_readiness.json及其绑定证据为准。开发规格不等于业务代码已实现、已迁移或已上线。
 > 本轮目标：客户选择 Agent 版本和计算/存储套餐，完成 SaaS 部署；旧资源购买路径有明确迁移。
@@ -15,7 +15,7 @@
 - Sub2API 是身份认证、可消费钱包、Key、Token 用量权威；Cloud 不存密码、不复制可消费余额、不创建第二钱包。
 - Cloud 拥有 Workspace 套餐价格/报价/订阅编排，Gateway 拥有模型价格与钱包记账。资源套餐报价不是 Token 定价。
 - Ledger 保存不可变业务证据，不重复维护可消费钱包。
-- Framework/OPL App 拥有 Runtime 实现；Cloud 只做 Runtime Control。Instance 拥有生产配置、Secrets、部署/回滚和资格回执。
+- Framework/OPL App 拥有 Runtime 实现；Cloud Runtime Control 只管理获准Runtime Release目录与不可变引用，供Build固定输入，不管理Agent实例。Instance拥有生产配置、Secrets、Cloud服务部署/回滚和资格回执。Serve在Cloud产品内拥有Agent OCI向Workspace的交付/部署/运行状态及访问入口。
 - 单一GitHub仓库只覆盖Cloud产品：`apps/`、`services/`和`packages/`共同演进；不合并Instance、Sub2API、Framework/OPL App等外部Owner。领域服务独立不等于独立仓库，目录/module/进程映射以01第3节为准。
 
 ## 2. 本次收敛决定（不是等待再次选择的选项）
@@ -23,7 +23,7 @@
 | ID | 决定 | 依据/约束 |
 |---|---|---|
 | D01 | 新客户入口是选 Agent 版本+套餐后部署，不再仅购买裸资源 | 当前用户明确确认；旧路径按 09 迁移 |
-| D02 | 全部Cloud产品代码位于唯一GitHub仓库`opl-cloud`；领域服务在仓库内保持独立Go module、进程和数据写入边界，CloudIdentity与Gateway Integration按01共module/进程但分数据库/角色；Fabric/Ledger保留权威 | 2026-09-22用户明确单仓库决定；替代原多仓库落点，不改变v2.26领域职责或字段 |
+| D02 | 全部Cloud产品代码位于唯一GitHub仓库`opl-cloud`；领域服务在仓库内保持独立Go module、进程和数据写入边界，CloudIdentity与Gateway Integration按01共module/进程但分数据库/角色；Fabric/Ledger保留权威 | 2026-09-22用户明确单仓库决定；替代原多仓库落点，不改变target architecture领域职责或字段 |
 | D03 | 每个数据 Owner 独立 PostgreSQL database/独立角色；可共 PostgreSQL 实例；跨 Owner 只传不透明 ID，不建跨域 FK/JOIN/事务 | 消除旧稿独立数据库与跨 schema FK 矛盾 |
 | D04 | 外部浏览器 API 统一由 Console BFF 提供 REST；内部 typed gRPC/protobuf；可靠事件用本域 PostgreSQL Outbox→消费者 gRPC Inbox | 落实已讨论的内部协议和 Outbox；当前链路无须增加 NATS 运行依赖 |
 | D05 | BFF 仅鉴权、授权上下文与产品 DTO 聚合；Workspace Service 拥有业务 Saga | 不把前端聚合层变第二编排器 |
@@ -39,6 +39,28 @@
 | D15 | 本规格不设未获依据的50人容量承诺、3分钟上线承诺、10包配额、自动保留期或退款百分比 | 实例策略显式配置且UI展示；必要策略缺失则准入拒绝 |
 | D16 | 保留期、报价和退款规则均版本化；按用户接受的报价快照执行，不能用最新价格覆盖既有义务 | Cloud产品价格与Gateway模型价格分权 |
 
+## 2.1 Agent交付Owner与业务链
+
+唯一主链：
+
+```text
+Serve体验/Console UI发起上传
+→ Capability建立上传会话、校验对象字节、写Package/PackageVersion
+→ 用户选择PackageVersion、WebUI版本和Runtime Release版本
+→ Build固定三个精确输入及其摘要，生成OCI digest与构建证据
+→ 用户选择目标Workspace并确认资源套餐/报价
+→ Workspace校验Tenant成员、权益、当前生命周期与目标资源方案；持有购买/资源业务Saga
+→ Fabric按Workspace请求开通/绑定Compute、Storage、Network等资源并权威读回资源状态
+→ Workspace将精确OCI和已确认resource refs交给Serve部署操作
+→ Serve在已开通资源上应用OCI，读回运行健康/入口，唯一写入该Workspace当前Agent部署事实
+→ Serve通过API、Embed、Hosted UI服务该同一个当前Agent
+→ Ledger按义务记录引用与结果；不成为上述任一事实的writer
+```
+
+边界：每个Workspace至多一个当前Agent；Serve拥有部署尝试、替换/回滚历史、当前选择、Agent运行readiness与Serve路由。Workspace拥有目标权限、订阅/权益和资源方案，不持有activeDeploymentId、Agent状态或重复路由事实。Runtime Control仅有获准Runtime Release版本/制品/兼容契约，Build将其固定进OCI；它不操作Workspace实例。Fabric只拥有基础设施资源开通、绑定和资源readback，不部署Agent OCI。Serve UI不是Package writer：上传和Package状态始终由Capability写入。
+
+模块数按部署单元/数据Owner分别统计：9个领域后端部署单元、10个数据Owner（Gateway Integration内tenant与gateway仍是两个Owner），另有Console BFF与Console UI。比此前拓扑新增Serve一个部署单元/Owner；Runtime Control保留同名部署单元但职责收敛为Runtime Release目录。
+
 ## 3. 唯一权威文件与执行顺序
 
 | 文件 | 唯一负责内容 |
@@ -47,7 +69,7 @@
 | 01_domain_ownership_matrix.md | Owner、单仓库内目录/module/服务边界、真实调用、插件/适配契约 |
 | 02_database_schema_complete.md + contracts/schema.sql | 字段、约束、索引、删除保护和保留；SQL是字段的可执行投影 |
 | 03_api_contract_complete.yaml | 所有客户/管理员REST操作、DTO、权限、错误及幂等 |
-| contracts/internal.proto + contracts/events.json | 内部调用与Outbox事件的机器可检查规格 |
+| contracts/internal.proto + contracts/events.json | 内部调用与Outbox事件的机器可检查规格；包含Serve部署、Runtime Release、Capability上传/目录与Fabric资源API的唯一Owner映射 |
 | 04_frontend_interaction_spec.md | 页面/字段/动作/API/状态/错误/文案映射 |
 | 05_build_service_technical_spec.md | 构建执行、不可变输入、隔离、凭据与制品读回 |
 | 06_data_flow_and_state_machine.md | 跨域时序、状态转换、恢复与副作用证据 |
@@ -99,7 +121,7 @@
 - CapabilityVersion：ready / deprecated / deleting / deleted；成功构建且确认注册后才创建ready记录，digest必填。
 - Workspace：provisioning / active / updating / suspended / deleting / deleted / failed / needs_attention。
 - Deployment：queued / deploying / verifying / active / superseded / failed / rolling_back / rolled_back / needs_attention。
-- RuntimeInstance：pending / starting / ready / stopped / failed / terminating / terminated。选中谁由Workspace.activeDeploymentId权威，不用Runtime.active布尔值制造第二writer。
+- AgentDeployment：queued / deploying / verifying / active / superseded / failed / rolling_back / rolled_back / needs_attention，由Serve唯一写入当前Agent选择和部署历史；Workspace不保存activeDeploymentId。运行实例状态与部署状态由Serve在单一生命周期中读回，不由Runtime Release目录表示。
 - Operation：accepted / running / awaiting_confirmation / succeeded / failed / needs_attention / cancelled。
 - 外部动作观察结果：confirmed / rejected / unknown；unknown不是failed，不基于unknown做重复扣费、反向退款或重复采购。
 - Tenant：active / suspended / deleting / deleted；恢复仅在restoreUntil内恢复Tenant和保留资产权限，不复活已删除CBS、不自动重购Workspace。

@@ -135,12 +135,12 @@
         },
         {
           "caller": "bff",
-          "owner": "capability",
-          "rpc": "CapabilityProductService.RegisterRuntimeVersion",
+          "owner": "runtime_control",
+          "rpc": "RuntimeControlProductService.RegisterRuntimeVersion",
           "request": "RegisterRuntimeVersionRpcRequest",
           "response": "RuntimeVersion",
           "writes": [
-            "capability.runtime_versions"
+            "runtime_control.runtime_releases"
           ],
           "completionEvidence": "完整PublisherContract schema+canonical Go validator+Registry读回通过",
           "onUnknownOrRejection": "缺repository/platform/完整revision拒绝",
@@ -468,12 +468,12 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimeCoordination.Reserve",
+          "owner": "serve",
+          "rpc": "ServeAgentCoordination.Reserve",
           "request": "RuntimeReservationCommand",
           "response": "RuntimeReservation",
           "writes": [
-            "runtime_control.runtime_instances"
+            "serve.agent_runtime_instances"
           ],
           "completionEvidence": "预留稳定runtimeInstanceId而不启动",
           "onUnknownOrRejection": "不因Key依赖Runtime ID产生循环",
@@ -548,40 +548,40 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimeCoordination.Deploy",
+          "owner": "serve",
+          "rpc": "ServeAgentCoordination.Deploy",
           "request": "RuntimeDeployCommand",
           "response": "RuntimeReadback",
           "writes": [
-            "runtime_control.runtime_actions"
+            "serve.agent_runtime_actions"
           ],
           "completionEvidence": "完整DeploymentDescriptor送执行层并实际ready",
           "onUnknownOrRejection": "非就绪不开放入口",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "workspace",
-          "owner": "fabric",
-          "rpc": "FabricRouteExecution.FenceRouteEpoch",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeAccessControl.FenceRouteEpoch",
           "request": "FenceRouteEpochCommand",
           "response": "RouteReadback",
           "writes": [
-            "fabric.route_bindings",
-            "fabric.route_switches"
+            "serve.access_bindings",
+            "serve.access_switches"
           ],
           "completionEvidence": "provider conditional revision确认新epoch",
           "onUnknownOrRejection": "未知旧switch先读回，不抢占",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "runtime_control",
-          "owner": "fabric",
-          "rpc": "FabricRouteExecution.ActivateRoute",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeAccessControl.ActivateRoute",
           "request": "RouteActivateCommand",
           "response": "RouteReadback",
           "writes": [
-            "fabric.route_bindings",
-            "fabric.route_switches"
+            "serve.access_bindings",
+            "serve.access_switches"
           ],
           "completionEvidence": "epoch/revision/target精确，provider实际路由确认",
           "onUnknownOrRejection": "旧epoch/旧revision拒绝，丢响应ObserveRoute",
@@ -601,8 +601,8 @@
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         }
       ],
-      "terminal": "Workspace本域CAS selectedDeployment/selected generation后，receipt核对；客户可打开当前应用",
-      "notes": "Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉"
+      "terminal": "Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用",
+      "notes": "Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉"
     },
     {
       "featureId": "F09",
@@ -630,7 +630,7 @@
         {
           "caller": "bff",
           "owner": "workspace",
-          "rpc": "WorkspaceProductService.GetWorkspaceAccess",
+          "rpc": "ServeProductService.GetWorkspaceAccess",
           "request": "GetWorkspaceAccessRpcRequest",
           "response": "WorkspaceAccess",
           "writes": [],
@@ -651,21 +651,21 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimeCoordination.ReloadModels",
+          "owner": "serve",
+          "rpc": "ServeAgentCoordination.ReloadModels",
           "request": "RuntimeReloadCommand",
           "response": "Operation",
           "writes": [
-            "runtime_control.runtime_actions"
+            "serve.agent_runtime_actions"
           ],
           "completionEvidence": "目标配置版本+selections实际应用",
           "onUnknownOrRejection": "保存成功不等于reload成功",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "runtime_control",
-          "owner": "fabric",
-          "rpc": "FabricRuntimeExecution.ObserveRuntime",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeRuntimeAdapter.ObserveRuntime",
           "request": "RuntimeReadbackRequest",
           "response": "RuntimeReadback",
           "writes": [],
@@ -709,14 +709,14 @@
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "workspace",
-          "owner": "fabric",
-          "rpc": "FabricRouteExecution.FenceRouteEpoch",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeAccessControl.FenceRouteEpoch",
           "request": "FenceRouteEpochCommand",
           "response": "RouteReadback",
           "writes": [
-            "fabric.route_switches",
-            "fabric.route_bindings"
+            "serve.access_switches",
+            "serve.access_bindings"
           ],
           "completionEvidence": "新epoch先在provider确认",
           "onUnknownOrRejection": "旧未知切换不被强行覆盖",
@@ -724,41 +724,41 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimeCoordination.Deploy",
+          "owner": "serve",
+          "rpc": "ServeAgentCoordination.Deploy",
           "request": "RuntimeDeployCommand",
           "response": "RuntimeReadback",
           "writes": [
-            "runtime_control.runtime_instances",
-            "runtime_control.runtime_actions"
+            "serve.agent_runtime_instances",
+            "serve.agent_runtime_actions"
           ],
           "completionEvidence": "新实例实际验证且不违反可写卷并发限制",
           "onUnknownOrRejection": "保留旧选中版本/原数据义务",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "runtime_control",
-          "owner": "fabric",
-          "rpc": "FabricRouteExecution.ActivateRoute",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeAccessControl.ActivateRoute",
           "request": "RouteActivateCommand",
           "response": "RouteReadback",
           "writes": [
-            "fabric.route_switches",
-            "fabric.route_bindings"
+            "serve.access_switches",
+            "serve.access_bindings"
           ],
           "completionEvidence": "新target/provider revision确认",
           "onUnknownOrRejection": "丢响应原switch读回",
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         },
         {
-          "caller": "runtime_control",
-          "owner": "fabric",
-          "rpc": "FabricRouteExecution.RollbackRoute",
+          "caller": "serve",
+          "owner": "serve",
+          "rpc": "ServeAccessControl.RollbackRoute",
           "request": "RouteRollbackCommand",
           "response": "RouteReadback",
           "writes": [
-            "fabric.route_switches",
-            "fabric.route_bindings"
+            "serve.access_switches",
+            "serve.access_bindings"
           ],
           "completionEvidence": "原目标+原switch证据+当前expected generation可核对",
           "onUnknownOrRejection": "不能仅改DB指针称回滚成功",
@@ -907,12 +907,12 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimePlanChangeControl.RestoreAfterResourceChange",
+          "owner": "serve",
+          "rpc": "ServePlanChangeControl.RestoreAfterResourceChange",
           "request": "RestorePlanChangeRuntimeCommand",
           "response": "PlanChangeRuntimeReadback",
           "writes": [
-            "runtime_control.runtime_actions"
+            "serve.agent_runtime_actions"
           ],
           "completionEvidence": "现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable",
           "onUnknownOrRejection": "已有应用不可用不得applied，不让客户skipRuntime",
@@ -1097,12 +1097,12 @@
         },
         {
           "caller": "workspace",
-          "owner": "runtime_control",
-          "rpc": "RuntimeCoordination.Retire",
+          "owner": "serve",
+          "rpc": "ServeAgentCoordination.Retire",
           "request": "RuntimeStopCommand",
           "response": "Operation",
           "writes": [
-            "runtime_control.runtime_actions"
+            "serve.agent_runtime_actions"
           ],
           "completionEvidence": "确切旧Runtime停止/不存在",
           "onUnknownOrRejection": "unknown不继续声称全环境已删",
@@ -1310,7 +1310,7 @@
           "response": "Operation",
           "writes": [
             "workspace.workspaces",
-            "workspace.deployments",
+            "serve.agent_deployments",
             "workspace.operations"
           ],
           "completionEvidence": "原资源/订阅/ID沿用，新的Agent契约符合旧资源",

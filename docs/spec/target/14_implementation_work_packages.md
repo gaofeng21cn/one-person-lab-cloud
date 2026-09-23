@@ -383,7 +383,7 @@
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createPublisherNamespace`, `getBuildRuntimePolicy`, `listPublisherNamespaces`, `listRuntimeVersions`, `listWebuiVersions`, `publishOfficialPackage`, `registerRuntimeVersion`, `registerWebuiVersion`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setRuntimeVersionStatus`, `setWebuiVersionStatus`
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`capability.runtime_versions`, `capability.webui_versions`, `capability.catalog_policies`, `capability.publisher_namespaces`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_releases`, `capability.webui_versions`, `capability.catalog_policies`, `capability.publisher_namespaces`
 
 **内部协议实现/协作端口**：`CapabilityProductService.PublishOfficialPackage`, `CapabilityProductService.ListRuntimeVersions`, `CapabilityProductService.ListWebuiVersions`, `CapabilityProductService.RegisterRuntimeVersion`, `CapabilityProductService.SetRuntimeVersionStatus`, `CapabilityProductService.RegisterWebuiVersion`, `CapabilityProductService.SetWebuiVersionStatus`, `CapabilityProductService.GetBuildRuntimePolicy`, `CapabilityProductService.SetBuildRuntimePolicy`, `CapabilityProductService.ListPublisherNamespaces`, `CapabilityProductService.CreatePublisherNamespace`, `CapabilityProductService.RevokePublisherNamespace`, `CapabilityCoordination.ResolveBuildInput`, `CapabilityCoordination.ResolvePublisherContract`, `CapabilityCoordination.AcquireReference`, `CapabilityCoordination.BindReference`, `CapabilityCoordination.ReleaseReference`
 
@@ -484,9 +484,9 @@
 - 应用原登录与owner-only应用凭据reveal沿现行能力；不新增强制SSO
 - 数据兼容/单写挂载、健康/已应用配置与实际资源改配后的恢复
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_instances`, `runtime_control.runtime_actions`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`serve.agent_runtime_instances`, `serve.agent_runtime_actions`
 
-**内部协议实现/协作端口**：`RuntimeCoordination.Reserve`, `RuntimeCoordination.Deploy`, `RuntimeCoordination.ReloadModels`, `RuntimeCoordination.ReadRuntime`, `RuntimeCoordination.Retire`, `RuntimePlanChangeControl.RestoreAfterResourceChange`
+**内部协议实现/协作端口**：`ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `RuntimePlanChangeControl.RestoreAfterResourceChange`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -518,7 +518,7 @@
 - provider-side fence/conditional revision与实际路由读回，旧epoch不可生效
 - Linux存储/权限前提不满足明确失败，不把Mac Docker Desktop冒充Local资格
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`, `fabric.route_bindings`, `fabric.route_switches`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`, `serve.access_bindings`, `serve.access_switches`
 
 **内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricRuntimeExecution.ReadApplicationCredentials`, `FabricRuntimeExecution.StartRuntime`, `FabricRuntimeExecution.StopRuntime`, `FabricRuntimeExecution.ReloadRuntime`, `FabricRuntimeExecution.ObserveRuntime`, `FabricRouteExecution.FenceRouteEpoch`, `FabricRouteExecution.ActivateRoute`, `FabricRouteExecution.ObserveRoute`, `FabricRouteExecution.RollbackRoute`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
@@ -724,7 +724,7 @@
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getDeployment`, `getWorkspaceAccess`, `getWorkspaceModels`, `listDeployments`, `revealWorkspaceApplicationCredentials`, `rollbackWorkspace`, `updateWorkspaceModels`, `updateWorkspaceVersion`
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`workspace.deployments`, `workspace.model_configurations`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`serve.agent_deployments`, `workspace.model_configurations`
 
 **内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceAccess`, `WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.ListDeployments`, `WorkspaceProductService.GetDeployment`, `WorkspaceProductService.UpdateWorkspaceVersion`, `WorkspaceProductService.RollbackWorkspace`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`
 

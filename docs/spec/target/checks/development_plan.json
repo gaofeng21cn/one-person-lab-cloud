@@ -757,7 +757,7 @@
       ],
       "apiConsumes": [],
       "tablesPrimary": [
-        "capability.runtime_versions",
+        "runtime_control.runtime_releases",
         "capability.webui_versions",
         "capability.catalog_policies",
         "capability.publisher_namespaces"
@@ -1034,16 +1034,16 @@
       "apiPrimary": [],
       "apiConsumes": [],
       "tablesPrimary": [
-        "runtime_control.runtime_instances",
-        "runtime_control.runtime_actions"
+        "serve.agent_runtime_instances",
+        "serve.agent_runtime_actions"
       ],
       "rpcImplements": [
-        "RuntimeCoordination.Reserve",
-        "RuntimeCoordination.Deploy",
-        "RuntimeCoordination.ReloadModels",
-        "RuntimeCoordination.ReadRuntime",
-        "RuntimeCoordination.Retire",
-        "RuntimePlanChangeControl.RestoreAfterResourceChange"
+        "ServeAgentCoordination.Reserve",
+        "ServeAgentCoordination.Deploy",
+        "ServeAgentCoordination.ReloadModels",
+        "ServeAgentCoordination.ReadRuntime",
+        "ServeAgentCoordination.Retire",
+        "ServePlanChangeControl.RestoreAfterResourceChange"
       ],
       "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
       "contractRefs": [
@@ -1113,8 +1113,8 @@
         "fabric.attachments",
         "fabric.secret_bindings",
         "fabric.resource_actions",
-        "fabric.route_bindings",
-        "fabric.route_switches"
+        "serve.access_bindings",
+        "serve.access_switches"
       ],
       "rpcImplements": [
         "FabricCoordination.AdmitResources",
@@ -1131,10 +1131,10 @@
         "FabricRuntimeExecution.StopRuntime",
         "FabricRuntimeExecution.ReloadRuntime",
         "FabricRuntimeExecution.ObserveRuntime",
-        "FabricRouteExecution.FenceRouteEpoch",
-        "FabricRouteExecution.ActivateRoute",
-        "FabricRouteExecution.ObserveRoute",
-        "FabricRouteExecution.RollbackRoute",
+        "ServeAccessControl.FenceRouteEpoch",
+        "ServeAccessControl.ActivateRoute",
+        "ServeAccessControl.ObserveRoute",
+        "ServeAccessControl.RollbackRoute",
         "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
         "FabricPlanTransitionReadback.ReadExecutionPlan"
       ],
@@ -1213,10 +1213,10 @@
         "FabricRuntimeExecution.StopRuntime",
         "FabricRuntimeExecution.ReloadRuntime",
         "FabricRuntimeExecution.ObserveRuntime",
-        "FabricRouteExecution.FenceRouteEpoch",
-        "FabricRouteExecution.ActivateRoute",
-        "FabricRouteExecution.ObserveRoute",
-        "FabricRouteExecution.RollbackRoute",
+        "ServeAccessControl.FenceRouteEpoch",
+        "ServeAccessControl.ActivateRoute",
+        "ServeAccessControl.ObserveRoute",
+        "ServeAccessControl.RollbackRoute",
         "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
         "FabricPlanTransitionReadback.ReadExecutionPlan"
       ],
@@ -1680,7 +1680,7 @@
       ],
       "apiConsumes": [],
       "tablesPrimary": [
-        "workspace.deployments",
+        "serve.agent_deployments",
         "workspace.model_configurations"
       ],
       "rpcImplements": [
@@ -1858,7 +1858,7 @@
         "GatewayPlanChangeSettlement.DebitScheduledPeriod",
         "GatewayPlanChangeSettlement.RefundFailure",
         "GatewayPlanChangeSettlement.RefundSupplementOnDeletion",
-        "RuntimePlanChangeControl.RestoreAfterResourceChange",
+        "ServePlanChangeControl.RestoreAfterResourceChange",
         "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
         "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt",
         "DomainInbox.Deliver"
@@ -2784,7 +2784,7 @@
     "tenant.audit_events": "W03",
     "capability.namespaces": "W08",
     "capability.packages": "W08",
-    "capability.runtime_versions": "W07",
+    "runtime_control.runtime_releases": "W07",
     "capability.webui_versions": "W07",
     "capability.catalog_policies": "W07",
     "capability.package_versions": "W08",
@@ -2796,13 +2796,13 @@
     "build.build_artifacts": "W09",
     "build.build_logs": "W09",
     "workspace.workspaces": "W15",
-    "workspace.deployments": "W17",
+    "serve.agent_deployments": "W17",
     "workspace.subscriptions": "W18",
     "workspace.subscription_periods": "W18",
     "workspace.model_configurations": "W17",
     "workspace.saga_steps": "W15",
-    "runtime_control.runtime_instances": "W10",
-    "runtime_control.runtime_actions": "W10",
+    "serve.agent_runtime_instances": "W10",
+    "serve.agent_runtime_actions": "W10",
     "fabric.resource_sets": "W11",
     "fabric.resources": "W11",
     "fabric.attachments": "W11",
@@ -2868,8 +2868,8 @@
     "capability.publisher_namespaces": "W07",
     "tenant.authorization_contexts": "W03",
     "tenant.accepted_operation_grants": "W03",
-    "fabric.route_bindings": "W11",
-    "fabric.route_switches": "W11",
+    "serve.access_bindings": "W11",
+    "serve.access_switches": "W11",
     "workspace.plan_changes": "W19",
     "workspace.subscription_period_obligations": "W19",
     "workspace.supplemental_charges": "W15"
@@ -3315,19 +3315,19 @@
       "W11",
       "W12"
     ],
-    "RuntimeCoordination.Reserve": [
+    "ServeAgentCoordination.Reserve": [
       "W10"
     ],
-    "RuntimeCoordination.Deploy": [
+    "ServeAgentCoordination.Deploy": [
       "W10"
     ],
-    "RuntimeCoordination.ReloadModels": [
+    "ServeAgentCoordination.ReloadModels": [
       "W10"
     ],
-    "RuntimeCoordination.ReadRuntime": [
+    "ServeAgentCoordination.ReadRuntime": [
       "W10"
     ],
-    "RuntimeCoordination.Retire": [
+    "ServeAgentCoordination.Retire": [
       "W10"
     ],
     "FabricRuntimeExecution.ReadApplicationCredentials": [
@@ -3350,19 +3350,19 @@
       "W11",
       "W12"
     ],
-    "FabricRouteExecution.FenceRouteEpoch": [
+    "ServeAccessControl.FenceRouteEpoch": [
       "W11",
       "W12"
     ],
-    "FabricRouteExecution.ActivateRoute": [
+    "ServeAccessControl.ActivateRoute": [
       "W11",
       "W12"
     ],
-    "FabricRouteExecution.ObserveRoute": [
+    "ServeAccessControl.ObserveRoute": [
       "W11",
       "W12"
     ],
-    "FabricRouteExecution.RollbackRoute": [
+    "ServeAccessControl.RollbackRoute": [
       "W11",
       "W12"
     ],
@@ -3417,7 +3417,7 @@
       "W04",
       "W19"
     ],
-    "RuntimePlanChangeControl.RestoreAfterResourceChange": [
+    "ServePlanChangeControl.RestoreAfterResourceChange": [
       "W10",
       "W19"
     ],

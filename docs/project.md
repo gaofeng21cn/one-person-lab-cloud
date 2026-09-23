@@ -6,12 +6,12 @@ derived from `one-person-lab-cloud`. It follows the development framework from
 All target Cloud domain services stay in this repository with independent
 module, process and data-owner boundaries. The adopted target and detailed
 placement are owned by [architecture.md](./architecture.md) and the
-[v2.26 owner mapping](./spec/v2.26/01_domain_ownership_matrix.md); external
+[target architecture owner mapping](./spec/target/01_domain_ownership_matrix.md); external
 Instance, Sub2API and Framework authorities are not consolidated here.
 
 ## Owned Here
 
-The following describes retained implementation responsibilities. The v2.26
+The following describes retained implementation responsibilities. The target architecture
 work packages transfer them to their target owners without creating a second
 writer; new target capabilities do not imply completed implementation.
 

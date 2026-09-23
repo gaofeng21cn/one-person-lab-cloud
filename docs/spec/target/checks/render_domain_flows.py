@@ -22,7 +22,7 @@ flow('F02','分组与私有/官方可见性',['listNamespaces','createNamespace'
  step('bff','capability','CapabilityProductService.CreateNamespace',['capability.namespaces'],'tenant+name唯一、正确权限和状态','冲突不创建第二组；不跨Tenant读写')], '客户分组可见性正确，归档不删除制品和历史')
 flow('F03','Publisher准入与资源价格目录',['createPublisherNamespace','registerRuntimeVersion','registerWebuiVersion','createComputePlan','createPricePolicyVersion'],[A('capability'),
  step('bff','capability','CapabilityProductService.CreatePublisherNamespace',['capability.publisher_namespaces'],'官方/第三方种类与Registry prefix确认','错误prefix/归属拒绝，不放进默认官方空间'),
- step('bff','capability','CapabilityProductService.RegisterRuntimeVersion',['capability.runtime_versions'],'完整PublisherContract schema+canonical Go validator+Registry读回通过','缺repository/platform/完整revision拒绝'),
+ step('bff','runtime_control','RuntimeControlProductService.RegisterRuntimeVersion',['runtime_control.runtime_releases'],'完整PublisherContract schema+canonical Go validator+Registry读回通过','缺repository/platform/完整revision拒绝'),
  step('bff','resource_catalog','ResourceCatalogProductService.CreatePricePolicyVersion',['resource_catalog.price_policy_versions'],'套餐组合/单月/明确政策事实，pending调整策略不可报价','不补空JSON或猜默认金额')], '管理员提供实际可执行选项，客户不任意指定Runtime镜像')
 flow('F04','上传与确认原字节',['createPackage','createUpload','createUploadPart','completeUpload'],[A('capability'),
  step('bff','capability','CapabilityProductService.CreateUpload',['capability.package_versions','capability.upload_sessions'],'固定包版本及uploadId/受限对象地址','同键返回同身份；过期续签同对象'),
@@ -43,26 +43,26 @@ flow('F07','选择Agent/套餐/模型并取得准确报价',['createQuote','getQ
  step('bff','resource_catalog','ResourceCatalogProductService.CreateQuote',['resource_catalog.quotes','resource_catalog.quote_items'],'purpose/kind/金额符号与DB完全同词；总额=sum正项-credit','pending/缺政策拒绝，不能零价兜底')], '客户能看到同一quote的金额、单月周期、有效期和数据规则')
 flow('F08','购买到实际可用的部署',['createWorkspace','getOperation','getWorkspace'],[A('workspace'),
  step('workspace','resource_catalog','CatalogCoordination.AcceptQuote',['resource_catalog.quotes'],'quoteID/inputDigest唯一绑定原operation','冲突拒绝，不能重报价后续跑原单'),
- step('workspace','runtime_control','RuntimeCoordination.Reserve',['runtime_control.runtime_instances'],'预留稳定runtimeInstanceId而不启动','不因Key依赖Runtime ID产生循环'),
+ step('workspace','serve','ServeAgentCoordination.Reserve',['serve.agent_runtime_instances'],'预留稳定runtimeInstanceId而不启动','不因Key依赖Runtime ID产生循环'),
  step('workspace','tenant','CloudIdentityAuthorization.IssueAcceptedOperationGrant',['tenant.accepted_operation_grants'],'原Owner commit读回，有限actions/resource/period','不能伪造commit字符串或扩大到新Workspace'),
  step('workspace','gateway','GatewayCoordination.Debit',['gateway.wallet_operations'],'精确账户/Code/金额原单confirmed','unknown只ReadWalletAction，绝不重复扣费'),
  step('workspace','gateway','GatewayCoordination.CreateManagedKey',['gateway.key_bindings'],'原实例与允许模型/Key引用/版本一致','不盲建第二Key，不在DB/事件存明文'),
  step('workspace','fabric','FabricCoordination.EnsureResources',['fabric.resources','fabric.resource_sets','fabric.attachments'],'批准预付资源与Workspace/原请求exact匹配','unknown查原provider动作，不重购'),
  step('runtime_control','fabric','FabricCoordination.BindSecret',['fabric.secret_bindings'],'完整发布描述指定的Secret引用实际注入','不把Gateway Key当任意环境变量公开'),
- step('workspace','runtime_control','RuntimeCoordination.Deploy',['runtime_control.runtime_actions'],'完整DeploymentDescriptor送执行层并实际ready','非就绪不开放入口'),
- step('workspace','fabric','FabricRouteExecution.FenceRouteEpoch',['fabric.route_bindings','fabric.route_switches'],'provider conditional revision确认新epoch','未知旧switch先读回，不抢占'),
- step('runtime_control','fabric','FabricRouteExecution.ActivateRoute',['fabric.route_bindings','fabric.route_switches'],'epoch/revision/target精确，provider实际路由确认','旧epoch/旧revision拒绝，丢响应ObserveRoute'),R('workspace','workspace')], 'Workspace本域CAS selectedDeployment/selected generation后，receipt核对；客户可打开当前应用','Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉')
+ step('workspace','serve','ServeAgentCoordination.Deploy',['serve.agent_runtime_actions'],'完整DeploymentDescriptor送执行层并实际ready','非就绪不开放入口'),
+ step('serve','serve','ServeAccessControl.FenceRouteEpoch',['serve.access_bindings','serve.access_switches'],'provider conditional revision确认新epoch','未知旧switch先读回，不抢占'),
+ step('serve','serve','ServeAccessControl.ActivateRoute',['serve.access_bindings','serve.access_switches'],'epoch/revision/target精确，provider实际路由确认','旧epoch/旧revision拒绝，丢响应ObserveRoute'),R('workspace','workspace')], 'Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用','Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉')
 flow('F09','使用、模型配置与应用登录',['getWorkspace','getWorkspaceAccess','getWorkspaceModels','updateWorkspaceModels','revealWorkspaceApplicationCredentials'],[A('workspace'),
- step('bff','workspace','WorkspaceProductService.GetWorkspaceAccess',[],'当前部署/访问策略和运行事实一致','按canonical应用登录，不新增SSO'),
+ step('bff','workspace','ServeProductService.GetWorkspaceAccess',[],'当前部署/访问策略和运行事实一致','按canonical应用登录，不新增SSO'),
  step('bff','workspace','WorkspaceProductService.RevealWorkspaceApplicationCredentials',[],'所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码','no-store不缓存；不返回GatewayKey或session_secret'),
- step('workspace','runtime_control','RuntimeCoordination.ReloadModels',['runtime_control.runtime_actions'],'目标配置版本+selections实际应用','保存成功不等于reload成功'),
- step('runtime_control','fabric','FabricRuntimeExecution.ObserveRuntime',[],'appliedVersion和选择相同，运行状态真实','unknown显示应用中/待核实，不覆盖已确认配置')], '打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示')
+ step('workspace','serve','ServeAgentCoordination.ReloadModels',['serve.agent_runtime_actions'],'目标配置版本+selections实际应用','保存成功不等于reload成功'),
+ step('serve','serve','ServeRuntimeAdapter.ObserveRuntime',[],'appliedVersion和选择相同，运行状态真实','unknown显示应用中/待核实，不覆盖已确认配置')], '打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示')
 flow('F10','更新、切换和回滚',['updateWorkspaceVersion','rollbackWorkspace'],[A('workspace'),
  step('workspace','capability','CapabilityCoordination.ResolvePublisherContract',[],'目标版本完整契约与数据兼容','不支持安全回滚的迁移拒绝，不猜semver'),
- step('workspace','fabric','FabricRouteExecution.FenceRouteEpoch',['fabric.route_switches','fabric.route_bindings'],'新epoch先在provider确认','旧未知切换不被强行覆盖'),
- step('workspace','runtime_control','RuntimeCoordination.Deploy',['runtime_control.runtime_instances','runtime_control.runtime_actions'],'新实例实际验证且不违反可写卷并发限制','保留旧选中版本/原数据义务'),
- step('runtime_control','fabric','FabricRouteExecution.ActivateRoute',['fabric.route_switches','fabric.route_bindings'],'新target/provider revision确认','丢响应原switch读回'),
- step('runtime_control','fabric','FabricRouteExecution.RollbackRoute',['fabric.route_switches','fabric.route_bindings'],'原目标+原switch证据+当前expected generation可核对','不能仅改DB指针称回滚成功')], '一个确认选中部署，无重复购买；失败时旧运行结果有实际证据')
+ step('serve','serve','ServeAccessControl.FenceRouteEpoch',['serve.access_switches','serve.access_bindings'],'新epoch先在provider确认','旧未知切换不被强行覆盖'),
+ step('workspace','serve','ServeAgentCoordination.Deploy',['serve.agent_runtime_instances','serve.agent_runtime_actions'],'新实例实际验证且不违反可写卷并发限制','保留旧选中版本/原数据义务'),
+ step('serve','serve','ServeAccessControl.ActivateRoute',['serve.access_switches','serve.access_bindings'],'新target/provider revision确认','丢响应原switch读回'),
+ step('serve','serve','ServeAccessControl.RollbackRoute',['serve.access_switches','serve.access_bindings'],'原目标+原switch证据+当前expected generation可核对','不能仅改DB指针称回滚成功')], '一个确认选中部署，无重复购买；失败时旧运行结果有实际证据')
 flow('F11','立即升级、下期降配与独立原单结算',['resizeWorkspace','createQuote','listPlanChanges','getPlanChange','cancelPlanChange'],[A('workspace'),
  step('resource_catalog','workspace','WorkspacePlanChangeReadback.ReadSubscriptionPlanState',[],'原period/S/E/已接受当前月价/当前计划和资金义务版本固定','已锁定其它未来账单或财务基础变化拒绝，不退旧款改价'),
  step('resource_catalog','fabric','FabricPlanTransitionReadback.ReadApprovedPlanTransition',[],'批准可比转换，固定执行策略/数据/中断能力','mixed/no-op/不支持缩容拒绝，不按SKU名字或价格猜方向'),
@@ -73,7 +73,7 @@ flow('F11','立即升级、下期降配与独立原单结算',['resizeWorkspace'
  step('gateway','workspace','WorkspacePlanChangeReadback.ReadNextPeriodObligation',[],'downgrade到期资金动作绑定唯一workspace/nextPeriod原义务与consent','没有有效付款授权则awaiting_payment，不偷开自动续费'),
  step('workspace','gateway','GatewayPlanChangeSettlement.DebitScheduledPeriod',['gateway.wallet_operations'],'仅目标下一期已接受价格，提前付款也不提前减资源','不得先旧价扣再补救；manual未授权不调用'),
  step('workspace','fabric','FabricCoordination.ResizeResources',['fabric.resource_actions','fabric.resources'],'资金/ZeroFundingEvidence和固定executionPlan，原epoch/目标/资源读回一致','unknown原请求读回，部分不可逆事实独立保留不假缩容'),
- step('workspace','runtime_control','RuntimePlanChangeControl.RestoreAfterResourceChange',['runtime_control.runtime_actions'],'现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable','已有应用不可用不得applied，不让客户skipRuntime'),
+ step('workspace','serve','ServePlanChangeControl.RestoreAfterResourceChange',['serve.agent_runtime_actions'],'现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable','已有应用不可用不得applied，不让客户skipRuntime'),
  step('workspace','ledger','LedgerPlanChangeEvidence.AppendPlanChangeReceipt',['ledger.receipts'],'本域CAS appliedAt/active计划/原E不变或下期正确周期后精确receipt','已受理/预约成功不能当资源已生效'),
  step('bff','workspace','WorkspaceProductService.CancelPlanChange',['workspace.plan_changes','workspace.operations'],'尚无新期资金accepted/执行时CAS取消；历史不改','付款或资源动作已开始拒绝，不能按低价付完再恢复高配'),
  step('workspace','gateway','GatewayPlanChangeSettlement.RefundFailure',['gateway.wallet_operations'],'确定交付失败+fence+实际资源证据，补偿原补差或原目标期款','unknown不退；部分不可逆成本归平台，不向客户擅收部分交付费'),
@@ -83,7 +83,7 @@ flow('F12','续费与到期恢复',['renewWorkspace','updateRenewalSettings','ge
  step('workspace','gateway','GatewayCoordination.Debit',['gateway.wallet_operations'],'workspace+period业务键唯一原单确认','重复点击/worker命中同一义务'),
  step('workspace','fabric','FabricCoordination.RenewResources',['fabric.resource_actions'],'原资源续期读回与原paidThrough续期窗口一致','过期已回收不伪造恢复、不改now重新计期'),R('workspace','workspace')], '同周期仅付一次，显示真实新账期和运行恢复；迁移原续费模式')
 flow('F13','删除与原单退款',['deleteWorkspace','getWorkspaceDeletion','listWorkspaceTransactions'],[A('workspace'),
- step('workspace','runtime_control','RuntimeCoordination.Retire',['runtime_control.runtime_actions'],'确切旧Runtime停止/不存在','unknown不继续声称全环境已删'),
+ step('workspace','serve','ServeAgentCoordination.Retire',['serve.agent_runtime_actions'],'确切旧Runtime停止/不存在','unknown不继续声称全环境已删'),
  step('workspace','fabric','FabricCoordination.DeleteResources',['fabric.resource_actions','fabric.resources','fabric.attachments'],'原资源/挂载/Secret及公开访问绑定确切absence','不依赖列表没看到推断不存在'),R('workspace','workspace'),
  step('workspace','gateway','GatewayCoordination.Refund',['gateway.wallet_operations'],'原单剩余可退金额+删除receipt+原钱包目标','unknown原退款读回，删除与退款分别显示')], '环境删除与退款各自可查；不删除Package/Build历史，不泄露Key')
 flow('F14','钱包、Key与Token记录',['getWallet','listUsage','createGatewayKey','revealGatewayKey','revokeGatewayKey'],[A('gateway'),
@@ -94,7 +94,7 @@ flow('F15','暂停/重新启用/删除恢复Tenant',['suspendTenant','reenableTe
  step('tenant','workspace','TenantWorkspaceCoordination.ResumeTenantWorkspaces',['workspace.operations'],'只恢复原暂停、仍已付、原资源存在对象','过期/其他原因/删除对象skip，不续费重购'),
  step('tenant','workspace','TenantWorkspaceCoordination.DeleteTenantWorkspaces',['workspace.operations'],'每子删除证据明确','未完成不把Tenant操作标全部完成')], 'reenable与删除后15天restore独立；权限和每个应用结果分开显示')
 flow('F16','旧资源和旧应用无损迁移',['adoptWorkspace','getSubscription','getWorkspace'],[A('workspace'),
- step('bff','workspace','WorkspaceProductService.AdoptWorkspace',['workspace.workspaces','workspace.deployments','workspace.operations'],'原资源/订阅/ID沿用，新的Agent契约符合旧资源','不执行购买debit/Ensure新资源，不伪造Quote或Build')], '历史resource_only可装Agent，已有应用/账期/数据/Key不被迁移暗改','数据Owner迁移按09停写屏障和单writer，不是此命令触发生产迁移')
+ step('bff','workspace','WorkspaceProductService.AdoptWorkspace',['workspace.workspaces','serve.agent_deployments','workspace.operations'],'原资源/订阅/ID沿用，新的Agent契约符合旧资源','不执行购买debit/Ensure新资源，不伪造Quote或Build')], '历史resource_only可装Agent，已有应用/账期/数据/Key不被迁移暗改','数据Owner迁移按09停写屏障和单writer，不是此命令触发生产迁移')
 flow('F17','运维、证据与资格读取',['listAdminOperations','reconcileOperation','listReceipts','listQualifications'],[A('receiving_owner'),
  step('bff','owning_service','OwnerOperations.Reconcile',[],'Owner按原operation真实读回和允许动作继续','不是任意setStatus succeeded'),
  step('owner','ledger','LedgerCoordination.ReadReceiptByReference',[],'确切receipt/来源/输入output摘要','缺证据保持未验证，不发生产部署')], '只读或受限原操作恢复，无新增Instance dispatch接口')
@@ -114,7 +114,7 @@ guards={'GatewayPlanChangeSettlement.DebitSupplement': 'kind=upgrade_immediate '
  'WorkspaceProductService.CancelPlanChange': '用户显式取消且无新期资金accepted/资源执行',
  'GatewayPlanChangeSettlement.RefundFailure': '确定失败/fence/资源证据完备；非unknown；原单有未退额',
  'GatewayPlanChangeSettlement.RefundSupplementOnDeletion': '原升级已applied，此后Workspace正常删除已确认',
- 'FabricRouteExecution.RollbackRoute': '新部署明确失败且旧数据/路由允许安全回滚',
+ 'ServeAccessControl.RollbackRoute': '新部署明确失败且旧数据/路由允许安全回滚',
  'GatewayCoordination.Refund': '原单可退且相应删除/失败证据完整，不是unknown',
  'TenantWorkspaceCoordination.SuspendTenantWorkspaces': 'suspendTenant入口',
  'TenantWorkspaceCoordination.ResumeTenantWorkspaces': 'reenableTenant入口，原停用/已付/原资源存在',
