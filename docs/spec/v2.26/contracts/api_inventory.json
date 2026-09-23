@@ -1104,7 +1104,7 @@
         "F15",
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": null,
       "response": "Operation",
       "status": 200,
@@ -1114,7 +1114,8 @@
       "tables": [
         "{owner}.operations"
       ],
-      "operationKind": null
+      "operationKind": null,
+      "targetOwner": "operation-path-owner"
     },
     {
       "path": "/api/v2/wallet",
@@ -1420,7 +1421,7 @@
       "features": [
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": null,
       "response": "AdminOperationPage",
       "status": 200,
@@ -1430,7 +1431,8 @@
       "tables": [
         "{owner}.operations"
       ],
-      "operationKind": null
+      "operationKind": null,
+      "targetOwner": "required-owner-query"
     },
     {
       "path": "/api/v2/admin/operations/{owner}/{operationId}/reconcile",
@@ -1439,7 +1441,7 @@
       "features": [
         "F17"
       ],
-      "owner": "workspace",
+      "owner": "bff",
       "request": "ReconcileOperationRequest",
       "response": "Operation",
       "status": 202,
@@ -1449,7 +1451,8 @@
       "tables": [
         "{owner}.operations"
       ],
-      "operationKind": "reconcile"
+      "operationKind": "reconcile",
+      "targetOwner": "operation-path-owner"
     },
     {
       "path": "/api/v2/admin/audit-events",

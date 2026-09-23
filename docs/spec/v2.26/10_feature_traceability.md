@@ -1,18 +1,18 @@
 # 10 全量功能交付与字段追踪矩阵
 
 > 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。
-> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。
+> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。通用Operation的BFF入口不是数据Owner；目标由必填owner参数确定。
 
 ## 总表
 
 | 功能 | 页面 | API操作数 | 数据Owner |
 |---|---|---:|---|
-| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | tenant, workspace |
+| F01 登录、Tenant与成员权限 | /login、/console/settings/account、/console/settings/members、/admin/tenants/new | 16 | tenant |
 | F02 分组与官方/私有Agent可见性 | /console/agents、/console/settings/groups | 9 | capability |
 | F03 管理员Runtime/WebUI与资源价格目录 | /admin/catalog/runtime、/admin/catalog/webui、/admin/catalog/publishers、/admin/catalog/build-policy、/admin/catalog/plans | 25 | capability, gateway, resource_catalog |
-| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | build, capability, workspace |
-| F05 构建进度、日志与失败重试 | /console/agents/builds、/console/agents/builds/:buildJobId | 7 | build, capability, workspace |
-| F06 智能体详情、版本下架与引用保护 | /console/agents/:packageId | 9 | capability, workspace |
+| F04 上传Package与后续版本、确认构建 | /console/agents/upload、/console/agents/:packageId/upload | 12 | build, capability |
+| F05 构建进度、日志与失败重试 | /console/agents/builds、/console/agents/builds/:buildJobId | 7 | build, capability |
+| F06 智能体详情、版本下架与引用保护 | /console/agents/:packageId | 9 | capability |
 | F07 部署选择、准入与报价 | /console/workspaces/new | 10 | capability, gateway, resource_catalog |
 | F08 创建Workspace及部署结果 | /console/operations/:owner/:operationId | 5 | gateway, workspace |
 | F09 Workspace查询、打开与模型配置 | /console/workspaces、/console/workspaces/:workspaceId、/console/workspaces/:workspaceId/models | 10 | gateway, workspace |
@@ -21,9 +21,9 @@
 | F12 续费、到期停用与恢复 | /console/billing、/console/workspaces/:workspaceId/billing | 9 | gateway, resource_catalog, workspace |
 | F13 删除Workspace、资源确认与退款 | /console/workspaces/:workspaceId/settings | 7 | gateway, resource_catalog, workspace |
 | F14 钱包、用量、Key及管理员充值记录 | /console/api、/console/api/usage、/console/api/keys、/admin/recharge-records | 8 | gateway |
-| F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | tenant, workspace |
+| F15 Tenant停用、删除与窗口内恢复 | /admin/tenants/:tenantId | 12 | tenant |
 | F16 旧资源与应用迁移后的可见状态和采用Agent | /console/workspaces/:workspaceId、/console/workspaces/:workspaceId/adopt | 10 | capability, gateway, workspace |
-| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | ledger, tenant, workspace |
+| F17 管理员操作、审计与实例资格读回 | /admin/operations、/admin/qualifications | 7 | ledger, tenant |
 
 ## F01 登录、Tenant与成员权限
 
@@ -36,7 +36,7 @@
 | `createTenant` | `POST /api/v2/admin/tenants` | CreateTenantRequest | 202 Operation | tenant |
 | `getAdminTenant` | `GET /api/v2/admin/tenants/{tenantId}` | — | 200 Tenant | tenant |
 | `getLoginContext` | `GET /api/v2/auth/context` | — | 200 LoginContext | tenant |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getSession` | `GET /api/v2/auth/session` | — | 200 Session | tenant |
 | `getTenant` | `GET /api/v2/tenant` | — | 200 Tenant | tenant |
 | `inviteMember` | `POST /api/v2/tenant/invitations` | InviteMemberRequest | 201 Invitation | tenant |
@@ -204,7 +204,7 @@
 | `createPackage` | `POST /api/v2/packages` | CreatePackageRequest | 201 Package | capability |
 | `createUpload` | `POST /api/v2/packages/{packageId}/uploads` | CreateUploadRequest | 201 UploadSession | capability |
 | `createUploadPart` | `POST /api/v2/uploads/{uploadId}/parts` | CreateUploadPartRequest | 200 UploadPartAuthorization | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getPackage` | `GET /api/v2/packages/{packageId}` | — | 200 Package | capability |
 | `getPackageVersion` | `GET /api/v2/package-versions/{packageVersionId}` | — | 200 PackageVersion | capability |
 | `getUpload` | `GET /api/v2/uploads/{uploadId}` | — | 200 UploadSession | capability |
@@ -247,7 +247,7 @@
 | `createBuild` | `POST /api/v2/builds` | CreateBuildRequest | 201 BuildJob | build |
 | `getBuild` | `GET /api/v2/builds/{buildId}` | — | 200 BuildJob | build |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `listBuildLogs` | `GET /api/v2/builds/{buildId}/logs` | — | 200 BuildLogPage | build |
 | `listBuilds` | `GET /api/v2/builds` | — | 200 BuildJobPage | build |
 | `retryBuild` | `POST /api/v2/builds/{buildId}/retry` | — | 201 BuildJob | build |
@@ -314,7 +314,7 @@
 | `archivePackage` | `POST /api/v2/packages/{packageId}/archive` | — | 200 Package | capability |
 | `deleteCapabilityVersion` | `DELETE /api/v2/capability-versions/{capabilityVersionId}` | — | 202 Operation | capability |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getPackage` | `GET /api/v2/packages/{packageId}` | — | 200 Package | capability |
 | `getPackageVersion` | `GET /api/v2/package-versions/{packageVersionId}` | — | 200 PackageVersion | capability |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
@@ -462,7 +462,7 @@
 |---|---|---|---|---|
 | `createWorkspace` | `POST /api/v2/workspaces` | CreateWorkspaceRequest | 202 Operation | workspace |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listWorkspaceTransactions` | `GET /api/v2/workspaces/{workspaceId}/transactions` | — | 200 WalletOperationPage | gateway |
 
@@ -494,7 +494,7 @@
 |---|---|---|---|---|
 | `adoptWorkspace` | `POST /api/v2/workspaces/{workspaceId}/adopt` | AdoptWorkspaceRequest | 202 Operation | workspace |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `getWorkspaceAccess` | `POST /api/v2/workspaces/{workspaceId}/access` | — | 200 WorkspaceAccess | workspace |
 | `getWorkspaceModels` | `GET /api/v2/workspaces/{workspaceId}/models` | — | 200 ModelConfiguration | workspace |
@@ -535,7 +535,7 @@
 |---|---|---|---|---|
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
 | `listDeployments` | `GET /api/v2/workspaces/{workspaceId}/deployments` | — | 200 DeploymentPage | workspace |
@@ -605,7 +605,7 @@
 |---|---|---|---|---|
 | `cancelPlanChange` | `POST /api/v2/workspaces/{workspaceId}/plan-changes/{planChangeId}/cancel` | CancelPlanChangeRequest | 202 Operation | workspace |
 | `createQuote` | `POST /api/v2/quotes` | QuoteRequest | 201 Quote | resource_catalog |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getPlanChange` | `GET /api/v2/workspaces/{workspaceId}/plan-changes/{planChangeId}` | — | 200 PlanChange | workspace |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
@@ -655,7 +655,7 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `createQuote` | `POST /api/v2/quotes` | QuoteRequest | 201 Quote | resource_catalog |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWallet` | `GET /api/v2/wallet` | — | 200 Wallet | gateway |
@@ -698,7 +698,7 @@
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
 | `deleteWorkspace` | `DELETE /api/v2/workspaces/{workspaceId}` | DeleteWorkspaceRequest | 202 Operation | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getQuote` | `GET /api/v2/quotes/{quoteId}` | — | 200 Quote | resource_catalog |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
@@ -778,7 +778,7 @@
 | `createTenant` | `POST /api/v2/admin/tenants` | CreateTenantRequest | 202 Operation | tenant |
 | `deleteTenant` | `DELETE /api/v2/admin/tenants/{tenantId}` | DeleteTenantRequest | 202 Operation | tenant |
 | `getAdminTenant` | `GET /api/v2/admin/tenants/{tenantId}` | — | 200 Tenant | tenant |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getTenant` | `GET /api/v2/tenant` | — | 200 Tenant | tenant |
 | `getTenantAssetCustody` | `GET /api/v2/admin/tenants/{tenantId}/asset-custody` | — | 200 AssetCustody | tenant |
 | `getTenantLifecycleOperation` | `GET /api/v2/admin/tenants/{tenantId}/operations/{operationId}` | — | 200 TenantLifecycleProgress | tenant |
@@ -817,7 +817,7 @@
 | `adoptWorkspace` | `POST /api/v2/workspaces/{workspaceId}/adopt` | AdoptWorkspaceRequest | 202 Operation | workspace |
 | `getCapabilityVersion` | `GET /api/v2/capability-versions/{capabilityVersionId}` | — | 200 CapabilityVersion | capability |
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | workspace |
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getSubscription` | `GET /api/v2/workspaces/{workspaceId}/subscription` | — | 200 Subscription | workspace |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
 | `listCapabilityVersions` | `GET /api/v2/capability-versions` | — | 200 CapabilityVersionPage | capability |
@@ -887,13 +887,13 @@
 
 | operationId | 请求 | 请求DTO | 成功响应DTO | 唯一Owner |
 |---|---|---|---|---|
-| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
+| `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 | `getReceipt` | `GET /api/v2/admin/receipts/{receiptId}` | — | 200 Receipt | ledger |
-| `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | workspace |
+| `listAdminOperations` | `GET /api/v2/admin/operations` | — | 200 AdminOperationPage | BFF入口→请求owner（目标表{owner}.operations） |
 | `listAuditEvents` | `GET /api/v2/admin/audit-events` | — | 200 AuditEventPage | tenant |
 | `listQualifications` | `GET /api/v2/admin/qualifications` | — | 200 QualificationPage | ledger |
 | `listReceipts` | `GET /api/v2/admin/receipts` | — | 200 ReceiptPage | ledger |
-| `reconcileOperation` | `POST /api/v2/admin/operations/{owner}/{operationId}/reconcile` | ReconcileOperationRequest | 202 Operation | workspace |
+| `reconcileOperation` | `POST /api/v2/admin/operations/{owner}/{operationId}/reconcile` | ReconcileOperationRequest | 202 Operation | BFF入口→请求owner（目标表{owner}.operations） |
 
 **显示字段来源**（精确Schema.field，包含正常/处理中/失败页字段；可选性按03）：
 

@@ -12,8 +12,11 @@ migration. The adopted target keeps all Cloud product code in one GitHub
 repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
-New target service modules and the Console BFF are planned; this documentation
-change does not claim W01 or W02 complete. CloudIdentity and Gateway Integration
+The six target domain service modules now have W02 persistence/transport
+scaffolds in the development fork; product RPCs and the Console BFF remain
+unimplemented. See [field and implementation reconciliation](spec/v2.26/15_domain_alignment.md)
+for exact source evidence and open contract gaps; this is not complete W02
+acceptance or production adoption. CloudIdentity and Gateway Integration
 share one target service module/deployment unit but retain separate data owners.
 
 Control Plane remains the current caller and writer for capabilities not yet

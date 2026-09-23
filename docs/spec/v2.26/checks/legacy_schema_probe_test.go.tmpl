@@ -1,0 +1,22 @@
+package OWNERPACKAGE
+import (
+ "context"
+ "database/sql"
+ "encoding/json"
+ "os"
+ "testing"
+)
+func TestDomainAuditSchema(t *testing.T) {
+ dsn:=os.Getenv("OPL_AUDIT_DSN")
+ if dsn=="" { t.Fatal("isolated audit DSN required") }
+ INSTALL
+ db,err:=sql.Open("postgres",dsn);if err!=nil{t.Fatal(err)};defer db.Close()
+ queries:=map[string]string{
+ "columns":`SELECT COALESCE(json_agg(row_to_json(x) ORDER BY table_name,ordinal_position),'[]'::json)::text FROM (SELECT table_schema,table_name,column_name,ordinal_position,data_type,udt_name,is_nullable,column_default,character_maximum_length,numeric_precision,numeric_scale FROM information_schema.columns WHERE table_schema='public') x`,
+ "constraints":`SELECT COALESCE(json_agg(row_to_json(x) ORDER BY table_name,name),'[]'::json)::text FROM (SELECT c.relname table_name,k.conname name,k.contype::text kind,pg_get_constraintdef(k.oid) definition FROM pg_constraint k JOIN pg_class c ON k.conrelid=c.oid JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='public') x`,
+ "indexes":`SELECT COALESCE(json_agg(row_to_json(x) ORDER BY tablename,indexname),'[]'::json)::text FROM (SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public') x`,
+ }
+ out:=map[string]json.RawMessage{}
+ for name,q:=range queries {var text string;if err:=db.QueryRowContext(context.Background(),q).Scan(&text);err!=nil{t.Fatal(err)};out[name]=json.RawMessage(text)}
+ b,err:=json.MarshalIndent(out,"","  ");if err!=nil{t.Fatal(err)};if err=os.WriteFile(os.Getenv("OPL_AUDIT_OUTPUT"),append(b,'\n'),0600);err!=nil{t.Fatal(err)}
+}

@@ -4,6 +4,23 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-23: Evolve The Development Fork And Integrate Back Upstream
+
+`opl-cloud` is the active development fork of `one-person-lab-cloud` for v2.26.
+The upstream repository remains the final product-code destination. Preserve
+inherited capabilities, callers, tests and historical obligations; extract one
+live capability at a time instead of implementing a parallel product from the
+new database schema. After user acceptance, integrate incremental changes via
+the authorized Issue/PR path. This decision does not authorize a push, merge,
+publication, customer-data migration or Instance deployment by itself.
+
+The single-repository rule applies to the Cloud product topology: domains stay
+inside that product checkout, whether developed in the fork or integrated
+upstream. It does not prohibit a development fork and does not merge external
+Instance, Sub2API or Framework authorities. Domain and field reconciliation is
+projected in [v2.26 section 15](spec/v2.26/15_domain_alignment.md); source-backed
+completion remains in status, not generated work-package coverage.
+
 ## 2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture
 
 This repository's target product is Agent SaaS: a customer selects an Agent

@@ -13,6 +13,8 @@
 
 Operation取消只在尚未发出不可逆动作且Owner确认可取消时允许；不是每个页面都提供取消。客户/管理员不能凭修改状态字段强行标成功。
 
+通用查询与运维操作以`(owner,operationId)`寻址；03中的`x-owner=bff`是路由入口，数据写权始终在请求指定的领域Owner。REST→内部`OwnerOperationRequest.owner`须完整传递；不从ID或跨库扫描推断归属。每个事件由events.json的精确事件版本确定`aggregate_type`和payload对象ID，producer在本域事务内分配并持久化revision；同一事件给多个consumer分别以`consumer_owner`投递，独立Inbox提交及ACK，未完成业务不称成功。
+
 ## 2. F01/F02：身份、租户与分组
 
 ### 登录与授权

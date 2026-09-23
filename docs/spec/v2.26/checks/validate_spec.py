@@ -69,6 +69,10 @@ def openapi_check():
         for k in ['path','method']:require(old[name][k]==op[k],f'API inventory {k} differs: {name}')
         require(old[name]['features']==op['x-feature-id'],f'API inventory features differ: {name}')
         require(old[name]['owner']==op['x-owner'],f'API inventory owner differs: {name}')
+        if op['x-owner']=='bff':
+            require(old[name].get('targetOwner')==op.get('x-target-owner'),f'BFF target owner differs: {name}')
+            require(op.get('x-target-owner') in {'operation-path-owner','required-owner-query'},f'BFF target owner absent: {name}')
+            require(op.get('x-tables')==['{owner}.operations'],f'BFF cannot own operation table: {name}')
     return dict(operations=len(operations),schemas=len(schemas))
 
 def sql_check():
@@ -176,6 +180,8 @@ def events_check():
         payload=item['properties']['payload']['$ref'];require(payload.startswith('#/$defs/'),f'event payload ref wrong: {name}')
         require(payload.split('/')[-1] in data['$defs'],f'event payload absent: {name}')
         require(bool(item.get('x-consumers')),f'event consumers absent: {name}')
+        identity=item.get('x-aggregate-identity',{});field=identity.get('idPayloadField')
+        require(bool(identity.get('type')) and field in data['$defs'][payload.split('/')[-1]].get('required',[]),f'event aggregate identity absent: {name}')
         require(item.get('additionalProperties') is False,f'permissive event envelope: {name}')
     require(len(names)==len(set(names)),'duplicate event identity')
     require('Outbox' in data['description'] and 'Inbox' in data['description'],'event transaction semantics absent')
@@ -183,6 +189,9 @@ def events_check():
     cases=json.loads((ROOT/'checks/event_cases.json').read_text())['cases']
     for c in cases:
         valid=not list(validator.iter_errors(c['value']))
+        if valid:
+            value=c['value'];branch=next((b for b in items if b['properties']['eventType']['const']==value.get('eventType') and b['properties']['schemaVersion']['const']==value.get('schemaVersion')),None)
+            valid=branch is not None and value.get('aggregateId')==value.get('payload',{}).get(branch['x-aggregate-identity']['idPayloadField'])
         require(valid==c['valid'],f'event example {c["name"]}: expected {c["valid"]}, got {valid}')
     return dict(events=len(items),payloadSchemas=len(data['$defs']),explicitPositiveNegativeCases=len(cases))
 

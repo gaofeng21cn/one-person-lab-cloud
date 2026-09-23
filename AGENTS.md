@@ -4,6 +4,12 @@
 Console/BFF, domain services, contracts, portable distribution, and reusable
 release mechanisms. A domain is not a separate GitHub repository.
 
+`opl-cloud` is the current development fork of `one-person-lab-cloud`, not a
+second product or a greenfield replacement. Develop v2.26 against inherited
+code and retained data obligations, then integrate reviewed incremental changes
+back into `one-person-lab-cloud` when the user authorizes that handoff. Code
+integration, customer-data migration and Instance deployment are separate acts.
+
 ## Canonical Owners
 
 - `docs/README.md` maps documentation topics to their canonical owners.

@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "checkedAtUtc": "2026-09-23T04:59:34.226660+00:00",
+  "passed": true,
+  "scope": "Current OpenAPI generic Operation owner-routing static contract + replayed offline D17 prototype DOM, desktop and 390/320 responsive states; no backend BFF, actual owner RPC, provider or production qualification",
+  "sourceHashes": {
+    "ui-prototype/index.html": "4ceab69310fefd5966d40345beaee2415d52de6966ba94654ae87c0adb5ed41d",
+    "03_api_contract_complete.yaml": "d3d3074f367982c150fce60152cc81cadf9bdfd29b3bb6273b3414d7255db63e",
+    "contracts/ui_inventory.json": "af55056b8b5ec0da5802b82b9683fb66e09831eea4ce63585bda52d0251e7415",
+    "04_frontend_interaction_spec.md": "4c0d5fa04e7d51582cd1c79b181c7d8939d2d0875cefe333751f26e332cff269",
+    "07_error_handling_matrix.md": "be8ab84544cfe7e323d26bb956e4f670cf107b59d1ebabee3f08f9637fb24b66",
+    "11_ui_ux_design.md": "c819e9c5a38baccfce44a5861bb9284b6c2027e1ecbd3d45ad2c2a4b5045cc94",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "changedContractCases": [
+    {
+      "operationId": "getOperation",
+      "method": "GET",
+      "path": "/api/v2/operations/{owner}/{operationId}",
+      "target": "operation-path-owner",
+      "ownerParameterLocation": "path",
+      "sharedParameterRefs": [],
+      "passed": true
+    },
+    {
+      "operationId": "listAdminOperations",
+      "method": "GET",
+      "path": "/api/v2/admin/operations",
+      "target": "required-owner-query",
+      "ownerParameterLocation": "query",
+      "sharedParameterRefs": [
+        "Cursor",
+        "Limit"
+      ],
+      "passed": true
+    },
+    {
+      "operationId": "reconcileOperation",
+      "method": "POST",
+      "path": "/api/v2/admin/operations/{owner}/{operationId}/reconcile",
+      "target": "operation-path-owner",
+      "ownerParameterLocation": "path",
+      "sharedParameterRefs": [
+        "IdempotencyKey",
+        "CsrfToken"
+      ],
+      "passed": true
+    }
+  ],
+  "prototype": "ui-prototype/index.html",
+  "prototypeSha256": "4ceab69310fefd5966d40345beaee2415d52de6966ba94654ae87c0adb5ed41d",
+  "replay": {
+    "desktopScript": "checks/ui_prototype_verification.json#replay.desktopScript",
+    "mobileScript": "checks/ui_prototype_verification.json#replay.mobileScript",
+    "browser": "agent-browser isolated local file session"
+  },
+  "desktop": {
+    "passed": true,
+    "cases": [
+      {
+        "name": "20->40 half period 10000000 micros",
+        "passed": true
+      },
+      {
+        "name": "exact 10.00 shown",
+        "passed": true
+      },
+      {
+        "name": "31 days ceil exactly 19354839",
+        "passed": true
+      },
+      {
+        "name": "exact six decimals shown",
+        "passed": true
+      },
+      {
+        "name": "minimum two decimals",
+        "passed": true
+      },
+      {
+        "name": "full remainder only delta",
+        "passed": true
+      },
+      {
+        "name": "successive source40 target60 quarter costs5",
+        "passed": true
+      },
+      {
+        "name": "zero price difference calculation",
+        "passed": true
+      },
+      {
+        "name": "accepted not applied",
+        "passed": true
+      },
+      {
+        "name": "supplement once only",
+        "passed": true
+      },
+      {
+        "name": "resources alone not applied",
+        "passed": true
+      },
+      {
+        "name": "runtime confirms applied and E unchanged",
+        "passed": true
+      },
+      {
+        "name": "subscription version advanced",
+        "passed": true
+      },
+      {
+        "name": "base720 and supplemental coverage distinct",
+        "passed": true
+      },
+      {
+        "name": "scheduled saved not applied or charged",
+        "passed": true
+      },
+      {
+        "name": "no silent replacement",
+        "passed": true
+      },
+      {
+        "name": "cancel needs reason",
+        "passed": true
+      },
+      {
+        "name": "cancel history and separate task",
+        "passed": true
+      },
+      {
+        "name": "explicit cancel before new",
+        "passed": true
+      },
+      {
+        "name": "manual E waits payment and stops unpaid use",
+        "passed": true
+      },
+      {
+        "name": "new execution task not resurrect initial",
+        "passed": true
+      },
+      {
+        "name": "next target12 charged once",
+        "passed": true
+      },
+      {
+        "name": "cannot cancel after target payment",
+        "passed": true
+      },
+      {
+        "name": "downgrade actual boundary apply",
+        "passed": true
+      },
+      {
+        "name": "unknown one payment and unchanged resources",
+        "passed": true
+      },
+      {
+        "name": "delivery failed and actual irreversible residue distinct",
+        "passed": true
+      },
+      {
+        "name": "full supplement refund once without fake shrink",
+        "passed": true
+      },
+      {
+        "name": "residual prevents next plan",
+        "passed": true
+      },
+      {
+        "name": "payment rejection never executes resources",
+        "passed": true
+      },
+      {
+        "name": "reject storage-shrink",
+        "passed": true
+      },
+      {
+        "name": "reject mixed",
+        "passed": true
+      },
+      {
+        "name": "reject same",
+        "passed": true
+      },
+      {
+        "name": "expired quote cannot accept",
+        "passed": true
+      },
+      {
+        "name": "new quote identity instead of overwrite",
+        "passed": true
+      },
+      {
+        "name": "early target payment retains current resources",
+        "passed": true
+      },
+      {
+        "name": "boundary does not charge twice",
+        "passed": true
+      },
+      {
+        "name": "valid automatic consent uses target payment",
+        "passed": true
+      },
+      {
+        "name": "disable automatic preserves schedule",
+        "passed": true
+      },
+      {
+        "name": "revoked auto consent no target payment",
+        "passed": true
+      },
+      {
+        "name": "offline no HTTP resources",
+        "passed": true
+      }
+    ]
+  },
+  "mobile": [
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "passed": true,
+      "cases": [
+        {
+          "name": "target dialog",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "upgrade exact quote",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "upgrade requested",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "upgrade applied facts",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "downgrade future quote",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "scheduled current unchanged",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "cancel reason dialog",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "manual boundary awaiting payment",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        },
+        {
+          "name": "failed next-period delivery with residue",
+          "passed": true,
+          "scrollWidth": 390,
+          "width": 390
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "passed": true,
+      "cases": [
+        {
+          "name": "target dialog",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "upgrade exact quote",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "upgrade requested",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "upgrade applied facts",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "downgrade future quote",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "scheduled current unchanged",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "cancel reason dialog",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "manual boundary awaiting payment",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        },
+        {
+          "name": "failed next-period delivery with residue",
+          "passed": true,
+          "scrollWidth": 320,
+          "width": 320
+        }
+      ]
+    }
+  ],
+  "externalNetworkRequests": 0,
+  "historicalEvidence": "checks/ui_prototype_verification.json (unchanged; prior OpenAPI hash)"
+}

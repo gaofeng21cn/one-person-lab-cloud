@@ -1,31 +1,38 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-09-22T14:52:51.781198+00:00",
-  "status": "ready_for_implementation",
-  "technicalClosureVerified": true,
+  "timestamp": "2026-09-23T04:59:53.940891+00:00",
+  "status": "needs_correction",
+  "technicalClosureVerified": false,
   "pendingUserDecisions": [],
-  "issues": [],
+  "issues": [
+    "static receipt stale: checks/validate_handoff.py",
+    "current UI regression provenance or prototype bytes differ"
+  ],
   "scope": "development specification + interactive prototype + isolated contract/DB tests; NOT implemented services or production qualification",
   "reviewFindings": {
-    "R01": "closed_in_spec",
-    "R02": "closed_in_spec",
-    "R03": "closed_in_spec",
-    "R04": "closed_in_spec",
-    "R05": "closed_in_spec",
-    "R06": "closed_in_spec",
-    "R07": "closed_in_spec",
-    "R08": "closed_in_spec",
-    "R09": "closed_in_spec",
-    "R10": "closed_in_spec"
+    "R01": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R02": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R03": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R04": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R05": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R06": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R07": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R08": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R09": "previously_closed_with_receipt; new_issue_separately_reported",
+    "R10": "previously_closed_with_receipt; new_issue_separately_reported"
   },
   "evidence": {
-    "static": "checks/runs/20260922T145251554308Z.json",
-    "crossDomain": "checks/runs/cross-domain-20260921T192502.004890Z.json",
+    "static": "checks/runs/20260923T035857082668Z.json",
+    "crossDomain": "checks/runs/cross-domain-20260923T033425.156933Z.json",
     "publisherSource": "checks/runs/publisher-source-20260921T175446754962Z.json",
     "contractSemantics": "checks/handoff_contract_semantics.json",
     "d17ContractSemantics": "checks/d17_contract_results.json",
     "developmentPlan": "checks/development_plan_validation.json",
-    "ui": "checks/ui_prototype_verification.json"
+    "ui": "checks/runs/ui-contract-20260923T045934226660Z.json",
+    "historicalUiSourceDrift": [
+      "03_api_contract_complete.yaml"
+    ],
+    "domainAlignment": "checks/runs/domain-alignment-20260923T045932890836Z.json"
   },
   "counts": {
     "features": 17,

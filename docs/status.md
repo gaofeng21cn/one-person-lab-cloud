@@ -9,6 +9,46 @@ is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
 
+## v2.26 Fork Field And Domain Reconciliation
+
+The current development fork is `opl-cloud` at
+`7f5d05fe9b855d8af216caad714cf7fc85014d3c`; the inspected upstream and common
+baseline are `one-person-lab-cloud` at
+`50520e27a6b9a630eefdc2df7da3e5ec498d28a0`. Accepted increments are intended to
+return upstream through the user-authorized Issue/PR path. Code integration,
+customer-data conversion, release and Instance deployment remain separate.
+
+[Domain/field reconciliation](spec/v2.26/15_domain_alignment.md) now distinguishes:
+
+- Inherited implementation: 171 mounted HTTP patterns (including proxy/static/
+  health/explicit-404 routes), 33 empty-installed physical tables and 412 columns,
+  including three migration journals. Real loader readback is retained in the
+  [isolated PostgreSQL receipt](spec/v2.26/checks/runs/legacy-schema-audit-20260923.json).
+- Target contracts: 108 REST operations, 96 tables / 1359 columns, 172 RPC methods,
+  391 messages, 18 events and 89 declared flow steps, documented per data owner.
+- Current fork: six new service modules and seven owner schema blocks exist;
+  product RPCs/BFF are not implemented merely because generated interfaces and
+  full target DDL exist. Inbox dispatch explicitly returns `Unimplemented`,
+  Reconcile currently rereads local state, and authorization is still W03 work.
+- Specification correction on September 23, 2026: OwnerOperationRequest now carries
+  owner; DeliverEventRequest carries consumer_owner; all 18 event versions declare
+  fixed aggregate type/payload ID identity; the three generic Operation REST
+  routes are classified as BFF entrypoints, not Workspace data ownership. The
+  route event now carries the actual route binding ID. Production proto bindings,
+  six service consumers and the BFF have **not** been updated in this pass.
+
+Field reference, static contract, and isolated cross-domain checks pass after
+the specification revision; `handoff_readiness.json` remains `needs_correction`
+because the earlier UI prototype receipt binds the previous OpenAPI hash. Do not
+rewrite that receipt or claim it tested the new bytes. This evidence gap is
+separate from unimplemented production consumers and the first business slice. The full finding list and W01/W02/W03/W13/W25
+write responsibilities are in section 15 and the updated work packages.
+
+No product Go/TS code or database SQL was changed in this pass; the existing
+REST/proto/events specifications and derived checks were changed.
+The baseline DB probe used an isolated copy and temporary PostgreSQL, not
+production data; it does not prove migration of existing customer rows.
+
 ## v2.26 Migration Start Point
 
 The target architecture is adopted in
@@ -22,27 +62,27 @@ evidence that the target is implemented.
 | Adopting repository | `RenDeHuang/opl-cloud` |
 | Start-point SHA | `50520e27a6b9a630eefdc2df7da3e5ec498d28a0` |
 | Provenance | `gaofeng21cn/one-person-lab-cloud` at that SHA |
-| Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`; shared infrastructure: `services/internal/postgresmigrate` |
-| Current latest control-plane migration | `202609130001_workspace_application_selection.sql` |
-| Current latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
-| Current latest ledger migration | `202609080001_receipt_request_lookup.sql` |
-| Current contracts module | `opl-cloud/packages/contracts/go` (Go 1.22) |
+| Start-point service modules | `services/control-plane`, `services/fabric`, `services/ledger`; shared infrastructure: `services/internal/postgresmigrate` |
+| Start-point latest control-plane migration | `202609130001_workspace_application_selection.sql` |
+| Start-point latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
+| Start-point latest ledger migration | `202609080001_receipt_request_lookup.sql` |
+| Start-point contracts module | `opl-cloud/packages/contracts/go` (Go 1.22) |
 | Publisher contract schema hash | `5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec` |
 | Target databases | `opl_tenant`, `opl_capability`, `opl_build`, `opl_workspace`, `opl_runtime_control`, `opl_fabric`, `opl_gateway`, `opl_resource_catalog`, `opl_ledger` |
 | Instance repository | `opl-instance-medopl` at `c6ecd808fee16d5052a4b8151508ecc6c0fed1e7` |
 
-### Implementation Start-Point Gap List
+### Implementation Start-Point Gap List (Historical Baseline)
 
 The target is not the current implementation. Per
 [09_legacy_migration.md](./spec/v2.26/09_legacy_migration.md) and
 [01_domain_ownership_matrix.md](./spec/v2.26/01_domain_ownership_matrix.md), the
-gaps between them are:
+gaps at the inherited start point were (current fork progress is above):
 
 - Current implementation is three services plus Console. The target keeps all
   Cloud product code in `RenDeHuang/opl-cloud`: eight backend service modules
   plus a Console BFF serve nine data owners. CloudIdentity and Gateway
   Integration share one module/process but retain separate databases/roles.
-  The six new domain service directories and BFF remain planned; their exact
+  At that start point the six new domain service directories and BFF were planned; their exact
   placement is owned by [01](./spec/v2.26/01_domain_ownership_matrix.md).
   Control Plane remains the migration source, not an additional permanent
   writer. No domain GitHub repositories are required.
@@ -59,7 +99,7 @@ gaps between them are:
 Existing `resource_only` Launch obligations and historical purchases, Keys, and
 receipts remain valid and are carried by the migration, not discarded.
 
-## v2.26 Single-Repository Specification Alignment
+## v2.26 Single-Repository Specification Alignment (2026-09-22 Evidence)
 
 The 2026-09-22 single-repository decision is reconciled across canonical owners,
 v2.26 ownership/delivery/migration documents, and the generated W00–W31 plan.
@@ -83,10 +123,10 @@ binds the base SHA and exact changed-source hashes. Verification passed:
   tests. The first attempt lacked installed Node dependencies; `npm ci` restored
   the lockfile-defined environment without changing dependency manifests.
 
-No product Go/TypeScript source, SQL, API/message field, or existing migration
-was changed. No service scaffold, deployment, production access or publication
-was performed. W01 production contracts/consumer adoption and W02 service
-implementation remain open; the pre-existing untracked proto input is preserved.
+That earlier layout-only action changed no product Go/TypeScript source or
+contract fields and implemented no service. The subsequent W01/W02 fork commits
+are accounted for in the current reconciliation above; the earlier receipt must
+not be read as today's implementation status.
 
 ## Conclusion
 

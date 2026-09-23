@@ -22,10 +22,11 @@ for f in sorted(ui['features'],key=lambda f:f['featureId']):
     documents=['00_master_index.md','01_domain_ownership_matrix.md','02_database_schema_complete.md','03_api_contract_complete.yaml','04_frontend_interaction_spec.md','06_data_flow_and_state_machine.md','07_error_handling_matrix.md','08_delivery_checklist_per_role.md']
     if f['featureId'] in ['F03','F04','F05','F06','F10']:documents.append('05_build_service_technical_spec.md')
     if f['featureId'] in ['F09','F16','F17']:documents.append('09_legacy_migration.md')
-    features.append(dict(featureId=f['featureId'],title=f['title'],pages=f['pages'],operationIds=ids,displayFields=f['displayFields'],tables=sorted(used),owners=sorted({ops[x]['x-owner'] for x in ids}),documents=documents,acceptance=f['scenarios']))
+    data_owners={ops[x]['x-owner'] for x in ids if ops[x]['x-owner']!='bff'}
+    features.append(dict(featureId=f['featureId'],title=f['title'],pages=f['pages'],operationIds=ids,displayFields=f['displayFields'],tables=sorted(used),owners=sorted(data_owners),documents=documents,acceptance=f['scenarios']))
 data=dict(schemaVersion=1,generatedFrom=['03_api_contract_complete.yaml','contracts/db_inventory.json','contracts/ui_inventory.json'],authority='derived cross-reference only; edit the relevant API/DB/UI owner, then regenerate',features=features)
 (root/'contracts/traceability.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
-lines=['# 10 全量功能交付与字段追踪矩阵','','> 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。','> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。','','## 总表','','| 功能 | 页面 | API操作数 | 数据Owner |','|---|---|---:|---|']
+lines=['# 10 全量功能交付与字段追踪矩阵','','> 自动派生索引，不是第二份产品或字段定义。更新03/02/04后运行 checks/render_traceability.py；随后运行 checks/validate_spec.py。','> 每个F编号贯穿客户场景、页面、后端operationId、DTO字段、持久化Owner与接受标准。通用Operation的BFF入口不是数据Owner；目标由必填owner参数确定。','','## 总表','','| 功能 | 页面 | API操作数 | 数据Owner |','|---|---|---:|---|']
 for f in features:
     lines.append(f"| {f['featureId']} {f['title']} | {'、'.join(p['route'] for p in f['pages'])} | {len(f['operationIds'])} | {', '.join(f['owners'])} |")
 for f in features:
@@ -37,7 +38,8 @@ for f in features:
             if str(status).startswith('2'):
                 schema=response.get('content',{}).get('application/json',{}).get('schema',{})
                 responses.append(str(status)+' '+schema.get('$ref','无响应体').split('/')[-1])
-        lines.append(f"| `{ident}` | `{op['method']} {op['path']}` | {req} | {'; '.join(responses)} | {op['x-owner']} |")
+        owner=op['x-owner'] if op['x-owner']!='bff' else 'BFF入口→请求owner（目标表{owner}.operations）'
+        lines.append(f"| `{ident}` | `{op['method']} {op['path']}` | {req} | {'; '.join(responses)} | {owner} |")
     lines += ['','**显示字段来源**（精确Schema.field，包含正常/处理中/失败页字段；可选性按03）：','']
     grouped={}
     for ref in f['displayFields']:

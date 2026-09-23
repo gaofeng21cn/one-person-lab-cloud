@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-22T17:59:33.286545+00:00",
+  "scope": "derived API/DB/message field coverage plus explicit cross-owner identity gaps; not runtime qualification",
+  "referenceCoveragePassed": true,
+  "passed": false,
+  "errors": [],
+  "openContractFindings": [
+    {
+      "id": "ALIGN-01",
+      "owner": "shared-contract / each operation owner",
+      "reason": "OwnerOperationRequest drops the owner required by owner+operationId routing"
+    },
+    {
+      "id": "ALIGN-02",
+      "owner": "event producer contracts",
+      "reason": "DB aggregate_type lacks a declared lossless envelope/JSON/outbox binding; per-event identity and revision semantics need owner review"
+    },
+    {
+      "id": "ALIGN-03",
+      "owner": "shared-delivery-contract / consumer owner",
+      "reason": "tenant and gateway subscribe at one endpoint but DeliverEventRequest does not identify the destination owner"
+    },
+    {
+      "id": "ALIGN-04",
+      "owner": "BFF routing / API metadata",
+      "reason": "generic owner-routed operation is classified as workspace-owned in OpenAPI"
+    }
+  ],
+  "counts": {
+    "restOperations": 108,
+    "tables": 96,
+    "dbColumns": 1359,
+    "rpcMethods": 172,
+    "messages": 391,
+    "eventTypes": 18
+  },
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "48438b5d5499494fb6099433c7530ce68305a7198ab0af310f8e534c18e56db6",
+    "contracts/internal.proto": "f9003211d42841fbbd5b99073b169e991c1877ce85b5f6282be79ff6c0cc1698",
+    "contracts/events.json": "7808bd762ddad6cc68f2d0d6eeba6b12ada0f9ed150b436234d12fa1c70b40f1",
+    "contracts/db_inventory.json": "3bd38af4f2f586f455a6cade9b2dd9a50dc2c1b023376ac4e007c3900a64b135",
+    "contracts/api_inventory.json": "7df88a8e7d66169b365b00e9fc91cca44247efcaa7014ebee0461a650d1aa739",
+    "contracts/domain_flows.json": "f2d16a75ceec293386740797776522d7149e1bbbfda74d1cd7957a48de7e358f",
+    "checks/validate_domain_reference.py": "d48fddecee68097e1391a985e997a6ee18d7326c212e90b9bbc74a8f19d84341",
+    "checks/render_domain_reference.py": "00d914344c5d29bb27f48665c11087395e253bb113d12794d3cee671160e2fbf",
+    "15_domain_alignment.md": "ef3b581964baf93d9c2627dfbd4a39ba37f0491daece365a66496999cbb7d733",
+    "reference/domain-build.md": "eee96febe525c0ad6c81884711854188f58d8ca6f67b429786ca4fbf95d55a4d",
+    "reference/domain-capability.md": "ad047a97317e953339089c7af4fa2c3537fb212185575043bedda70349b20705",
+    "reference/domain-fabric.md": "bd227d919a0738a87167adac6e1b6e68f3539dfb3323acb39aeff3742f9aaadb",
+    "reference/domain-gateway.md": "d7318ca49f08ea086dfb96a3d7ed8e4259830176dde790256ca1655fb789653e",
+    "reference/domain-ledger.md": "0bfe450d1f8d37faa3beecf4e75eead25942c48885aa5d7bba2de5485bc4b8b3",
+    "reference/domain-resource_catalog.md": "e113f30a04354ff37c8726aac3e345ea64fab93df3928428d8088af35684e190",
+    "reference/domain-runtime_control.md": "5ed5a7d4f8d0c9af30584c59786866dea85d79e532c179d30af780683385b73b",
+    "reference/domain-tenant.md": "4c0424e0f9087f15b239308878ecd93987f8dea6eb920a0dfd32eba5254a5145",
+    "reference/domain-workspace.md": "ba5c713c49f91b17a9a65ea97233a6eccefa0b68e60e0cf7b984204b413b760a",
+    "reference/legacy-control-plane.md": "36dfb5c8f2f52c1c7171709e468650e1003085666717dc6b4d0cca961c13d5ed",
+    "reference/legacy-fabric.md": "14985946a19592bc2a4d376d266c3fd9fae232c21d184852d547270da2fe3501",
+    "reference/legacy-ledger.md": "089a6e8ff43da217725f02772afda60f179be1b71cb41c66cf72a2fbf67dc4da",
+    "reference/legacy-wire-types.md": "689e4fddef67a127b2c710400ab43c012ffc0d892edc8975f856b965737279ce",
+    "reference/rest-schemas.md": "6119b75d687d663ffb8f0544943b8a9156d7890e7226cacc485f5bd201c50306",
+    "reference/rpc-messages.md": "e92b3db810d4a8c418025245fd98dde23f0e57090d4699df22f44df7908b01a3"
+  }
+}

@@ -52,6 +52,8 @@ for wid,w in W.items():
   resolved=Path(path).resolve()
   require(resolved.is_relative_to(cloud) or ('instance' in w['owners'] and resolved.is_relative_to(roots['instance'])),wid+' write escapes authorized repository scope: '+path)
  for dep in set(w['startAfter']+w['acceptAfter']):require(dep in W and dep!=wid,wid+' has invalid dependency: '+dep)
+ for dep in w.get('firstSliceAcceptAfter',[]):require(dep in W and dep!=wid,wid+' has invalid first-slice dependency: '+dep)
+ if w.get('firstSliceAcceptAfter'):require(set(w['firstSliceAcceptAfter'])<=set(w['startAfter']+w['acceptAfter']),wid+' first slice references a dependency absent from the full package')
 # Both useful-start and integrated-acceptance edges must converge, no hidden dependency cycles.
 remaining={wid:set(w['startAfter']+w['acceptAfter']) for wid,w in W.items()};order=[];waves=[]
 while remaining:
