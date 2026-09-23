@@ -63,14 +63,18 @@ receipts remain valid and are carried by the migration, not discarded.
 
 The 2026-09-22 single-repository decision is reconciled across canonical owners,
 target architecture ownership/delivery/migration documents, and the generated W00–W31 plan.
-The plan derives Cloud paths from its containing checkout. It retains one
-contracts module and permits necessary consumer dependency updates; it does not
-create a domain repository or change business fields.
+The plan derives Cloud paths from its containing checkout, includes Serve as the sole
+Agent delivery/deployment/access Owner, and keeps Runtime Control limited to the
+approved Runtime Release catalog consumed by Build. It retains one contracts module
+and permits necessary consumer dependency updates; it does not create a domain
+repository or change business fields.
 
 [Source-check receipt](./spec/target/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
-binds the base SHA and exact changed-source hashes. Verification passed:
+records the prior alignment snapshot and exact changed-source hashes. The current
+follow-up plan was regenerated and revalidated in this checkout; that historical
+receipt is not reused as implementation evidence. Verification passed:
 
-- Plan coverage: 32 work packages, 17 features, 108 REST operations, 96 tables,
+- Plan coverage: 32 work packages, 17 features, 108 REST operations, 101 tables,
   and 172 internal RPCs; no dependency cycle or missing existing source path.
 - Five isolated plan-validator tests cover the current layout, sibling-repo
   rejection, the CloudIdentity/Gateway deployment exception, and unauthorized

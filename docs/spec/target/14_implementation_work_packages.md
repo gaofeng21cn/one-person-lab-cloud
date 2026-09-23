@@ -17,19 +17,20 @@
 
 | 逻辑Owner | 工作根 | 当前状态 |
 |---|---|---|
-| cloud | `/Users/huangrende/Documents/ChatGPT/opl-cloud` | existing |
-| console | `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui` | existing |
-| bff | `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff` | planned_not_created |
-| gateway | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | planned_not_created |
-| capability | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability` | planned_not_created |
-| build | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build` | planned_not_created |
-| workspace | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace` | planned_not_created |
-| runtime_control | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control` | planned_not_created |
-| resource_catalog | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog` | planned_not_created |
-| fabric | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric` | existing |
-| ledger | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger` | existing |
-| tenant | `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration` | planned_not_created |
-| instance | `/Users/huangrende/Documents/ChatGPT/opl-instance-medopl` | existing |
+| cloud | `.` | existing |
+| console | `apps/console-ui` | existing |
+| bff | `apps/console-bff` | planned_not_created |
+| gateway | `services/gateway-integration` | planned_not_created |
+| capability | `services/capability` | planned_not_created |
+| build | `services/build` | planned_not_created |
+| workspace | `services/workspace` | planned_not_created |
+| runtime_control | `services/runtime-control` | planned_not_created |
+| serve | `services/serve` | planned_not_created |
+| resource_catalog | `services/resource-catalog` | planned_not_created |
+| fabric | `services/fabric` | existing |
+| ledger | `services/ledger` | existing |
+| tenant | `services/gateway-integration` | planned_not_created |
+| instance | `../opl-instance-medopl` | existing |
 
 所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。
 
@@ -55,14 +56,14 @@
 | W07 发布者空间与Runtime/WebUI准入 | Capability | W03 | 本任务依赖与边界即可 | F03 |
 | W08 Namespace、Package上传及输入claims | Capability | W03,W07 | 本任务依赖与边界即可 | F02,F04,F06 |
 | W09 真实构建、注册和可部署版本 | Build（协调），Capability（资产writer） | W05,W08 | 本任务依赖与边界即可 | F04,F05,F06 |
-| W10 Runtime描述执行与控制 | Runtime Control | W02,W07 | W11 | F08,F09,F10,F11,F16 |
-| W11 Local-Docker执行/存储/路由资格能力 | Fabric Local-Docker | W02 | 本任务依赖与边界即可 | F08,F09,F10,F11,F12,F13,F16,F17 |
-| W12 Tencent/TKE预付执行与计划变更 | Fabric Tencent | W02 | 本任务依赖与边界即可 | F08,F10,F11,F12,F13,F17 |
+| W10 Runtime Release注册、准入与精确引用 | Runtime Control | W02,W07 | 本任务依赖与边界即可 | F03,F04,F05 |
+| W11 Local-Docker资源开通、绑定与资格能力 | Fabric Local-Docker | W02 | 本任务依赖与边界即可 | F07,F08,F11,F12,F13,F16,F17 |
+| W12 Tencent/TKE资源适配与资格读回 | Fabric Tencent | W02 | 本任务依赖与边界即可 | F07,F08,F11,F12,F13,F17 |
 | W13 BFF和Console基础接入 | Console/BFF | W01,W03 | 本任务依赖与边界即可 | F01,F17 |
 | W14 智能体/上传/构建/目录前端 | Console | W13 | W06,W07,W08,W09 | F02,F03,F04,F05,F06 |
-| W15 准确报价与Agent+套餐Launch闭环 | Workspace（协调）/Catalog | W04,W05,W06,W09,W10,W11 | 本任务依赖与边界即可 | F07,F08 |
+| W15 准确报价与Agent+套餐Launch闭环 | Workspace（协调）/Catalog/Serve | W04,W05,W06,W09,W10,W11 | 本任务依赖与边界即可 | F07,F08 |
 | W16 部署向导与Workspace页面 | Console | W13 | W15,W17,W25 | F07,F08,F09,F10,F16 |
-| W17 应用配置、版本切换与回滚 | Workspace/Runtime Control | W10,W11,W15 | 本任务依赖与边界即可 | F09,F10 |
+| W17 Serve Agent交付、版本切换与访问回滚 | Serve | W09,W11,W15 | 本任务依赖与边界即可 | F09,F10,F16,F17 |
 | W18 周期、显式续费授权和到期停用 | Workspace | W04,W05,W15 | 本任务依赖与边界即可 | F12 |
 | W19 D17套餐变更与补差账务 | Workspace（协调）/Catalog | W06,W11,W12,W15,W18 | 本任务依赖与边界即可 | F11,F12,F13 |
 | W20 删除、base与supplement原单结算 | Workspace（协调） | W04,W05,W15,W18 | W19 | F13 |
@@ -95,17 +96,17 @@
 **F范围：** F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, F17；**开始依赖：** 无；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/README.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/architecture.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/decisions.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/implementation-architecture.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `docs/README.md`
+- `docs/architecture.md`
+- `docs/decisions.md`
+- `docs/implementation-architecture.md`
+- `docs/status.md`
+- `docs/roadmap.md`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/architecture.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/decisions.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `docs/architecture.md`
+- `docs/decisions.md`
+- `docs/roadmap.md`
 
 **必须交付**：
 - 把已确认Agent+套餐目标、D17和逐域单writer迁移写入canonical owner，历史resource_only义务保留
@@ -125,19 +126,19 @@
 **F范围：** F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, F17；**开始依赖：** W00；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/README.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/go.mod`
+- `packages/contracts/README.md`
+- `packages/contracts/go/go.mod`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/proto`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/contracts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.sum`
+- `packages/contracts/proto`
+- `packages/contracts/go`
+- `tests/contracts`
+- `services/control-plane/go.mod`
+- `services/control-plane/go.sum`
+- `services/fabric/go.mod`
+- `services/fabric/go.sum`
+- `services/ledger/go.mod`
+- `services/ledger/go.sum`
 
 **必须交付**：
 - 按真实两端caller把03/proto/events/publisher/plan-change规格进入生产owner；不是整包inventories复制到runtime
@@ -150,7 +151,7 @@
 - 编译Go/TS/protobuf客户端，按各自协议规则验证JSON/protobuf正反例、金额string/int64及source ms精度；仅生成成功不算消费者接入完成
 - 在同一checkout重放生成并检查无漂移，运行受影响服务回归与npm run verify:local:full；规格验证不替代消费者验证
 - 运行已有checks/validate_spec.py与validate_d17_contract.py作规格基线，不冒充实现测试
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1
 
 **完成判定**：
 - 双方消费者同一契约版本，金额string/int64与source ms精度一致
@@ -158,60 +159,65 @@
 
 ### W02 独立服务启动、DB角色及共同操作协议
 
-**协调Owner：** 各服务Owner；**参与Owner：** gateway, tenant, capability, build, workspace, runtime_control, resource_catalog, fabric, ledger。
+**协调Owner：** 各服务Owner；**参与Owner：** gateway, tenant, capability, build, workspace, runtime_control, serve, resource_catalog, fabric, ledger。
 **F范围：** F01, F17；**开始依赖：** W01；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/internal/postgresmigrate`
+- `services/control-plane/go.mod`
+- `services/fabric/go.mod`
+- `services/ledger/go.mod`
+- `services/internal/postgresmigrate`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/transport`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/identity`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/fabric`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/http`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/ent_migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/cmd/ledger`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/http`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations`
+- `services/gateway-integration/go.mod`
+- `services/gateway-integration/go.sum`
+- `services/gateway-integration/cmd/server`
+- `services/gateway-integration/internal/transport`
+- `services/gateway-integration/migrations`
+- `services/capability/go.mod`
+- `services/capability/go.sum`
+- `services/capability/cmd/server`
+- `services/capability/internal/transport`
+- `services/capability/migrations`
+- `services/build/go.mod`
+- `services/build/go.sum`
+- `services/build/cmd/server`
+- `services/build/internal/transport`
+- `services/build/migrations`
+- `services/workspace/go.mod`
+- `services/workspace/go.sum`
+- `services/workspace/cmd/server`
+- `services/workspace/internal/transport`
+- `services/workspace/migrations`
+- `services/runtime-control/go.mod`
+- `services/runtime-control/go.sum`
+- `services/runtime-control/cmd/server`
+- `services/runtime-control/internal/transport`
+- `services/runtime-control/migrations`
+- `services/serve/go.mod`
+- `services/serve/go.sum`
+- `services/serve/cmd/server`
+- `services/serve/internal/transport`
+- `services/serve/migrations`
+- `services/resource-catalog/go.mod`
+- `services/resource-catalog/go.sum`
+- `services/resource-catalog/cmd/server`
+- `services/resource-catalog/internal/transport`
+- `services/resource-catalog/migrations`
+- `services/gateway-integration/internal/identity`
+- `services/fabric/cmd/fabric`
+- `services/fabric/internal/http`
+- `services/fabric/internal/fabric/ent_migrations`
+- `services/ledger/cmd/ledger`
+- `services/ledger/internal/http`
+- `services/ledger/internal/ledger/ent_migrations`
 
 **必须交付**：
 - 按01同仓目录启动独立服务module/进程/DB角色；tenant与gateway同module同部署单元但不同DB角色，不按每个RPC拆服务
 - 每Owner实现自己的Operation、幂等、Outbox/Inbox、健康/就绪与迁移入口；公共基础设施仅在有两个真实caller时共享
 - 为本地测试准备各Owner独立database/角色及隔离fixture进程；不以同schema代替跨Owner权限隔离，不复制钱包或造生产test-billing入口
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.outbox_events`, `tenant.outbox_deliveries`, `tenant.inbox_events`, `tenant.idempotency_records`, `capability.outbox_events`, `capability.outbox_deliveries`, `capability.inbox_events`, `capability.idempotency_records`, `build.outbox_events`, `build.outbox_deliveries`, `build.inbox_events`, `build.idempotency_records`, `workspace.outbox_events`, `workspace.outbox_deliveries`, `workspace.inbox_events`, `workspace.idempotency_records`, `runtime_control.outbox_events`, `runtime_control.outbox_deliveries`, `runtime_control.inbox_events`, `runtime_control.idempotency_records`, `fabric.outbox_events`, `fabric.outbox_deliveries`, `fabric.inbox_events`, `fabric.idempotency_records`, `gateway.outbox_events`, `gateway.outbox_deliveries`, `gateway.inbox_events`, `gateway.idempotency_records`, `resource_catalog.outbox_events`, `resource_catalog.outbox_deliveries`, `resource_catalog.inbox_events`, `resource_catalog.idempotency_records`, `ledger.outbox_events`, `ledger.outbox_deliveries`, `ledger.inbox_events`, `ledger.idempotency_records`, `tenant.operations`, `capability.operations`, `build.operations`, `workspace.operations`, `gateway.operations`, `resource_catalog.operations`, `runtime_control.operations`, `fabric.operations`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`tenant.outbox_events`, `tenant.outbox_deliveries`, `tenant.inbox_events`, `tenant.idempotency_records`, `capability.outbox_events`, `capability.outbox_deliveries`, `capability.inbox_events`, `capability.idempotency_records`, `build.outbox_events`, `build.outbox_deliveries`, `build.inbox_events`, `build.idempotency_records`, `workspace.outbox_events`, `workspace.outbox_deliveries`, `workspace.inbox_events`, `workspace.idempotency_records`, `runtime_control.outbox_events`, `runtime_control.outbox_deliveries`, `runtime_control.inbox_events`, `runtime_control.idempotency_records`, `fabric.outbox_events`, `fabric.outbox_deliveries`, `fabric.inbox_events`, `fabric.idempotency_records`, `gateway.outbox_events`, `gateway.outbox_deliveries`, `gateway.inbox_events`, `gateway.idempotency_records`, `resource_catalog.outbox_events`, `resource_catalog.outbox_deliveries`, `resource_catalog.inbox_events`, `resource_catalog.idempotency_records`, `ledger.outbox_events`, `ledger.outbox_deliveries`, `ledger.inbox_events`, `ledger.idempotency_records`, `tenant.operations`, `capability.operations`, `build.operations`, `workspace.operations`, `gateway.operations`, `resource_catalog.operations`, `runtime_control.operations`, `fabric.operations`, `serve.outbox_events`, `serve.outbox_deliveries`, `serve.inbox_events`, `serve.idempotency_records`, `serve.operations`
 
 **内部协议实现/协作端口**：`OwnerOperations.Read`, `OwnerOperations.Reconcile`, `OwnerCommitReadback.ReadOwnerCommit`, `DomainInbox.Deliver`
 
@@ -230,12 +236,12 @@
 **F范围：** F01；**开始依赖：** W02；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_auth.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go`
+- `services/control-plane/internal/server/routes_auth.go`
+- `services/control-plane/internal/clients/sub2api.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/identity`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/authorization`
+- `services/gateway-integration/internal/identity`
+- `services/gateway-integration/internal/authorization`
 
 **必须交付**：
 - Gateway个人登录→Cloud session/Tenant/membership；平台权限与Tenant角色分离
@@ -252,7 +258,7 @@
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
 
 **完成判定**：
 - 跨Tenant/伪actor/伪audience/撤权拒绝；session退出不丢原已接受义务
@@ -264,13 +270,13 @@
 **F范围：** F08, F12, F13, F14；**开始依赖：** W03；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go`
+- `services/control-plane/internal/clients/sub2api.go`
+- `services/control-plane/internal/server/wallet_adjustment.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/sub2api`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/wallet`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/keys`
+- `services/gateway-integration/internal/sub2api`
+- `services/gateway-integration/internal/wallet`
+- `services/gateway-integration/internal/keys`
 
 **必须交付**：
 - 沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回
@@ -287,7 +293,7 @@
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1
 
 **完成判定**：
 - 重复/丢响应/余额并发/错原单/错钱包/超额及unknown退款全部用真实decoder验证
@@ -299,14 +305,14 @@
 **F范围：** F05, F08, F11, F12, F13, F16, F17；**开始依赖：** W02；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/types.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/ledger.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema`
+- `services/ledger/internal/ledger/types.go`
+- `services/control-plane/internal/clients/ledger.go`
+- `services/ledger/ent/schema`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations`
+- `services/ledger/internal/ledger`
+- `services/ledger/ent/schema`
+- `services/ledger/internal/ledger/ent_migrations`
 
 **必须交付**：
 - 支持Build无Workspace收据、新计划变更/补差/迁移证据；精确原单和输入输出验证
@@ -334,13 +340,13 @@
 **F范围：** F03, F07, F11；**开始依赖：** W02；**验收依赖：** W11。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_billing.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_delete.go`
+- `services/control-plane/internal/server/routes_billing.go`
+- `packages/contracts/go/workspace_delete.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/catalog`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/pricing`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/migrations`
+- `services/resource-catalog/internal/catalog`
+- `services/resource-catalog/internal/pricing`
+- `services/resource-catalog/migrations`
 
 **必须交付**：
 - 资源plan先创建，组合价格后创建；版本/有效期/approved transition具有明确owner
@@ -369,12 +375,12 @@
 **F范围：** F03；**开始依赖：** W03；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_admission.go`
+- `packages/contracts/go/workspace_application.go`
+- `services/control-plane/internal/server/workspace_application_admission.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/publishers`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/catalog`
+- `services/capability/internal/publishers`
+- `services/capability/internal/catalog`
 
 **必须交付**：
 - 官方/第三方publisher namespace、registry prefix、完整不可变PublisherContract
@@ -383,16 +389,16 @@
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createPublisherNamespace`, `getBuildRuntimePolicy`, `listPublisherNamespaces`, `listRuntimeVersions`, `listWebuiVersions`, `publishOfficialPackage`, `registerRuntimeVersion`, `registerWebuiVersion`, `revokePublisherNamespace`, `setBuildRuntimePolicy`, `setRuntimeVersionStatus`, `setWebuiVersionStatus`
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_releases`, `capability.webui_versions`, `capability.catalog_policies`, `capability.publisher_namespaces`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`capability.webui_versions`, `capability.publisher_namespaces`
 
-**内部协议实现/协作端口**：`CapabilityProductService.PublishOfficialPackage`, `CapabilityProductService.ListRuntimeVersions`, `CapabilityProductService.ListWebuiVersions`, `CapabilityProductService.RegisterRuntimeVersion`, `CapabilityProductService.SetRuntimeVersionStatus`, `CapabilityProductService.RegisterWebuiVersion`, `CapabilityProductService.SetWebuiVersionStatus`, `CapabilityProductService.GetBuildRuntimePolicy`, `CapabilityProductService.SetBuildRuntimePolicy`, `CapabilityProductService.ListPublisherNamespaces`, `CapabilityProductService.CreatePublisherNamespace`, `CapabilityProductService.RevokePublisherNamespace`, `CapabilityCoordination.ResolveBuildInput`, `CapabilityCoordination.ResolvePublisherContract`, `CapabilityCoordination.AcquireReference`, `CapabilityCoordination.BindReference`, `CapabilityCoordination.ReleaseReference`
+**内部协议实现/协作端口**：`CapabilityProductService.PublishOfficialPackage`, `CapabilityProductService.ListWebuiVersions`, `CapabilityProductService.RegisterWebuiVersion`, `CapabilityProductService.SetWebuiVersionStatus`, `CapabilityProductService.GetBuildRuntimePolicy`, `CapabilityProductService.SetBuildRuntimePolicy`, `CapabilityProductService.ListPublisherNamespaces`, `CapabilityProductService.CreatePublisherNamespace`, `CapabilityProductService.RevokePublisherNamespace`, `RuntimeControlProductService.ListRuntimeVersions`, `RuntimeControlProductService.RegisterRuntimeVersion`, `RuntimeControlProductService.SetRuntimeVersionStatus`, `CapabilityCoordination.ResolveBuildInput`, `CapabilityCoordination.ResolvePublisherContract`, `CapabilityCoordination.AcquireReference`, `CapabilityCoordination.BindReference`, `CapabilityCoordination.ReleaseReference`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 两类Runtime真source validator/startup DAG及schema拒绝反例
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1
 
 **完成判定**：
 - 完整repository/digest/platform/recipe/revision来源可回读
@@ -404,12 +410,12 @@
 **F范围：** F02, F04, F06；**开始依赖：** W03, W07；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/application_revision_store.go`
+- `services/control-plane/internal/server/application_revision_store.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/packages`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/uploads`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/references`
+- `services/capability/internal/packages`
+- `services/capability/internal/uploads`
+- `services/capability/internal/references`
 
 **必须交付**：
 - 分组/Package/版本与受限Storage直传、实际摘要校验及续传
@@ -437,13 +443,13 @@
 **F范围：** F04, F05, F06；**开始依赖：** W05, W08；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/agent-lifecycle.md`
+- `docs/agent-lifecycle.md`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/jobs`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/builder`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/registry`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/artifacts`
+- `services/build/internal/jobs`
+- `services/build/internal/builder`
+- `services/build/internal/registry`
+- `services/capability/internal/artifacts`
 
 **必须交付**：
 - 冻结输入与recipe，真实BuildKit构建及Registry exporter/readback
@@ -465,62 +471,60 @@
 - 真实Storage+Registry+BuildKit隔离集成；worker重启、push已成但丢响应、注册ACK丢失
 - 输出digest/descriptor可被后续Runtime读取；不以fixture假Build完成
 
-### W10 Runtime描述执行与控制
+### W10 Runtime Release注册、准入与精确引用
 
 **协调Owner：** Runtime Control；**参与Owner：** runtime_control。
-**F范围：** F08, F09, F10, F11, F16；**开始依赖：** W02, W07；**验收依赖：** W11。
+**F范围：** F03, F04, F05；**开始依赖：** W02, W07；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application_runtime.go`
+- `docs/architecture.md`
+- `packages/contracts/proto/internal.proto`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/deployments`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/configuration`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/access`
+- `services/runtime-control/internal/releases`
+- `services/runtime-control/internal/catalog`
+- `services/runtime-control/migrations`
 
 **必须交付**：
-- Reserve稳定实例身份；完整descriptor贯通部署/模型reload/retire
-- 应用原登录与owner-only应用凭据reveal沿现行能力；不新增强制SSO
-- 数据兼容/单写挂载、健康/已应用配置与实际资源改配后的恢复
+- 注册并审核OPL App/Framework Runtime Release；保存不可变artifact digest、ABI/Package兼容契约、状态与准入证据
+- 向Build提供精确RuntimeRelease引用；只读回版本目录，不部署Workspace Agent、不拥有Runtime实例或readiness
+- 撤销/退役只影响新Build准入，已固定Build输入和历史证据不被改写
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`serve.agent_runtime_instances`, `serve.agent_runtime_actions`
-
-**内部协议实现/协作端口**：`ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `RuntimePlanChangeControl.RestoreAfterResourceChange`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`runtime_control.runtime_releases`, `runtime_control.catalog_policies`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
 
 **完成判定**：
-- 非默认端口/Secret/依赖应用真实运行；无应用legacy为not_applicable而不是伪ready
-- 配置版本/镜像/资源/entry/readback一致才确认
+- 相同digest/兼容契约/状态转换与Build引用反例
+- Runtime目录读回不得被解释为Agent已部署或已运行
 
-### W11 Local-Docker执行/存储/路由资格能力
+### W11 Local-Docker资源开通、绑定与资格能力
 
 **协调Owner：** Fabric Local-Docker；**参与Owner：** fabric。
-**F范围：** F08, F09, F10, F11, F12, F13, F16, F17；**开始依赖：** W02；**验收依赖：** 按本任务边界。
+**F范围：** F07, F08, F11, F12, F13, F16, F17；**开始依赖：** W02；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/local_docker_provider.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go`
+- `services/fabric/internal/fabric/local_docker_provider.go`
+- `services/fabric/internal/fabric/provider_port.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/local_docker_provider.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/http`
+- `services/fabric/internal/fabric/local_docker_provider.go`
+- `services/fabric/internal/fabric`
+- `services/fabric/internal/http`
 
 **必须交付**：
-- 适配类型化执行计划、资源/Secret/挂载/运行、D17允许转换及实际quota
-- provider-side fence/conditional revision与实际路由读回，旧epoch不可生效
+- 只负责Compute/Storage/Network/Secret资源的admit、ensure、resize、renew、suspend、resume、delete与状态读回
+- 实现Local-Docker资源集、挂载和配额资格；把资源引用交给Serve，不部署Agent OCI、不控制Runtime生命周期、不拥有访问路由
 - Linux存储/权限前提不满足明确失败，不把Mac Docker Desktop冒充Local资格
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`, `serve.access_bindings`, `serve.access_switches`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`fabric.resource_sets`, `fabric.resources`, `fabric.attachments`, `fabric.secret_bindings`, `fabric.resource_actions`
 
-**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricRuntimeExecution.ReadApplicationCredentials`, `FabricRuntimeExecution.StartRuntime`, `FabricRuntimeExecution.StopRuntime`, `FabricRuntimeExecution.ReloadRuntime`, `FabricRuntimeExecution.ObserveRuntime`, `FabricRouteExecution.FenceRouteEpoch`, `FabricRouteExecution.ActivateRoute`, `FabricRouteExecution.ObserveRoute`, `FabricRouteExecution.RollbackRoute`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
+**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -528,29 +532,29 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 
 **完成判定**：
-- Linux隔离集成：真实volume数据、重启、升级失败、route丢响应、unknown不重发
-- 零金额路径无Gateway动作，资源-only不伪造应用
+- Linux隔离集成：真实volume数据、资源动作丢响应、unknown不重发
+- 资源only路径不伪造Agent readiness，零金额路径无Gateway动作
 
-### W12 Tencent/TKE预付执行与计划变更
+### W12 Tencent/TKE资源适配与资格读回
 
 **协调Owner：** Fabric Tencent；**参与Owner：** fabric。
-**F范围：** F08, F10, F11, F12, F13, F17；**开始依赖：** W02；**验收依赖：** 按本任务边界。
+**F范围：** F07, F08, F11, F12, F13, F17；**开始依赖：** W02；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider_storage.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/opl-tencent-provisioner`
+- `services/fabric/internal/fabric/tencent_provider.go`
+- `services/fabric/internal/fabric/tencent_provider_storage.go`
+- `services/fabric/cmd/opl-tencent-provisioner`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/opl-tencent-provisioner`
+- `services/fabric/internal/fabric`
+- `services/fabric/cmd/opl-tencent-provisioner`
 
 **必须交付**：
-- 报价前固定已资格的in-place或目标pool+原CBS重绑策略；预付包月，禁止POSTPAID_BY_HOUR
-- SDK询价/允许机型/异步变更/描述读回、TKE排空/恢复、磁盘/文件系统验证
-- 不支持缩容/性能类别/原子路由能力明确拒绝；ordinary CI无真钱采购/销毁
+- 只负责Tencent/TKE Compute/Storage/Network/Secret资源能力、预付执行计划、provider readback与资源变更
+- 报价前固定已资格的in-place或目标pool+原CBS重绑策略；禁止POSTPAID_BY_HOUR；把已确认资源引用交给Workspace/Serve
+- 不负责Agent OCI部署、Runtime启停/readiness或Serve访问路由；ordinary CI无真钱采购/销毁
 
-**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricRuntimeExecution.ReadApplicationCredentials`, `FabricRuntimeExecution.StartRuntime`, `FabricRuntimeExecution.StopRuntime`, `FabricRuntimeExecution.ReloadRuntime`, `FabricRuntimeExecution.ObserveRuntime`, `FabricRouteExecution.FenceRouteEpoch`, `FabricRouteExecution.ActivateRoute`, `FabricRouteExecution.ObserveRoute`, `FabricRouteExecution.RollbackRoute`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
+**内部协议实现/协作端口**：`FabricCoordination.AdmitResources`, `FabricCoordination.EnsureResources`, `FabricCoordination.ResizeResources`, `FabricCoordination.RenewResources`, `FabricCoordination.SuspendResources`, `FabricCoordination.ResumeResources`, `FabricCoordination.DeleteResources`, `FabricCoordination.ReadResources`, `FabricCoordination.BindSecret`, `FabricPlanTransitionReadback.ReadApprovedPlanTransition`, `FabricPlanTransitionReadback.ReadExecutionPlan`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -567,20 +571,20 @@
 **F范围：** F01, F17；**开始依赖：** W01, W03；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/console-router.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/layout/ConsoleShell.tsx`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/auth-api.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-console-controller.ts`
+- `apps/console-ui/src/app/console-router.ts`
+- `apps/console-ui/src/layout/ConsoleShell.tsx`
+- `apps/console-ui/src/api/auth-api.ts`
+- `apps/console-ui/src/app/use-console-controller.ts`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/go.mod`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/go.sum`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/cmd/server`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/session`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/routes`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/layout/ConsoleShell.tsx`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/console-router.ts`
+- `apps/console-bff/go.mod`
+- `apps/console-bff/go.sum`
+- `apps/console-bff/cmd/server`
+- `apps/console-bff/internal/session`
+- `apps/console-bff/internal/routes`
+- `apps/console-ui/src/api`
+- `apps/console-ui/src/layout/ConsoleShell.tsx`
+- `apps/console-ui/src/app/console-router.ts`
 
 **必须交付**：
 - 同源REST/session/CSRF/Origin→typed Owner RPC；Operation按owner路径路由
@@ -594,7 +598,7 @@
 **前端消费API**：`acceptInvitation`, `bindTenantWallet`, `createTenant`, `getAdminTenant`, `getLoginContext`, `getOperation`, `getReceipt`, `getSession`, `getTenant`, `inviteMember`, `listAdminOperations`, `listAuditEvents`, `listInvitations`, `listMembers`, `listQualifications`, `listReceipts`, `login`, `logout`, `reconcileOperation`, `removeMember`, `revokeInvitation`, `updateMemberRole`
 
 **验证**：
-- go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff test ./...
+- go -C apps/console-bff test ./...
 - npm run typecheck
 - npm run test:browser:console-owner-reads
 - 真实BFF会话/跨Tenant/退出缓存清理测试
@@ -609,13 +613,13 @@
 **F范围：** F02, F03, F04, F05, F06；**开始依赖：** W13；**验收依赖：** W06, W07, W08, W09。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/CustomerPages.tsx`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx`
+- `apps/console-ui/src/pages/CustomerPages.tsx`
+- `apps/console-ui/src/pages/AdminPages.tsx`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/agents`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/agent-controllers`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/capability-api.ts`
+- `apps/console-ui/src/pages/agents`
+- `apps/console-ui/src/app/agent-controllers`
+- `apps/console-ui/src/api/capability-api.ts`
 
 **必须交付**：
 - 按04/11实现Agent目录、版本、分组、上传向导、构建日志/重试及publisher表单
@@ -635,23 +639,24 @@
 
 ### W15 准确报价与Agent+套餐Launch闭环
 
-**协调Owner：** Workspace（协调）/Catalog；**参与Owner：** workspace, resource_catalog。
+**协调Owner：** Workspace（协调）/Catalog/Serve；**参与Owner：** workspace, resource_catalog, serve。
 **F范围：** F07, F08；**开始依赖：** W04, W05, W06, W09, W10, W11；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_workspace_launch.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_service.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_reconciler.go`
+- `services/control-plane/internal/server/routes_workspace_launch.go`
+- `services/control-plane/internal/server/workspace_launch_service.go`
+- `services/control-plane/internal/server/workspace_launch_reconciler.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/admission`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/launch`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/quotes`
+- `services/workspace/internal/admission`
+- `services/workspace/internal/launch`
+- `services/resource-catalog/internal/quotes`
+- `services/serve/internal/delivery`
 
 **必须交付**：
-- 只读准入→固定quote→CAS接受→原单扣款→Key→资源/挂载→完整运行→route确认→Ledger
-- 新入口必须有Agent；旧resource_only不能被默认Agent暗改
-- 每阶段原身份/原单/epoch持久化，已接受报价不因执行耗时重新计价
+- Workspace只负责准入、报价接受、原单/权益/资源计划；Fabric确认资源后将OCI digest与resource refs交给Serve
+- Serve创建该Workspace唯一Agent delivery，执行部署/readiness/access并返回真实读回；Workspace通过ServeAgentCoordination.Reserve/Deploy发起，不写Agent deployment/current selection
+- 本地真实链覆盖Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；每阶段原身份/原单/epoch持久化，已接受报价不因执行耗时重新计价
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`createQuote`, `createWorkspace`, `getQuote`, `getWorkspace`, `listWorkspaces`
 
@@ -665,10 +670,10 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 本地真实服务链+外部权威fixture：余额不足、扣款丢响应、资源/receipt不确定、restart
 - 同一次请求串API→Owner→DB→下一Owner→实际应用响应
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1
 
 **完成判定**：
-- 一个Workspace一次原单；ready来自实际当前应用而非资源开通
+- 一个Workspace一次原单且最多一个当前Agent；ready来自Serve实际Agent而非资源开通
 - 失败收尾/unknown/退款分开展示，拒绝跨Tenant与伪价格
 
 ### W16 部署向导与Workspace页面
@@ -677,18 +682,19 @@
 **F范围：** F07, F08, F09, F10, F16；**开始依赖：** W13；**验收依赖：** W15, W17, W25。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts`
+- `apps/console-ui/src/app/use-workspace-launch-controller.ts`
+- `apps/console-ui/src/app/workspace-launch-controller-model.ts`
+- `apps/console-ui/src/api/workspaces-api.ts`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/workspaces`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts`
+- `apps/console-ui/src/pages/workspaces`
+- `apps/console-ui/src/app/workspace-launch-controller-model.ts`
+- `apps/console-ui/src/app/use-workspace-launch-controller.ts`
+- `apps/console-ui/src/api/workspaces-api.ts`
 
 **必须交付**：
 - 版本/套餐/模型→固定报价→确认→真实进度；修改选项使旧quote失效
+- 部署/版本/访问读取走Serve API，经BFF组合后呈现；Workspace UI不写Agent deployment或current selection
 - 详情并列权益/资源/应用/资金结果，owner凭据一次性查看
 - 原资源adopt和已部署legacy应用有独立入口，不重购
 
@@ -703,30 +709,32 @@
 - 按钮条件、错误和场景与04/11完全同词
 - 生产UI不执行价格算法，准确显示最多6位微美元
 
-### W17 应用配置、版本切换与回滚
+### W17 Serve Agent交付、版本切换与访问回滚
 
-**协调Owner：** Workspace/Runtime Control；**参与Owner：** workspace, runtime_control, fabric。
-**F范围：** F09, F10；**开始依赖：** W10, W11, W15；**验收依赖：** 按本任务边界。
+**协调Owner：** Serve；**参与Owner：** serve。
+**F范围：** F09, F10, F16, F17；**开始依赖：** W09, W11, W15；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_gateway.go`
+- `docs/opl-serve.md`
+- `docs/architecture.md`
+- `packages/contracts/go/workspace_application_runtime.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/deployments`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/configuration`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/deployments`
+- `services/serve/internal/delivery`
+- `services/serve/internal/runtime_adapter`
+- `services/serve/internal/access`
+- `services/serve/migrations`
 
 **必须交付**：
-- API→完整descriptor/引用保护→独立实例验证→Fence/Activate/Observe→本域CAS选择
-- 失败回滚须数据兼容/原route证据，不能只改active指针
-- 配置只更新允许模型；原购买历史/数据/Key边界保留
+- Serve接收Workspace授权、OCI digest、Fabric resource refs与expected current deployment，创建唯一Agent deployment并持久化部署/运行/访问事实
+- 通过ServeAgentCoordination、ServeRuntimeAdapter、ServeAccessControl完成部署、readiness、模型reload、Fence/Activate/Observe/Rollback；同一Workspace最多一个当前Agent
+- API/Embed/Hosted UI只读Serve当前Agent；失败回滚保留原路由与数据证据，Workspace不写deployment/current selection，Fabric不写readiness/access
 
 **主实现API（沿用03的唯一Owner，不是改变数据写权）**：`getDeployment`, `getWorkspaceAccess`, `getWorkspaceModels`, `listDeployments`, `revealWorkspaceApplicationCredentials`, `rollbackWorkspace`, `updateWorkspaceModels`, `updateWorkspaceVersion`
 
-**主实现表（字段唯一来源02，不在此复制字段定义）**：`serve.agent_deployments`, `workspace.model_configurations`
+**主实现表（字段唯一来源02，不在此复制字段定义）**：`serve.agent_deployments`, `workspace.model_configurations`, `serve.agent_runtime_instances`, `serve.agent_runtime_actions`, `serve.access_bindings`, `serve.access_switches`
 
-**内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceAccess`, `WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.ListDeployments`, `WorkspaceProductService.GetDeployment`, `WorkspaceProductService.UpdateWorkspaceVersion`, `WorkspaceProductService.RollbackWorkspace`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`
+**内部协议实现/协作端口**：`WorkspaceProductService.GetWorkspaceModels`, `WorkspaceProductService.UpdateWorkspaceModels`, `WorkspaceProductService.RevealWorkspaceApplicationCredentials`, `ServeProductService.ListDeployments`, `ServeProductService.GetDeployment`, `ServeProductService.UpdateWorkspaceVersion`, `ServeProductService.RollbackWorkspace`, `ServeProductService.GetWorkspaceAccess`, `ServeAgentCoordination.Reserve`, `ServeAgentCoordination.Deploy`, `ServeAgentCoordination.ReloadModels`, `ServeAgentCoordination.ReadRuntime`, `ServeAgentCoordination.Retire`, `ServeRuntimeAdapter.ReadApplicationCredentials`, `ServeRuntimeAdapter.StartRuntime`, `ServeRuntimeAdapter.StopRuntime`, `ServeRuntimeAdapter.ReloadRuntime`, `ServeRuntimeAdapter.ObserveRuntime`, `ServeAccessControl.FenceRouteEpoch`, `ServeAccessControl.ActivateRoute`, `ServeAccessControl.ObserveRoute`, `ServeAccessControl.RollbackRoute`, `ServePlanChangeControl.RestoreAfterResourceChange`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -734,11 +742,11 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 真实HTTP根路径/资产/API/SSE/cookie隔离与数据持久化
 - 晚到worker/旧epoch/不同target、data不可逆和多写挂载拒绝
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
 
 **完成判定**：
-- 一个确认选中部署，配置appliedVersion与实际一致
-- 没有隐式自动升级、重新购买或新SSO
+- 一个确认选中部署，appliedVersion/readiness/access与实际读回一致
+- 没有隐式自动升级、重新购买或第二份Workspace部署真相
 
 ### W18 周期、显式续费授权和到期停用
 
@@ -746,13 +754,13 @@
 **F范围：** F12；**开始依赖：** W04, W05, W15；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/monthly_billing.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/renewal_worker.go`
+- `services/control-plane/internal/server/workspace_renewal.go`
+- `services/control-plane/internal/server/monthly_billing.go`
+- `services/control-plane/internal/server/renewal_worker.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/subscriptions`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/renewal`
+- `services/workspace/internal/subscriptions`
+- `services/workspace/internal/renewal`
 
 **必须交付**：
 - 保留source billingAnchorDay/原paidThrough/自动授权；周期唯一资金义务
@@ -771,7 +779,7 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - Jan31→Feb28→Mar31及闰年；窗口已过拒绝；source纳秒不回写
 - 人工/自动并发、资金unknown、停用后恢复、provider资源回收
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
 
 **完成判定**：
 - 一周期最多一原单；不偷偷从now重新开始一月
@@ -779,18 +787,18 @@
 
 ### W19 D17套餐变更与补差账务
 
-**协调Owner：** Workspace（协调）/Catalog；**参与Owner：** workspace, resource_catalog, gateway, fabric, runtime_control, ledger。
+**协调Owner：** Workspace（协调）/Catalog；**参与Owner：** workspace, resource_catalog, gateway, fabric, serve, ledger。
 **F范围：** F11, F12, F13；**开始依赖：** W06, W11, W12, W15, W18；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go`
+- `services/fabric/internal/fabric/provider_port.go`
+- `services/control-plane/internal/server/workspace_renewal.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/plan_changes`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/plan_change_pricing`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/settlement`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric`
+- `services/workspace/internal/plan_changes`
+- `services/resource-catalog/internal/plan_change_pricing`
+- `services/gateway-integration/internal/settlement`
+- `services/fabric/internal/fabric`
 
 **必须交付**：
 - PlanChange第一类实体：立即upgrade与scheduled downgrade区分初次/执行Operation
@@ -802,14 +810,14 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`workspace.plan_changes`, `workspace.subscription_period_obligations`
 
-**内部协议实现/协作端口**：`WorkspaceProductService.ResizeWorkspace`, `WorkspaceProductService.ListPlanChanges`, `WorkspaceProductService.GetPlanChange`, `WorkspaceProductService.CancelPlanChange`, `WorkspacePlanChangeReadback.ReadSubscriptionPlanState`, `WorkspacePlanChangeReadback.ReadPlanChange`, `WorkspacePlanChangeReadback.ReadNextPeriodObligation`, `WorkspacePlanChangeReadback.ReadPlanChangeFailure`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`, `RuntimePlanChangeControl.RestoreAfterResourceChange`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
+**内部协议实现/协作端口**：`WorkspaceProductService.ResizeWorkspace`, `WorkspaceProductService.ListPlanChanges`, `WorkspaceProductService.GetPlanChange`, `WorkspaceProductService.CancelPlanChange`, `WorkspacePlanChangeReadback.ReadSubscriptionPlanState`, `WorkspacePlanChangeReadback.ReadPlanChange`, `WorkspacePlanChangeReadback.ReadNextPeriodObligation`, `WorkspacePlanChangeReadback.ReadPlanChangeFailure`, `GatewayPlanChangeSettlement.DebitSupplement`, `GatewayPlanChangeSettlement.DebitScheduledPeriod`, `GatewayPlanChangeSettlement.RefundFailure`, `GatewayPlanChangeSettlement.RefundSupplementOnDeletion`, `ServePlanChangeControl.RestoreAfterResourceChange`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
 - Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 重放13及全部D17数值/并发/PG纳秒进位/原单退款用例
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
 
 **完成判定**：
 - 20→40剩半期补10；31天例子19.354839；资源+运行确认才applied
@@ -817,20 +825,20 @@
 
 ### W20 删除、base与supplement原单结算
 
-**协调Owner：** Workspace（协调）；**参与Owner：** workspace, gateway, fabric, ledger。
+**协调Owner：** Workspace（协调）；**参与Owner：** workspace, gateway, fabric, serve, ledger。
 **F范围：** F13；**开始依赖：** W04, W05, W15, W18；**验收依赖：** W19。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete_refund.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go`
+- `services/control-plane/internal/server/workspace_delete.go`
+- `services/control-plane/internal/server/workspace_delete_refund.go`
+- `services/control-plane/internal/server/wallet_adjustment.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/deletion`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/settlement`
+- `services/workspace/internal/deletion`
+- `services/gateway-integration/internal/settlement`
 
 **必须交付**：
-- 持久删除意图→逐资源确切absence→删除receipt→每个原单独立退款
+- Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实
 - base保留原policy；已applied升级supplement用自身coverage，不合并当整月款
 - 与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史
 
@@ -844,7 +852,7 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 资源已删丢响应、原身份/receipt错配、refund unknown/超额、窗口/退款上界
 - UI同时能显示已删+退款待确认；没有手工set success接口
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
 
 **完成判定**：
 - 无证据不退款，已删除不等于退款到账
@@ -852,15 +860,15 @@
 
 ### W21 Tenant开通、暂停/重新启用及删除恢复
 
-**协调Owner：** CloudIdentity（协调）；**参与Owner：** tenant, gateway, workspace。
+**协调Owner：** CloudIdentity（协调）；**参与Owner：** tenant, gateway, workspace, serve。
 **F范围：** F01, F15；**开始依赖：** W03, W04, W15, W20；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go`
+- `services/control-plane/internal/server/routes_admin.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/tenant_lifecycle`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/tenant_actions`
+- `services/gateway-integration/internal/tenant_lifecycle`
+- `services/workspace/internal/tenant_actions`
 
 **必须交付**：
 - 创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪
@@ -877,7 +885,7 @@
 - 该命令只作实施后要求；本轮没有执行新产品实现测试
 - 暂停后直接reenable不要求restoreUntil；误恢复/过期/子任务unknown
 - 成员失权、生效窗口及账户历史权限不放大
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
 
 **完成判定**：
 - Tenant权限和各Workspace运行结果分开
@@ -889,14 +897,14 @@
 **F范围：** F11, F12, F13, F14；**开始依赖：** W13；**验收依赖：** W04, W18, W19, W20。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-billing-controller.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-renewal-controller.ts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts`
+- `apps/console-ui/src/app/use-billing-controller.ts`
+- `apps/console-ui/src/app/use-workspace-renewal-controller.ts`
+- `apps/console-ui/src/api/workspaces-api.ts`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/billing`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/plan-change-controller`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/plan-change-api.ts`
+- `apps/console-ui/src/pages/billing`
+- `apps/console-ui/src/app/plan-change-controller`
+- `apps/console-ui/src/api/plan-change-api.ts`
 
 **必须交付**：
 - 立即升配quote/进度、下期计划/取消/付款边界，原E和资金/资源状态分开
@@ -920,12 +928,12 @@
 **F范围：** F03, F15, F17；**开始依赖：** W13；**验收依赖：** W06, W07, W21, W24。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/OperatorRuntimeObservations.tsx`
+- `apps/console-ui/src/pages/AdminPages.tsx`
+- `apps/console-ui/src/pages/OperatorRuntimeObservations.tsx`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/admin`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/admin-controllers`
+- `apps/console-ui/src/pages/admin`
+- `apps/console-ui/src/app/admin-controllers`
 
 **必须交付**：
 - 完整publisher schema表单/有效namespace，资源/价格版本不得改写已接受快照
@@ -948,12 +956,12 @@
 **F范围：** F17；**开始依赖：** W03, W05；**验收依赖：** W15, W19, W20, W21。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/operational_alerts.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go`
+- `services/control-plane/internal/server/operational_alerts.go`
+- `services/control-plane/internal/server/routes_admin.go`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/operations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/operations`
+- `apps/console-bff/internal/operations`
+- `services/workspace/internal/operations`
 
 **必须交付**：
 - 每Owner依据原意图/readback实现Reconcile，BFF仅路由，不能统一setStatus
@@ -977,26 +985,28 @@
 
 ### W25 逐域数据转换与迁移演练
 
-**协调Owner：** 各数据Owner/Instance；**参与Owner：** tenant, capability, build, workspace, runtime_control, fabric, gateway, ledger。
+**协调Owner：** 各数据Owner/Instance；**参与Owner：** tenant, capability, build, workspace, runtime_control, serve, fabric, gateway, ledger。
 **F范围：** F16；**开始依赖：** W00, W02；**验收依赖：** W09, W17, W19, W20, W21。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/ent/schema/shared.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/ent/schema`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/ent_state_store.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations/migrations.go`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/ent_migrations`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations`
+- `services/control-plane/ent/schema/shared.go`
+- `services/control-plane/migrations`
+- `services/fabric/ent/schema`
+- `services/ledger/ent/schema`
+- `services/control-plane/internal/server/ent_state_store.go`
+- `services/control-plane/migrations/migrations.go`
+- `services/fabric/internal/fabric/ent_migrations`
+- `services/ledger/internal/ledger/ent_migrations`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/migration`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/migration`
+- `tools/migration`
+- `services/workspace/internal/migration`
+- `services/serve/internal/migration`
 
 **必须交付**：
 - 按09对每张源表/字段确定target或保留档案，不丢未知历史
 - legacy_resource_only/legacy_application/legacy_import保留真实ID/原单/时间、未决义务/补差coverage
+- Serve deployment/access/runtime observation迁移到serve Owner并退出旧部署writer，不复制Workspace current-agent字段
 - 隔离副本试迁移、hash/金额/周期/权限对账、single-writer fence及回滚演练
 - 修改真实migration加载链：CP ent_state_store→migrations.Apply*；Fabric/Ledger各自internal Owner的ent_migrations。不得只改展示SQL。
 
@@ -1007,9 +1017,9 @@
 **验证**：
 - 只在隔离副本运行转换，生产数据仅Instance保护runner
 - row/ID集合、金额/时间/quote/receipt/user权限等值和未决操作重放
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
-- 实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1
+- 实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1
 
 **完成判定**：
 - 无假Build/Quote/重购；不做双写或失败时切旧接口
@@ -1017,21 +1027,21 @@
 
 ### W26 真实业务链集成与浏览器验收
 
-**协调Owner：** 集成负责人+各Owner；**参与Owner：** bff, console, workspace, capability, build, gateway, fabric, runtime_control, ledger。
+**协调Owner：** 集成负责人+各Owner；**参与Owner：** bff, console, workspace, capability, build, gateway, fabric, runtime_control, serve, ledger。
 **F范围：** F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, F17；**开始依赖：** W09, W13, W15；**验收依赖：** W14, W16, W17, W19, W20, W21, W22, W23, W24, W25。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/integration`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/ui`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-sub2api-authority-fixture.ts`
+- `tests/integration`
+- `tests/ui`
+- `tools/local-sub2api-authority-fixture.ts`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/integration`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/ui`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tools`
+- `tests/integration`
+- `tests/ui`
+- `tools`
 
 **必须交付**：
-- 前端真实BFF→真实Owner DB/RPC→Local provider/应用；外部财务只用明确隔离authority fixture
+- 前端真实BFF→真实Owner DB/RPC→Local provider/应用；业务链固定为Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；外部财务只用明确隔离authority fixture
 - 以17F逐项执行正常/拒绝/丢响应/重启/重复/越权/并发/取消/恢复向量
 - 性能记录实际实例输入和测量值，不创造50人/3分钟承诺
 
@@ -1046,23 +1056,23 @@
 
 ### W27 可移植候选构建与CI契约演进
 
-**协调Owner：** Cloud发布机制Owner；**参与Owner：** cloud。
+**协调Owner：** Cloud发布机制Owner；**参与Owner：** cloud, serve。
 **F范围：** F17；**开始依赖：** W01, W02；**验收依赖：** W09, W12, W21, W24, W26。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/Dockerfile`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/compose.yaml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/deploy/portable`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/build-opl-cloud-candidate.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-distribution-contract.json`
+- `Dockerfile`
+- `compose.yaml`
+- `deploy/portable`
+- `.github/workflows/build-opl-cloud-candidate.yml`
+- `.github/workflows/release-opl-cloud-image.yml`
+- `packages/contracts/opl-cloud-candidate-receipt-contract.json`
+- `packages/contracts/opl-cloud-distribution-contract.json`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/build-opl-cloud-candidate.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/deploy/portable`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-distribution-contract.json`
+- `.github/workflows/build-opl-cloud-candidate.yml`
+- `deploy/portable`
+- `packages/contracts/opl-cloud-candidate-receipt-contract.json`
+- `packages/contracts/opl-cloud-distribution-contract.json`
 
 **必须交付**：
 - 目标多服务制品纳入同一个Cloud Candidate/安装清单与同字节资格单位；不另起release authority
@@ -1073,7 +1083,7 @@
 **验证**：
 - contracts/工具生成/拒绝反例与portable Compose一致检查
 - 假造digest/遗漏组件/漂移source/schema拒绝；构建不需要生产环境
-- 实施前现有基线（不证明新功能）：rtk proxy node --test /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/tools/cloud-candidate-receipt.test.ts /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/contracts/clean-host-qualification.test.ts
+- 实施前现有基线（不证明新功能）：rtk proxy node --test tests/tools/cloud-candidate-receipt.test.ts tests/contracts/clean-host-qualification.test.ts
 
 **完成判定**：
 - 候选集合是不可变单位，任何组件变更必须新Candidate重新适用资格
@@ -1085,12 +1095,12 @@
 **F范围：** F17；**开始依赖：** W27；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/clean-host-qualification.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-workspace-qualification.ts`
+- `.github/workflows/clean-host-qualification.yml`
+- `tools/local-workspace-qualification.ts`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/clean-host-qualification.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-workspace-qualification.ts`
+- `.github/workflows/clean-host-qualification.yml`
+- `tools/local-workspace-qualification.ts`
 
 **必须交付**：
 - 固定Candidate在合格Linux安装，执行启动/存储/应用/生命周期与重启/数据保留
@@ -1110,11 +1120,11 @@
 **F范围：** F17；**开始依赖：** W28, W12, W19, W25；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md`
+- `docs/runtime/release.md`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-instance-medopl/receipts`
-- `/Users/huangrende/Documents/ChatGPT/opl-instance-medopl/.github/workflows`
+- `../opl-instance-medopl/receipts`
+- `../opl-instance-medopl/.github/workflows`
 
 **必须交付**：
 - 在既有保护workflow/授权runner中采用同一Candidate和真实provider profile
@@ -1135,13 +1145,13 @@
 **F范围：** F16, F17；**开始依赖：** W25, W26, W29；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `docs/status.md`
+- `docs/roadmap.md`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-instance-medopl/receipts`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `../opl-instance-medopl/receipts`
+- `docs/status.md`
+- `docs/roadmap.md`
 
 **必须交付**：
 - 按09 M0-M5：写屏障/终态增量/路由epoch/实际用户读回/分批接收
@@ -1162,16 +1172,16 @@
 **F范围：** F17；**开始依赖：** W28, W29；**验收依赖：** 按本任务边界。
 
 **现有来源（当前checkout定位，不表示全部要改；原始source snapshot见09）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-public-readback.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `.github/workflows/release-opl-cloud-image.yml`
+- `.github/workflows/release-opl-cloud-public-readback.yml`
+- `docs/runtime/release.md`
+- `docs/status.md`
+- `docs/roadmap.md`
 
 **拟写入位置（未来实施，尚未创建的路径也明确列出）**：
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md`
-- `/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md`
+- `.github/workflows/release-opl-cloud-image.yml`
+- `docs/status.md`
+- `docs/roadmap.md`
 
 **必须交付**：
 - 仅在明确正式发布授权后，由允许actor从main提升同一资格制品，不重建

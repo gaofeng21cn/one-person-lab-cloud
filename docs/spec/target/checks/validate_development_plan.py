@@ -15,7 +15,10 @@ def require(ok,message):
  if not ok:errors.append(message)
 # Repository placement is an execution constraint, not a new business contract.
 cloud=R.parents[2]
-roots={owner:Path(path).resolve() for owner,path in plan['sourceRoots'].items()}
+def resolve_path(value):
+ p=Path(value)
+ return p.resolve() if p.is_absolute() else (cloud/p).resolve()
+roots={owner:resolve_path(path) for owner,path in plan['sourceRoots'].items()}
 require(roots.get('cloud')==cloud,'Cloud root must be the containing checkout')
 for owner,path in roots.items():
  if owner not in {'cloud','instance'}:
@@ -46,10 +49,9 @@ for wid,w in W.items():
  require(set(w['owners'])<=set(roots),wid+' references an undeclared owner work root')
  require(w['state']=='not_implemented',wid+' incorrectly claims work was implemented')
  for k in ['coordinator','owners','features','plannedWritePaths','deliverables','verification','acceptance']:require(bool(w.get(k)),wid+' missing '+k)
- for source in w['existingReadPaths']:require(Path(source).exists(),wid+' falsely labels existing source: '+source)
+ for source in w['existingReadPaths']:require(resolve_path(source).exists(),wid+' falsely labels existing source: '+source)
  for path in w['plannedWritePaths']:
-  require(Path(path).is_absolute(),wid+' has relative write path')
-  resolved=Path(path).resolve()
+  resolved=resolve_path(path)
   require(resolved.is_relative_to(cloud) or ('instance' in w['owners'] and resolved.is_relative_to(roots['instance'])),wid+' write escapes authorized repository scope: '+path)
  for dep in set(w['startAfter']+w['acceptAfter']):require(dep in W and dep!=wid,wid+' has invalid dependency: '+dep)
 # Both useful-start and integrated-acceptance edges must converge, no hidden dependency cycles.

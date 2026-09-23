@@ -37,7 +37,6 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 | Build | 固定PackageVersion+WebUI Version+Runtime Release输入；隔离构建；推送并读回OCI；向Capability交接构建完成证据 | BuildJob/输入摘要/步骤/OCI产物/日志索引 | BFF/Capability/Runtime Control | Package元数据writer、运行资源购买、Agent部署状态、Runtime/WebUI目录writer |
 | Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
 | Serve | 按Workspace执行Agent Package/OCI交付；异步部署/替换/回滚；唯一当前Agent、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
-| Runtime Control | 准入契约；期望实例；启动/健康；切换/回滚；config reload | RuntimeInstance/配置版本引用/执行Operation | Workspace/BFF只读 | Workspace购买历史、付费决定、应用内部业务 |
 | Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
 | Gateway Integration | Gateway身份适配；Cloud主体/Tenant权限映射；钱包主体委托；Key；扣退款一次性调用与回读 | 映射/授权上下文/交易请求身份及观察结果 | BFF/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
@@ -215,7 +214,7 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 | 原/新报价快照、T/S/E、补差ceil及下期目标价格、固定政策版本 | Resource Catalog | 不接收客户端自报价格，不在Wallet复制定价 |
 | 原补差扣款、确定失败补偿、成功后未用区间退款、余额/交易读回 | Gateway/Sub2API | Workspace/Ledger不能另记可花费余额；任何退款必须绑定原单 |
 | 允许的资源转换、中断/可恢复性、真实规格/文件系统/挂载读回 | Fabric | 不把provider接受RequestId当新规格已生效；不能假缩容 |
-| 应用资源限制、重启/reload/健康与当前运行事实 | Runtime Control | 不修改原账期或选择客户收费政策 |
+| 应用资源限制、重启/reload/健康与当前运行事实 | Serve | 不修改原账期或选择客户收费政策；Runtime Control只提供被Build固定引用的Runtime Release |
 | 原报价/原单/计划变更/实际资源结果与补偿的不可变证据 | Ledger | 不发起资源变更，不编排客户计划 |
 | 立即升级/下期预约/取消入口、原到期日、实际补差与独立结果 | Console/BFF | 不计算业务价格、不因Operation受理就显示已升级 |
 

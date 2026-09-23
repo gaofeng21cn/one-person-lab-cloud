@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "timestamp": "2026-09-22T15:21:59.122705+00:00",
+  "timestamp": "2026-09-23T17:06:47.051806+00:00",
   "passed": true,
   "scope": "implementation plan completeness/coverage/dependency verification only; no work package implemented",
   "counts": {
     "workPackages": 32,
     "features": 17,
     "restOperations": 108,
-    "tables": 96,
+    "tables": 101,
     "internalRPCs": 172
   },
   "topologicalOrder": [
@@ -118,15 +118,15 @@
   ],
   "errors": [],
   "sourceHashes": {
-    "00_master_index.md": "abb2b5a77bb746afed3a2da1514bb5af47eaeab5d9fdd4f543e968a78824f4cb",
-    "01_domain_ownership_matrix.md": "5c111bcf40902ee204c0fd18a3906fbc61c67477ede79f1268b1bdef9df23099",
-    "14_implementation_work_packages.md": "cf72008659be187a036d640c3c0af551bd520036a2cdbae2101c5bb4e3e52e6c",
-    "checks/development_plan.json": "c1fc2670c3d9cd8f2b6c58267ca1c7b41efe270da72a86eb6371ffa38fe03616",
-    "checks/render_development_plan.py": "a2f34a58bf73f48851a389b27eb89d2829c06cf502916d8c3a52c7065fd09283",
-    "checks/validate_development_plan.py": "d0e3f313bc583a9bfcd74d3ac714593ae92ab0e3a18f451e33d732fc03cd978f",
-    "contracts/api_inventory.json": "7df88a8e7d66169b365b00e9fc91cca44247efcaa7014ebee0461a650d1aa739",
-    "contracts/db_inventory.json": "3bd38af4f2f586f455a6cade9b2dd9a50dc2c1b023376ac4e007c3900a64b135",
-    "contracts/ui_inventory.json": "af55056b8b5ec0da5802b82b9683fb66e09831eea4ce63585bda52d0251e7415",
-    "contracts/internal.proto": "f9003211d42841fbbd5b99073b169e991c1877ce85b5f6282be79ff6c0cc1698"
+    "00_master_index.md": "464f302ddd6b0a6d9f37e994ce49663571ca502b5ef8211926683e13213bde56",
+    "01_domain_ownership_matrix.md": "2d533187b96e4a711518bfd5624d3dec2d11ad0f669f30051c669651c54e3234",
+    "14_implementation_work_packages.md": "0dd7b0d564bcc954ee4b70a3dc81d46539078739c31f43e82fc768c467aa340a",
+    "checks/development_plan.json": "649988d4d37c9a9726286ace9bf14ce663cbead66dd71537407215768f560061",
+    "checks/render_development_plan.py": "d85b142cc7376f0a5ac46e2700ea5d806ee7872951de964df654542aa13fb7c8",
+    "checks/validate_development_plan.py": "c242b690129a0d024b75aa3989709f996c07414df7307d248a2a4c6509c33d08",
+    "contracts/api_inventory.json": "9652d9170d319447f14aa9be152b7eb95f124f3c55e0e6244129124db70cff36",
+    "contracts/db_inventory.json": "3d1bce7e29f92a3cfa31ba5ac74becfba68db6aba873f8f3cd0e80014e02b663",
+    "contracts/ui_inventory.json": "95e66916ed26c897dff97c4c905cba8061e4bd05a11330bb798276d35a186bbe",
+    "contracts/internal.proto": "623cc307897d31000ab730918455dfd978e5c11e54834f206f8c7f78bcf843c2"
   }
 }
