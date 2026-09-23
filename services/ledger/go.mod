@@ -1,6 +1,6 @@
 module opl-cloud/services/ledger
 
-go 1.25.0
+go 1.25
 
 require (
 	entgo.io/ent v0.14.6
@@ -26,7 +26,7 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/mod v0.24.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
