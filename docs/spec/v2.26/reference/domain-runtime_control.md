@@ -471,4 +471,3 @@ Envelope字段：`eventId`, `eventType`, `schemaVersion`, `owner`, `tenantId`, `
 | `receiptId` | `string` | 否 | minLength=1 |
 
 Runtime应用及凭据注入真实读回
-

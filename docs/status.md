@@ -12,11 +12,11 @@ is not a work log. Target architecture lives in
 ## v2.26 Fork Field And Domain Reconciliation
 
 The current development fork is `opl-cloud` at
-`7f5d05fe9b855d8af216caad714cf7fc85014d3c`; the inspected upstream and common
+`66f2efae1e26e6277a6ec0c65c0784b3316432c3`; the inspected upstream and common
 baseline are `one-person-lab-cloud` at
-`50520e27a6b9a630eefdc2df7da3e5ec498d28a0`. Accepted increments are intended to
-return upstream through the user-authorized Issue/PR path. Code integration,
-customer-data conversion, release and Instance deployment remain separate.
+`50520e27a6b9a630eefdc2df7da3e5ec498d28a0`. W00-W02 is now committed as a
+linear migration stack; target-repository integration, customer-data conversion,
+release and Instance deployment remain separate.
 
 [Domain/field reconciliation](spec/v2.26/15_domain_alignment.md) now distinguishes:
 
@@ -47,20 +47,20 @@ write responsibilities are in section 15 and the updated work packages.
 
 ## v2.26 W01/W02 Implementation Closure (2026-09-23)
 
-The active implementation baseline is `b397bd6ddee3fd6dcad8f906155040271b2b2e74`
-(PR #23). The local W02 worktree retains the W01/W02 stack and its uncommitted
-changes were split into these commits:
+The active implementation baseline is `66f2efae1e26e6277a6ec0c65c0784b3316432c3`
+(PR #23). The W01/W02 stack is committed and ready for one-time migration after
+owner verification. The relevant closure commits are:
 
 - W01: `b2c1c094` — event consumers are generated from the exact `events.json`
   `x-consumers` mapping. The production proto and event sources remain byte
   identical to the v2.26 specification. Regeneration used `grpcio-tools 1.80.0`,
   `protoc-gen-go v1.36.6`, and `protoc-gen-go-grpc 1.5.1`; the generated v226
   bindings have no drift.
-- W02: `18f13184` — six domain services validate owner
-  addressing, exact producer event identity, subscribed consumer ownership,
-  positive aggregate revision, idempotency, Outbox/Inbox identity and isolated
-  database role boundaries. Focused Go tests and the full PostgreSQL/Docker gate
-  pass with zero PostgreSQL skips.
+- W02: `66f2efae` — the six domain services validate owner addressing, exact
+  producer event identity, subscribed consumer ownership, positive aggregate
+  revision, idempotency, Outbox/Inbox identity and isolated database role
+  boundaries. The current local verification gate passes; the full
+  PostgreSQL/Docker gate remains a required migration verification.
 
 This closes the W01 contract/consumer binding and the W02 foundational owner,
 operation, persistence and boundary scope. `DomainInbox.Deliver` intentionally
@@ -74,9 +74,14 @@ Evidence from the current worktree:
 
 - six service modules plus `packages/contracts/go`: `go test ./... -count=1`
   passed;
-- `npm run verify:local:full` passed, including 232 source tests, 114 browser
-  tests, typecheck, lint, build, all PostgreSQL modules, and Docker integration;
-- `git diff --check` passed.
+- `npm run verify:local` passed on the exact current HEAD, including 232 source
+  tests, 114 browser tests, typecheck, lint, build, all Go compilation and
+  database-free module tests;
+- `npm run verify:local:full` remains required before migration and was not used
+  as a current production or Instance qualification claim;
+- `git diff --check` is required before migration; the current stack had ten
+  documentation EOF-whitespace findings, which are corrected in the closure
+  commit.
 
 No product Go/TS code or database SQL was changed in this pass; the existing
 REST/proto/events specifications and derived checks were changed.
