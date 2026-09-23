@@ -105,8 +105,8 @@ func (e InboundEvent) validate() error {
 		return fmt.Errorf("%w: event type is required", ErrInvalidInboxEvent)
 	case e.SchemaVersion <= 0:
 		return fmt.Errorf("%w: schema version must be positive", ErrInvalidInboxEvent)
-	case e.AggregateRevision < 0:
-		return fmt.Errorf("%w: aggregate revision must not be negative", ErrInvalidInboxEvent)
+	case e.AggregateRevision <= 0:
+		return fmt.Errorf("%w: aggregate revision must be positive", ErrInvalidInboxEvent)
 	case len(e.Payload) == 0:
 		return fmt.Errorf("%w: payload is required", ErrInvalidInboxEvent)
 	}

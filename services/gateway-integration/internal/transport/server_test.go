@@ -124,6 +124,23 @@ func codeOf(t *testing.T, err error) codes.Code {
 
 // ALIGN-01: the request names the owner, so an operation id is resolved inside
 // that owner and the other owner's records are never scanned.
+func TestNilRequestsReturnInvalidArgument(t *testing.T) {
+	server := NewServer(&fakeTenantOwner{}, &fakeGatewayOwner{})
+	ctx := context.Background()
+	if _, err := server.Read(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Read(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.Reconcile(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Reconcile(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.ReadOwnerCommit(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("ReadOwnerCommit(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.Deliver(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Deliver(nil) = %v, want InvalidArgument", err)
+	}
+}
+
 func TestReadRoutesEachOwnerToItsOwnStoreOnly(t *testing.T) {
 	tenant := &fakeTenantOwner{operation: tenantOperationRecord()}
 	gateway := &fakeGatewayOwner{operation: gatewayOperationRecord()}
@@ -587,8 +604,8 @@ func TestDeliverTargetsTheAddressedInbox(t *testing.T) {
 		tenant := &fakeTenantOwner{}
 		gateway := &fakeGatewayOwner{}
 		_, err := NewServer(tenant, gateway).Deliver(context.Background(), &v226.DeliverEventRequest{
-			Event:                 &v226.EventEnvelope{EventId: "evt-1", Owner: want},
-			AuthenticatedProducer: want,
+			Event:                 &v226.EventEnvelope{EventId: "evt-1", EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "workspace"},
+			AuthenticatedProducer: "workspace",
 			ConsumerOwner:         owner,
 		})
 		if got := codeOf(t, err); got != codes.Unimplemented {
@@ -621,7 +638,7 @@ func TestDeliverRefusesAnInboxThisUnitDoesNotServe(t *testing.T) {
 		v226.OwnerEnum_OWNER_ENUM_LEDGER,
 	} {
 		_, err := server.Deliver(context.Background(), &v226.DeliverEventRequest{
-			Event:                 &v226.EventEnvelope{EventId: "evt-1", Owner: "workspace"},
+			Event:                 &v226.EventEnvelope{EventId: "evt-1", EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "workspace"},
 			AuthenticatedProducer: "workspace",
 			ConsumerOwner:         owner,
 		})
@@ -639,7 +656,7 @@ func TestDeliverRequiresAnAuthenticatedProducerMatchingTheEnvelopeOwner(t *testi
 	ctx := context.Background()
 
 	_, err := server.Deliver(ctx, &v226.DeliverEventRequest{
-		Event:         &v226.EventEnvelope{EventId: "evt-1", Owner: "workspace"},
+		Event:         &v226.EventEnvelope{EventId: "evt-1", EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "workspace"},
 		ConsumerOwner: v226.OwnerEnum_OWNER_ENUM_TENANT,
 	})
 	if got := codeOf(t, err); got != codes.Unauthenticated {
@@ -657,7 +674,7 @@ func TestDeliverRequiresAnAuthenticatedProducerMatchingTheEnvelopeOwner(t *testi
 	// The transport peer is the authenticated producer, so an envelope claiming
 	// another owner is refused.
 	_, err = server.Deliver(ctx, &v226.DeliverEventRequest{
-		Event:                 &v226.EventEnvelope{EventId: "evt-1", Owner: "tenant"},
+		Event:                 &v226.EventEnvelope{EventId: "evt-1", EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "tenant"},
 		AuthenticatedProducer: "workspace",
 		ConsumerOwner:         v226.OwnerEnum_OWNER_ENUM_GATEWAY,
 	})

@@ -34,8 +34,9 @@ customer-data conversion, release and Instance deployment remain separate.
   owner; DeliverEventRequest carries consumer_owner; all 18 event versions declare
   fixed aggregate type/payload ID identity; the three generic Operation REST
   routes are classified as BFF entrypoints, not Workspace data ownership. The
-  route event now carries the actual route binding ID. Production proto bindings,
-  six service consumers and the BFF have **not** been updated in this pass.
+  route event now carries the actual route binding ID. W01 regenerated the
+  production bindings and derived producer/subscriber event identities; W02
+  adapted the six service consumers. The BFF is outside this W01/W02 closure.
 
 Field reference, static contract, and isolated cross-domain checks pass after
 the specification revision; `handoff_readiness.json` remains `needs_correction`
@@ -43,6 +44,39 @@ because the earlier UI prototype receipt binds the previous OpenAPI hash. Do not
 rewrite that receipt or claim it tested the new bytes. This evidence gap is
 separate from unimplemented production consumers and the first business slice. The full finding list and W01/W02/W03/W13/W25
 write responsibilities are in section 15 and the updated work packages.
+
+## v2.26 W01/W02 Implementation Closure (2026-09-23)
+
+The active implementation baseline is `b397bd6ddee3fd6dcad8f906155040271b2b2e74`
+(PR #23). The local W02 worktree retains the W01/W02 stack and its uncommitted
+changes were split into these commits:
+
+- W01: `b2c1c094` — event consumers are generated from the exact `events.json`
+  `x-consumers` mapping. The production proto and event sources remain byte
+  identical to the v2.26 specification. Regeneration used `grpcio-tools 1.80.0`,
+  `protoc-gen-go v1.36.6`, and `protoc-gen-go-grpc 1.5.1`; the generated v226
+  bindings have no drift.
+- W02: `18f13184` — six domain services validate owner
+  addressing, exact producer event identity, subscribed consumer ownership,
+  positive aggregate revision, idempotency, Outbox/Inbox identity and isolated
+  database role boundaries. Focused Go tests and the full PostgreSQL/Docker gate
+  pass with zero PostgreSQL skips.
+
+This closes the W01 contract/consumer binding and the W02 foundational owner,
+operation, persistence and boundary scope. `DomainInbox.Deliver` intentionally
+remains `Unimplemented`: no service returns a false ACK. Real event application,
+dispatch and ACK are owned by the later business work packages listed in
+`docs/spec/v2.26/14_implementation_work_packages.md` and are not evidence for
+this foundational closure. mTLS peer authentication and Tenant authorization
+remain W03 scope.
+
+Evidence from the current worktree:
+
+- six service modules plus `packages/contracts/go`: `go test ./... -count=1`
+  passed;
+- `npm run verify:local:full` passed, including 232 source tests, 114 browser
+  tests, typecheck, lint, build, all PostgreSQL modules, and Docker integration;
+- `git diff --check` passed.
 
 No product Go/TS code or database SQL was changed in this pass; the existing
 REST/proto/events specifications and derived checks were changed.

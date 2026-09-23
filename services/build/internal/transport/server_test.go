@@ -24,6 +24,23 @@ func codeOf(t *testing.T, err error) codes.Code {
 // another owner is refused before this owner's store is touched. The store here
 // has no database, so any store access would surface as an internal error rather
 // than the addressing error under test.
+func TestNilRequestsReturnInvalidArgument(t *testing.T) {
+	server := NewServer(store.New(nil))
+	ctx := context.Background()
+	if _, err := server.Read(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Read(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.Reconcile(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Reconcile(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.ReadOwnerCommit(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("ReadOwnerCommit(nil) = %v, want InvalidArgument", err)
+	}
+	if _, err := server.Deliver(ctx, nil); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Deliver(nil) = %v, want InvalidArgument", err)
+	}
+}
+
 func TestReadRefusesAnotherOwnerWithoutTouchingTheStore(t *testing.T) {
 	server := NewServer(store.New(nil))
 	ctx := context.Background()
@@ -64,7 +81,7 @@ func TestReconcileRefusesAnotherOwner(t *testing.T) {
 
 func TestDeliverRefusesAnotherInbox(t *testing.T) {
 	server := NewServer(store.New(nil))
-	envelope := &v226.EventEnvelope{EventId: "e-1", Owner: "capability"}
+	envelope := &v226.EventEnvelope{EventId: "e-1", EventType: "package.uploaded.v1", SchemaVersion: 1, Owner: "capability"}
 
 	_, err := server.Deliver(context.Background(), &v226.DeliverEventRequest{
 		Event:                 envelope,

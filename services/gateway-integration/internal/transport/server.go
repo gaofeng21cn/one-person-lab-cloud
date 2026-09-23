@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	contracts "opl-cloud/packages/contracts/go"
 	v226 "opl-cloud/packages/contracts/go/v226"
 	gatewaystore "opl-cloud/services/gateway-integration/internal/gateway/store"
 	tenantstore "opl-cloud/services/gateway-integration/internal/tenant/store"
@@ -75,6 +76,10 @@ func NewServer(tenant tenantOperations, gateway gatewayOperations) *Server {
 // before either store is touched, and the other owner's database is never
 // consulted, so its availability cannot change the answer here.
 func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) (*v226.Operation, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	route, ok := routeFromOperationOwner(request.GetOwner())
 	if !ok {
 		return nil, unservedOwnerError(request.GetOwner())
@@ -110,6 +115,10 @@ func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) 
 // observation. Like Read, the request names the owner, so only that owner's store
 // is consulted.
 func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperationRpcRequest) (*v226.Operation, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	route, ok := routeFromOperationOwner(request.GetOwner())
 	if !ok {
 		return nil, unservedOwnerError(request.GetOwner())
@@ -145,6 +154,10 @@ func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperation
 // the operation it refuses with FAILED_PRECONDITION instead of returning an empty
 // digest or a fabricated version.
 func (s *Server) ReadOwnerCommit(ctx context.Context, request *v226.ReadOwnerCommitRequest) (*v226.OwnerCommitEvidence, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	route, ok := routeFromOwner(request.GetOwner())
 	if !ok {
 		return nil, unservedOwnerError(request.GetOwner())
@@ -204,13 +217,17 @@ func (s *Server) ReadOwnerCommit(ctx context.Context, request *v226.ReadOwnerCom
 // process but keep separate databases, separate Inbox transactions and separate
 // ACKs, so one owner's Inbox is never acknowledged by the other's transaction, and
 // a request for an owner this unit does not serve is refused before either store is
-// touched. The transport peer is the authenticated producer, and the envelope
+// touched. The request carries a producer claim, and the envelope
 // owner must agree with it, so a producer cannot inject another owner's event.
 //
 // Neither owner's command work package has an accepted inbound event type yet, so
 // this refuses with UNIMPLEMENTED instead of recording an event it cannot apply or
 // acknowledging one it did not apply.
 func (s *Server) Deliver(ctx context.Context, request *v226.DeliverEventRequest) (*v226.InboxAck, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	route, ok := routeFromOwner(request.GetConsumerOwner())
 	if !ok {
 		return nil, unservedOwnerError(request.GetConsumerOwner())
@@ -219,10 +236,18 @@ func (s *Server) Deliver(ctx context.Context, request *v226.DeliverEventRequest)
 		return nil, status.Error(codes.InvalidArgument, "event envelope is required")
 	}
 	if request.GetAuthenticatedProducer() == "" {
-		return nil, status.Error(codes.Unauthenticated, "authenticated producer is required")
+		return nil, status.Error(codes.Unauthenticated, "claimed producer is required")
 	}
-	if request.GetEvent().GetOwner() != request.GetAuthenticatedProducer() {
-		return nil, status.Error(codes.PermissionDenied, "envelope owner does not match the authenticated producer")
+	event := request.GetEvent()
+	identity, known := contracts.LookupEventIdentity(event.GetEventType(), event.GetSchemaVersion())
+	if !known {
+		return nil, status.Error(codes.InvalidArgument, "event type or schema version is not specified")
+	}
+	if identity.Owner != event.GetOwner() || event.GetOwner() != request.GetAuthenticatedProducer() {
+		return nil, status.Error(codes.PermissionDenied, "event owner or claimed producer does not match the specified producer")
+	}
+	if !identity.Subscribed(string(route)) {
+		return nil, status.Error(codes.FailedPrecondition, "selected owner is not subscribed to the specified event version")
 	}
 	return nil, status.Errorf(codes.Unimplemented,
 		"%s inbox dispatch is implemented with the %s domain owner", route, route)
