@@ -253,9 +253,12 @@ func TestPostgresOutboxAppendDeliversPerConsumer(t *testing.T) {
 	bad := event
 	bad.ID = badID
 	// A distinct aggregate identity keeps the Outbox row itself valid, so the
-	// rejection has to come from the empty consumer owner.
+	// rejection has to come from the empty consumer owner. Its payload carries
+	// exactly the id its aggregate columns record, as the specification's fixed
+	// aggregate identity requires.
 	bad.AggregateID = "rt-bad-" + suffix
 	bad.AggregateRevision = 2
+	bad.Payload = json.RawMessage(`{"runtimeInstanceId":"rt-bad-` + suffix + `"}`)
 	if err := AppendEvent(ctx, tx, bad, []string{"workspace", "  "}); !errors.Is(err, ErrInvalidEvent) {
 		_ = tx.Rollback()
 		t.Fatalf("an empty consumer owner must be rejected, got %v", err)
@@ -352,16 +355,18 @@ func TestPostgresInboxDuplicateAndConflict(t *testing.T) {
 	runtimeControlStore := runtimeControlTestStore(t)
 	ctx := context.Background()
 	suffix := testSuffix(t)
+	// Fabric is this owner's inbound producer, and the event's aggregate identity is
+	// the one the specification fixes for its exact version.
 	event := InboundEvent{
 		ID:                "inb-" + suffix,
 		SourceOwner:       "fabric",
 		SourceEventID:     "evt-" + suffix,
 		EventType:         "fabric.resources_observed.v1",
 		SchemaVersion:     1,
-		AggregateType:     "runtime_instance",
-		AggregateID:       "rt-" + suffix,
+		AggregateType:     "resource_set",
+		AggregateID:       "rs-" + suffix,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-` + suffix + `","outcome":"confirmed"}`),
+		Payload:           json.RawMessage(`{"resourceSetId":"rs-` + suffix + `","outcome":"confirmed"}`),
 	}
 
 	tx, err := runtimeControlStore.DB().BeginTx(ctx, nil)
@@ -414,7 +419,7 @@ func TestPostgresInboxDuplicateAndConflict(t *testing.T) {
 
 	conflicting := event
 	conflicting.ID = event.ID + "-other"
-	conflicting.Payload = json.RawMessage(`{"runtimeInstanceId":"rt-` + suffix + `","outcome":"rejected"}`)
+	conflicting.Payload = json.RawMessage(`{"resourceSetId":"rs-` + suffix + `","outcome":"rejected"}`)
 	tx, err = runtimeControlStore.DB().BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("begin conflict transaction: %v", err)
@@ -427,6 +432,27 @@ func TestPostgresInboxDuplicateAndConflict(t *testing.T) {
 	if conflict.Decision != InboxConflict || conflict.Applied {
 		_ = tx.Rollback()
 		t.Fatalf("same identity with different bytes = %#v, want conflict", conflict)
+	}
+	_ = tx.Rollback()
+
+	// Reusing the source event id with changed metadata is also a conflict: the
+	// deduplication compares the whole immutable identity, so a producer cannot
+	// rewrite a recorded fact by keeping the bytes and moving the revision.
+	restated := event
+	restated.ID = event.ID + "-restated"
+	restated.AggregateRevision = event.AggregateRevision + 1
+	tx, err = runtimeControlStore.DB().BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin restated transaction: %v", err)
+	}
+	changed, err := DeliverInbox(ctx, tx, restated, time.Time{})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("deliver restated inbox event: %v", err)
+	}
+	if changed.Decision != InboxConflict || changed.Applied {
+		_ = tx.Rollback()
+		t.Fatalf("same bytes with a changed aggregate revision = %#v, want conflict", changed)
 	}
 	_ = tx.Rollback()
 
