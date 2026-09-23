@@ -279,6 +279,19 @@ func TestResourceCatalogOperationRoundTrip(t *testing.T) {
 		t.Fatalf("accepted input = %s", read.AcceptedInput)
 	}
 
+	// This owner writes no committed aggregate revision on the operation path yet,
+	// so the readback refuses instead of answering with an empty digest or a zero
+	// version, and a resource that is not the operation's own resource is bad input.
+	if _, err := catalogStore.ReadCommittedEvidence(ctx, operationID, "quote-1"); !errors.Is(err, ErrNoCommittedEvidence) {
+		t.Fatalf("committed evidence error = %v, want ErrNoCommittedEvidence", err)
+	}
+	if _, err := catalogStore.ReadCommittedEvidence(ctx, operationID, "quote-2"); !errors.Is(err, ErrInvalidOperationInput) {
+		t.Fatalf("mismatched resource error = %v, want ErrInvalidOperationInput", err)
+	}
+	if _, err := catalogStore.ReadCommittedEvidence(ctx, "missing-operation", "quote-1"); !errors.Is(err, ErrOperationNotFound) {
+		t.Fatalf("unknown operation evidence error = %v, want ErrOperationNotFound", err)
+	}
+
 	reconciled, err := catalogStore.ReconcileOperation(ctx, operationID)
 	if err != nil {
 		t.Fatalf("reconcile operation: %v", err)
@@ -317,17 +330,20 @@ func TestResourceCatalogOutboxDeliversPerConsumer(t *testing.T) {
 	}
 
 	runID := time.Now().UnixNano()
-	quoteID := fmt.Sprintf("quote-%d", runID)
+	policyID := fmt.Sprintf("policy-%d", runID)
+	// The recorded aggregate type and the payload field supplying the aggregate id
+	// are fixed for this exact event version by the specification's
+	// x-aggregate-identity, so the fixture states both rather than inventing them.
 	event := Event{
 		ID:                fmt.Sprintf("evt-%d", runID),
-		EventType:         "resource_catalog.quote_accepted.v1",
+		EventType:         "catalog.policy_changed.v1",
 		SchemaVersion:     1,
-		AggregateType:     "quote",
-		AggregateID:       quoteID,
+		AggregateType:     "catalog_policy_version",
+		AggregateID:       policyID,
 		AggregateRevision: 1,
 		TenantID:          "tenant-1",
 		CorrelationID:     "req-1",
-		Payload:           json.RawMessage(fmt.Sprintf(`{"quoteId":%q}`, quoteID)),
+		Payload:           json.RawMessage(fmt.Sprintf(`{"policyVersionId":%q}`, policyID)),
 		OccurredAt:        time.Now().UTC(),
 	}
 	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
@@ -395,22 +411,35 @@ func TestResourceCatalogOutboxDeliversPerConsumer(t *testing.T) {
 		t.Fatal("the workspace delivery was not recorded as acknowledged")
 	}
 
+	// The event is valid apart from the consumer owner, so it carries its own
+	// aggregate identity and a payload that agrees with it byte-for-byte.
 	blankConsumer := event
 	blankConsumer.ID = fmt.Sprintf("evt-blank-%d", runID)
-	blankConsumer.AggregateID = fmt.Sprintf("quote-blank-%d", runID)
+	blankConsumer.AggregateID = fmt.Sprintf("policy-blank-%d", runID)
+	blankConsumer.Payload = json.RawMessage(fmt.Sprintf(`{"policyVersionId":%q}`, blankConsumer.AggregateID))
 	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
 		return AppendEvent(ctx, tx, blankConsumer, []string{""})
 	}); !errors.Is(err, ErrInvalidEvent) {
 		t.Fatalf("blank consumer error = %v, want ErrInvalidEvent", err)
 	}
-	invalid := event
-	invalid.ID = fmt.Sprintf("evt-invalid-%d", runID)
-	invalid.AggregateID = fmt.Sprintf("quote-invalid-%d", runID)
-	invalid.AggregateType = ""
+	// The specification fixes the aggregate type for this exact event version, so
+	// a producer cannot satisfy the column with an invented string.
+	inventedType := event
+	inventedType.ID = fmt.Sprintf("evt-type-%d", runID)
+	inventedType.AggregateType = "anything_goes"
 	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
-		return AppendEvent(ctx, tx, invalid, []string{"ledger"})
+		return AppendEvent(ctx, tx, inventedType, []string{"ledger"})
 	}); !errors.Is(err, ErrInvalidEvent) {
-		t.Fatalf("missing aggregate type error = %v, want ErrInvalidEvent", err)
+		t.Fatalf("invented aggregate type error = %v, want ErrInvalidEvent", err)
+	}
+	// Nor can it record an aggregate id that its payload does not carry.
+	foreignID := event
+	foreignID.ID = fmt.Sprintf("evt-foreign-id-%d", runID)
+	foreignID.AggregateID = fmt.Sprintf("policy-other-%d", runID)
+	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
+		return AppendEvent(ctx, tx, foreignID, []string{"ledger"})
+	}); !errors.Is(err, ErrInvalidEvent) {
+		t.Fatalf("aggregate id from another field error = %v, want ErrInvalidEvent", err)
 	}
 }
 
@@ -424,16 +453,21 @@ func TestResourceCatalogInboxDeduplicatesAndRejectsConflicts(t *testing.T) {
 	_ = catalogStore
 
 	suffix := time.Now().UnixNano()
+	policyID := fmt.Sprintf("policy-%d", suffix)
+	// The specification's consumer table lists no resource_catalog subscription, so
+	// this generic store case uses a specification-defined event version. It proves
+	// the Inbox mechanism, not a production event validation, and no invented event
+	// type stands in for a real one.
 	first := InboundEvent{
 		ID:                fmt.Sprintf("inb-%d", suffix),
-		SourceOwner:       "fabric",
+		SourceOwner:       "resource_catalog",
 		SourceEventID:     fmt.Sprintf("evt-%d", suffix),
-		EventType:         "fabric.provider_capability_verified.v1",
+		EventType:         "catalog.policy_changed.v1",
 		SchemaVersion:     1,
-		AggregateType:     "compute_plan",
-		AggregateID:       "plan-1",
+		AggregateType:     "catalog_policy_version",
+		AggregateID:       policyID,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"computePlanId":"plan-1"}`),
+		Payload:           json.RawMessage(fmt.Sprintf(`{"policyVersionId":%q}`, policyID)),
 	}
 
 	var applied InboxResult
@@ -462,7 +496,7 @@ func TestResourceCatalogInboxDeduplicatesAndRejectsConflicts(t *testing.T) {
 
 	conflicting := first
 	conflicting.ID = fmt.Sprintf("inb-conflict-%d", suffix)
-	conflicting.Payload = json.RawMessage(`{"computePlanId":"plan-2"}`)
+	conflicting.Payload = json.RawMessage(fmt.Sprintf(`{"policyVersionId":%q,"tampered":true}`, policyID))
 	var conflict InboxResult
 	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
 		result, err := DeliverInbox(ctx, tx, conflicting, time.Time{})
@@ -473,6 +507,24 @@ func TestResourceCatalogInboxDeduplicatesAndRejectsConflicts(t *testing.T) {
 	}
 	if conflict.Decision != InboxConflict || conflict.Applied {
 		t.Fatalf("same identity with different bytes = %+v, want a conflict", conflict)
+	}
+
+	// Changed metadata with the same source owner and event id is refused too: the
+	// recorded identity is compared in full, so a producer cannot reuse a source
+	// event id to restate a fact at another revision.
+	changedMetadata := first
+	changedMetadata.ID = fmt.Sprintf("inb-metadata-%d", suffix)
+	changedMetadata.AggregateRevision = first.AggregateRevision + 1
+	var metadataConflict InboxResult
+	if err := withResourceCatalogTx(t, db, func(tx *sql.Tx) error {
+		result, err := DeliverInbox(ctx, tx, changedMetadata, time.Time{})
+		metadataConflict = result
+		return err
+	}); err != nil {
+		t.Fatalf("redelivery with changed metadata: %v", err)
+	}
+	if metadataConflict.Decision != InboxConflict || metadataConflict.Applied {
+		t.Fatalf("changed metadata = %+v, want a conflict", metadataConflict)
 	}
 
 	var storedHash string
@@ -486,7 +538,7 @@ func TestResourceCatalogInboxDeduplicatesAndRejectsConflicts(t *testing.T) {
 	if storedHash != first.PayloadSHA256() {
 		t.Fatalf("a conflict overwrote the recorded fact: hash = %q, want %q", storedHash, first.PayloadSHA256())
 	}
-	if string(payload) != `{"computePlanId": "plan-1"}` {
+	if string(payload) != fmt.Sprintf(`{"policyVersionId": %q}`, policyID) {
 		t.Fatalf("recorded payload = %s", payload)
 	}
 
