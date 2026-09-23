@@ -222,19 +222,25 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 
 	// The Outbox row and one delivery row per consumer owner are written in the
 	// same transaction as the command.
+	// The aggregate id is the payload's `walletOperationId`, the field the
+	// specification fixes for this exact event version.
+	walletOperationID := "wallet-op-" + suffix
 	event := Event{
 		ID:                "evt-" + suffix,
 		EventType:         "wallet.operation_observed.v1",
 		SchemaVersion:     1,
 		AggregateType:     "wallet_operation",
-		AggregateID:       "wallet-op-" + suffix,
+		AggregateID:       walletOperationID,
 		AggregateRevision: 1,
 		TenantID:          operation.TenantID,
 		CorrelationID:     operation.RequestID,
-		Payload:           json.RawMessage(`{"walletOperationId":"wallet-op-1"}`),
-		OccurredAt:        time.Now().UTC(),
+		Payload: json.RawMessage(`{"walletOperationId":"` + walletOperationID + `","workspaceId":"ws-` +
+			suffix + `","kind":"charge","status":"requested","amountUSDMicros":"100"}`),
+		OccurredAt: time.Now().UTC(),
 	}
-	if err := AppendEvent(ctx, tx, event, []string{"tenant", "workspace", "ledger"}); err != nil {
+	// The consumer list is the static subscription list of this event version
+	// (events.json `x-consumers`), so one delivery row is written per subscriber.
+	if err := AppendEvent(ctx, tx, event, []string{"workspace", "ledger"}); err != nil {
 		t.Fatalf("append outbox event: %v", err)
 	}
 
@@ -296,21 +302,21 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 	// Each consumer is acknowledged independently. The gated lane reuses one owner
 	// database across runs, so every delivery assertion is scoped to this run's
 	// event rather than to the whole consumer.
-	pending := pendingForEvent(t, owner, "tenant", event.ID)
+	pending := pendingForEvent(t, owner, "workspace", event.ID)
 	if len(pending) != 1 {
-		t.Fatalf("pending tenant deliveries = %+v", pending)
+		t.Fatalf("pending workspace deliveries = %+v", pending)
 	}
 	if pending[0].Event.AggregateType != "wallet_operation" {
 		t.Fatalf("pending delivery lost the producer-supplied aggregate type: %+v", pending[0].Event)
 	}
-	if err := owner.AcknowledgeDelivery(ctx, "tenant", event.ID); err != nil {
+	if err := owner.AcknowledgeDelivery(ctx, "workspace", event.ID); err != nil {
 		t.Fatalf("acknowledge delivery: %v", err)
 	}
-	if after := pendingForEvent(t, owner, "tenant", event.ID); len(after) != 0 {
-		t.Fatalf("tenant should be acknowledged, got %+v", after)
+	if after := pendingForEvent(t, owner, "workspace", event.ID); len(after) != 0 {
+		t.Fatalf("workspace should be acknowledged, got %+v", after)
 	}
 	// Acknowledging one consumer must not mark another one delivered.
-	for _, consumer := range []string{"workspace", "ledger"} {
+	for _, consumer := range []string{"ledger"} {
 		if remaining := pendingForEvent(t, owner, consumer, event.ID); len(remaining) != 1 {
 			t.Fatalf("%s delivery must remain pending, got %+v", consumer, remaining)
 		}
@@ -362,6 +368,8 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 	ctx := context.Background()
 	suffix := time.Now().UTC().Format("20060102150405.000000000")
 
+	// `tenant.access_revoked.v1` is a real event version whose subscription list
+	// includes this owner (events.json `x-consumers`).
 	event := InboundEvent{
 		ID:                "inb-" + suffix,
 		SourceOwner:       "tenant",
@@ -371,7 +379,8 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     "tenant",
 		AggregateID:       "tenant-" + suffix,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"tenantId":"tenant-1"}`),
+		Payload: json.RawMessage(`{"targetTenantId":"tenant-` + suffix + `","tenantOperationId":"op-` +
+			suffix + `","status":"suspended"}`),
 	}
 
 	commitTx, err := db.BeginTx(ctx, nil)
@@ -385,7 +394,7 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 	if result.Decision != InboxCommit || !result.Applied {
 		t.Fatalf("first delivery = %+v, want commit", result)
 	}
-	if err := MarkInboxProcessed(ctx, commitTx, event.SourceOwner, event.SourceEventID, "tenant-1", "", time.Now().UTC()); err != nil {
+	if err := MarkInboxProcessed(ctx, commitTx, event.SourceOwner, event.SourceEventID, event.AggregateID, "", time.Now().UTC()); err != nil {
 		t.Fatalf("mark processed: %v", err)
 	}
 	if err := commitTx.Commit(); err != nil {
@@ -405,6 +414,27 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		t.Fatalf("duplicate delivery = %+v, want duplicate without reapply", duplicate)
 	}
 
+	// The same source event id with changed metadata is a conflict, not a
+	// duplicate acknowledgement.
+	metadataChanged, err := DeliverInbox(ctx, duplicateTx, InboundEvent{
+		ID:                event.ID,
+		SourceOwner:       event.SourceOwner,
+		SourceEventID:     event.SourceEventID,
+		EventType:         event.EventType,
+		SchemaVersion:     event.SchemaVersion,
+		AggregateType:     event.AggregateType,
+		AggregateID:       event.AggregateID,
+		AggregateRevision: event.AggregateRevision + 1,
+		Payload:           event.Payload,
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("deliver event with changed metadata: %v", err)
+	}
+	if metadataChanged.Decision != InboxConflict || metadataChanged.Applied {
+		t.Fatalf("changed-metadata delivery = %+v, want conflict without overwrite", metadataChanged)
+	}
+
+	// The same identity with different bytes is a conflict too.
 	conflicting, err := DeliverInbox(ctx, duplicateTx, InboundEvent{
 		ID:                event.ID,
 		SourceOwner:       event.SourceOwner,
@@ -414,7 +444,8 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     event.AggregateType,
 		AggregateID:       event.AggregateID,
 		AggregateRevision: event.AggregateRevision,
-		Payload:           json.RawMessage(`{"tenantId":"tenant-2"}`),
+		Payload: json.RawMessage(`{"targetTenantId":"tenant-` + suffix + `","tenantOperationId":"op-` +
+			suffix + `","status":"deleting"}`),
 	}, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("deliver conflicting event: %v", err)
