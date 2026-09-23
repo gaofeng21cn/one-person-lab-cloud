@@ -4423,6 +4423,60 @@ func TestTencentSDKDestroyStorageVolumeTerminatesExactUnattachedCBS(t *testing.T
 	}
 }
 
+func TestTencentSDKDestroyStorageVolumeAcceptsManualRenewWithoutNotification(t *testing.T) {
+	api := &fakeNativeCbsAPI{diskState: "UNATTACHED", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW"}
+	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{
+		"TENCENT_CBS_DELETE_ATTEMPTS": "1", "TENCENT_CBS_DELETE_DELAY_MS": "0",
+	})
+	if !response.Ok || response.Status != "external_deleted" || response.MutationCount != 1 || len(api.terminateDisksRequests) != 1 {
+		t.Fatalf("same-disk manual-renew delete response=%#v mutations=%d", response, len(api.terminateDisksRequests))
+	}
+}
+
+func TestTencentSDKDeleteReadbackKeepsRenewalAndOwnershipGuards(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		action     string
+		renewFlag  string
+		wrongOwner bool
+		wantCode   contracts.ErrorCode
+	}{
+		{name: "delete readback accepts manual without notification", action: "read_storage_for_delete", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW"},
+		{name: "ordinary readback remains strict", action: "sync_storage_volume", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW", wantCode: errCBSRenewFlagManualNotifyOff},
+		{name: "delete readback rejects automatic renewal", action: "read_storage_for_delete", renewFlag: "NOTIFY_AND_AUTO_RENEW", wantCode: errCBSRenewFlagAutoRenew},
+		{name: "delete readback rejects foreign owner", action: "read_storage_for_delete", renewFlag: "DISABLE_NOTIFY_AND_MANUAL_RENEW", wrongOwner: true, wantCode: errCBSWorkspaceTagMismatch},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			api := &fakeNativeCbsAPI{diskState: "UNATTACHED", renewFlag: test.renewFlag}
+			if test.wrongOwner {
+				api.tags = map[string]string{"opl_workspace_id": "ws-other"}
+			}
+			request := cbsReadbackRequest(StorageInput{Id: "disk-storage-alpha", SizeGB: 10, Zone: "ap-guangzhou-3", DiskType: "CLOUD_BSSD"})
+			request.Action = test.action
+			response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).SyncStorageVolume(request, nil)
+			if test.wantCode == "" {
+				if !response.Ok || response.ProviderData["renewFlag"] != test.renewFlag || response.MutationCount != 0 {
+					t.Fatalf("delete readback=%#v", response)
+				}
+			} else if response.Ok || contracts.ErrorCode(response.ErrorCode) != test.wantCode || response.MutationCount != 0 {
+				t.Fatalf("unsafe readback=%#v wantCode=%q", response, test.wantCode)
+			}
+			if len(api.terminateDisksRequests) != 0 {
+				t.Fatalf("readback terminated %d disks", len(api.terminateDisksRequests))
+			}
+		})
+	}
+}
+
+func TestDeleteStorageReadbackDispatchesOnlyRead(t *testing.T) {
+	client := &fakeTencentClient{}
+	request := Request{Action: "read_storage_for_delete", Storage: StorageInput{Id: "disk-storage-alpha"}}
+	response := handleWithClient(request, protectedResourceEnv(), client)
+	if !response.Ok || response.MutationCount != 0 || client.storageRequest.Action != request.Action || client.storageRequest.Storage.Id != request.Storage.Id {
+		t.Fatalf("delete readback dispatch=%#v request=%#v", response, client.storageRequest)
+	}
+}
+
 func TestTencentSDKDestroyStorageVolumeIsIdempotentAfterConfirmedAbsence(t *testing.T) {
 	api := &fakeNativeCbsAPI{empty: true}
 	response := (&tencentSDKClient{region: "ap-guangzhou", nativeCbsClient: api}).DestroyStorageVolume(destroyStorageRequest(), map[string]string{})
@@ -4791,6 +4845,7 @@ func TestTencentSDKStorageVolumeReadbackFailsClosedOnBillingOrIdentityMismatch(t
 		{name: "wrong operation tag", configure: func(api *fakeNativeCbsAPI) { api.tags = map[string]string{"opl_operation_id": "op-other"} }, wantCode: errCBSOperationTagMismatch},
 		{name: "postpaid", configure: func(api *fakeNativeCbsAPI) { api.diskChargeType = "POSTPAID_BY_HOUR" }, wantCode: errCBSChargeTypeMismatch},
 		{name: "auto renew", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "NOTIFY_AND_AUTO_RENEW" }, wantCode: errCBSRenewFlagAutoRenew},
+		{name: "manual without notification", configure: func(api *fakeNativeCbsAPI) { api.renewFlag = "DISABLE_NOTIFY_AND_MANUAL_RENEW" }, wantCode: errCBSRenewFlagManualNotifyOff},
 		{name: "wrong type", configure: func(api *fakeNativeCbsAPI) { api.diskType = "CLOUD_SSD" }, wantCode: errCBSDiskTypeMismatch},
 		{name: "wrong size", configure: func(api *fakeNativeCbsAPI) { api.diskSize = 20 }, wantCode: errCBSSizeMismatch},
 		{name: "wrong zone", configure: func(api *fakeNativeCbsAPI) { api.zone = "ap-guangzhou-4" }, wantCode: errCBSZoneMismatch},

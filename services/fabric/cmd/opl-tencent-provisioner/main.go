@@ -1967,7 +1967,7 @@ func (client *tencentSDKClient) DiscoverStorageVolume(request Request, _ map[str
 	diskID := stringValue(disk.DiskId)
 	exactStorage := storage
 	exactStorage.Id = diskID
-	facts, err := validateCBSVolume(disk, exactStorage, request.Tags)
+	facts, err := validateCBSVolume(disk, exactStorage, request.Tags, false)
 	if err != nil || !oneMonthCBSPeriod(stringValue(disk.CreateTime), stringValue(disk.DeadlineTime)) {
 		return Response{Ok: false, StorageState: "unknown", ErrorCode: "tencent_cbs_identity_mismatch", Message: "Tencent CBS billing or identity facts do not match the original launch.", ProviderRequestId: requestID, Retryable: false}
 	}
@@ -2120,7 +2120,8 @@ func (client *tencentSDKClient) storageVolumeReadback(request Request, allowAbse
 		return Response{Ok: false, ErrorCode: "tencent_cbs_readback_cardinality_mismatch", Message: "Tencent CBS readback must return exactly one disk.", ProviderRequestId: requestID, Retryable: true}
 	}
 	disk := result.Response.DiskSet[0]
-	facts, err := validateCBSVolume(disk, storage, request.Tags)
+	deleting := request.Action == "read_storage_for_delete" || request.Action == "destroy_storage_volume"
+	facts, err := validateCBSVolume(disk, storage, request.Tags, deleting)
 	if err != nil {
 		return Response{Ok: false, ErrorCode: cbsReadbackValidationErrorCode(err), Message: "Tencent CBS billing or identity facts do not match the requested volume.", ProviderRequestId: requestID, Retryable: true}
 	}
@@ -2271,7 +2272,7 @@ func validCBSOwnershipTags(tags map[string]string) bool {
 	return true
 }
 
-func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags map[string]string) (map[string]string, error) {
+func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags map[string]string, deleting bool) (map[string]string, error) {
 	if disk == nil || !validCBSReadbackInput(storage, expectedTags) {
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_identity_missing"}
 	}
@@ -2302,7 +2303,7 @@ func validateCBSVolume(disk *cbs2017.Disk, storage StorageInput, expectedTags ma
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_state_missing"}
 	case stringValue(disk.DiskChargeType) != "PREPAID":
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_charge_type_mismatch"}
-	case stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW":
+	case stringValue(disk.RenewFlag) != "NOTIFY_AND_MANUAL_RENEW" && !(deleting && stringValue(disk.RenewFlag) == "DISABLE_NOTIFY_AND_MANUAL_RENEW"):
 		return nil, cbsReadbackValidationError{code: cbsRenewFlagMismatchCode(stringValue(disk.RenewFlag))}
 	case stringValue(disk.DiskType) != storage.DiskType:
 		return nil, cbsReadbackValidationError{code: "tencent_cbs_readback_disk_type_mismatch"}
@@ -4257,7 +4258,7 @@ func (client *tencentSDKClient) cbsVolumeTruth(storage StorageInput, tags map[st
 		return false, "NOT_FOUND", requestID, nil, nil
 	}
 	disk := response.Response.DiskSet[0]
-	facts, err := validateCBSVolume(disk, storage, tags)
+	facts, err := validateCBSVolume(disk, storage, tags, false)
 	if err != nil {
 		return false, "", requestID, nil, err
 	}
@@ -6150,7 +6151,7 @@ func handleWithClient(request Request, env map[string]string, client TencentClie
 		return client.PrepareComputeAllocation(request, env)
 	case "create_storage_volume":
 		return client.CreateStorageVolume(request, env)
-	case "sync_storage_volume":
+	case "sync_storage_volume", "read_storage_for_delete":
 		return client.SyncStorageVolume(request, env)
 	case "destroy_storage_volume":
 		if request.DryRun {

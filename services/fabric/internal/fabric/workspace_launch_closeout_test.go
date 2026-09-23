@@ -520,7 +520,7 @@ func TestWorkspaceLaunchCloseoutTencentCBSResponseLossUsesOriginalDiscoveryAndDe
 				t.Fatal("forgot original discovered disk after delete/restart")
 			}
 			return provisionerResponse{OK: true, StorageState: "storage_existing_exact", StorageVolumeID: "disk-response-loss", Status: "ready", CBSStatus: "UNATTACHED", ProviderRequestID: "discover-original", ProviderData: map[string]string{"region": "ap-guangzhou", "zone": "ap-guangzhou-3", "diskType": "CLOUD_BSSD", "sizeGb": "10", "renewFlag": "NOTIFY_AND_MANUAL_RENEW", "deadline": "2026-10-09T00:00:00Z"}}, nil
-		case "sync_storage_volume":
+		case "sync_storage_volume", "read_storage_for_delete":
 			response := provisionerResponse{OK: true, StorageVolumeID: "disk-response-loss", Status: "ready", CBSStatus: "UNATTACHED", ProviderRequestID: "read-original", ProviderData: map[string]string{"region": "ap-guangzhou", "zone": "ap-guangzhou-3", "diskType": "CLOUD_BSSD", "sizeGb": "10", "renewFlag": "NOTIFY_AND_MANUAL_RENEW", "deadline": "2026-10-09T00:00:00Z"}}
 			if deleted {
 				response.Status = "external_deleted"
