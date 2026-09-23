@@ -11,25 +11,40 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func TestDecideInboxDistinguishesNewDuplicateAndConflict(t *testing.T) {
-	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	const other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-
-	cases := []struct {
-		name         string
-		existingHash string
-		found        bool
-		incomingHash string
-		want         InboxDecision
-	}{
-		{"first delivery applies", "", false, hash, InboxCommit},
-		{"identical repeat is a duplicate", hash, true, hash, InboxDuplicate},
-		{"same identity different bytes is a conflict", hash, true, other, InboxConflict},
+func TestDecideInboxComparesTheWholeImmutableIdentity(t *testing.T) {
+	base := RecordedIdentity{
+		EventType:         "fabric.resources_observed.v1",
+		SchemaVersion:     1,
+		AggregateType:     "resource_set",
+		AggregateID:       "rs-1",
+		AggregateRevision: 2,
+		PayloadSHA256:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := DecideInbox(testCase.existingHash, testCase.found, testCase.incomingHash); got != testCase.want {
-				t.Fatalf("DecideInbox() = %q, want %q", got, testCase.want)
+
+	if got := DecideInbox(RecordedIdentity{}, false, base); got != InboxCommit {
+		t.Fatalf("first delivery = %q, want %q", got, InboxCommit)
+	}
+	if got := DecideInbox(base, true, base); got != InboxDuplicate {
+		t.Fatalf("identical repeat = %q, want %q", got, InboxDuplicate)
+	}
+
+	// Changing any part of the immutable identity is a conflict, not a duplicate,
+	// so a producer cannot reuse a source event id to rewrite a recorded fact.
+	for name, mutate := range map[string]func(*RecordedIdentity){
+		"event type":         func(r *RecordedIdentity) { r.EventType = "runtime.readiness_observed.v1" },
+		"schema version":     func(r *RecordedIdentity) { r.SchemaVersion = 2 },
+		"aggregate type":     func(r *RecordedIdentity) { r.AggregateType = "runtime_instance" },
+		"aggregate id":       func(r *RecordedIdentity) { r.AggregateID = "rs-2" },
+		"aggregate revision": func(r *RecordedIdentity) { r.AggregateRevision = 3 },
+		"payload bytes": func(r *RecordedIdentity) {
+			r.PayloadSHA256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			incoming := base
+			mutate(&incoming)
+			if got := DecideInbox(base, true, incoming); got != InboxConflict {
+				t.Fatalf("changed %s = %q, want %q", name, got, InboxConflict)
 			}
 		})
 	}
@@ -58,23 +73,19 @@ func TestEventValidationRejectsIncompleteInputAndHashesPayload(t *testing.T) {
 		t.Fatal("payload hash must be stable for identical bytes")
 	}
 
-	// The aggregate type is an explicit producer-supplied field: an empty value
-	// must be rejected, never defaulted from the event type or the payload.
-	missingAggregateType := valid
-	missingAggregateType.AggregateType = ""
-	if err := missingAggregateType.validate(); err == nil {
-		t.Fatal("event without an aggregate type must be rejected")
-	}
-
 	for name, mutate := range map[string]func(*Event){
-		"missing id":             func(e *Event) { e.ID = "" },
-		"missing event type":     func(e *Event) { e.EventType = "" },
-		"missing schema version": func(e *Event) { e.SchemaVersion = 0 },
-		"missing aggregate id":   func(e *Event) { e.AggregateID = "" },
-		"negative revision":      func(e *Event) { e.AggregateRevision = -1 },
-		"missing correlation":    func(e *Event) { e.CorrelationID = "" },
-		"missing payload":        func(e *Event) { e.Payload = nil },
-		"missing occurrence":     func(e *Event) { e.OccurredAt = time.Time{} },
+		"missing id":                  func(e *Event) { e.ID = "" },
+		"missing event type":          func(e *Event) { e.EventType = "" },
+		"missing schema version":      func(e *Event) { e.SchemaVersion = 0 },
+		"missing aggregate id":        func(e *Event) { e.AggregateID = "" },
+		"negative revision":           func(e *Event) { e.AggregateRevision = -1 },
+		"missing correlation":         func(e *Event) { e.CorrelationID = "" },
+		"missing payload":             func(e *Event) { e.Payload = nil },
+		"missing occurrence":          func(e *Event) { e.OccurredAt = time.Time{} },
+		"invented event version":      func(e *Event) { e.EventType = "resource_catalog.quote_accepted.v1" },
+		"invented aggregate type":     func(e *Event) { e.AggregateType = "anything_goes" },
+		"aggregate id from elsewhere": func(e *Event) { e.AggregateID = "not-in-payload" },
+		"payload without the id":      func(e *Event) { e.Payload = json.RawMessage(`{"resourceSetId":"rs-1"}`) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := valid
@@ -93,10 +104,10 @@ func TestInboundEventValidationAndHashing(t *testing.T) {
 		SourceEventID:     "evt-1",
 		EventType:         "fabric.resources_observed.v1",
 		SchemaVersion:     1,
-		AggregateType:     "runtime_instance",
-		AggregateID:       "rt-1",
+		AggregateType:     "resource_set",
+		AggregateID:       "rs-1",
 		AggregateRevision: 2,
-		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-1"}`),
+		Payload:           json.RawMessage(`{"resourceSetId":"rs-1"}`),
 	}
 	if err := valid.validate(); err != nil {
 		t.Fatalf("valid inbound event rejected: %v", err)
@@ -105,11 +116,13 @@ func TestInboundEventValidationAndHashing(t *testing.T) {
 		t.Fatal("inbound payload hash must be a hex sha256")
 	}
 	for name, mutate := range map[string]func(*InboundEvent){
-		"missing source owner":   func(e *InboundEvent) { e.SourceOwner = "" },
-		"missing source event":   func(e *InboundEvent) { e.SourceEventID = "" },
-		"missing aggregate type": func(e *InboundEvent) { e.AggregateType = "" },
-		"negative revision":      func(e *InboundEvent) { e.AggregateRevision = -1 },
-		"missing payload":        func(e *InboundEvent) { e.Payload = nil },
+		"missing source owner":    func(e *InboundEvent) { e.SourceOwner = "" },
+		"missing source event":    func(e *InboundEvent) { e.SourceEventID = "" },
+		"negative revision":       func(e *InboundEvent) { e.AggregateRevision = -1 },
+		"missing payload":         func(e *InboundEvent) { e.Payload = nil },
+		"invented event version":  func(e *InboundEvent) { e.EventType = "resource_catalog.quote_accepted.v1" },
+		"aggregate type mismatch": func(e *InboundEvent) { e.AggregateType = "runtime_instance" },
+		"aggregate id mismatch":   func(e *InboundEvent) { e.AggregateID = "other" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := valid
