@@ -31,9 +31,14 @@ func NewServer(buildStore *store.Store) *Server {
 	return &Server{store: buildStore}
 }
 
-// Read returns the owner-local operation. An unknown id in this owner's
-// database is NOT_FOUND; another owner's operation is not visible here.
+// Read returns the owner-local operation. An operation id is unique only inside
+// its owning context, so the request names the owner: a request for another owner
+// is refused before this owner's store is touched, and this owner never scans
+// another owner's records to answer.
 func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) (*v226.Operation, error) {
+	if err := requireOperationOwner(request.GetOwner()); err != nil {
+		return nil, err
+	}
 	if request == nil || request.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
@@ -51,6 +56,9 @@ func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) 
 // operation whose external result is unknown stays non-terminal: the owner does
 // not finalize on a guess, and the response keeps the unknown observation.
 func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperationRpcRequest) (*v226.Operation, error) {
+	if err := requireOperationOwner(request.GetOwner()); err != nil {
+		return nil, err
+	}
 	if request == nil || request.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
@@ -64,44 +72,80 @@ func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperation
 	return toProtoOperation(result.Operation), nil
 }
 
-// ReadOwnerCommit returns this owner's committed evidence for an operation. The
-// owner answers from its own records; a caller-supplied claim is never accepted
-// as proof.
+// ReadOwnerCommit returns this owner's real committed evidence for an operation.
+// The owner answers from its own records; a caller-supplied claim is never
+// accepted as proof. When this owner has no committed aggregate evidence yet it
+// refuses instead of returning an empty digest or a fabricated version, because a
+// caller must not sign a claim or a grant from evidence that does not exist.
 func (s *Server) ReadOwnerCommit(ctx context.Context, request *v226.ReadOwnerCommitRequest) (*v226.OwnerCommitEvidence, error) {
-	if request == nil || request.GetOperationId() == "" {
+	if request == nil || request.GetOwner() != v226.OwnerEnum_OWNER_ENUM_BUILD {
+		return nil, status.Errorf(codes.InvalidArgument, "this endpoint serves owner %s", ownerName)
+	}
+	if request.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
-	operation, err := s.store.ReadOperation(ctx, request.GetOperationId())
-	if errors.Is(err, store.ErrOperationNotFound) {
+	evidence, err := s.store.ReadCommittedEvidence(ctx, request.GetOperationId(), request.GetResourceId())
+	switch {
+	case errors.Is(err, store.ErrOperationNotFound):
 		return nil, status.Error(codes.NotFound, "operation not found")
-	}
-	if err != nil {
+	case errors.Is(err, store.ErrInvalidOperationInput):
+		return nil, status.Error(codes.InvalidArgument, "resource id does not match the operation")
+	case errors.Is(err, store.ErrNoCommittedEvidence):
+		return nil, status.Error(codes.FailedPrecondition,
+			"no committed aggregate evidence for this operation; refusing instead of returning a placeholder digest or version")
+	case err != nil:
 		return nil, status.Error(codes.Internal, "read owner commit failed")
 	}
-	if request.GetResourceId() != "" && request.GetResourceId() != operation.ResourceID {
-		return nil, status.Error(codes.InvalidArgument, "resource id does not match the operation")
-	}
-	evidence := &v226.OwnerCommitEvidence{
-		Owner:            v226.OwnerEnum_OWNER_ENUM_BUILD,
-		OperationId:      operation.ID,
-		ResourceId:       operation.ResourceID,
-		CommittedVersion: 0,
-		AcceptedAt:       timestamppb.New(operation.CreatedAt.UTC()),
-	}
-	return evidence, nil
+	return &v226.OwnerCommitEvidence{
+		Owner:               v226.OwnerEnum_OWNER_ENUM_BUILD,
+		OperationId:         evidence.OperationID,
+		ResourceId:          evidence.ResourceID,
+		AcceptedInputDigest: evidence.AcceptedInputDigest,
+		CommittedVersion:    evidence.CommittedVersion,
+		AcceptedAt:          timestamppb.New(evidence.AcceptedAt.UTC()),
+	}, nil
 }
 
-// Deliver records an inbound event in the consumer's own database. A duplicate
-// is acknowledged without reapplication; the same producer/event identity with
-// different bytes is rejected instead of overwriting the recorded fact.
+// Deliver records an inbound event in the consumer's own database. Delivery
+// targets one logical Inbox: the request names the consumer owner, so a process
+// that carries two owners still acknowledges each owner separately, and a request
+// for another owner is refused before this owner's store is touched.
 func (s *Server) Deliver(ctx context.Context, request *v226.DeliverEventRequest) (*v226.InboxAck, error) {
-	if request == nil || request.GetEvent() == nil {
+	if err := requireConsumerOwner(request.GetConsumerOwner()); err != nil {
+		return nil, err
+	}
+	if request.GetEvent() == nil {
 		return nil, status.Error(codes.InvalidArgument, "event envelope is required")
 	}
 	if request.GetAuthenticatedProducer() == "" {
 		return nil, status.Error(codes.Unauthenticated, "authenticated producer is required")
 	}
+	// The transport peer is the authenticated producer; the envelope owner must
+	// agree with it, so a producer cannot inject another owner's event.
+	if request.GetEvent().GetOwner() != request.GetAuthenticatedProducer() {
+		return nil, status.Error(codes.PermissionDenied, "envelope owner does not match the authenticated producer")
+	}
 	return nil, status.Error(codes.Unimplemented, "build inbox dispatch is implemented with the build job owner")
+}
+
+// ownerName is this owner's logical name in the v2.26 domain set.
+const ownerName = "build"
+
+// requireOperationOwner refuses a request that names another owner, before any
+// store access, because an operation id is unique only inside its owner.
+func requireOperationOwner(owner v226.OperationOwnerEnum) error {
+	if owner != v226.OperationOwnerEnum_OPERATION_OWNER_ENUM_BUILD {
+		return status.Errorf(codes.InvalidArgument, "this endpoint serves owner %s", ownerName)
+	}
+	return nil
+}
+
+// requireConsumerOwner refuses a request that targets another owner's Inbox.
+func requireConsumerOwner(owner v226.OwnerEnum) error {
+	if owner != v226.OwnerEnum_OWNER_ENUM_BUILD {
+		return status.Errorf(codes.InvalidArgument, "this endpoint serves owner %s", ownerName)
+	}
+	return nil
 }
 
 func toProtoOperation(operation store.Operation) *v226.Operation {
