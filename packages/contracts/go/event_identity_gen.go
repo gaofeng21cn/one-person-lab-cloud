@@ -26,30 +26,31 @@ type EventIdentity struct {
 	EventType        string
 	SchemaVersion    int32
 	Owner            string
+	Consumers        []string
 	AggregateType    string
 	AggregateIDField string
 }
 
 // EventIdentities lists every event version the specification defines.
 var EventIdentities = []EventIdentity{
-	{EventType: "build.artifact_confirmed.v1", SchemaVersion: 1, Owner: "build", AggregateType: "build_job", AggregateIDField: "buildJobId"},
-	{EventType: "build.failed.v1", SchemaVersion: 1, Owner: "build", AggregateType: "build_job", AggregateIDField: "buildJobId"},
-	{EventType: "capability.version_registered.v1", SchemaVersion: 1, Owner: "capability", AggregateType: "capability_version", AggregateIDField: "capabilityVersionId"},
-	{EventType: "catalog.policy_changed.v1", SchemaVersion: 1, Owner: "resource_catalog", AggregateType: "catalog_policy_version", AggregateIDField: "policyVersionId"},
-	{EventType: "fabric.resources_observed.v1", SchemaVersion: 1, Owner: "fabric", AggregateType: "resource_set", AggregateIDField: "resourceSetId"},
-	{EventType: "fabric.route_observed.v1", SchemaVersion: 1, Owner: "fabric", AggregateType: "route_binding", AggregateIDField: "routeBindingId"},
-	{EventType: "ledger.receipt_recorded.v1", SchemaVersion: 1, Owner: "ledger", AggregateType: "receipt", AggregateIDField: "receiptId"},
-	{EventType: "package.uploaded.v1", SchemaVersion: 1, Owner: "capability", AggregateType: "package_version", AggregateIDField: "packageVersionId"},
-	{EventType: "runtime.readiness_observed.v1", SchemaVersion: 1, Owner: "runtime_control", AggregateType: "runtime_instance", AggregateIDField: "runtimeInstanceId"},
-	{EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "workspace", AggregateType: "subscription", AggregateIDField: "subscriptionId"},
-	{EventType: "tenant.access_revoked.v1", SchemaVersion: 1, Owner: "tenant", AggregateType: "tenant", AggregateIDField: "targetTenantId"},
-	{EventType: "tenant.reenabled.v1", SchemaVersion: 1, Owner: "tenant", AggregateType: "tenant", AggregateIDField: "targetTenantId"},
-	{EventType: "tenant.restored.v1", SchemaVersion: 1, Owner: "tenant", AggregateType: "tenant", AggregateIDField: "targetTenantId"},
-	{EventType: "wallet.operation_observed.v1", SchemaVersion: 1, Owner: "gateway", AggregateType: "wallet_operation", AggregateIDField: "walletOperationId"},
-	{EventType: "workspace.deletion_confirmed.v1", SchemaVersion: 1, Owner: "workspace", AggregateType: "workspace", AggregateIDField: "workspaceId"},
-	{EventType: "workspace.period_obligation_changed.v1", SchemaVersion: 1, Owner: "workspace", AggregateType: "period_obligation", AggregateIDField: "obligationId"},
-	{EventType: "workspace.plan_change_state_changed.v1", SchemaVersion: 1, Owner: "workspace", AggregateType: "plan_change", AggregateIDField: "planChangeId"},
-	{EventType: "workspace.state_changed.v1", SchemaVersion: 1, Owner: "workspace", AggregateType: "workspace", AggregateIDField: "workspaceId"},
+	{EventType: "build.artifact_confirmed.v1", SchemaVersion: 1, Owner: "build", Consumers: []string{"capability", "ledger"}, AggregateType: "build_job", AggregateIDField: "buildJobId"},
+	{EventType: "build.failed.v1", SchemaVersion: 1, Owner: "build", Consumers: []string{"ledger"}, AggregateType: "build_job", AggregateIDField: "buildJobId"},
+	{EventType: "capability.version_registered.v1", SchemaVersion: 1, Owner: "capability", Consumers: []string{"build", "ledger"}, AggregateType: "capability_version", AggregateIDField: "capabilityVersionId"},
+	{EventType: "catalog.policy_changed.v1", SchemaVersion: 1, Owner: "resource_catalog", Consumers: []string{"ledger", "workspace"}, AggregateType: "catalog_policy_version", AggregateIDField: "policyVersionId"},
+	{EventType: "fabric.resources_observed.v1", SchemaVersion: 1, Owner: "fabric", Consumers: []string{"ledger", "runtime_control", "workspace"}, AggregateType: "resource_set", AggregateIDField: "resourceSetId"},
+	{EventType: "fabric.route_observed.v1", SchemaVersion: 1, Owner: "fabric", Consumers: []string{"ledger", "workspace"}, AggregateType: "route_binding", AggregateIDField: "routeBindingId"},
+	{EventType: "ledger.receipt_recorded.v1", SchemaVersion: 1, Owner: "ledger", Consumers: []string{"workspace"}, AggregateType: "receipt", AggregateIDField: "receiptId"},
+	{EventType: "package.uploaded.v1", SchemaVersion: 1, Owner: "capability", Consumers: []string{"ledger"}, AggregateType: "package_version", AggregateIDField: "packageVersionId"},
+	{EventType: "runtime.readiness_observed.v1", SchemaVersion: 1, Owner: "runtime_control", Consumers: []string{"ledger", "workspace"}, AggregateType: "runtime_instance", AggregateIDField: "runtimeInstanceId"},
+	{EventType: "subscription.renewal_settings_changed.v1", SchemaVersion: 1, Owner: "workspace", Consumers: []string{"gateway", "ledger", "tenant"}, AggregateType: "subscription", AggregateIDField: "subscriptionId"},
+	{EventType: "tenant.access_revoked.v1", SchemaVersion: 1, Owner: "tenant", Consumers: []string{"build", "capability", "gateway", "ledger", "workspace"}, AggregateType: "tenant", AggregateIDField: "targetTenantId"},
+	{EventType: "tenant.reenabled.v1", SchemaVersion: 1, Owner: "tenant", Consumers: []string{"gateway", "ledger", "workspace"}, AggregateType: "tenant", AggregateIDField: "targetTenantId"},
+	{EventType: "tenant.restored.v1", SchemaVersion: 1, Owner: "tenant", Consumers: []string{"build", "capability", "gateway", "ledger"}, AggregateType: "tenant", AggregateIDField: "targetTenantId"},
+	{EventType: "wallet.operation_observed.v1", SchemaVersion: 1, Owner: "gateway", Consumers: []string{"ledger", "workspace"}, AggregateType: "wallet_operation", AggregateIDField: "walletOperationId"},
+	{EventType: "workspace.deletion_confirmed.v1", SchemaVersion: 1, Owner: "workspace", Consumers: []string{"ledger", "tenant"}, AggregateType: "workspace", AggregateIDField: "workspaceId"},
+	{EventType: "workspace.period_obligation_changed.v1", SchemaVersion: 1, Owner: "workspace", Consumers: []string{"gateway", "ledger"}, AggregateType: "period_obligation", AggregateIDField: "obligationId"},
+	{EventType: "workspace.plan_change_state_changed.v1", SchemaVersion: 1, Owner: "workspace", Consumers: []string{"ledger"}, AggregateType: "plan_change", AggregateIDField: "planChangeId"},
+	{EventType: "workspace.state_changed.v1", SchemaVersion: 1, Owner: "workspace", Consumers: []string{"ledger"}, AggregateType: "workspace", AggregateIDField: "workspaceId"},
 }
 
 var eventIdentityIndex = func() map[eventIdentityKey]EventIdentity {
@@ -69,6 +70,16 @@ type eventIdentityKey struct {
 func LookupEventIdentity(eventType string, schemaVersion int32) (EventIdentity, bool) {
 	identity, ok := eventIdentityIndex[eventIdentityKey{eventType: eventType, schemaVersion: schemaVersion}]
 	return identity, ok
+}
+
+// Subscribed reports whether owner is listed in this exact event version's x-consumers.
+func (identity EventIdentity) Subscribed(owner string) bool {
+	for _, consumer := range identity.Consumers {
+		if consumer == owner {
+			return true
+		}
+	}
+	return false
 }
 
 // AggregateIDFromPayload reads this identity's aggregate id from the exact payload

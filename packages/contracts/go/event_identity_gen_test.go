@@ -105,3 +105,23 @@ func TestEverySpecifiedEventResolvesItsAggregateID(t *testing.T) {
 		}
 	}
 }
+
+func TestEventIdentityCarriesTheSpecifiedProducerAndSubscribers(t *testing.T) {
+	identity, ok := LookupEventIdentity("subscription.renewal_settings_changed.v1", 1)
+	if !ok {
+		t.Fatal("subscription.renewal_settings_changed.v1@1 must be specified")
+	}
+	if identity.Owner != "workspace" {
+		t.Fatalf("producer owner = %q, want workspace", identity.Owner)
+	}
+	for _, owner := range []string{"gateway", "ledger", "tenant"} {
+		if !identity.Subscribed(owner) {
+			t.Errorf("specified subscriber %q was not generated", owner)
+		}
+	}
+	for _, owner := range []string{"build", "capability", "workspace", ""} {
+		if identity.Subscribed(owner) {
+			t.Errorf("unspecified subscriber %q was accepted", owner)
+		}
+	}
+}

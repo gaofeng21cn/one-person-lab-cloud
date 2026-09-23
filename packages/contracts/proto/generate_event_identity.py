@@ -26,6 +26,7 @@ def load(path):
                 "eventType": properties["eventType"]["const"],
                 "schemaVersion": properties["schemaVersion"]["const"],
                 "owner": properties["owner"]["const"],
+                "consumers": sorted(entry["x-consumers"]),
                 "aggregateType": identity["type"],
                 "aggregateIDField": identity["idPayloadField"],
             }
@@ -64,6 +65,7 @@ def render(identities):
         "\tEventType        string",
         "\tSchemaVersion    int32",
         "\tOwner            string",
+        "\tConsumers        []string",
         "\tAggregateType    string",
         "\tAggregateIDField string",
         "}",
@@ -73,11 +75,12 @@ def render(identities):
     ]
     for identity in identities:
         lines.append(
-            "\t{EventType: %s, SchemaVersion: %d, Owner: %s, AggregateType: %s, AggregateIDField: %s},"
+            "\t{EventType: %s, SchemaVersion: %d, Owner: %s, Consumers: []string{%s}, AggregateType: %s, AggregateIDField: %s},"
             % (
                 json.dumps(identity["eventType"]),
                 identity["schemaVersion"],
                 json.dumps(identity["owner"]),
+                ", ".join(json.dumps(owner) for owner in identity["consumers"]),
                 json.dumps(identity["aggregateType"]),
                 json.dumps(identity["aggregateIDField"]),
             )
@@ -102,6 +105,16 @@ def render(identities):
         "func LookupEventIdentity(eventType string, schemaVersion int32) (EventIdentity, bool) {",
         "\tidentity, ok := eventIdentityIndex[eventIdentityKey{eventType: eventType, schemaVersion: schemaVersion}]",
         "\treturn identity, ok",
+        "}",
+        "",
+        "// Subscribed reports whether owner is listed in this exact event version's x-consumers.",
+        "func (identity EventIdentity) Subscribed(owner string) bool {",
+        "\tfor _, consumer := range identity.Consumers {",
+        "\t\tif consumer == owner {",
+        "\t\t\treturn true",
+        "\t\t}",
+        "\t}",
+        "\treturn false",
         "}",
         "",
         "// AggregateIDFromPayload reads this identity's aggregate id from the exact payload",
