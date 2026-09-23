@@ -61,6 +61,11 @@ func TestEventValidationRejectsIncompleteInputAndHashesPayload(t *testing.T) {
 	if err := valid.validate(); err != nil {
 		t.Fatalf("valid event rejected: %v", err)
 	}
+	zeroRevision := valid
+	zeroRevision.AggregateRevision = 0
+	if err := zeroRevision.validate(); err == nil {
+		t.Fatal("aggregate revision zero must be rejected")
+	}
 	hash := valid.PayloadSHA256()
 	if len(hash) != 64 {
 		t.Fatalf("payload hash %q must be a hex sha256", hash)
@@ -130,6 +135,11 @@ func TestInboundEventValidationAndHashing(t *testing.T) {
 	}
 	if err := valid.validate(); err != nil {
 		t.Fatalf("valid inbound event rejected: %v", err)
+	}
+	zeroRevision := valid
+	zeroRevision.AggregateRevision = 0
+	if err := zeroRevision.validate(); err == nil {
+		t.Fatal("aggregate revision zero must be rejected")
 	}
 	if len(valid.PayloadSHA256()) != 64 {
 		t.Fatal("inbound payload hash must be a hex sha256")

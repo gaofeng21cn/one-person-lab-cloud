@@ -390,7 +390,7 @@ func TestWriterRoleCannotRewriteAppendOnlyFacts(t *testing.T) {
 		CorrelationID:     "req-priv-" + suffix,
 		Payload:           json.RawMessage(`{"buildJobId":"job-priv-` + suffix + `"}`),
 		OccurredAt:        time.Now().UTC(),
-	}, []string{"ledger"}); err != nil {
+	}, []string{"capability", "ledger"}); err != nil {
 		t.Fatalf("append outbox event: %v", err)
 	}
 	if err := tx.Commit(); err != nil {

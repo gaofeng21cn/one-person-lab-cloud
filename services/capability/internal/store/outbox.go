@@ -24,6 +24,8 @@ var ErrInvalidEvent = errors.New("invalid outbox event")
 // AggregateType and AggregateID are not free-form: the specification fixes both
 // per exact (eventType, schemaVersion) through `x-aggregate-identity`, so they are
 // validated against that mapping instead of being accepted as producer text.
+const eventOwner = "capability"
+
 type Event struct {
 	ID                string
 	EventType         string
@@ -53,14 +55,21 @@ func (e Event) validate() error {
 		return fmt.Errorf("%w: event type is required", ErrInvalidEvent)
 	case e.SchemaVersion <= 0:
 		return fmt.Errorf("%w: schema version must be positive", ErrInvalidEvent)
-	case e.AggregateRevision < 0:
-		return fmt.Errorf("%w: aggregate revision must not be negative", ErrInvalidEvent)
+	case e.AggregateRevision <= 0:
+		return fmt.Errorf("%w: aggregate revision must be positive", ErrInvalidEvent)
 	case strings.TrimSpace(e.CorrelationID) == "":
 		return fmt.Errorf("%w: correlation id is required", ErrInvalidEvent)
 	case len(e.Payload) == 0:
 		return fmt.Errorf("%w: payload is required", ErrInvalidEvent)
 	case e.OccurredAt.IsZero():
 		return fmt.Errorf("%w: occurrence time is required", ErrInvalidEvent)
+	}
+	identity, ok := contracts.LookupEventIdentity(e.EventType, e.SchemaVersion)
+	if !ok {
+		return fmt.Errorf("%w: %s schema %d is not a specified event version", ErrInvalidEvent, e.EventType, e.SchemaVersion)
+	}
+	if identity.Owner != eventOwner {
+		return fmt.Errorf("%w: %s schema %d is produced by %q, not %q", ErrInvalidEvent, e.EventType, e.SchemaVersion, identity.Owner, eventOwner)
 	}
 	return ValidateAggregateIdentity(e.EventType, e.SchemaVersion, e.AggregateType, e.AggregateID, e.Payload)
 }
@@ -90,11 +99,38 @@ func ValidateAggregateIdentity(eventType string, schemaVersion int32, aggregateT
 	return nil
 }
 
+func validateEventConsumers(eventType string, schemaVersion int32, consumers []string) error {
+	identity, ok := contracts.LookupEventIdentity(eventType, schemaVersion)
+	if !ok {
+		return fmt.Errorf("%w: %s schema %d is not a specified event version", ErrInvalidEvent, eventType, schemaVersion)
+	}
+	got := make(map[string]struct{}, len(consumers))
+	for _, consumer := range consumers {
+		consumer = strings.TrimSpace(consumer)
+		if consumer == "" || !identity.Subscribed(consumer) {
+			return fmt.Errorf("%w: owner %q is not subscribed to %s schema %d", ErrInvalidEvent, consumer, eventType, schemaVersion)
+		}
+		if _, duplicate := got[consumer]; duplicate {
+			return fmt.Errorf("%w: duplicate delivery for consumer %q", ErrInvalidEvent, consumer)
+		}
+		got[consumer] = struct{}{}
+	}
+	for _, consumer := range identity.Consumers {
+		if _, present := got[consumer]; !present {
+			return fmt.Errorf("%w: missing delivery for subscribed owner %q on %s schema %d", ErrInvalidEvent, consumer, eventType, schemaVersion)
+		}
+	}
+	return nil
+}
+
 // AppendEvent writes the Outbox row and one delivery row per consumer owner in
 // the caller's transaction. Each consumer is acknowledged independently, so a
 // single consumer's success never marks the whole event delivered.
 func AppendEvent(ctx context.Context, tx *sql.Tx, event Event, consumers []string) error {
 	if err := event.validate(); err != nil {
+		return err
+	}
+	if err := validateEventConsumers(event.EventType, event.SchemaVersion, consumers); err != nil {
 		return err
 	}
 	var tenantID any

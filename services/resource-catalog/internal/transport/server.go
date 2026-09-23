@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	contracts "opl-cloud/packages/contracts/go"
 	v226 "opl-cloud/packages/contracts/go/v226"
 	"opl-cloud/services/resource-catalog/internal/store"
 )
@@ -36,10 +37,14 @@ func NewServer(catalogStore *store.Store) *Server {
 // is refused before this owner's store is touched, and this owner never scans
 // another owner's records to answer.
 func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) (*v226.Operation, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	if err := requireOperationOwner(request.GetOwner()); err != nil {
 		return nil, err
 	}
-	if request == nil || request.GetOperationId() == "" {
+	if request.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
 	operation, err := s.store.ReadOperation(ctx, request.GetOperationId())
@@ -56,10 +61,14 @@ func (s *Server) Read(ctx context.Context, request *v226.OwnerOperationRequest) 
 // operation whose external result is unknown stays non-terminal: the owner does
 // not finalize on a guess, and the response keeps the unknown observation.
 func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperationRpcRequest) (*v226.Operation, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	if err := requireOperationOwner(request.GetOwner()); err != nil {
 		return nil, err
 	}
-	if request == nil || request.GetOperationId() == "" {
+	if request.GetOperationId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
 	result, err := s.store.ReconcileOperation(ctx, request.GetOperationId())
@@ -78,7 +87,11 @@ func (s *Server) Reconcile(ctx context.Context, request *v226.ReconcileOperation
 // refuses instead of returning an empty digest or a fabricated version, because a
 // caller must not sign a claim or a grant from evidence that does not exist.
 func (s *Server) ReadOwnerCommit(ctx context.Context, request *v226.ReadOwnerCommitRequest) (*v226.OwnerCommitEvidence, error) {
-	if request == nil || request.GetOwner() != v226.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
+	if request.GetOwner() != v226.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG {
 		return nil, status.Errorf(codes.InvalidArgument, "this endpoint serves owner %s", ownerName)
 	}
 	if request.GetOperationId() == "" {
@@ -111,6 +124,10 @@ func (s *Server) ReadOwnerCommit(ctx context.Context, request *v226.ReadOwnerCom
 // that carries two owners still acknowledges each owner separately, and a request
 // for another owner is refused before this owner's store is touched.
 func (s *Server) Deliver(ctx context.Context, request *v226.DeliverEventRequest) (*v226.InboxAck, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+
 	if err := requireConsumerOwner(request.GetConsumerOwner()); err != nil {
 		return nil, err
 	}
@@ -118,12 +135,18 @@ func (s *Server) Deliver(ctx context.Context, request *v226.DeliverEventRequest)
 		return nil, status.Error(codes.InvalidArgument, "event envelope is required")
 	}
 	if request.GetAuthenticatedProducer() == "" {
-		return nil, status.Error(codes.Unauthenticated, "authenticated producer is required")
+		return nil, status.Error(codes.Unauthenticated, "claimed producer is required")
 	}
-	// The transport peer is the authenticated producer; the envelope owner must
-	// agree with it, so a producer cannot inject another owner's event.
-	if request.GetEvent().GetOwner() != request.GetAuthenticatedProducer() {
-		return nil, status.Error(codes.PermissionDenied, "envelope owner does not match the authenticated producer")
+	event := request.GetEvent()
+	identity, known := contracts.LookupEventIdentity(event.GetEventType(), event.GetSchemaVersion())
+	if !known {
+		return nil, status.Error(codes.InvalidArgument, "event type or schema version is not specified")
+	}
+	if identity.Owner != event.GetOwner() || event.GetOwner() != request.GetAuthenticatedProducer() {
+		return nil, status.Error(codes.PermissionDenied, "event owner or claimed producer does not match the specified producer")
+	}
+	if !identity.Subscribed(ownerName) {
+		return nil, status.Error(codes.FailedPrecondition, "this owner is not subscribed to the specified event version")
 	}
 	return nil, status.Error(codes.Unimplemented, "resource catalog inbox dispatch is implemented with the resource catalog command owner")
 }
