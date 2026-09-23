@@ -336,7 +336,7 @@ func validStorageDestroyOperation(operation FabricOperation, volumeID string) (S
 func sameStorageDestroyStableIdentity(previous, current StorageVolume) bool {
 	return previous.ID == current.ID && previous.OperationID == current.OperationID && previous.AccountID == current.AccountID && previous.WorkspaceID == current.WorkspaceID &&
 		previous.Provider == current.Provider && previous.ProviderResourceID == current.ProviderResourceID && previous.SizeGB == current.SizeGB &&
-		previous.StorageClass == current.StorageClass && previous.DiskType == current.DiskType && previous.RenewFlag == current.RenewFlag &&
+		previous.StorageClass == current.StorageClass && previous.DiskType == current.DiskType && sameStorageDestroyManualRenewFlag(previous.RenewFlag, current.RenewFlag) &&
 		previous.Deadline == current.Deadline && previous.Zone == current.Zone && previous.CreatedAt.Equal(current.CreatedAt) &&
 		reflect.DeepEqual(previous.CostTags, current.CostTags) && sameStorageDestroyProviderData(previous.ProviderData, current.ProviderData)
 }
@@ -344,7 +344,7 @@ func sameStorageDestroyStableIdentity(previous, current StorageVolume) bool {
 func sameStorageDestroyProviderData(previous, current map[string]string) bool {
 	for key, previousValue := range previous {
 		currentValue, exists := current[key]
-		if !exists || previousValue != currentValue && !isStorageDestroyEvidenceKey(key) {
+		if !exists || previousValue != currentValue && !isStorageDestroyEvidenceKey(key) && !(key == "renewFlag" && sameStorageDestroyManualRenewFlag(previousValue, currentValue)) {
 			return false
 		}
 	}
@@ -354,6 +354,14 @@ func sameStorageDestroyProviderData(previous, current map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func sameStorageDestroyManualRenewFlag(previous, current string) bool {
+	if previous == current {
+		return true
+	}
+	return (previous == "NOTIFY_AND_MANUAL_RENEW" && current == "DISABLE_NOTIFY_AND_MANUAL_RENEW") ||
+		(previous == "DISABLE_NOTIFY_AND_MANUAL_RENEW" && current == "NOTIFY_AND_MANUAL_RENEW")
 }
 
 func isStorageDestroyEvidenceKey(key string) bool {

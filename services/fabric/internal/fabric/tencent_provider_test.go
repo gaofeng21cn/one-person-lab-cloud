@@ -5266,7 +5266,7 @@ func TestTencentStorageDestroyFailureDoesNotPolluteRestartReplay(t *testing.T) {
 					"pvName": "foreign-pv", "pvcName": "foreign-pvc", "zone": "ap-shanghai-1", "diskType": "CLOUD_SSD", "untrusted": "pollution",
 				},
 			}, nil
-		case "sync_storage_volume":
+		case "read_storage_for_delete":
 			if destroyCalls == 0 {
 				return canonicalTencentStorageStatusResponse(request), nil
 			}
@@ -5316,7 +5316,7 @@ func TestTencentStorageDestroyOKResponsePollutionDoesNotSurviveRestart(t *testin
 					"pvName": "foreign-pv", "zone": "ap-shanghai-1", "diskType": "CLOUD_SSD", "unknown": "pollution",
 				},
 			}, nil
-		case "sync_storage_volume":
+		case "read_storage_for_delete":
 			if destroyCalls == 0 {
 				return canonicalTencentStorageStatusResponse(request), nil
 			}

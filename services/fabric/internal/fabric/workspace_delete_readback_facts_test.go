@@ -77,8 +77,10 @@ func TestReadComputeDestroyStatusRejectsProviderIdentityDrift(t *testing.T) {
 
 func TestTencentStorageDeleteReadbackReportsBindingAbsenceAsTypedFact(t *testing.T) {
 	kubectlReads := [][]string{}
+	provisionerAction := ""
 	provider := &TencentProvider{
-		provision: func(_ context.Context, _ provisionerRequest) (provisionerResponse, error) {
+		provision: func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+			provisionerAction = request.Action
 			return provisionerResponse{
 				OK: true, StorageVolumeID: "disk-alpha", CBSStatus: "NOT_FOUND", Status: "external_deleted",
 				ProviderRequestID: "req-cbs-absent", ProviderData: map[string]string{"region": "ap-guangzhou"},
@@ -102,8 +104,52 @@ func TestTencentStorageDeleteReadbackReportsBindingAbsenceAsTypedFact(t *testing
 	if readback.CBSStatus != "NOT_FOUND" || readback.Status != "external_deleted" {
 		t.Fatalf("cbs readback=%#v", readback)
 	}
+	if provisionerAction != "read_storage_for_delete" {
+		t.Fatalf("delete readback action=%q", provisionerAction)
+	}
+	if _, err := provider.ReadStorageVolume(context.Background(), volume); err != nil || provisionerAction != "sync_storage_volume" {
+		t.Fatalf("ordinary readback action=%q err=%v", provisionerAction, err)
+	}
+	foreign := volume
+	foreign.WorkspaceID = "ws-other"
+	provisionerAction = ""
+	if _, err := provider.ReadStorageVolume(ctx, foreign); !errors.Is(err, ErrLaunchStageBindingConflict) || provisionerAction != "" {
+		t.Fatalf("foreign delete readback action=%q err=%v", provisionerAction, err)
+	}
 	pvName, pvcName := storageBindingNames(volume)
 	if len(kubectlReads) != 1 || !slices.Equal(kubectlReads[0], []string{"get", "pv/" + pvName, "pvc/" + pvcName, "--ignore-not-found", "-o", "json"}) {
 		t.Fatalf("binding readback calls=%#v", kubectlReads)
+	}
+}
+
+func TestTencentStorageDeleteReadbackPreservesOwnerAcrossManualNotificationChange(t *testing.T) {
+	volume := canonicalTencentStorageDestroyFixture()
+	volume.RenewFlag = "NOTIFY_AND_MANUAL_RENEW"
+	volume.ProviderData["renewFlag"] = volume.RenewFlag
+	volume.ProviderData["storageDestroyPhase"] = storageDestroyPhaseDispatchAuthorized
+	volume.ProviderData["storageDestroyMutationCount"] = "0"
+	provider := &TencentProvider{
+		provision: func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+			if request.Action != "read_storage_for_delete" {
+				t.Fatalf("delete readback action=%q", request.Action)
+			}
+			return provisionerResponse{
+				OK: true, StorageVolumeID: volume.ProviderResourceID, CBSStatus: "UNATTACHED", Status: "provider_ready",
+				ProviderData: map[string]string{"region": "ap-guangzhou", "renewFlag": "DISABLE_NOTIFY_AND_MANUAL_RENEW"},
+			}, nil
+		},
+		kubectl: func(_ context.Context, _ []string, _ []byte) ([]byte, error) {
+			return []byte(`{"kind":"List","items":[]}`), nil
+		},
+	}
+	ctx := context.WithValue(context.Background(), workspaceStorageDeleteOwnerContextKey{}, volume)
+	readback, err := provider.ReadStorageVolumeStatus(ctx, volume)
+	if err != nil || readback.RenewFlag != "DISABLE_NOTIFY_AND_MANUAL_RENEW" || readback.BindingPresent == nil || *readback.BindingPresent ||
+		!sameStorageDestroyStableIdentity(volume, readback) {
+		t.Fatalf("same-owner delete readback=%#v err=%v", readback, err)
+	}
+	readback.RenewFlag = "NOTIFY_AND_AUTO_RENEW"
+	if sameStorageDestroyStableIdentity(volume, readback) {
+		t.Fatal("automatic renewal was accepted as the original delete owner")
 	}
 }

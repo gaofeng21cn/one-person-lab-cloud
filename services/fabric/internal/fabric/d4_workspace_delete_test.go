@@ -253,7 +253,7 @@ func TestD4TencentStorageDeleteResumesPartialBindingBeforeFirstCBSMutation(t *te
 				if input.Action == "destroy_storage_volume" {
 					deletes++
 					absent = true
-				} else if input.Action != "sync_storage_volume" {
+				} else if input.Action != "read_storage_for_delete" {
 					t.Fatalf("unexpected cloud action=%s", input.Action)
 				}
 				response := provisionerResponse{OK: true, StorageVolumeID: volume.ProviderResourceID, ProviderRequestID: "d4-local-read", Status: "ready", CBSStatus: "UNATTACHED", ProviderData: map[string]string{"region": "ap-guangzhou"}}
@@ -338,7 +338,7 @@ func TestD4TencentStorageDeleteOriginalOwnerAndOldSuccessRepairPartialBindings(t
 						}
 						destroys++
 						absent = true
-					} else if request.Action != "sync_storage_volume" {
+					} else if request.Action != "read_storage_for_delete" {
 						t.Fatalf("unexpected provider action=%s", request.Action)
 					}
 					if !absent {

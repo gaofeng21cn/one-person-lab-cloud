@@ -512,7 +512,14 @@ func (p *TencentProvider) ReadStorageVolume(ctx context.Context, volume StorageV
 			return volume, ErrLaunchStageBindingConflict
 		}
 	}
-	response, err := p.provision(ctx, provisionerRequest{Action: "sync_storage_volume", AccountID: volume.AccountID, Region: region, Tags: volume.CostTags, Storage: provisionerStorage{
+	action := "sync_storage_volume"
+	if owner, deleting := ctx.Value(workspaceStorageDeleteOwnerContextKey{}).(StorageVolume); deleting {
+		if !sameStorageDestroyStableIdentity(owner, volume) {
+			return volume, ErrLaunchStageBindingConflict
+		}
+		action = "read_storage_for_delete"
+	}
+	response, err := p.provision(ctx, provisionerRequest{Action: action, AccountID: volume.AccountID, Region: region, Tags: volume.CostTags, Storage: provisionerStorage{
 		ID: volume.ProviderResourceID, SizeGB: uint64(volume.SizeGB), Zone: volume.Zone, DiskType: diskType, Deadline: volume.Deadline,
 	}})
 	if err != nil {
