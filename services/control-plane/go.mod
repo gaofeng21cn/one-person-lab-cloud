@@ -1,6 +1,6 @@
 module opl-cloud/services/control-plane
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/lib/pq v1.12.3
@@ -31,6 +31,6 @@ require (
 	github.com/go-openapi/inflect v0.19.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
-	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
