@@ -34,6 +34,10 @@ const (
 var (
 	// ErrOperationNotFound reports an unknown operation in this owner's database.
 	ErrOperationNotFound = errors.New("gateway operation not found")
+	// ErrNoCommittedEvidence reports that this owner cannot read committed
+	// aggregate evidence for the operation. Returning a placeholder digest or a
+	// zero version would let a caller authorize on evidence that does not exist.
+	ErrNoCommittedEvidence = errors.New("gateway owner has no committed aggregate evidence")
 	// ErrOperationTerminal reports an attempt to change a terminal operation.
 	ErrOperationTerminal = errors.New("gateway operation is already terminal")
 	// ErrInvalidOperationInput reports a missing or invalid required field.
@@ -150,6 +154,10 @@ func (s *Store) ReadOperation(ctx context.Context, operationID string) (Operatio
 	if operationID == "" {
 		return Operation{}, fmt.Errorf("%w: operation id is required", ErrInvalidOperationInput)
 	}
+	if s.db == nil {
+		// A transport request must not turn a missing database into a panic.
+		return Operation{}, errors.New("gateway store database is required")
+	}
 	var (
 		operation   Operation
 		errorCode   sql.NullString
@@ -262,4 +270,33 @@ func (s *Store) CompleteOperation(ctx context.Context, operationID, status, stag
 		return Operation{}, ErrOperationTerminal
 	}
 	return s.ReadOperation(ctx, operationID)
+}
+
+// CommittedEvidence is the owner's real committed accepted input for one
+// operation. Only the owning domain can read it, and it is absent until that
+// domain's commit path writes it.
+type CommittedEvidence struct {
+	OperationID         string
+	ResourceID          string
+	AcceptedInputDigest string
+	CommittedVersion    int64
+	AcceptedAt          time.Time
+}
+
+// ReadCommittedEvidence returns the owner's committed aggregate evidence.
+//
+// The Gateway Integration owner commits its own identity mappings, wallet
+// bindings, key bindings and wallet operations; the path that writes a committed
+// aggregate and its revision belongs to that work package. Until it
+// exists this returns ErrNoCommittedEvidence, so a caller cannot sign a claim or a
+// grant from an empty digest or a fabricated version.
+func (s *Store) ReadCommittedEvidence(ctx context.Context, operationID, resourceID string) (CommittedEvidence, error) {
+	operation, err := s.ReadOperation(ctx, operationID)
+	if err != nil {
+		return CommittedEvidence{}, err
+	}
+	if strings.TrimSpace(resourceID) != "" && resourceID != operation.ResourceID {
+		return CommittedEvidence{}, fmt.Errorf("%w: resource does not match the operation", ErrInvalidOperationInput)
+	}
+	return CommittedEvidence{}, fmt.Errorf("%w: operation %s has no committed aggregate revision", ErrNoCommittedEvidence, operation.ID)
 }
