@@ -307,7 +307,7 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     "build_job",
 		AggregateID:       "job-" + suffix,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"buildJobId":"job-1"}`),
+		Payload:           json.RawMessage(`{"buildJobId":"job-` + suffix + `"}`),
 	}
 
 	commitTx, err := db.BeginTx(ctx, nil)
@@ -350,13 +350,34 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     event.AggregateType,
 		AggregateID:       event.AggregateID,
 		AggregateRevision: event.AggregateRevision,
-		Payload:           json.RawMessage(`{"buildJobId":"job-2"}`),
+		Payload:           json.RawMessage(`{"buildJobId":"job-` + suffix + `","tampered":true}`),
 	}, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("deliver conflicting event: %v", err)
 	}
 	if conflicting.Decision != InboxConflict || conflicting.Applied {
 		t.Fatalf("conflicting delivery = %+v, want conflict without overwrite", conflicting)
+	}
+
+	// The same source event id with changed metadata is a conflict even when the
+	// payload bytes are unchanged: deduplication compares the whole immutable
+	// identity, not the payload hash alone.
+	metadataChanged, err := DeliverInbox(ctx, duplicateTx, InboundEvent{
+		ID:                event.ID,
+		SourceOwner:       event.SourceOwner,
+		SourceEventID:     event.SourceEventID,
+		EventType:         event.EventType,
+		SchemaVersion:     event.SchemaVersion,
+		AggregateType:     event.AggregateType,
+		AggregateID:       event.AggregateID,
+		AggregateRevision: event.AggregateRevision + 1,
+		Payload:           event.Payload,
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("deliver metadata-changed event: %v", err)
+	}
+	if metadataChanged.Decision != InboxConflict || metadataChanged.Applied {
+		t.Fatalf("metadata-changed delivery = %+v, want conflict without overwrite", metadataChanged)
 	}
 
 	var storedHash string
