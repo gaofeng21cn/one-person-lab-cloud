@@ -1,19 +1,20 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "50520e27a6b9a630eefdc2df7da3e5ec498d28a0",
+  "sourceSHA": "e35f21eaf9d7ed2610af55b08677a5c8cefc36bb",
   "sourceRoots": {
-    "cloud": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
-    "console": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui",
-    "bff": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-bff",
-    "gateway": "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration",
-    "capability": "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability",
-    "build": "/Users/huangrende/Documents/ChatGPT/opl-cloud-build",
-    "workspace": "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace",
-    "runtime_control": "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control",
-    "resource_catalog": "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog",
-    "fabric": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric",
-    "ledger": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger",
+    "cloud": "/Users/huangrende/Documents/ChatGPT/opl-cloud",
+    "console": "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui",
+    "bff": "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff",
+    "gateway": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration",
+    "capability": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability",
+    "build": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build",
+    "workspace": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace",
+    "runtime_control": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control",
+    "resource_catalog": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog",
+    "fabric": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric",
+    "ledger": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger",
+    "tenant": "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration",
     "instance": "/Users/huangrende/Documents/ChatGPT/opl-instance-medopl"
   },
   "sourceRootStatus": {
@@ -28,6 +29,7 @@
     "resource_catalog": "planned_not_created",
     "fabric": "existing",
     "ledger": "existing",
+    "tenant": "planned_not_created",
     "instance": "existing"
   },
   "assignees": "roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated",
@@ -61,17 +63,17 @@
       "startAfter": [],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/README.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/architecture.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/decisions.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/implementation-architecture.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/README.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/architecture.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/decisions.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/implementation-architecture.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/architecture.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/decisions.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/architecture.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/decisions.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "deliverables": [
         "把已确认Agent+套餐目标、D17和逐域单writer迁移写入canonical owner，历史resource_only义务保留",
@@ -99,17 +101,17 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/README.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/architecture.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/decisions.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/implementation-architecture.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/README.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/architecture.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/decisions.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/implementation-architecture.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md": true
       }
     },
     {
       "id": "W01",
-      "title": "生产契约与跨仓版本锁",
+      "title": "生产契约与同仓版本一致性",
       "coordinator": "Cloud契约负责人",
       "owners": [
         "cloud"
@@ -138,23 +140,32 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/README.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/go.mod"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/README.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/go.mod"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/proto",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/contracts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/proto",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/contracts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.sum"
       ],
       "deliverables": [
         "按真实两端caller把03/proto/events/publisher/plan-change规格进入生产owner；不是整包inventories复制到runtime",
         "锁定schema SHA和生成工具版本；每个consumer生成/校验typed client，只有owner定义业务类型",
-        "跨repo消费精确commit/tag，不用moving main/latest；生成代码可多份，政策只有一个源"
+        "单仓消费者与契约来自同一Cloud commit，绑定schema SHA与生成工具版本；外部Owner才按精确commit/tag或digest接入，不用moving main/latest",
+        "沿用packages/contracts/go/go.mod；生成包为packages/contracts/go/v226，不为版本子包新建module；以锁定生成配置映射proto import到实际module路径，不手改生成代码",
+        "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块"
       ],
       "verification": [
-        "编译Go/TS/protobuf客户端，严格JSON与protobuf正反例",
+        "编译Go/TS/protobuf客户端，按各自协议规则验证JSON/protobuf正反例、金额string/int64及source ms精度；仅生成成功不算消费者接入完成",
+        "在同一checkout重放生成并检查无漂移，运行受影响服务回归与npm run verify:local:full；规格验证不替代消费者验证",
         "运行已有checks/validate_spec.py与validate_d17_contract.py作规格基线，不冒充实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1"
       ],
       "acceptance": [
         "双方消费者同一契约版本，金额string/int64与source ms精度一致",
@@ -174,8 +185,8 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/README.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/go.mod": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/README.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/go.mod": true
       }
     },
     {
@@ -202,38 +213,59 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/go.mod",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/go.mod",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/go.mod",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/internal/postgresmigrate"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/internal/postgresmigrate"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-build/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/transport",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/transport",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-build/internal/transport",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/transport",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/internal/transport",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/internal/transport"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/transport",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/identity",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/fabric",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/http",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/ent_migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/cmd/ledger",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/http",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations"
       ],
       "deliverables": [
-        "按01独立模块/进程/DB角色启动，CloudIdentity在Gateway Integration内，不按每个RPC拆服务",
+        "按01同仓目录启动独立服务module/进程/DB角色；tenant与gateway同module同部署单元但不同DB角色，不按每个RPC拆服务",
         "每Owner实现自己的Operation、幂等、Outbox/Inbox、健康/就绪与迁移入口；公共基础设施仅在有两个真实caller时共享",
-        "为本地测试准备独立schema/fixture进程；不复制钱包或造生产test-billing入口"
+        "为本地测试准备各Owner独立database/角色及隔离fixture进程；不以同schema代替跨Owner权限隔离，不复制钱包或造生产test-billing入口"
       ],
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "DB角色只写本域，无跨库FK/JOIN；同一writer无双写",
@@ -303,10 +335,10 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/go.mod": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/go.mod": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/go.mod": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/internal/postgresmigrate": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/go.mod": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/go.mod": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/go.mod": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/internal/postgresmigrate": true
       }
     },
     {
@@ -325,12 +357,12 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_auth.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/sub2api.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_auth.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/identity",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/authorization"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/identity",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/authorization"
       ],
       "deliverables": [
         "Gateway个人登录→Cloud session/Tenant/membership；平台权限与Tenant角色分离",
@@ -341,10 +373,7 @@
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1"
       ],
       "acceptance": [
         "跨Tenant/伪actor/伪audience/撤权拒绝；session退出不丢原已接受义务",
@@ -401,8 +430,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_auth.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/sub2api.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_auth.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go": true
       }
     },
     {
@@ -423,13 +452,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/sub2api.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/wallet_adjustment.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/sub2api",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/wallet",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/keys"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/sub2api",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/wallet",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/keys"
       ],
       "deliverables": [
         "沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回",
@@ -440,10 +469,7 @@
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1"
       ],
       "acceptance": [
         "重复/丢响应/余额并发/错原单/错钱包/超额及unknown退款全部用真实decoder验证",
@@ -498,8 +524,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/sub2api.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/wallet_adjustment.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/sub2api.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go": true
       }
     },
     {
@@ -523,14 +549,14 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/types.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/ledger.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/ent/schema"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/types.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/ledger.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/ent/schema",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/ent_migrations"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations"
       ],
       "deliverables": [
         "支持Build无Workspace收据、新计划变更/补差/迁移证据；精确原单和输入输出验证",
@@ -540,11 +566,7 @@
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "缺必填/伪Workspace/相同键不同hash/秘密泄露拒绝",
@@ -582,9 +604,9 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/types.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/clients/ledger.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/ent/schema": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/types.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/clients/ledger.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema": true
       }
     },
     {
@@ -606,13 +628,13 @@
         "W11"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_billing.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_delete.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_billing.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_delete.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/internal/catalog",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/internal/pricing",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/migrations"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/catalog",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/pricing",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/migrations"
       ],
       "deliverables": [
         "资源plan先创建，组合价格后创建；版本/有效期/approved transition具有明确owner",
@@ -676,8 +698,8 @@
         "13_plan_change_policy.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_billing.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_delete.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_billing.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_delete.go": true
       }
     },
     {
@@ -695,12 +717,12 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_application.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_admission.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_admission.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/publishers",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/catalog"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/publishers",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/catalog"
       ],
       "deliverables": [
         "官方/第三方publisher namespace、registry prefix、完整不可变PublisherContract",
@@ -712,7 +734,7 @@
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "两类Runtime真source validator/startup DAG及schema拒绝反例",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1"
       ],
       "acceptance": [
         "完整repository/digest/platform/recipe/revision来源可回读",
@@ -768,8 +790,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_application.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_admission.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_admission.go": true
       }
     },
     {
@@ -790,12 +812,12 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/application_revision_store.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/application_revision_store.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/packages",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/uploads",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/references"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/packages",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/uploads",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/references"
       ],
       "deliverables": [
         "分组/Package/版本与受限Storage直传、实际摘要校验及续传",
@@ -805,11 +827,7 @@
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "首包无CapabilityVersion仍可保护Package/Runtime/WebUI输入",
@@ -874,7 +892,7 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/application_revision_store.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/application_revision_store.go": true
       }
     },
     {
@@ -896,13 +914,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/agent-lifecycle.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/agent-lifecycle.md"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-build/internal/jobs",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-build/internal/builder",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-build/internal/registry",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-capability/internal/artifacts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/jobs",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/builder",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/build/internal/registry",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/capability/internal/artifacts"
       ],
       "deliverables": [
         "冻结输入与recipe，真实BuildKit构建及Registry exporter/readback",
@@ -912,11 +930,7 @@
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "真实Storage+Registry+BuildKit隔离集成；worker重启、push已成但丢响应、注册ACK丢失",
@@ -967,7 +981,7 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/agent-lifecycle.md": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/agent-lifecycle.md": true
       }
     },
     {
@@ -992,13 +1006,13 @@
         "W11"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_deployment.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_application_runtime.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application_runtime.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/internal/deployments",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/internal/configuration",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/internal/access"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/deployments",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/configuration",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/access"
       ],
       "deliverables": [
         "Reserve稳定实例身份；完整descriptor贯通部署/模型reload/retire",
@@ -1009,10 +1023,8 @@
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
       ],
       "acceptance": [
         "非默认端口/Secret/依赖应用真实运行；无应用legacy为not_applicable而不是伪ready",
@@ -1044,8 +1056,8 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_deployment.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go/workspace_application_runtime.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go/workspace_application_runtime.go": true
       }
     },
     {
@@ -1070,13 +1082,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/local_docker_provider.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/provider_port.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/local_docker_provider.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/local_docker_provider.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/http"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/local_docker_provider.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/http"
       ],
       "deliverables": [
         "适配类型化执行计划、资源/Secret/挂载/运行、D17允许转换及实际quota",
@@ -1086,11 +1098,7 @@
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "Linux隔离集成：真实volume数据、重启、升级失败、route丢响应、unknown不重发",
@@ -1141,8 +1149,8 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/local_docker_provider.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/provider_port.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/local_docker_provider.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go": true
       }
     },
     {
@@ -1165,13 +1173,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/tencent_provider.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/tencent_provider_storage.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/cmd/opl-tencent-provisioner"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider_storage.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/opl-tencent-provisioner"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/cmd/opl-tencent-provisioner"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/opl-tencent-provisioner"
       ],
       "deliverables": [
         "报价前固定已资格的in-place或目标pool+原CBS重绑策略；预付包月，禁止POSTPAID_BY_HOUR",
@@ -1181,11 +1189,7 @@
       "verification": [
         "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
-        "该命令只作实施后要求；本轮没有执行新产品实现测试",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
       ],
       "acceptance": [
         "SDK请求和原请求读回边界使用typed tests；真正变更仅W29授权Instance验证",
@@ -1226,9 +1230,9 @@
         "13_plan_change_policy.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/tencent_provider.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/tencent_provider_storage.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/cmd/opl-tencent-provisioner": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/tencent_provider_storage.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/cmd/opl-tencent-provisioner": true
       }
     },
     {
@@ -1237,7 +1241,7 @@
       "coordinator": "Console/BFF",
       "owners": [
         "bff",
-        "console_ui",
+        "console",
         "workspace"
       ],
       "features": [
@@ -1250,18 +1254,20 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/console-router.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/layout/ConsoleShell.tsx",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/auth-api.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-console-controller.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/console-router.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/layout/ConsoleShell.tsx",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/auth-api.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-console-controller.ts"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-bff/cmd/server",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-bff/internal/session",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-bff/internal/routes",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/layout/ConsoleShell.tsx",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/console-router.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/go.mod",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/go.sum",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/cmd/server",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/session",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/routes",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/layout/ConsoleShell.tsx",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/console-router.ts"
       ],
       "deliverables": [
         "同源REST/session/CSRF/Origin→typed Owner RPC；Operation按owner路径路由",
@@ -1269,6 +1275,7 @@
         "secret no-store与内存清理；所有异步读取遵守owner提示，不自行认定成功"
       ],
       "verification": [
+        "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff test ./...",
         "npm run typecheck",
         "npm run test:browser:console-owner-reads",
         "真实BFF会话/跨Tenant/退出缓存清理测试"
@@ -1317,10 +1324,10 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/console-router.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/layout/ConsoleShell.tsx": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/auth-api.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-console-controller.ts": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/console-router.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/layout/ConsoleShell.tsx": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/auth-api.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-console-controller.ts": true
       }
     },
     {
@@ -1328,7 +1335,7 @@
       "title": "智能体/上传/构建/目录前端",
       "coordinator": "Console",
       "owners": [
-        "console_ui"
+        "console"
       ],
       "features": [
         "F02",
@@ -1347,13 +1354,13 @@
         "W09"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/CustomerPages.tsx",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/AdminPages.tsx"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/CustomerPages.tsx",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/agents",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/agent-controllers",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/capability-api.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/agents",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/agent-controllers",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/capability-api.ts"
       ],
       "deliverables": [
         "按04/11实现Agent目录、版本、分组、上传向导、构建日志/重试及publisher表单",
@@ -1431,8 +1438,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/CustomerPages.tsx": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/AdminPages.tsx": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/CustomerPages.tsx": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx": true
       }
     },
     {
@@ -1457,14 +1464,14 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_workspace_launch.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_launch_service.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_launch_reconciler.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_workspace_launch.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_service.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_reconciler.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/admission",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/launch",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/internal/quotes"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/admission",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/launch",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/quotes"
       ],
       "deliverables": [
         "只读准入→固定quote→CAS接受→原单扣款→Key→资源/挂载→完整运行→route确认→Ledger",
@@ -1477,7 +1484,7 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "本地真实服务链+外部权威fixture：余额不足、扣款丢响应、资源/receipt不确定、restart",
         "同一次请求串API→Owner→DB→下一Owner→实际应用响应",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1"
       ],
       "acceptance": [
         "一个Workspace一次原单；ready来自实际当前应用而非资源开通",
@@ -1519,9 +1526,9 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_workspace_launch.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_launch_service.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_launch_reconciler.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_workspace_launch.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_service.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_launch_reconciler.go": true
       }
     },
     {
@@ -1529,7 +1536,7 @@
       "title": "部署向导与Workspace页面",
       "coordinator": "Console",
       "owners": [
-        "console_ui"
+        "console"
       ],
       "features": [
         "F07",
@@ -1547,15 +1554,15 @@
         "W25"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/workspaces-api.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/workspaces",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/workspaces-api.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/workspaces",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts"
       ],
       "deliverables": [
         "版本/套餐/模型→固定报价→确认→真实进度；修改选项使旧quote失效",
@@ -1610,9 +1617,9 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/workspaces-api.ts": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-launch-controller.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/workspace-launch-controller-model.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts": true
       }
     },
     {
@@ -1635,13 +1642,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_deployment.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_gateway.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_gateway.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/deployments",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/configuration",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-runtime-control/internal/deployments"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/deployments",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/configuration",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/runtime-control/internal/deployments"
       ],
       "deliverables": [
         "API→完整descriptor/引用保护→独立实例验证→Fence/Activate/Observe→本域CAS选择",
@@ -1654,7 +1661,7 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "真实HTTP根路径/资产/API/SSE/cookie隔离与数据持久化",
         "晚到worker/旧epoch/不同target、data不可逆和多写挂载拒绝",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
       ],
       "acceptance": [
         "一个确认选中部署，配置appliedVersion与实际一致",
@@ -1695,8 +1702,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_application_deployment.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_gateway.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_application_deployment.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_gateway.go": true
       }
     },
     {
@@ -1718,13 +1725,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_renewal.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/monthly_billing.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/renewal_worker.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/monthly_billing.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/renewal_worker.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/subscriptions",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/renewal"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/subscriptions",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/renewal"
       ],
       "deliverables": [
         "保留source billingAnchorDay/原paidThrough/自动授权；周期唯一资金义务",
@@ -1737,7 +1744,7 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "Jan31→Feb28→Mar31及闰年；窗口已过拒绝；source纳秒不回写",
         "人工/自动并发、资金unknown、停用后恢复、provider资源回收",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
       ],
       "acceptance": [
         "一周期最多一原单；不偷偷从now重新开始一月",
@@ -1769,9 +1776,9 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_renewal.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/monthly_billing.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/renewal_worker.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/monthly_billing.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/renewal_worker.go": true
       }
     },
     {
@@ -1800,14 +1807,14 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/provider_port.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_renewal.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/plan_changes",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-resource-catalog/internal/plan_change_pricing",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/settlement",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/plan_changes",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/resource-catalog/internal/plan_change_pricing",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/settlement",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric"
       ],
       "deliverables": [
         "PlanChange第一类实体：立即upgrade与scheduled downgrade区分初次/执行Operation",
@@ -1820,7 +1827,7 @@
         "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "重放13及全部D17数值/并发/PG纳秒进位/原单退款用例",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
       ],
       "acceptance": [
         "20→40剩半期补10；31天例子19.354839；资源+运行确认才applied",
@@ -1866,8 +1873,8 @@
         "13_plan_change_policy.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/provider_port.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_renewal.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/provider_port.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_renewal.go": true
       }
     },
     {
@@ -1893,13 +1900,13 @@
         "W19"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_delete.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_delete_refund.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/wallet_adjustment.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete_refund.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/deletion",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/settlement"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/deletion",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/settlement"
       ],
       "deliverables": [
         "持久删除意图→逐资源确切absence→删除receipt→每个原单独立退款",
@@ -1912,7 +1919,7 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "资源已删丢响应、原身份/receipt错配、refund unknown/超额、窗口/退款上界",
         "UI同时能显示已删+退款待确认；没有手工set success接口",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
       ],
       "acceptance": [
         "无证据不退款，已删除不等于退款到账",
@@ -1937,9 +1944,9 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_delete.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/workspace_delete_refund.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/wallet_adjustment.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/workspace_delete_refund.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/wallet_adjustment.go": true
       }
     },
     {
@@ -1963,11 +1970,11 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_admin.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-gateway-integration/internal/tenant_lifecycle",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/tenant_actions"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/gateway-integration/internal/tenant_lifecycle",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/tenant_actions"
       ],
       "deliverables": [
         "创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪",
@@ -1980,7 +1987,7 @@
         "该命令只作实施后要求；本轮没有执行新产品实现测试",
         "暂停后直接reenable不要求restoreUntil；误恢复/过期/子任务unknown",
         "成员失权、生效窗口及账户历史权限不放大",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1"
       ],
       "acceptance": [
         "Tenant权限和各Workspace运行结果分开",
@@ -2025,7 +2032,7 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_admin.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go": true
       }
     },
     {
@@ -2033,7 +2040,7 @@
       "title": "费用、计划、续费/退款与Key前端",
       "coordinator": "Console",
       "owners": [
-        "console_ui"
+        "console"
       ],
       "features": [
         "F11",
@@ -2051,14 +2058,14 @@
         "W20"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-billing-controller.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-workspace-renewal-controller.ts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/workspaces-api.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-billing-controller.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-renewal-controller.ts",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/billing",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/plan-change-controller",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/plan-change-api.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/billing",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/plan-change-controller",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/plan-change-api.ts"
       ],
       "deliverables": [
         "立即升配quote/进度、下期计划/取消/付款边界，原E和资金/资源状态分开",
@@ -2112,9 +2119,9 @@
         "13_plan_change_policy.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-billing-controller.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/use-workspace-renewal-controller.ts": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/api/workspaces-api.ts": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-billing-controller.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/use-workspace-renewal-controller.ts": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/api/workspaces-api.ts": true
       }
     },
     {
@@ -2122,7 +2129,7 @@
       "title": "管理员目录、Tenant与运维前端",
       "coordinator": "Console",
       "owners": [
-        "console_ui"
+        "console"
       ],
       "features": [
         "F03",
@@ -2139,12 +2146,12 @@
         "W24"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/AdminPages.tsx",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/OperatorRuntimeObservations.tsx"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/OperatorRuntimeObservations.tsx"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/admin",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/app/admin-controllers"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/admin",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/app/admin-controllers"
       ],
       "deliverables": [
         "完整publisher schema表单/有效namespace，资源/价格版本不得改写已接受快照",
@@ -2215,8 +2222,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/AdminPages.tsx": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-ui/src/pages/OperatorRuntimeObservations.tsx": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/AdminPages.tsx": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-ui/src/pages/OperatorRuntimeObservations.tsx": true
       }
     },
     {
@@ -2243,12 +2250,12 @@
         "W21"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/operational_alerts.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_admin.go"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/operational_alerts.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/apps/console-bff/internal/operations",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/operations"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/apps/console-bff/internal/operations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/operations"
       ],
       "deliverables": [
         "每Owner依据原意图/readback实现Reconcile，BFF仅路由，不能统一setStatus",
@@ -2289,8 +2296,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/operational_alerts.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/routes_admin.go": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/operational_alerts.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/routes_admin.go": true
       }
     },
     {
@@ -2322,18 +2329,18 @@
         "W21"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/ent/schema/shared.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/migrations",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/ent/schema",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/ent/schema",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/ent_state_store.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/migrations/migrations.go",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/ent_migrations",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/ent_migrations"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/ent/schema/shared.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/ent/schema",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/ent_state_store.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations/migrations.go",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/ent_migrations",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/migration",
-        "/Users/huangrende/Documents/ChatGPT/opl-cloud-workspace/internal/migration"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/migration",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/workspace/internal/migration"
       ],
       "deliverables": [
         "按09对每张源表/字段确定target或保留档案，不丢未知历史",
@@ -2344,9 +2351,9 @@
       "verification": [
         "只在隔离副本运行转换，生产数据仅Instance保护runner",
         "row/ID集合、金额/时间/quote/receipt/user权限等值和未决操作重放",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
-        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
       ],
       "acceptance": [
         "无假Build/Quote/重购；不做双写或失败时切旧接口",
@@ -2370,14 +2377,14 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/ent/schema/shared.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/migrations": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/ent/schema": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/ent/schema": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/internal/server/ent_state_store.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane/migrations/migrations.go": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/fabric/internal/fabric/ent_migrations": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/ledger/internal/ledger/ent_migrations": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/ent/schema/shared.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/ent/schema": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/ent/schema": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/internal/server/ent_state_store.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane/migrations/migrations.go": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/fabric/internal/fabric/ent_migrations": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/services/ledger/internal/ledger/ent_migrations": true
       }
     },
     {
@@ -2386,7 +2393,7 @@
       "coordinator": "集成负责人+各Owner",
       "owners": [
         "bff",
-        "console_ui",
+        "console",
         "workspace",
         "capability",
         "build",
@@ -2432,14 +2439,14 @@
         "W25"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/integration",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/ui",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/local-sub2api-authority-fixture.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/integration",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/ui",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-sub2api-authority-fixture.ts"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/integration",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/ui",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/integration",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/ui",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools"
       ],
       "deliverables": [
         "前端真实BFF→真实Owner DB/RPC→Local provider/应用；外部财务只用明确隔离authority fixture",
@@ -2469,9 +2476,9 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/integration": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/ui": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/local-sub2api-authority-fixture.ts": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/integration": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tests/ui": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-sub2api-authority-fixture.ts": true
       }
     },
     {
@@ -2496,19 +2503,19 @@
         "W26"
       ],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/Dockerfile",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/compose.yaml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/deploy/portable",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/build-opl-cloud-candidate.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-image.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-distribution-contract.json"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/Dockerfile",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/compose.yaml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/deploy/portable",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/build-opl-cloud-candidate.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-distribution-contract.json"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/build-opl-cloud-candidate.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/deploy/portable",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-distribution-contract.json"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/build-opl-cloud-candidate.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/deploy/portable",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-distribution-contract.json"
       ],
       "deliverables": [
         "目标多服务制品纳入同一个Cloud Candidate/安装清单与同字节资格单位；不另起release authority",
@@ -2519,7 +2526,7 @@
       "verification": [
         "contracts/工具生成/拒绝反例与portable Compose一致检查",
         "假造digest/遗漏组件/漂移source/schema拒绝；构建不需要生产环境",
-        "实施前现有基线（不证明新功能）：rtk proxy node --test /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/tools/cloud-candidate-receipt.test.ts /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/contracts/clean-host-qualification.test.ts"
+        "实施前现有基线（不证明新功能）：rtk proxy node --test /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/tools/cloud-candidate-receipt.test.ts /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/contracts/clean-host-qualification.test.ts"
       ],
       "acceptance": [
         "候选集合是不可变单位，任何组件变更必须新Candidate重新适用资格",
@@ -2537,13 +2544,13 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/Dockerfile": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/compose.yaml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/deploy/portable": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/build-opl-cloud-candidate.yml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-image.yml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/opl-cloud-distribution-contract.json": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/Dockerfile": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/compose.yaml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/deploy/portable": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/build-opl-cloud-candidate.yml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-candidate-receipt-contract.json": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/opl-cloud-distribution-contract.json": true
       }
     },
     {
@@ -2562,12 +2569,12 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/clean-host-qualification.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/local-workspace-qualification.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/clean-host-qualification.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-workspace-qualification.ts"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/clean-host-qualification.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/local-workspace-qualification.ts"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/clean-host-qualification.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-workspace-qualification.ts"
       ],
       "deliverables": [
         "固定Candidate在合格Linux安装，执行启动/存储/应用/生命周期与重启/数据保留",
@@ -2593,8 +2600,8 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/clean-host-qualification.yml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tools/local-workspace-qualification.ts": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/clean-host-qualification.yml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/tools/local-workspace-qualification.ts": true
       }
     },
     {
@@ -2615,7 +2622,7 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/runtime/release.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md"
       ],
       "plannedWritePaths": [
         "/Users/huangrende/Documents/ChatGPT/opl-instance-medopl/receipts",
@@ -2646,7 +2653,7 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/runtime/release.md": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md": true
       }
     },
     {
@@ -2671,13 +2678,13 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "plannedWritePaths": [
         "/Users/huangrende/Documents/ChatGPT/opl-instance-medopl/receipts",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "deliverables": [
         "按09 M0-M5：写屏障/终态增量/路由epoch/实际用户读回/分批接收",
@@ -2705,8 +2712,8 @@
         "09_legacy_migration.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md": true
       }
     },
     {
@@ -2725,16 +2732,16 @@
       ],
       "acceptAfter": [],
       "existingReadPaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-image.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-public-readback.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/runtime/release.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-public-readback.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "plannedWritePaths": [
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-image.yml",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md",
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md"
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md",
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md"
       ],
       "deliverables": [
         "仅在明确正式发布授权后，由允许actor从main提升同一资格制品，不重建",
@@ -2761,11 +2768,11 @@
         "08_delivery_checklist_per_role.md"
       ],
       "existingPathStatus": {
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-image.yml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/.github/workflows/release-opl-cloud-public-readback.yml": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/runtime/release.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/status.md": true,
-        "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/docs/roadmap.md": true
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-image.yml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/.github/workflows/release-opl-cloud-public-readback.yml": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/runtime/release.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/status.md": true,
+        "/Users/huangrende/Documents/ChatGPT/opl-cloud/docs/roadmap.md": true
       }
     }
   ],
@@ -3432,13 +3439,13 @@
     ]
   },
   "baselineCommands": {
-    "AUTH": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
-    "WALLET": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
-    "LAUNCH": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1",
-    "SETTLEMENT": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
-    "RUNTIME": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1",
-    "ABI": "go -C /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/packages/contracts/go test ./... -count=1",
-    "CANDIDATE": "node --test /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/tools/cloud-candidate-receipt.test.ts /Users/huangrende/Documents/ChatGPT/one-person-lab-cloud/tests/contracts/clean-host-qualification.test.ts"
+    "AUTH": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
+    "WALLET": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
+    "LAUNCH": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1",
+    "SETTLEMENT": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
+    "RUNTIME": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1",
+    "ABI": "go -C /Users/huangrende/Documents/ChatGPT/opl-cloud/packages/contracts/go test ./... -count=1",
+    "CANDIDATE": "node --test /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/tools/cloud-candidate-receipt.test.ts /Users/huangrende/Documents/ChatGPT/opl-cloud/tests/contracts/clean-host-qualification.test.ts"
   },
   "rules": {
     "startDependencies": "finished producer contracts/scaffolding needed to start useful implementation",

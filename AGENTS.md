@@ -1,8 +1,8 @@
 # OPL Cloud Development Rules
 
-`one-person-lab-cloud` is the product repository for OPL Cloud architecture,
-Console, Control Plane, Fabric, Ledger, contracts, portable distribution, and
-reusable release mechanisms.
+`opl-cloud` is the single GitHub product repository for OPL Cloud architecture,
+Console/BFF, domain services, contracts, portable distribution, and reusable
+release mechanisms. A domain is not a separate GitHub repository.
 
 ## Canonical Owners
 
@@ -19,9 +19,10 @@ reusable release mechanisms.
 - `opl-instance-medopl` owns the medopl domains, provider profile, production
   environment and Secrets, deployment, rollback, acceptance, and receipts.
 
-`opl-cloud` is an internal package, image, service, namespace, and runner name.
-The archived documentation repository and Git history are provenance, not
-current writers.
+`opl-cloud` is also the package, image, service, namespace, and runner name.
+The former `one-person-lab-cloud` name, archived documentation repository, and
+Git history are provenance, not separate current product writers. Instance,
+Sub2API, and Framework remain separate authorities outside this consolidation.
 
 ## Reconcile Before Editing
 
@@ -72,7 +73,8 @@ v2.26 development specification under
 `runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
 `fabric`, and `ledger`, surfaced through `apps/console-ui` and a Console BFF.
 Each domain owns its own data and writes; cross-owner references use opaque
-identifiers only.
+identifiers only. The canonical in-repository directory and deployment-unit map
+is [Repository And Instance Topology](docs/architecture.md#repository-and-instance-topology).
 
 The table below is the current implementation that is being migrated. Its rows
 remain authoritative for the code that exists today; the target domains above
@@ -86,12 +88,25 @@ govern new work, and the v2.26 work packages own the migration.
 | `services/ledger` | Receipts, evidence, retention, reconciliation, opaque provenance |
 | `services/internal` | Policy-free infrastructure shared by at least two current services |
 
-- Under the target architecture, each domain is a separate Go module, process,
-  and PostgreSQL database owner, integrated by typed gRPC/protobuf internally
-  and REST at the Console BFF. Until a domain is migrated, the current Control
-  Plane, Fabric, and Ledger remain separate Go modules, processes, and schema
-  owners using typed public HTTP contracts.
-- Console reaches service data through Control Plane APIs.
+- Under the target architecture, each business service has an independent Go
+  module and process inside this repository. Each data owner has its own
+  PostgreSQL database and roles. CloudIdentity (`tenant`) and Gateway Integration
+  (`gateway`) are distinct data owners in the same Gateway Integration module
+  and deployment unit; neither each domain name nor each proto service creates
+  another process. Internal calls use typed gRPC/protobuf; Console uses the BFF
+  REST API. Until migrated, Control Plane, Fabric, and Ledger keep their current
+  module, process, and typed HTTP boundaries.
+- Control Plane is a migration source, not a permanent second writer alongside
+  the extracted services. Move a capability and its real callers together, then
+  retire its old write path while preserving historical obligations.
+- Console currently reaches service data through Control Plane APIs; the target
+  browser entry is `apps/console-bff`.
+- Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
+  places proto sources in `packages/contracts/proto/` and generated v2.26 Go
+  bindings in `packages/contracts/go/v226/`, not another module. Internal
+  consumers build from the same Cloud commit, record the schema hash, and lock
+  generator versions. Necessary consumer `go.mod`/`go.sum` updates belong to
+  that contract change; do not add a module solely to avoid those updates.
 - Provider-specific behavior stays behind the owning Fabric adapter.
 - Console does not own persistence, provider calls, billing decisions, or
   Fabric/Ledger/Sub2API state. Control Plane does not own the wallet, provider

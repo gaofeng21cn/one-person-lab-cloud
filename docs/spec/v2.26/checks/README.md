@@ -32,7 +32,7 @@ DDL测试确实在隔离postgres:16-alpine容器中执行，使用--network none
 ```sh
 /tmp/opl-spec-validation/bin/python checks/render_domain_flows.py
 /tmp/opl-spec-validation/bin/python checks/validate_contract_semantics.py
-python3 checks/validate_publisher_source.py --cloud-repo /absolute/path/to/one-person-lab-cloud
+python3 checks/validate_publisher_source.py --cloud-repo /absolute/path/to/opl-cloud
 # validate_cross_domain.py的参数与隔离DB运行方式以其--help/文件说明为准；会创建并清理自身network-none/tmpfs容器。
 /tmp/opl-spec-validation/bin/python checks/render_traceability.py
 /tmp/opl-spec-validation/bin/python checks/validate_spec.py
@@ -61,8 +61,9 @@ go run checks/d17_native_millis.go
 ```sh
 python3 checks/render_development_plan.py
 python3 checks/validate_development_plan.py
+python3 -m unittest discover -s checks -p 'test_development_plan.py'
 ```
 
-14与development_plan.json是同源任务书，不重复定义业务DTO。检查涵盖全部F/API/Owner表/内部RPC、现有代码路径、拟建位置和启动/验收依赖无环；只说明任务覆盖和计划可执行，不执行W00–W31的实现、部署或收费。
+14与development_plan.json是同源任务书，不重复定义业务DTO。检查涵盖全部F/API/Owner表/内部RPC、现有代码路径、拟建位置和启动/验收依赖无环；同时拒绝Cloud领域落点逃出当前仓库、tenant/Gateway误拆模块和非Instance任务越界写入。生成器从当前checkout确定工作根；历史来源SHA和旧回执保持原样。只说明任务覆盖和计划可执行，不执行W00–W31的实现、部署或收费。
 
 既有协议/SQL/UI字节未改时复用其精确哈希证据，不为增加任务书重跑有副作用的资格流程。打包/签收忽略.DS_Store、__MACOSX、__pycache__及.pyc，这些是工作站元数据而不是产品规则。

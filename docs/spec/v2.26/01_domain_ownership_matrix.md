@@ -1,6 +1,6 @@
 # 01 领域、服务与可替换边界
 
-> 目标设计；范围和状态以00为准，字段以02/SQL为准，外部操作以03为准。Domain不等于插件，不等于必须立刻建一个仓库。
+> 目标设计；范围和状态以00为准，字段以02/SQL为准，外部操作以03为准。Domain不等于插件或仓库；全部Cloud产品在唯一`opl-cloud`仓库内保持明确领域边界。
 
 ## 1. 目标调用图
 
@@ -42,14 +42,76 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 
 BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认证结果来自Gateway。一个Tenant的钱包主体与成员登录身份显式区分，不能把“知道用户ID”当成跨用户扣费授权。
 
-## 3. 物理边界与仓库落点
+## 3. 单仓库内的物理边界与代码落点
 
-- 目标业务服务使用Go、独立module、独立database/角色与镜像；数据库名称/字段以02为准。proto中的service只分组API，不按接口组增加部署进程；CloudIdentity与Gateway适配同一部署单元。
-- 新服务可依次从现有Control Plane提取为独立交付仓库。目标逻辑名：opl-cloud-capability、opl-cloud-build、opl-cloud-workspace、opl-cloud-runtime-control、opl-cloud-gateway-integration、opl-cloud-resource-catalog。
-- 这些是方案约定的交付单元名，不表示远端仓库已经创建；创建/发布由后续明确任务执行。前后端不得依靠共享数据库目录来集成。
-- Fabric与Ledger保持既有模块/权威；没有第二个Fabric或Evidence账本。Ledger新增build事件类型必须更新真实验证器，而不是新建一个匿名收据服务绕过规则。
-- Console UI保留现仓apps/console-ui；BFF交付路径apps/console-bff。部署到哪里由Instance配置，前端不携带provider选项。
-- 同服务内部先用直接函数与类型；只有真正跨Owner边界用gRPC或事件，不能把每条lane都变网络服务。
+本节是`docs/architecture.md`及`docs/decisions.md`已采用目标的详细实施映射；不构成平行的架构决策Owner。
+
+### 3.1 已决定的边界
+
+全部Cloud产品代码在唯一GitHub仓库`opl-cloud`内。仓库是源代码协同边界，Go module是编译/依赖边界，服务是运行/部署边界，database/角色是数据权限边界；四者不混为一谈。
+
+- 目标业务服务使用Go，按下表独立module、部署进程与镜像。proto中的service只分组API，不按每个接口组增加进程。
+- 保留原规格例外：`tenant`（CloudIdentity）与`gateway`共用Gateway Integration的Go module和部署进程，但各自拥有独立database、角色及受限连接池，不获得跨库读写权。
+- 因而目标是**9个业务数据Owner、8个领域后端部署单元，加1个Console BFF**；Console UI是独立前端应用，contracts和`services/internal`不是服务。这里统计逻辑部署单元，不限定Instance的副本数。
+- Fabric与Ledger保持现有模块/执行与证据权威。不是新增第二Fabric、第二Ledger，也不新建统一Operation/Saga/权限服务。Ledger新增build事件类型必须更新真实验证器，不能用匿名收据服务绕过规则。
+- `services/control-plane`是逐域提取的现有来源，不是目标架构额外保留的永久第二writer。尚未移交的能力继续由原Owner负责；逐能力切换真实caller并完成09的历史义务后退休对应旧writer，不直接删除尚在使用的服务或数据。
+- Instance、Sub2API、Framework/OPL App、外部Storage/OCI Registry保持外部Owner与契约关系；单仓库决定不把它们并入Cloud，生产部署仍由Instance执行；前端不携带provider选项。
+
+### 3.2 目录、module、进程与数据Owner映射
+
+下表是**目标落点，不是新服务已实现声明**。本次核对时已存在Console UI、Control Plane、Fabric、Ledger及共享库；标“拟建”的路径按14依赖逐步实施。database/schema/角色的完整规则仍由02及SQL唯一负责。
+
+| 仓库内路径 | 编译/依赖单元 | 目标运行单元 | 数据Owner / database | 当前定位 |
+|---|---|---|---|---|
+| `apps/console-ui` | React/TypeScript前端应用 | Console UI前端制品 | 无业务数据库 | 已有，逐页面迁移真实BFF调用 |
+| `apps/console-bff` | 独立Go module | Console BFF | 无业务database；仅session安全存储 | 拟建 |
+| `services/gateway-integration` | 独立Go module；内部CloudIdentity与Gateway适配子模块 | Gateway Integration | `tenant` / `opl_tenant`；`gateway` / `opl_gateway`，两套受限连接池 | 拟建，不另建tenant服务 |
+| `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 拟建 |
+| `services/build` | 独立Go module | Build | `build` / `opl_build` | 拟建 |
+| `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 拟建 |
+| `services/runtime-control` | 独立Go module | Runtime Control | `runtime_control` / `opl_runtime_control` | 拟建 |
+| `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 拟建 |
+| `services/fabric` | 保留独立Go module | Fabric | `fabric` / `opl_fabric` | 已有，目标数据库隔离按02/09实施 |
+| `services/ledger` | 保留独立Go module | Ledger | `ledger` / `opl_ledger` | 已有，目标数据库隔离按02/09实施 |
+| `services/control-plane` | 迁移期间保留现有Go module | 迁移期间的原Control Plane | 仅尚未移交的现有权威 | 已有来源，非第9个目标领域服务 |
+| `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，v2.26生成代码为其`v226`子包 |
+| `services/internal` | 现有policy-free共享基础设施目录，复用其中的窄module（如`postgresmigrate`） | 无进程 | 无业务数据Owner | 仅供至少两个真实服务调用，不承载共享业务规则 |
+
+目标目录树（`拟建`不表示W01要一次建立所有空服务）：
+
+```text
+opl-cloud/                         # 唯一Cloud产品GitHub仓库
+├── apps/
+│   ├── console-ui/                # 已有React/TypeScript前端
+│   └── console-bff/               # 拟建独立Go module / BFF进程
+├── services/
+│   ├── gateway-integration/       # 拟建；tenant + gateway共module/进程
+│   ├── capability/                # 拟建独立Go module / 服务
+│   ├── build/                     # 拟建独立Go module / 服务
+│   ├── workspace/                 # 拟建独立Go module / 服务
+│   ├── runtime-control/           # 拟建独立Go module / 服务
+│   ├── resource-catalog/          # 拟建独立Go module / 服务
+│   ├── fabric/                    # 保留独立Go module / 服务
+│   ├── ledger/                    # 保留独立Go module / 服务
+│   ├── control-plane/             # 迁移来源，逐能力退休旧writer
+│   └── internal/                  # 现有policy-free共享库，非服务
+├── packages/contracts/
+│   ├── proto/internal.proto       # W01落实规格协议源码
+│   └── go/                        # 现有且唯一的contracts Go module
+│       ├── go.mod
+│       └── v226/                  # 生成包，不另设go.mod
+└── docs/spec/v2.26/               # 规格与实施工作包
+```
+
+新建的是**仓库内6个领域服务module和1个BFF module**，不是6个GitHub仓库；Fabric/Ledger沿用并演进。并行工作按独立Owner和写集分配，不因同仓库而合并进程、共业务库或直接导入另一个服务的内部实现。进程内部lane先用直接函数与类型；真正跨Owner边界仍遵守既定typed接口与权限，不靠共享表集成。
+
+### 3.3 共享契约与同提交消费
+
+- W01采用现有`packages/contracts/go`共享module，生成代码落`packages/contracts/go/v226`；不新增`packages/contracts/v226/go.mod`，也不为每个领域复制一份契约module。
+- 规格`contracts/internal.proto`及其中字段是协议权威，产品协议落在`packages/contracts/proto/internal.proto`。原proto的`go_package`使用规格逻辑名；生成流程用固定的protobuf import mapping（`M`参数或等价生成配置）将其映射到`opl-cloud/packages/contracts/go/v226`，不手改生成结果、不为目录调整改消息字段或既有规格字节。
+- 同仓库消费者通过当前module关系使用同一checkout契约；契约、生成代码、消费者及边界测试随同一个Cloud commit交付。锁定生成工具/运行库版本并记录schema hash；不另造跨仓契约发布或独立tag消费流程。外部Owner继续按其真实契约版本与资格要求验证。
+- 必要的消费者`go.mod`/`go.sum`更新属于W01写集。记录实际依赖链和验证结果，不把必要更新当无关噪声；也不无依据升级、强压传递依赖或用兼容字段迁就旧测试。
+- contracts只承载有当前跨Owner消费者的wire/data-integrity事实；不得放领域编排、ORM实体、钱包/价格决策、服务实现或平行领域模型。新增服务模块是既定领域拆分，新增共享业务模块不是本次决定。
 
 ## 4. 可替换组件契约（“一切可插件”的可检验含义）
 
@@ -71,7 +133,7 @@ Runtime/WebUI目录必须记录具体可验证contract，而不只给“兼容=t
 
 内部唯一wire规格为contracts/internal.proto。所有业务服务使用各自mTLS服务身份；浏览器不能声明内部caller、issuer或权限。服务身份回答“谁在调用”，CloudIdentity授权回答“这个用户/已接受业务义务是否允许此动作”，两者不能互相替代。
 
-CloudIdentity是Gateway Integration内已有的Cloud身份/租户子模块，不新增身份微服务、不新建密码库、不引入通用权限框架。认证身份来自Sub2API；Tenant/成员授权事实仍由CloudIdentity持有。
+CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子模块，不新增身份微服务、不新建密码库、不引入通用权限框架。认证身份来自Sub2API；Tenant/成员授权事实仍由CloudIdentity持有。
 
 具体执行：
 
@@ -136,7 +198,7 @@ CloudIdentity是Gateway Integration内已有的Cloud身份/租户子模块，不
 - 不引入全局Saga服务、全局锁、万能插件Host、独立权限平台或第二event bus。
 - typed grant、引用claim、路由CAS都留在有真实写入权的现有Owner，解决的是已发现的具体竞争/授权断点。
 - Runtime构建扩展包裹现有WorkspaceApplicationRevision，不另起端口/探针/挂载/Secret的平行应用格式；当前源码validator仍要参与准入。
-- 新功能先做一个真实caller到终态的闭环，再提取下一个Owner；服务独立是目标边界，不是先建一堆空仓库的理由。
+- 新功能先做一个真实caller到终态的闭环，再提取下一个Owner；服务独立是目标边界，不是先建一堆空服务或新GitHub仓库的理由。
 
 ## 9. D17套餐变更的唯一Owner
 
