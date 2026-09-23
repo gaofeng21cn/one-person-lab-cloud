@@ -87,14 +87,15 @@ test("the production event contract is the byte-identical specification owner", 
 test("generated event identities match the specification event versions", async () => {
   const [eventsSource, generated] = await Promise.all([text(eventsPath), text(eventIdentityPath)]);
   const events = JSON.parse(eventsSource) as {
-    oneOf: Array<{ properties: { eventType: { const: string }; schemaVersion: { const: number }; owner: { const: string } }; "x-aggregate-identity": { type: string; idPayloadField: string } }>;
+    oneOf: Array<{ properties: { eventType: { const: string }; schemaVersion: { const: number }; owner: { const: string } }; "x-consumers": string[]; "x-aggregate-identity": { type: string; idPayloadField: string } }>;
   };
 
   assert.equal(events.oneOf.length, 18, "the specification defines 18 event versions");
   for (const entry of events.oneOf) {
     const eventType = entry.properties.eventType.const;
     const identity = entry["x-aggregate-identity"];
-    const expected = `{EventType: "${eventType}", SchemaVersion: ${entry.properties.schemaVersion.const}, Owner: "${entry.properties.owner.const}", AggregateType: "${identity.type}", AggregateIDField: "${identity.idPayloadField}"}`;
+    const consumers = [...entry["x-consumers"]].sort().map(owner => `"${owner}"`).join(", ");
+    const expected = `{EventType: "${eventType}", SchemaVersion: ${entry.properties.schemaVersion.const}, Owner: "${entry.properties.owner.const}", Consumers: []string{${consumers}}, AggregateType: "${identity.type}", AggregateIDField: "${identity.idPayloadField}"}`;
     assert.ok(generated.includes(expected), `generated event identity is stale for ${eventType}: expected ${expected}`);
   }
 
