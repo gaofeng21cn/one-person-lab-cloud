@@ -292,7 +292,7 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     "capability_version",
 		AggregateID:       "ver-" + suffix,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"capabilityVersionId":"ver-1"}`),
+		Payload:           json.RawMessage(`{"capabilityVersionId":"ver-` + suffix + `"}`),
 	}
 
 	commitTx, err := db.BeginTx(ctx, nil)
@@ -335,7 +335,7 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     event.AggregateType,
 		AggregateID:       event.AggregateID,
 		AggregateRevision: event.AggregateRevision,
-		Payload:           json.RawMessage(`{"capabilityVersionId":"ver-2"}`),
+		Payload:           json.RawMessage(`{"capabilityVersionId":"ver-` + suffix + `","tampered":true}`),
 	}, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("deliver conflicting event: %v", err)
@@ -388,7 +388,7 @@ func TestWriterRoleCannotRewriteAppendOnlyFacts(t *testing.T) {
 		AggregateID:       "job-priv-" + suffix,
 		AggregateRevision: 1,
 		CorrelationID:     "req-priv-" + suffix,
-		Payload:           json.RawMessage(`{"buildJobId":"job-priv"}`),
+		Payload:           json.RawMessage(`{"buildJobId":"job-priv-` + suffix + `"}`),
 		OccurredAt:        time.Now().UTC(),
 	}, []string{"ledger"}); err != nil {
 		t.Fatalf("append outbox event: %v", err)
