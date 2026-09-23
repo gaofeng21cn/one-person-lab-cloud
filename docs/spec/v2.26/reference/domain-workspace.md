@@ -2035,4 +2035,3 @@ Envelope字段：`eventId`, `eventType`, `schemaVersion`, `owner`, `tenantId`, `
 | `receiptId` | `string` | 否 | minLength=1 |
 
 manual/automatic/boundary共用原周期义务，目标价一次性付款；零金额无Gateway动作
-

@@ -1502,4 +1502,3 @@ Envelope字段：`eventId`, `eventType`, `schemaVersion`, `owner`, `tenantId`, `
 | `restoredAt` | `string/date-time` | 是 |  |
 
 恢复身份和保留制品权限，不复活资源
-

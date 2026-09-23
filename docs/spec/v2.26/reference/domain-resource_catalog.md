@@ -855,4 +855,3 @@ Envelope字段：`eventId`, `eventType`, `schemaVersion`, `owner`, `tenantId`, `
 | `validFrom` | `string/date-time` | 是 |  |
 
 新准入采用新policy，不覆盖既有Quote
-

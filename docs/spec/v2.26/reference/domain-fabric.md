@@ -684,4 +684,3 @@ Envelope字段：`eventId`, `eventType`, `schemaVersion`, `owner`, `tenantId`, `
 | `routeReceiptId` | `string` | 否 | minLength=1 |
 
 路由fence/CAS实际读回，Workspace选中提交仍由Workspace owner负责
-
