@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	contracts "opl-cloud/packages/contracts/go"
 )
 
 // ErrInvalidEvent reports a missing or invalid required event field.
@@ -19,11 +21,9 @@ var ErrInvalidEvent = errors.New("invalid outbox event")
 // transaction as the owner mutation it announces.
 //
 // Wire mapping follows docs/spec/v2.26/contracts/events.json `x-delivery`.
-// That authoritative map binds eventId, eventType, schemaVersion, tenantId,
-// aggregateId, aggregateVersion, occurredAt, requestId and payload to their
-// outbox columns. It does not bind `aggregate_type`, and the v2.26 wire
-// EventEnvelope carries no such field, so the owning domain's event producer
-// supplies it explicitly here rather than this package inventing a vocabulary.
+// AggregateType and AggregateID are not free-form: the specification fixes both
+// per exact (eventType, schemaVersion) through `x-aggregate-identity`, so they are
+// validated against that mapping instead of being accepted as producer text.
 type Event struct {
 	ID                string
 	EventType         string
@@ -53,10 +53,6 @@ func (e Event) validate() error {
 		return fmt.Errorf("%w: event type is required", ErrInvalidEvent)
 	case e.SchemaVersion <= 0:
 		return fmt.Errorf("%w: schema version must be positive", ErrInvalidEvent)
-	case strings.TrimSpace(e.AggregateType) == "":
-		return fmt.Errorf("%w: aggregate type is required", ErrInvalidEvent)
-	case strings.TrimSpace(e.AggregateID) == "":
-		return fmt.Errorf("%w: aggregate id is required", ErrInvalidEvent)
 	case e.AggregateRevision < 0:
 		return fmt.Errorf("%w: aggregate revision must not be negative", ErrInvalidEvent)
 	case strings.TrimSpace(e.CorrelationID) == "":
@@ -65,6 +61,31 @@ func (e Event) validate() error {
 		return fmt.Errorf("%w: payload is required", ErrInvalidEvent)
 	case e.OccurredAt.IsZero():
 		return fmt.Errorf("%w: occurrence time is required", ErrInvalidEvent)
+	}
+	return ValidateAggregateIdentity(e.EventType, e.SchemaVersion, e.AggregateType, e.AggregateID, e.Payload)
+}
+
+// ValidateAggregateIdentity checks a recorded aggregate type and id against the
+// specification's fixed mapping for this exact event version. A producer cannot
+// satisfy the Outbox or Inbox columns with an invented aggregate type or an id
+// taken from another field of the payload.
+func ValidateAggregateIdentity(eventType string, schemaVersion int32, aggregateType, aggregateID string, payload []byte) error {
+	identity, ok := contracts.LookupEventIdentity(eventType, schemaVersion)
+	if !ok {
+		return fmt.Errorf("%w: %s schema %d is not a specified event version",
+			ErrInvalidEvent, eventType, schemaVersion)
+	}
+	if aggregateType != identity.AggregateType {
+		return fmt.Errorf("%w: %s schema %d records aggregate type %q, the specification fixes %q",
+			ErrInvalidEvent, eventType, schemaVersion, aggregateType, identity.AggregateType)
+	}
+	expected, err := identity.AggregateIDFromPayload(payload)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidEvent, err)
+	}
+	if aggregateID != expected {
+		return fmt.Errorf("%w: %s schema %d records aggregate id %q, its payload carries %q",
+			ErrInvalidEvent, eventType, schemaVersion, aggregateID, expected)
 	}
 	return nil
 }
