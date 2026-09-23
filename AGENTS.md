@@ -64,6 +64,20 @@ absent.
 
 ## Module Ownership
 
+The target architecture is the domain-separated Agent SaaS architecture adopted
+in [docs/decisions.md](docs/decisions.md) on 2026-09-22 and specified by the
+v2.26 development specification under
+[docs/spec/v2.26](docs/spec/v2.26/00_master_index.md). The target domains are
+`tenant` (CloudIdentity), `capability`, `build`, `workspace`,
+`runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
+`fabric`, and `ledger`, surfaced through `apps/console-ui` and a Console BFF.
+Each domain owns its own data and writes; cross-owner references use opaque
+identifiers only.
+
+The table below is the current implementation that is being migrated. Its rows
+remain authoritative for the code that exists today; the target domains above
+govern new work, and the v2.26 work packages own the migration.
+
 | Module | Owns |
 | --- | --- |
 | `apps/console-ui` | Presentation and calls to Control Plane product APIs |
@@ -72,8 +86,11 @@ absent.
 | `services/ledger` | Receipts, evidence, retention, reconciliation, opaque provenance |
 | `services/internal` | Policy-free infrastructure shared by at least two current services |
 
-- Control Plane, Fabric, and Ledger remain separate Go modules, processes, and
-  PostgreSQL schema owners. Integration uses typed public HTTP contracts.
+- Under the target architecture, each domain is a separate Go module, process,
+  and PostgreSQL database owner, integrated by typed gRPC/protobuf internally
+  and REST at the Console BFF. Until a domain is migrated, the current Control
+  Plane, Fabric, and Ledger remain separate Go modules, processes, and schema
+  owners using typed public HTTP contracts.
 - Console reaches service data through Control Plane APIs.
 - Provider-specific behavior stays behind the owning Fabric adapter.
 - Console does not own persistence, provider calls, billing decisions, or
@@ -91,11 +108,14 @@ Development with distinct owners and write sets may proceed in parallel. Changes
 to the same file, one shared contract revision, canonical `main`, or production
 state are serialized.
 
-Cross-service coordination remains typed HTTP plus owner readback. Do not add a
-new framework, service, shared policy layer, durable workflow engine, or global
-event bus unless a current caller and observed missing capability justify it;
-the current architecture does not adopt Spring Modulith, Dapr, Temporal, or a
-second Cordis runtime.
+Cross-service coordination is typed gRPC/protobuf plus owner readback under the
+target architecture, with per-domain PostgreSQL Outbox delivery where a
+reliable event is required; the un-migrated services still coordinate over typed
+HTTP. Do not add a framework, service, shared policy layer, durable workflow
+engine, or global event bus beyond the domains and mechanisms the adopted target
+defines. A new service still needs a current caller, an observed missing
+capability, a bounded migration, and an owner. The target architecture does not
+adopt Spring Modulith, Dapr, Temporal, or a second Cordis runtime.
 
 ## Implementation
 

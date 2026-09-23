@@ -4,7 +4,82 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture
+
+This repository's target product is Agent SaaS: a customer selects an Agent
+version and a compute/storage plan, pays, and receives a running online agent it
+can use, update, and renew. The earlier path in which a customer bought bare
+resources and an administrator separately deployed an application is replaced,
+with an explicit migration for existing Workspaces, purchases, Keys, and
+receipts.
+
+The target is domain-separated services rather than one Control Plane process.
+Each domain owns its data, its API, and its writes. The target domains are
+`tenant` (CloudIdentity), `capability`, `build`, `workspace`,
+`runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
+`fabric`, and `ledger`; `console`/BFF is the browser aggregation surface.
+`Capability`, `Build`, `Workspace`, `Runtime Control`, `Resource Catalog`, and
+`Gateway Integration` may become separate repositories. `Fabric` and `Ledger`
+keep their execution and evidence authority.
+
+The remaining target decisions are:
+
+- Each data owner has its own PostgreSQL database and owner/writer roles. Cross-
+  owner references use opaque identifiers only; there are no cross-domain
+  foreign keys, joins, or transactions.
+- Browser traffic reaches the product only through the Console BFF over REST.
+  Internal calls use typed gRPC/protobuf. Reliable events use a per-domain
+  PostgreSQL Outbox delivered to a consumer Inbox; no additional message
+  runtime is introduced for the current chains.
+- The BFF performs authentication, authorization context, and product DTO
+  aggregation only. The Workspace service owns the business Saga.
+- `Capability` owns Package, version, and catalog metadata while object bytes
+  live in the storage provider. `Build` reads immutable references and writes
+  its own jobs and artifact evidence. A ready Capability version is created only
+  after a successful build; there is no pending version without a digest.
+- Package, OCI references, and Build history are not deleted with a Workspace.
+  Package archival does not cascade to history, and there is no automatic
+  90-day purge.
+- New identifiers are opaque strings. Existing identifiers, original charge
+  keys, original receipts, and timestamps are preserved across migration.
+- Money is `USDMicros` on the wire and `bigint` in PostgreSQL; times are UTC
+  RFC3339. Authorized product roles are `owner`, `admin`, `member`, and
+  `platform_admin`. Login identity is separate from the Tenant billing subject.
+- The Console stays React/TypeScript. Public marketplace, self-service
+  third-party WebUI publishing, cross-Tenant private OCI sharing, arbitrary
+  customer-selected Runtime images, and public registration are out of this
+  delivery unless separately decided.
+
+The authoritative product, field, API, frontend, migration, and acceptance
+specification is the v2.26 development specification retained under
+[`docs/spec/v2.26`](./spec/v2.26/00_master_index.md). That specification is a
+target and planning owner, not implementation evidence.
+
+### Superseded Decisions
+
+This decision replaces two earlier statements, which are retained here only as
+history:
+
+- **2026-08-15: Keep The Current Service Architecture Until A Real Gap Pays For
+  Change.** Its requirement that Cloud remain exactly Control Plane, Fabric,
+  and Ledger is superseded for the target. Its general rule still holds: a new
+  service still needs a current caller, an observed missing capability, a
+  bounded migration, and an owner. The v2.26 work packages supply that
+  justification for the target domains.
+- **2026-09-11: Control Plane Coordinates Applications And Keeps One Process.**
+  Its single-process requirement is superseded. Its application-authority
+  boundary remains: the owning service admits immutable revisions and drives
+  lifecycle, while application behavior and data formats stay with the
+  publisher, execution and readback stay with Fabric, wallet authority stays
+  with Sub2API, and evidence stays with Ledger.
+
 ## 2026-09-17: A Customer Launch Delivers Resources, Not An Application
+
+> **Superseded as the new-customer default entry** by
+> [2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
+> The new customer entry is Agent version plus plan. This decision remains the
+> historical interpretation of an existing resource-only Launch, and the
+> retained Launch obligations below still hold.
 
 A Workspace purchase ends at resource fulfillment. The customer Console path
 opens compute, storage, attachment and the Workspace's entitlement, and it does
@@ -93,6 +168,11 @@ browsed. Which identity holds which permission is an installation choice; Cloud
 does not require Control Plane and the runtime nodes to share one credential.
 
 ## 2026-09-11: Control Plane Coordinates Applications And Keeps One Process
+
+> **Superseded for the target** by [2026-09-22: Adopt The Domain-Separated
+> Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
+> The single-process requirement no longer holds; the application-authority
+> boundary described below still does.
 
 Control Plane's application authority is admission and deployment coordination,
 not application business. It admits immutable revisions, selects each
@@ -239,6 +319,11 @@ must preserve identity, money, resource, idempotency, billing-period, and attemp
 facts with exact-row compare-and-swap. Otherwise the row remains manual review.
 
 ## 2026-08-15: Keep The Current Service Architecture Until A Real Gap Pays For Change
+
+> **Superseded for the target** by [2026-09-22: Adopt The Domain-Separated
+> Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
+> Retained as history; the general "new service needs a current caller" rule
+> still applies.
 
 Console remains a TypeScript browser application. Control Plane, Fabric, and
 Ledger remain separate Go modules, processes, and PostgreSQL schema owners.

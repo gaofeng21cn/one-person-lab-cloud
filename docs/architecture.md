@@ -101,9 +101,9 @@ Domain agents        domain strategy, quality verdict and delivery authority
 ## Repository And Instance Topology
 
 ```text
-one-person-lab-cloud
+opl-cloud
   product architecture, whitepaper, roadmap
-  Console + Control Plane + Fabric + Ledger implementation
+  Console/BFF + the target domain services
   reusable contracts, portable images and GitHub Releases
         | immutable product SHA + image digest
         v
@@ -111,12 +111,23 @@ opl-instance-medopl
   medopl customization, production environment, deployment, rollback and evidence
 ```
 
-`one-person-lab-cloud` is the single product and implementation repository.
-Console, Control Plane, Fabric, and Ledger remain logical service owners inside
-it; similarly named prototype repositories are historical inputs, not parallel
-current writers. The short identifier `opl-cloud` remains valid for packages,
-images, binaries, services, namespaces, environment variables and runner
-labels, but it is not a repository boundary.
+This repository is the product and implementation repository for the target
+domain-separated Agent SaaS architecture. The target domains are `tenant`
+(CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
+`resource_catalog`, `gateway` (Gateway Integration), `fabric`, and `ledger`,
+with `console-ui` and a Console BFF as the browser surface. `Capability`,
+`Build`, `Workspace`, `Runtime Control`, `Resource Catalog`, and `Gateway
+Integration` may live in their own repositories; `Fabric` and `Ledger` keep
+their execution and evidence authority. The migration of the current
+Control Plane, Fabric, and Ledger implementation into this target is tracked by
+the v2.26 work packages.
+
+The current implementation still runs the earlier Control Plane, Fabric, and
+Ledger services. Their boundaries are described below and remain authoritative
+for the code that exists today; the target topology governs new work. Similarly
+named prototype repositories are historical inputs, not parallel current
+writers. The short identifier `opl-cloud` remains valid for packages, images,
+binaries, services, namespaces, environment variables and runner labels.
 
 An instance repository materializes one installation without copying product or
 runtime code. It owns non-secret domains, provider selection, region and

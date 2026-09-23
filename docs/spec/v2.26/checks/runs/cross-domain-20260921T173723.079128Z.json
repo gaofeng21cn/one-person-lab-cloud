@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "opl-cross-domain-execution/v1",
+  "executedAt": "2026-09-21T17:37:23.079128+00:00",
+  "completedAt": "2026-09-21T17:37:27.557328+00:00",
+  "passed": false,
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "574e15419c624b90c783a403a1385e0f05d0c87649a59ab4f6bb9fc473fc8385",
+    "contracts/schema.sql": "09d0fb36364885e87492e83942a9edd73bdd9d0ee552cfe5e6bd2d02569e489a",
+    "contracts/db_inventory.json": "5bdb523a5a52913fb6e9310ccf6933e4c3cffdf53062d4ec3562a9ea2b3f2f31",
+    "contracts/internal.proto": "3783f772cf3f745d84f550199b286af8fca1b5c05cb2e49a05bd1d3b09d656fa",
+    "contracts/publisher-contract.schema.json": "a41f5752276fce5993b849964dc64ff0f7f5b16ce63a14b22952f261e4cab1c3",
+    "checks/semantics_cases.json": "2aff4216aa4759f647a1fad9667b0b2afdd0a50f870e02387eb8141b250dca34",
+    "checks/validate_cross_domain.py": "52a6a8b5a1b438d5657f4c546175f50c95c0e43ff48e5a2f5829b9111bbdd37e"
+  },
+  "sourceUnchangedDuringRun": true,
+  "sourceHashesAtEnd": {
+    "03_api_contract_complete.yaml": "574e15419c624b90c783a403a1385e0f05d0c87649a59ab4f6bb9fc473fc8385",
+    "contracts/schema.sql": "09d0fb36364885e87492e83942a9edd73bdd9d0ee552cfe5e6bd2d02569e489a",
+    "contracts/db_inventory.json": "5bdb523a5a52913fb6e9310ccf6933e4c3cffdf53062d4ec3562a9ea2b3f2f31",
+    "contracts/internal.proto": "3783f772cf3f745d84f550199b286af8fca1b5c05cb2e49a05bd1d3b09d656fa",
+    "contracts/publisher-contract.schema.json": "a41f5752276fce5993b849964dc64ff0f7f5b16ce63a14b22952f261e4cab1c3",
+    "checks/semantics_cases.json": "2aff4216aa4759f647a1fad9667b0b2afdd0a50f870e02387eb8141b250dca34",
+    "checks/validate_cross_domain.py": "52a6a8b5a1b438d5657f4c546175f50c95c0e43ff48e5a2f5829b9111bbdd37e"
+  },
+  "image": {
+    "name": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoTags": [
+      "postgres:16-alpine"
+    ],
+    "id": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "metadata": {
+    "actualDatabaseFields": 1250
+  },
+  "setupError": "RuntimeError: Direct semantic field mapping mismatches:\nInvitation.role enum mismatch {'admin', 'owner', 'member'} vs tenant.invitations.role {'admin', 'member'}\nBuildLog.level enum mismatch {'error', 'info', 'warning'} vs build.build_logs.level {'info', 'error', 'debug', 'warn'}",
+  "cases": [],
+  "sqlInvocations": 27,
+  "cleanup": {
+    "containerAbsent": false,
+    "stopSucceeded": true,
+    "storage": "tmpfs only; no host mounts/named volumes",
+    "network": "none; no host ports"
+  },
+  "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+  "notProven": [
+    "real service handlers/Saga workers",
+    "production or Instance adoption",
+    "real Gateway/provider charges or resources",
+    "R06 unapproved resize policy is not a completed feature"
+  ]
+}

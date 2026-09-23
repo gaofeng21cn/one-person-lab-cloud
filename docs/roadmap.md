@@ -1,12 +1,32 @@
 # OPL Cloud Roadmap And Current Gaps
 
-Owner: `one-person-lab-cloud`
+Owner: `opl-cloud`
 Purpose: `single_active_gap_and_priority_owner`
 State: `active_planning`
 
 This file contains only open outcomes. Current evidence belongs in
 [status.md](./status.md); architecture and durable decisions belong in
 [architecture.md](./architecture.md) and [decisions.md](./decisions.md).
+
+## Target Delivery: v2.26 Domain-Separated Agent SaaS
+
+The target product and the delivery sequence are owned by the adopted
+[2026-09-22 decision](./decisions.md) and the
+[v2.26 development specification](./spec/v2.26/00_master_index.md).
+
+- Authoritative implementation work packages `W00`-`W31`:
+  [14_implementation_work_packages.md](./spec/v2.26/14_implementation_work_packages.md)
+- Development batches and per-role acceptance:
+  [08_delivery_checklist_per_role.md](./spec/v2.26/08_delivery_checklist_per_role.md)
+- Legacy migration program `M0`-`M5`:
+  [09_legacy_migration.md](./spec/v2.26/09_legacy_migration.md)
+
+Those files are the single writer for the target sequence. This file does not
+restate, renumber, or paraphrase them.
+
+The sections below describe the **current implementation** lane. They remain
+open until the v2.26 work packages replace them, and they are not the target
+delivery order.
 
 ## Priority
 

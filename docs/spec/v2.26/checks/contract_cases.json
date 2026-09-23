@@ -1,0 +1,865 @@
+{
+  "description": "Explicit semantic acceptance/rejection examples; evaluated against actual OpenAPI schemas, not generated mirrors.",
+  "cases": [
+    {
+      "name": "money_zero",
+      "schema": "USDMicros",
+      "value": "0",
+      "valid": true
+    },
+    {
+      "name": "money_max",
+      "schema": "USDMicros",
+      "value": "9223372036854775807",
+      "valid": true
+    },
+    {
+      "name": "money_overflow",
+      "schema": "USDMicros",
+      "value": "9223372036854775808",
+      "valid": false
+    },
+    {
+      "name": "money_negative",
+      "schema": "USDMicros",
+      "value": "-1",
+      "valid": false
+    },
+    {
+      "name": "money_float",
+      "schema": "USDMicros",
+      "value": 1.25,
+      "valid": false
+    },
+    {
+      "name": "money_numeric",
+      "schema": "USDMicros",
+      "value": 1000000,
+      "valid": false
+    },
+    {
+      "name": "money_leading_zero",
+      "schema": "USDMicros",
+      "value": "01",
+      "valid": false
+    },
+    {
+      "name": "legacy_id_not_uuid",
+      "schema": "OpaqueId",
+      "value": "ws-legacy-opaque-string",
+      "valid": true
+    },
+    {
+      "name": "build_explicit_webui",
+      "schema": "CreateBuildRequest",
+      "value": {
+        "packageVersionId": "pv-1",
+        "webuiVersionId": "ui-1"
+      },
+      "valid": true
+    },
+    {
+      "name": "build_missing_webui",
+      "schema": "CreateBuildRequest",
+      "value": {
+        "packageVersionId": "pv-1"
+      },
+      "valid": false
+    },
+    {
+      "name": "build_forbids_customer_runtime",
+      "schema": "CreateBuildRequest",
+      "value": {
+        "packageVersionId": "pv-1",
+        "webuiVersionId": "ui-1",
+        "runtimeVersionId": "my-runtime"
+      },
+      "valid": false
+    },
+    {
+      "name": "build_forbids_customer_tenant",
+      "schema": "CreateBuildRequest",
+      "value": {
+        "packageVersionId": "pv-1",
+        "webuiVersionId": "ui-1",
+        "tenantId": "victim"
+      },
+      "valid": false
+    },
+    {
+      "name": "launch_accepted_quote",
+      "schema": "CreateWorkspaceRequest",
+      "value": {
+        "name": "研究助手",
+        "quoteId": "quote-1",
+        "renewalMode": "manual"
+      },
+      "valid": true
+    },
+    {
+      "name": "launch_forbids_forged_price",
+      "schema": "CreateWorkspaceRequest",
+      "value": {
+        "name": "研究助手",
+        "quoteId": "quote-1",
+        "totalUSDMicros": "1",
+        "renewalMode": "manual"
+      },
+      "valid": false
+    },
+    {
+      "name": "launch_requires_quote",
+      "schema": "CreateWorkspaceRequest",
+      "value": {
+        "name": "研究助手",
+        "renewalMode": "manual"
+      },
+      "valid": false
+    },
+    {
+      "name": "quote_deploy_complete",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "deploy",
+        "capabilityVersionId": "cv-1",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 1
+      },
+      "valid": true
+    },
+    {
+      "name": "quote_deploy_missing_version",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "deploy",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 1
+      },
+      "valid": false
+    },
+    {
+      "name": "quote_deploy_forbids_existing_workspace",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "deploy",
+        "capabilityVersionId": "cv-1",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 1,
+        "workspaceId": "ws-1"
+      },
+      "valid": false
+    },
+    {
+      "name": "quote_positive_period",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "deploy",
+        "capabilityVersionId": "cv-1",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 0
+      },
+      "valid": false
+    },
+    {
+      "name": "quote_renew_existing_workspace",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "renew",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 1,
+        "workspaceId": "ws-1"
+      },
+      "valid": true
+    },
+    {
+      "name": "quote_renew_requires_workspace",
+      "schema": "QuoteRequest",
+      "value": {
+        "purpose": "renew",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "modelSelections": [],
+        "periodMonths": 1
+      },
+      "valid": false
+    },
+    {
+      "name": "legacy_empty_workspace",
+      "schema": "Workspace",
+      "value": {
+        "id": "ws-legacy",
+        "name": "已有环境",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "status": "provisioning",
+        "resourceReadiness": "ready",
+        "applicationAvailability": "pending",
+        "modelConfigurationVersion": "0",
+        "createdAt": "2026-09-20T00:00:00Z",
+        "updatedAt": "2026-09-20T00:00:00Z",
+        "deliveryModel": "legacy_resource_only",
+        "version": "1"
+      },
+      "valid": true
+    },
+    {
+      "name": "new_workspace_requires_agent",
+      "schema": "Workspace",
+      "value": {
+        "id": "ws-legacy",
+        "name": "已有环境",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "status": "provisioning",
+        "resourceReadiness": "ready",
+        "applicationAvailability": "pending",
+        "modelConfigurationVersion": "0",
+        "createdAt": "2026-09-20T00:00:00Z",
+        "updatedAt": "2026-09-20T00:00:00Z",
+        "deliveryModel": "agent_saas",
+        "version": "1"
+      },
+      "valid": false
+    },
+    {
+      "name": "new_workspace_explicit_agent",
+      "schema": "Workspace",
+      "value": {
+        "id": "ws-legacy",
+        "name": "已有环境",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "status": "provisioning",
+        "resourceReadiness": "ready",
+        "applicationAvailability": "pending",
+        "modelConfigurationVersion": "0",
+        "createdAt": "2026-09-20T00:00:00Z",
+        "updatedAt": "2026-09-20T00:00:00Z",
+        "deliveryModel": "agent_saas",
+        "version": "1",
+        "capabilityVersionId": "cv-1"
+      },
+      "valid": true
+    },
+    {
+      "name": "new_workspace_forbids_null_agent",
+      "schema": "Workspace",
+      "value": {
+        "id": "ws-legacy",
+        "name": "已有环境",
+        "computePlanId": "cp-1",
+        "storagePlanId": "sp-1",
+        "status": "provisioning",
+        "resourceReadiness": "ready",
+        "applicationAvailability": "pending",
+        "modelConfigurationVersion": "0",
+        "createdAt": "2026-09-20T00:00:00Z",
+        "updatedAt": "2026-09-20T00:00:00Z",
+        "deliveryModel": "agent_saas",
+        "version": "1",
+        "capabilityVersionId": null
+      },
+      "valid": false
+    },
+    {
+      "name": "adopt_requires_version_precondition",
+      "schema": "AdoptWorkspaceRequest",
+      "value": {
+        "capabilityVersionId": "cv-1",
+        "modelSelections": []
+      },
+      "valid": false
+    },
+    {
+      "name": "adopt_no_repurchase_fields",
+      "schema": "AdoptWorkspaceRequest",
+      "value": {
+        "capabilityVersionId": "cv-1",
+        "expectedWorkspaceVersion": "1",
+        "modelSelections": [],
+        "quoteId": "new-purchase"
+      },
+      "valid": false
+    },
+    {
+      "name": "operation_legitimate_stage",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "running",
+        "stage": "debit",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "pollAfterSeconds": 2
+      },
+      "valid": true
+    },
+    {
+      "name": "operation_wrong_kind_stage",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "running",
+        "stage": "building",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "pollAfterSeconds": 2
+      },
+      "valid": false
+    },
+    {
+      "name": "operation_success_confirmed",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "succeeded",
+        "stage": "succeeded",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "observationResult": "confirmed"
+      },
+      "valid": true
+    },
+    {
+      "name": "operation_unknown_not_success",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "succeeded",
+        "stage": "succeeded",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "observationResult": "unknown"
+      },
+      "valid": false
+    },
+    {
+      "name": "operation_failed_requires_error",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "failed",
+        "stage": "debit",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z"
+      },
+      "valid": false
+    },
+    {
+      "name": "operation_unknown_wait",
+      "schema": "Operation",
+      "value": {
+        "operationId": "op-1",
+        "owner": "workspace",
+        "kind": "create_workspace",
+        "resourceId": "ws-1",
+        "status": "awaiting_confirmation",
+        "stage": "debit",
+        "requestId": "req-1",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "updatedAt": "2026-09-21T00:00:00Z",
+        "observationResult": "unknown",
+        "pollAfterSeconds": 2
+      },
+      "valid": true
+    },
+    {
+      "name": "legacy_subscription_without_fake_quote",
+      "schema": "Subscription",
+      "value": {
+        "id": "sub-1",
+        "workspaceId": "ws-1",
+        "currentPeriodStart": "2026-09-21T00:00:00Z",
+        "currentPeriodEnd": "2026-10-21T00:00:00Z",
+        "periodMonths": 1,
+        "status": "active",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "legacy_import",
+        "legacyPurchaseId": "old-purchase-1",
+        "renewalMode": "manual",
+        "renewalSettingsVersion": "1",
+        "version": "1"
+      },
+      "valid": true
+    },
+    {
+      "name": "legacy_subscription_forbids_fake_quote",
+      "schema": "Subscription",
+      "value": {
+        "id": "sub-1",
+        "workspaceId": "ws-1",
+        "currentPeriodStart": "2026-09-21T00:00:00Z",
+        "currentPeriodEnd": "2026-10-21T00:00:00Z",
+        "periodMonths": 1,
+        "status": "active",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "legacy_import",
+        "legacyPurchaseId": "old-purchase-1",
+        "acceptedQuoteId": "fake-new-quote",
+        "renewalMode": "manual",
+        "renewalSettingsVersion": "1",
+        "version": "1"
+      },
+      "valid": false
+    },
+    {
+      "name": "quoted_subscription_requires_quote",
+      "schema": "Subscription",
+      "value": {
+        "id": "sub-1",
+        "workspaceId": "ws-1",
+        "currentPeriodStart": "2026-09-21T00:00:00Z",
+        "currentPeriodEnd": "2026-10-21T00:00:00Z",
+        "periodMonths": 1,
+        "status": "active",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "quoted",
+        "renewalMode": "manual",
+        "renewalSettingsVersion": "1",
+        "version": "1"
+      },
+      "valid": false
+    },
+    {
+      "name": "legacy_application_without_fake_build",
+      "schema": "CapabilityVersion",
+      "value": {
+        "id": "cv-legacy",
+        "versionLabel": "legacy-1",
+        "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "ready",
+        "modelRequirements": [],
+        "dataCompatibility": {
+          "dataSchemaVersion": "data-v1",
+          "compatibleFromVersions": [],
+          "rollbackSafe": true,
+          "migrationRequired": false
+        },
+        "referenceCount": "0",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "legacy_application",
+        "legacyApplicationRevisionId": "old-revision-1",
+        "artifact": {
+          "repository": "registry.example/official/runtime",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "os": "linux",
+            "architecture": "amd64"
+          }
+        },
+        "deploymentDescriptor": {
+          "schemaVersion": "opl-deployment-descriptor/v1",
+          "artifact": {
+            "repository": "registry.example/official/runtime",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": {
+              "os": "linux",
+              "architecture": "amd64"
+            }
+          },
+          "applicationRevision": {
+            "schemaVersion": 1,
+            "applicationId": "opl-runtime",
+            "version": "1.0.0",
+            "platform": "linux/amd64",
+            "image": "registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "execution": {
+              "userId": 1000,
+              "groupId": 1000,
+              "init": true
+            },
+            "entrypoint": [
+              "/opt/opl/bin/runtime"
+            ],
+            "ports": [
+              {
+                "name": "app",
+                "port": 8080,
+                "protocol": "TCP"
+              },
+              {
+                "name": "control",
+                "port": 8081,
+                "protocol": "TCP"
+              }
+            ],
+            "entryPort": "app",
+            "healthChecks": [
+              {
+                "port": 8081,
+                "path": "/health/readiness",
+                "initialDelaySeconds": 0
+              }
+            ],
+            "persistentMounts": [
+              {
+                "name": "workspace-data",
+                "mountPath": "/var/lib/opl",
+                "readOnly": false
+              }
+            ],
+            "scratchMounts": [
+              {
+                "name": "tmp",
+                "mountPath": "/tmp",
+                "readOnly": false,
+                "mode": 448,
+                "userId": 1000,
+                "groupId": 1000,
+                "sizeBytes": 67108864
+              }
+            ],
+            "credentials": [
+              {
+                "name": "gateway-key",
+                "kind": "gateway_key",
+                "target": "/run/opl/gateway-key",
+                "env": "OPL_GATEWAY_KEY"
+              },
+              {
+                "name": "app-admin",
+                "kind": "workspace_admin_password",
+                "target": "/run/opl/admin-password",
+                "username": "admin"
+              },
+              {
+                "name": "app-session",
+                "kind": "workspace_session_secret",
+                "target": "/run/opl/session-secret"
+              }
+            ],
+            "secretInputs": [
+              {
+                "name": "control_token",
+                "target": "/run/opl/control"
+              }
+            ],
+            "configInputs": [
+              {
+                "name": "models",
+                "target": "/etc/opl/models.json"
+              }
+            ],
+            "dependencies": [],
+            "exposurePolicy": "application",
+            "compute": {
+              "cpuRequestMilli": 500,
+              "cpuLimitMilli": 2000,
+              "memoryRequestBytes": 268435456,
+              "memoryLimitBytes": 2147483648
+            }
+          },
+          "provenance": "legacy_application",
+          "legacyApplicationRevisionId": "old-revision-1"
+        },
+        "deploymentDescriptorDigest": "sha256:2cd0a9107ecc8b4fe73af331bc1b9d6ff6ca76fe6219a73d527293c5db7a9360",
+        "deploymentDescriptorObjectRef": "descriptor-object-1"
+      },
+      "valid": true
+    },
+    {
+      "name": "legacy_application_rejects_fake_build",
+      "schema": "CapabilityVersion",
+      "value": {
+        "id": "cv-legacy",
+        "versionLabel": "legacy-1",
+        "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "ready",
+        "modelRequirements": [],
+        "dataCompatibility": {
+          "dataSchemaVersion": "data-v1",
+          "compatibleFromVersions": [],
+          "rollbackSafe": true,
+          "migrationRequired": false
+        },
+        "referenceCount": "0",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "legacy_application",
+        "legacyApplicationRevisionId": "old-revision-1",
+        "buildJobId": "fake-build",
+        "artifact": {
+          "repository": "registry.example/official/runtime",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "os": "linux",
+            "architecture": "amd64"
+          }
+        },
+        "deploymentDescriptor": {
+          "schemaVersion": "opl-deployment-descriptor/v1",
+          "artifact": {
+            "repository": "registry.example/official/runtime",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": {
+              "os": "linux",
+              "architecture": "amd64"
+            }
+          },
+          "applicationRevision": {
+            "schemaVersion": 1,
+            "applicationId": "opl-runtime",
+            "version": "1.0.0",
+            "platform": "linux/amd64",
+            "image": "registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "execution": {
+              "userId": 1000,
+              "groupId": 1000,
+              "init": true
+            },
+            "entrypoint": [
+              "/opt/opl/bin/runtime"
+            ],
+            "ports": [
+              {
+                "name": "app",
+                "port": 8080,
+                "protocol": "TCP"
+              },
+              {
+                "name": "control",
+                "port": 8081,
+                "protocol": "TCP"
+              }
+            ],
+            "entryPort": "app",
+            "healthChecks": [
+              {
+                "port": 8081,
+                "path": "/health/readiness",
+                "initialDelaySeconds": 0
+              }
+            ],
+            "persistentMounts": [
+              {
+                "name": "workspace-data",
+                "mountPath": "/var/lib/opl",
+                "readOnly": false
+              }
+            ],
+            "scratchMounts": [
+              {
+                "name": "tmp",
+                "mountPath": "/tmp",
+                "readOnly": false,
+                "mode": 448,
+                "userId": 1000,
+                "groupId": 1000,
+                "sizeBytes": 67108864
+              }
+            ],
+            "credentials": [
+              {
+                "name": "gateway-key",
+                "kind": "gateway_key",
+                "target": "/run/opl/gateway-key",
+                "env": "OPL_GATEWAY_KEY"
+              },
+              {
+                "name": "app-admin",
+                "kind": "workspace_admin_password",
+                "target": "/run/opl/admin-password",
+                "username": "admin"
+              },
+              {
+                "name": "app-session",
+                "kind": "workspace_session_secret",
+                "target": "/run/opl/session-secret"
+              }
+            ],
+            "secretInputs": [
+              {
+                "name": "control_token",
+                "target": "/run/opl/control"
+              }
+            ],
+            "configInputs": [
+              {
+                "name": "models",
+                "target": "/etc/opl/models.json"
+              }
+            ],
+            "dependencies": [],
+            "exposurePolicy": "application",
+            "compute": {
+              "cpuRequestMilli": 500,
+              "cpuLimitMilli": 2000,
+              "memoryRequestBytes": 268435456,
+              "memoryLimitBytes": 2147483648
+            }
+          },
+          "provenance": "legacy_application",
+          "legacyApplicationRevisionId": "old-revision-1"
+        },
+        "deploymentDescriptorDigest": "sha256:2cd0a9107ecc8b4fe73af331bc1b9d6ff6ca76fe6219a73d527293c5db7a9360",
+        "deploymentDescriptorObjectRef": "descriptor-object-1"
+      },
+      "valid": false
+    },
+    {
+      "name": "new_artifact_requires_complete_sources",
+      "schema": "CapabilityVersion",
+      "value": {
+        "id": "cv-legacy",
+        "versionLabel": "legacy-1",
+        "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "ready",
+        "modelRequirements": [],
+        "dataCompatibility": {
+          "dataSchemaVersion": "data-v1",
+          "compatibleFromVersions": [],
+          "rollbackSafe": true,
+          "migrationRequired": false
+        },
+        "referenceCount": "0",
+        "createdAt": "2026-09-21T00:00:00Z",
+        "provenance": "build",
+        "artifact": {
+          "repository": "registry.example/official/runtime",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "os": "linux",
+            "architecture": "amd64"
+          }
+        },
+        "deploymentDescriptor": {
+          "schemaVersion": "opl-deployment-descriptor/v1",
+          "artifact": {
+            "repository": "registry.example/official/runtime",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "platform": {
+              "os": "linux",
+              "architecture": "amd64"
+            }
+          },
+          "applicationRevision": {
+            "schemaVersion": 1,
+            "applicationId": "opl-runtime",
+            "version": "1.0.0",
+            "platform": "linux/amd64",
+            "image": "registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "execution": {
+              "userId": 1000,
+              "groupId": 1000,
+              "init": true
+            },
+            "entrypoint": [
+              "/opt/opl/bin/runtime"
+            ],
+            "ports": [
+              {
+                "name": "app",
+                "port": 8080,
+                "protocol": "TCP"
+              },
+              {
+                "name": "control",
+                "port": 8081,
+                "protocol": "TCP"
+              }
+            ],
+            "entryPort": "app",
+            "healthChecks": [
+              {
+                "port": 8081,
+                "path": "/health/readiness",
+                "initialDelaySeconds": 0
+              }
+            ],
+            "persistentMounts": [
+              {
+                "name": "workspace-data",
+                "mountPath": "/var/lib/opl",
+                "readOnly": false
+              }
+            ],
+            "scratchMounts": [
+              {
+                "name": "tmp",
+                "mountPath": "/tmp",
+                "readOnly": false,
+                "mode": 448,
+                "userId": 1000,
+                "groupId": 1000,
+                "sizeBytes": 67108864
+              }
+            ],
+            "credentials": [
+              {
+                "name": "gateway-key",
+                "kind": "gateway_key",
+                "target": "/run/opl/gateway-key",
+                "env": "OPL_GATEWAY_KEY"
+              },
+              {
+                "name": "app-admin",
+                "kind": "workspace_admin_password",
+                "target": "/run/opl/admin-password",
+                "username": "admin"
+              },
+              {
+                "name": "app-session",
+                "kind": "workspace_session_secret",
+                "target": "/run/opl/session-secret"
+              }
+            ],
+            "secretInputs": [
+              {
+                "name": "control_token",
+                "target": "/run/opl/control"
+              }
+            ],
+            "configInputs": [
+              {
+                "name": "models",
+                "target": "/etc/opl/models.json"
+              }
+            ],
+            "dependencies": [],
+            "exposurePolicy": "application",
+            "compute": {
+              "cpuRequestMilli": 500,
+              "cpuLimitMilli": 2000,
+              "memoryRequestBytes": 268435456,
+              "memoryLimitBytes": 2147483648
+            }
+          },
+          "provenance": "legacy_application",
+          "legacyApplicationRevisionId": "old-revision-1"
+        },
+        "deploymentDescriptorDigest": "sha256:2cd0a9107ecc8b4fe73af331bc1b9d6ff6ca76fe6219a73d527293c5db7a9360",
+        "deploymentDescriptorObjectRef": "descriptor-object-1"
+      },
+      "valid": false
+    }
+  ]
+}

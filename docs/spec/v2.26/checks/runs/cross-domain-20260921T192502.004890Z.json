@@ -1,0 +1,1560 @@
+{
+  "schemaVersion": "opl-cross-domain-execution/v1",
+  "executedAt": "2026-09-21T19:25:02.004890+00:00",
+  "completedAt": "2026-09-21T19:27:02.101145+00:00",
+  "passed": true,
+  "sourceHashes": {
+    "03_api_contract_complete.yaml": "48438b5d5499494fb6099433c7530ce68305a7198ab0af310f8e534c18e56db6",
+    "contracts/schema.sql": "292f4e9e056d165ce533ba98f3e85f072f1d6d09c0fb8f3573cf51dee401c6e2",
+    "contracts/db_inventory.json": "3bd38af4f2f586f455a6cade9b2dd9a50dc2c1b023376ac4e007c3900a64b135",
+    "contracts/internal.proto": "f9003211d42841fbbd5b99073b169e991c1877ce85b5f6282be79ff6c0cc1698",
+    "contracts/publisher-contract.schema.json": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+    "checks/semantics_cases.json": "5fbb6a35344003d90edc24168a29d0dc6d79202468ebd96c8f02f1be55df24ff",
+    "checks/validate_cross_domain.py": "16894e47fd41e824bd4f6316df4a6b5316a7eb2197b2245a68fb47194ff015cc",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "sourceUnchangedDuringRun": true,
+  "sourceHashesAtEnd": {
+    "03_api_contract_complete.yaml": "48438b5d5499494fb6099433c7530ce68305a7198ab0af310f8e534c18e56db6",
+    "contracts/schema.sql": "292f4e9e056d165ce533ba98f3e85f072f1d6d09c0fb8f3573cf51dee401c6e2",
+    "contracts/db_inventory.json": "3bd38af4f2f586f455a6cade9b2dd9a50dc2c1b023376ac4e007c3900a64b135",
+    "contracts/internal.proto": "f9003211d42841fbbd5b99073b169e991c1877ce85b5f6282be79ff6c0cc1698",
+    "contracts/publisher-contract.schema.json": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+    "checks/semantics_cases.json": "5fbb6a35344003d90edc24168a29d0dc6d79202468ebd96c8f02f1be55df24ff",
+    "checks/validate_cross_domain.py": "16894e47fd41e824bd4f6316df4a6b5316a7eb2197b2245a68fb47194ff015cc",
+    "13_plan_change_policy.md": "43f1ac890fbab9b2c26da4937dbcce1389f3153ad56451af0b91cddb1473f686",
+    "contracts/plan-change-policy.json": "d2f9282bf450e2fbcf3f82f706cebccce335db6fdff51d3489ab78ba653698f6"
+  },
+  "image": {
+    "name": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoTags": [
+      "postgres:16-alpine"
+    ],
+    "id": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "metadata": {
+    "actualDatabaseFields": 1359,
+    "directMappingsTypeAndEnumChecked": 311,
+    "optionalWireFieldMeansOmittedNotNull": true,
+    "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
+    "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+  },
+  "setupError": null,
+  "cases": [
+    {
+      "id": "R01-deploy-credit-roundtrip",
+      "suite": "quote",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "input": {
+          "purpose": "deploy",
+          "capabilityVersionId": "test-capability",
+          "computePlanId": "test-compute",
+          "storagePlanId": "test-storage",
+          "modelSelections": [],
+          "periodMonths": 1
+        },
+        "persistedPurpose": "deploy",
+        "persistedAndProjectedTotalUSDMicros": "90",
+        "databaseSignedSumUSDMicros": "90",
+        "allLineAmountsNonnegative": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R01-deploy-product-roundtrip",
+      "suite": "quote",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "input": {
+          "purpose": "deploy",
+          "capabilityVersionId": "test-capability",
+          "computePlanId": "test-compute",
+          "storagePlanId": "test-storage",
+          "modelSelections": [],
+          "periodMonths": 1
+        },
+        "persistedPurpose": "deploy",
+        "persistedAndProjectedTotalUSDMicros": "150",
+        "databaseSignedSumUSDMicros": "150",
+        "allLineAmountsNonnegative": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R01-retired-create-purpose",
+      "suite": "quote",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "QuoteRequest: 'create' is not one of ['deploy', 'resize', 'renew']",
+      "passed": true
+    },
+    {
+      "id": "R01-retired-service-kind",
+      "suite": "quote",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "QuoteLine: 'service' is not one of ['compute', 'storage', 'product', 'adjustment_credit']",
+      "passed": true
+    },
+    {
+      "id": "R01-retired-adjustment-kind",
+      "suite": "quote",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "QuoteLine: 'adjustment' is not one of ['compute', 'storage', 'product', 'adjustment_credit']",
+      "passed": true
+    },
+    {
+      "id": "R01-negative-credit-wire",
+      "suite": "quote",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "QuoteLine: '-10' does not match '^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$'",
+      "passed": true
+    },
+    {
+      "id": "R01-credit-source-amount-mismatch",
+      "suite": "quote",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "credit source amount differs from line",
+      "passed": true
+    },
+    {
+      "id": "R01-credit-missing-confirmed-source",
+      "suite": "quote",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "original Gateway charge is not confirmed",
+      "passed": true
+    },
+    {
+      "id": "R01-credit-exceeds-charge",
+      "suite": "quote",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "total out of nonnegative int64 range",
+      "passed": true
+    },
+    {
+      "id": "R01-credit-counted-positive",
+      "suite": "quote",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "claimed total uses different sign convention",
+      "passed": true
+    },
+    {
+      "id": "R01-int64-money-limit",
+      "suite": "quote",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "input": {
+          "purpose": "deploy",
+          "capabilityVersionId": "test-capability",
+          "computePlanId": "test-compute",
+          "storagePlanId": "test-storage",
+          "modelSelections": [],
+          "periodMonths": 1
+        },
+        "persistedPurpose": "deploy",
+        "persistedAndProjectedTotalUSDMicros": "9223372036854775807",
+        "databaseSignedSumUSDMicros": "9223372036854775807",
+        "allLineAmountsNonnegative": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R01-int64-money-overflow",
+      "suite": "quote",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "QuoteLine: '9223372036854775808' does not match '^(?:0|[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$'",
+      "passed": true
+    },
+    {
+      "id": "R01-sum-overflow",
+      "suite": "quote",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "total out of nonnegative int64 range",
+      "passed": true
+    },
+    {
+      "id": "R02-packageVersionId-acquire-bind-release",
+      "suite": "reference",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "decodedTarget": {
+          "packageVersionId": "package-version-base"
+        },
+        "persistedTargetType": "package_version",
+        "boundInputDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "releaseEvidenceRoundtrip": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R02-runtimeVersionId-acquire-bind-release",
+      "suite": "reference",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "decodedTarget": {
+          "runtimeVersionId": "runtime-base"
+        },
+        "persistedTargetType": "runtime_version",
+        "boundInputDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "releaseEvidenceRoundtrip": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R02-webuiVersionId-acquire-bind-release",
+      "suite": "reference",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "decodedTarget": {
+          "webuiVersionId": "webui-base"
+        },
+        "persistedTargetType": "webui_version",
+        "boundInputDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "releaseEvidenceRoundtrip": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R02-capabilityVersionId-acquire-bind-release",
+      "suite": "reference",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "decodedTarget": {
+          "capabilityVersionId": "capability-base"
+        },
+        "persistedTargetType": "capability_version",
+        "boundInputDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "releaseEvidenceRoundtrip": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R02-two-targets-rejected",
+      "suite": "reference",
+      "expected": "decoder_reject",
+      "actual": "decoder_reject",
+      "reason": "ReferenceTarget: Message type \"opl.cloud.v226.ReferenceTarget\" should not have multiple \"target\" oneof fields at \"ReferenceTarget\".",
+      "passed": true
+    },
+    {
+      "id": "R02-missing-target-rejected",
+      "suite": "reference",
+      "expected": "decoder_reject",
+      "actual": "decoder_reject",
+      "reason": "ReferenceTarget requires exactly one nonempty target",
+      "passed": true
+    },
+    {
+      "id": "R02-bound-input-replay-conflict",
+      "suite": "reference",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "Bind same claim/operation different input digest is IDEMPOTENCY_CONFLICT",
+      "passed": true
+    },
+    {
+      "id": "R02-release-missing-receipt",
+      "suite": "reference",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "release requires original owner receipt",
+      "passed": true
+    },
+    {
+      "id": "R02-release-unknown-side-effect",
+      "suite": "reference",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "Build owner readback remains active/unknown: cannot release input protection",
+      "passed": true
+    },
+    {
+      "id": "R03-official-descriptor-roundtrip",
+      "suite": "publisher",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "publisherKind": "official",
+        "descriptorDigest": "sha256:3ab4576bd006e8fedf9bf1607b86024f4d782afe31da5b430254c39718786da6",
+        "descriptorStorage": "isolated in-memory immutable Storage fixture",
+        "persistedRepository": "registry.example/official/runtime",
+        "roundtripContractEqual": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R03-third-party-descriptor-roundtrip",
+      "suite": "publisher",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "publisherKind": "third_party",
+        "descriptorDigest": "sha256:e84447c912669c841ea8cfb4317ab7ede07bba245b29ac60e081cdefa815c57a",
+        "descriptorStorage": "isolated in-memory immutable Storage fixture",
+        "persistedRepository": "registry.example/third-party/acme/runtime",
+        "roundtripContractEqual": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R03-descriptor-missing-execution-template",
+      "suite": "publisher",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "RegisterRuntimeVersionRequest: 'applicationRevisionTemplate' is a required property",
+      "passed": true
+    },
+    {
+      "id": "R03-descriptor-image-mismatch",
+      "suite": "publisher",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "canonical application template image differs from ArtifactReference",
+      "passed": true
+    },
+    {
+      "id": "R03-descriptor-object-digest-mismatch",
+      "suite": "publisher",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "immutable descriptor object digest readback mismatch",
+      "passed": true
+    },
+    {
+      "id": "R09-namespace-prefix-confusion",
+      "suite": "publisher",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "repository is not within exact path-segment namespace",
+      "passed": true
+    },
+    {
+      "id": "R09-official-third-party-boundary",
+      "suite": "publisher",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "official and third-party publisher namespaces are not interchangeable",
+      "passed": true
+    },
+    {
+      "id": "R04-valid-tenant-context",
+      "suite": "authorization",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "proto": "AuthorizationRequest",
+        "persistedScope": "tenant",
+        "audience": "workspace",
+        "ownerResourceScopeVerified": true,
+        "mtlsIdentityFromBody": false
+      },
+      "passed": true
+    },
+    {
+      "id": "R04-wrong-tenant-context",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "authorization scope tenant mismatch",
+      "passed": true
+    },
+    {
+      "id": "R04-wrong-service-audience",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "authorization audience mismatch",
+      "passed": true
+    },
+    {
+      "id": "R04-wrong-action-context",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "authorization action mismatch",
+      "passed": true
+    },
+    {
+      "id": "R04-wrong-resource-context",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "authorization resource mismatch",
+      "passed": true
+    },
+    {
+      "id": "R04-stale-permission-version",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "stale/revoked tenant permission version",
+      "passed": true
+    },
+    {
+      "id": "R04-revoked-session-context",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "session/member access revoked",
+      "passed": true
+    },
+    {
+      "id": "R04-body-service-identity-forgery",
+      "suite": "authorization",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "authenticated mTLS caller is not permitted for this audience/action; body cannot override it",
+      "passed": true
+    },
+    {
+      "id": "R04-grant-bound-original-obligation",
+      "suite": "authorization_grant",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "mode": "closeout_only",
+        "permittedOriginalAction": "closeoutAcceptedObligation",
+        "noNewProcurementAuthority": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R04-grant-new-procurement-denied",
+      "suite": "authorization_grant",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "revoked member/Tenant cannot expand an accepted grant into a new purchase",
+      "passed": true
+    },
+    {
+      "id": "R04-platform-context-no-fake-tenant",
+      "suite": "authorization_platform",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "scope": {
+          "platform": {}
+        },
+        "persistedTenantId": null,
+        "fixturePlatformRoleReadback": "explicit authorized platform actor; no Tenant-derived privilege"
+      },
+      "passed": true
+    },
+    {
+      "id": "R05-route-switch-select-commit",
+      "suite": "route",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "fenceConfirmedBeforeActivate": true,
+        "providerFixture": {
+          "revision": "r2",
+          "epoch": 2,
+          "target": "new-R05-route-switch-select-commit"
+        },
+        "selectedCommit": {
+          "active_deployment_id": "dep-R05-route-switch-select-commit",
+          "selected_route_generation": 1,
+          "selected_execution_epoch": 2
+        },
+        "externalRouterAtomicWithDatabase": false
+      },
+      "passed": true
+    },
+    {
+      "id": "R05-stale-route-generation",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "stale route generation",
+      "passed": true
+    },
+    {
+      "id": "R05-stale-execution-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "stale execution epoch despite route generation match",
+      "passed": true
+    },
+    {
+      "id": "R05-unknown-switch-blocks-next",
+      "suite": "route",
+      "expected": "database_reject",
+      "actual": "database_reject",
+      "reason": "one pending/unknown route action per Workspace",
+      "passed": true
+    },
+    {
+      "id": "R05-selected-commit-stale-epoch",
+      "suite": "route",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "Workspace selection commit stale intent/epoch; do not claim routed target is selected",
+      "passed": true
+    },
+    {
+      "id": "R07-suspended-reenable-without-delete",
+      "suite": "tenant_lifecycle",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "action": "reenable",
+        "finalStatus": "active",
+        "permissionVersion": 5,
+        "windowOrigin": "no deletion window needed",
+        "providerResourcesCreated": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "R07-reenable-deleted-denied",
+      "suite": "tenant_lifecycle",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "reenable is only suspended->active; it is not deleted recovery",
+      "passed": true
+    },
+    {
+      "id": "R07-deleted-restore-before-deadline",
+      "suite": "tenant_lifecycle",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "action": "restore",
+        "finalStatus": "active",
+        "permissionVersion": 5,
+        "windowOrigin": "actual deleted_at",
+        "providerResourcesCreated": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "R07-delete-request-not-window-start",
+      "suite": "tenant_lifecycle",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "action": "restore",
+        "finalStatus": "active",
+        "permissionVersion": 5,
+        "windowOrigin": "actual deleted_at",
+        "providerResourcesCreated": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "R07-deleted-restore-after-deadline",
+      "suite": "tenant_lifecycle",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "deleted recovery requires actual deletion+15-day unexpired window",
+      "passed": true
+    },
+    {
+      "id": "R05-late-provider-request-after-fence",
+      "suite": "route",
+      "expected": "provider_reject",
+      "actual": "provider_reject",
+      "reason": "provider conditional revision rejects late route mutation",
+      "passed": true
+    },
+    {
+      "id": "R03-legacy-descriptor-no-fake-build",
+      "suite": "legacy_descriptor",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "legacyRevisionId": "original-revision:R03-legacy-descriptor-no-fake-build",
+        "fakeBuildOrPublisherRows": 0,
+        "canonicalApplicationRevisionPreserved": true
+      },
+      "passed": true
+    },
+    {
+      "id": "R03-legacy-descriptor-rejects-fake-publisher",
+      "suite": "legacy_descriptor",
+      "expected": "api_reject",
+      "actual": "api_reject",
+      "reason": "DeploymentDescriptor: {'schemaVersion': 'opl-deployment-descriptor/v1', 'artifact': {'repository': 'registry.example/official/runtime', 'digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'platform': {'os': 'linux', 'architecture': 'amd64'}}, 'provenance': 'legacy_application', 'legacyApplicationRevisionId': 'original-revision:R03-legacy-descriptor-rejects-fake-publisher', 'applicationRevision': {'schemaVersion': 1, 'applicationId': 'opl-runtime', 'version': '1.0.0', 'platform': 'linux/amd64', 'image': 'registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'execution': {'userId': 1000, 'groupId': 1000, 'init': True}, 'entrypoint': ['/opt/opl/bin/runtime'], 'ports': [{'name': 'app', 'port': 8080, 'protocol': 'TCP'}, {'name': 'control', 'port': 8081, 'protocol': 'TCP'}], 'entryPort': 'app', 'healthChecks': [{'port': 8081, 'path': '/health/readiness', 'initialDelaySeconds': 0}], 'persistentMounts': [{'name': 'workspace-data', 'mountPath': '/var/lib/opl', 'readOnly': False}], 'scratchMounts': [{'name': 'tmp', 'mountPath': '/tmp', 'readOnly': False, 'mode': 448, 'userId': 1000, 'groupId': 1000, 'sizeBytes': 67108864}], 'credentials': [{'name': 'gateway-key', 'kind': 'gateway_key', 'target': '/run/opl/gateway-key', 'env': 'OPL_GATEWAY_KEY'}, {'name': 'app-admin', 'kind': 'workspace_admin_password', 'target': '/run/opl/admin-password', 'username': 'admin'}, {'name': 'app-session', 'kind': 'workspace_session_secret', 'target': '/run/opl/session-secret'}], 'secretInputs': [{'name': 'control_token', 'target': '/run/opl/control'}], 'configInputs': [{'name': 'models', 'target': '/etc/opl/models.json'}], 'dependencies': [], 'exposurePolicy': 'application', 'compute': {'cpuRequestMilli': 500, 'cpuLimitMilli': 2000, 'memoryRequestBytes': 268435456, 'memoryLimitBytes': 2147483648}}, 'runtimeContract': {'schemaVersion': 'opl-publisher-contract/v1', 'publisherNamespaceId': 'pub_official', 'image': {'repository': 'registry.example/official/runtime', 'digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'platform': {'os': 'linux', 'architecture': 'amd64'}}, 'kind': 'runtime', 'runtimeAbiVersion': 'opl-runtime/v1', 'packageFormatVersions': ['framework-fixture-format-1'], 'buildRecipe': {'version': 'opl-build-recipe/v1', 'frontend': {'repository': 'registry.example/builders/dockerfile', 'digest': 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'platform': {'os': 'linux', 'architecture': 'amd64'}}, 'recipe': {'repository': 'registry.example/official/recipes', 'digest': 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'mediaType': 'application/vnd.opl.build-recipe.v1+tar', 'dockerfilePath': 'Dockerfile'}, 'runtimeContextName': 'runtime', 'packageInput': {'contextName': 'agent_package', 'formatVersion': 'framework-fixture-format-1', 'sourceRoot': 'package', 'targetPath': '/opt/opl/agent', 'uid': 1000, 'gid': 1000}, 'webuiInput': {'contextName': 'webui', 'sourcePath': '/web', 'targetPath': '/opt/opl/web', 'uid': 1000, 'gid': 1000}, 'networkPolicy': 'none', 'outputPlatform': {'os': 'linux', 'architecture': 'amd64'}, 'outputImageCommand': {'entrypoint': ['/opt/opl/bin/runtime'], 'cmd': ['serve']}}, 'modelConfiguration': {'protocol': 'opl-model-config/v1', 'portName': 'control', 'applyPath': '/control/models', 'readbackPath': '/control/models', 'requestFields': ['version', 'selections'], 'readbackFields': ['appliedVersion', 'selections'], 'authorizationSecretInputName': 'control_token'}, 'applicationAccess': {'mode': 'application', 'loginPath': '/login', 'logoutPath': '/logout', 'usernameCredentialName': 'app-admin'}, 'data': {'schemaVersion': 'agent-data/v1', 'upgrade': {'mode': 'compatible', 'compatibleFromSchemaVersions': ['agent-data/v1'], 'backupRequired': False}, 'rollback': {'safe': True, 'compatibleSchemaVersions': ['agent-data/v1']}, 'mountPolicies': [{'mountName': 'workspace-data', 'concurrentWritersSupported': False}]}, 'applicationRevisionTemplate': {'schemaVersion': 1, 'applicationId': 'opl-runtime', 'version': '1.0.0', 'platform': 'linux/amd64', 'image': 'registry.example/official/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'execution': {'userId': 1000, 'groupId': 1000, 'init': True}, 'entrypoint': ['/opt/opl/bin/runtime'], 'ports': [{'name': 'app', 'port': 8080, 'protocol': 'TCP'}, {'name': 'control', 'port': 8081, 'protocol': 'TCP'}], 'entryPort': 'app', 'healthChecks': [{'port': 8081, 'path': '/health/readiness', 'initialDelaySeconds': 0}], 'persistentMounts': [{'name': 'workspace-data', 'mountPath': '/var/lib/opl', 'readOnly': False}], 'scratchMounts': [{'name': 'tmp', 'mountPath': '/tmp', 'readOnly': False, 'mode': 448, 'userId': 1000, 'groupId': 1000, 'sizeBytes': 67108864}], 'credentials': [{'name': 'gateway-key', 'kind': 'gateway_key', 'target': '/run/opl/gateway-key', 'env': 'OPL_GATEWAY_KEY'}, {'name': 'app-admin', 'kind': 'workspace_admin_password', 'target': '/run/opl/admin-password', 'username': 'admin'}, {'name': 'app-session', 'kind': 'workspace_session_secret', 'target': '/run/opl/session-secret'}], 'secretInputs': [{'name': 'control_token', 'target': '/run/opl/control'}], 'configInputs': [{'name': 'models', 'target': '/etc/opl/models.json'}], 'dependencies': [], 'exposurePolicy': 'application', 'compute': {'cpuRequestMilli': 500, 'cpuLimitMilli': 2000, 'memoryRequestBytes': 268435456, 'memoryLimitBytes': 2147483648}}, 'packageFormatContracts': [{'owner': 'framework', 'formatVersion': 'framework-fixture-format-1', 'schemaObjectRef': 'fixture-framework-schema', 'schemaDigest': 'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'validatorArtifact': {'repository': 'registry.example/framework-fixtures/package-validator', 'digest': 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'platform': {'os': 'linux', 'architecture': 'amd64'}}, 'admissionReceiptId': 'fixture-not-a-production-admission'}]}} is not valid under any of the given schemas",
+      "passed": true
+    },
+    {
+      "id": "R16-existing-automatic-consent-preserved",
+      "suite": "renewal_consent",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "mode": "automatic",
+        "originalConsentRetained": true,
+        "settingsVersion": 7,
+        "newWalletCharges": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "R16-automatic-consent-missing-denied",
+      "suite": "renewal_consent",
+      "expected": "database_reject",
+      "actual": "database_reject",
+      "reason": "automatic mode requires exact consent identity and snapshot",
+      "passed": true
+    },
+    {
+      "id": "R16-cancel-future-automatic-keeps-original-consent",
+      "suite": "renewal_consent",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "mode": "manual",
+        "originalConsentRetained": true,
+        "settingsVersion": 8,
+        "newWalletCharges": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-half-30-days",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-half-30-days",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-half-30-days",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-half-30-days",
+          "sourceComputePlanId": "compute-source-D17-upgrade-half-30-days",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-half-30-days",
+          "targetComputePlanId": "compute-target-D17-upgrade-half-30-days",
+          "targetStoragePlanId": "storage-target-D17-upgrade-half-30-days",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-half-30-days",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-half-30-days",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "10000000",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-half-30-days",
+          "executionPlanDigest": "sha256:0ad80331f25a4527d5c6359bbb1e85cbb78fbe4db382ce314df08e65775a08cd",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:49620836a9acbabea95330acc5c6c6151d04ba1df4b9133a09ec71394554f6de"
+        },
+        "persistedChargeUSDMicros": "10000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-upgrade-half-30-days",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-actual-20-days",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-actual-20-days",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-actual-20-days",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-actual-20-days",
+          "sourceComputePlanId": "compute-source-D17-upgrade-actual-20-days",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-actual-20-days",
+          "targetComputePlanId": "compute-target-D17-upgrade-actual-20-days",
+          "targetStoragePlanId": "storage-target-D17-upgrade-actual-20-days",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-actual-20-days",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-actual-20-days",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-09-21T00:00:00Z",
+          "chargeUSDMicros": "5000000",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "1728000000",
+            "remainingMilliseconds": "432000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-actual-20-days",
+          "executionPlanDigest": "sha256:7571e8016cd7081bb6365a478c16c5e459198097d43a83f7037f51c83e6ab478",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1789948800000",
+          "sourceFinancialSnapshotDigest": "sha256:e6945046d162cfbabe81f6ccbf3700bacb04918c5dcbfb9cba11783b564f3437"
+        },
+        "persistedChargeUSDMicros": "5000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-upgrade-actual-20-days",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-actual-31-days",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-actual-31-days",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-actual-31-days",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-actual-31-days",
+          "sourceComputePlanId": "compute-source-D17-upgrade-actual-31-days",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-actual-31-days",
+          "targetComputePlanId": "compute-target-D17-upgrade-actual-31-days",
+          "targetStoragePlanId": "storage-target-D17-upgrade-actual-31-days",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-actual-31-days",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-actual-31-days",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "50000000",
+          "quoteAt": "2026-08-12T00:00:00.000Z",
+          "periodStart": "2026-08-01T00:00:00Z",
+          "periodEnd": "2026-09-01T00:00:00Z",
+          "chargeUSDMicros": "19354839",
+          "plannedEffectiveAt": "2026-08-12T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2678400000",
+            "remainingMilliseconds": "1728000000",
+            "priceDeltaUSDMicros": "30000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-actual-31-days",
+          "executionPlanDigest": "sha256:171f78e1c0a97f45ffd7abed612d6afabcc57fccf674975d9d31ed3b2b6a8dbb",
+          "quoteAtMilliseconds": "1786492800000",
+          "periodStartMilliseconds": "1785542400000",
+          "periodEndMilliseconds": "1788220800000",
+          "sourceFinancialSnapshotDigest": "sha256:a3948aa701ec046a863da009967ec4b56d4ac09bc5dd0f6c623a7f9f9d1e4c69"
+        },
+        "persistedChargeUSDMicros": "19354839",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-upgrade-actual-31-days",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-08-12T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-at-period-start",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-at-period-start",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-at-period-start",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-at-period-start",
+          "sourceComputePlanId": "compute-source-D17-upgrade-at-period-start",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-at-period-start",
+          "targetComputePlanId": "compute-target-D17-upgrade-at-period-start",
+          "targetStoragePlanId": "storage-target-D17-upgrade-at-period-start",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-at-period-start",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-at-period-start",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-01T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "20000000",
+          "plannedEffectiveAt": "2026-09-01T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "2592000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-at-period-start",
+          "executionPlanDigest": "sha256:69f013caff11bf6b18b123fde9ccfee6424d53839360d1e2d5df12589882bcbf",
+          "quoteAtMilliseconds": "1788220800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:29f86d52ac8ba0b404bebfcffb02f39dfc8cdefede080c1fd20d6ab7c3f86833"
+        },
+        "persistedChargeUSDMicros": "20000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-upgrade-at-period-start",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-01T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-last-millisecond",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-last-millisecond",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-last-millisecond",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-last-millisecond",
+          "sourceComputePlanId": "compute-source-D17-upgrade-last-millisecond",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-last-millisecond",
+          "targetComputePlanId": "compute-target-D17-upgrade-last-millisecond",
+          "targetStoragePlanId": "storage-target-D17-upgrade-last-millisecond",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-last-millisecond",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-last-millisecond",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-30T23:59:59.999Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "1",
+          "plannedEffectiveAt": "2026-09-30T23:59:59.999Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-last-millisecond",
+          "executionPlanDigest": "sha256:95c17ac7c5abceee53bcf638296260a7c53b8540cc8cf1b605b87766645571ad",
+          "quoteAtMilliseconds": "1790812799999",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:31148269935042b1a40588c7ebc9a46294fd6237beb868d5d8378976b9a66543"
+        },
+        "persistedChargeUSDMicros": "1",
+        "scope": "quote/acceptance numeric boundary, no provider completion-time claim"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-upgrade-price-unchanged",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-upgrade-price-unchanged",
+          "sourceSubscriptionId": "plan-sub-D17-upgrade-price-unchanged",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-upgrade-price-unchanged",
+          "sourceComputePlanId": "compute-source-D17-upgrade-price-unchanged",
+          "sourceStoragePlanId": "storage-source-D17-upgrade-price-unchanged",
+          "targetComputePlanId": "compute-target-D17-upgrade-price-unchanged",
+          "targetStoragePlanId": "storage-target-D17-upgrade-price-unchanged",
+          "sourcePricePolicyVersionId": "price-source-D17-upgrade-price-unchanged",
+          "targetPricePolicyVersionId": "price-target-D17-upgrade-price-unchanged",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "20000000",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "0",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "0",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-upgrade-price-unchanged",
+          "executionPlanDigest": "sha256:7ca22adbe00cb292d89d6411bd1c3e747ef408a60f9eff48388170d91c62aa47",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:607c0b7f0cd4504cb35aef9b70c42e0fc2ccff3405a1e388802957e33c8faa31"
+        },
+        "persistedChargeUSDMicros": "0",
+        "projectionStatus": "applied",
+        "chargeId": null,
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-resource-upgrade-price-lower",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-resource-upgrade-price-lower",
+          "sourceSubscriptionId": "plan-sub-D17-resource-upgrade-price-lower",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-resource-upgrade-price-lower",
+          "sourceComputePlanId": "compute-source-D17-resource-upgrade-price-lower",
+          "sourceStoragePlanId": "storage-source-D17-resource-upgrade-price-lower",
+          "targetComputePlanId": "compute-target-D17-resource-upgrade-price-lower",
+          "targetStoragePlanId": "storage-target-D17-resource-upgrade-price-lower",
+          "sourcePricePolicyVersionId": "price-source-D17-resource-upgrade-price-lower",
+          "targetPricePolicyVersionId": "price-target-D17-resource-upgrade-price-lower",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "10000000",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "0",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "0",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-resource-upgrade-price-lower",
+          "executionPlanDigest": "sha256:73a77c3300243fdeb8684196a48dd9ec1b6cc66d1bd91242bba6325c8bd4a6da",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:9e00d89e65bf83265f7d384a3f4ffd2e42b18d5c0f5b5565d011c252c8d67beb"
+        },
+        "persistedChargeUSDMicros": "0",
+        "projectionStatus": "applied",
+        "chargeId": null,
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-bigint-product-no-intermediate-overflow",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-bigint-product-no-intermediate-overflow",
+          "sourceSubscriptionId": "plan-sub-D17-bigint-product-no-intermediate-overflow",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-bigint-product-no-intermediate-overflow",
+          "sourceComputePlanId": "compute-source-D17-bigint-product-no-intermediate-overflow",
+          "sourceStoragePlanId": "storage-source-D17-bigint-product-no-intermediate-overflow",
+          "targetComputePlanId": "compute-target-D17-bigint-product-no-intermediate-overflow",
+          "targetStoragePlanId": "storage-target-D17-bigint-product-no-intermediate-overflow",
+          "sourcePricePolicyVersionId": "price-source-D17-bigint-product-no-intermediate-overflow",
+          "targetPricePolicyVersionId": "price-target-D17-bigint-product-no-intermediate-overflow",
+          "sourceMonthlyUSDMicros": "0",
+          "targetMonthlyUSDMicros": "9223372036854775807",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "4611686018427387904",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "9223372036854775807",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-bigint-product-no-intermediate-overflow",
+          "executionPlanDigest": "sha256:6b29020f1a62e44c51f9629f5f7d6b0b71de3ccc6277d03e34d688d40e97e720",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:32ece6b57ebdee3d71f086d39966ced7feb0600a77e3e69bb60b5696a4a479a9"
+        },
+        "persistedChargeUSDMicros": "4611686018427387904",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-bigint-product-no-intermediate-overflow",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-preserve-source-nanosecond-text",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-preserve-source-nanosecond-text",
+          "sourceSubscriptionId": "plan-sub-D17-preserve-source-nanosecond-text",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-preserve-source-nanosecond-text",
+          "sourceComputePlanId": "compute-source-D17-preserve-source-nanosecond-text",
+          "sourceStoragePlanId": "storage-source-D17-preserve-source-nanosecond-text",
+          "targetComputePlanId": "compute-target-D17-preserve-source-nanosecond-text",
+          "targetStoragePlanId": "storage-target-D17-preserve-source-nanosecond-text",
+          "sourcePricePolicyVersionId": "price-source-D17-preserve-source-nanosecond-text",
+          "targetPricePolicyVersionId": "price-target-D17-preserve-source-nanosecond-text",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-16T00:00:00.123Z",
+          "periodStart": "2026-09-01T00:00:00.123456789Z",
+          "periodEnd": "2026-10-01T00:00:00.123456789Z",
+          "chargeUSDMicros": "10000000",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.123Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-preserve-source-nanosecond-text",
+          "executionPlanDigest": "sha256:1c277d8a1af7acbcb0ee45755bb51f026a9c110dbcd62d174d8de47b6b3be389",
+          "quoteAtMilliseconds": "1789516800123",
+          "periodStartMilliseconds": "1788220800123",
+          "periodEndMilliseconds": "1790812800123",
+          "sourceFinancialSnapshotDigest": "sha256:6f7ee74fe72e98d39b9139bf8de68daee78b599367256c1270e91ee8073c0b01"
+        },
+        "persistedChargeUSDMicros": "10000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-preserve-source-nanosecond-text",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.123Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-expired-source-period",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "no billable source period remains",
+      "passed": true
+    },
+    {
+      "id": "D17-before-source-period",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "no billable source period remains",
+      "passed": true
+    },
+    {
+      "id": "D17-under-one-billable-ms",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "no billable source period remains",
+      "passed": true
+    },
+    {
+      "id": "D17-no-op-resource-transition",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "PLAN_CHANGE_NO_OP",
+      "passed": true
+    },
+    {
+      "id": "D17-mixed-resource-transition",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "MIXED_TRANSITION_REJECTED",
+      "passed": true
+    },
+    {
+      "id": "D17-unsupported-storage-shrink",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "STORAGE_SHRINK_UNSUPPORTED",
+      "passed": true
+    },
+    {
+      "id": "D17-unapproved-resource-family",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "resource family transition has no approved Fabric/Catalog receipt",
+      "passed": true
+    },
+    {
+      "id": "D17-stale-source-subscription-version",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "VERSION_CONFLICT: source subscription changed after quote",
+      "passed": true
+    },
+    {
+      "id": "D17-accepted-quote-expired",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "QUOTE_EXPIRED before accepting new identity",
+      "passed": true
+    },
+    {
+      "id": "D17-same-request-same-charge",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "samePlanChange": "plan-change-D17-same-request-same-charge",
+        "chargeOriginalKeyCount": 1,
+        "quoteClockUnchanged": "2026-09-16T00:00:00.000Z",
+        "chargeId": "supplement-charge-plan-change-D17-same-request-same-charge",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-chain-upgrades-current-applied-price",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "firstCharge": "10000000",
+        "secondSourcePrice": "40000000",
+        "secondCharge": "5000000",
+        "originalPeriodEndUnchanged": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-scheduled-no-early-provider-effect",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "status": "scheduled",
+        "currentChargeUSDMicros": "0",
+        "targetNextPeriodUSDMicros": "10000000",
+        "providerEffectsBeforeE": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-manual-downgrade-awaiting-payment",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "status": "awaiting_payment",
+        "automaticChargeCreated": false,
+        "providerEffects": 0
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-boundary-race-one-target-payment",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "concurrentActors": 3,
+        "obligationIdentities": 1,
+        "gatewayOriginalPayments": 1,
+        "nextPeriodTargetAmountUSDMicros": "10000000",
+        "oldHighPriceNotCharged": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-cancel-before-next-obligation",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "cancelled": true,
+        "workspaceDeleting": false,
+        "originalQuotesRetained": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-cancel-after-payment-accepted-denied",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "cannot cancel after target-period funds or execution are accepted",
+      "passed": true
+    },
+    {
+      "id": "D17-delete-cancels-unstarted-plan",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "cancelled": true,
+        "workspaceDeleting": true,
+        "originalQuotesRetained": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-delete-during-applying-denied",
+      "suite": "plan_change",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "plan executing/failed-needs_attention must converge before cancellation/deletion",
+      "passed": true
+    },
+    {
+      "id": "D17-no-second-unfinished-change",
+      "suite": "plan_change",
+      "expected": "database_reject",
+      "actual": "database_reject",
+      "reason": "only one unfinished PlanChange per Workspace or duplicate original Quote",
+      "passed": true
+    },
+    {
+      "id": "D17-renew-conflict-uses-scheduled-target",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "nextPeriodAmountUSDMicros": "10000000",
+        "sourceOldPriceUSDMicros": "20000000",
+        "oldPriceThenRefundPattern": false
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-known-partial-failure-full-supplement-refund",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "refundUSDMicros": "10000000",
+        "failureNot720Policy": true,
+        "resourceOutcome": "irreversible_residual",
+        "planStatus": "needs_attention",
+        "targetApplied": false
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-unknown-resource-no-refund",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "refunds": 0,
+        "targetApplied": false,
+        "chargeId": "supplement-charge-plan-change-D17-unknown-resource-no-refund",
+        "providerEffects": 0,
+        "applied": false
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-unknown-charge-no-new-provider-effect",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "refunds": 0,
+        "targetApplied": false,
+        "chargeId": "supplement-charge-plan-change-D17-unknown-charge-no-new-provider-effect",
+        "providerEffects": 0,
+        "applied": false
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-supplement-deletion-own-coverage-not-720",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "supplementCoverageStart": "2026-09-16T00:00:00.000Z",
+        "supplementCoverageEnd": "2026-10-01T00:00:00Z",
+        "deleteAt": "2026-09-23T12:00:00Z",
+        "refundUSDMicros": "5000000",
+        "notBase720": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-original-charge-refund-cap-including-unknown",
+      "suite": "plan_change",
+      "expected": "database_reject",
+      "actual": "database_reject",
+      "reason": "refund cannot exceed original charge net of confirmed/requested/unknown refunds",
+      "passed": true
+    },
+    {
+      "id": "D17-Jan31-Feb28-Mar31-anchor",
+      "suite": "billing_anchor",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "ownerRule": "monthly_billing.go:nextBillingMonth; no clipped-day overwrite",
+        "next": "2026-02-28T01:02:03.123456789Z",
+        "following": "2026-03-31T01:02:03.123456789Z",
+        "originalAnchorDay": 31
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-Jan31-Feb29-Mar31-leap-anchor",
+      "suite": "billing_anchor",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "ownerRule": "monthly_billing.go:nextBillingMonth; no clipped-day overwrite",
+        "next": "2028-02-29T01:02:03.123456789Z",
+        "following": "2028-03-31T01:02:03.123456789Z",
+        "originalAnchorDay": 31
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourceSubscriptionId": "plan-sub-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourceComputePlanId": "compute-source-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourceStoragePlanId": "storage-source-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "targetComputePlanId": "compute-target-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "targetStoragePlanId": "storage-target-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourcePricePolicyVersionId": "price-source-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "targetPricePolicyVersionId": "price-target-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-16T00:00:00.999Z",
+          "periodStart": "2026-09-01T00:00:00.999999999Z",
+          "periodEnd": "2026-10-01T00:00:00.999999999Z",
+          "chargeUSDMicros": "10000000",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.999Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+          "executionPlanDigest": "sha256:616cf0e3da604a7fa1491b7836f9d4782e17433798cd67ad4e113ae24d921547",
+          "quoteAtMilliseconds": "1789516800999",
+          "periodStartMilliseconds": "1788220800999",
+          "periodEndMilliseconds": "1790812800999",
+          "sourceFinancialSnapshotDigest": "sha256:3d8a1c90f70d5a523da70a5aafc2dc4dff3d22b495a918141c2f98c5a1a93c72"
+        },
+        "persistedChargeUSDMicros": "10000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.999Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-legacy-resource-only-no-fabricated-runtime",
+      "suite": "plan_change",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "calculation": {
+          "policyVersion": "workspace-plan-change-v1",
+          "kind": "upgrade_immediate",
+          "transitionId": "approved-transition:D17-legacy-resource-only-no-fabricated-runtime",
+          "sourceSubscriptionId": "plan-sub-D17-legacy-resource-only-no-fabricated-runtime",
+          "sourceSubscriptionVersion": "1",
+          "sourcePeriodId": "plan-period-D17-legacy-resource-only-no-fabricated-runtime",
+          "sourceComputePlanId": "compute-source-D17-legacy-resource-only-no-fabricated-runtime",
+          "sourceStoragePlanId": "storage-source-D17-legacy-resource-only-no-fabricated-runtime",
+          "targetComputePlanId": "compute-target-D17-legacy-resource-only-no-fabricated-runtime",
+          "targetStoragePlanId": "storage-target-D17-legacy-resource-only-no-fabricated-runtime",
+          "sourcePricePolicyVersionId": "price-source-D17-legacy-resource-only-no-fabricated-runtime",
+          "targetPricePolicyVersionId": "price-target-D17-legacy-resource-only-no-fabricated-runtime",
+          "sourceMonthlyUSDMicros": "20000000",
+          "targetMonthlyUSDMicros": "40000000",
+          "quoteAt": "2026-09-16T00:00:00.000Z",
+          "periodStart": "2026-09-01T00:00:00Z",
+          "periodEnd": "2026-10-01T00:00:00Z",
+          "chargeUSDMicros": "10000000",
+          "plannedEffectiveAt": "2026-09-16T00:00:00.000Z",
+          "upgradeProration": {
+            "periodMilliseconds": "2592000000",
+            "remainingMilliseconds": "1296000000",
+            "priceDeltaUSDMicros": "20000000",
+            "rounding": "ceil_once_usd_micro"
+          },
+          "executionPlanId": "execution-plan:D17-legacy-resource-only-no-fabricated-runtime",
+          "executionPlanDigest": "sha256:fbd0f5dbe1f0668d7084bfac393ba0207431ad079da42e6eccf53be9ea25330e",
+          "quoteAtMilliseconds": "1789516800000",
+          "periodStartMilliseconds": "1788220800000",
+          "periodEndMilliseconds": "1790812800000",
+          "sourceFinancialSnapshotDigest": "sha256:8567e9b9a77b5153db5c81b2a932d748fe5bbf999b9353a9f1615cf92375a030"
+        },
+        "persistedChargeUSDMicros": "10000000",
+        "projectionStatus": "applied",
+        "chargeId": "supplement-charge-plan-change-D17-legacy-resource-only-no-fabricated-runtime",
+        "providerEffects": 1,
+        "applied": true,
+        "originalPeriodExactUnchanged": true,
+        "appliedAt": "2026-09-16T00:02:00.000Z"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-scheduled-worker-before-E-has-no-effect",
+      "suite": "plan_change_extended",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "state": "scheduled",
+        "providerEffects": 0,
+        "reason": "before_original_boundary"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-accepted-other-next-period-blocks-change",
+      "suite": "plan_change_extended",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "FUTURE_PERIOD_COMMITTED: do not reprice a different accepted next period",
+      "passed": true
+    },
+    {
+      "id": "D17-own-prepaid-period-allows-exact-version-bridge",
+      "suite": "plan_change_extended",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "state": "applied",
+        "providerEffects": 1,
+        "executionOperationId": "boundary-execution:plan-change-D17-own-prepaid-period-allows-exact-version-bridge",
+        "initialOperationId": "plan-operation-D17-own-prepaid-period-allows-exact-version-bridge",
+        "sourceVersionBridge": 2,
+        "newMonthlyUSDMicros": "10000000"
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-other-version-change-after-prepayment-rejected",
+      "suite": "plan_change_extended",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "STALE_SOURCE: only own confirmed next-period obligation may bridge the source version",
+      "passed": true
+    },
+    {
+      "id": "D17-app-update-no-financial-version-bump-but-risk-at-E",
+      "suite": "plan_change_extended",
+      "expected": "owner_reject",
+      "actual": "owner_reject",
+      "reason": "CURRENT_RUNTIME_REQUIREMENTS_CHANGED: target cannot execute",
+      "passed": true
+    },
+    {
+      "id": "D17-manual-unfunded-cancel-new-quote-same-obligation",
+      "suite": "plan_change_extended",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "obligationIdentityUnchanged": true,
+        "billingKeyUnchanged": true,
+        "newExplicitPriceUSDMicros": "20000000",
+        "oldPlanAndQuoteRetained": true
+      },
+      "passed": true
+    },
+    {
+      "id": "D17-downgrade-failure-refunds-next-period-not-current-zero",
+      "suite": "plan_change_extended",
+      "expected": "accept",
+      "actual": "accept",
+      "details": {
+        "currentPeriodSupplement": "0",
+        "actualNextPeriodOriginalPayment": "10000000",
+        "nextPeriodRefund": "10000000",
+        "oldUnpaidEntitlementExtended": false,
+        "initialScheduledOperationNotReopened": true
+      },
+      "passed": true
+    }
+  ],
+  "caseSelection": {
+    "prefix": "",
+    "fullSuite": true
+  },
+  "sqlInvocations": 1767,
+  "cleanup": {
+    "containerName": "opl-spec-semantic-1790018702",
+    "containerAbsent": true,
+    "stopSucceeded": true,
+    "removalReadbackPolls": 1,
+    "storage": "tmpfs only; no host mounts/named volumes",
+    "network": "none; no host ports"
+  },
+  "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
+  "notProven": [
+    "real service handlers/Saga workers",
+    "production or Instance adoption",
+    "real Gateway/provider charges or resources",
+    "actual implementation/provider/Instance acceptance remain separate from approved D17 specification"
+  ]
+}

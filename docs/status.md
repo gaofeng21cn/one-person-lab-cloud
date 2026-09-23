@@ -1,6 +1,6 @@
 # OPL Cloud Current Status
 
-Owner: `one-person-lab-cloud`
+Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 
@@ -8,6 +8,53 @@ This page reports current implementation and the latest retained evidence. It
 is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
+
+## v2.26 Migration Start Point
+
+The target architecture is adopted in
+[decisions.md](./decisions.md) and specified by
+[the v2.26 specification](./spec/v2.26/00_master_index.md). This section records
+the exact source facts that the migration starts from. It is a start point, not
+evidence that the target is implemented.
+
+| Fact | Value |
+| --- | --- |
+| Adopting repository | `RenDeHuang/opl-cloud` |
+| Start-point SHA | `50520e27a6b9a630eefdc2df7da3e5ec498d28a0` |
+| Provenance | `gaofeng21cn/one-person-lab-cloud` at that SHA |
+| Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`, `services/internal` |
+| Current latest control-plane migration | `202609130001_workspace_application_selection.sql` |
+| Current latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
+| Current latest ledger migration | `202609080001_receipt_request_lookup.sql` |
+| Current contracts module | `opl-cloud/packages/contracts/go` (Go 1.22) |
+| Publisher contract schema hash | `5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec` |
+| Target databases | `opl_tenant`, `opl_capability`, `opl_build`, `opl_workspace`, `opl_runtime_control`, `opl_fabric`, `opl_gateway`, `opl_resource_catalog`, `opl_ledger` |
+| Instance repository | `opl-instance-medopl` at `c6ecd808fee16d5052a4b8151508ecc6c0fed1e7` |
+
+### Implementation Start-Point Gap List
+
+The target is not the current implementation. Per
+[09_legacy_migration.md](./spec/v2.26/09_legacy_migration.md) and
+[01_domain_ownership_matrix.md](./spec/v2.26/01_domain_ownership_matrix.md), the
+gaps between them are:
+
+- Current implementation is three services plus Console; the target is nine
+  domain services plus a Console BFF. The six planned delivery names
+  (`opl-cloud-capability`, `opl-cloud-build`, `opl-cloud-workspace`,
+  `opl-cloud-runtime-control`, `opl-cloud-gateway-integration`,
+  `opl-cloud-resource-catalog`) do not exist as repositories yet.
+- Current integration is typed public HTTP; the target is typed gRPC/protobuf
+  with per-domain PostgreSQL Outbox delivery.
+- Current client entry is resource purchase plus separate administrator
+  deployment; the target entry is Agent version plus plan.
+- The current implementation has no Capability, Package, Build, Quote,
+  PlanChange, or Tenant product model.
+- Legacy migration `M0`-`M5` has not been executed; no source `sourceSHA`
+  inventory, row hashes, or per-domain conversion mapping has been produced
+  beyond this start-point record.
+
+Existing `resource_only` Launch obligations and historical purchases, Keys, and
+receipts remain valid and are carried by the migration, not discarded.
 
 ## Conclusion
 

@@ -1,0 +1,1373 @@
+{
+  "schemaVersion": 1,
+  "authority": "06 business closure projection; not a runtime engine",
+  "featureCount": 17,
+  "flows": [
+    {
+      "featureId": "F01",
+      "title": "个人身份、Tenant和成员",
+      "entryOperationIds": [
+        "getLoginContext",
+        "login",
+        "getSession",
+        "inviteMember",
+        "updateMemberRole",
+        "removeMember"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "bff",
+          "owner": "tenant",
+          "rpc": "TenantProductService.Login",
+          "request": "LoginRpcRequest",
+          "response": "Session",
+          "writes": [
+            "tenant.sessions"
+          ],
+          "completionEvidence": "Gateway认证主体与Cloud成员关系确定，session无密码持久化",
+          "onUnknownOrRejection": "登录失败统一提示；不创建新Gateway钱包",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "receiving_owner",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "tenant",
+          "rpc": "TenantProductService.UpdateMemberRole",
+          "request": "UpdateMemberRoleRpcRequest",
+          "response": "Member",
+          "writes": [
+            "tenant.tenant_members",
+            "tenant.audit_events"
+          ],
+          "completionEvidence": "权限版本变化及最后owner保护",
+          "onUnknownOrRejection": "旧版本/越权拒绝，不只隐藏按钮",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "个人登录与账单主体分离；成员只能做被授权动作",
+      "notes": ""
+    },
+    {
+      "featureId": "F02",
+      "title": "分组与私有/官方可见性",
+      "entryOperationIds": [
+        "listNamespaces",
+        "createNamespace",
+        "archiveNamespace",
+        "listPackages"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "capability",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.CreateNamespace",
+          "request": "CreateNamespaceRpcRequest",
+          "response": "Namespace",
+          "writes": [
+            "capability.namespaces"
+          ],
+          "completionEvidence": "tenant+name唯一、正确权限和状态",
+          "onUnknownOrRejection": "冲突不创建第二组；不跨Tenant读写",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "客户分组可见性正确，归档不删除制品和历史",
+      "notes": ""
+    },
+    {
+      "featureId": "F03",
+      "title": "Publisher准入与资源价格目录",
+      "entryOperationIds": [
+        "createPublisherNamespace",
+        "registerRuntimeVersion",
+        "registerWebuiVersion",
+        "createComputePlan",
+        "createPricePolicyVersion"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "capability",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.CreatePublisherNamespace",
+          "request": "CreatePublisherNamespaceRpcRequest",
+          "response": "PublisherNamespace",
+          "writes": [
+            "capability.publisher_namespaces"
+          ],
+          "completionEvidence": "官方/第三方种类与Registry prefix确认",
+          "onUnknownOrRejection": "错误prefix/归属拒绝，不放进默认官方空间",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.RegisterRuntimeVersion",
+          "request": "RegisterRuntimeVersionRpcRequest",
+          "response": "RuntimeVersion",
+          "writes": [
+            "capability.runtime_versions"
+          ],
+          "completionEvidence": "完整PublisherContract schema+canonical Go validator+Registry读回通过",
+          "onUnknownOrRejection": "缺repository/platform/完整revision拒绝",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "resource_catalog",
+          "rpc": "ResourceCatalogProductService.CreatePricePolicyVersion",
+          "request": "CreatePricePolicyVersionRpcRequest",
+          "response": "PricePolicyVersion",
+          "writes": [
+            "resource_catalog.price_policy_versions"
+          ],
+          "completionEvidence": "套餐组合/单月/明确政策事实，pending调整策略不可报价",
+          "onUnknownOrRejection": "不补空JSON或猜默认金额",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "管理员提供实际可执行选项，客户不任意指定Runtime镜像",
+      "notes": ""
+    },
+    {
+      "featureId": "F04",
+      "title": "上传与确认原字节",
+      "entryOperationIds": [
+        "createPackage",
+        "createUpload",
+        "createUploadPart",
+        "completeUpload"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "capability",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.CreateUpload",
+          "request": "CreateUploadRpcRequest",
+          "response": "UploadSession",
+          "writes": [
+            "capability.package_versions",
+            "capability.upload_sessions"
+          ],
+          "completionEvidence": "固定包版本及uploadId/受限对象地址",
+          "onUnknownOrRejection": "同键返回同身份；过期续签同对象",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.CompleteUpload",
+          "request": "CompleteUploadRpcRequest",
+          "response": "Operation",
+          "writes": [
+            "capability.upload_chunks",
+            "capability.package_versions",
+            "capability.operations"
+          ],
+          "completionEvidence": "Storage精确对象version、字节sha256和长度通过",
+          "onUnknownOrRejection": "校验失败不得标uploaded，不信ETag=SHA256",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "PackageVersion uploaded；此时尚未构建，必须显式createBuild",
+      "notes": "字节直接传Storage签署地址，不通过BFF代理大文件"
+    },
+    {
+      "featureId": "F05",
+      "title": "构建输入保护、输出与注册",
+      "entryOperationIds": [
+        "createBuild",
+        "getBuild",
+        "listBuildLogs",
+        "retryBuild"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "build",
+          "owner": "capability",
+          "rpc": "CapabilityCoordination.ResolveBuildInput",
+          "request": "BuildInputRequest",
+          "response": "BuildInputSnapshot",
+          "writes": [],
+          "completionEvidence": "Package/WebUI/Runtime策略和完整发布描述冻结",
+          "onUnknownOrRejection": "读失败还未建业务副作用，不能选latest替代",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "build",
+          "rpc": "BuildProductService.CreateBuild",
+          "request": "CreateBuildRpcRequest",
+          "response": "BuildJob",
+          "writes": [
+            "build.build_jobs",
+            "build.operations"
+          ],
+          "completionEvidence": "Job queued+snapshot+Operation+幂等同事务",
+          "onUnknownOrRejection": "响应丢失取回原身份，不建第二任务",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "build",
+          "owner": "capability",
+          "rpc": "CapabilityCoordination.AcquireReference",
+          "request": "ReferenceClaimRequest",
+          "response": "ReferenceClaim",
+          "writes": [
+            "capability.reference_claims"
+          ],
+          "completionEvidence": "PackageVersion/RuntimeVersion/WebuiVersion三target均绑定本job",
+          "onUnknownOrRejection": "任一拒绝则不读字节/不build；保留已取得claim待确定收尾",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "build",
+          "owner": "capability",
+          "rpc": "CapabilityCoordination.BindReference",
+          "request": "BindReferenceRequest",
+          "response": "ReferenceClaim",
+          "writes": [
+            "capability.reference_claims"
+          ],
+          "completionEvidence": "Build本域保存claim IDs后的OwnerCommitEvidence可读回",
+          "onUnknownOrRejection": "Bind丢响应查原claim，不自动TTL释放",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "capability",
+          "owner": "build",
+          "rpc": "BuildCoordination.ReadArtifact",
+          "request": "ReadBuildArtifactRequest",
+          "response": "BuildArtifactReadback",
+          "writes": [],
+          "completionEvidence": "repository+digest+platform+DeploymentDescriptor与远端制品相同",
+          "onUnknownOrRejection": "不是push接受就注册，unknown继续读原产物",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "build",
+          "owner": "capability",
+          "rpc": "DomainInbox.Deliver",
+          "request": "DeliverEventRequest",
+          "response": "InboxAck",
+          "writes": [
+            "capability.capability_versions"
+          ],
+          "completionEvidence": "Inbox事务去重后唯一版本，事件与Build真实readback一致",
+          "onUnknownOrRejection": "同eventId重复ACK，乱序不覆盖新事实",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "build",
+          "owner": "ledger",
+          "rpc": "LedgerCoordination.AppendReceipt",
+          "request": "AppendReceiptRequest",
+          "response": "Receipt",
+          "writes": [
+            "ledger.receipts"
+          ],
+          "completionEvidence": "返回receipt身份，另ReadReceiptByReference核对原输入",
+          "onUnknownOrRejection": "同idempotency key读回，不填假Workspace或重写receipt",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "唯一可部署CapabilityVersion；完整Job历史和输入来源保留",
+      "notes": "worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框架"
+    },
+    {
+      "featureId": "F06",
+      "title": "目录归档与引用释放",
+      "entryOperationIds": [
+        "archivePackage",
+        "deleteCapabilityVersion"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "capability",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "capability",
+          "rpc": "CapabilityProductService.DeleteCapabilityVersion",
+          "request": "DeleteCapabilityVersionRpcRequest",
+          "response": "Operation",
+          "writes": [
+            "capability.capability_versions",
+            "capability.reference_claims"
+          ],
+          "completionEvidence": "本域锁定版本并确认无活跃claim；只做目录下架",
+          "onUnknownOrRejection": "仍使用返回冲突；不建议删Workspace绕过",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "consumer_owner",
+          "owner": "capability",
+          "rpc": "CapabilityCoordination.ReleaseReference",
+          "request": "ReleaseReferenceRequest",
+          "response": "ReferenceClaim",
+          "writes": [
+            "capability.reference_claims"
+          ],
+          "completionEvidence": "原claim owner真实usage/终态证据",
+          "onUnknownOrRejection": "未知不释放，历史元数据不级联",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "显示“已从目录移除”；物理镜像清除另属授权管理员操作",
+      "notes": ""
+    },
+    {
+      "featureId": "F07",
+      "title": "选择Agent/套餐/模型并取得准确报价",
+      "entryOperationIds": [
+        "createQuote",
+        "getQuote"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "resource_catalog",
+          "owner": "workspace",
+          "rpc": "WorkspaceAdmission.CheckAdmission",
+          "request": "AdmissionRequest",
+          "response": "AdmissionResult",
+          "writes": [],
+          "completionEvidence": "当前版本、模型、作用域与原Workspace义务确认",
+          "onUnknownOrRejection": "quote并不等于容量预留，提交时复查",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.AdmitResources",
+          "request": "ResourceAdmissionRequest",
+          "response": "AdmissionResult",
+          "writes": [],
+          "completionEvidence": "provider能力、实际资源/route CAS能力准入",
+          "onUnknownOrRejection": "不能静默换provider或降能力",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "resource_catalog",
+          "rpc": "ResourceCatalogProductService.CreateQuote",
+          "request": "CreateQuoteRpcRequest",
+          "response": "Quote",
+          "writes": [
+            "resource_catalog.quotes",
+            "resource_catalog.quote_items"
+          ],
+          "completionEvidence": "purpose/kind/金额符号与DB完全同词；总额=sum正项-credit",
+          "onUnknownOrRejection": "pending/缺政策拒绝，不能零价兜底",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "客户能看到同一quote的金额、单月周期、有效期和数据规则",
+      "notes": ""
+    },
+    {
+      "featureId": "F08",
+      "title": "购买到实际可用的部署",
+      "entryOperationIds": [
+        "createWorkspace",
+        "getOperation",
+        "getWorkspace"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "resource_catalog",
+          "rpc": "CatalogCoordination.AcceptQuote",
+          "request": "AcceptQuoteRequest",
+          "response": "QuoteAcceptance",
+          "writes": [
+            "resource_catalog.quotes"
+          ],
+          "completionEvidence": "quoteID/inputDigest唯一绑定原operation",
+          "onUnknownOrRejection": "冲突拒绝，不能重报价后续跑原单",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimeCoordination.Reserve",
+          "request": "RuntimeReservationCommand",
+          "response": "RuntimeReservation",
+          "writes": [
+            "runtime_control.runtime_instances"
+          ],
+          "completionEvidence": "预留稳定runtimeInstanceId而不启动",
+          "onUnknownOrRejection": "不因Key依赖Runtime ID产生循环",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.IssueAcceptedOperationGrant",
+          "request": "AcceptedOperationGrantRequest",
+          "response": "AcceptedOperationGrant",
+          "writes": [
+            "tenant.accepted_operation_grants"
+          ],
+          "completionEvidence": "原Owner commit读回，有限actions/resource/period",
+          "onUnknownOrRejection": "不能伪造commit字符串或扩大到新Workspace",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.Debit",
+          "request": "WalletDebitCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "精确账户/Code/金额原单confirmed",
+          "onUnknownOrRejection": "unknown只ReadWalletAction，绝不重复扣费",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.CreateManagedKey",
+          "request": "ManagedKeyCommand",
+          "response": "ManagedKeyBinding",
+          "writes": [
+            "gateway.key_bindings"
+          ],
+          "completionEvidence": "原实例与允许模型/Key引用/版本一致",
+          "onUnknownOrRejection": "不盲建第二Key，不在DB/事件存明文",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.EnsureResources",
+          "request": "EnsureResourcesCommand",
+          "response": "Operation",
+          "writes": [
+            "fabric.resources",
+            "fabric.resource_sets",
+            "fabric.attachments"
+          ],
+          "completionEvidence": "批准预付资源与Workspace/原请求exact匹配",
+          "onUnknownOrRejection": "unknown查原provider动作，不重购",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "runtime_control",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.BindSecret",
+          "request": "SecretBindingCommand",
+          "response": "SecretBindingReadback",
+          "writes": [
+            "fabric.secret_bindings"
+          ],
+          "completionEvidence": "完整发布描述指定的Secret引用实际注入",
+          "onUnknownOrRejection": "不把Gateway Key当任意环境变量公开",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimeCoordination.Deploy",
+          "request": "RuntimeDeployCommand",
+          "response": "RuntimeReadback",
+          "writes": [
+            "runtime_control.runtime_actions"
+          ],
+          "completionEvidence": "完整DeploymentDescriptor送执行层并实际ready",
+          "onUnknownOrRejection": "非就绪不开放入口",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricRouteExecution.FenceRouteEpoch",
+          "request": "FenceRouteEpochCommand",
+          "response": "RouteReadback",
+          "writes": [
+            "fabric.route_bindings",
+            "fabric.route_switches"
+          ],
+          "completionEvidence": "provider conditional revision确认新epoch",
+          "onUnknownOrRejection": "未知旧switch先读回，不抢占",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "runtime_control",
+          "owner": "fabric",
+          "rpc": "FabricRouteExecution.ActivateRoute",
+          "request": "RouteActivateCommand",
+          "response": "RouteReadback",
+          "writes": [
+            "fabric.route_bindings",
+            "fabric.route_switches"
+          ],
+          "completionEvidence": "epoch/revision/target精确，provider实际路由确认",
+          "onUnknownOrRejection": "旧epoch/旧revision拒绝，丢响应ObserveRoute",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "ledger",
+          "rpc": "LedgerCoordination.AppendReceipt",
+          "request": "AppendReceiptRequest",
+          "response": "Receipt",
+          "writes": [
+            "ledger.receipts"
+          ],
+          "completionEvidence": "返回receipt身份，另ReadReceiptByReference核对原输入",
+          "onUnknownOrRejection": "同idempotency key读回，不填假Workspace或重写receipt",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "Workspace本域CAS selectedDeployment/selected generation后，receipt核对；客户可打开当前应用",
+      "notes": "Workspace.activeDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉"
+    },
+    {
+      "featureId": "F09",
+      "title": "使用、模型配置与应用登录",
+      "entryOperationIds": [
+        "getWorkspace",
+        "getWorkspaceAccess",
+        "getWorkspaceModels",
+        "updateWorkspaceModels",
+        "revealWorkspaceApplicationCredentials"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "workspace",
+          "rpc": "WorkspaceProductService.GetWorkspaceAccess",
+          "request": "GetWorkspaceAccessRpcRequest",
+          "response": "WorkspaceAccess",
+          "writes": [],
+          "completionEvidence": "当前部署/访问策略和运行事实一致",
+          "onUnknownOrRejection": "按canonical应用登录，不新增SSO",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "workspace",
+          "rpc": "WorkspaceProductService.RevealWorkspaceApplicationCredentials",
+          "request": "RevealWorkspaceApplicationCredentialsRpcRequest",
+          "response": "WorkspaceApplicationCredentials",
+          "writes": [],
+          "completionEvidence": "所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码",
+          "onUnknownOrRejection": "no-store不缓存；不返回GatewayKey或session_secret",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimeCoordination.ReloadModels",
+          "request": "RuntimeReloadCommand",
+          "response": "Operation",
+          "writes": [
+            "runtime_control.runtime_actions"
+          ],
+          "completionEvidence": "目标配置版本+selections实际应用",
+          "onUnknownOrRejection": "保存成功不等于reload成功",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "runtime_control",
+          "owner": "fabric",
+          "rpc": "FabricRuntimeExecution.ObserveRuntime",
+          "request": "RuntimeReadbackRequest",
+          "response": "RuntimeReadback",
+          "writes": [],
+          "completionEvidence": "appliedVersion和选择相同，运行状态真实",
+          "onUnknownOrRejection": "unknown显示应用中/待核实，不覆盖已确认配置",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "打开真实应用；模型实际生效；应用管理员凭据仅在既有授权reveal路径一次性显示",
+      "notes": ""
+    },
+    {
+      "featureId": "F10",
+      "title": "更新、切换和回滚",
+      "entryOperationIds": [
+        "updateWorkspaceVersion",
+        "rollbackWorkspace"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "capability",
+          "rpc": "CapabilityCoordination.ResolvePublisherContract",
+          "request": "ResolvePublisherContractRequest",
+          "response": "ResolvedPublisherContract",
+          "writes": [],
+          "completionEvidence": "目标版本完整契约与数据兼容",
+          "onUnknownOrRejection": "不支持安全回滚的迁移拒绝，不猜semver",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricRouteExecution.FenceRouteEpoch",
+          "request": "FenceRouteEpochCommand",
+          "response": "RouteReadback",
+          "writes": [
+            "fabric.route_switches",
+            "fabric.route_bindings"
+          ],
+          "completionEvidence": "新epoch先在provider确认",
+          "onUnknownOrRejection": "旧未知切换不被强行覆盖",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimeCoordination.Deploy",
+          "request": "RuntimeDeployCommand",
+          "response": "RuntimeReadback",
+          "writes": [
+            "runtime_control.runtime_instances",
+            "runtime_control.runtime_actions"
+          ],
+          "completionEvidence": "新实例实际验证且不违反可写卷并发限制",
+          "onUnknownOrRejection": "保留旧选中版本/原数据义务",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "runtime_control",
+          "owner": "fabric",
+          "rpc": "FabricRouteExecution.ActivateRoute",
+          "request": "RouteActivateCommand",
+          "response": "RouteReadback",
+          "writes": [
+            "fabric.route_switches",
+            "fabric.route_bindings"
+          ],
+          "completionEvidence": "新target/provider revision确认",
+          "onUnknownOrRejection": "丢响应原switch读回",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "runtime_control",
+          "owner": "fabric",
+          "rpc": "FabricRouteExecution.RollbackRoute",
+          "request": "RouteRollbackCommand",
+          "response": "RouteReadback",
+          "writes": [
+            "fabric.route_switches",
+            "fabric.route_bindings"
+          ],
+          "completionEvidence": "原目标+原switch证据+当前expected generation可核对",
+          "onUnknownOrRejection": "不能仅改DB指针称回滚成功",
+          "when": "新部署明确失败且旧数据/路由允许安全回滚"
+        }
+      ],
+      "terminal": "一个确认选中部署，无重复购买；失败时旧运行结果有实际证据",
+      "notes": ""
+    },
+    {
+      "featureId": "F11",
+      "title": "立即升级、下期降配与独立原单结算",
+      "entryOperationIds": [
+        "resizeWorkspace",
+        "createQuote",
+        "listPlanChanges",
+        "getPlanChange",
+        "cancelPlanChange"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "resource_catalog",
+          "owner": "workspace",
+          "rpc": "WorkspacePlanChangeReadback.ReadSubscriptionPlanState",
+          "request": "ReadSubscriptionPlanStateRequest",
+          "response": "SubscriptionPlanState",
+          "writes": [],
+          "completionEvidence": "原period/S/E/已接受当前月价/当前计划和资金义务版本固定",
+          "onUnknownOrRejection": "已锁定其它未来账单或财务基础变化拒绝，不退旧款改价",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "resource_catalog",
+          "owner": "fabric",
+          "rpc": "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
+          "request": "PlanTransitionRequest",
+          "response": "ApprovedPlanTransition",
+          "writes": [],
+          "completionEvidence": "批准可比转换，固定执行策略/数据/中断能力",
+          "onUnknownOrRejection": "mixed/no-op/不支持缩容拒绝，不按SKU名字或价格猜方向",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "resource_catalog",
+          "rpc": "ResourceCatalogProductService.CreateQuote",
+          "request": "CreateQuoteRpcRequest",
+          "response": "Quote",
+          "writes": [
+            "resource_catalog.quotes",
+            "resource_catalog.quote_items"
+          ],
+          "completionEvidence": "升级仅最后ceil补差，降配当前0且下期目标价单列；原T固定",
+          "onUnknownOrRejection": "过期/改变原计划须新quote，不接收客户自报价",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "workspace",
+          "rpc": "WorkspaceProductService.ResizeWorkspace",
+          "request": "ResizeWorkspaceRpcRequest",
+          "response": "Operation",
+          "writes": [
+            "workspace.plan_changes",
+            "workspace.operations"
+          ],
+          "completionEvidence": "CAS写PlanChange与原基础；scheduled不是applied",
+          "onUnknownOrRejection": "同幂等键返回原计划，已有未完成计划不覆盖",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "resource_catalog",
+          "rpc": "CatalogCoordination.AcceptQuote",
+          "request": "AcceptQuoteRequest",
+          "response": "QuoteAcceptance",
+          "writes": [
+            "resource_catalog.quotes"
+          ],
+          "completionEvidence": "exact quote绑定本PlanChange的初次Operation",
+          "onUnknownOrRejection": "不能把其它purpose/计划quote用作新购买",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.DebitSupplement",
+          "request": "PlanChangeSupplementChargeCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "仅upgrade正补差、原code与固定quote金额一致",
+          "onUnknownOrRejection": "0金额不调用；unknown原单读回不新收费",
+          "when": "kind=upgrade_immediate 且upgradeCharge>0且原单未确认；zero跳过"
+        },
+        {
+          "caller": "gateway",
+          "owner": "workspace",
+          "rpc": "WorkspacePlanChangeReadback.ReadNextPeriodObligation",
+          "request": "ReadNextPeriodObligationRequest",
+          "response": "NextPeriodObligation",
+          "writes": [],
+          "completionEvidence": "downgrade到期资金动作绑定唯一workspace/nextPeriod原义务与consent",
+          "onUnknownOrRejection": "没有有效付款授权则awaiting_payment，不偷开自动续费",
+          "when": "downgrade_next_period的付款/执行分支，或其取消未付款义务"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.DebitScheduledPeriod",
+          "request": "ScheduledPeriodChargeCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "仅目标下一期已接受价格，提前付款也不提前减资源",
+          "onUnknownOrRejection": "不得先旧价扣再补救；manual未授权不调用",
+          "when": "kind=downgrade_next_period且有效下期付款授权；不得提前降低资源"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.ResizeResources",
+          "request": "ResizeResourcesCommand",
+          "response": "Operation",
+          "writes": [
+            "fabric.resource_actions",
+            "fabric.resources"
+          ],
+          "completionEvidence": "资金/ZeroFundingEvidence和固定executionPlan，原epoch/目标/资源读回一致",
+          "onUnknownOrRejection": "unknown原请求读回，部分不可逆事实独立保留不假缩容",
+          "when": "upgrade资金confirmed/zero；或downgrade已到E且目标期资金confirmed"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimePlanChangeControl.RestoreAfterResourceChange",
+          "request": "RestorePlanChangeRuntimeCommand",
+          "response": "PlanChangeRuntimeReadback",
+          "writes": [
+            "runtime_control.runtime_actions"
+          ],
+          "completionEvidence": "现有应用实际资源限制/挂载/健康确认；裸资源为owner证明的not_applicable",
+          "onUnknownOrRejection": "已有应用不可用不得applied，不让客户skipRuntime",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "ledger",
+          "rpc": "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
+          "request": "AppendPlanChangeReceiptRequest",
+          "response": "Receipt",
+          "writes": [
+            "ledger.receipts"
+          ],
+          "completionEvidence": "本域CAS appliedAt/active计划/原E不变或下期正确周期后精确receipt",
+          "onUnknownOrRejection": "已受理/预约成功不能当资源已生效",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "workspace",
+          "rpc": "WorkspaceProductService.CancelPlanChange",
+          "request": "CancelPlanChangeRpcRequest",
+          "response": "Operation",
+          "writes": [
+            "workspace.plan_changes",
+            "workspace.operations"
+          ],
+          "completionEvidence": "尚无新期资金accepted/执行时CAS取消；历史不改",
+          "onUnknownOrRejection": "付款或资源动作已开始拒绝，不能按低价付完再恢复高配",
+          "when": "用户显式取消且无新期资金accepted/资源执行"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.RefundFailure",
+          "request": "PlanChangeFailureRefundCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "确定交付失败+fence+实际资源证据，补偿原补差或原目标期款",
+          "onUnknownOrRejection": "unknown不退；部分不可逆成本归平台，不向客户擅收部分交付费",
+          "when": "确定失败/fence/资源证据完备；非unknown；原单有未退额"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.RefundSupplementOnDeletion",
+          "request": "SupplementDeletionRefundCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "成功补差的T..E原覆盖区间、正常删除证据及原单未退余额",
+          "onUnknownOrRejection": "不用base720；每笔原单分别去重/读回",
+          "when": "原升级已applied，此后Workspace正常删除已确认"
+        }
+      ],
+      "terminal": "升级实际确认后applied且E不变；降配scheduled到原E、下期付款/资源确认后applied；失败/退款/真实资源分开",
+      "notes": "这些是按kind/状态选择的分支，不是每次依次扣补差、扣下一期并退款。due worker、唯一period obligation/CAS和计划应用都是Workspace本Owner直接事务，不新建自调用RPC或workflow engine。"
+    },
+    {
+      "featureId": "F12",
+      "title": "续费与到期恢复",
+      "entryOperationIds": [
+        "renewWorkspace",
+        "updateRenewalSettings",
+        "getSubscription"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "tenant",
+          "owner": "workspace",
+          "rpc": "WorkspaceAuthorizationReadback.ReadRenewalConsent",
+          "request": "ReadRenewalConsentRequest",
+          "response": "RenewalConsentReadback",
+          "writes": [],
+          "completionEvidence": "本周期explicit consent/原grant允许",
+          "onUnknownOrRejection": "关闭只阻止新周期，不丢已接受义务",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "gateway",
+          "owner": "workspace",
+          "rpc": "WorkspacePlanChangeReadback.ReadNextPeriodObligation",
+          "request": "ReadNextPeriodObligationRequest",
+          "response": "NextPeriodObligation",
+          "writes": [],
+          "completionEvidence": "确认该期是否唯一绑定scheduled计划及已接受目标价格",
+          "onUnknownOrRejection": "不得人工/自动各造一单或按旧价先扣",
+          "when": "downgrade_next_period的付款/执行分支，或其取消未付款义务"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.DebitScheduledPeriod",
+          "request": "ScheduledPeriodChargeCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "仅当nextPeriodObligation绑定降配时使用目标价一次扣款",
+          "onUnknownOrRejection": "无consent则awaiting_payment，不走普通旧价Debit",
+          "when": "kind=downgrade_next_period且有效下期付款授权；不得提前降低资源"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.Debit",
+          "request": "WalletDebitCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "workspace+period业务键唯一原单确认",
+          "onUnknownOrRejection": "重复点击/worker命中同一义务",
+          "when": "该nextPeriod无scheduled PlanChange，仅常规续费分支"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.RenewResources",
+          "request": "RenewResourcesCommand",
+          "response": "Operation",
+          "writes": [
+            "fabric.resource_actions"
+          ],
+          "completionEvidence": "原资源续期读回与原paidThrough续期窗口一致",
+          "onUnknownOrRejection": "过期已回收不伪造恢复、不改now重新计期",
+          "when": "无计划常规续期；有计划必须遵照已批准目标executionPlan，不独立先续旧高配"
+        },
+        {
+          "caller": "workspace",
+          "owner": "ledger",
+          "rpc": "LedgerCoordination.AppendReceipt",
+          "request": "AppendReceiptRequest",
+          "response": "Receipt",
+          "writes": [
+            "ledger.receipts"
+          ],
+          "completionEvidence": "返回receipt身份，另ReadReceiptByReference核对原输入",
+          "onUnknownOrRejection": "同idempotency key读回，不填假Workspace或重写receipt",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "同周期仅付一次，显示真实新账期和运行恢复；迁移原续费模式",
+      "notes": " 无计划走常规月费；有scheduled计划转F11目标计划分支，Fabric按已批准executionPlan决定续期/调配顺序。"
+    },
+    {
+      "featureId": "F13",
+      "title": "删除与原单退款",
+      "entryOperationIds": [
+        "deleteWorkspace",
+        "getWorkspaceDeletion",
+        "listWorkspaceTransactions"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "runtime_control",
+          "rpc": "RuntimeCoordination.Retire",
+          "request": "RuntimeStopCommand",
+          "response": "Operation",
+          "writes": [
+            "runtime_control.runtime_actions"
+          ],
+          "completionEvidence": "确切旧Runtime停止/不存在",
+          "onUnknownOrRejection": "unknown不继续声称全环境已删",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "fabric",
+          "rpc": "FabricCoordination.DeleteResources",
+          "request": "MutateResourcesCommand",
+          "response": "Operation",
+          "writes": [
+            "fabric.resource_actions",
+            "fabric.resources",
+            "fabric.attachments"
+          ],
+          "completionEvidence": "原资源/挂载/Secret及公开访问绑定确切absence",
+          "onUnknownOrRejection": "不依赖列表没看到推断不存在",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "ledger",
+          "rpc": "LedgerCoordination.AppendReceipt",
+          "request": "AppendReceiptRequest",
+          "response": "Receipt",
+          "writes": [
+            "ledger.receipts"
+          ],
+          "completionEvidence": "返回receipt身份，另ReadReceiptByReference核对原输入",
+          "onUnknownOrRejection": "同idempotency key读回，不填假Workspace或重写receipt",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayCoordination.Refund",
+          "request": "WalletRefundCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "原单剩余可退金额+删除receipt+原钱包目标",
+          "onUnknownOrRejection": "unknown原退款读回，删除与退款分别显示",
+          "when": "原单可退且相应删除/失败证据完整，不是unknown"
+        },
+        {
+          "caller": "workspace",
+          "owner": "gateway",
+          "rpc": "GatewayPlanChangeSettlement.RefundSupplementOnDeletion",
+          "request": "SupplementDeletionRefundCommand",
+          "response": "WalletOperation",
+          "writes": [
+            "gateway.wallet_operations"
+          ],
+          "completionEvidence": "本Owner枚举每个已applied补差，按各自T..E覆盖/原单剩余可退额分别结算",
+          "onUnknownOrRejection": "不把补差合并进base720；unknown保留该原单未决退款",
+          "when": "原升级已applied，此后Workspace正常删除已确认"
+        }
+      ],
+      "terminal": "环境删除与退款各自可查；不删除Package/Build历史，不泄露Key",
+      "notes": " 基础单与每笔补差单分别计算/去重/读回，最后只聚合展示，不丢原单。"
+    },
+    {
+      "featureId": "F14",
+      "title": "钱包、Key与Token记录",
+      "entryOperationIds": [
+        "getWallet",
+        "listUsage",
+        "createGatewayKey",
+        "revealGatewayKey",
+        "revokeGatewayKey"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "gateway",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "gateway",
+          "rpc": "GatewayProductService.GetWallet",
+          "request": "GetWalletRpcRequest",
+          "response": "Wallet",
+          "writes": [],
+          "completionEvidence": "Sub2API当前钱包事实",
+          "onUnknownOrRejection": "不可用不返回0，不复制余额表",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "gateway",
+          "rpc": "GatewayProductService.RevealGatewayKey",
+          "request": "RevealGatewayKeyRpcRequest",
+          "response": "GatewayKeySecret",
+          "writes": [],
+          "completionEvidence": "本人或显式grant且非系统托管Key，private/no-store",
+          "onUnknownOrRejection": "无权限拒绝；Secret不进入幂等response缓存",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "余额/Token费与工作区费各有原始来源；Key明文只一次性内存显示",
+      "notes": ""
+    },
+    {
+      "featureId": "F15",
+      "title": "暂停/重新启用/删除恢复Tenant",
+      "entryOperationIds": [
+        "suspendTenant",
+        "reenableTenant",
+        "deleteTenant",
+        "restoreTenant",
+        "getTenantLifecycleOperation"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "tenant",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "tenant",
+          "owner": "workspace",
+          "rpc": "TenantWorkspaceCoordination.SuspendTenantWorkspaces",
+          "request": "TenantWorkspaceLifecycleCommand",
+          "response": "TenantWorkspaceLifecycleReadback",
+          "writes": [
+            "workspace.operations"
+          ],
+          "completionEvidence": "每Workspace原Tenant暂停子操作可读回",
+          "onUnknownOrRejection": "Tenant权限撤销不冒充资源已暂停",
+          "when": "suspendTenant入口"
+        },
+        {
+          "caller": "tenant",
+          "owner": "workspace",
+          "rpc": "TenantWorkspaceCoordination.ResumeTenantWorkspaces",
+          "request": "ResumeTenantWorkspacesRequest",
+          "response": "TenantWorkspaceLifecycleReadback",
+          "writes": [
+            "workspace.operations"
+          ],
+          "completionEvidence": "只恢复原暂停、仍已付、原资源存在对象",
+          "onUnknownOrRejection": "过期/其他原因/删除对象skip，不续费重购",
+          "when": "reenableTenant入口，原停用/已付/原资源存在"
+        },
+        {
+          "caller": "tenant",
+          "owner": "workspace",
+          "rpc": "TenantWorkspaceCoordination.DeleteTenantWorkspaces",
+          "request": "TenantWorkspaceLifecycleCommand",
+          "response": "TenantWorkspaceLifecycleReadback",
+          "writes": [
+            "workspace.operations"
+          ],
+          "completionEvidence": "每子删除证据明确",
+          "onUnknownOrRejection": "未完成不把Tenant操作标全部完成",
+          "when": "deleteTenant入口"
+        }
+      ],
+      "terminal": "reenable与删除后15天restore独立；权限和每个应用结果分开显示",
+      "notes": ""
+    },
+    {
+      "featureId": "F16",
+      "title": "旧资源和旧应用无损迁移",
+      "entryOperationIds": [
+        "adoptWorkspace",
+        "getSubscription",
+        "getWorkspace"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "workspace",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "workspace",
+          "rpc": "WorkspaceProductService.AdoptWorkspace",
+          "request": "AdoptWorkspaceRpcRequest",
+          "response": "Operation",
+          "writes": [
+            "workspace.workspaces",
+            "workspace.deployments",
+            "workspace.operations"
+          ],
+          "completionEvidence": "原资源/订阅/ID沿用，新的Agent契约符合旧资源",
+          "onUnknownOrRejection": "不执行购买debit/Ensure新资源，不伪造Quote或Build",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "历史resource_only可装Agent，已有应用/账期/数据/Key不被迁移暗改",
+      "notes": "数据Owner迁移按09停写屏障和单writer，不是此命令触发生产迁移"
+    },
+    {
+      "featureId": "F17",
+      "title": "运维、证据与资格读取",
+      "entryOperationIds": [
+        "listAdminOperations",
+        "reconcileOperation",
+        "listReceipts",
+        "listQualifications"
+      ],
+      "authorization": "CloudIdentityAuthorization.AuthorizeAction + receiving Owner resource/state check",
+      "steps": [
+        {
+          "caller": "receiving_owner",
+          "owner": "tenant",
+          "rpc": "CloudIdentityAuthorization.AuthorizeAction",
+          "request": "AuthorizationRequest",
+          "response": "AuthorizationDecision",
+          "writes": [],
+          "completionEvidence": "session/grant/action/resource/audience/权限版本确切一致",
+          "onUnknownOrRejection": "deny不改用管理员；unknown不发后续副作用",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "bff",
+          "owner": "owning_service",
+          "rpc": "OwnerOperations.Reconcile",
+          "request": "ReconcileOperationRpcRequest",
+          "response": "Operation",
+          "writes": [],
+          "completionEvidence": "Owner按原operation真实读回和允许动作继续",
+          "onUnknownOrRejection": "不是任意setStatus succeeded",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        },
+        {
+          "caller": "owner",
+          "owner": "ledger",
+          "rpc": "LedgerCoordination.ReadReceiptByReference",
+          "request": "GetReceiptByReferenceRequest",
+          "response": "Receipt",
+          "writes": [],
+          "completionEvidence": "确切receipt/来源/输入output摘要",
+          "onUnknownOrRejection": "缺证据保持未验证，不发生产部署",
+          "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
+        }
+      ],
+      "terminal": "只读或受限原操作恢复，无新增Instance dispatch接口",
+      "notes": ""
+    }
+  ]
+}
