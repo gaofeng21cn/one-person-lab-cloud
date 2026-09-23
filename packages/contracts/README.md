@@ -11,13 +11,13 @@ It owns their shared stage/status, resource, provider, operation and protocol
 types. Keep service-local types in the service; a test fixture alone does not
 justify adding a cross-owner type.
 
-## v2.26 Contract Layout
+## target architecture Contract Layout
 
 The single Cloud GitHub repository retains one shared Go contracts module at
 `packages/contracts/go/go.mod`. W01 places production proto source in
 `packages/contracts/proto/` and generated Go bindings in
 `packages/contracts/go/v226/`; that generated package is not another Go module.
-The v2.26 schema under `docs/spec/v2.26/contracts/` remains the specification
+The target architecture schema under `docs/spec/target/contracts/` remains the specification
 owner. W01 must verify the production schema against that owner, lock generation
 tools and record the schema hash; merely adding this layout does not complete
 W01 or implement its consumers.

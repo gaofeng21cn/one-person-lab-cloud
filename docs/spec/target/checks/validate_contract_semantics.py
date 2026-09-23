@@ -48,7 +48,7 @@ check('R04 no invented AppSSO service','CloudIdentityApplicationAccess' not in p
 exact=ParseDict({'exactRevision':'rv7'},pb.ProviderRevisionPrecondition());absent=ParseDict({'requireAbsent':{'receiptId':'abs1','observedAt':'2026-09-21T00:00:00Z'}},pb.ProviderRevisionPrecondition())
 check('R05 revision exact/absence discriminated',exact.WhichOneof('condition')=='exact_revision' and absent.WhichOneof('condition')=='require_absent')
 check('R05 wildcard mixed with absence rejected',rejects_proto(pb.ProviderRevisionPrecondition,{'exactRevision':'rv7','requireAbsent':{'receiptId':'abs1'}}))
-for method in ['FenceRouteEpoch','ActivateRoute','ObserveRoute','RollbackRoute']:check('R05 concrete route RPC '+method,method in pb.DESCRIPTOR.services_by_name['FabricRouteExecution'].methods_by_name)
+for method in ['FenceRouteEpoch','ActivateRoute','ObserveRoute','RollbackRoute']:check('R05 concrete route RPC '+method,method in pb.DESCRIPTOR.services_by_name['ServeAccessControl'].methods_by_name)
 check('R05 current generation/epoch/provider revision readback typed',all(f in pb.RouteReadback.DESCRIPTOR.fields_by_name for f in ['current_generation','accepted_execution_epoch','provider_revision','target_execution_resource_id']))
 apiops={o['operationId']:o for item in api['paths'].values() for o in item.values()}
 check('R07 reenable independent of restore',apiops['reenableTenant']['x-operation-kind']=='reenable_tenant' and apiops['restoreTenant']['x-operation-kind']=='restore_tenant')

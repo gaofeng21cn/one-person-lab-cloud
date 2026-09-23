@@ -25,6 +25,12 @@ GitHub repositories. `Fabric` and `Ledger` keep their execution and evidence
 authority. The physical target map is owned by
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 
+The product has one Agent delivery chain, not parallel Workspace and Agent Service lifecycles. A Workspace may have zero or one current Agent; replacing it creates a new deployment attempt and preserves history, but never exposes two current Agents. OPL Serve owns the Agent delivery/deployment lifecycle and its sole current-deployment fact for each Workspace. Workspace owns the Workspace identity, membership, entitlement, resource plan and target authorization, not an Agent deployment pointer or status copy. The Console/BFF reads the two owners and composes a product view without becoming a writer.
+
+The owner flow is: the user may start upload in the Serve experience, while Capability owns upload sessions, Package metadata/versions and immutable Package bytes/references; Build fixes exact Package, WebUI and Runtime-release inputs and owns the build job and OCI evidence; Runtime Control owns the approved Runtime release catalog and immutable Runtime references consumed by Build, not deployed Agent instances; Workspace owns the target Workspace and resource entitlement; Fabric provisions/binds compute, storage and network resources and owns those resource facts; Serve deploys the built OCI to the authorized Workspace, owns deployment/readiness/routing state and exposes API, Embed and Hosted UI access to that same Agent. The Runtime implementation is supplied by the OPL App/Framework owner and is packaged into the OCI. Ledger records required evidence without becoming a lifecycle writer.
+
+Serve is a Cloud service/data Owner because it owns a durable per-Workspace Agent delivery lifecycle. This adds one service module and one data Owner to the target topology; Runtime Control is an existing target module with a narrowed, accurately documented version-catalog responsibility, not a new service. Product entry screens may live in the Console UI/Serve experience, but UI placement never transfers Package or deployment write authority.
+
 The remaining target decisions are:
 
 - Each business service keeps its own Go module, process, and service boundary.
@@ -33,8 +39,8 @@ The remaining target decisions are:
   Proto service groups are API groups, not extra processes. The old Control
   Plane is a bounded migration source, not a permanent parallel writer.
 - Shared wire contracts use the existing `packages/contracts/go/go.mod` module:
-  proto source belongs in `packages/contracts/proto/`, and generated v2.26 Go
-  bindings belong in `packages/contracts/go/v226/`. No independent v2.26 Go
+  proto source belongs in `packages/contracts/proto/`, and generated target architecture Go
+  bindings belong in `packages/contracts/go/v226/`. No independent target architecture Go
   module or contracts GitHub repository is introduced. Cloud consumers and
   contracts are revised atomically at one source commit, with schema hashes
   and locked generation tools. Necessary consumer dependency-file changes are
@@ -69,8 +75,8 @@ The remaining target decisions are:
   delivery unless separately decided.
 
 The authoritative product, field, API, frontend, migration, and acceptance
-specification is the v2.26 development specification retained under
-[`docs/spec/v2.26`](./spec/v2.26/00_master_index.md). That specification is a
+specification is the target architecture development specification retained under
+[`docs/spec/target`](./spec/target/00_master_index.md). That specification is a
 target and planning owner, not implementation evidence.
 
 ### Superseded Decisions
@@ -82,7 +88,7 @@ history:
   Change.** Its requirement that Cloud remain exactly Control Plane, Fabric,
   and Ledger is superseded for the target. Its general rule still holds: a new
   service still needs a current caller, an observed missing capability, a
-  bounded migration, and an owner. The v2.26 work packages supply that
+  bounded migration, and an owner. The target architecture work packages supply that
   justification for the target domains.
 - **2026-09-11: Control Plane Coordinates Applications And Keeps One Process.**
   Its single-process requirement is superseded. Its application-authority

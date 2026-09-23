@@ -24,7 +24,7 @@
 
 | 旧对象 | 导入事实 | 新界面 | 第一次新动作 | 绝不做 |
 |---|---|---|---|---|
-| 已购买resource_only，尚无应用 | 保留Workspace ID/原单/已付周期/compute/storage/attachment；capabilityVersionId/activeDeploymentId在DB为NULL、REST缺省，deliveryModel=legacy_resource_only | 显示“资源已开通，待部署应用”、原到期时间、原套餐 | 在已有资源上选择Agent并部署；报价类型为沿用资源，不执行debit/compute/storage购买阶段 | 伪造默认Agent、重购资源、改成免费/重新开始周期 |
+| 已购买resource_only，尚无应用 | 保留Workspace ID/原单/已付周期/compute/storage/attachment；capabilityVersionId/currentAgentDeploymentId在DB为NULL、REST缺省，deliveryModel=legacy_resource_only | 显示“资源已开通，待部署应用”、原到期时间、原套餐 | 在已有资源上选择Agent并部署；报价类型为沿用资源，不执行debit/compute/storage购买阶段 | 伪造默认Agent、重购资源、改成免费/重新开始周期 |
 | 已部署OPL App或其他应用 | 导入真实应用revision/digest/binding/选中部署和持久卷；deliveryModel=imported_application | 显示现有应用/版本、真实ready与原访问入口 | 继续使用；显式更新才进入F10 | 为迁移重新build、重启、换Key、改数据目录 |
 | retained full Launch仍进行中 | 保留原provisioningMode/full阶段、idempotency keys与义务；新系统只读展示进度 | “历史操作处理中”，显示真实阶段 | 原Owner将该操作推进至确定终态，再交接Workspace写权 | 按新agent_saas stage重跑历史扣费/采购 |
 | 未决扣费/续费/退款/删除 | 保留原operationId、Code、账户/周期/金额、provider action与收据 | 分开显示资源/付款/退款状态，不合成成功 | 按原单精确读回/继续原义务；完结后迁移 | 以当前余额推断、换原单ID、丢弃unknown |
@@ -63,7 +63,7 @@
 | workspaces.credential_status,credential_version,credential_secret_ref,access_requires_login | Secret绑定/访问契约 | 只迁引用/版本，不读取秘密正文；由授权运行边界核验 |
 | workspaces.verification_slot_id,customer_product | 对象用途和范围 | qualification fixture与客户Workspace不得混合迁移/收费 |
 | workspaces.application_binding,application_binding_version | 应用部署manifest与generation | 解码当前typed binding，保留digest/入口/挂载/credential/data映射，不能字符串覆盖 |
-| workspaces.current_application_deployment_id,reserved_application_deployment_id | activeDeploymentId与进行中的候选部署 | 存在reserved或未决切换时先由原owner收敛，不能两边同时激活 |
+| workspaces.current_application_deployment_id,reserved_application_deployment_id | currentAgentDeploymentId与进行中的候选部署 | 存在reserved或未决切换时先由原owner收敛，不能两边同时激活 |
 
 ### 3.2 资源、操作和证据
 

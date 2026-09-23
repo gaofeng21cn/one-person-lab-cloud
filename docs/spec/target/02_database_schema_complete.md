@@ -66,7 +66,7 @@
 ### 2.5 Workspace、Deployment、配置与迁移
 
 - workspaces保存当前已接受业务选择及version；互斥变更锁Workspace行，校验expectedVersion与active_operation_id，创建Operation/Saga同事务推进版本。目标版本放Deployment/Operation；失败不能先覆盖当前选择。
-- `active_deployment_id`唯一选中事实；复合FK保证指向同Workspace的Deployment。Runtime没有active布尔。新部署经真实挂载、应用健康、Gateway认证/模型调用验证后，Workspace同事务切换指针、更新所选Capability、supersede旧Deployment；不能由Runtime服务反向双写选择。
+- `current_agent_deployment_id`唯一选中事实；复合FK保证指向同Workspace的Deployment。Runtime没有active布尔。新部署经真实挂载、应用健康、Gateway认证/模型调用验证后，Workspace同事务切换指针、更新所选Capability、supersede旧Deployment；不能由Runtime服务反向双写选择。
 - model_configurations持新version与typed selections(slot,modelId)。Runtime确认真实reload后，Workspace同事务推进model_configuration_version；appliedVersion从Workspace字段派生，status从Operation及确认结果派生。请求的新值不提前显示为生效值。
 - Workspace.resourceReadiness/applicationAvailability/accessUrl通过当前选中Deployment、Fabric/Runtime授权readback聚合；不存在这些字段的第二份持久副本。readback未知显示unknown，不把Workspace.status=active硬解释为模型可用。
 - legacy_resource_only：Capability/activeDeployment均空，资源和原订阅义务保留；adoptWorkspace在原资源部署，不产生资源重购或套餐扣款。imported_application：引用以exact legacyApplicationRevisionId+artifactDigest导入的CapabilityVersion，不伪造Package/Build；agent_saas走完整构建/目录链。
@@ -154,7 +154,7 @@ Workspace唯一分配execution_epoch；Fabric唯一拥有route_generation、acce
 2. Fabric先锁route_bindings，检查expected generation/provider revision并写唯一非终态route_switches(action_kind=fence)。真正调用provider的同一路由对象conditional revision CAS，同时更新epoch metadata并保持target不变；读回确认后更新accepted_execution_epoch/provider_revision，generation不变。
 3. Activate/Rollback要求已确认fence的epoch、同provider revision、预期generation与精确目标/ready或compatibility receipt。先持久命令再调用provider CAS；成功读回后generation+1。旧provider请求即使晚到，也因同对象revision已变化而被拒绝，不能只在Cloud DB里检查epoch。
 4. unknown的fence/activate/rollback占该Workspace唯一非终态位置；只能按原provider_command_id读回，禁止以更高epoch抢占/新命令重试。
-5. Workspace核验原操作、当前epoch、原选中及Fabric目标读回后，以本库CAS提交active_deployment_id/selected generation/epoch并发selection receipt。Fabric记录workspace_selection_commit_receipt_id后才允许退休旧实例。提交响应丢失读取原身份；选择CAS失败为needs_attention，完成原提交或明确fence+rollback，禁止last-writer-wins。
+5. Workspace核验原操作、当前epoch、原选中及Fabric目标读回后，以本库CAS提交current_agent_deployment_id/selected generation/epoch并发selection receipt。Fabric记录workspace_selection_commit_receipt_id后才允许退休旧实例。提交响应丢失读取原身份；选择CAS失败为needs_attention，完成原提交或明确fence+rollback，禁止last-writer-wins。
 
 ProviderRevisionPrecondition为exactRevision或ConfirmedRouteAbsence(receiptId,observedAt) oneof。首次require_absent只允许generation0且有真实absence证据；DB保存expected_absence_receipt_id/time，不用空串当通配条件。数据库事务不声称与外部router原子。
 
@@ -652,53 +652,6 @@ visibility与namespace.kind同事务校验；不存最新对象或Build状态。
 索引：
 - `packages_namespace_list`: `(namespace_id, created_at DESC, id DESC)`
 
-#### capability.runtime_versions
-
-Strict PublisherContract schema; repository/digest must match contract and admitted namespace; descriptor is propagated unchanged into Build and execution。覆盖 F03, F04, F10。
-
-| 字段 | 类型 | 可空 | 默认 | 字段来源 |
-|---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/id` |
-| `name` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/name` |
-| `version_label` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/versionLabel` |
-| `artifact_repository` | `text` | 否 | `—` | `02_database_schema_complete.md#capability.runtime_versions.artifact_repository` |
-| `artifact_digest` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/artifactDigest` |
-| `status` | `text` | 否 | `'approved'` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/status` |
-| `approved_by` | `text` | 否 | `—` | `02_database_schema_complete.md#capability.runtime_versions.approved_by` |
-| `created_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/createdAt` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#capability.runtime_versions.updated_at` |
-| `runtime_abi_version` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/runtimeAbiVersion` |
-| `package_format_versions` | `text[]` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/packageFormatVersions` |
-| `admission_receipt_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/admissionReceiptId` |
-| `publisher_namespace_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherNamespaceId` |
-| `publisher_contract_digest` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContractDigest` |
-| `publisher_contract` | `jsonb` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContract` |
-| `publisher_contract_object_ref` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContractObjectRef` |
-
-约束：
-- `PRIMARY KEY (id)`
-- `CHECK (status IN ('approved','deprecated','revoked'))`
-- `UNIQUE (name, version_label)`
-- `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT`
-- `CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)`
-- `CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)`
-- `CHECK ((publisher_contract->>'kind' = 'runtime') IS TRUE)`
-- `CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)`
-- `CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)`
-- `CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)`
-- `CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)`
-- `CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)`
-- `CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)`
-- `CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}' = (publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)`
-- `CHECK ((publisher_contract->>'runtimeAbiVersion' = runtime_abi_version) IS TRUE)`
-- `CHECK ((publisher_contract->'packageFormatVersions' = to_jsonb(package_format_versions)) IS TRUE)`
-
-索引：
-- `runtime_versions_status`: `(status, created_at DESC, id DESC)`
-- `runtime_versions_publisher`: `(publisher_namespace_id)`
-
 #### capability.webui_versions
 
 Strict PublisherContract schema; repository/digest must match contract and admitted namespace; descriptor is propagated unchanged into Build and execution。覆盖 F03, F04, F10。
@@ -760,7 +713,7 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (runtime_version_id) REFERENCES capability.runtime_versions (id) ON DELETE RESTRICT`
+- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
 - `FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `UNIQUE (policy_version)`
 
@@ -887,7 +840,7 @@ build引用五项齐全才ready；legacy_application保留旧exact revision/dige
 - `PRIMARY KEY (id)`
 - `FOREIGN KEY (package_id) REFERENCES capability.packages (id) ON DELETE RESTRICT`
 - `FOREIGN KEY (package_version_id, package_id) REFERENCES capability.package_versions (id, package_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (runtime_version_id) REFERENCES capability.runtime_versions (id) ON DELETE RESTRICT`
+- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
 - `FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('ready','deprecated','deleting','deleted'))`
 - `UNIQUE (build_job_id)`
@@ -945,7 +898,7 @@ Four-way ReferenceTarget maps to exactly one local FK; Bind records original ope
 - `CHECK ((target_type = 'package_version') = (package_version_id IS NOT NULL))`
 - `FOREIGN KEY (capability_version_id) REFERENCES capability.capability_versions (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'capability_version') = (capability_version_id IS NOT NULL))`
-- `FOREIGN KEY (runtime_version_id) REFERENCES capability.runtime_versions (id) ON DELETE RESTRICT`
+- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'runtime_version') = (runtime_version_id IS NOT NULL))`
 - `FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'webui_version') = (webui_version_id IS NOT NULL))`
@@ -1414,7 +1367,7 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 | `capability_version_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/capabilityVersionId` |
 | `compute_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/computePlanId` |
 | `storage_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/storagePlanId` |
-| `active_deployment_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/activeDeploymentId` |
+| `current_agent_deployment_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/currentAgentDeploymentId` |
 | `model_configuration_version` | `bigint` | 否 | `0` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/modelConfigurationVersion` |
 | `active_operation_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.active_operation_id` |
 | `legacy_origin_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.legacy_origin_id` |
@@ -1433,11 +1386,11 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 - `CHECK (status IN ('provisioning','active','updating','suspended','deleting','deleted','failed','needs_attention'))`
 - `CHECK (model_configuration_version >= 0)`
 - `CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))`
-- `FOREIGN KEY (active_deployment_id, id) REFERENCES workspace.deployments (id, workspace_id) ON DELETE RESTRICT`
+- `FOREIGN KEY (current_agent_deployment_id, id) REFERENCES serve.agent_deployments (id, workspace_id) ON DELETE RESTRICT`
 - `FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `CHECK (delivery_model IN ('legacy_resource_only','imported_application','agent_saas'))`
 - `CHECK (version >= 0)`
-- `CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL AND active_deployment_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL))`
+- `CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL AND current_agent_deployment_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL))`
 - `CHECK (execution_epoch >= 0)`
 - `CHECK ((selected_route_generation IS NULL) = (selected_execution_epoch IS NULL))`
 - `CHECK (selected_route_generation IS NULL OR selected_route_generation >= 0)`
@@ -1447,47 +1400,6 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 索引：
 - `workspaces_tenant_list`: `(tenant_id, created_at DESC, id DESC)`
 - `workspaces_legacy`: UNIQUE `(legacy_origin_id)` WHERE `legacy_origin_id IS NOT NULL`
-
-#### workspace.deployments
-
-workspaces.active_deployment_id唯一选中；同事务切换指针和supersede旧部署，不由Runtime写。覆盖 F08, F09, F10。
-
-| 字段 | 类型 | 可空 | 默认 | 字段来源 |
-|---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/id` |
-| `workspace_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/workspaceId` |
-| `capability_version_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/capabilityVersionId` |
-| `artifact_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#workspace.deployments.artifact_digest` |
-| `reference_claim_id` | `text` | 否 | `—` | `02_database_schema_complete.md#workspace.deployments.reference_claim_id` |
-| `runtime_instance_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/runtimeInstanceId` |
-| `previous_deployment_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/previousDeploymentId` |
-| `operation_id` | `text` | 否 | `—` | `02_database_schema_complete.md#workspace.deployments.operation_id` |
-| `status` | `text` | 否 | `'queued'` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/status` |
-| `data_compatibility` | `jsonb` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/dataCompatibility` |
-| `data_migration_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.data_migration_evidence_ref` |
-| `verification_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.verification_evidence_ref` |
-| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.error_code` |
-| `activated_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.activated_at` |
-| `created_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/createdAt` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/updatedAt` |
-| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#workspace.deployments.execution_epoch` |
-| `confirmed_route_switch_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.confirmed_route_switch_id` |
-| `selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.deployments.selection_commit_receipt_id` |
-
-约束：
-- `PRIMARY KEY (id)`
-- `FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (previous_deployment_id) REFERENCES workspace.deployments (id) ON DELETE RESTRICT`
-- `CHECK (status IN ('queued','deploying','verifying','active','superseded','failed','rolling_back','rolled_back','needs_attention'))`
-- `UNIQUE (id, workspace_id)`
-- `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `CHECK (status <> 'active' OR (runtime_instance_id IS NOT NULL AND verification_evidence_ref IS NOT NULL AND activated_at IS NOT NULL))`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
-- `CHECK (execution_epoch >= 0)`
-
-索引：
-- `deployments_workspace_list`: `(workspace_id, created_at DESC, id DESC)`
-- `deployments_operation`: `(operation_id)`
 
 #### workspace.subscriptions
 
@@ -1975,74 +1887,53 @@ Immutable successful-upgrade supplement coverage T..E; original Gateway charge i
 
 Database `opl_runtime_control` · Schema `runtime_control` · Writer `opl_runtime_control_writer`。
 
-#### runtime_control.runtime_instances
+#### runtime_control.runtime_releases
 
-readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆盖 F08, F09, F10, F12, F13。
+Strict PublisherContract schema; repository/digest must match contract and admitted namespace; descriptor is propagated unchanged into Build and execution。覆盖 F03, F04, F10。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.id` |
-| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.workspace_id` |
-| `deployment_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.deployment_id` |
-| `artifact_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.artifact_digest` |
-| `fabric_resource_set_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.fabric_resource_set_id` |
-| `fabric_execution_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.fabric_execution_ref` |
-| `status` | `text` | 否 | `'pending'` | `02_database_schema_complete.md#runtime_control.runtime_instances.status` |
-| `access_url` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.access_url` |
-| `data_attachment_contract` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.data_attachment_contract` |
-| `applied_model_configuration_version` | `bigint` | 否 | `0` | `02_database_schema_complete.md#runtime_control.runtime_instances.applied_model_configuration_version` |
-| `readiness_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.readiness_evidence_ref` |
-| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.error_code` |
-| `observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.observed_at` |
-| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#runtime_control.runtime_instances.created_at` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#runtime_control.runtime_instances.updated_at` |
-| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.execution_epoch` |
-| `deployment_descriptor` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.deployment_descriptor` |
-| `deployment_descriptor_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.deployment_descriptor_digest` |
-| `deployment_descriptor_object_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_instances.deployment_descriptor_object_ref` |
+| `id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/id` |
+| `name` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/name` |
+| `version_label` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/versionLabel` |
+| `artifact_repository` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_releases.artifact_repository` |
+| `artifact_digest` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/artifactDigest` |
+| `status` | `text` | 否 | `'approved'` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/status` |
+| `approved_by` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_releases.approved_by` |
+| `created_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/createdAt` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#runtime_control.runtime_releases.updated_at` |
+| `runtime_abi_version` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/runtimeAbiVersion` |
+| `package_format_versions` | `text[]` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/packageFormatVersions` |
+| `admission_receipt_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/admissionReceiptId` |
+| `publisher_namespace_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherNamespaceId` |
+| `publisher_contract_digest` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContractDigest` |
+| `publisher_contract` | `jsonb` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContract` |
+| `publisher_contract_object_ref` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/RuntimeVersion/properties/publisherContractObjectRef` |
 
 约束：
 - `PRIMARY KEY (id)`
-- `CHECK (status IN ('pending','starting','ready','stopped','failed','terminating','terminated'))`
-- `UNIQUE (deployment_id)`
+- `CHECK (status IN ('approved','deprecated','revoked'))`
+- `UNIQUE (name, version_label)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `CHECK (applied_model_configuration_version >= 0)`
-- `CHECK (status <> 'ready' OR (access_url IS NOT NULL AND readiness_evidence_ref IS NOT NULL AND observed_at IS NOT NULL))`
-- `CHECK (execution_epoch >= 0)`
-- `CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)`
+- `CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')`
+- `FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT`
+- `CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)`
+- `CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)`
+- `CHECK ((publisher_contract->>'kind' = 'runtime') IS TRUE)`
+- `CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)`
+- `CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)`
+- `CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)`
+- `CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)`
+- `CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)`
+- `CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)`
+- `CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}' = (publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)`
+- `CHECK ((publisher_contract->>'runtimeAbiVersion' = runtime_abi_version) IS TRUE)`
+- `CHECK ((publisher_contract->'packageFormatVersions' = to_jsonb(package_format_versions)) IS TRUE)`
 
 索引：
-- `runtime_instances_workspace`: `(workspace_id, created_at DESC, id DESC)`
+- `runtime_versions_status`: `(status, created_at DESC, id DESC)`
+- `runtime_versions_publisher`: `(publisher_namespace_id)`
 
-#### runtime_control.runtime_actions
-
-先持久action再调用Fabric；旧Deployment响应不能覆盖新实例。覆盖 F08, F09, F10, F12, F13。
-
-| 字段 | 类型 | 可空 | 默认 | 字段来源 |
-|---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.id` |
-| `runtime_instance_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.runtime_instance_id` |
-| `command_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.command_id` |
-| `action` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.action` |
-| `expected_deployment_id` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.expected_deployment_id` |
-| `input_snapshot` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.input_snapshot` |
-| `fabric_action_id` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.fabric_action_id` |
-| `observation_result` | `text` | 否 | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.observation_result` |
-| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.error_code` |
-| `evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#runtime_control.runtime_actions.evidence_ref` |
-| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#runtime_control.runtime_actions.created_at` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#runtime_control.runtime_actions.updated_at` |
-
-约束：
-- `PRIMARY KEY (id)`
-- `FOREIGN KEY (runtime_instance_id) REFERENCES runtime_control.runtime_instances (id) ON DELETE RESTRICT`
-- `UNIQUE (command_id)`
-- `CHECK (action IN ('start','stop','terminate','reload','verify'))`
-- `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
-
-索引：
-- `runtime_actions_instance`: `(runtime_instance_id, created_at DESC, id DESC)`
 
 #### runtime_control.outbox_events
 
@@ -2195,6 +2086,199 @@ readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆�
 - `operations_resource`: `(resource_id, created_at DESC, id DESC)`
 - `operations_tenant_list`: `(tenant_id, created_at DESC, id DESC)`
 - `operations_recovery`: `(status, updated_at)`
+
+### serve
+
+Database `opl_serve` · Schema `serve` · Writer `opl_serve_writer`。
+
+#### serve.agent_deployments
+
+workspaces.current_agent_deployment_id唯一选中；同事务切换指针和supersede旧部署，不由Runtime写。覆盖 F08, F09, F10。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/id` |
+| `workspace_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/workspaceId` |
+| `capability_version_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/capabilityVersionId` |
+| `artifact_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_deployments.artifact_digest` |
+| `reference_claim_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_deployments.reference_claim_id` |
+| `runtime_instance_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/runtimeInstanceId` |
+| `previous_deployment_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/previousDeploymentId` |
+| `operation_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_deployments.operation_id` |
+| `status` | `text` | 否 | `'queued'` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/status` |
+| `data_compatibility` | `jsonb` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/dataCompatibility` |
+| `data_migration_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.data_migration_evidence_ref` |
+| `verification_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.verification_evidence_ref` |
+| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.error_code` |
+| `activated_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.activated_at` |
+| `created_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/createdAt` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/Deployment/properties/updatedAt` |
+| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#serve.agent_deployments.execution_epoch` |
+| `confirmed_route_switch_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.confirmed_route_switch_id` |
+| `selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_deployments.selection_commit_receipt_id` |
+
+约束：
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT`
+- `FOREIGN KEY (previous_deployment_id) REFERENCES serve.agent_deployments (id) ON DELETE RESTRICT`
+- `CHECK (status IN ('queued','deploying','verifying','active','superseded','failed','rolling_back','rolled_back','needs_attention'))`
+- `UNIQUE (id, workspace_id)`
+- `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
+- `CHECK (status <> 'active' OR (runtime_instance_id IS NOT NULL AND verification_evidence_ref IS NOT NULL AND activated_at IS NOT NULL))`
+- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
+- `CHECK (execution_epoch >= 0)`
+
+索引：
+- `deployments_workspace_list`: `(workspace_id, created_at DESC, id DESC)`
+- `deployments_operation`: `(operation_id)`
+
+#### serve.agent_runtime_instances
+
+readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆盖 F08, F09, F10, F12, F13。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.id` |
+| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.workspace_id` |
+| `deployment_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.deployment_id` |
+| `artifact_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.artifact_digest` |
+| `fabric_resource_set_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.fabric_resource_set_id` |
+| `fabric_execution_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.fabric_execution_ref` |
+| `status` | `text` | 否 | `'pending'` | `02_database_schema_complete.md#serve.agent_runtime_instances.status` |
+| `access_url` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.access_url` |
+| `data_attachment_contract` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.data_attachment_contract` |
+| `applied_model_configuration_version` | `bigint` | 否 | `0` | `02_database_schema_complete.md#serve.agent_runtime_instances.applied_model_configuration_version` |
+| `readiness_evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.readiness_evidence_ref` |
+| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.error_code` |
+| `observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.observed_at` |
+| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.agent_runtime_instances.created_at` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.agent_runtime_instances.updated_at` |
+| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.execution_epoch` |
+| `deployment_descriptor` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.deployment_descriptor` |
+| `deployment_descriptor_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.deployment_descriptor_digest` |
+| `deployment_descriptor_object_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_instances.deployment_descriptor_object_ref` |
+
+约束：
+- `PRIMARY KEY (id)`
+- `CHECK (status IN ('pending','starting','ready','stopped','failed','terminating','terminated'))`
+- `UNIQUE (deployment_id)`
+- `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
+- `CHECK (applied_model_configuration_version >= 0)`
+- `CHECK (status <> 'ready' OR (access_url IS NOT NULL AND readiness_evidence_ref IS NOT NULL AND observed_at IS NOT NULL))`
+- `CHECK (execution_epoch >= 0)`
+- `CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')`
+- `CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)`
+
+索引：
+- `runtime_instances_workspace`: `(workspace_id, created_at DESC, id DESC)`
+
+#### serve.agent_runtime_actions
+
+先持久action再调用Fabric；旧Deployment响应不能覆盖新实例。覆盖 F08, F09, F10, F12, F13。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.id` |
+| `runtime_instance_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.runtime_instance_id` |
+| `command_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.command_id` |
+| `action` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.action` |
+| `expected_deployment_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.expected_deployment_id` |
+| `input_snapshot` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.input_snapshot` |
+| `fabric_action_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.fabric_action_id` |
+| `observation_result` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.observation_result` |
+| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.error_code` |
+| `evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.agent_runtime_actions.evidence_ref` |
+| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.agent_runtime_actions.created_at` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.agent_runtime_actions.updated_at` |
+
+约束：
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (runtime_instance_id) REFERENCES serve.agent_runtime_instances (id) ON DELETE RESTRICT`
+- `UNIQUE (command_id)`
+- `CHECK (action IN ('start','stop','terminate','reload','verify'))`
+- `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
+
+索引：
+- `runtime_actions_instance`: `(runtime_instance_id, created_at DESC, id DESC)`
+
+#### serve.access_bindings
+
+Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback。覆盖 F08, F09, F10, F13。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_bindings.id` |
+| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_bindings.workspace_id` |
+| `route_generation` | `bigint` | 否 | `0` | `02_database_schema_complete.md#serve.access_bindings.route_generation` |
+| `accepted_execution_epoch` | `bigint` | 否 | `0` | `02_database_schema_complete.md#serve.access_bindings.accepted_execution_epoch` |
+| `target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.target_execution_resource_id` |
+| `last_confirmed_switch_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.last_confirmed_switch_id` |
+| `observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.observed_at` |
+| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_bindings.created_at` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_bindings.updated_at` |
+| `provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_bindings.provider_revision` |
+
+约束：
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
+- `UNIQUE (workspace_id)`
+- `UNIQUE (id, workspace_id)`
+- `CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)`
+- `FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT`
+
+索引：
+- `route_bindings_target`: `(target_execution_resource_id)`
+
+#### serve.access_switches
+
+Provider conditional revision CAS covers target plus epoch metadata; confirmed fence preserves target/generation but advances epoch/revision, then activate/rollback advances generation; any unknown blocks all new route actions。覆盖 F08, F10, F13。
+
+| 字段 | 类型 | 可空 | 默认 | 字段来源 |
+|---|---|---|---|---|
+| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.id` |
+| `route_binding_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.route_binding_id` |
+| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.workspace_id` |
+| `operation_owner` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.operation_owner` |
+| `operation_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.operation_id` |
+| `expected_route_generation` | `bigint` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.expected_route_generation` |
+| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.execution_epoch` |
+| `target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.target_execution_resource_id` |
+| `previous_target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.previous_target_execution_resource_id` |
+| `provider_command_id` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.provider_command_id` |
+| `provider_request_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.provider_request_ref` |
+| `status` | `text` | 否 | `'requested'` | `02_database_schema_complete.md#serve.access_switches.status` |
+| `observed_route_generation` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_route_generation` |
+| `observed_execution_epoch` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_execution_epoch` |
+| `evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.evidence_ref` |
+| `workspace_selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.workspace_selection_commit_receipt_id` |
+| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.error_code` |
+| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.created_at` |
+| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.updated_at` |
+| `action_kind` | `text` | 否 | `—` | `02_database_schema_complete.md#serve.access_switches.action_kind` |
+| `expected_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_provider_revision` |
+| `observed_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_provider_revision` |
+| `expected_absence_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_absence_receipt_id` |
+| `expected_absence_observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.expected_absence_observed_at` |
+
+约束：
+- `PRIMARY KEY (id)`
+- `FOREIGN KEY (route_binding_id, workspace_id) REFERENCES serve.access_bindings (id, workspace_id) ON DELETE RESTRICT`
+- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
+- `FOREIGN KEY (previous_target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
+- `CHECK (status IN ('requested','confirmed','rejected','unknown'))`
+- `CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)`
+- `UNIQUE (provider_command_id)`
+- `CHECK (workspace_selection_commit_receipt_id IS NULL OR status = 'confirmed')`
+- `CHECK (action_kind IN ('fence','activate','rollback'))`
+- `CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)`
+- `CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)`
+- `CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))`
+- `CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))`
+
+索引：
+- `route_switches_one_pending`: UNIQUE `(route_binding_id)` WHERE `status IN ('requested','unknown')`
+- `route_switches_operation`: `(operation_owner, operation_id, created_at DESC, id DESC)`
+
 
 ### fabric
 
@@ -2511,84 +2595,6 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 - `operations_resource`: `(resource_id, created_at DESC, id DESC)`
 - `operations_tenant_list`: `(tenant_id, created_at DESC, id DESC)`
 - `operations_recovery`: `(status, updated_at)`
-
-#### fabric.route_bindings
-
-Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback。覆盖 F08, F09, F10, F13。
-
-| 字段 | 类型 | 可空 | 默认 | 字段来源 |
-|---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_bindings.id` |
-| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_bindings.workspace_id` |
-| `route_generation` | `bigint` | 否 | `0` | `02_database_schema_complete.md#fabric.route_bindings.route_generation` |
-| `accepted_execution_epoch` | `bigint` | 否 | `0` | `02_database_schema_complete.md#fabric.route_bindings.accepted_execution_epoch` |
-| `target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_bindings.target_execution_resource_id` |
-| `last_confirmed_switch_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_bindings.last_confirmed_switch_id` |
-| `observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#fabric.route_bindings.observed_at` |
-| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#fabric.route_bindings.created_at` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#fabric.route_bindings.updated_at` |
-| `provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_bindings.provider_revision` |
-
-约束：
-- `PRIMARY KEY (id)`
-- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
-- `UNIQUE (workspace_id)`
-- `UNIQUE (id, workspace_id)`
-- `CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)`
-- `FOREIGN KEY (last_confirmed_switch_id) REFERENCES fabric.route_switches (id) ON DELETE RESTRICT`
-
-索引：
-- `route_bindings_target`: `(target_execution_resource_id)`
-
-#### fabric.route_switches
-
-Provider conditional revision CAS covers target plus epoch metadata; confirmed fence preserves target/generation but advances epoch/revision, then activate/rollback advances generation; any unknown blocks all new route actions。覆盖 F08, F10, F13。
-
-| 字段 | 类型 | 可空 | 默认 | 字段来源 |
-|---|---|---|---|---|
-| `id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.id` |
-| `route_binding_id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.route_binding_id` |
-| `workspace_id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.workspace_id` |
-| `operation_owner` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.operation_owner` |
-| `operation_id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.operation_id` |
-| `expected_route_generation` | `bigint` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.expected_route_generation` |
-| `execution_epoch` | `bigint` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.execution_epoch` |
-| `target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.target_execution_resource_id` |
-| `previous_target_execution_resource_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.previous_target_execution_resource_id` |
-| `provider_command_id` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.provider_command_id` |
-| `provider_request_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.provider_request_ref` |
-| `status` | `text` | 否 | `'requested'` | `02_database_schema_complete.md#fabric.route_switches.status` |
-| `observed_route_generation` | `bigint` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.observed_route_generation` |
-| `observed_execution_epoch` | `bigint` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.observed_execution_epoch` |
-| `evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.evidence_ref` |
-| `workspace_selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.workspace_selection_commit_receipt_id` |
-| `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.error_code` |
-| `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#fabric.route_switches.created_at` |
-| `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#fabric.route_switches.updated_at` |
-| `action_kind` | `text` | 否 | `—` | `02_database_schema_complete.md#fabric.route_switches.action_kind` |
-| `expected_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.expected_provider_revision` |
-| `observed_provider_revision` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.observed_provider_revision` |
-| `expected_absence_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.expected_absence_receipt_id` |
-| `expected_absence_observed_at` | `timestamptz` | NULL | `—` | `02_database_schema_complete.md#fabric.route_switches.expected_absence_observed_at` |
-
-约束：
-- `PRIMARY KEY (id)`
-- `FOREIGN KEY (route_binding_id, workspace_id) REFERENCES fabric.route_bindings (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (previous_target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
-- `CHECK (status IN ('requested','confirmed','rejected','unknown'))`
-- `CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)`
-- `UNIQUE (provider_command_id)`
-- `CHECK (workspace_selection_commit_receipt_id IS NULL OR status = 'confirmed')`
-- `CHECK (action_kind IN ('fence','activate','rollback'))`
-- `CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)`
-- `CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)`
-- `CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))`
-- `CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))`
-
-索引：
-- `route_switches_one_pending`: UNIQUE `(route_binding_id)` WHERE `status IN ('requested','unknown')`
-- `route_switches_operation`: `(operation_owner, operation_id, created_at DESC, id DESC)`
 
 ### gateway
 

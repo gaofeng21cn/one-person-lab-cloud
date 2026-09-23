@@ -488,7 +488,7 @@ needs_attention/awaiting_confirmation仍是非终态并服从Owner轮询提示�
 |---|---|---|
 | 在现有资源上部署智能体 | `adoptWorkspace` / `AdoptWorkspaceRequest` | `AdoptWorkspaceRequest.capabilityVersionId`、`AdoptWorkspaceRequest.expectedWorkspaceVersion`、`AdoptWorkspaceRequest.modelSelections`；权限 admin/owner；仅已迁移legacy_resource_only；现有已付资源权益与所选Agent/模型/数据兼容；AdoptWorkspaceRequest.expectedWorkspaceVersion匹配Workspace.version，不新报价、不扣费、不重购 |
 
-成功：已有资源采用Agent后activeDeploymentId及deliveryModel更新，历史账户/Workspace/资源/周期/交易/收据ID不变，无新增debit或资源订单。
+成功：已有资源采用Agent后currentAgentDeploymentId及deliveryModel更新，历史账户/Workspace/资源/周期/交易/收据ID不变，无新增debit或资源订单。
 
 失败：无法证明历史关联或资源状态时显示需要处理；不猜旧数据绑定、不合成ready Runtime或Build。
 

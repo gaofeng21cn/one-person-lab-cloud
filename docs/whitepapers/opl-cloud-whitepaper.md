@@ -113,7 +113,7 @@ OPL 使用一组跨产品的能力域来保持长期一致的语言：工作空�
 
 本机 OPL App 适合个人控制、敏感材料和日常编辑；在线 OPL Workspace 适合远程访问、协作和托管执行。两者共享同一套产品语言，分别承载同一工作模型在本机与云端的工作面。
 
-用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。Workspace 与对外 Agent Service 是不同对象：前者承载用户自己的工作，后者把成熟能力提供给外部消费者。
+用户可以从本机开始，在需要在线访问或更强资源时选择合适的 Workspace，再把结果带回原项目。环境改变后，任务身份、材料引用、产物关系和继续入口仍然保留。对于 Agent 服务，Workspace 是部署目标：一个 Workspace 至多有一个当前 Agent。OPL Serve 将 Agent 交付到该 Workspace，并让 API、Embed、Hosted UI 访问同一个当前 Agent，而不是另建一个与 Workspace 并列的 Agent Service。
 
 ### 三、先形成计划，再授予资源权力
 
@@ -151,13 +151,17 @@ OPL Cloud 的能力按用户在一条工作链中遇到的问题组织。每个�
 
 ## 从成熟 Agent 到对外服务
 
-成熟 Agent 不只可以在个人工作台中使用，也可以成为其他产品或团队可以调用的服务。OPL Cloud 把“开发能力”“提供服务”和“一次具体调用”分开，让每一层都有清楚责任。
+成熟 Agent 不只可以在个人工作台中使用，也可以通过 OPL Serve 交付到 Workspace，成为其他产品或团队可访问的服务。OPL Cloud 把“Package 内容”“构建产物”“Workspace 交付”和“一次具体调用”分开，让每一层都有清楚责任。Serve UI 可以作为上传入口，但 Agent Package 的字节、身份和元数据由 Capability 持有；Build 固定 Package、WebUI 和获准 Runtime 版本，生成不可变 OCI。Runtime Control 管理获准 Runtime 版本目录，不部署 Agent 实例；OPL App/Framework 的 Runtime 实现由其外部 Owner 提供。Serve 拥有每个 Workspace 唯一的 Agent 交付/当前状态；Workspace 拥有自身身份、成员、权益、资源计划和目标授权；Fabric 只负责基础设施资源的开通、绑定和资源状态读回。
 
 ```text
-经过验证的 Agent 能力
-  -> 形成可发布版本
-  -> 配置服务对象与访问政策
-  -> API / Embed / Hosted UI
+用户在 Serve 选择/上传 Agent Package
+  -> Capability 校验并保存不可变 Package 版本
+  -> 选择 WebUI 与 Runtime Control 提供的获准 Runtime 版本
+  -> Build 固定三项输入并生成不可变 OCI
+  -> Workspace 校验目标、成员、权益和资源计划
+  -> Fabric 开通/绑定所需基础设施资源并读回资源事实
+  -> Serve 将 OCI 交付到 Workspace 唯一 Agent 槽位并读回交付结果
+  -> API / Embed / Hosted UI 访问同一个当前 Agent
   -> 一次具体调用或持续会话
   -> 结果、用量与证据返回
 ```
@@ -170,7 +174,7 @@ OPL Serve 提供三种交付方式，并让它们共享一套服务原则：
 | Embed | 已有网站中的交互区域 | 在原产品中加入受控的 Agent 体验 |
 | Hosted UI | 需要现成前端的发布者 | 用任务、报告、流程或对话模板快速提供服务 |
 
-三种方式共享身份、访问策略、额度、运行反馈和结果证据。发布者仍然负责 Agent 的专业承诺、内容和客户关系；OPL Cloud 负责让服务能够被安全、稳定、可解释地访问。
+三种方式共享同一个 Workspace Agent、访问策略、额度、运行反馈和结果证据，不会分别创建 Agent 或部署。发布者仍然负责 Agent 的专业承诺、Skills 与客户关系；OPL Cloud 负责 Package 登记、可复现构建、Workspace 交付，以及安全、稳定、可解释的访问。
 
 ## 一条典型的专业工作链
 
@@ -234,7 +238,7 @@ Fabric 连接获准资源，提交并监控任务。数据默认留在资源所�
 
 ### 版本可信
 
-用户能知道正在使用或发布的是哪一版能力，变化有清楚来源。工作台、服务与资源执行都引用同一份经过确认的版本，不各自维护互相冲突的副本。
+用户能知道正在使用或发布的是哪一版能力，变化有清楚来源。Package、WebUI 和 Runtime 版本被固定进不可变 OCI；Workspace Agent 的交付状态由 Serve 唯一拥有，不由工作台、Workspace 和 Fabric 重复维护。
 
 ### 服务可信
 
@@ -242,7 +246,7 @@ Fabric 连接获准资源，提交并监控任务。数据默认留在资源所�
 
 ### 结果可信
 
-运行证据交给领域审阅。最终质量、发布、提交或交付决定来自对应领域的专业 Agent 和必要的人类负责人。
+运行证据交给领域审阅。Agent Package、WebUI 和 Runtime 版本被固定进 OCI；Workspace 的 Agent 由 Serve 统一交付并提供 API、Embed、Hosted UI 访问。最终质量、发布、提交或交付决定来自对应领域的专业 Agent 和必要的人类负责人。
 
 ### 接力可信
 

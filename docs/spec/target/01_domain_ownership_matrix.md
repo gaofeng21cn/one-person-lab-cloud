@@ -6,21 +6,22 @@
 
 ```text
 客户/管理员浏览器
-  └─ Console UI（React/TypeScript）
-      └─ Console BFF（REST产品接口、会话、CSRF、聚合；无业务库）
-          ├─ Capability：Agent/Package/目录/准入引用
-          │    └─ Build：不可变输入→构建→OCI确认→完成事件
-          ├─ Workspace：报价接受/生命周期/业务Saga/选中Deployment
-          │    ├─ Resource Catalog：批准套餐与价格/只读报价
-          │    ├─ Gateway Integration：身份/钱包主体/Key/扣退款接口
+  └─ Console UI（React/TypeScript；Serve交付体验入口）
+      └─ Console BFF（REST、会话、CSRF、DTO聚合；无业务库）
+          ├─ Capability：Package身份/上传/版本、WebUI目录
+          ├─ Runtime Control：获准Runtime Release目录与兼容契约
+          ├─ Build：固定Package+WebUI+Runtime Release → 不可变OCI
+          ├─ Workspace：Tenant/成员/权益/资源方案/报价与购买Saga
+          │    ├─ Resource Catalog：批准资源套餐和价格
+          │    ├─ Gateway Integration：身份/钱包主体/Key/扣退款调用
           │    │    └─ Sub2API：身份、可消费余额、Key、Token用量
-          │    ├─ Runtime Control：实例部署/验证/切换/回滚
-          │    │    └─ Fabric：资源、挂载、Secret、Runtime执行与实际回读
-          │    └─ Ledger：原单、执行/费用/删除证据
-          └─ 各owner操作详情/审计只读聚合
+          │    ├─ Fabric：开通/绑定Compute、Storage、Network并权威读回
+          │    └─ Serve：将OCI交付到目标Workspace，唯一拥有Agent部署状态
+          │         └─ Packaged OPL App/Framework Runtime：实际运行Agent OCI
+          └─ Ledger：原单、执行/费用/删除证据
 
-Framework/OPL App ──发布版本化Runtime合约──> 管理员准入目录
-Instance ──提供部署/Storage/Registry/Provider配置和Secrets──> 各执行服务
+Framework/OPL App ──发布Runtime实现与兼容契约──> Runtime Control准入
+Instance ──提供Registry/Storage/Provider/Secrets/部署配置──> 各Owner执行边界
 ```
 
 Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配置/部署/资格。图上的边是明确API或事件，不是跨库读取权限。
@@ -31,11 +32,13 @@ Cloud产品仓库负责可移植服务和发布，Instance负责真实实例配�
 |---|---|---|---|---|
 | Console UI | 路由/表单；只读model；异步Operation展示；会话生命周期 | 只保存UI草稿与非秘密轮询身份 | 客户/管理员 | 钱包事实、业务状态机、provider、业务库 |
 | Console BFF | Gateway认证会话；CSRF/请求上下文；产品DTO聚合 | 仅服务端session安全存储，无业务operation登记表 | Console UI | 扣费决定、Saga、跨域表查询 |
-| Capability | Namespace可见性；Package元数据/上传；版本目录；Runtime/WebUI准入；引用claim | Package、版本、目录、reference claims及本域事件 | BFF/Build/Workspace/Runtime Control | 构建执行、运行事实、钱包、Registry实现 |
-| Build | 任务准入；输入固定；隔离构建；推送读回；注册交接；任务证据 | BuildJob/输入摘要/步骤/产物/日志索引 | BFF/Capability的typed命令 | Package元数据writer、运行资源购买、版本目录writer |
-| Workspace | 归属与权益；报价接受/订阅；部署/升级/调整规格；续费/删除/退款Saga；只读产品结果 | Workspace/Deployment/周期义务/业务Operation/steps | BFF/到期worker/管理员命令 | 可消费余额、provider原始事实、Runtime实现 |
+| Capability | Namespace可见性；Package身份、元数据、上传/字节校验、PackageVersion；WebUI准入与版本；Package/Build结果的CapabilityVersion登记 | Package、PackageVersion、WebUI目录、reference claims及本域事件 | BFF/Build/Workspace/Serve | OCI构建、Runtime Release目录、Workspace部署/运行事实、钱包、Registry执行 |
+| Runtime Control | OPL App/Agent Runtime实现的准入与获批Release目录；精确OCI引用、ABI/Package兼容信息、退役状态 | RuntimeRelease目录及本域审计/Operation | BFF/管理员、Build读取 | Build执行、Workspace Runtime实例/部署、Agent运行状态 |
+| Build | 固定PackageVersion+WebUI Version+Runtime Release输入；隔离构建；推送并读回OCI；向Capability交接构建完成证据 | BuildJob/输入摘要/步骤/OCI产物/日志索引 | BFF/Capability/Runtime Control | Package元数据writer、运行资源购买、Agent部署状态、Runtime/WebUI目录writer |
+| Workspace | Workspace身份、Tenant成员授权、权益/订阅、资源方案、报价接受、购买/资源/续费/删除/退款Saga；校验Agent交付目标授权 | Workspace/周期义务/业务Operation/steps；不存Agent Deployment/active字段 | BFF/Serve/到期worker/管理员命令 | Agent Package、OCI、Agent部署/运行事实、可消费余额、provider资源事实 |
+| Serve | 按Workspace执行Agent Package/OCI交付；异步部署/替换/回滚；唯一当前Agent、readiness和对外访问路由；API/Embed/Hosted UI | Agent deployments、deploy operations、runtime observations/access bindings及本域事件 | BFF/Workspace/外部消费者 | Package/Runtime版本元数据writer、Workspace权益/成员writer、Fabric资源writer |
 | Runtime Control | 准入契约；期望实例；启动/健康；切换/回滚；config reload | RuntimeInstance/配置版本引用/执行Operation | Workspace/BFF只读 | Workspace购买历史、付费决定、应用内部业务 |
-| Fabric | provider适配；资源分配；挂载；Secret注入；运行执行；实际回读 | provider operation、机器/存储/挂载/执行绑定 | Runtime Control/Workspace/受保护operator | 套餐销售价格、客户余额、Ledger证据writer |
+| Fabric | Provider适配；Compute/Storage/Network等资源开通、绑定、资源状态读回；所需资源Secret引用绑定 | provider resource set/resources/attachments/resource actions | Workspace/Serve/受保护operator | Agent OCI部署、Agent Runtime启停/readiness、Serve路由、套餐销售价格、客户余额 |
 | Gateway Integration | Gateway身份适配；Cloud主体/Tenant权限映射；钱包主体委托；Key；扣退款一次性调用与回读 | 映射/授权上下文/交易请求身份及观察结果 | BFF/Workspace | 可花费余额缓存、密码、第二套资金流水权威 |
 | Resource Catalog | provider-neutral套餐；价格版本；兼容性/可售性；报价生成 | 套餐/价格策略/不可变报价及有效期限 | BFF/Workspace/Fabric preflight读取 | 资源执行、钱包记账、已接受订阅义务writer |
 | Ledger | 类型化receipt验证；append-only保存；索引；对账证据 | Receipt/证据索引/对账报告 | 所有业务owner | provider mutation、业务Saga、付款重试 |
@@ -52,7 +55,7 @@ BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认�
 
 - 目标业务服务使用Go，按下表独立module、部署进程与镜像。proto中的service只分组API，不按每个接口组增加进程。
 - 保留原规格例外：`tenant`（CloudIdentity）与`gateway`共用Gateway Integration的Go module和部署进程，但各自拥有独立database、角色及受限连接池，不获得跨库读写权。
-- 因而目标是**9个业务数据Owner、8个领域后端部署单元，加1个Console BFF**；Console UI是独立前端应用，contracts和`services/internal`不是服务。这里统计逻辑部署单元，不限定Instance的副本数。
+- 因而目标是**10个业务数据Owner、9个领域后端部署单元，加1个Console BFF**；Console UI是独立前端应用，contracts和`services/internal`不是服务。这里统计逻辑部署单元，不限定Instance的副本数。
 - Fabric与Ledger保持现有模块/执行与证据权威。不是新增第二Fabric、第二Ledger，也不新建统一Operation/Saga/权限服务。Ledger新增build事件类型必须更新真实验证器，不能用匿名收据服务绕过规则。
 - `services/control-plane`是逐域提取的现有来源，不是目标架构额外保留的永久第二writer。尚未移交的能力继续由原Owner负责；逐能力切换真实caller并完成09的历史义务后退休对应旧writer，不直接删除尚在使用的服务或数据。
 - Instance、Sub2API、Framework/OPL App、外部Storage/OCI Registry保持外部Owner与契约关系；单仓库决定不把它们并入Cloud，生产部署仍由Instance执行；前端不携带provider选项。
@@ -69,12 +72,13 @@ BFF鉴权不意味着拥有Identity。Tenant权限属于Cloud业务映射，认�
 | `services/capability` | 独立Go module | Capability | `capability` / `opl_capability` | 拟建 |
 | `services/build` | 独立Go module | Build | `build` / `opl_build` | 拟建 |
 | `services/workspace` | 独立Go module | Workspace | `workspace` / `opl_workspace` | 拟建 |
-| `services/runtime-control` | 独立Go module | Runtime Control | `runtime_control` / `opl_runtime_control` | 拟建 |
+| `services/runtime-control` | 独立Go module | Runtime Control / Runtime Release catalog | `runtime_control` / `opl_runtime_control` | 拟建；仅Runtime版本目录，不运行Workspace实例 |
+| `services/serve` | 独立Go module | OPL Serve | `serve` / `opl_serve` | 拟建；唯一Agent部署/访问Owner |
 | `services/resource-catalog` | 独立Go module | Resource Catalog | `resource_catalog` / `opl_resource_catalog` | 拟建 |
 | `services/fabric` | 保留独立Go module | Fabric | `fabric` / `opl_fabric` | 已有，目标数据库隔离按02/09实施 |
 | `services/ledger` | 保留独立Go module | Ledger | `ledger` / `opl_ledger` | 已有，目标数据库隔离按02/09实施 |
 | `services/control-plane` | 迁移期间保留现有Go module | 迁移期间的原Control Plane | 仅尚未移交的现有权威 | 已有来源，非第9个目标领域服务 |
-| `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，v2.26生成代码为其`v226`子包 |
+| `packages/contracts/go` | 唯一共享contracts Go module：`opl-cloud/packages/contracts/go` | 无进程 | 无数据库 | 已有，target architecture生成代码为其`v226`子包 |
 | `services/internal` | 现有policy-free共享基础设施目录，复用其中的窄module（如`postgresmigrate`） | 无进程 | 无业务数据Owner | 仅供至少两个真实服务调用，不承载共享业务规则 |
 
 目标目录树（`拟建`不表示W01要一次建立所有空服务）：
@@ -89,7 +93,8 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 │   ├── capability/                # 拟建独立Go module / 服务
 │   ├── build/                     # 拟建独立Go module / 服务
 │   ├── workspace/                 # 拟建独立Go module / 服务
-│   ├── runtime-control/           # 拟建独立Go module / 服务
+│   ├── runtime-control/           # 拟建独立Go module / Runtime Release catalog
+│   ├── serve/                   # 拟建独立Go module / 唯一Agent delivery/deployment Owner
 │   ├── resource-catalog/          # 拟建独立Go module / 服务
 │   ├── fabric/                    # 保留独立Go module / 服务
 │   ├── ledger/                    # 保留独立Go module / 服务
@@ -100,10 +105,10 @@ opl-cloud/                         # 唯一Cloud产品GitHub仓库
 │   └── go/                        # 现有且唯一的contracts Go module
 │       ├── go.mod
 │       └── v226/                  # 生成包，不另设go.mod
-└── docs/spec/v2.26/               # 规格与实施工作包
+└── docs/spec/target/               # 规格与实施工作包
 ```
 
-新建的是**仓库内6个领域服务module和1个BFF module**，不是6个GitHub仓库；Fabric/Ledger沿用并演进。并行工作按独立Owner和写集分配，不因同仓库而合并进程、共业务库或直接导入另一个服务的内部实现。进程内部lane先用直接函数与类型；真正跨Owner边界仍遵守既定typed接口与权限，不靠共享表集成。
+新建的是**仓库内7个领域服务module和1个BFF module**，不是6个GitHub仓库；Fabric/Ledger沿用并演进。并行工作按独立Owner和写集分配，不因同仓库而合并进程、共业务库或直接导入另一个服务的内部实现。进程内部lane先用直接函数与类型；真正跨Owner边界仍遵守既定typed接口与权限，不靠共享表集成。
 
 ### 3.3 共享契约与同提交消费
 
@@ -160,8 +165,10 @@ CloudIdentity是本规格已定义的Gateway Integration内Cloud身份/租户子
 | Workspace→Capability | F07/F08/F10/F16准入与引用 | 版本、完整DeploymentDescriptor identity、claim、namespace可见性 | 固定版本/数据/执行契约 | 不能只拿一个digest再猜启动参数 |
 | Workspace→Catalog | F07/F08/F11/F12报价/接受 | 选定套餐、purpose、周期、准入事实、原义务 | 不可变报价；AcceptQuote绑定唯一Operation | Catalog不扣款，Quote不是容量预留 |
 | Workspace→Gateway | 购买/续费/退款/Key | 租户钱包映射、原Code、金额、原单、受限grant | 确定/拒绝/未知观察、Key Secret引用 | 余额变化不是该原单成功证据 |
-| Workspace→Runtime Control | F08/F09/F10/F16 | 完整描述、预留实例身份、资源/Secret/config引用、generation/epoch | 实例意图、部署/更新/配置结果 | Runtime不接管Workspace业务权益 |
-| Runtime Control/Workspace→Fabric | 资源/运行/切流量 | typed资源命令或描述、exact targets、epoch、expected route generation | provider动作/实际readback/路由CAS结果 | DB提交不等于外部router原子切换 |
+| Build→Runtime Control | F04/F05/F10 | 精确RuntimeReleaseId、OCI digest/平台、runtime ABI/Package格式兼容输入 | 获批不可变Runtime版本及兼容契约读回；Build固定入BuildInputSnapshot | 不传可变tag，不将Runtime目录读回当成Agent已运行 |
+| Workspace→Serve | F08/F09/F10/F16 | tenant/workspace opaque refs、授权grant、capabilityVersion/OCI digest、Fabric resource refs、expected current deployment | Serve AgentDeployment与Operation身份、部署/readiness/access读回 | Workspace不写active Agent；Serve不写Workspace entitlement |
+| Workspace→Fabric | 资源购买/生命周期 | Workspace opaque ref、批准plan refs、provider capability、幂等operation | resource set/resource refs与资源状态权威读回 | Fabric不接Agent OCI/deployment命令 |
+| Serve→Fabric | Agent部署所需资源消费/绑定 | 已授权workspace与resource refs、运行需求/Secret ref | 资源归属/绑定结果；不返回Agent readiness | Serve不写Fabric资源状态，Fabric不启动Agent OCI |
 | 各Owner→Ledger | 每条有证据义务的阶段 | typed receipt、原操作/输入输出摘要、前置证据 | append-only receipt及精确回读 | 不填假Workspace ID或写旁路账本 |
 | CloudIdentity→Workspace | F15暂停/删除 | 原Tenant操作、目标Workspace集合、受限cleanup grant | 各子Operation的独立状态 | 改Tenant行不能宣称CVM/CBS已删除 |
 

@@ -478,7 +478,7 @@
           "const": 1
         },
         "owner": {
-          "const": "fabric"
+          "const": "serve"
         },
         "tenantId": {
           "type": "string",
@@ -565,13 +565,13 @@
           "minLength": 1
         },
         "eventType": {
-          "const": "runtime.readiness_observed.v1"
+          "const": "serve.agent_readiness_observed.v1"
         },
         "schemaVersion": {
           "const": 1
         },
         "owner": {
-          "const": "runtime_control"
+          "const": "serve"
         },
         "tenantId": {
           "type": "string",
@@ -1401,13 +1401,13 @@
           "minLength": 1
         },
         "eventType": {
-          "const": "fabric.route_observed.v1"
+          "const": "serve.access_observed.v1"
         },
         "schemaVersion": {
           "const": 1
         },
         "owner": {
-          "const": "fabric"
+          "const": "serve"
         },
         "tenantId": {
           "type": "string",
@@ -2059,7 +2059,7 @@
             "needs_attention"
           ]
         },
-        "activeDeploymentId": {
+        "currentAgentDeploymentId": {
           "type": "string",
           "minLength": 1
         }

@@ -67,8 +67,8 @@ absent.
 
 The target architecture is the domain-separated Agent SaaS architecture adopted
 in [docs/decisions.md](docs/decisions.md) on 2026-09-22 and specified by the
-v2.26 development specification under
-[docs/spec/v2.26](docs/spec/v2.26/00_master_index.md). The target domains are
+target architecture development specification under
+[docs/spec/target](docs/spec/target/00_master_index.md). The target domains are
 `tenant` (CloudIdentity), `capability`, `build`, `workspace`,
 `runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
 `fabric`, and `ledger`, surfaced through `apps/console-ui` and a Console BFF.
@@ -78,7 +78,7 @@ is [Repository And Instance Topology](docs/architecture.md#repository-and-instan
 
 The table below is the current implementation that is being migrated. Its rows
 remain authoritative for the code that exists today; the target domains above
-govern new work, and the v2.26 work packages own the migration.
+govern new work, and the target architecture work packages own the migration.
 
 | Module | Owns |
 | --- | --- |
@@ -102,7 +102,7 @@ govern new work, and the v2.26 work packages own the migration.
 - Console currently reaches service data through Control Plane APIs; the target
   browser entry is `apps/console-bff`.
 - Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
-  places proto sources in `packages/contracts/proto/` and generated v2.26 Go
+  places proto sources in `packages/contracts/proto/` and generated target architecture Go
   bindings in `packages/contracts/go/v226/`, not another module. Internal
   consumers build from the same Cloud commit, record the schema hash, and lock
   generator versions. Necessary consumer `go.mod`/`go.sum` updates belong to

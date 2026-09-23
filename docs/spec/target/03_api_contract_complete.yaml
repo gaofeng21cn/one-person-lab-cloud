@@ -2206,14 +2206,14 @@ paths:
       operationId: listDeployments
       summary: listDeployments
       tags:
-      - workspace
+      - serve
       x-feature-id:
       - F10
-      x-owner: workspace
+      x-owner: serve
       x-permission:
       - member
       x-tables:
-      - workspace.deployments
+      - serve.agent_deployments
       responses:
         '200':
           description: 成功。
@@ -2251,14 +2251,14 @@ paths:
       operationId: getDeployment
       summary: getDeployment
       tags:
-      - workspace
+      - serve
       x-feature-id:
       - F10
-      x-owner: workspace
+      x-owner: serve
       x-permission:
       - member
       x-tables:
-      - workspace.deployments
+      - serve.agent_deployments
       responses:
         '200':
           description: 成功。
@@ -2298,17 +2298,16 @@ paths:
       operationId: updateWorkspaceVersion
       summary: updateWorkspaceVersion
       tags:
-      - workspace
+      - serve
       x-feature-id:
       - F10
-      x-owner: workspace
+      x-owner: serve
       x-permission:
       - admin
       - owner
       x-tables:
-      - workspace.workspaces
-      - workspace.deployments
-      - workspace.operations
+      - serve.agent_deployments
+      - serve.operations
       responses:
         '202':
           description: 命令已持久接受，202不代表完成。
@@ -2341,7 +2340,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
-      description: 先验证新部署/data兼容，再CAS activeDeploymentId选中，最后退役旧Runtime；无新Workspace购买/隐式套餐变更。 scheduled降配不占资源执行锁，正常无关应用/模型更新允许；但必须按已有计划目标规格做Workspace
+      description: 先验证新部署/data兼容，再CAS currentAgentDeploymentId选中，最后退役旧Runtime；无新Workspace购买/隐式套餐变更。 scheduled降配不占资源执行锁，正常无关应用/模型更新允许；但必须按已有计划目标规格做Workspace
         admission，不兼容则SCHEDULED_PLAN_APPLICATION_CONFLICT拒绝，先显式取消可取消计划再更换。不静默取消计划/改价，也不放行到E才制造已付款失败。
       parameters:
       - name: workspaceId
@@ -2362,17 +2361,16 @@ paths:
       operationId: rollbackWorkspace
       summary: rollbackWorkspace
       tags:
-      - workspace
+      - serve
       x-feature-id:
       - F10
-      x-owner: workspace
+      x-owner: serve
       x-permission:
       - admin
       - owner
       x-tables:
-      - workspace.workspaces
-      - workspace.deployments
-      - workspace.operations
+      - serve.agent_deployments
+      - serve.operations
       responses:
         '202':
           description: 命令已持久接受，202不代表完成。
@@ -3841,7 +3839,7 @@ paths:
       x-permission:
       - member
       x-tables:
-      - capability.runtime_versions
+      - runtime_control.runtime_releases
       responses:
         '200':
           description: 成功。
@@ -4059,7 +4057,7 @@ paths:
       x-permission:
       - platform_admin
       x-tables:
-      - capability.runtime_versions
+      - runtime_control.runtime_releases
       responses:
         '201':
           description: 成功。
@@ -4106,7 +4104,7 @@ paths:
       x-permission:
       - platform_admin
       x-tables:
-      - capability.runtime_versions
+      - runtime_control.runtime_releases
       responses:
         '200':
           description: 成功。
@@ -4715,7 +4713,7 @@ paths:
       - owner
       x-tables:
       - workspace.workspaces
-      - workspace.deployments
+      - serve.agent_deployments
       - workspace.operations
       responses:
         '202':
@@ -5165,7 +5163,7 @@ paths:
       - owner
       x-tables:
       - workspace.workspaces
-      - workspace.deployments
+      - serve.agent_deployments
       parameters:
       - name: workspaceId
         in: path
@@ -7220,27 +7218,27 @@ components:
       - publisherContract
       - publisherContractObjectRef
       x-owner: capability
-      x-table: capability.runtime_versions
+      x-table: runtime_control.runtime_releases
       x-field-map:
-        id: capability.runtime_versions.id
-        name: capability.runtime_versions.name
-        versionLabel: capability.runtime_versions.version_label
-        artifactDigest: capability.runtime_versions.artifact_digest
-        status: capability.runtime_versions.status
-        runtimeAbiVersion: capability.runtime_versions.runtime_abi_version
-        packageFormatVersions: capability.runtime_versions.package_format_versions
+        id: runtime_control.runtime_releases.id
+        name: runtime_control.runtime_releases.name
+        versionLabel: runtime_control.runtime_releases.version_label
+        artifactDigest: runtime_control.runtime_releases.artifact_digest
+        status: runtime_control.runtime_releases.status
+        runtimeAbiVersion: runtime_control.runtime_releases.runtime_abi_version
+        packageFormatVersions: runtime_control.runtime_releases.package_format_versions
         defaultForNewBuilds:
           kind: derived
           sources:
           - capability.catalog_policies.runtime_version_id
           - capability.catalog_policies.effective_at
           rule: 当前生效策略runtime_version_id等于本ID
-        admissionReceiptId: capability.runtime_versions.admission_receipt_id
-        createdAt: capability.runtime_versions.created_at
-        publisherNamespaceId: capability.runtime_versions.publisher_namespace_id
-        publisherContractDigest: capability.runtime_versions.publisher_contract_digest
-        publisherContract: capability.runtime_versions.publisher_contract
-        publisherContractObjectRef: capability.runtime_versions.publisher_contract_object_ref
+        admissionReceiptId: runtime_control.runtime_releases.admission_receipt_id
+        createdAt: runtime_control.runtime_releases.created_at
+        publisherNamespaceId: runtime_control.runtime_releases.publisher_namespace_id
+        publisherContractDigest: runtime_control.runtime_releases.publisher_contract_digest
+        publisherContract: runtime_control.runtime_releases.publisher_contract
+        publisherContractObjectRef: runtime_control.runtime_releases.publisher_contract_object_ref
       description: 客户目录只渲染名称/版本/可用性；技术publisherContract供管理员及typed消费者。既有artifactDigest/ABI属性必须等于publisherContract的对应投影，不是可独立写第二事实。
     WebuiVersion:
       type: object
@@ -7953,8 +7951,6 @@ components:
           - renew
         workspaceId:
           $ref: '#/components/schemas/OpaqueId'
-        capabilityVersionId:
-          $ref: '#/components/schemas/OpaqueId'
         computePlanId:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
@@ -7981,8 +7977,7 @@ components:
             enum:
             - deploy
         required:
-        - capabilityVersionId
-        not:
+          not:
           required:
           - workspaceId
       - properties:
@@ -8307,13 +8302,9 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         name:
           type: string
-        capabilityVersionId:
-          $ref: '#/components/schemas/OpaqueId'
         computePlanId:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
-          $ref: '#/components/schemas/OpaqueId'
-        activeDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
         status:
           type: string
@@ -8354,12 +8345,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-        deliveryModel:
-          type: string
-          enum:
-          - legacy_resource_only
-          - imported_application
-          - agent_saas
         version:
           $ref: '#/components/schemas/NonnegativeInt64'
       required:
@@ -8373,17 +8358,14 @@ components:
       - modelConfigurationVersion
       - createdAt
       - updatedAt
-      - deliveryModel
       - version
-      x-owner: workspace
-      x-table: workspace.workspaces
+      x-owner: console-bff
+      x-table: derived owner read model
       x-field-map:
         id: workspace.workspaces.id
         name: workspace.workspaces.name
-        capabilityVersionId: workspace.workspaces.capability_version_id
         computePlanId: workspace.workspaces.compute_plan_id
         storagePlanId: workspace.workspaces.storage_plan_id
-        activeDeploymentId: workspace.workspaces.active_deployment_id
         status: workspace.workspaces.status
         resourceReadiness:
           kind: derived
@@ -8395,26 +8377,24 @@ components:
         applicationAvailability:
           kind: derived
           sources:
-          - workspace.workspaces.active_deployment_id
-          - runtime_control.runtime_instances.status
-          - runtime_control.runtime_instances.readiness_evidence_ref
+          - serve.agent_deployments.id
+          - serve.agent_runtime_instances.status
+          - serve.agent_runtime_instances.readiness_evidence_ref
           rule: Runtime当前readiness及访问准入，legacy裸资源无部署显示unavailable
-        modelConfigurationVersion: workspace.workspaces.model_configuration_version
+        modelConfigurationVersion: serve.agent_runtime_instances.applied_model_configuration_version
         currentPeriodEnd: workspace.subscriptions.current_period_end
         accessUrl:
           kind: derived
           sources:
-          - workspace.workspaces.active_deployment_id
-          - workspace.deployments.runtime_instance_id
-          - runtime_control.runtime_instances.access_url
-          - runtime_control.runtime_instances.status
+          - serve.agent_deployments.id
+          - serve.agent_deployments.runtime_instance_id
+          - serve.agent_runtime_instances.access_url
+          - serve.agent_runtime_instances.status
           rule: 按选中部署授权Runtime读回；ready且应用准入成功才返回URL
         createdAt: workspace.workspaces.created_at
         updatedAt: workspace.workspaces.updated_at
-        deliveryModel: workspace.workspaces.delivery_model
         version: workspace.workspaces.version
-      description: activeDeploymentId唯一选中权威。currentPeriodEnd从本Owner subscription派生；accessUrl只真实可用后出现，打开仍经getWorkspaceAccess准入。
-        legacy_resource_only允许capabilityVersionId缺省（不传null）且无activeDeploymentId；agent_saas/imported_application必须有capabilityVersionId。version是本Owner乐观锁版本。
+      description: Console BFF composes Workspace identity and Serve/Fabric readbacks; Workspace does not persist Agent deployment selection.
       allOf:
       - oneOf:
         - properties:
@@ -8537,9 +8517,9 @@ components:
           sources:
           - workspace.model_configurations.runtime_reload_observation
           - workspace.operations.status
-          - workspace.workspaces.model_configuration_version
+          - serve.agent_runtime_instances.applied_model_configuration_version
           rule: version=appliedVersion且验证confirmed=>applied；Operationfailed=>failed；unknown/needs_attention=>needs_attention；否则pending
-        appliedVersion: workspace.workspaces.model_configuration_version
+        appliedVersion: serve.agent_runtime_instances.applied_model_configuration_version
         operationId: workspace.model_configurations.operation_id
         updatedAt: workspace.model_configurations.updated_at
     UpdateWorkspaceModelsRequest:
@@ -8599,28 +8579,27 @@ components:
       - createdAt
       - updatedAt
       x-owner: workspace
-      x-table: workspace.deployments
+      x-table: serve.agent_deployments
       x-field-map:
-        id: workspace.deployments.id
-        workspaceId: workspace.deployments.workspace_id
-        capabilityVersionId: workspace.deployments.capability_version_id
-        runtimeInstanceId: workspace.deployments.runtime_instance_id
-        previousDeploymentId: workspace.deployments.previous_deployment_id
-        status: workspace.deployments.status
-        dataCompatibility: workspace.deployments.data_compatibility
-        createdAt: workspace.deployments.created_at
-        updatedAt: workspace.deployments.updated_at
+        id: serve.agent_deployments.id
+        workspaceId: serve.agent_deployments.workspace_id
+        runtimeInstanceId: serve.agent_deployments.runtime_instance_id
+        previousDeploymentId: serve.agent_deployments.previous_deployment_id
+        status: serve.agent_deployments.status
+        dataCompatibility: serve.agent_deployments.data_compatibility
+        createdAt: serve.agent_deployments.created_at
+        updatedAt: serve.agent_deployments.updated_at
     UpdateWorkspaceVersionRequest:
       type: object
       additionalProperties: false
       properties:
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
-        expectedActiveDeploymentId:
+        expectedCurrentAgentDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
       required:
       - capabilityVersionId
-      - expectedActiveDeploymentId
+      - expectedCurrentAgentDeploymentId
       description: Runtime重建先createBuild同PackageVersion+WebUI，以管理员当前Runtime产新CapabilityVersion，再显式update。不变购买历史，不自动resize。
     RollbackWorkspaceRequest:
       type: object
@@ -8628,11 +8607,11 @@ components:
       properties:
         targetDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
-        expectedActiveDeploymentId:
+        expectedCurrentAgentDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
       required:
       - targetDeploymentId
-      - expectedActiveDeploymentId
+      - expectedCurrentAgentDeploymentId
     ApplyQuoteRequest:
       type: object
       additionalProperties: false
@@ -12044,25 +12023,25 @@ components:
           kind: derived
           sources:
           - workspace.plan_changes.actual_outcome
-          - workspace.workspaces.active_deployment_id
+          - serve.agent_deployments.id
           rule: Workspace在本次执行/重验时冻结真实绑定与当前资源需求；无app为not_applicable不伪造Runtime，scheduled不占执行锁；风险只披露不暗改价格/取消
         currentRequirementValidation:
           kind: derived
           sources:
           - workspace.plan_changes.actual_outcome
-          - workspace.workspaces.active_deployment_id
+          - serve.agent_deployments.id
           rule: Workspace在本次执行/重验时冻结真实绑定与当前资源需求；无app为not_applicable不伪造Runtime，scheduled不占执行锁；风险只披露不暗改价格/取消
         riskCode:
           kind: derived
           sources:
           - workspace.plan_changes.actual_outcome
-          - workspace.workspaces.active_deployment_id
+          - serve.agent_deployments.id
           rule: Workspace在本次执行/重验时冻结真实绑定与当前资源需求；无app为not_applicable不伪造Runtime，scheduled不占执行锁；风险只披露不暗改价格/取消
         lastValidatedAt:
           kind: derived
           sources:
           - workspace.plan_changes.actual_outcome
-          - workspace.workspaces.active_deployment_id
+          - serve.agent_deployments.id
           rule: Workspace在本次执行/重验时冻结真实绑定与当前资源需求；无app为not_applicable不伪造Runtime，scheduled不占执行锁；风险只披露不暗改价格/取消
         executionPlanId: workspace.plan_changes.execution_plan_id
         executionPlanDigest: workspace.plan_changes.execution_plan_digest

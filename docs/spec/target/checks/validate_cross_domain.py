@@ -170,7 +170,7 @@ def publisher_decode(db,request,expected_publisher_kind='official'):
 
 def insert_runtime(db,ident,request,expected_kind='official'):
  desc,sha,objref=publisher_decode(db,request,expected_kind)
- db.sql('capability',"INSERT INTO capability.runtime_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES ("+','.join([q(ident),q(request['name']),q(request['versionLabel']),q(desc['image']['repository']),q(desc['image']['digest']),q('test-admin'),q(desc['runtimeAbiVersion']),"ARRAY["+','.join(q(x) for x in desc['packageFormatVersions'])+"]::text[]",q(request['admissionReceiptId']),q(desc['publisherNamespaceId']),q(sha),j(desc),q(objref)])+");")
+ db.sql('capability',"INSERT INTO runtime_control.runtime_releases(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_version,package_format_versions,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES ("+','.join([q(ident),q(request['name']),q(request['versionLabel']),q(desc['image']['repository']),q(desc['image']['digest']),q('test-admin'),q(desc['runtimeAbiVersion']),"ARRAY["+','.join(q(x) for x in desc['packageFormatVersions'])+"]::text[]",q(request['admissionReceiptId']),q(desc['publisherNamespaceId']),q(sha),j(desc),q(objref)])+");")
  return sha,objref
 
 def seed_publishers(db):
@@ -203,7 +203,7 @@ def publisher_case(db,pb,case):
  request={'name':case['id'],'versionLabel':'v1','publisherNamespaceId':desc['publisherNamespaceId'],'publisherContract':desc,'admissionReceiptId':'admission-'+case['id']}
  sha,objref=insert_runtime(db,case['id'],request,case['publisherKind'])
  if mutation=='stored_digest_mismatch':STORAGE[objref]=b'altered immutable descriptor bytes'
- row=db.one_json('capability','SELECT publisher_contract,publisher_contract_digest,publisher_contract_object_ref,artifact_repository,artifact_digest FROM capability.runtime_versions WHERE id='+q(case['id']))
+ row=db.one_json('capability','SELECT publisher_contract,publisher_contract_digest,publisher_contract_object_ref,artifact_repository,artifact_digest FROM runtime_control.runtime_releases WHERE id='+q(case['id']))
  exact_bytes=STORAGE[row['publisher_contract_object_ref']]
  owner_assert(digest(exact_bytes)==row['publisher_contract_digest'],'immutable descriptor object digest readback mismatch')
  api_validate('RuntimePublisherContract',json.loads(exact_bytes))
@@ -324,11 +324,11 @@ def route_case(db,pb,case):
  proto_validate(pb,'FenceRouteEpochCommand',fence)
  db.insert('fabric','route_switches',id='fence-'+sid,route_binding_id=binding,workspace_id=ws,operation_owner='workspace',operation_id='op-'+sid,expected_route_generation=0,execution_epoch=2,target_execution_resource_id='old-'+sid,provider_command_id='provider-fence-'+sid,action_kind='fence',expected_provider_revision='r0')
  observed=provider.cas('r0',2,'old-'+sid)
- db.sql('fabric',"UPDATE fabric.route_switches SET status='confirmed',observed_route_generation=0,observed_execution_epoch=2,observed_provider_revision='r1',evidence_ref='fence-receipt-test' WHERE id="+q('fence-'+sid)+"; UPDATE fabric.route_bindings SET accepted_execution_epoch=2,provider_revision='r1',last_confirmed_switch_id="+q('fence-'+sid)+' WHERE id='+q(binding)+" AND accepted_execution_epoch=1 AND route_generation=0 AND provider_revision='r0';")
+ db.sql('fabric',"UPDATE serve.access_switches SET status='confirmed',observed_route_generation=0,observed_execution_epoch=2,observed_provider_revision='r1',evidence_ref='fence-receipt-test' WHERE id="+q('fence-'+sid)+"; UPDATE serve.access_bindings SET accepted_execution_epoch=2,provider_revision='r1',last_confirmed_switch_id="+q('fence-'+sid)+' WHERE id='+q(binding)+" AND accepted_execution_epoch=1 AND route_generation=0 AND provider_revision='r0';")
  mutation=case.get('mutation');epoch=1 if mutation=='epoch' else 2;generation=1 if mutation=='generation' else 0
  activation={'context':context,'workspaceId':ws,'operationId':'op-'+sid,'executionEpoch':str(epoch),'expectedRouteGeneration':str(generation),'providerPrecondition':{'exactRevision':'r1'},'targetExecutionResourceId':'new-'+sid,'targetRuntimeInstanceId':'runtime-'+sid,'targetDeploymentId':'dep-'+sid,'confirmedReadinessReceiptId':'readiness-'+sid}
  proto_validate(pb,'RouteActivateCommand',activation)
- current=db.one_json('fabric','SELECT route_generation,accepted_execution_epoch,provider_revision FROM fabric.route_bindings WHERE id='+q(binding))
+ current=db.one_json('fabric','SELECT route_generation,accepted_execution_epoch,provider_revision FROM serve.access_bindings WHERE id='+q(binding))
  owner_assert(current['route_generation']==generation,'stale route generation')
  owner_assert(current['accepted_execution_epoch']==epoch,'stale execution epoch despite route generation match')
  if mutation=='late_provider':provider.cas('r0',1,'old-'+sid)
@@ -337,18 +337,18 @@ def route_case(db,pb,case):
  try:
   # Atomic local reserve includes exact generation/epoch/revision predicate. An empty
   # RETURNING means reject before provider mutation, not a successful no-op.
-  sql="WITH locked AS (SELECT id FROM fabric.route_bindings WHERE id="+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1' FOR UPDATE) INSERT INTO fabric.route_switches(id,route_binding_id,workspace_id,operation_owner,operation_id,expected_route_generation,execution_epoch,target_execution_resource_id,previous_target_execution_resource_id,provider_command_id,action_kind,expected_provider_revision) SELECT "+','.join([q('activate-'+sid),'id',q(ws),q('workspace'),q('op-'+sid),'0','2',q('new-'+sid),q('old-'+sid),q('activate-command-'+sid),q('activate'),q('r1')])+" FROM locked RETURNING id;"
+  sql="WITH locked AS (SELECT id FROM serve.access_bindings WHERE id="+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1' FOR UPDATE) INSERT INTO serve.access_switches(id,route_binding_id,workspace_id,operation_owner,operation_id,expected_route_generation,execution_epoch,target_execution_resource_id,previous_target_execution_resource_id,provider_command_id,action_kind,expected_provider_revision) SELECT "+','.join([q('activate-'+sid),'id',q(ws),q('workspace'),q('op-'+sid),'0','2',q('new-'+sid),q('old-'+sid),q('activate-command-'+sid),q('activate'),q('r1')])+" FROM locked RETURNING id;"
   owner_assert(bool(db.sql('fabric',sql)),'local CAS reservation rejected')
  except PgError as e:
   if e.state=='23505':raise Rejection('database_reject','one pending/unknown route action per Workspace')
   raise
  observed=provider.cas('r1',2,'new-'+sid)
- db.sql('fabric',"UPDATE fabric.route_switches SET status='confirmed',observed_route_generation=1,observed_execution_epoch=2,observed_provider_revision='r2',evidence_ref='route-readback-test' WHERE id="+q('activate-'+sid)+"; UPDATE fabric.route_bindings SET route_generation=1,target_execution_resource_id="+q('new-'+sid)+",provider_revision='r2',last_confirmed_switch_id="+q('activate-'+sid)+' WHERE id='+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1';")
+ db.sql('fabric',"UPDATE serve.access_switches SET status='confirmed',observed_route_generation=1,observed_execution_epoch=2,observed_provider_revision='r2',evidence_ref='route-readback-test' WHERE id="+q('activate-'+sid)+"; UPDATE serve.access_bindings SET route_generation=1,target_execution_resource_id="+q('new-'+sid)+",provider_revision='r2',last_confirmed_switch_id="+q('activate-'+sid)+' WHERE id='+q(binding)+" AND route_generation=0 AND accepted_execution_epoch=2 AND provider_revision='r1';")
  if mutation=='commit_epoch':db.sql('workspace','UPDATE workspace.workspaces SET execution_epoch=3 WHERE id='+q(ws)+';')
- selected=db.sql('workspace','UPDATE workspace.workspaces SET active_deployment_id='+q('dep-'+sid)+',selected_route_generation=1,selected_execution_epoch=2,version=version+1 WHERE id='+q(ws)+' AND execution_epoch=2 AND version=1 RETURNING id;')
+ selected=db.sql('workspace','UPDATE workspace.workspaces SET current_agent_deployment_id='+q('dep-'+sid)+',selected_route_generation=1,selected_execution_epoch=2,version=version+1 WHERE id='+q(ws)+' AND execution_epoch=2 AND version=1 RETURNING id;')
  owner_assert(bool(selected),'Workspace selection commit stale intent/epoch; do not claim routed target is selected')
- db.sql('fabric','UPDATE fabric.route_switches SET workspace_selection_commit_receipt_id='+q('selection-commit-'+sid)+' WHERE id='+q('activate-'+sid)+';')
- row=db.one_json('workspace','SELECT active_deployment_id,selected_route_generation,selected_execution_epoch FROM workspace.workspaces WHERE id='+q(ws));assert row=={'active_deployment_id':'dep-'+sid,'selected_route_generation':1,'selected_execution_epoch':2}
+ db.sql('fabric','UPDATE serve.access_switches SET workspace_selection_commit_receipt_id='+q('selection-commit-'+sid)+' WHERE id='+q('activate-'+sid)+';')
+ row=db.one_json('workspace','SELECT current_agent_deployment_id,selected_route_generation,selected_execution_epoch FROM workspace.workspaces WHERE id='+q(ws));assert row=={'current_agent_deployment_id':'dep-'+sid,'selected_route_generation':1,'selected_execution_epoch':2}
  return {'fenceConfirmedBeforeActivate':True,'providerFixture':observed,'selectedCommit':row,'externalRouterAtomicWithDatabase':False}
 
 
@@ -438,7 +438,7 @@ def seed_plan_source(db,case):
  if not case.get('resourceOnly'):
   db.insert('workspace','operations',id='source-app-operation:'+sid,tenant_id='test-tenant',actor_id='test-actor',kind='create_workspace',resource_id=ws,status='succeeded',stage='succeeded',request_id='source-app-request:'+sid,accepted_input={'source':'preexisting fixture binding'},completed_at=NOW)
   db.insert('workspace','deployments',id='source-app-deployment:'+sid,workspace_id=ws,capability_version_id='capability-base',artifact_digest='sha256:'+'2'*64,reference_claim_id='source-app-claim:'+sid,runtime_instance_id='source-runtime:'+sid,operation_id='source-app-operation:'+sid,status='active',data_compatibility={'dataSchemaVersion':'v1'},verification_evidence_ref='fixture-runtime-ready:'+sid,activated_at=NOW,execution_epoch=2)
-  db.sql('workspace','UPDATE workspace.workspaces SET active_deployment_id='+q('source-app-deployment:'+sid)+' WHERE id='+q(ws)+';')
+  db.sql('workspace','UPDATE workspace.workspaces SET current_agent_deployment_id='+q('source-app-deployment:'+sid)+' WHERE id='+q(ws)+';')
  else:
   db.sql('workspace',"UPDATE workspace.workspaces SET delivery_model='legacy_resource_only',capability_version_id=NULL WHERE id="+q(ws)+';')
  db.insert('workspace','subscriptions',id=sub,workspace_id=ws,billing_subject_ref='plan-wallet-'+sid,current_period_start=case['periodStart'],current_period_end=case['periodEnd'],period_months=1,provenance='legacy_import',legacy_purchase_id='original:'+sid,legacy_obligation_snapshot={'originalPeriodStart':case['periodStart'],'originalPeriodEnd':case['periodEnd'],'originalPurchaseId':'original:'+sid},renewal_mode='manual',version=1,current_price_policy_version_id=price,current_monthly_usd_micros=old,billing_anchor_day=case.get('anchorDay',int(case['periodEnd'][8:10])))
@@ -485,7 +485,7 @@ def make_plan(db,pb,case,ctx,suffix='',force_kind=None,force_target=None,force_t
  current=db.one_json('workspace','SELECT version FROM workspace.subscriptions WHERE id='+q(ctx['subscription']));owner_assert(current['version']==int(calc['sourceSubscriptionVersion']),'VERSION_CONFLICT: source subscription changed after quote')
  owner_assert(case.get('mutation')!='expired_quote','QUOTE_EXPIRED before accepting new identity')
  db.insert('workspace','operations',id=operation,tenant_id='test-tenant',actor_id='test-actor',kind='resize_workspace',resource_id=pc,status='accepted',stage='accepted',request_id='request-'+sid,accepted_input={'quoteId':quote})
- data={'id':pc,'workspace_id':ctx['workspace'],'tenant_id':'test-tenant','kind':kind,'status':'requested' if kind=='upgrade_immediate' else 'scheduled','source_compute_plan_id':calc['sourceComputePlanId'],'source_storage_plan_id':calc['sourceStoragePlanId'],'target_compute_plan_id':comp,'target_storage_plan_id':store,'source_price_policy_version_id':calc['sourcePricePolicyVersionId'],'target_price_policy_version_id':price,'source_subscription_id':ctx['subscription'],'source_subscription_version':sub['version'],'source_period_id':ctx['period'],'quote_id':quote,'policy_version':'workspace-plan-change-v1','quote_at':T,'period_start':S,'period_end':E,'source_monthly_usd_micros':old,'target_monthly_usd_micros':new,'charge_usd_micros':charge,'planned_effective_at':calc['plannedEffectiveAt'],'operation_id':operation,'execution_plan_id':plan_id,'execution_plan_digest':plan_digest,'execution_operation_id':operation if kind=='upgrade_immediate' else None,'observation_result':'confirmed','accepted_calculation':calc,'quote_at_ms':tm,'period_start_ms':sm,'period_end_ms':em,'source_financial_snapshot_digest':source_digest,'source_financial_snapshot_bytes':source_bytes,'actual_outcome':{'deliveryOutcome':'pending','resourceOutcome':'unchanged','runtimeReadbackRequirement':'required' if ws['active_deployment_id'] else 'not_applicable','currentRequirementValidation':'valid'}}
+ data={'id':pc,'workspace_id':ctx['workspace'],'tenant_id':'test-tenant','kind':kind,'status':'requested' if kind=='upgrade_immediate' else 'scheduled','source_compute_plan_id':calc['sourceComputePlanId'],'source_storage_plan_id':calc['sourceStoragePlanId'],'target_compute_plan_id':comp,'target_storage_plan_id':store,'source_price_policy_version_id':calc['sourcePricePolicyVersionId'],'target_price_policy_version_id':price,'source_subscription_id':ctx['subscription'],'source_subscription_version':sub['version'],'source_period_id':ctx['period'],'quote_id':quote,'policy_version':'workspace-plan-change-v1','quote_at':T,'period_start':S,'period_end':E,'source_monthly_usd_micros':old,'target_monthly_usd_micros':new,'charge_usd_micros':charge,'planned_effective_at':calc['plannedEffectiveAt'],'operation_id':operation,'execution_plan_id':plan_id,'execution_plan_digest':plan_digest,'execution_operation_id':operation if kind=='upgrade_immediate' else None,'observation_result':'confirmed','accepted_calculation':calc,'quote_at_ms':tm,'period_start_ms':sm,'period_end_ms':em,'source_financial_snapshot_digest':source_digest,'source_financial_snapshot_bytes':source_bytes,'actual_outcome':{'deliveryOutcome':'pending','resourceOutcome':'unchanged','runtimeReadbackRequirement':'required' if ws['current_agent_deployment_id'] else 'not_applicable','currentRequirementValidation':'valid'}}
  if kind=='downgrade_next_period':data.update(next_period_start=calc['nextPeriod']['periodStart'],next_period_end=calc['nextPeriod']['periodEnd'],next_period_charge_usd_micros=new)
  try:db.insert('workspace','plan_changes',**data)
  except PgError as e:
@@ -599,8 +599,8 @@ def plan_projection(db,ctx,pc):
     response['nextPeriodChargeOperationId']=ob['wallet_operation_id'];w=db.one_json('gateway','SELECT status FROM gateway.wallet_operations WHERE id='+q(ob['wallet_operation_id']));response['nextPeriodChargeStatus']=w['status'];response['cancellable']=False
  if row['actual_outcome']:
   response.update({k:row['actual_outcome'][k] for k in ['deliveryOutcome','resourceOutcome','runtimeReadbackRequirement','currentRequirementValidation'] if k in row['actual_outcome']})
- current_ws=db.one_json('workspace','SELECT active_deployment_id FROM workspace.workspaces WHERE id='+q(ctx['workspace']))
- response.setdefault('runtimeReadbackRequirement','required' if current_ws['active_deployment_id'] else 'not_applicable');response.setdefault('currentRequirementValidation','valid')
+ current_ws=db.one_json('workspace','SELECT current_agent_deployment_id FROM workspace.workspaces WHERE id='+q(ctx['workspace']))
+ response.setdefault('runtimeReadbackRequirement','required' if current_ws['current_agent_deployment_id'] else 'not_applicable');response.setdefault('currentRequirementValidation','valid')
  api_validate('PlanChange',response);return response
 
 

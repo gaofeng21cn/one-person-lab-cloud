@@ -11563,7 +11563,7 @@
         "WalletOperation.updatedAt",
         "WalletOperation.workspaceId",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -11698,7 +11698,7 @@
         "WalletOperation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -11859,7 +11859,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [
@@ -12155,7 +12155,7 @@
         "Operation.status",
         "Operation.updatedAt",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -12180,7 +12180,7 @@
         "WorkspaceApplicationCredentials.username",
         "WorkspaceApplicationCredentials.workspaceId"
       ],
-      "displayRequirements": "名称、Workspace状态、资源就绪与应用可用性分开、activeDeploymentId、Agent/Runtime固定版本、套餐、周期到期时间、模型配置与Operation。访问URL仅取授权getWorkspaceAccess，不能用名称拼域名。",
+      "displayRequirements": "名称、Workspace状态、资源就绪与应用可用性分开、currentAgentDeploymentId、Agent/Runtime固定版本、套餐、周期到期时间、模型配置与Operation。访问URL仅取授权getWorkspaceAccess，不能用名称拼域名。",
       "interaction": "列表/详情使用相同权威字段；打开动作即时向BFF取授权访问结果，保留应用自己的登录，不把管理session/Key拼URL。模型更新先编辑允许模型再提交，操作成功及运行reload读回前保留“配置应用中”，不因保存成功宣称生效。",
       "actions": [
         {
@@ -12296,7 +12296,7 @@
         "Operation.status": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Operation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -12479,7 +12479,7 @@
           "listWorkspaces",
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "listWorkspaces",
           "getWorkspace"
         ],
@@ -13001,7 +13001,7 @@
         "WebuiPublisherContract.supportsWebsocket",
         "WebuiPublisherContract.uiProtocolVersion",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -13336,7 +13336,7 @@
         "WebuiPublisherContract.supportsWebsocket": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WebuiPublisherContract.uiProtocolVersion": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -14196,7 +14196,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [
@@ -15050,7 +15050,7 @@
         "WalletOperation.updatedAt",
         "WalletOperation.workspaceId",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -15400,7 +15400,7 @@
         "WalletOperation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -16198,7 +16198,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [
@@ -16789,7 +16789,7 @@
         "WalletOperation.updatedAt",
         "WalletOperation.workspaceId",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -17071,7 +17071,7 @@
         "WalletOperation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -17568,7 +17568,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [
@@ -18054,7 +18054,7 @@
         "WalletOperation.updatedAt",
         "WalletOperation.workspaceId",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -18252,7 +18252,7 @@
         "WalletOperation.updatedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WalletOperation.workspaceId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -18657,7 +18657,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [
@@ -20456,7 +20456,7 @@
         "WebuiPublisherContract.supportsWebsocket",
         "WebuiPublisherContract.uiProtocolVersion",
         "Workspace.accessUrl",
-        "Workspace.activeDeploymentId",
+        "Workspace.currentAgentDeploymentId",
         "Workspace.applicationAvailability",
         "Workspace.capabilityVersionId",
         "Workspace.computePlanId",
@@ -20580,7 +20580,7 @@
       "scenarios": [
         {
           "kind": "success",
-          "expectation": "已有资源采用Agent后activeDeploymentId及deliveryModel更新，历史账户/Workspace/资源/周期/交易/收据ID不变，无新增debit或资源订单。"
+          "expectation": "已有资源采用Agent后currentAgentDeploymentId及deliveryModel更新，历史账户/Workspace/资源/周期/交易/收据ID不变，无新增debit或资源订单。"
         },
         {
           "kind": "failure",
@@ -20804,7 +20804,7 @@
         "WebuiPublisherContract.supportsWebsocket": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "WebuiPublisherContract.uiProtocolVersion": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.accessUrl": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Workspace.activeDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
+        "Workspace.currentAgentDeploymentId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.applicationAvailability": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.capabilityVersionId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Workspace.computePlanId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -21670,7 +21670,7 @@
         "Workspace.accessUrl": [
           "getWorkspace"
         ],
-        "Workspace.activeDeploymentId": [
+        "Workspace.currentAgentDeploymentId": [
           "getWorkspace"
         ],
         "Workspace.applicationAvailability": [

@@ -17,7 +17,7 @@ class RepositoryPlacementTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='opl-plan-scope-')
         self.addCleanup(self.temp.cleanup)
         self.cloud = Path(self.temp.name) / 'opl-cloud'
-        self.spec = self.cloud / 'docs/spec/v2.26'
+        self.spec = self.cloud / 'docs/spec/target'
         self.spec.mkdir(parents=True)
         # Use the real inventories and task schema, never a second domain model.
         for relative in [
