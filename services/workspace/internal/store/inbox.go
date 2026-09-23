@@ -28,15 +28,41 @@ const (
 	InboxConflict InboxDecision = "conflict"
 )
 
+// RecordedIdentity is the immutable identity already recorded for one inbound
+// event. Deduplication compares all of it, not the payload hash alone: the same
+// source event id carrying changed event type, schema version, aggregate identity
+// or revision is a conflict, never a duplicate acknowledgement.
+type RecordedIdentity struct {
+	EventType         string
+	SchemaVersion     int32
+	AggregateType     string
+	AggregateID       string
+	AggregateRevision int64
+	PayloadSHA256     string
+}
+
+// identityOf returns the comparable identity of the inbound event.
+func (e InboundEvent) identityOf() RecordedIdentity {
+	return RecordedIdentity{
+		EventType:         e.EventType,
+		SchemaVersion:     e.SchemaVersion,
+		AggregateType:     e.AggregateType,
+		AggregateID:       e.AggregateID,
+		AggregateRevision: e.AggregateRevision,
+		PayloadSHA256:     e.PayloadSHA256(),
+	}
+}
+
 // DecideInbox is the pure deduplication rule for inbound events: a unique
-// (source_owner, source_event_id) is applied once, a repeat with identical bytes
-// is acknowledged without reapplication, and the same identity with different
-// bytes is rejected rather than silently overwriting the first fact.
-func DecideInbox(existingHash string, found bool, incomingHash string) InboxDecision {
+// (source_owner, source_event_id) is applied once, a repeat of the identical
+// immutable identity is acknowledged without reapplication, and the same identity
+// with different metadata or bytes is rejected rather than silently overwriting
+// the first recorded fact.
+func DecideInbox(existing RecordedIdentity, found bool, incoming RecordedIdentity) InboxDecision {
 	switch {
 	case !found:
 		return InboxCommit
-	case existingHash == incomingHash:
+	case existing == incoming:
 		return InboxDuplicate
 	default:
 		return InboxConflict
@@ -78,14 +104,13 @@ func (e InboundEvent) validate() error {
 		return fmt.Errorf("%w: event type is required", ErrInvalidInboxEvent)
 	case e.SchemaVersion <= 0:
 		return fmt.Errorf("%w: schema version must be positive", ErrInvalidInboxEvent)
-	case strings.TrimSpace(e.AggregateType) == "":
-		return fmt.Errorf("%w: aggregate type is required", ErrInvalidInboxEvent)
-	case strings.TrimSpace(e.AggregateID) == "":
-		return fmt.Errorf("%w: aggregate id is required", ErrInvalidInboxEvent)
 	case e.AggregateRevision < 0:
 		return fmt.Errorf("%w: aggregate revision must not be negative", ErrInvalidInboxEvent)
 	case len(e.Payload) == 0:
 		return fmt.Errorf("%w: payload is required", ErrInvalidInboxEvent)
+	}
+	if err := ValidateAggregateIdentity(e.EventType, e.SchemaVersion, e.AggregateType, e.AggregateID, e.Payload); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidInboxEvent, err)
 	}
 	return nil
 }
@@ -108,13 +133,18 @@ func DeliverInbox(ctx context.Context, tx *sql.Tx, event InboundEvent, receivedA
 	if receivedAt.IsZero() {
 		receivedAt = time.Now().UTC()
 	}
-	incoming := event.PayloadSHA256()
+	incoming := event.identityOf()
 
-	var existingHash string
+	// The whole recorded identity is read, so a producer that reuses a source
+	// event id with changed metadata is refused instead of being acknowledged.
+	var existing RecordedIdentity
 	err := tx.QueryRowContext(ctx, `
-		SELECT payload_sha256 FROM `+Schema+`.inbox_events
+		SELECT event_type, schema_version, aggregate_type, aggregate_id, aggregate_revision, payload_sha256
+		FROM `+Schema+`.inbox_events
 		WHERE source_owner = $1 AND source_event_id = $2`,
-		event.SourceOwner, event.SourceEventID).Scan(&existingHash)
+		event.SourceOwner, event.SourceEventID).
+		Scan(&existing.EventType, &existing.SchemaVersion, &existing.AggregateType,
+			&existing.AggregateID, &existing.AggregateRevision, &existing.PayloadSHA256)
 	found := true
 	if errors.Is(err, sql.ErrNoRows) {
 		found = false
@@ -122,13 +152,13 @@ func DeliverInbox(ctx context.Context, tx *sql.Tx, event InboundEvent, receivedA
 		return InboxResult{}, fmt.Errorf("read workspace inbox event: %w", err)
 	}
 
-	switch DecideInbox(existingHash, found, incoming) {
+	switch DecideInbox(existing, found, incoming) {
 	case InboxDuplicate:
 		return InboxResult{Decision: InboxDuplicate, Reason: "already applied"}, nil
 	case InboxConflict:
 		return InboxResult{
 			Decision: InboxConflict,
-			Reason:   "source owner and event id already recorded with different payload",
+			Reason:   "source owner and event id already recorded with a different immutable identity or payload",
 		}, nil
 	}
 
@@ -138,7 +168,7 @@ func DeliverInbox(ctx context.Context, tx *sql.Tx, event InboundEvent, receivedA
 			 aggregate_id, aggregate_revision, payload_sha256, payload, received_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		event.ID, event.SourceOwner, event.SourceEventID, event.EventType, event.SchemaVersion,
-		event.AggregateType, event.AggregateID, event.AggregateRevision, incoming,
+		event.AggregateType, event.AggregateID, event.AggregateRevision, incoming.PayloadSHA256,
 		[]byte(event.Payload), receivedAt.UTC()); err != nil {
 		return InboxResult{}, fmt.Errorf("record workspace inbox event: %w", err)
 	}

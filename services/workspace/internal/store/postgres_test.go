@@ -148,11 +148,11 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 	operation, err := CreateOperation(ctx, tx, OperationInput{
 		ID:            "op-" + suffix,
 		ActorID:       "actor-1",
-		Kind:          "create_workspace",
+		Kind:          "delete_workspace",
 		ResourceID:    "ws-" + suffix,
 		Stage:         "admission",
 		RequestID:     "req-" + suffix,
-		AcceptedInput: json.RawMessage(`{"computePlanId":"cp-1"}`),
+		AcceptedInput: json.RawMessage(`{"workspaceId":"ws-` + suffix + `"}`),
 	})
 	if err != nil {
 		t.Fatalf("create operation: %v", err)
@@ -161,10 +161,11 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 		t.Fatalf("new operation status = %q", operation.Status)
 	}
 
-	// The Outbox row is written in the same transaction as the command.
+	// The Outbox row is written in the same transaction as the command, with the
+	// exact consumers the event contract fixes for this event version.
 	event := Event{
 		ID:                "evt-" + suffix,
-		EventType:         "workspace.state_changed.v1",
+		EventType:         "workspace.deletion_confirmed.v1",
 		SchemaVersion:     1,
 		AggregateType:     "workspace",
 		AggregateID:       operation.ResourceID,
@@ -173,7 +174,7 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 		Payload:           json.RawMessage(`{"workspaceId":"` + operation.ResourceID + `"}`),
 		OccurredAt:        time.Now().UTC(),
 	}
-	if err := AppendEvent(ctx, tx, event, []string{"runtime_control", "ledger"}); err != nil {
+	if err := AppendEvent(ctx, tx, event, []string{"tenant", "ledger"}); err != nil {
 		t.Fatalf("append outbox event: %v", err)
 	}
 
@@ -181,12 +182,12 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 		ID:             "idem-" + suffix,
 		TenantScope:    "tenant-1",
 		ActorScope:     "actor-1",
-		OperationName:  "createWorkspace",
+		OperationName:  "deleteWorkspace",
 		IdempotencyKey: "key-" + suffix,
-		RequestSHA256:  HashRequestBody([]byte(`{"computePlanId":"cp-1"}`)),
+		RequestSHA256:  HashRequestBody([]byte(`{"workspaceId":"` + operation.ResourceID + `"}`)),
 		ResourceID:     operation.ResourceID,
 		OperationID:    operation.ID,
-		ResponseStatus: 201,
+		ResponseStatus: 202,
 		ResponseBody:   json.RawMessage(`{"workspaceId":"` + operation.ResourceID + `"}`),
 	}
 	if err := RecordIdempotency(ctx, tx, idempotency); err != nil {
@@ -226,26 +227,26 @@ func TestOperationOutboxInboxAndIdempotencyRoundTrip(t *testing.T) {
 	// Each consumer is acknowledged independently. Deliveries are listed per
 	// consumer across this owner's whole database, so each assertion selects
 	// this run's event rather than assuming the queue is otherwise empty.
-	pending, err := owner.PendingDeliveries(ctx, "runtime_control", allPendingDeliveries)
+	pending, err := owner.PendingDeliveries(ctx, "tenant", allPendingDeliveries)
 	if err != nil {
 		t.Fatalf("list pending deliveries: %v", err)
 	}
-	runtimeDelivery, found := pendingForEvent(pending, event.ID)
+	tenantDelivery, found := pendingForEvent(pending, event.ID)
 	if !found {
-		t.Fatalf("runtime_control delivery is missing from %+v", pending)
+		t.Fatalf("tenant delivery is missing from %+v", pending)
 	}
-	if runtimeDelivery.Event.AggregateType != "workspace" {
-		t.Fatalf("pending delivery lost the producer-supplied aggregate type: %+v", runtimeDelivery.Event)
+	if tenantDelivery.Event.AggregateType != "workspace" {
+		t.Fatalf("pending delivery lost the derived aggregate type: %+v", tenantDelivery.Event)
 	}
-	if err := owner.AcknowledgeDelivery(ctx, "runtime_control", event.ID); err != nil {
+	if err := owner.AcknowledgeDelivery(ctx, "tenant", event.ID); err != nil {
 		t.Fatalf("acknowledge delivery: %v", err)
 	}
-	afterRuntime, err := owner.PendingDeliveries(ctx, "runtime_control", allPendingDeliveries)
+	afterTenant, err := owner.PendingDeliveries(ctx, "tenant", allPendingDeliveries)
 	if err != nil {
 		t.Fatalf("list pending deliveries: %v", err)
 	}
-	if _, found := pendingForEvent(afterRuntime, event.ID); found {
-		t.Fatalf("runtime_control delivery must be acknowledged, got %+v", afterRuntime)
+	if _, found := pendingForEvent(afterTenant, event.ID); found {
+		t.Fatalf("tenant delivery must be acknowledged, got %+v", afterTenant)
 	}
 	// Acknowledging one consumer must not mark the other delivered.
 	pendingLedger, err := owner.PendingDeliveries(ctx, "ledger", allPendingDeliveries)
@@ -294,7 +295,7 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     "runtime_instance",
 		AggregateID:       "rt-" + suffix,
 		AggregateRevision: 1,
-		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-1"}`),
+		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-` + suffix + `"}`),
 	}
 
 	commitTx, err := db.BeginTx(ctx, nil)
@@ -337,13 +338,45 @@ func TestInboxDeduplicatesAndRejectsConflictingBytes(t *testing.T) {
 		AggregateType:     event.AggregateType,
 		AggregateID:       event.AggregateID,
 		AggregateRevision: event.AggregateRevision,
-		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-2"}`),
+		Payload:           json.RawMessage(`{"runtimeInstanceId":"rt-` + suffix + `","tampered":true}`),
 	}, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("deliver conflicting event: %v", err)
 	}
 	if conflicting.Decision != InboxConflict || conflicting.Applied {
 		t.Fatalf("conflicting delivery = %+v, want conflict without overwrite", conflicting)
+	}
+
+	// Reusing the source event id with identical payload bytes but changed
+	// immutable metadata is a conflict too, not a duplicate ACK: comparing the
+	// payload hash alone would have acknowledged this redelivery.
+	changedMetadata, err := DeliverInbox(ctx, duplicateTx, InboundEvent{
+		ID:                event.ID,
+		SourceOwner:       event.SourceOwner,
+		SourceEventID:     event.SourceEventID,
+		EventType:         event.EventType,
+		SchemaVersion:     event.SchemaVersion,
+		AggregateType:     event.AggregateType,
+		AggregateID:       event.AggregateID,
+		AggregateRevision: event.AggregateRevision + 1,
+		Payload:           event.Payload,
+	}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("deliver redelivery with changed metadata: %v", err)
+	}
+	if changedMetadata.Decision != InboxConflict || changedMetadata.Applied {
+		t.Fatalf("redelivery with changed metadata = %+v, want conflict without overwrite", changedMetadata)
+	}
+
+	// Neither refusal rewrote or duplicated the recorded fact.
+	var recordedCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM workspace.inbox_events WHERE source_owner = $1 AND source_event_id = $2`,
+		event.SourceOwner, event.SourceEventID).Scan(&recordedCount); err != nil {
+		t.Fatalf("count recorded inbox events: %v", err)
+	}
+	if recordedCount != 1 {
+		t.Fatalf("recorded inbox rows = %d, want exactly the first delivery", recordedCount)
 	}
 
 	var storedHash string
