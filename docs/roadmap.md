@@ -47,12 +47,22 @@ in dependency order:
    process, migration, isolation, readiness, and Operation readback layers have
    executed.
 
-The single-repository topology is decided, not an open A/B choice. W01 still
-requires the production contracts, reproducible generation, necessary consumer
-dependency updates and actual boundary verification in the same checkout. W02
-then creates the planned service modules and verifies owner-isolated startup;
-this documentation alignment does not mark either implementation outcome done.
-See [current evidence](./status.md#target-architecture-single-repository-specification-alignment).
+The single-repository topology is decided, not an open A/B choice. The shared
+production contract, generated Go bindings, owner identity convention, and the
+first five isolated domain-process baselines are implemented and recorded in the
+[September 24 evidence](./status.md#agent-delivery-chain-owner-process-baseline).
+This is a partial foundation, not a claim that every domain owner or product
+handler is complete. The earlier specification-alignment snapshot above records
+the state at that time; its statement that no service scaffold existed is not the
+current implementation state.
+
+The next implementation should turn the existing Capability and Build process
+shells into a real, replayable Package-to-OCI path. Runtime Release admission,
+Ledger evidence, and independent Fabric provider work can proceed in parallel
+only where their owners and file write sets do not overlap. Changes to the shared
+contract, a single migration sequence, or shared routers are serialized. The
+broader Workspace-to-Fabric-to-Serve deployment path follows once immutable build
+artifacts and the required owner readbacks are real.
 
 
 The sections below describe the **current implementation** lane. They remain

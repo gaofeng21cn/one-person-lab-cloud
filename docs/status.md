@@ -87,10 +87,12 @@ receipt is not reused as implementation evidence. Verification passed:
   tests. The first attempt lacked installed Node dependencies; `npm ci` restored
   the lockfile-defined environment without changing dependency manifests.
 
-No product Go/TypeScript source, SQL, API/message field, or existing migration
-was changed. No service scaffold, deployment, production access or publication
-was performed. W01 production contracts/consumer adoption and W02 service
-implementation remain open; the pre-existing untracked proto input is preserved.
+This September 22 alignment snapshot predates the September 24 owner-process
+implementation recorded below. Its statements that no service scaffold existed
+and that contract/service implementation remained open describe that earlier
+snapshot only; use the later evidence below for current source status. No
+production deployment, production access, or publication was performed in either
+change.
 
 ## Agent delivery chain owner process baseline
 
