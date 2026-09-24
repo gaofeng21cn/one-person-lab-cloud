@@ -179,6 +179,11 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
         <h3>Runtime checks</h3>
         {runtime?.checks.length ? <ul>{runtime.checks.map((check) => <li key={check.name}><code>{check.name}</code><span>{check.ok ? "true" : "false"}</span></li>)}</ul> : <p>暂无检查记录</p>}
       </div>
+      <div className="workspace-delivery-details" data-agent-delivery>
+        <h3>交付链</h3>
+        <p>按负责服务展示当前工作空间的智能体交付读回。</p>
+        <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
+      </div>
     </div>
   </details>;
 }
@@ -268,7 +273,6 @@ export function WorkspaceDetailPage({ controller }: { controller: WorkspaceDetai
         </section>
         {paidAccess && gateway && currentRuntime ? <section className="panel workspace-settings-panel"><details className="workspace-advanced-details"><summary><span>预算与用量</span><ChevronDown aria-hidden size={16} /></summary><div className="workspace-advanced-details__body"><WorkspaceBudgetPanel controller={controller} /><WorkspaceMaintenancePanel controller={controller} /></div></details></section> : null}
         <section className="panel workspace-delete-panel"><div className="workspace-settings-heading"><h3>删除工作空间</h3><p>请先自行下载需要的数据。删除后数据无法恢复，关闭页面后仍会继续处理，不会自动退款。</p></div>{controller.workspaceDeleteIssue === "unavailable" ? <Alert color="warning" indicator={<AlertCircle size={18} />} title="工作空间删除暂不可用" description="当前无法执行删除，请稍后重试。" /> : null}<Button busy={controller.workspaceDeleteBusy} color="danger" disabled={controller.workspaceRenewalBusy || controller.workspaceRenewalRead?.recovery.state === "pending"} onClick={() => void controller.deleteCurrentWorkspace()} variant="outline"><Trash2 aria-hidden size={16} />删除工作空间</Button></section>
-        <section className="panel workspace-technical-panel" data-agent-delivery><div className="panel-title"><h2>交付链</h2><span>按负责服务展示当前工作空间的智能体交付读回</span></div><dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl></section>
         <section className="panel workspace-technical-panel"><WorkspaceTechnicalDetails controller={controller} detail={detail} runtime={runtime} /></section>
       </div>
     </section>

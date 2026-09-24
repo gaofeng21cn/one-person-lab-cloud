@@ -445,6 +445,31 @@ export async function apiFixture(route, state, session = state) {
   if (path === "/api/workspace-launches" && method === "GET") {
     return fulfillJson(route, state.launches.filter((item) => item.accountId === session.accountId));
   }
+  const deliveryMatch = path.match(/^\/api\/v2\/delivery\/([^/]+)$/);
+  if (deliveryMatch && method === "GET") {
+    const workspaceId = deliveryMatch[1];
+    const currentWorkspace = state.workspaces.find((item) => item.id === workspaceId && item.ownerAccountId === session.accountId);
+    if (!currentWorkspace) return fulfillJson(route, { error: "workspace_not_found" }, 404);
+    return fulfillJson(route, {
+      workspaceId,
+      workspace: {
+        owner: "workspace", state: "ready",
+        details: { computePlanId: currentWorkspace.packageId, storagePlanId: `${currentWorkspace.packageId}-storage`, resourceReadiness: "READY", capabilityVersion: "capability-fixture-v1" }
+      },
+      serve: {
+        owner: "serve", state: "active",
+        details: { deploymentId: `deployment-${workspaceId}`, capabilityVersionId: "capability-fixture-v1", accessUrl: currentWorkspace.url, accessAuthenticationMode: "workspace_credentials", applicationCredentialsAvailable: true }
+      },
+      capabilityVersion: {
+        owner: "capability", state: "ready",
+        details: { capabilityVersionId: "capability-fixture-v1", artifactDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", artifactRepository: "registry.example.invalid/opl/agent", deploymentDescriptorDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", buildJobId: `build-${workspaceId}` }
+      },
+      build: {
+        owner: "build", state: "succeeded",
+        details: { buildId: `build-${workspaceId}`, stage: "published", artifactDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", operationId: `operation-${workspaceId}` }
+      }
+    });
+  }
   if (path === "/api/workspace-launches" && method === "POST") {
     const idempotencyKey = request.headers()["idempotency-key"] || "";
     if (!idempotencyKey) return fulfillJson(route, { error: "idempotency_key_required" }, 400);
