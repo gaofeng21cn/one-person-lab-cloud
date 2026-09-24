@@ -88,6 +88,24 @@ was changed. No service scaffold, deployment, production access or publication
 was performed. W01 production contracts/consumer adoption and W02 service
 implementation remain open; the pre-existing untracked proto input is preserved.
 
+## Agent delivery chain implementation increment
+
+On September 24, 2026, the repository received the first executable owner-boundary
+increment for the Agent delivery chain. Capability, Build, Runtime Control,
+Workspace, and Serve now each have an owner-local migration surface and an
+independent Go process entrypoint; the process mechanics use the shared
+authenticated owner identity boundary and do not share business tables. The
+Console BFF reads Workspace, Serve, Capability, and Build through typed gRPC
+clients and exposes `GET /api/v2/delivery/{workspaceId}`. The Console Workspace
+detail view renders that BFF result with explicit owner attribution.
+
+The completed evidence is limited to compilation, BFF read composition tests,
+Console source tests, product-boundary validation, TypeScript typecheck/lint,
+and whitespace checks. The owner process entrypoints currently expose health and
+the authenticated owner boundary; product RPC registration, persistent command
+handlers, Fabric mutation/readback, and a live multi-process deployment are not
+claimed complete.
+
 ## Conclusion
 
 OPL Cloud has reached a basically usable administrator-operated stage: the

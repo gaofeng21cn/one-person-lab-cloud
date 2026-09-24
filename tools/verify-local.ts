@@ -23,7 +23,13 @@ export const goModules = Object.freeze([
   "services/control-plane",
   "services/fabric",
   "services/ledger",
-  "services/internal/postgresmigrate"
+  "services/internal/postgresmigrate",
+  "services/capability",
+  "services/build",
+  "services/runtime-control",
+  "services/workspace",
+  "services/serve",
+  "apps/console-bff"
 ]);
 
 export const databaseFreeGoTestSpecs = Object.freeze([

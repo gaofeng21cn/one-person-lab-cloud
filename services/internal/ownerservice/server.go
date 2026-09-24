@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // RegisterFunc registers one owner service group on the gRPC server. Registration
@@ -99,15 +101,19 @@ func identityInterceptor(config Config) grpc.UnaryServerInterceptor {
 	}
 }
 
+// OutboundIdentityInterceptor presents the calling owner's identity and token on
+// every outbound call. The token is the caller's own identity token; the target
+// verifies it against its allowlist. It delegates to the shared wire convention so
+// every in-repo caller presents the identical headers.
+func OutboundIdentityInterceptor(owner Owner, token string) grpc.UnaryClientInterceptor {
+	return owneridentity.OutboundInterceptor(owner, token)
+}
+
 // DialOptions returns the client-side credentials for calling one owner from
-// another. The token is the caller's own identity token; the target verifies it.
+// another.
 func DialOptions(owner Owner, token string) []grpc.DialOption {
 	return []grpc.DialOption{
-		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, request, reply any, conn *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-			ctx = metadataAppend(ctx, peerOwnerHeader, owner.String())
-			ctx = metadataAppend(ctx, peerTokenHeader, token)
-			return invoker(ctx, method, request, reply, conn, opts...)
-		}),
+		grpc.WithUnaryInterceptor(OutboundIdentityInterceptor(owner, token)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second}),
 	}
 }

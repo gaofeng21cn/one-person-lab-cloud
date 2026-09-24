@@ -24,6 +24,13 @@ The target product and the delivery sequence are owned by the adopted
 Those files are the single writer for the target sequence. This file does not
 restate, renumber, or paraphrase them.
 
+The first owner-boundary increment is now present in the working tree: the five
+delivery-chain owner modules have isolated migration surfaces and process
+entrypoints, and Console/BFF has a typed owner-read composition for one
+Workspace. This is an implementation increment, not completion of the target
+chain; RPC handlers, real owner persistence, Fabric execution/readback, Serve
+deployment/readiness, and live end-to-end verification remain open.
+
 The single-repository topology is decided, not an open A/B choice. W01 still
 requires the production contracts, reproducible generation, necessary consumer
 dependency updates and actual boundary verification in the same checkout. W02

@@ -8,15 +8,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
-// peerTokenHeader carries the calling owner's bearer token on an inbound call.
-const peerTokenHeader = "x-opl-owner-token"
-
-// peerOwnerHeader names the calling owner. It is advisory only: it selects which
-// configured token the caller must prove, so a caller cannot claim a peer identity
-// it does not hold the token for.
-const peerOwnerHeader = "x-opl-owner"
+// The inbound identity header names come from the shared wire convention.
+const (
+	peerTokenHeader = owneridentity.TokenHeader
+	peerOwnerHeader = owneridentity.PeerHeader
+)
 
 // Authenticate resolves the calling owner from the inbound metadata and verifies
 // its token against the configured allowlist. An unknown peer, a missing token, or

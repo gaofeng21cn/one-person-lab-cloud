@@ -4,7 +4,8 @@
 //
 // It carries no domain rule. Each owner supplies its own store and service
 // registrations; this package only makes the boundary uniform so a request from
-// an unexpected peer is refused before any owner store is touched.
+// an unexpected peer is refused before any owner store is touched. The wire
+// identity convention itself lives in the shared contracts module.
 package ownerservice
 
 import (
@@ -14,40 +15,27 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 // Owner names one Cloud data owner. A process serves exactly one owner identity
 // even when it carries more than one API group.
-type Owner string
+type Owner = owneridentity.Owner
 
-// The fixed Cloud owner names. They match the schema prefixes and the contract's
-// OwnerEnum, and are the only accepted peer identities on the boundary.
+// The fixed Cloud owner names, aliased from the shared wire convention.
 const (
-	OwnerTenant          Owner = "tenant"
-	OwnerCapability      Owner = "capability"
-	OwnerBuild           Owner = "build"
-	OwnerWorkspace       Owner = "workspace"
-	OwnerRuntimeControl  Owner = "runtime_control"
-	OwnerServe           Owner = "serve"
-	OwnerFabric          Owner = "fabric"
-	OwnerGateway         Owner = "gateway"
-	OwnerResourceCatalog Owner = "resource_catalog"
-	OwnerLedger          Owner = "ledger"
+	OwnerTenant          = owneridentity.Tenant
+	OwnerCapability      = owneridentity.Capability
+	OwnerBuild           = owneridentity.Build
+	OwnerWorkspace       = owneridentity.Workspace
+	OwnerRuntimeControl  = owneridentity.RuntimeControl
+	OwnerServe           = owneridentity.Serve
+	OwnerFabric          = owneridentity.Fabric
+	OwnerGateway         = owneridentity.Gateway
+	OwnerResourceCatalog = owneridentity.ResourceCatalog
+	OwnerLedger          = owneridentity.Ledger
 )
-
-// String returns the owner's canonical text form.
-func (o Owner) String() string { return string(o) }
-
-// Valid reports whether the owner name is one of the ten Cloud data owners.
-func (o Owner) Valid() bool {
-	switch o {
-	case OwnerTenant, OwnerCapability, OwnerBuild, OwnerWorkspace, OwnerRuntimeControl,
-		OwnerServe, OwnerFabric, OwnerGateway, OwnerResourceCatalog, OwnerLedger:
-		return true
-	default:
-		return false
-	}
-}
 
 // Config is one owner process's resolved configuration.
 type Config struct {
