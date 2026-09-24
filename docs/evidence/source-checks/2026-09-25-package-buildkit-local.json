@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "action": "Verify real isolated Capability upload, BuildKit export, digest readback and persisted Build recovery; repair exact Docker image retirement readback",
+  "recordedAt": "2026-09-24T20:35:31.524153+00:00",
+  "baseSha": "d339261fd673c77f7422e563fc6288ae0f63acfb",
+  "sourceSha": "3cc70f25642709671329e3e8ab46b5ba31911b1a",
+  "sourceTree": "3a8a1161f1bd95f9f1d15ba9ecdfd7a71060c15b",
+  "sourceFilesSha256": {
+    "package.json": "000763ecaea39d544e6f372c1fc2750e1e9c194ea3d07ccad134c90b649c1c12",
+    "services/build/go.mod": "a7143ee948093e60b52f70b15584b944906b571859df37a4a4b58b0138749728",
+    "services/build/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "services/build/internal/build/package_test.go": "1ce6430a3c167ab6307d7ad7e79c0ebc8eada5134835095226fb7101015841cc",
+    "services/build/internal/build/runner.go": "1c0c007f1729aeba2a2f6b3a5a681bd5a6d477d57effb61f3f903113802b293b",
+    "services/build/internal/build/runner_live_test.go": "1fde6cc97cd700898f995deece31fdd7a2513d2a8400e87d419f0fcd1ce165be",
+    "services/build/internal/build/upload_live_test.go": "d92d4970b4d9795b8892f32225da856dea843a70fd1eff7dcdb37c5cf5349207",
+    "services/capability/catalog/data_plane.go": "221d932f70d5f60d902d928b4e75b5705839d2808d1e28fec4aab5422f88064b",
+    "services/capability/catalog/service.go": "b53f0d1e49fcf7ec007138c85bdfdf6b6c7e430c3428dc7d549a29e917799c2f",
+    "services/capability/catalog/uploads.go": "f4da7fa663b4587c1c017c343e3a72153d811cfbbd1dc5b4febd08bdc66e99fb",
+    "services/capability/cmd/server/main.go": "2185f1d2b4ee5b264334b0d60250e1e9113193e884fee407cf97847c5d7e60c1",
+    "services/fabric/internal/fabric/application_image_readback_test.go": "65d77362bbf666ae1a7ec7fe890a38367246d208c3f1b21fda0523ec0ed28053",
+    "services/fabric/internal/fabric/local_docker_application_lifecycle.go": "19364acfcd923adef557ba20c2de62aa142bf57142c6c6d6cd26cd5f82e186f9",
+    "services/fabric/internal/fabric/local_docker_application_runtime_test.go": "eac109db4d5fbcd5dd85f03a2d1152e16991061fafb58b8b93a6c03f39c7c327"
+  },
+  "verification": {
+    "liveCommand": "npm run verify:package-to-oci",
+    "liveResult": "passed",
+    "liveArtifactDigest": "sha256:22171b86d4791f765fd063667884b84ca3eab73220929f08b6c55a4f534f3aa7",
+    "liveInputDigest": "sha256:37986f85346aeab1f3cbec9086ac6f7e9e9225fe19fed3bdaaab95d15c24f747",
+    "liveDescriptorDigest": "sha256:3e7aeb7fcb6d77d4763e44863c2f4c57b4606919f465225b776eac3fa5c480b5",
+    "fullGateCommand": "GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full",
+    "fullGateResult": "initial run failed only in TestLocalDockerApplicationRuntimeEndToEndNonOPLApplication; repaired in Fabric and rechecked the entire affected module",
+    "sourceTests": 228,
+    "browserTests": 114,
+    "allOtherRequiredPostgresModules": "passed with zero test skips",
+    "fabricRecheckCommand": "OPL_POSTGRES_TESTS=1 OPL_CAPACITY_TESTS=1 OPL_FABRIC_LOCAL_DOCKER_INTEGRATION=1 GOMAXPROCS=2 GOFLAGS=-p=1 go test -timeout=20m -count=1 -json ./... (services/fabric; isolated temporary PostgreSQL)",
+    "fabricRecheckResult": "passed",
+    "fabricPackagesPassed": 6,
+    "fabricPassedTestsIncludingSubtests": 2239,
+    "fabricSkippedTests": 0,
+    "aggregateDisposition": "all required checks covered after focused repair; the unchanged full aggregate was not repeated",
+    "goVet": [
+      "services/build passed",
+      "services/capability passed"
+    ]
+  },
+  "proven": [
+    "Real gRPC Capability create namespace/package, multipart signed HTTP upload, digest and ZIP verification, immutable object read through the process data handler.",
+    "Same-part and same-completion replay; changed completion rejected; corrupt chunks and cross-tenant read denied by the local identity fixture.",
+    "Production Build Runner executes real isolated BuildKit, publishes to a disposable loopback Registry, and reads the manifest/config by immutable digest.",
+    "Exported filesystem contains the uploaded Package payload and WebUI contents.",
+    "With BuildKit stopped, a reopened Build store and worker recover a persisted building state. Registry outage remains needs_attention; restored reads yield one artifact, one Outbox event and exact descriptor bytes.",
+    "Fabric checks exact image digest presence with Docker inspect; the real replacement/retirement integration passes."
+  ],
+  "notProven": [
+    "Real CloudIdentity authentication: the local publisher identity/authorization decision is a fixture.",
+    "Runtime/WebUI catalog admission, ResolveBuildInput and three reference claims: the accepted Build input is a fixture.",
+    "Terminating an actual admitted worker during registry push or losing a real push acknowledgement: the test injects registry read acknowledgement loss and recreates the persisted pre-ack job state.",
+    "Complete Build/Capability registration Inbox/Outbox replay, Ledger and BFF/Console readback.",
+    "Protected Instance adoption, production-like registry credentials/policy, customer deployment or Product Release readiness."
+  ],
+  "logs": [
+    {
+      "path": "output/cloud625-local-20260925/cloud625-live-final.log",
+      "sha256": "420b9ce1cb4cd13c007a4b04e23e8ef78ee8914ecfb04551118ac918b8772a7f",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-local-20260925/cloud625-full.log",
+      "sha256": "dd1ffc25c905fc1c4596538e006cc6ea8ae6885961a62cea624c0e1a546be1ac",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-local-20260925/cloud625-fabric-recheck.log",
+      "sha256": "1131f0213a4f2b63ef139f97e59ed712d14defd16d88c40e8c891b70627ef4ab",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-local-20260925/cloud625-fabric-all.jsonl",
+      "sha256": "4c9cf91c1b6ee3c957d6513f9958445994442260b9911b66dde22f9e13ca31c0",
+      "retention": "local ignored artifact"
+    }
+  ],
+  "temporaryResources": "Task-created loopback containers and identified anonymous volumes removed; no instance or customer resource used.",
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false,
+  "issue625Complete": false
+}
