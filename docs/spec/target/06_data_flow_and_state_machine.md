@@ -102,11 +102,11 @@ admission阶段先由Runtime Control Reserve持久生成runtimeInstanceId但不�
 
 ## 8. F10：版本更新/回滚
 
-1. 用户选择同Tenant可访问版本或官方版本；现Workspace generation/currentAgentDeploymentId作为前置。
+1. 用户选择同Tenant可访问版本或官方版本；Serve读取并校验当前Deployment及其generation作为前置。
 2. 验证数据兼容、镜像平台、资源容量、模型与Secret契约；不可逆数据迁移必须已有发布者批准的迁移/备份与恢复规则，否则准入拒绝。
 3. 取得新版本claim并持久新Deployment；保留旧active指针和原购买事实。
 4. Runtime Control创建新实例或按发布者支持的停止旧实例后替换路径执行；同一可写数据卷不得同时被两个不支持并发的实例挂载写入。
-5. Workspace分配execution_epoch后，先调用FenceRouteEpoch并确认provider条件版本CAS更新epoch，再允许该epoch进行Activate/Rollback。首次路由须使用有证据的requireAbsent前置，不用空串表示任意版本；其余使用Fence返回的精确providerRevision。未知旧switch先按原id读回，不抢占。Fabric按workspace generation/epoch防旧worker竞争，验证新实例真实readiness后切换路由；Workspace在明确切换读回后更新currentAgentDeploymentId，旧Deployment superseded。
+5. Serve分配execution_epoch后，先调用FenceRouteEpoch并确认provider条件版本CAS更新epoch，再允许该epoch进行Activate/Rollback。首次路由须使用有证据的requireAbsent前置，不用空串表示任意版本；其余使用Fence返回的精确providerRevision。未知旧switch先按原id读回，不抢占。Fabric按route generation/epoch防旧worker竞争，验证新实例真实readiness后切换路由；Serve在明确切换读回后将新Deployment置为active并supersede旧Deployment。
 6. 失败且旧数据仍兼容时进入rolling_back，重新验证旧实例/路由，确认后rolled_back；不能仅改DB指针当回滚成功。
 7. 旧Runtime的非活动保留至多1天是原讨论要求；执行清理前必须读回非选中、无数据/恢复义务，再删除运行资源并释放claim。超时不能强删仍活动实例。
 8. 更新镜像不再次扣Workspace购买费；若资源调整必要先走独立F11报价确认。新Runtime发布只显示可更新提示，不自动替换。
@@ -333,9 +333,9 @@ worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框�
 | 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | epoch/revision/target精确，provider实际路由确认；旧epoch/旧revision拒绝，丢响应ObserveRoute |
 | 12 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerCoordination.AppendReceipt` | `AppendReceiptRequest` → `Receipt` | ledger.receipts | 返回receipt身份，另ReadReceiptByReference核对原输入；同idempotency key读回，不填假Workspace或重写receipt |
 
-**终点**：Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用
+**终点**：Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用
 
-Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉
+Serve的active Deployment是选中业务权威，Fabric是真实路由权威；Workspace只提供授权和业务目标事实，没有跨库原子提交幻觉
 
 ### F09 使用、模型配置与应用登录
 

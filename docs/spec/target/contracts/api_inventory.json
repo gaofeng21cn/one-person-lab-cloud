@@ -1927,7 +1927,7 @@
         "platform_admin"
       ],
       "tables": [
-        "capability.catalog_policies"
+        "runtime_control.catalog_policies"
       ],
       "operationKind": null
     },
@@ -1946,7 +1946,7 @@
         "platform_admin"
       ],
       "tables": [
-        "capability.catalog_policies"
+        "runtime_control.catalog_policies"
       ],
       "operationKind": null
     },

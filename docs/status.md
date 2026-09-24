@@ -92,69 +92,25 @@ was changed. No service scaffold, deployment, production access or publication
 was performed. W01 production contracts/consumer adoption and W02 service
 implementation remain open; the pre-existing untracked proto input is preserved.
 
-## Agent delivery chain owner process baseline
+## Target owner-process implementation boundary
 
-On September 24, 2026 the accepted ownership and work-package revision
-(`Align implementation ownership and development plan`) was integrated into the
-current main line on top of the two existing implementation commits, without
-resetting, dropping, or rewriting them. Serve remains the sole Agent delivery,
-deployment, and access Owner; Runtime Control remains the approved Runtime
-Release catalog consumed by Build; Fabric stays resource-only.
+The accepted owner-process foundation is a target implementation proposal, not
+current evidence in this review branch. The current checkout and its `main` base
+contain the existing Control Plane, Fabric, Ledger, and Console implementation;
+they do not contain the proposed Capability, Build, Runtime Control, Workspace,
+Serve processes or Console BFF. The separate implementation proposal remains
+unmerged and is therefore not reported here as integrated or executable.
 
-Capability, Build, Runtime Control, Workspace, and Serve now each run a real
-owner process: it admits its own `DATABASE_URL` under the one shared PostgreSQL
-admission rule, installs its own migration set through the shared owner
-migration journal, and serves the contract's `OwnerOperations` readback group
-over that owner's own `operations` table. Each process reports SERVING only when
-a declared product service group is registered and every recorded dependency
-answers; otherwise it stays NOT_SERVING and logs the exact missing product group
-or dependency. Because no domain handler is wired yet, all five processes
-currently report NOT_SERVING, which is the honest state rather than a claim.
+This branch records the owner, schema, wire-contract, and migration boundary
+that the future implementation must satisfy. It does not claim domain handlers,
+owner-process startup, migrations, BFF routing, wire tests, or end-to-end product
+readback. Those claims require evidence from the implementation branch after it
+is accepted on the exact source head.
 
-The Console BFF resolves the browser session and a CloudIdentity authorization
-decision before it reads any owner fact, refuses to start without
-`OPL_CLOUD_IDENTITY_URL`, and routes an Operation to the finite contract owner
-set. `OwnerEnum` and `OperationOwnerEnum` now carry `serve`, so a Serve Operation
-is reachable through that route; the bindings were regenerated with the pinned
-tools and re-ran to no drift.
-
-Two ownership defects in the accepted DDL were corrected because they made
-per-database migration impossible: `runtime_control.catalog_policies` referenced
-`capability.webui_versions`, and `serve.outbox_deliveries` referenced
-`runtime_control.outbox_events`. Each now references only its own database, which
-is what the contract's own cross-owner-FK rule requires.
-
-Executed evidence in this checkout:
-
-- `go test ./...` in each of the five owner modules plus
-  `services/internal/ownerservice`, `services/internal/ownerstore`,
-  `services/internal/postgresmigrate`, `packages/contracts/go` and
-  `apps/console-bff`.
-- Owner isolation on a real `postgres:16.8-bookworm` container
-  (`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` pointed at it), one suite per owner:
-  the owner's own migration entrypoint creates its schema and tables; the DDL
-  refuses a differently named database and names the database it found; the
-  runtime login writes its own schema; and the runtime login is refused when it
-  reads another owner's schema or tries to create outside its own.
-- `TestOwnerProcessOverTheWire` starts a real listener over a real isolated
-  database and proves the reported health status, the typed Operation readback
-  for a stored row (owner, kind, stage, status, observation, poll cadence),
-  `NotFound` for an unknown operation, and an identity refusal for an
-  unauthenticated caller.
-- `go test ./...` in `apps/console-bff`: delivery composition plus the session,
-  authorization-issuer, denial, and Serve-routing cases.
-- `npm test` (228 source tests), `npm run typecheck`, `npm run lint`,
-  `npm run validate:product-boundary`, `git diff --check`.
-- Development plan regenerated and revalidated in this checkout: 32 work
-  packages, 17 features, 108 REST operations, 101 tables, 172 internal RPCs;
-  five plan-validator tests pass.
-
-Still not implemented, and not claimed: every domain product handler
-(`CapabilityProductService`, `BuildProductService`, `RuntimeControlProductService`,
-`WorkspaceProductService`, `ServeProductService`), Package upload, Build
-execution and OCI push, Fabric provisioning/readback, Serve deployment,
-readiness, and access routing, Console pages beyond the delivery composition, and
-any live multi-process or deployed end-to-end run.
+The target implementation remains open: product handlers, Package upload, Build
+execution and OCI publication, Fabric provisioning/readback, Serve deployment,
+readiness/access routing, Console delivery composition, and one exact-head
+end-to-end run.
 
 ## Conclusion
 

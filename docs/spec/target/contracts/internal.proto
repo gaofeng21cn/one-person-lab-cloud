@@ -555,7 +555,7 @@ message Workspace {
  optional string capability_version_id = 3;
  string compute_plan_id = 4;
  string storage_plan_id = 5;
- optional string current_agent_deployment_id = 6;
+ reserved 6;
  WorkspaceStatusEnum status = 7;
  WorkspaceResourceReadinessEnum resource_readiness = 8;
  WorkspaceApplicationAvailabilityEnum application_availability = 9;
@@ -2415,8 +2415,9 @@ message RouteActivateCommand { CallContext context = 1; string workspace_id = 2;
 message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
 message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; ProviderRevisionPrecondition provider_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
 message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string provider_revision = 9; string provider_command_id = 10; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; }
-// Workspace allocates execution_epoch and intent in one local transaction. Before
-// any route mutation it confirms FenceRouteEpoch at provider: router must CAS the
+// Serve allocates execution_epoch and persists the delivery intent in one local
+// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
+// provider: router must CAS the
 // same object's metadata epoch+target using provider conditional revision. Merely
 // allocating a new epoch is NOT proof the external router has been fenced.
 // Fabric reserves a unique route switch (fence/activate/rollback), then executes
@@ -2427,11 +2428,13 @@ message RouteReadback { string workspace_id = 1; string switch_id = 2; Observati
 // Fence does not change route generation/target. Activate/rollback require current
 // accepted epoch and expected provider revision+generation; success increases route
 // generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Workspace commits currentAgentDeploymentId and selected_route_generation/epoch only
-// after confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Lost DB response resumes original switch, never new activation.
-// Failed selection CAS leaves intent needs_attention: authoritative readback, then
-// complete original commit or explicitly fence+rollback. Never last-writer-wins.
+// Serve commits the current deployment and route generation/epoch only after
+// confirmed exact target readback and its own current-intent CAS, then emits
+// selection evidence. Workspace supplies authorization and opaque target facts;
+// it does not store or commit a deployment pointer. Lost DB response resumes the
+// original Serve switch, never a new activation. Failed selection CAS leaves the
+// Serve intent needs_attention: authoritative readback, then complete the original
+// commit or explicitly fence+rollback. Never last-writer-wins.
 service ServeAccessControl {
  rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
  rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
@@ -2635,7 +2638,7 @@ message WorkspaceStateChangedEvent {
  string workspace_id = 1;
  string operation_id = 2;
  string status = 3;
- optional string current_agent_deployment_id = 4;
+ reserved 4;
 }
 
 message WorkspaceDeletionConfirmedEvent {
