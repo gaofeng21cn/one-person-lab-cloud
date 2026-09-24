@@ -215,4 +215,3 @@ REVOKE UPDATE, DELETE ON build.build_artifacts FROM opl_build_writer;
 REVOKE UPDATE, DELETE ON build.build_logs FROM opl_build_writer;
 COMMIT;
 -- END DATABASE opl_build
-

@@ -390,4 +390,3 @@ REVOKE UPDATE, DELETE ON capability.publisher_namespaces FROM opl_capability_wri
 GRANT UPDATE (status, updated_at) ON capability.publisher_namespaces TO opl_capability_writer;
 COMMIT;
 -- END DATABASE opl_capability
-

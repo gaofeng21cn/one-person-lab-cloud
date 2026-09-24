@@ -442,4 +442,3 @@ REVOKE UPDATE, DELETE ON workspace.plan_changes FROM opl_workspace_writer;
 GRANT UPDATE (status, applied_at, execution_operation_id, cancellation_operation_id, charge_operation_id, next_period_obligation_id, schedule_version, observation_result, actual_outcome, error_code, cancelled_at, updated_at) ON workspace.plan_changes TO opl_workspace_writer;
 COMMIT;
 -- END DATABASE opl_workspace
-

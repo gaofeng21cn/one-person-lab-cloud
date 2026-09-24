@@ -270,4 +270,3 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA serve TO opl_serve_
 REVOKE UPDATE, DELETE ON serve.outbox_events FROM opl_serve_writer;
 COMMIT;
 -- END DATABASE opl_serve
-

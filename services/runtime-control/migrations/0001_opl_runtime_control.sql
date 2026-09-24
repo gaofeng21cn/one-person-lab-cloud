@@ -186,4 +186,3 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA runtime_control TO 
 REVOKE UPDATE, DELETE ON runtime_control.outbox_events FROM opl_runtime_control_writer;
 COMMIT;
 -- END DATABASE opl_runtime_control
-
