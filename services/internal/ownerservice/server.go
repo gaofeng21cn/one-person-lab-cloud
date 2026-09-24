@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -20,13 +23,30 @@ import (
 // the same allowlist.
 type RegisterFunc func(*grpc.Server)
 
+// ReadyCheck reports whether one dependency of this owner is usable. A dependency
+// that cannot be reached is not ready; it is never reported as healthy.
+type ReadyCheck func(context.Context) error
+
 // Server is one owner process's gRPC server.
 type Server struct {
 	config   Config
 	server   *grpc.Server
 	health   *health.Server
 	listener net.Listener
+	products map[string]bool
+	required []string
+	checks   map[string]ReadyCheck
+	mu       sync.Mutex
+	serving  bool
 }
+
+// ErrNotReady reports that this owner cannot truthfully claim SERVING. A process in
+// this state keeps the health service NOT_SERVING so a probe never sees an owner
+// that registered no product service or cannot reach its own dependencies.
+type ErrNotReady struct{ Reason string }
+
+// Error implements error.
+func (e ErrNotReady) Error() string { return e.Reason }
 
 // NewServer builds the owner's gRPC server with the shared identity interceptor
 // and one health service. Callers register their own service groups afterwards.
@@ -38,21 +58,124 @@ func NewServer(config Config, options ...grpc.ServerOption) (*Server, error) {
 	server := grpc.NewServer(options...)
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(server, healthServer)
-	// An owner is only serving once it has registered every group it owns; the
-	// initial state is NOT_SERVING so a probe never sees a half-registered owner.
+	// An owner is only serving once it has registered every group it owns and its
+	// dependencies answer; the initial state is NOT_SERVING so a probe never sees a
+	// half-registered or dependency-less owner.
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
-	return &Server{config: config, server: server, health: healthServer}, nil
+	return &Server{
+		config:   config,
+		server:   server,
+		health:   healthServer,
+		products: map[string]bool{},
+		checks:   map[string]ReadyCheck{},
+	}, nil
 }
 
-// Register installs one owner service group.
-func (s *Server) Register(register RegisterFunc) {
+// Register installs one service group without naming it. It counts as infrastructure
+// the owner serves, not as the owner's product surface; an owner with only
+// unnamed groups and no declared product service stays NOT_SERVING.
+func (s *Server) Register(register RegisterFunc) error {
+	return s.RegisterGroup("", register)
+}
+
+// RegisterGroup installs one named service group and records it as the owner's
+// product surface. Registering after MarkServing is refused: an owner may not
+// widen its product API while it already reports SERVING.
+func (s *Server) RegisterGroup(name string, register RegisterFunc) error {
+	if register == nil {
+		return fmt.Errorf("%s: register function is required", s.config.Owner)
+	}
+	if s.healthServing() {
+		return fmt.Errorf("%s: cannot register a service group after reporting SERVING", s.config.Owner)
+	}
 	register(s.server)
+	if strings.TrimSpace(name) != "" {
+		s.products[strings.TrimSpace(name)] = true
+	}
+	return nil
 }
 
-// MarkServing flips the health status once every owner group is registered and the
-// backing store is reachable.
-func (s *Server) MarkServing() {
+// RequireProductGroups declares the contract service groups this owner is
+// configured to serve. Readiness fails until every declared group is registered,
+// so a process that has not wired its domain handlers reports NOT_SERVING with the
+// exact missing group instead of claiming health from whichever group happens to
+// be registered.
+func (s *Server) RequireProductGroups(names ...string) error {
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("%s: required product group name is required", s.config.Owner)
+		}
+		s.required = append(s.required, name)
+	}
+	return nil
+}
+
+// ProductGroups lists the named service groups this owner registered, so startup
+// and readiness logs name the surface the process actually exposes.
+func (s *Server) ProductGroups() []string {
+	names := make([]string, 0, len(s.products))
+	for name := range s.products {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// AddReadinessCheck records one named dependency readiness check. MarkServing and
+// Ready run every recorded check, so an owner with an unreachable database stays
+// NOT_SERVING instead of claiming readiness from registration alone.
+func (s *Server) AddReadinessCheck(name string, check ReadyCheck) error {
+	name = strings.TrimSpace(name)
+	if name == "" || check == nil {
+		return fmt.Errorf("%s: readiness check name and function are required", s.config.Owner)
+	}
+	s.checks[name] = check
+	return nil
+}
+
+// Ready reports why this owner is not ready, or nil when it is. It requires at
+// least one registered product service group, because a process that exposes only
+// health is not a serving domain owner.
+func (s *Server) Ready(ctx context.Context) error {
+	missing := make([]string, 0, len(s.required))
+	for _, name := range s.required {
+		if !s.products[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return ErrNotReady{Reason: fmt.Sprintf("%s: product service group not registered: %s", s.config.Owner, strings.Join(missing, ", "))}
+	}
+	if len(s.products) == 0 {
+		return ErrNotReady{Reason: fmt.Sprintf("%s: no product service group is registered", s.config.Owner)}
+	}
+	names := make([]string, 0, len(s.checks))
+	for name := range s.checks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := s.checks[name](ctx); err != nil {
+			return ErrNotReady{Reason: fmt.Sprintf("%s: dependency %s is not ready: %v", s.config.Owner, name, err)}
+		}
+	}
+	return nil
+}
+
+// MarkServing flips the health status to SERVING only when every registered group
+// and dependency is ready. It returns the reason instead of reporting SERVING when
+// readiness cannot be proven.
+func (s *Server) MarkServing(ctx context.Context) error {
+	if err := s.Ready(ctx); err != nil {
+		s.setServing(false)
+		s.health.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+		log.Printf("%s not serving: %v", s.config.Owner, err)
+		return err
+	}
+	s.setServing(true)
 	s.health.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	return nil
 }
 
 // MarkNotServing reports a dependency that is not ready.
@@ -60,7 +183,23 @@ func (s *Server) MarkNotServing(reason string) {
 	if reason != "" {
 		log.Printf("%s not serving: %s", s.config.Owner, reason)
 	}
+	s.setServing(false)
 	s.health.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+}
+
+// healthServing reports whether this process already told the health service it
+// is SERVING. The gRPC health server exposes no read accessor, so the transition
+// is recorded here; the health service remains the single reported status.
+func (s *Server) healthServing() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.serving
+}
+
+func (s *Server) setServing(serving bool) {
+	s.mu.Lock()
+	s.serving = serving
+	s.mu.Unlock()
 }
 
 // Serve blocks on the owner's listener.

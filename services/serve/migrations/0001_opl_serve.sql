@@ -187,7 +187,7 @@ CREATE TABLE serve.outbox_deliveries (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (event_id) REFERENCES runtime_control.outbox_events (id) ON DELETE RESTRICT,
+  FOREIGN KEY (event_id) REFERENCES serve.outbox_events (id) ON DELETE RESTRICT,
   UNIQUE (event_id, consumer_owner),
   CHECK (attempt_count >= 0),
   CHECK ((lease_token IS NULL) = (lease_until IS NULL))

@@ -1,12 +1,21 @@
-// Command server starts the Capability owner boundary. Product RPC registration
-// is added with the owner-local package implementation; until then the process
-// exposes only health and the authenticated owner boundary.
+// Command server starts the Capability owner process.
+//
+// It opens this owner's own database, installs this owner's own migrations,
+// registers the shared owner Operation readback group, and reports SERVING only
+// when its declared dependencies and product groups are actually ready. The
+// CapabilityProductService domain handlers are not implemented yet, so this process reports
+// NOT_SERVING with that exact reason instead of claiming readiness it does not
+// have or exiting.
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"opl-cloud/services/capability/migrations"
 	"opl-cloud/services/internal/ownerservice"
 )
 
@@ -15,11 +24,32 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server, err := ownerservice.NewServer(config)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	source, err := migrations.Source()
 	if err != nil {
 		log.Fatal(err)
 	}
-	server.MarkServing()
+
+	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
+		if err := server.RequireProductGroups("CapabilityProductService"); err != nil {
+			return err
+		}
+		_ = database
+		return ownerservice.ErrHandlersNotImplemented
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer bootstrap.Close()
+
+	server := bootstrap.Server
+	go func() {
+		<-ctx.Done()
+		server.Stop()
+	}()
 	if err := server.Serve(); err != nil {
 		log.Fatal(err)
 	}

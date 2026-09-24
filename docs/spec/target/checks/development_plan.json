@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "5a9a5c96701940988de7adcb5f2ec38ecc100813",
+  "sourceSHA": "df89607cf9cbd338ecdc7c70f74d106d5ef78fd0",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -21,13 +21,13 @@
   "sourceRootStatus": {
     "cloud": "existing",
     "console": "existing",
-    "bff": "planned_not_created",
+    "bff": "existing",
     "gateway": "planned_not_created",
-    "capability": "planned_not_created",
-    "build": "planned_not_created",
-    "workspace": "planned_not_created",
-    "runtime_control": "planned_not_created",
-    "serve": "planned_not_created",
+    "capability": "existing",
+    "build": "existing",
+    "workspace": "existing",
+    "runtime_control": "existing",
+    "serve": "existing",
     "resource_catalog": "planned_not_created",
     "fabric": "existing",
     "ledger": "existing",
@@ -778,12 +778,12 @@
         "CapabilityProductService.ListWebuiVersions",
         "CapabilityProductService.RegisterWebuiVersion",
         "CapabilityProductService.SetWebuiVersionStatus",
-        "CapabilityProductService.GetBuildRuntimePolicy",
-        "CapabilityProductService.SetBuildRuntimePolicy",
         "CapabilityProductService.ListPublisherNamespaces",
         "CapabilityProductService.CreatePublisherNamespace",
         "CapabilityProductService.RevokePublisherNamespace",
         "RuntimeControlProductService.ListRuntimeVersions",
+        "RuntimeControlProductService.GetBuildRuntimePolicy",
+        "RuntimeControlProductService.SetBuildRuntimePolicy",
         "RuntimeControlProductService.RegisterRuntimeVersion",
         "RuntimeControlProductService.SetRuntimeVersionStatus",
         "CapabilityCoordination.ResolveBuildInput",
@@ -3024,12 +3024,6 @@
     "CapabilityProductService.SetWebuiVersionStatus": [
       "W07"
     ],
-    "CapabilityProductService.GetBuildRuntimePolicy": [
-      "W07"
-    ],
-    "CapabilityProductService.SetBuildRuntimePolicy": [
-      "W07"
-    ],
     "CapabilityProductService.ListPublisherNamespaces": [
       "W07"
     ],
@@ -3040,6 +3034,12 @@
       "W07"
     ],
     "RuntimeControlProductService.ListRuntimeVersions": [
+      "W07"
+    ],
+    "RuntimeControlProductService.GetBuildRuntimePolicy": [
+      "W07"
+    ],
+    "RuntimeControlProductService.SetBuildRuntimePolicy": [
       "W07"
     ],
     "RuntimeControlProductService.RegisterRuntimeVersion": [

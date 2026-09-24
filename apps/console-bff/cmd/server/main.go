@@ -24,13 +24,19 @@ func main() {
 	}
 
 	config := clients.ConfigFromEnv(os.Getenv)
+	if config.CloudIdentityAddr == "" {
+		// Without CloudIdentity the BFF cannot identify the browser caller or ask
+		// whether it may read an owner's facts, so it refuses to start rather than
+		// serving owner data to unidentified requests.
+		log.Fatal("OPL_CLOUD_IDENTITY_URL is required: browser session and authorization are resolved through CloudIdentity")
+	}
 	clients, err := clients.Dial(config)
 	if err != nil {
 		log.Fatalf("dial domain owners: %v", err)
 	}
 	defer clients.Close()
 
-	handler := httpapi.NewServer(clients).Handler()
+	handler := httpapi.NewServer(clients, clients).Handler()
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           handler,

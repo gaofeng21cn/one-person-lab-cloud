@@ -3,8 +3,10 @@ module opl-cloud/services/internal/ownerservice
 go 1.25.0
 
 require (
+	github.com/lib/pq v1.12.3
 	google.golang.org/grpc v1.83.2
 	opl-cloud/packages/contracts/go v0.0.0
+	opl-cloud/services/internal/ownerstore v0.0.0-00010101000000-000000000000
 	opl-cloud/services/internal/postgresmigrate v0.0.0
 )
 
@@ -17,5 +19,7 @@ require (
 )
 
 replace opl-cloud/services/internal/postgresmigrate => ../postgresmigrate
+
+replace opl-cloud/services/internal/ownerstore => ../ownerstore
 
 replace opl-cloud/packages/contracts/go => ../../../packages/contracts/go

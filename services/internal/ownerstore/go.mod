@@ -9,4 +9,5 @@ require (
 )
 
 replace opl-cloud/packages/contracts/go => ../../../packages/contracts/go
+
 replace opl-cloud/services/internal/postgresmigrate => ../postgresmigrate

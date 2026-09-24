@@ -5517,6 +5517,7 @@ components:
       - gateway
       - resource_catalog
       - ledger
+      - serve
     TenantRole:
       type: string
       enum:
@@ -9850,6 +9851,7 @@ components:
       - fabric
       - gateway
       - resource_catalog
+      - serve
     ImagePlatform:
       type: object
       additionalProperties: false

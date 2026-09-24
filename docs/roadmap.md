@@ -24,12 +24,28 @@ The target product and the delivery sequence are owned by the adopted
 Those files are the single writer for the target sequence. This file does not
 restate, renumber, or paraphrase them.
 
-The first owner-boundary increment is now present in the working tree: the five
-delivery-chain owner modules have isolated migration surfaces and process
-entrypoints, and Console/BFF has a typed owner-read composition for one
-Workspace. This is an implementation increment, not completion of the target
-chain; RPC handlers, real owner persistence, Fabric execution/readback, Serve
-deployment/readiness, and live end-to-end verification remain open.
+W02's process and operation baseline now exists for Capability, Build, Runtime
+Control, Workspace, and Serve: each owner runs its own process, admits its own
+database, installs its own migrations, serves the contract's `OwnerOperations`
+readback group over its own `operations` table, and reports readiness truthfully.
+Owner database isolation and the over-the-wire Operation readback are verified on
+an isolated PostgreSQL server; [current evidence](./status.md#agent-delivery-chain-owner-process-baseline)
+records the exact commands. This is not completion of the target chain. Open work
+in dependency order:
+
+1. Register each owner's real domain service group and its persistent command
+   handlers, starting with the first vertical slice the plan names:
+   Capability Package, then Build fixing Package + WebUI + Runtime Release inputs
+   into an immutable OCI, then Workspace authorization and resource plan, then
+   Fabric resource references and readback, then the single Serve Agent
+   deployment with readiness and access readback.
+2. Add the per-owner reliable-event and idempotency use only where a current
+   caller needs it; the shared mechanisms exist but no owner has a live producer
+   or consumer yet.
+3. Keep Console to the composed owner read until an owner exposes a real command.
+4. Verify the full chain as one run once the handlers exist; today only the
+   process, migration, isolation, readiness, and Operation readback layers have
+   executed.
 
 The single-repository topology is decided, not an open A/B choice. W01 still
 requires the production contracts, reproducible generation, necessary consumer

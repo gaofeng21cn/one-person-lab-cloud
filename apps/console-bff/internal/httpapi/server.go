@@ -19,7 +19,8 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
-	reader OwnerReader
+	reader   OwnerReader
+	identity IdentityReader
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -29,8 +30,12 @@ type OwnerReader interface {
 	Operation(ctx context.Context, owner owneridentity.Owner, operationID string) (*api.Operation, error)
 }
 
-// NewServer returns the BFF REST server over the supplied owner reader.
-func NewServer(reader OwnerReader) *Server { return &Server{reader: reader} }
+// NewServer returns the BFF REST server over the supplied owner reader. The
+// caller must also supply the CloudIdentity identity reader the browser session
+// and authorization preconditions are resolved through.
+func NewServer(reader OwnerReader, identity IdentityReader) *Server {
+	return &Server{reader: reader, identity: identity}
+}
 
 // Handler returns the BFF's same-origin REST handler.
 func (s *Server) Handler() http.Handler {
@@ -48,7 +53,24 @@ func (s *Server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "bff_unconfigured", "owner reader is not configured")
 		return
 	}
-	view, err := s.deliveryView(r.Context(), r.PathValue("workspaceId"))
+	workspaceID := r.PathValue("workspaceId")
+	// The delivery view composes facts about one Workspace, so the caller must hold
+	// a live CloudIdentity session authorized to read that Workspace. Service
+	// identity lets the BFF call the owners; it never stands in for the user's own
+	// authorization.
+	caller, err := RequireSession(r.Context(), s.identity, r)
+	if err != nil {
+		s.writeIdentityError(w, err)
+		return
+	}
+	if err := RequireAuthorizedAction(r.Context(), s.identity, caller, owneridentity.Workspace,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,
+		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
+		r.Header.Get(requestIDHeader)); err != nil {
+		s.writeIdentityError(w, err)
+		return
+	}
+	view, err := s.deliveryView(r.Context(), workspaceID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "owner_read_failed", err.Error())
 		return
@@ -71,6 +93,18 @@ func (s *Server) handleOperation(w http.ResponseWriter, r *http.Request) {
 	operationID := strings.TrimSpace(r.PathValue("operationId"))
 	if operationID == "" {
 		writeError(w, http.StatusBadRequest, "operation_id_required", "operation id is required")
+		return
+	}
+	caller, err := RequireSession(r.Context(), s.identity, r)
+	if err != nil {
+		s.writeIdentityError(w, err)
+		return
+	}
+	if err := RequireAuthorizedAction(r.Context(), s.identity, caller, owner,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION,
+		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION, Id: &operationID},
+		r.Header.Get(requestIDHeader)); err != nil {
+		s.writeIdentityError(w, err)
 		return
 	}
 	operation, err := s.reader.Operation(r.Context(), owner, operationID)
@@ -97,10 +131,28 @@ func ownerFromPath(value string) (owneridentity.Owner, bool) {
 	switch owner {
 	case owneridentity.Tenant, owneridentity.Capability, owneridentity.Build,
 		owneridentity.Workspace, owneridentity.RuntimeControl, owneridentity.Fabric,
-		owneridentity.Gateway, owneridentity.ResourceCatalog:
+		owneridentity.Gateway, owneridentity.ResourceCatalog, owneridentity.Serve:
 		return owner, true
 	default:
 		return "", false
+	}
+}
+
+// requestIDHeader carries the caller's request identity, which is recorded on the
+// authorization request so an owner-side decision can be traced back to it.
+const requestIDHeader = "x-opl-request-id"
+
+// writeIdentityError maps a missing session, a denied action, and an unavailable
+// authorizer onto distinct statuses. A denial is never reported as an upstream
+// failure, and an unavailable CloudIdentity is never reported as allowed.
+func (s *Server) writeIdentityError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrSessionRequired):
+		writeError(w, http.StatusUnauthorized, "session_required", err.Error())
+	case errors.Is(err, ErrAuthorizationRequired):
+		writeError(w, http.StatusForbidden, "authorization_required", err.Error())
+	default:
+		writeError(w, http.StatusServiceUnavailable, "identity_unavailable", err.Error())
 	}
 }
 

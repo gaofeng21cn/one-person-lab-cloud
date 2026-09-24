@@ -22,10 +22,22 @@ import (
 // configured. The BFF refuses to answer rather than inventing that owner's facts.
 var ErrUpstreamUnconfigured = errors.New("domain owner address is not configured")
 
-// Config holds the owner addresses and this process's identity token per owner.
+// CloudIdentityAddressEnv and CloudIdentityTokenEnv configure the CloudIdentity
+// module. It serves CloudIdentity's own two data owners (tenant and gateway) from
+// one deployment unit, so the BFF dials it once for the browser session and the
+// authorization decision rather than as a fifth data owner.
+const (
+	CloudIdentityAddressEnv = "OPL_CLOUD_IDENTITY_URL"
+	CloudIdentityTokenEnv   = "OPL_CLOUD_IDENTITY_TOKEN"
+)
+
+// Config holds the owner addresses, this process's identity token per owner, and
+// the CloudIdentity session/authorization boundary.
 type Config struct {
-	Addresses map[owneridentity.Owner]string
-	Tokens    map[owneridentity.Owner]string
+	Addresses          map[owneridentity.Owner]string
+	Tokens             map[owneridentity.Owner]string
+	CloudIdentityAddr  string
+	CloudIdentityToken string
 }
 
 // ConfigFromEnv resolves the owner addresses and per-owner tokens from the
@@ -44,6 +56,8 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.Workspace:  strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
 			owneridentity.Serve:      strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
 		},
+		CloudIdentityAddr:  strings.TrimSpace(getenv(CloudIdentityAddressEnv)),
+		CloudIdentityToken: strings.TrimSpace(getenv(CloudIdentityTokenEnv)),
 	}
 }
 
@@ -59,14 +73,17 @@ func ReachableOwners() []owneridentity.Owner {
 	}
 }
 
-// Clients holds one typed client per owner the BFF reaches.
+// Clients holds one typed client per owner the BFF reaches, plus the
+// CloudIdentity session and authorization boundary.
 type Clients struct {
-	capability api.CapabilityProductServiceClient
-	build      api.BuildProductServiceClient
-	workspace  api.WorkspaceProductServiceClient
-	serve      api.ServeProductServiceClient
-	owner      map[owneridentity.Owner]api.OwnerOperationsClient
-	conns      []*grpc.ClientConn
+	capability    api.CapabilityProductServiceClient
+	build         api.BuildProductServiceClient
+	workspace     api.WorkspaceProductServiceClient
+	serve         api.ServeProductServiceClient
+	tenant        api.TenantProductServiceClient
+	authorization api.CloudIdentityAuthorizationClient
+	owner         map[owneridentity.Owner]api.OwnerOperationsClient
+	conns         []*grpc.ClientConn
 }
 
 // Dial opens one connection per configured owner. An owner that is not configured
@@ -100,7 +117,42 @@ func Dial(config Config) (*Clients, error) {
 			clients.serve = api.NewServeProductServiceClient(conn)
 		}
 	}
+	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
+		options := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+		if token := strings.TrimSpace(config.CloudIdentityToken); token != "" {
+			// CloudIdentity presents its own identity on the boundary; the BFF calls
+			// it as an in-repo peer with the configured token.
+			options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Tenant, token)))
+		}
+		conn, err := grpc.NewClient(addr, options...)
+		if err != nil {
+			clients.Close()
+			return nil, fmt.Errorf("dial CloudIdentity at %s: %w", addr, err)
+		}
+		clients.conns = append(clients.conns, conn)
+		clients.tenant = api.NewTenantProductServiceClient(conn)
+		clients.authorization = api.NewCloudIdentityAuthorizationClient(conn)
+	}
 	return clients, nil
+}
+
+// Session reads the caller's own CloudIdentity session. The browser session id is
+// carried in CallContext, so CloudIdentity validates the live session itself rather
+// than trusting an identity the BFF asserts.
+func (c *Clients) Session(ctx context.Context, sessionID string) (*api.Session, error) {
+	if c.tenant == nil {
+		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
+	}
+	callContext := &api.CallContext{SessionId: &sessionID}
+	return c.tenant.GetSession(ctx, &api.GetSessionRpcRequest{Context: callContext})
+}
+
+// Authorize asks CloudIdentity to decide one action for one actor and resource.
+func (c *Clients) Authorize(ctx context.Context, request *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
+	if c.authorization == nil {
+		return nil, fmt.Errorf("CloudIdentity: %w", ErrUpstreamUnconfigured)
+	}
+	return c.authorization.AuthorizeAction(ctx, request)
 }
 
 // Close releases the owner connections.

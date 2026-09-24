@@ -19,13 +19,13 @@
 |---|---|---|
 | cloud | `.` | existing |
 | console | `apps/console-ui` | existing |
-| bff | `apps/console-bff` | planned_not_created |
+| bff | `apps/console-bff` | existing |
 | gateway | `services/gateway-integration` | planned_not_created |
-| capability | `services/capability` | planned_not_created |
-| build | `services/build` | planned_not_created |
-| workspace | `services/workspace` | planned_not_created |
-| runtime_control | `services/runtime-control` | planned_not_created |
-| serve | `services/serve` | planned_not_created |
+| capability | `services/capability` | existing |
+| build | `services/build` | existing |
+| workspace | `services/workspace` | existing |
+| runtime_control | `services/runtime-control` | existing |
+| serve | `services/serve` | existing |
 | resource_catalog | `services/resource-catalog` | planned_not_created |
 | fabric | `services/fabric` | existing |
 | ledger | `services/ledger` | existing |
@@ -391,7 +391,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`capability.webui_versions`, `capability.publisher_namespaces`
 
-**内部协议实现/协作端口**：`CapabilityProductService.PublishOfficialPackage`, `CapabilityProductService.ListWebuiVersions`, `CapabilityProductService.RegisterWebuiVersion`, `CapabilityProductService.SetWebuiVersionStatus`, `CapabilityProductService.GetBuildRuntimePolicy`, `CapabilityProductService.SetBuildRuntimePolicy`, `CapabilityProductService.ListPublisherNamespaces`, `CapabilityProductService.CreatePublisherNamespace`, `CapabilityProductService.RevokePublisherNamespace`, `RuntimeControlProductService.ListRuntimeVersions`, `RuntimeControlProductService.RegisterRuntimeVersion`, `RuntimeControlProductService.SetRuntimeVersionStatus`, `CapabilityCoordination.ResolveBuildInput`, `CapabilityCoordination.ResolvePublisherContract`, `CapabilityCoordination.AcquireReference`, `CapabilityCoordination.BindReference`, `CapabilityCoordination.ReleaseReference`
+**内部协议实现/协作端口**：`CapabilityProductService.PublishOfficialPackage`, `CapabilityProductService.ListWebuiVersions`, `CapabilityProductService.RegisterWebuiVersion`, `CapabilityProductService.SetWebuiVersionStatus`, `CapabilityProductService.ListPublisherNamespaces`, `CapabilityProductService.CreatePublisherNamespace`, `CapabilityProductService.RevokePublisherNamespace`, `RuntimeControlProductService.ListRuntimeVersions`, `RuntimeControlProductService.GetBuildRuntimePolicy`, `RuntimeControlProductService.SetBuildRuntimePolicy`, `RuntimeControlProductService.RegisterRuntimeVersion`, `RuntimeControlProductService.SetRuntimeVersionStatus`, `CapabilityCoordination.ResolveBuildInput`, `CapabilityCoordination.ResolvePublisherContract`, `CapabilityCoordination.AcquireReference`, `CapabilityCoordination.BindReference`, `CapabilityCoordination.ReleaseReference`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

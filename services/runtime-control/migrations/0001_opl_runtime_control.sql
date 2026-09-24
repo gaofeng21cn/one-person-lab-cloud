@@ -62,7 +62,6 @@ CREATE TABLE runtime_control.catalog_policies (
   effective_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT,
   UNIQUE (policy_version)
 );
 CREATE INDEX catalog_policies_effective ON runtime_control.catalog_policies (effective_at DESC, id DESC);

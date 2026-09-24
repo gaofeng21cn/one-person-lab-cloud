@@ -24,6 +24,8 @@ export const goModules = Object.freeze([
   "services/fabric",
   "services/ledger",
   "services/internal/postgresmigrate",
+  "services/internal/ownerstore",
+  "services/internal/ownerservice",
   "services/capability",
   "services/build",
   "services/runtime-control",
@@ -41,7 +43,10 @@ export const databaseFreeGoTestSpecs = Object.freeze([
   { cwd: "services/control-plane", run: "^TestWorkspaceSettlementTrend", packages: ["./internal/server"] },
   { cwd: "services/fabric", packages: ["./cmd/fabric", "./cmd/opl-tencent-provisioner", "./cmd/opl-node-image-retire", "./internal/http", "./internal/protectedresource"] },
   { cwd: "services/ledger", packages: ["./cmd/ledger", "./internal/http"] },
-  { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] }
+  { cwd: "services/internal/postgresmigrate", run: "^TestValidateTLS", packages: ["./..."] },
+  // The owner runtime's startup and Operation readback rules hold without a database;
+  // its PostgreSQL-gated readiness proof runs in the full lane.
+  { cwd: "services/internal/ownerservice", run: "^Test(Ready|Register|Operations|Operation|Start)", packages: ["./..."] }
 ]);
 
 export const localVerificationSteps = Object.freeze([
@@ -68,6 +73,15 @@ export const localVerificationSteps = Object.freeze([
 
 export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/internal/postgresmigrate", race: true },
+  // Each owner proves, against a real PostgreSQL server, that its own migration
+  // entrypoint installs its schema, refuses a differently named database, and leaves
+  // its runtime unable to reach another owner's schema.
+  { cwd: "services/internal/ownerservice" },
+  { cwd: "services/capability" },
+  { cwd: "services/build" },
+  { cwd: "services/runtime-control" },
+  { cwd: "services/workspace" },
+  { cwd: "services/serve" },
   { cwd: "services/ledger" },
   { cwd: "services/control-plane", timeout: "15m" },
   // The application replacement scenario has a 15-minute overall budget;
@@ -194,6 +208,10 @@ async function withTemporaryPostgres(callback) {
       PGDATABASE: "postgres",
       PGSSLMODE: "disable",
       OPL_POSTGRES_TESTS: "1",
+      // The owner isolation suites create roles and databases, which only an
+      // administrative connection may do; the temporary container's superuser is the
+      // one isolated authority for that.
+      OPL_OWNER_MIGRATION_TEST_ADMIN_DSN: `postgresql://postgres@127.0.0.1:${parseDockerPort(portResult.stdout)}/postgres?sslmode=disable`,
       OPL_CAPACITY_TESTS: "1",
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
     };
