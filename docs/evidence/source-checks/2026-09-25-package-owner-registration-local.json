@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "action": "Verify Runtime admission, three bound Build references and replayable Capability registration with real local BuildKit and Registry",
+  "recordedAt": "2026-09-24T21:11:47.283208+00:00",
+  "baseSha": "a163f782c7466afa10844ae4a36c46d25883a655",
+  "sourceSha": "991af79f5952a23288b7263c285776f4e5190568",
+  "sourceTree": "5e4b58413b37a76bac1dd56f1f57113f453c61b7",
+  "sourceFilesSha256": {
+    "packages/contracts/go/go.mod": "0079bfa6092c76d1692ff5ab97e410dc53555b318aa5508efbb3cf1de9a6b0aa",
+    "packages/contracts/go/go.sum": "ae8ebed493fd080eae59481a9a6ac9bcbb3c21de19c480bee7da2c385e76844b",
+    "packages/contracts/go/publisherjson/codec.go": "d7dbde8a1bba1f5b1abc42821fde7be2f0d02bbe283bbcce6adb8fafbde3c50d",
+    "packages/contracts/go/publisherjson/codec_test.go": "7ae021915e08be402fc980fcf6e19901e67758fab66bc312ab8977712f9822d6",
+    "packages/contracts/go/publisherjson/schema.go": "074f5f810034b63344f6cc8708227c36b74fa5b60425e981af7c994d8d44bcd8",
+    "packages/contracts/go/publisherjson/shape_generated.go": "7481c2edb14d2b9d286b474c74c511cb957a0c6f206fb0bd109e33d2d7bf070e",
+    "packages/contracts/proto/generate.sh": "8bed41dd840c46860d50dcb0cbb070935c41cc330c1c20337268ef42d81c7579",
+    "packages/contracts/proto/generate_publisher_shape.py": "30293da8fcb9e5a230af43da2723e8b7d8aca2d93e02eae828a2acf8c2e83c7d",
+    "services/build/go.mod": "4416fa0077adadaff3102feb750862270c989d8990a334b5b90ee829316621b0",
+    "services/build/internal/build/owner_chain_live_test.go": "23c8084accf9df78092205e5127a0d3e745aa1ac8af7c16c3b02b6e2c793ebc3",
+    "services/build/internal/build/runner.go": "d598ede10581bfdb55596d6e5e711351aa3451e4b254fa6c038d99a34ab55632",
+    "services/build/internal/build/runner_live_test.go": "cd90003bc0ab3a839cda50b8e17631f4846de96d46f4693d600031ebf1c4af30",
+    "services/build/internal/build/upload_live_test.go": "e86f2f777df0cdd8028c70cfee5ed9dc2acb4285c823990bd35a203d0875f936",
+    "services/build/internal/build/worker.go": "100326579f9f1502396ebc88c7155fecb3a0c8c9fa48194e25d65082c6402c09",
+    "services/capability/catalog/coordination.go": "c020920c2249fd369ce51ca17e76d9a349a36ee2eedecc69d7e48698b9644a6e",
+    "services/capability/catalog/objects.go": "6a6b3d0f12a9cbf36ebc6cfdee6e618ad20dc6ddfccab3759392b1dbe8f34a72",
+    "services/capability/catalog/read_catalog.go": "fe31c525407221075bf3b2934a5ee9059b765fac7b0f5dae2f4dd341773c413f",
+    "services/capability/catalog/registration_delivery.go": "eafb93a8a1f80421b286d85da0bff3ab19754a0b9cbe728e52d223ccbd53c273",
+    "services/capability/catalog/service.go": "6b1610685c16eba7cea5716812ad86263849e348d78b10509b63f7fe47370787",
+    "services/capability/cmd/server/main.go": "ddadad1f15465303bbd0b6f75bc30a9806aec73cc8d61a271ae630c7eea7c20b",
+    "services/capability/go.mod": "2454fbd7332b6eabcf3ea18230cd17202859ca330742c169710a75f0b087e3d6",
+    "services/capability/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "services/runtime-control/catalog/publisher_test.go": "5003df187d0920a306b5b8acfbd897dacb3beed1fce03151325a994c03855927",
+    "services/runtime-control/catalog/service.go": "50c58787b8d3089a2c408135ada551d5c1affc1aecc0a45287ccb4bdd36fd6ea",
+    "services/runtime-control/go.mod": "ed83632211196c61917b2bb57e4b8f115e519b98f37bc7c35745d4889808fe5a",
+    "services/runtime-control/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558"
+  },
+  "verification": {
+    "liveCommand": "npm run verify:package-to-oci",
+    "liveResult": "passed",
+    "liveArtifactDigest": "sha256:8ea58d57daff208457189c0d9a7891b8a37c26466ef6fa013d6e104838432889",
+    "recoveryDescriptorDigest": "sha256:598622aa296f4d78dce1e482e916104a06601913476da43260ad38579b73439f",
+    "fullCommand": "npm run verify:local:full",
+    "fullResult": "passed: 228 source tests, 114 browser tests, all required PostgreSQL modules with zero skips and Docker integration",
+    "finalFocusedRecheck": "Final missing-message rejection and revoked-input release handling were covered by contracts/catalog checks and a repeated real owner-chain run after the full gate had started. The full aggregate was not repeated for those narrow changes.",
+    "goVet": "Build, Capability and Runtime Control passed"
+  },
+  "proven": [
+    "Public publisher JSON examples decode to typed protobuf and encode to schema-valid public JSON; ECMA-262 path patterns reject traversal.",
+    "Real Capability multipart upload and real Runtime RegisterRuntimeVersion/SetBuildRuntimePolicy APIs use separate restricted owner databases.",
+    "Actual CreateBuild/ResolveBuildInput admit immutable owner-read inputs; CreateBuild replay retains one Job, three reference claims bind against Build commit readback.",
+    "Real BuildKit exports and Registry reads one immutable image. Capability registers one ready version and Build converges to succeeded.",
+    "Both consumer acknowledgements are lost after commit; duplicate deliveries converge to one version and zero pending Build/Capability deliveries.",
+    "Persisted pre-ack restart fixture recovers with the builder stopped; actual exported Package/WebUI file content and descriptor bytes agree."
+  ],
+  "notProven": [
+    "CloudIdentity and service peer identities are explicit isolated fixtures, not a live authentication or accepted-grant qualification.",
+    "Publisher namespace and approved WebUI catalog entries are seeded fixtures; their production admission APIs are not qualified.",
+    "The persisted pre-ack restart fixture is not a worker process killed during a real push.",
+    "Ledger consumer, authenticated publisher BFF commands and complete Console Package/build/artifact journey remain Cloud implementation/qualification obligations.",
+    "Protected Instance registry credentials/policy, production deployment and Product Release readiness."
+  ],
+  "logs": [
+    {
+      "path": "output/cloud625-local-20260925/cloud625-owner-chain-final.log",
+      "sha256": "d3d81f36e0b67e4272baec97a7a87cf81e8ba523abb84b310c0e182c1531e436",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-local-20260925/cloud625-owner-full.log",
+      "sha256": "9f30bc188ac76e752e0a617ea3ec8de4a094c5e47979f199929b8c335e886084",
+      "retention": "local ignored artifact"
+    }
+  ],
+  "temporaryResources": "Task-created loopback containers and anonymous volumes removed; no production resources used.",
+  "issue625Complete": false,
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false
+}
