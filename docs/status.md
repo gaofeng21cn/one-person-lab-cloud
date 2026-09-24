@@ -127,14 +127,45 @@ packages with zero skips, and Local-Docker integration. The append-only
 records the failed attempts, final pass, log digest, exact source SHA/tree, and
 scope limits.
 
-This proves Cloud source/local verification for the candidate test correction.
-It does not prove the real Package upload → immutable input admission →
-BuildKit/registry execution → digest readback chain, because the current
-implementation still has an open ZIP-package versus Build tar extraction
-mismatch and no repository-native isolated registry/object-store/BuildKit
-fault-injection harness. Issue #625 remains open for that product path,
-restart/lost-ack replay, production-like registry qualification, and any
-Instance evidence.
+This receipt proves the stated historical Cloud source/local checks. It does not
+prove the complete authenticated Package-to-CapabilityVersion journey.
+
+### Isolated Package upload and BuildKit execution
+
+`npm run verify:package-to-oci` now exercises Capability's gRPC Package/upload
+handlers and signed HTTP multipart data plane against its own PostgreSQL schema,
+then sends the confirmed ZIP bytes through the production Build runner to a real
+isolated BuildKit and Registry. Build consumes ZIP packages; only the approved
+recipe remains a tar artifact. Capability's idempotency lock uses an unambiguous
+PostgreSQL text key, and completed uploads reject conflicting part identities.
+The Capability process starts the same restricted data handler used by the test.
+
+The full local gate also exposed a retained Fabric adapter defect: repository
+list filtering omitted digest-only Docker images and could report premature
+retirement. Fabric now inspects the exact immutable image reference, verifies
+its identity and treats unavailable or malformed readback as unknown. The real
+Docker application replacement/retirement scenario and focused failure cases
+cover that correction; it does not authorize any Instance resource cleanup.
+
+The live check verifies actual Package and WebUI files in the exported image,
+manifest/config digest readback, and Build's persisted recovery from a pre-ack
+`building` state with the builder stopped. A registry outage retains
+`needs_attention`; recovery creates one artifact and one Outbox event with
+matching descriptor bytes. Multipart retries, completion retries, conflicting
+completion, corrupt bytes, and cross-tenant reads are also exercised.
+
+This is a bounded local execution proof. Publisher/CloudIdentity authentication
+is a test fixture; Runtime/WebUI selection and the accepted Build input are
+injected fixtures. The recovery fixture recreates the durable pre-ack state; it
+does not kill a live CreateBuild worker during a registry push. Complete
+ResolveBuildInput/claim binding, registration acknowledgement replay, Ledger and
+BFF/Console readback remain unqualified. These are Cloud-local obligations, not
+all external Instance blockers. Issue #625 remains open.
+
+[Local execution receipt](./evidence/source-checks/2026-09-25-package-buildkit-local.json)
+records the exact tested source files, commands, artifact and descriptor digests,
+and remaining coverage. [Reproduction and configuration](./runtime/package-buildkit-local.md)
+describe the isolated test and the new data-plane listener.
 
 ## Conclusion
 

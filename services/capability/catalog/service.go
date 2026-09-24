@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -136,8 +137,8 @@ func (s *Service) command(ctx context.Context, c *api.CallContext, name string, 
 	if scope == "" {
 		scope = "platform"
 	}
-	key := scope + "\x00" + c.ActorId + "\x00" + name + "\x00" + c.IdempotencyKey
-	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, key); e != nil {
+	key, _ := json.Marshal([]string{scope, c.ActorId, name, c.IdempotencyKey})
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, string(key)); e != nil {
 		return dbError(e)
 	}
 	input := ownerstore.IdempotencyInput{ID: id("idem"), TenantScope: scope, ActorScope: c.ActorId, OperationName: name, IdempotencyKey: c.IdempotencyKey, RequestSHA256: strings.TrimPrefix(digest(jsonBytes(request)), "sha256:")}

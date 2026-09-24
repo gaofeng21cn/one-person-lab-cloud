@@ -726,7 +726,12 @@ test("closing and returning resumes the original pending purchase without anothe
       assert.equal(await page.getByRole("heading", { name: "开通失败", exact: true }).count(), 0);
       assert.equal(purchaseWrites, 0);
 
+      const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/workspace-launches");
       await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+      await (await refreshed).finished();
+      // The heading changes before the async refresh schedules its next poll.
+      // Let that completion settle before advancing a paused browser clock.
+      await page.clock.runFor(1);
       await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
       demo.state.launches = [{ ...operation, status: "succeeded", phase: "succeeded", workspaceId: "ws-1" }];
       await page.clock.fastForward(10_000);

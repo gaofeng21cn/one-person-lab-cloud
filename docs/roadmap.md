@@ -29,12 +29,15 @@ The owner-process implementation is present on canonical `main` through PR
 This is a partial foundation, not a claim that the complete product delivery
 chain is finished. Open work in dependency order:
 
-1. Turn the existing Capability and Build process shells into a real, replayable
-   Package-to-OCI path, including the package-format contract and the isolated
-   registry/object-store/BuildKit fault-injection harness.
-2. Prove worker restart, lost push acknowledgement, duplicate event delivery,
-   and owner readback from a clean isolated baseline; retain exact source-check
-   evidence for each result.
+1. Join the now-proven Capability multipart upload and real BuildKit/Registry
+   execution through actual Runtime/WebUI owner selection, CreateBuild admission
+   and all three bound claims. The [local execution evidence](./status.md#isolated-package-upload-and-buildkit-execution)
+   uses publisher/authentication and accepted-input fixtures at those boundaries.
+2. Prove the complete registered CapabilityVersion result, duplicate event and
+   registration acknowledgement delivery, actual worker termination during
+   export, Ledger evidence, and authenticated BFF/Console readback. Persisted
+   Build recovery and registry-read uncertainty already have isolated evidence;
+   they do not replace these remaining end-to-end cases.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.
@@ -48,13 +51,7 @@ proceed in parallel only where their owners and file write sets do not overlap.
 Changes to the shared contract, a single migration sequence, or shared routers
 remain serialized.
 
-The next implementation should turn the existing Capability and Build process
-shells into a real, replayable Package-to-OCI path. Runtime Release admission,
-Ledger evidence, and independent Fabric provider work can proceed in parallel
-only where their owners and file write sets do not overlap. Changes to the shared
-contract, a single migration sequence, or shared routers are serialized. The
-broader Workspace-to-Fabric-to-Serve deployment path follows once immutable build
-artifacts and the required owner readbacks are real.
+
 
 
 The sections below describe the **current implementation** lane. They remain

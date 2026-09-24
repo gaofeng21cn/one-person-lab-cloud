@@ -31,6 +31,7 @@
     "build:whitepaper": "node --experimental-strip-types scripts/build-opl-cloud-whitepaper.ts",
     "validate:product-boundary": "node tools/validate-product-boundary.mjs",
     "verify:local": "node tools/verify-local.ts",
+    "verify:package-to-oci": "cd services/build && go test -tags=livebuild ./internal/build -run TestLivePackageBuildAndRestartReadback -count=1 -v",
     "verify:local:full": "node tools/verify-local.ts --with-postgres",
     "qualify:local:workspace": "node tools/local-workspace-qualification.ts",
     "validate:production-manifest": "node tools/validate-production-manifest.ts"
