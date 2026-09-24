@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "action": "Verify authenticated owner-process and Console BFF foundation on the proposed Cloud source",
   "pr": 626,
-  "testedSourceSha": "c021b71a3f2a35f4763c1d3aaee6b90b2674bd44",
-  "testedTree": "baabe16b3cefbd3e632803273cf8aa8c91ba5014",
-  "startedAt": "2026-09-24T12:02:41Z",
-  "finishedAt": "2026-09-24T12:08:16Z",
+  "testedSourceSha": "eb325c08e8ca6d1154a53dd6c94423707180f72d",
+  "testedTree": "d081d140054629ed76b9a850f5ac1bfb40f735de",
+  "startedAt": "2026-09-24T12:27:16Z",
+  "finishedAt": "2026-09-24T12:32:55Z",
   "command": "npm run verify:local:full",
   "exitCode": 0,
   "sourceTests": 228,
@@ -25,11 +25,37 @@
   "requiredPostgresSkips": 0,
   "localDockerIntegration": "passed",
   "log": {
-    "localPath": "output/pr626-final-acceptance-20260924/verify-local-full.log",
-    "sha256": "232d316173ace252c1a8f0dceb24697c245520d276f8138a007e2617d72eeeb1",
+    "localPath": "output/pr626-final-acceptance-20260924/verify-local-full-retry.log",
+    "sha256": "9f66ccf11f9a10de999388927920b990be9f112ed1549a59fb0340f442ccd654",
     "retention": "local ignored artifact; not a deployment or Instance receipt"
   },
   "rootCauseOfPriorFailedRun": "Fabric test fixture did not accept the actual delete-owner readback action read_storage_for_delete; the earlier connection-refused attribution was not the complete diagnosis. The fixture now handles that existing production action without relaxing the no-redispatch assertion.",
   "scope": "Cloud source checks, isolated PostgreSQL and Local-Docker fixture only. Product handlers, Package-to-OCI, multi-process end-to-end delivery, Instance qualification, production deployment and release are not proven.",
-  "productionDeploymentDispatched": false
+  "productionDeploymentDispatched": false,
+  "result": "passed",
+  "verificationAttempts": [
+    {
+      "testedSourceSha": "c021b71a3f2a35f4763c1d3aaee6b90b2674bd44",
+      "startedAt": "2026-09-24T12:02:41Z",
+      "finishedAt": "2026-09-24T12:08:16Z",
+      "exitCode": 0,
+      "logSha256": "232d316173ace252c1a8f0dceb24697c245520d276f8138a007e2617d72eeeb1"
+    },
+    {
+      "testedSourceSha": "eb325c08e8ca6d1154a53dd6c94423707180f72d",
+      "startedAt": "2026-09-24T12:20:42Z",
+      "finishedAt": "2026-09-24T12:23:55Z",
+      "exitCode": 1,
+      "failure": "One browser test timed out waiting for navigation; the same focused test passed independently, so this run is retained as a failed diagnostic attempt, not acceptance evidence.",
+      "logSha256": "91a5d333e36a0da13d05b2a2e22c4cda22e35cc13dce9c387d86ac9e95fa162c"
+    },
+    {
+      "testedSourceSha": "eb325c08e8ca6d1154a53dd6c94423707180f72d",
+      "startedAt": "2026-09-24T12:27:16Z",
+      "finishedAt": "2026-09-24T12:32:55Z",
+      "exitCode": 0,
+      "logSha256": "9f66ccf11f9a10de999388927920b990be9f112ed1549a59fb0340f442ccd654"
+    }
+  ],
+  "notes": "The final exact-head run passed after the single fixture correction. One intervening browser-suite attempt had a transient navigation timeout; its failure and the successful retry are both retained above."
 }

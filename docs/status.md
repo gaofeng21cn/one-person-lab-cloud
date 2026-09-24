@@ -151,13 +151,14 @@ Executed evidence in this checkout:
 - Development plan regenerated and revalidated in this checkout: 32 work
   packages, 17 features, 108 REST operations, 101 tables, 172 internal RPCs;
   five plan-validator tests pass.
-- At exact proposed source `c021b71a`, `npm run verify:local:full` passes
-  228 source tests, 114 browser-suite tests, builds, all required PostgreSQL
-  modules with zero skips, and Local-Docker integration. The prior failed
-  Fabric run was traced to a test fixture missing the actual
-  `read_storage_for_delete` action; the production path was not changed.
-  [Cloud source-check receipt](./evidence/source-checks/2026-09-24-owner-foundation-local-verification.json)
-  binds the tested tree, UTC run interval, module counts and local log digest.
+- At exact proposed source `eb325c08`, the final `npm run verify:local:full`
+  run passes 228 source tests, 114 browser-suite tests, builds, all required
+  PostgreSQL modules with zero skips, and Local-Docker integration. The prior
+  failed Fabric run was traced to a test fixture missing the actual
+  `read_storage_for_delete` action; the production path was not changed. One
+  intervening browser-suite timeout and the successful exact-head retry remain
+  recorded as separate attempts in the [Cloud source-check receipt](./evidence/source-checks/2026-09-24-owner-foundation-local-verification.json),
+  which binds the tested tree, UTC run interval, module counts and log digests.
   This is not Instance or production evidence.
 
 Still not implemented, and not claimed: every domain product handler
