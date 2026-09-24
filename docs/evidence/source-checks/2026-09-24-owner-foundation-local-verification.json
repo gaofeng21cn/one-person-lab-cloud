@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "action": "Verify authenticated owner-process and Console BFF foundation on the proposed Cloud source",
+  "pr": 626,
+  "testedSourceSha": "c021b71a3f2a35f4763c1d3aaee6b90b2674bd44",
+  "testedTree": "baabe16b3cefbd3e632803273cf8aa8c91ba5014",
+  "startedAt": "2026-09-24T12:02:41Z",
+  "finishedAt": "2026-09-24T12:08:16Z",
+  "command": "npm run verify:local:full",
+  "exitCode": 0,
+  "sourceTests": 228,
+  "browserSuiteTests": 114,
+  "postgresModulePackagesPassed": {
+    "services/internal/postgresmigrate": 1,
+    "services/internal/ownerservice": 1,
+    "services/capability": 1,
+    "services/build": 1,
+    "services/runtime-control": 1,
+    "services/workspace": 1,
+    "services/serve": 1,
+    "services/ledger": 3,
+    "services/control-plane": 8,
+    "services/fabric": 6
+  },
+  "requiredPostgresSkips": 0,
+  "localDockerIntegration": "passed",
+  "log": {
+    "localPath": "output/pr626-final-acceptance-20260924/verify-local-full.log",
+    "sha256": "232d316173ace252c1a8f0dceb24697c245520d276f8138a007e2617d72eeeb1",
+    "retention": "local ignored artifact; not a deployment or Instance receipt"
+  },
+  "rootCauseOfPriorFailedRun": "Fabric test fixture did not accept the actual delete-owner readback action read_storage_for_delete; the earlier connection-refused attribution was not the complete diagnosis. The fixture now handles that existing production action without relaxing the no-redispatch assertion.",
+  "scope": "Cloud source checks, isolated PostgreSQL and Local-Docker fixture only. Product handlers, Package-to-OCI, multi-process end-to-end delivery, Instance qualification, production deployment and release are not proven.",
+  "productionDeploymentDispatched": false
+}
