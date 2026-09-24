@@ -1691,7 +1691,7 @@ func TestPostgresDestroyStorageVolumeNeverRedispatchesDispatchUncertainTencentMu
 		case "destroy_storage_volume":
 			destroyActions.Add(1)
 			return provisionerResponse{}, errors.New("Tencent destroy response unavailable")
-		case "sync_storage_volume":
+		case "sync_storage_volume", "read_storage_for_delete":
 			readbackCalls.Add(1)
 			if authoritativeAbsence.Load() {
 				return provisionerResponse{
