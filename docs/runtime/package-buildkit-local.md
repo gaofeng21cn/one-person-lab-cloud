@@ -1,7 +1,8 @@
 # Isolated Package / BuildKit verification
 
 Run `npm run verify:package-to-oci` from a clean Cloud checkout with Go, Docker,
-Buildx and a running local Docker engine. The command builds only test fixtures
+Buildx, the repository Node dependencies, Playwright Chromium and a running local
+Docker engine. The command builds only test fixtures
 and writes only disposable loopback Registry, BuildKit and PostgreSQL containers.
 It uses no Instance environment, customer provider credentials or public push.
 
@@ -15,23 +16,35 @@ Containers and their anonymous volumes are removed at test exit.
 
 The test uses real Capability gRPC handlers, its restricted runtime database
 role and the same HTTP data handler wired by `services/capability/cmd/server`.
-CloudIdentity and peer identity decisions are test fixtures. After digest-checked
-upload, Runtime admission and default policy selection use real owner APIs.
-CreateBuild resolves the exact Package/WebUI/Runtime input, acquires and binds
-three claims against Build commit readback, and runs the production Build runner.
-A filesystem export verifies actual Package and WebUI content. Build and
-Capability each lose one post-commit registration acknowledgement; retries must
-leave one ready CapabilityVersion and zero pending deliveries between them.
-Registry read failures and a reopened Build database separately exercise the
-worker's unknown/recovery transitions while the builder is stopped.
+CloudIdentity and peer identity decisions are test fixtures. The test exercises
+actual same-origin BFF guards (session, CSRF, action/resource authorization,
+idempotency and authorization-context forwarding), then real Capability and
+Runtime APIs and separate owner stores. A production Console build is driven by
+Playwright from the Workspace page's publisher link to ZIP upload, Build creation,
+ready-version readback, desktop/mobile rendering and reload recovery.
 
-The publisher namespace and approved WebUI entry are seeded fixtures. This
-command does **not** qualify their admission APIs, live identity/grant decisions,
-a worker process killed during push, Ledger delivery, publisher BFF commands,
-the complete Console journey, a protected Instance or release readiness. It must
-not close #625 by itself. Those gaps are owned by [the roadmap](../roadmap.md).
+Build and Capability each lose post-commit acknowledgements; Ledger consumes the
+original upload/build/registration events through authenticated peer tokens and
+its existing PostgreSQL receipt store. Replays must leave one result and no
+pending deliveries. Forged producers and changed event bytes are rejected.
 
-The shared publisher JSON codec is generated from the canonical schema vocabulary
+The actual worker runs in a child OS process. A test-only command wrapper runs
+real Docker/BuildKit export, then withholds exporter exit acknowledgement. After
+the Registry manifest is read back while the Job is still building, the test
+kills the worker process group. A fresh worker with an unusable builder must
+recover the original digest and register one version without exporting again.
+This proves the post-commit acknowledgement-loss boundary, not a mid-layer
+network partition. A separate persisted-state fixture still tests registry-read
+outage and recovery with BuildKit stopped.
+
+The shell login/CloudIdentity decisions, publisher namespace and approved WebUI
+are explicit fixtures. `services/gateway-integration` remains the canonical
+planned CloudIdentity owner: its absence is a Cloud implementation gap, not an
+external or Instance blocker. This command does not qualify real identity/grant
+issuance, publisher/WebUI admission, production credentials/TLS/registry policy,
+a protected Instance or release readiness.
+
+The shared public JSON codec is generated from the canonical schema vocabulary
 with `python3 packages/contracts/proto/generate_public_json_shape.py` (also called
 by the existing protobuf generation entrypoint). It serializes owner-created
 public descriptors; it does not claim to reproduce an external publisher's
@@ -56,3 +69,21 @@ PackageVersion with that immutable object identity. It exposes no object list,
 write or deletion API. Build recomputes the object digest and length before
 extracting ZIP entries. Production ingress and Secret distribution remain
 Instance responsibilities; changing this source does not deploy that listener.
+
+## Publisher and Ledger process wiring
+
+The Console publisher entry is available from Workspaces at `/console/publisher`.
+Its same-origin `/api/v2` requests must reach Console BFF. The existing BFF
+CloudIdentity and Capability/Build peer configuration supplies authority; browser
+actor/tenant headers and body fields are not accepted as identity. Upload parts
+use only the owner-issued signed PUT permit, omit browser credentials, reject
+redirects and verify the returned checksum identity. Only `/parts` permits
+credentialless CORS and exposes its ETag; service-only object reads gain no CORS.
+
+Ledger retains its HTTP `LEDGER_ADDR` listener. Set `OPL_LEDGER_ADDR` to enable
+the typed domain Inbox on a separate listener, with `DATABASE_URL`, existing
+`OPL_GRPC_*` certificate settings and `OPL_LEDGER_PEER_TOKENS` entries for Build
+and Capability. Those producers use the matching Ledger address and their
+approved `OPL_LEDGER_TOKEN`. Capability now requires this Ledger peer just as
+Build already did. All configuration comes from the existing approved stores;
+no Secret or deployment is created by this source change.

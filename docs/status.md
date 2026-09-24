@@ -175,13 +175,39 @@ plus final focused rechecks. The earlier
 [local execution receipt](./evidence/source-checks/2026-09-25-package-buildkit-local.json)
 remains historical evidence for its own source.
 
-This remains bounded local evidence. CloudIdentity/peer identities, the publisher
-namespace and approved WebUI catalog entry are fixtures. Live worker termination
-during push, the real accepted-grant path, publisher BFF commands, Ledger delivery
-and the complete Console journey remain unqualified Cloud obligations. Instance
-adoption and release readiness are separate. Issue #625 remains open.
-[Reproduction and configuration](./runtime/package-buildkit-local.md) describes
-the command, its fixtures and the data-plane listener.
+The latest [publisher/Ledger/process-interruption receipt](./evidence/source-checks/2026-09-25-publisher-ledger-worker-local.json)
+adds the actual Console publishing journey through authenticated BFF handlers,
+Capability upload, Build admission and real BuildKit/Registry execution. The
+Workspace page exposes the publisher entry without changing the four primary
+customer navigation tasks. The browser verifies the same ready version after
+reload; CSRF, forged identity and cross-tenant rejection are covered. Public
+HTTP DTOs use the shared canonical API/publisher JSON codec.
+
+Ledger now consumes upload, Build confirmation/failure and version-registration
+events through its authenticated gRPC Inbox and existing receipt store. Each
+consumer retries independently. Lost acknowledgements, duplicate delivery,
+producer mismatch and conflicting event identity are verified with real
+PostgreSQL. Generic receipt HTTP writes cannot forge these domain event types.
+
+A separate OS worker is also killed after the real exporter commits to Registry
+but before the worker receives exporter completion. A new worker and database
+connection recover the original digest and register exactly one artifact/event/
+version without a second export. This replaces the former process-interruption
+coverage gap; it does not claim a mid-layer network-partition test.
+
+The final full-local gate passed: 228 source tests, 114 browser-suite tests,
+all required PostgreSQL modules with zero skips, and Docker integration. The
+additional real browser/owner-chain test passed with inspected desktop/mobile
+screenshots. Earlier receipts remain bound to their historical source.
+
+CloudIdentity decisions and the publisher/WebUI prerequisites are still explicit
+fixtures. The canonical `services/gateway-integration` CloudIdentity module is
+planned but not implemented here, so real session/grant issuance remains a Cloud
+implementation obligation, not an external blocker. The BFF and owner handlers
+fail closed when that authority is unavailable. Issue #625 remains open for this
+unqualified identity/admission boundary; no production or Instance qualification
+is claimed. [Reproduction and configuration](./runtime/package-buildkit-local.md)
+describes the local proof and required process settings.
 
 ## Conclusion
 
