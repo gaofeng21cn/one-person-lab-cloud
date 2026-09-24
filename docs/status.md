@@ -195,10 +195,10 @@ connection recover the original digest and register exactly one artifact/event/
 version without a second export. This replaces the former process-interruption
 coverage gap; it does not claim a mid-layer network-partition test.
 
-The final full-local gate passed: 228 source tests, 114 browser-suite tests,
+The full-local gate passed: 228 source tests, 114 browser-suite tests,
 all required PostgreSQL modules with zero skips, and Docker integration. The
 additional real browser/owner-chain test passed with inspected desktop/mobile
-screenshots. Earlier receipts remain bound to their historical source.
+screenshots. A final [HTTP contract-alignment receipt](./evidence/source-checks/2026-09-25-publisher-public-api-alignment.json) records focused rechecks for the canonical session path, CSRF header, response codes and Error shape. Earlier receipts remain bound to their historical source.
 
 CloudIdentity decisions and the publisher/WebUI prerequisites are still explicit
 fixtures. The canonical `services/gateway-integration` CloudIdentity module is
