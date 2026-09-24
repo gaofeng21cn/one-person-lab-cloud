@@ -74,6 +74,8 @@ func allowedIdentity() *fakeIdentity {
 		decision: &api.AuthorizationDecision{
 			Result:        api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
 			Issuer:        api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
+			ActorId:       "actor-1",
+			Scope:         &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
 			Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,
 			AudienceOwner: api.OwnerEnum_OWNER_ENUM_WORKSPACE,
 			Resource:      &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: ptr("ws-1")},

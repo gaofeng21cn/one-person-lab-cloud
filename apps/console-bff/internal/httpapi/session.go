@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/requestcontext"
@@ -100,10 +102,13 @@ func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, calle
 	if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
 		return nil, fmt.Errorf("CloudIdentity denied %s on %s: %w", action, resource.GetId(), ErrAuthorizationRequired)
 	}
+	if decision.GetActorId() != caller.Session.GetActorId() || !proto.Equal(decision.GetScope(), request.GetScope()) {
+		return nil, fmt.Errorf("authorization is for a different actor or scope: %w", ErrAuthorizationRequired)
+	}
 	if decision.GetAction() != action || decision.GetAudienceOwner() != audienceOwner {
 		return nil, fmt.Errorf("authorization covers a different action or audience: %w", ErrAuthorizationRequired)
 	}
-	if expected := strings.TrimSpace(resource.GetId()); expected != "" && decision.GetResource().GetId() != expected {
+	if expected := strings.TrimSpace(resource.GetId()); expected != "" && (decision.GetResource().GetKind() != resource.GetKind() || decision.GetResource().GetId() != expected) {
 		return nil, fmt.Errorf("authorization covers a different resource: %w", ErrAuthorizationRequired)
 	}
 	call := &api.CallContext{

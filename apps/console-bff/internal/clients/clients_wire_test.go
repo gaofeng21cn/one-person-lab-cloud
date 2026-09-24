@@ -170,3 +170,43 @@ func makeClientCertificate(t *testing.T, ca *x509.Certificate, caKey *rsa.Privat
 	}
 	return key, cert
 }
+
+func TestClientsRejectUntrustedServerCertificate(t *testing.T) {
+	_, trustedClientTLS := testClientTLSConfigs(t)
+	rogueServerTLS, _ := testClientTLSConfigs(t)
+	serverCredentials, err := rogueServerTLS.ServerOption()
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcServer := grpc.NewServer(serverCredentials)
+	api.RegisterWorkspaceProductServiceServer(grpcServer, &workspaceWireServer{})
+	go grpcServer.Serve(listener)
+	t.Cleanup(func() {
+		grpcServer.Stop()
+		listener.Close()
+	})
+
+	upstreams, err := Dial(Config{
+		Addresses:    map[owneridentity.Owner]string{owneridentity.Workspace: listener.Addr().String()},
+		ServiceToken: "bff-service-token-012345678901234567890123",
+		TLS:          trustedClientTLS,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upstreams.Close()
+	call := &api.CallContext{
+		RequestId: "request-untrusted-server",
+		ActorId:   "actor-1",
+		Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{
+			Tenant: &api.TenantScope{TenantId: "tenant-1"},
+		}},
+	}
+	if _, err := upstreams.Workspace(requestcontext.WithCallContext(context.Background(), call), "workspace-1"); err == nil {
+		t.Fatal("client accepted a server certificate signed by an untrusted CA")
+	}
+}
