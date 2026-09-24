@@ -99,15 +99,11 @@ func (r *applicationRuntimeDockerRunner) Run(_ context.Context, _ []byte, args .
 		}
 	case "image":
 		image := args[len(args)-1]
-		if args[1] == "ls" {
-			rows := []string{}
-			for ref, present := range r.images {
-				repository, digest, _ := strings.Cut(ref, "@")
-				if present && repository == image {
-					rows = append(rows, string(mustJSON(map[string]string{"ID": digest, "Digest": digest})))
-				}
+		if args[1] == "inspect" {
+			if r.images[image] {
+				return mustJSON([]dockerApplicationImageInspect{{ID: "sha256:" + strings.Repeat("a", 64), RepoDigests: []string{image}}}), nil
 			}
-			return []byte(strings.Join(rows, "\n")), nil
+			return []byte("Error response from daemon: No such image: " + image), fmt.Errorf("image absent")
 		}
 		if args[1] == "rm" {
 			delete(r.images, image)

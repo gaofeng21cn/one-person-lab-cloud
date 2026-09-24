@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"opl-cloud/packages/contracts/go/api"
 	"opl-cloud/services/internal/ownerstore"
@@ -152,10 +153,17 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 			return e
 		}
 		if u.Status == api.UploadSessionStatusEnum_UPLOAD_SESSION_STATUS_ENUM_COMPLETED {
-			var saved []byte
-			e = tx.QueryRowContext(ctx, `SELECT result FROM capability.operations WHERE resource_id=$1 AND kind='complete_upload' ORDER BY created_at LIMIT 1`, u.PackageVersionId).Scan(&saved)
+			var saved, accepted []byte
+			e = tx.QueryRowContext(ctx, `SELECT result,accepted_input FROM capability.operations WHERE resource_id=$1 AND kind='complete_upload' ORDER BY created_at LIMIT 1`, u.PackageVersionId).Scan(&saved, &accepted)
 			if e != nil {
 				return dbError(e)
+			}
+			original := &api.CompleteUploadRequest{}
+			if e = protojson.Unmarshal(accepted, original); e != nil {
+				return dbError(e)
+			}
+			if !proto.Equal(original, r.GetBody()) {
+				return status.Error(codes.AlreadyExists, "completed upload has different parts")
 			}
 			return protojson.Unmarshal(saved, out)
 		}

@@ -2,6 +2,8 @@ package build
 
 import (
 	"archive/tar"
+	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -293,6 +295,64 @@ func (r *Runner) packageBytes(ctx context.Context, o *api.SourceObjectReference)
 	return b, nil
 }
 
+// extractPackage consumes the ZIP bytes admitted by Capability. The approved
+// build recipe remains a separate tar artifact; formats are never auto-detected.
+func extractPackage(data []byte, directory string, maxBytes int64, maxFiles int) error {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return errors.New("package must be a valid ZIP archive")
+	}
+	if len(zr.File) > maxFiles {
+		return errors.New("package entry limit exceeded")
+	}
+	seen := map[string]bool{}
+	var total int64
+	for _, entry := range zr.File {
+		name := strings.TrimSuffix(entry.Name, "/")
+		if name == "" || name == "." || path.IsAbs(name) || strings.ContainsAny(name, "\\:") || path.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") || seen[name] {
+			return errors.New("unsafe or duplicate package path")
+		}
+		seen[name] = true
+		if entry.UncompressedSize64 > uint64(maxBytes-total) {
+			return errors.New("package expansion limit exceeded")
+		}
+		total += int64(entry.UncompressedSize64)
+		target := filepath.Join(directory, filepath.FromSlash(name))
+		if entry.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if !entry.Mode().IsRegular() {
+			return errors.New("package links and special files are forbidden")
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		// Preserve only the publisher's executable bit, never special permissions.
+		mode := os.FileMode(0644)
+		if entry.Mode()&0111 != 0 {
+			mode = 0755
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		if err != nil {
+			reader.Close()
+			return err
+		}
+		n, copyErr := io.Copy(out, io.LimitReader(reader, int64(entry.UncompressedSize64)+1))
+		readErr, closeErr := reader.Close(), out.Close()
+		if copyErr != nil || readErr != nil || closeErr != nil || uint64(n) != entry.UncompressedSize64 {
+			return errors.New("package entry integrity failed")
+		}
+	}
+	return nil
+}
+
 // extract admits only regular files and directories. No links, devices, duplicate
 // path overwrite, absolute paths, or expansion outside the explicit resource cap.
 func extract(data []byte, directory string, maxBytes int64, maxFiles int) error {
@@ -381,7 +441,7 @@ func (r *Runner) Execute(ctx context.Context, jobID, repository string, in *api.
 	if err = os.Mkdir(packageDir, 0700); err != nil {
 		return ExecuteResult{Err: err}
 	}
-	if err = extract(b, packageDir, r.MaxExpandedBytes, r.MaxFiles); err != nil {
+	if err = extractPackage(b, packageDir, r.MaxExpandedBytes, r.MaxFiles); err != nil {
 		return ExecuteResult{Err: err}
 	}
 	log("verified immutable package bytes and bounded archive")

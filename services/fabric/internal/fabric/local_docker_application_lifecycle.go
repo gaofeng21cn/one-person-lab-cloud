@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	contracts "opl-cloud/packages/contracts/go"
 	"strings"
 )
@@ -155,26 +154,31 @@ func (p *LocalDockerProvider) applicationImagePresent(ctx context.Context, image
 	if !contracts.ValidWorkspaceImageReference(imageRef) {
 		return false, errors.New("workspace_application_image_retirement_identity_invalid")
 	}
-	repository, digest, _ := strings.Cut(imageRef, "@")
-	if tag := strings.LastIndex(repository, ":"); tag > strings.LastIndex(repository, "/") {
-		repository = repository[:tag]
-	}
-	// Docker image ls takes a repository/tag filter, not an OCI digest
-	// reference. Listing repo@digest silently returns no rows even when present.
-	raw, err := p.runner.Run(ctx, nil, "image", "ls", "--digests", "--no-trunc", "--format", "{{json .}}", repository)
+	// Repository-filtered image lists omit digest-only images on Docker's
+	// containerd store. Inspect the exact immutable reference instead.
+	raw, err := p.runner.Run(ctx, nil, "image", "inspect", imageRef)
 	if err != nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.TrimSpace(line) == "Error response from daemon: No such image: "+imageRef {
+				return false, nil
+			}
+		}
 		return false, err
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	for {
-		var row struct{ ID, Digest string }
-		if err := decoder.Decode(&row); errors.Is(err, io.EOF) {
-			return false, nil
-		} else if err != nil || row.ID == "" || row.Digest == "" {
-			return false, errors.New("workspace_application_image_inventory_invalid")
-		}
-		if row.Digest == digest {
+	var images []dockerApplicationImageInspect
+	if err = json.Unmarshal(raw, &images); err != nil || len(images) != 1 || images[0].ID == "" {
+		return false, errors.New("workspace_application_image_inventory_invalid")
+	}
+	for _, ref := range images[0].RepoDigests {
+		if ref == imageRef {
 			return true, nil
 		}
 	}
+	return false, errors.New("workspace_application_image_identity_mismatch")
+}
+
+// dockerApplicationImageInspect is the Docker API readback at this adapter.
+type dockerApplicationImageInspect struct {
+	ID          string   `json:"Id"`
+	RepoDigests []string `json:"RepoDigests"`
 }

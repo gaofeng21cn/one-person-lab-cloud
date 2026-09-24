@@ -2,16 +2,17 @@
 //
 // It opens this owner's own database, installs this owner's own migrations,
 // registers the shared owner Operation readback group, and reports SERVING only
-// when its declared dependencies and product groups are actually ready. The
-// CapabilityProductService domain handlers are not implemented yet, so this process reports
-// NOT_SERVING with that exact reason instead of claiming readiness it does not
-// have or exiting.
+// when its declared dependencies and product groups are actually ready.
+// Product handlers and the restricted object data plane start only when their
+// explicit owner configuration is available.
 package main
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -79,7 +80,33 @@ func main() {
 		service.Runtime = api.NewRuntimeControlProductServiceClient(runtimeConn)
 		service.Build = api.NewBuildCoordinationClient(buildConn)
 		service.Usage = api.NewClaimUsageReadbackClient(buildConn)
-		return service.Register(server)
+		if err := service.Register(server); err != nil {
+			return err
+		}
+		handler, err := service.DataHandler(os.Getenv("OPL_CAPABILITY_OBJECT_TOKEN"))
+		if err != nil {
+			return err
+		}
+		address := os.Getenv("OPL_CAPABILITY_OBJECT_LISTEN_ADDR")
+		if address == "" {
+			return fmt.Errorf("Capability object listener is required")
+		}
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			return err
+		}
+		dataServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+		if err := server.TrackCloser(dataServer); err != nil {
+			listener.Close()
+			return err
+		}
+		go func() {
+			if err := dataServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+				log.Print("Capability data plane stopped unexpectedly")
+				stop()
+			}
+		}()
+		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
