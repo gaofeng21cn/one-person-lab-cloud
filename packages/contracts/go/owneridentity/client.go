@@ -16,3 +16,13 @@ func OutboundInterceptor(owner Owner, token string) grpc.UnaryClientInterceptor 
 		return invoker(outgoing, method, request, reply, conn, opts...)
 	}
 }
+
+// OutboundServiceInterceptor presents a non-domain process identity, such as
+// the Console BFF, on every outbound call.
+func OutboundServiceInterceptor(service ServiceIdentity, token string) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, request, reply any, conn *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		outgoing := metadata.AppendToOutgoingContext(ctx, PeerHeader, service.String())
+		outgoing = metadata.AppendToOutgoingContext(outgoing, TokenHeader, token)
+		return invoker(outgoing, method, request, reply, conn, opts...)
+	}
+}

@@ -2,19 +2,26 @@ package ownerservice
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/transporttls"
 	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
@@ -60,12 +67,13 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 	}
 	token := "0123456789abcdef0123456789abcdef"
 	if _, err := database.DB().ExecContext(ctx, `INSERT INTO serve.operations
-		(id, actor_id, kind, resource_id, status, stage, observation_result, request_id, accepted_input)
-		VALUES ('op-wire-proof','actor-wire','runtime_deploy','resource-wire','running','queued','unknown','request-wire','{}'::jsonb)`); err != nil {
+		(id, tenant_id, actor_id, kind, resource_id, status, stage, observation_result, request_id, accepted_input)
+		VALUES ('op-wire-proof','tenant-wire','actor-wire','runtime_deploy','resource-wire','running','queued','unknown','request-wire','{}'::jsonb)`); err != nil {
 		t.Fatalf("record operation: %v", err)
 	}
 
-	config := Config{Owner: OwnerServe, Peers: map[Owner]string{OwnerWorkspace: token}}
+	serverTLS, clientTLS := testTLSConfigs(t)
+	config := Config{Owner: OwnerServe, Services: map[owneridentity.ServiceIdentity]string{owneridentity.ConsoleBFF: token}, TLS: serverTLS}
 	server, err := NewServer(config)
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +118,7 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	authenticated := dialOwner(t, addr, token)
+	authenticated := dialOwner(t, addr, token, &clientTLS)
 	defer authenticated.Close()
 
 	health, err := healthpb.NewHealthClient(authenticated).Check(callCtx, &healthpb.HealthCheckRequest{})
@@ -121,7 +129,12 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Fatalf("health = %s, want NOT_SERVING for an owner without its product handlers", health.GetStatus())
 	}
 
-	read, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-wire-proof"})
+	call := &api.CallContext{
+		RequestId: "request-wire-read",
+		ActorId:   "actor-wire",
+		Scope:     &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-wire"}}},
+	}
+	read, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{Context: call, OperationId: "op-wire-proof"})
 	if err != nil {
 		t.Fatalf("read stored operation: %v", err)
 	}
@@ -140,13 +153,13 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Errorf("pollAfterSeconds = %d, want the owner's own cadence", read.GetPollAfterSeconds())
 	}
 
-	if _, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-missing"}); status.Code(err) != codes.NotFound {
+	if _, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{Context: call, OperationId: "op-missing"}); status.Code(err) != codes.NotFound {
 		t.Errorf("unknown operation code = %v, want NotFound", status.Code(err))
 	}
 
-	anonymous := dialOwner(t, addr, "")
+	anonymous := dialOwner(t, addr, "", &clientTLS)
 	defer anonymous.Close()
-	_, err = api.NewOwnerOperationsClient(anonymous).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-wire-proof"})
+	_, err = api.NewOwnerOperationsClient(anonymous).Read(callCtx, &api.OwnerOperationRequest{Context: call, OperationId: "op-wire-proof"})
 	switch status.Code(err) {
 	case codes.Unauthenticated, codes.PermissionDenied:
 	default:
@@ -204,15 +217,90 @@ type ownerSchemaEntry struct{}
 func (ownerSchemaEntry) Name() string { return "0001_owner_schema.sql" }
 func (ownerSchemaEntry) IsDir() bool  { return false }
 
-func dialOwner(t *testing.T, addr, token string) *grpc.ClientConn {
+func dialOwner(t *testing.T, addr, token string, tlsConfig *transporttls.Config) *grpc.ClientConn {
 	t.Helper()
-	options := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	credentials, err := tlsConfig.ClientCredentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := []grpc.DialOption{grpc.WithTransportCredentials(credentials)}
 	if token != "" {
-		options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Workspace, token)))
+		options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundServiceInterceptor(owneridentity.ConsoleBFF, token)))
 	}
 	conn, err := grpc.NewClient(addr, options...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return conn
+}
+
+func testTLSConfigs(t *testing.T) (transporttls.Config, transporttls.Config) {
+	t.Helper()
+	dir := t.TempDir()
+	caKey, caCert := makeCertificate(t, nil, nil, true)
+	serverKey, serverCert := makeCertificate(t, caCert, caKey, false, "localhost")
+	clientKey, clientCert := makeCertificate(t, caCert, caKey, false)
+	write := func(name string, value []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, value, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	encodeCert := func(cert *x509.Certificate) []byte {
+		return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	}
+	encodeKey := func(key *rsa.PrivateKey) []byte {
+		return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	}
+	caPath := write("ca.pem", encodeCert(caCert))
+	return transporttls.Config{
+			CAFile: caPath, CertFile: write("server.pem", encodeCert(serverCert)),
+			KeyFile: write("server-key.pem", encodeKey(serverKey)), ServerName: "localhost",
+		}, transporttls.Config{
+			CAFile: caPath, CertFile: write("client.pem", encodeCert(clientCert)),
+			KeyFile: write("client-key.pem", encodeKey(clientKey)), ServerName: "localhost",
+		}
+}
+
+func makeCertificate(t *testing.T, ca *x509.Certificate, caKey *rsa.PrivateKey, isCA bool, names ...string) (*rsa.PrivateKey, *x509.Certificate) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commonName := "test-ca"
+	if len(names) > 0 {
+		commonName = names[0]
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial, Subject: pkix.Name{CommonName: commonName},
+		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		DNSNames: names,
+	}
+	issuer := template
+	parentKey := key
+	if isCA {
+		template.IsCA = true
+		template.BasicConstraintsValid = true
+		template.KeyUsage |= x509.KeyUsageCertSign
+	}
+	if ca != nil {
+		issuer = ca
+		parentKey = caKey
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, issuer, &key.PublicKey, parentKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key, cert
 }

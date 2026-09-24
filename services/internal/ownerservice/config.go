@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/transporttls"
 )
 
 // Owner names one Cloud data owner. A process serves exactly one owner identity
@@ -45,9 +46,13 @@ type Config struct {
 	Addr string
 	// DatabaseURL points at this owner's own database.
 	DatabaseURL string
-	// Peers maps an accepted inbound owner identity to the bearer token that
-	// owner must present. A peer absent from this map can never call this owner.
+	// Peers maps accepted inbound domain-owner identities to their tokens.
 	Peers map[Owner]string
+	// Services maps accepted non-domain process identities to their tokens.
+	Services map[owneridentity.ServiceIdentity]string
+	// TLS is the owner server's mutual-TLS configuration. Empty is only permitted
+	// for isolated local tests; production startup requires it.
+	TLS transporttls.Config
 }
 
 // LoadConfig resolves the process configuration for one owner from the
@@ -63,6 +68,7 @@ func LoadConfig(getenv func(string) string, owner Owner, defaultAddr string) (Co
 		Owner:       owner,
 		Addr:        strings.TrimSpace(getenv(prefix + "_ADDR")),
 		DatabaseURL: strings.TrimSpace(getenv("DATABASE_URL")),
+		TLS:         transporttls.FromEnv(getenv, prefix+"_MTLS"),
 	}
 	if config.Addr == "" {
 		config.Addr = defaultAddr
@@ -72,41 +78,61 @@ func LoadConfig(getenv func(string) string, owner Owner, defaultAddr string) (Co
 		return Config{}, fmt.Errorf("%s: DATABASE_URL is required in production", owner)
 	}
 
-	peers, err := parsePeerTokens(getenv(prefix + "_PEER_TOKENS"))
+	peers, services, err := parsePeerTokens(getenv(prefix + "_PEER_TOKENS"))
 	if err != nil {
 		return Config{}, fmt.Errorf("%s: %w", owner, err)
 	}
 	config.Peers = peers
-	if production && len(peers) == 0 {
+	config.Services = services
+	if production && len(peers) == 0 && len(services) == 0 {
 		return Config{}, fmt.Errorf("%s: %s_PEER_TOKENS is required in production", owner, prefix)
+	}
+	if production {
+		if err := config.TLS.Validate(); err != nil {
+			return Config{}, fmt.Errorf("%s mTLS: %w", owner, err)
+		}
+		if config.TLS.Empty() {
+			return Config{}, fmt.Errorf("%s mTLS is required in production", owner)
+		}
 	}
 	return config, nil
 }
 
 // parsePeerTokens reads the `{"<owner>":"<token>"}` allowlist. An unknown owner
 // name or a short token is rejected instead of silently widening the boundary.
-func parsePeerTokens(raw string) (map[Owner]string, error) {
+func parsePeerTokens(raw string) (map[Owner]string, map[owneridentity.ServiceIdentity]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var decoded map[string]string
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return nil, fmt.Errorf("peer tokens must be a JSON object of owner to token: %w", err)
+		return nil, nil, fmt.Errorf("peer tokens must be a JSON object of owner or service identity to token: %w", err)
 	}
 	peers := make(map[Owner]string, len(decoded))
+	services := make(map[owneridentity.ServiceIdentity]string, len(decoded))
 	for name, token := range decoded {
-		owner := Owner(strings.TrimSpace(name))
-		if !owner.Valid() {
-			return nil, fmt.Errorf("%q is not a Cloud owner", name)
+		identity := strings.ToLower(strings.TrimSpace(name))
+		if identity == "" {
+			return nil, nil, errors.New("peer identity cannot be empty")
+		}
+		owner, ownerOK := owneridentity.Parse(identity)
+		service, serviceOK := owneridentity.ParseService(identity)
+		if !ownerOK && !serviceOK {
+			return nil, nil, fmt.Errorf("%q is not an accepted Cloud service identity", name)
 		}
 		token = strings.TrimSpace(token)
 		if len(token) < 32 {
-			return nil, fmt.Errorf("token for peer %s must contain at least 32 characters", owner)
+			return nil, nil, fmt.Errorf("token for peer %s must contain at least 32 characters", identity)
 		}
-		peers[owner] = token
+		if ownerOK {
+			peers[owner] = token
+		}
+		if serviceOK {
+			services[service] = token
+		}
 	}
-	return peers, nil
+	return peers, services, nil
 }
 
 // Listen opens the owner's gRPC listener.

@@ -12,6 +12,21 @@ import (
 	"opl-cloud/services/internal/ownerstore"
 )
 
+func TestOperationScopeRequiresMatchingTenantAndActor(t *testing.T) {
+	call := &api.CallContext{RequestId: "request-1", ActorId: "actor-1",
+		Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
+	}
+	if err := requireOperationScope(call, ownerstore.Operation{TenantID: "tenant-1", ActorID: "actor-1"}); err != nil {
+		t.Fatalf("matching scope rejected: %v", err)
+	}
+	if status.Code(requireOperationScope(call, ownerstore.Operation{TenantID: "tenant-2", ActorID: "actor-1"})) != codes.PermissionDenied {
+		t.Fatal("cross-tenant operation was accepted")
+	}
+	if status.Code(requireOperationScope(call, ownerstore.Operation{TenantID: "tenant-1", ActorID: "actor-2"})) != codes.PermissionDenied {
+		t.Fatal("cross-actor operation was accepted")
+	}
+}
+
 // TestOperationsRequireAnOwnerStore proves the Operation readback group is only
 // constructible over an owner-local store: an owner cannot advertise the surface
 // without the table that answers it.

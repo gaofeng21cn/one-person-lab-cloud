@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
-
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
@@ -53,6 +52,13 @@ func (e ErrNotReady) Error() string { return e.Reason }
 func NewServer(config Config, options ...grpc.ServerOption) (*Server, error) {
 	if !config.Owner.Valid() {
 		return nil, fmt.Errorf("%q is not a Cloud owner", config.Owner)
+	}
+	if !config.TLS.Empty() {
+		credentials, err := config.TLS.ServerOption()
+		if err != nil {
+			return nil, fmt.Errorf("%s mTLS: %w", config.Owner, err)
+		}
+		options = append(options, credentials)
 	}
 	options = append(options, grpc.ChainUnaryInterceptor(identityInterceptor(config)))
 	server := grpc.NewServer(options...)
@@ -236,7 +242,7 @@ func identityInterceptor(config Config) grpc.UnaryServerInterceptor {
 		if err != nil {
 			return nil, err
 		}
-		return handler(WithPeerOwner(ctx, peer), request)
+		return handler(WithPeerIdentity(ctx, peer), request)
 	}
 }
 

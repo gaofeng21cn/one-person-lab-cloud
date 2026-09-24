@@ -69,7 +69,25 @@ func (o *Operations) Read(ctx context.Context, request *api.OwnerOperationReques
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "read %s operation: %v", o.owner, err)
 	}
+	if err := requireOperationScope(request.GetContext(), record); err != nil {
+		return nil, err
+	}
 	return o.toContract(record)
+}
+
+func requireOperationScope(call *api.CallContext, record ownerstore.Operation) error {
+	if call == nil || strings.TrimSpace(call.GetRequestId()) == "" || strings.TrimSpace(call.GetActorId()) == "" || call.GetScope() == nil {
+		return status.Error(codes.Unauthenticated, "authorized caller context is required")
+	}
+	if tenant := call.GetScope().GetTenant(); tenant != nil && strings.TrimSpace(tenant.GetTenantId()) != "" {
+		if strings.TrimSpace(record.TenantID) == "" || record.TenantID != strings.TrimSpace(tenant.GetTenantId()) {
+			return status.Error(codes.PermissionDenied, "operation is outside the caller tenant scope")
+		}
+		if strings.TrimSpace(record.ActorID) == "" || record.ActorID != strings.TrimSpace(call.GetActorId()) {
+			return status.Error(codes.PermissionDenied, "operation is outside the caller actor scope")
+		}
+	}
+	return nil
 }
 
 // Reconcile re-reads this owner's own state for one operation. A terminal

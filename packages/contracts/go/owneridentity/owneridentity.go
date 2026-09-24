@@ -20,6 +20,24 @@ const PeerHeader = "x-opl-owner"
 // Owner is the canonical text identity of one Cloud owner process.
 type Owner string
 
+// ServiceIdentity is a non-domain process identity. Service identities are
+// deliberately separate from Owner so a BFF can never authenticate as a data
+// owner merely because it is calling that owner.
+type ServiceIdentity string
+
+const (
+	ConsoleBFF ServiceIdentity = "console_bff"
+)
+
+func (s ServiceIdentity) String() string { return string(s) }
+
+func (s ServiceIdentity) Valid() bool { return s == ConsoleBFF }
+
+func ParseService(value string) (ServiceIdentity, bool) {
+	s := ServiceIdentity(strings.ToLower(strings.TrimSpace(value)))
+	return s, s.Valid()
+}
+
 // The fixed Cloud owner names. They match the schema prefixes and the contract's
 // OwnerEnum, and are the only accepted peer identities on the boundary.
 const (

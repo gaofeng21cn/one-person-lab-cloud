@@ -9,6 +9,7 @@ import (
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/requestcontext"
 )
 
 // SessionCookieName is the browser session cookie the BFF reads. It is the
@@ -66,16 +67,16 @@ func RequireSession(ctx context.Context, identity IdentityReader, request *http.
 // action on the resource. Only an explicit ALLOWED decision from CloudIdentity
 // passes: a missing issuer, an unspecified result, or a denial is refused, and no
 // cached or session-derived permission is substituted.
-func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, caller Caller, audience owneridentity.Owner, action api.AuthorizationActionEnum, resource *api.AuthorizationResource, requestID string) error {
+func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, caller Caller, audience owneridentity.Owner, action api.AuthorizationActionEnum, resource *api.AuthorizationResource, requestID string) (*api.CallContext, error) {
 	if identity == nil {
-		return fmt.Errorf("CloudIdentity is not configured: %w", ErrAuthorizationRequired)
+		return nil, fmt.Errorf("CloudIdentity is not configured: %w", ErrAuthorizationRequired)
 	}
 	if caller.Session == nil || strings.TrimSpace(caller.Session.GetActorId()) == "" {
-		return ErrSessionRequired
+		return nil, ErrSessionRequired
 	}
 	audienceOwner := ownerEnum(audience)
 	if audienceOwner == api.OwnerEnum_OWNER_ENUM_UNSPECIFIED {
-		return fmt.Errorf("%q is not a Cloud owner: %w", audience, ErrAuthorizationRequired)
+		return nil, fmt.Errorf("%q is not a Cloud owner: %w", audience, ErrAuthorizationRequired)
 	}
 	request := &api.AuthorizationRequest{
 		Scope:         sessionScope(caller.Session),
@@ -91,21 +92,39 @@ func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, calle
 	}
 	decision, err := identity.Authorize(ctx, request)
 	if err != nil {
-		return fmt.Errorf("read CloudIdentity authorization: %w", err)
+		return nil, fmt.Errorf("read CloudIdentity authorization: %w", err)
 	}
 	if decision.GetIssuer() != api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY {
-		return fmt.Errorf("authorization was not issued by CloudIdentity: %w", ErrAuthorizationRequired)
+		return nil, fmt.Errorf("authorization was not issued by CloudIdentity: %w", ErrAuthorizationRequired)
 	}
 	if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
-		return fmt.Errorf("CloudIdentity denied %s on %s: %w", action, resource.GetId(), ErrAuthorizationRequired)
+		return nil, fmt.Errorf("CloudIdentity denied %s on %s: %w", action, resource.GetId(), ErrAuthorizationRequired)
 	}
 	if decision.GetAction() != action || decision.GetAudienceOwner() != audienceOwner {
-		return fmt.Errorf("authorization covers a different action or audience: %w", ErrAuthorizationRequired)
+		return nil, fmt.Errorf("authorization covers a different action or audience: %w", ErrAuthorizationRequired)
 	}
 	if expected := strings.TrimSpace(resource.GetId()); expected != "" && decision.GetResource().GetId() != expected {
-		return fmt.Errorf("authorization covers a different resource: %w", ErrAuthorizationRequired)
+		return nil, fmt.Errorf("authorization covers a different resource: %w", ErrAuthorizationRequired)
 	}
-	return nil
+	call := &api.CallContext{
+		RequestId: requestID,
+		ActorId:   caller.Session.GetActorId(),
+		Scope:     sessionScope(caller.Session),
+	}
+	if caller.SessionID != "" {
+		call.SessionId = &caller.SessionID
+	}
+	if value := strings.TrimSpace(decision.GetAuthorizationContextId()); value != "" {
+		call.AuthorizationContextId = value
+	}
+	if value := strings.TrimSpace(decision.GetAcceptedOperationGrantId()); value != "" {
+		call.AcceptedOperationGrantId = &value
+	}
+	return call, nil
+}
+
+func WithAuthorizedCallContext(ctx context.Context, call *api.CallContext) context.Context {
+	return requestcontext.WithCallContext(ctx, call)
 }
 
 // sessionScope is the authorization scope the session itself carries. A session

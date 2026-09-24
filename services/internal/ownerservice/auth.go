@@ -18,11 +18,11 @@ const (
 	peerOwnerHeader = owneridentity.PeerHeader
 )
 
-// Authenticate resolves the calling owner from the inbound metadata and verifies
-// its token against the configured allowlist. An unknown peer, a missing token, or
-// a mismatched token is refused here, before any owner store is touched.
-func Authenticate(ctx context.Context, config Config) (Owner, error) {
-	if len(config.Peers) == 0 {
+// Authenticate resolves the calling service identity from inbound metadata and
+// verifies its token against the configured allowlist. An unknown peer, a missing
+// token, or a mismatched token is refused before any owner store is touched.
+func Authenticate(ctx context.Context, config Config) (string, error) {
+	if len(config.Peers) == 0 && len(config.Services) == 0 {
 		return "", status.Error(codes.Unauthenticated, "this owner accepts no inbound peers in this configuration")
 	}
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -33,10 +33,18 @@ func Authenticate(ctx context.Context, config Config) (Owner, error) {
 	if name == "" {
 		return "", status.Error(codes.Unauthenticated, "calling owner identity is required")
 	}
-	owner := Owner(name)
-	expected, allowed := config.Peers[owner]
+	identity := strings.ToLower(strings.TrimSpace(name))
+	owner, ownerOK := owneridentity.Parse(identity)
+	service, serviceOK := owneridentity.ParseService(identity)
+	expected, allowed := "", false
+	if ownerOK {
+		expected, allowed = config.Peers[Owner(owner)]
+	}
+	if serviceOK {
+		expected, allowed = config.Services[service]
+	}
 	if !allowed {
-		return "", status.Errorf(codes.PermissionDenied, "owner %s may not call %s", owner, config.Owner)
+		return "", status.Errorf(codes.PermissionDenied, "service identity %s may not call %s", identity, config.Owner)
 	}
 	presented := firstHeader(md, peerTokenHeader)
 	if presented == "" {
@@ -45,7 +53,7 @@ func Authenticate(ctx context.Context, config Config) (Owner, error) {
 	if subtle.ConstantTimeCompare([]byte(presented), []byte(expected)) != 1 {
 		return "", status.Error(codes.Unauthenticated, "calling owner token is invalid")
 	}
-	return owner, nil
+	return identity, nil
 }
 
 func firstHeader(md metadata.MD, key string) string {
@@ -56,17 +64,17 @@ func firstHeader(md metadata.MD, key string) string {
 	return strings.TrimSpace(values[0])
 }
 
-// PeerContextKey carries the authenticated peer owner inside a request context.
+// PeerContextKey carries the authenticated peer service identity inside a request context.
 type peerContextKey struct{}
 
-// WithPeerOwner records the authenticated peer owner on the context so a handler
-// can bind the caller into its owner-local commit evidence.
-func WithPeerOwner(ctx context.Context, owner Owner) context.Context {
-	return context.WithValue(ctx, peerContextKey{}, owner)
+// WithPeerIdentity records the authenticated peer identity on the context so a
+// handler can bind the caller into its owner-local commit evidence.
+func WithPeerIdentity(ctx context.Context, identity string) context.Context {
+	return context.WithValue(ctx, peerContextKey{}, identity)
 }
 
-// PeerOwner returns the authenticated peer owner recorded on the context.
-func PeerOwner(ctx context.Context) (Owner, bool) {
-	owner, ok := ctx.Value(peerContextKey{}).(Owner)
-	return owner, ok
+// PeerIdentity returns the authenticated peer service identity recorded on the context.
+func PeerIdentity(ctx context.Context) (string, bool) {
+	identity, ok := ctx.Value(peerContextKey{}).(string)
+	return identity, ok
 }
