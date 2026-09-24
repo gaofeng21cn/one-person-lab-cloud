@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opl:workspace-plan-change-policy:v1",
+  "$ref": "#/$defs/PlanChangePolicy",
+  "$defs": {
+    "PlanChangePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "enum": [
+            "workspace-plan-change-v1"
+          ]
+        },
+        "approvalStatus": {
+          "type": "string",
+          "enum": [
+            "approved"
+          ]
+        },
+        "upgrade": {
+          "$ref": "#/$defs/UpgradePlanRules"
+        },
+        "downgrade": {
+          "$ref": "#/$defs/DowngradePlanRules"
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "approved_comparable_resources_not_price_or_sku_name"
+          ]
+        },
+        "mixedOrIncomparableTransition": {
+          "type": "string",
+          "enum": [
+            "reject"
+          ]
+        },
+        "noOpTransition": {
+          "type": "string",
+          "enum": [
+            "reject"
+          ]
+        },
+        "storageShrink": {
+          "type": "string",
+          "enum": [
+            "reject_unless_owner_supported_transition"
+          ]
+        },
+        "concurrency": {
+          "type": "string",
+          "enum": [
+            "one_unfinished_plan_change_per_workspace"
+          ]
+        },
+        "cancelAndReplace": {
+          "type": "string",
+          "enum": [
+            "explicit_cancel_then_new_quote"
+          ]
+        },
+        "baseRefundPolicy": {
+          "type": "string",
+          "enum": [
+            "preserve_original_base_order_policy"
+          ]
+        },
+        "providerExecutionPlan": {
+          "type": "string",
+          "enum": [
+            "approved_strategy_frozen_before_quote"
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "approvalStatus",
+        "upgrade",
+        "downgrade",
+        "classification",
+        "mixedOrIncomparableTransition",
+        "noOpTransition",
+        "storageShrink",
+        "concurrency",
+        "cancelAndReplace",
+        "baseRefundPolicy",
+        "providerExecutionPlan"
+      ],
+      "description": "D17已由用户批准，13_plan_change_policy.md为产品语义Owner。固定政策，不接受配置任意公式、pending/draft或旧未决占位；金额算法/数值向量见contracts/plan-change-policy.json。"
+    },
+    "UpgradePlanRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "upgrade_immediate"
+          ]
+        },
+        "effectiveWhen": {
+          "type": "string",
+          "enum": [
+            "resource_and_runtime_readback_confirmed"
+          ]
+        },
+        "preservePaidPeriod": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        },
+        "oldPriceSource": {
+          "type": "string",
+          "enum": [
+            "accepted_applied_subscription_plan"
+          ]
+        },
+        "chargeClock": {
+          "type": "string",
+          "enum": [
+            "quote_pricing_basis_at_frozen_on_acceptance"
+          ]
+        },
+        "timeUnit": {
+          "type": "string",
+          "enum": [
+            "utc_integer_milliseconds"
+          ]
+        },
+        "chargeRounding": {
+          "type": "string",
+          "enum": [
+            "ceil_once_usd_micro"
+          ]
+        },
+        "zeroCharge": {
+          "type": "string",
+          "enum": [
+            "record_evidence_skip_gateway"
+          ]
+        },
+        "knownFailureCompensation": {
+          "type": "string",
+          "enum": [
+            "full_unrefunded_original_supplement"
+          ]
+        },
+        "unknownOutcome": {
+          "type": "string",
+          "enum": [
+            "read_original_action_no_refund"
+          ]
+        },
+        "irreversibleResidualCostOwner": {
+          "type": "string",
+          "enum": [
+            "platform"
+          ]
+        },
+        "supplementDeleteRefund": {
+          "type": "string",
+          "enum": [
+            "floor_unused_supplement_coverage"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "effectiveWhen",
+        "preservePaidPeriod",
+        "oldPriceSource",
+        "chargeClock",
+        "timeUnit",
+        "chargeRounding",
+        "zeroCharge",
+        "knownFailureCompensation",
+        "unknownOutcome",
+        "irreversibleResidualCostOwner",
+        "supplementDeleteRefund"
+      ]
+    },
+    "DowngradePlanRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "downgrade_next_period"
+          ]
+        },
+        "plannedBoundary": {
+          "type": "string",
+          "enum": [
+            "original_paid_through"
+          ]
+        },
+        "currentPeriodRefund": {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        "nextPeriodPrice": {
+          "type": "string",
+          "enum": [
+            "accepted_target_plan_quote"
+          ]
+        },
+        "requiresConfirmedNextPeriodPayment": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        },
+        "cancelBefore": {
+          "type": "string",
+          "enum": [
+            "next_period_payment_obligation_accepted"
+          ]
+        },
+        "earlyPaidChange": {
+          "type": "string",
+          "enum": [
+            "do_not_reduce_resources_before_original_paid_through"
+          ]
+        },
+        "manualUnpaidBoundary": {
+          "type": "string",
+          "enum": [
+            "awaiting_payment_suspend_unpaid_usage"
+          ]
+        },
+        "knownFailureCompensation": {
+          "type": "string",
+          "enum": [
+            "full_unrefunded_target_period_charge"
+          ]
+        },
+        "fallback": {
+          "type": "string",
+          "enum": [
+            "none_no_old_price_renewal_or_sku_substitution"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "plannedBoundary",
+        "currentPeriodRefund",
+        "nextPeriodPrice",
+        "requiresConfirmedNextPeriodPayment",
+        "cancelBefore",
+        "earlyPaidChange",
+        "manualUnpaidBoundary",
+        "knownFailureCompensation",
+        "fallback"
+      ]
+    }
+  },
+  "x-policy": {
+    "version": "workspace-plan-change-v1",
+    "approvalStatus": "approved",
+    "upgrade": {
+      "kind": "upgrade_immediate",
+      "effectiveWhen": "resource_and_runtime_readback_confirmed",
+      "preservePaidPeriod": true,
+      "oldPriceSource": "accepted_applied_subscription_plan",
+      "chargeClock": "quote_pricing_basis_at_frozen_on_acceptance",
+      "timeUnit": "utc_integer_milliseconds",
+      "chargeRounding": "ceil_once_usd_micro",
+      "zeroCharge": "record_evidence_skip_gateway",
+      "knownFailureCompensation": "full_unrefunded_original_supplement",
+      "unknownOutcome": "read_original_action_no_refund",
+      "irreversibleResidualCostOwner": "platform",
+      "supplementDeleteRefund": "floor_unused_supplement_coverage"
+    },
+    "downgrade": {
+      "kind": "downgrade_next_period",
+      "plannedBoundary": "original_paid_through",
+      "currentPeriodRefund": "none",
+      "nextPeriodPrice": "accepted_target_plan_quote",
+      "requiresConfirmedNextPeriodPayment": true,
+      "cancelBefore": "next_period_payment_obligation_accepted",
+      "earlyPaidChange": "do_not_reduce_resources_before_original_paid_through",
+      "manualUnpaidBoundary": "awaiting_payment_suspend_unpaid_usage",
+      "knownFailureCompensation": "full_unrefunded_target_period_charge",
+      "fallback": "none_no_old_price_renewal_or_sku_substitution"
+    },
+    "classification": "approved_comparable_resources_not_price_or_sku_name",
+    "mixedOrIncomparableTransition": "reject",
+    "noOpTransition": "reject",
+    "storageShrink": "reject_unless_owner_supported_transition",
+    "concurrency": "one_unfinished_plan_change_per_workspace",
+    "cancelAndReplace": "explicit_cancel_then_new_quote",
+    "baseRefundPolicy": "preserve_original_base_order_policy",
+    "providerExecutionPlan": "approved_strategy_frozen_before_quote"
+  },
+  "x-authority": "13_plan_change_policy.md, D17 exact user decision; fixed declaration, not a configurable policy framework",
+  "x-algorithms": {
+    "upgrade": {
+      "inputs": [
+        "S",
+        "E",
+        "T",
+        "Pold",
+        "Pnew"
+      ],
+      "preconditions": [
+        "E>S",
+        "S<=T<E",
+        "sourceSubscriptionVersion unchanged",
+        "approved comparable upward resource transition",
+        "No other not-yet-started accepted/confirmed period obligation; own scheduled prepayment exception only its confirmed version progression",
+        "Fabric strategy and executionPlan immutable before quote; in_place_resize or claim_target_pool_and_rebind_existing_storage fixed, not a failure fallback"
+      ],
+      "periodMilliseconds": "E-S",
+      "remainingMilliseconds": "E-T",
+      "deltaUSDMicros": "max(Pnew-Pold,0)",
+      "chargeUSDMicros": "(deltaUSDMicros*remainingMilliseconds+periodMilliseconds-1)//periodMilliseconds",
+      "arithmetic": "arbitrary precision integers; validate final 0..9223372036854775807; ceil only once; zero emits no Gateway action"
+    },
+    "failedDeliveryRefund": {
+      "preconditions": [
+        "original charge confirmed",
+        "target plan not activated",
+        "failure/fencing/actual-resource receipt confirmed",
+        "no unknown provider or wallet outcome"
+      ],
+      "amountUSDMicros": "original_confirmed_amount - already_confirmed_or_unknown_reserved_refunds",
+      "arithmetic": "full remaining original charge; not base 720-hour formula; retain irreversible resources safely and platform bears residual cost"
+    },
+    "successfulSupplementDeletionRefund": {
+      "coverage": "quoteT..originalPeriodEnd",
+      "preconditions": [
+        "successful applied PlanChange",
+        "deleteConfirmedAt>=quoteT",
+        "E>quoteT",
+        "confirmed exact deletion receipt"
+      ],
+      "amountUSDMicros": "min(remaining_refundable_original, confirmed_supplement*max(E-deleteConfirmedAt,0)//(E-quoteT))",
+      "arithmetic": "floor once; each original supplemental charge independent; unknown refunds reserve against that original charge only"
+    }
+  },
+  "x-numeric-examples": [
+    {
+      "name": "half_30_day_upgrade",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "1296000000",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "10000000"
+    },
+    {
+      "name": "twenty_of_31_days",
+      "periodMilliseconds": "2678400000",
+      "remainingMilliseconds": "1728000000",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "50000000",
+      "expectedChargeUSDMicros": "19354839"
+    },
+    {
+      "name": "full_period_delta_only",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "2592000000",
+      "oldMonthlyUSDMicros": "20000000",
+      "newMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "20000000"
+    },
+    {
+      "name": "second_applied_upgrade",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "648000000",
+      "oldMonthlyUSDMicros": "40000000",
+      "newMonthlyUSDMicros": "60000000",
+      "expectedChargeUSDMicros": "5000000"
+    },
+    {
+      "name": "zero_delta_resource_upgrade",
+      "periodMilliseconds": "2592000000",
+      "remainingMilliseconds": "1296000000",
+      "oldMonthlyUSDMicros": "40000000",
+      "newMonthlyUSDMicros": "30000000",
+      "expectedChargeUSDMicros": "0"
+    },
+    {
+      "name": "single_micro_final_ceil",
+      "periodMilliseconds": "3",
+      "remainingMilliseconds": "1",
+      "oldMonthlyUSDMicros": "0",
+      "newMonthlyUSDMicros": "1",
+      "expectedChargeUSDMicros": "1"
+    }
+  ],
+  "x-refund-examples": [
+    {
+      "name": "failed_10_dollar_upgrade_full_refund",
+      "originalUSDMicros": "10000000",
+      "confirmedRefundUSDMicros": "0",
+      "unknownReservedUSDMicros": "0",
+      "expectedRefundUSDMicros": "10000000"
+    },
+    {
+      "name": "applied_supplement_delete_half_coverage",
+      "confirmedSupplementUSDMicros": "10000000",
+      "coverageMilliseconds": "1296000000",
+      "unusedMilliseconds": "648000000",
+      "expectedRefundUSDMicros": "5000000"
+    }
+  ],
+  "x-time-normalization": {
+    "source": "Owner native raw timestamps and fixed financial snapshot bytes",
+    "canonical": "UnixMilli once at source, preserving original nanoseconds/offset text separately",
+    "storage": "retain original source bytes+sha256; canonical milliseconds in bigint; PG timestamptz is not calculation input",
+    "quoteT": "Catalog native quote pricing instant UnixMilli, frozen on acceptance",
+    "refund": "original supplemental coverage milliseconds and deletion-owner canonical milliseconds",
+    "tolerance": "none"
+  },
+  "x-precision-example": {
+    "scope": "timestamp-normalization primitive, not a three-millisecond monthly-product offering",
+    "sourcePeriodStart": "2026-09-01T00:00:00.999999999Z",
+    "sourcePeriodEnd": "2026-09-01T00:00:01.002000000Z",
+    "quoteAt": "2026-09-01T00:00:01.001000000Z",
+    "periodStartMilliseconds": "1788220800999",
+    "periodEndMilliseconds": "1788220801002",
+    "quoteAtMilliseconds": "1788220801001",
+    "oldMonthlyUSDMicros": "0",
+    "newMonthlyUSDMicros": "3",
+    "expectedChargeUSDMicros": "1",
+    "incorrectPostgresRoundedStartChargeUSDMicros": "2"
+  },
+  "x-original-refund-idempotency": "Gateway derives the settlement key from originalChargeId + purpose + planChangeId (+ deletionReceiptId for deletion). Same settlement requested/unknown returns/readbacks its existing refund identity; never recompute a smaller amount and issue a second refund. Under original-charge lock, confirmed and in-flight totals never exceed the original confirmed charge."
+}

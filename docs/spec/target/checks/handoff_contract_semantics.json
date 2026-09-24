@@ -1,0 +1,246 @@
+{
+  "scope": "Executable contract assertions and canonical-source tests, NOT implemented runtime or production qualification",
+  "cases": [
+    {
+      "case": "R03 publisher typed example 0",
+      "pass": true
+    },
+    {
+      "case": "R03 publisher typed example 1",
+      "pass": true
+    },
+    {
+      "case": "R03 publisher typed example 2",
+      "pass": true
+    },
+    {
+      "case": "R03 publisher typed example 3",
+      "pass": true
+    },
+    {
+      "case": "R01 credit remains nonnegative, 100-10=90",
+      "pass": true
+    },
+    {
+      "case": "R01 negative credit rejected",
+      "pass": true
+    },
+    {
+      "case": "R01 credit without original evidence rejected",
+      "pass": true
+    },
+    {
+      "case": "R01 quantity 0 rejected",
+      "pass": true
+    },
+    {
+      "case": "R01 JSON above signed int64 rejected",
+      "pass": true
+    },
+    {
+      "case": "R01 deploy discriminator accepted",
+      "pass": true
+    },
+    {
+      "case": "R01 retired create purpose rejected",
+      "pass": true
+    },
+    {
+      "case": "R01 unsupported multi-month new quote rejected",
+      "pass": true
+    },
+    {
+      "case": "R02 exact target packageVersionId",
+      "pass": true
+    },
+    {
+      "case": "R02 exact target runtimeVersionId",
+      "pass": true
+    },
+    {
+      "case": "R02 exact target webuiVersionId",
+      "pass": true
+    },
+    {
+      "case": "R02 exact target capabilityVersionId",
+      "pass": true
+    },
+    {
+      "case": "R02 multiple targets rejected by protobuf",
+      "pass": true
+    },
+    {
+      "case": "R02 release running not representable",
+      "pass": true
+    },
+    {
+      "case": "R02 bind requires typed committed identity fields",
+      "pass": true
+    },
+    {
+      "case": "R03 exact main artifact/revision identity",
+      "pass": true
+    },
+    {
+      "case": "R03 static WebUI integration source matches",
+      "pass": true
+    },
+    {
+      "case": "R03 namespace exact component prefix accepts correct",
+      "pass": true
+    },
+    {
+      "case": "R09 sibling-prefix spoof rejected",
+      "pass": true
+    },
+    {
+      "case": "R03 legacy exact revision without fake build allowed",
+      "pass": true
+    },
+    {
+      "case": "R03 legacy with fake runtime publisher rejected",
+      "pass": true
+    },
+    {
+      "case": "R03 unknown secret body rejected",
+      "pass": true
+    },
+    {
+      "case": "R04 platform scope requires no fake Tenant",
+      "pass": true
+    },
+    {
+      "case": "R04 ambiguous scope rejected",
+      "pass": true
+    },
+    {
+      "case": "R04 role self-assertion absent from request",
+      "pass": true
+    },
+    {
+      "case": "R04 audience typed and action closed",
+      "pass": true
+    },
+    {
+      "case": "R04 no invented AppSSO service",
+      "pass": true
+    },
+    {
+      "case": "R05 revision exact/absence discriminated",
+      "pass": true
+    },
+    {
+      "case": "R05 wildcard mixed with absence rejected",
+      "pass": true
+    },
+    {
+      "case": "R05 concrete route RPC FenceRouteEpoch",
+      "pass": true
+    },
+    {
+      "case": "R05 concrete route RPC ActivateRoute",
+      "pass": true
+    },
+    {
+      "case": "R05 concrete route RPC ObserveRoute",
+      "pass": true
+    },
+    {
+      "case": "R05 concrete route RPC RollbackRoute",
+      "pass": true
+    },
+    {
+      "case": "R05 current generation/epoch/provider revision readback typed",
+      "pass": true
+    },
+    {
+      "case": "R07 reenable independent of restore",
+      "pass": true
+    },
+    {
+      "case": "R07 reenable includes bounded Workspace resumption",
+      "pass": true
+    },
+    {
+      "case": "R08 delete version is catalog tombstone not physical purge",
+      "pass": true
+    },
+    {
+      "case": "R08 Workspace delete does not revoke retained Key",
+      "pass": true
+    },
+    {
+      "case": "D17 approved fixed policy accepted",
+      "pass": true
+    },
+    {
+      "case": "D17 pending policy rejected",
+      "pass": true
+    },
+    {
+      "case": "D17 obsolete draft version rejected",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector half_month",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector real_31_day_month",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector full_remaining",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector sequential_upgrade_uses_current_rate",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector one_final_rounding",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector free_increment_no_negative_credit",
+      "pass": true
+    },
+    {
+      "case": "D17 independent exact vector int64_max_intermediate_must_not_overflow",
+      "pass": true
+    },
+    {
+      "case": "R10 nonterminal missing poll guidance rejected",
+      "pass": true
+    },
+    {
+      "case": "R10 nonterminal poll guidance accepted",
+      "pass": true
+    },
+    {
+      "case": "R10 terminal stale poll loop rejected",
+      "pass": true
+    },
+    {
+      "case": "R10 action-stage mismatch rejected",
+      "pass": true
+    },
+    {
+      "case": "F12 future automatic consent revocable",
+      "pass": true
+    },
+    {
+      "case": "F09 App credentials owner-only and no-session-secret",
+      "pass": true
+    },
+    {
+      "case": "inventory exact actual operations",
+      "pass": true
+    },
+    {
+      "case": "all stable error mappings exist",
+      "pass": true
+    }
+  ],
+  "pending": []
+}

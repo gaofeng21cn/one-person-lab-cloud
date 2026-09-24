@@ -1,0 +1,4213 @@
+syntax = "proto3";
+package opl.cloud.v226;
+option go_package = "opl.cloud/contracts/v226;v226";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+// Target contract, not current runtime evidence. Internal services authenticate mTLS
+// service identities and revalidate tenant/actor authorization. Never accept browser
+// self-asserted tenant, price, provider, wallet identity or raw image.
+// int64 money=USD micros; wire JSON adapters encode decimal strings, never doubles.
+// Owner databases, operations and Outbox/Inbox are isolated; no cross-owner SQL.
+message CallContext {
+ string request_id = 1;
+ string idempotency_key = 2;
+ string authorization_context_id = 3;
+ string actor_id = 4;
+ optional string session_id = 5;
+ AuthorizationScope scope = 6;
+ optional string accepted_operation_grant_id = 7;
+ google.protobuf.Timestamp deadline_at = 8;
+}
+
+
+
+message FieldError {
+ string field = 1;
+ ErrorCodeEnum code = 2;
+ string message = 3;
+}
+
+message Error {
+ ErrorCodeEnum code = 1;
+ string message = 2;
+ string request_id = 3;
+ repeated FieldError field_errors = 4;
+}
+
+message Operation {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string operation_id = 1;
+ OperationOwnerEnum owner = 2;
+ OperationKindEnum kind = 3;
+ string resource_id = 4;
+ OperationStatusEnum status = 5;
+ OperationStageEnum stage = 6;
+ optional OperationObservationResultEnum observation_result = 7;
+ optional ErrorCodeEnum error_code = 8;
+ string request_id = 9;
+ google.protobuf.Timestamp created_at = 10;
+ google.protobuf.Timestamp updated_at = 11;
+ optional int32 poll_after_seconds = 12;
+}
+
+message LoginContext {
+ string csrf_token = 1;
+ google.protobuf.Timestamp expires_at = 2;
+}
+
+message LoginRequest {
+ string username = 1;
+ string password = 2;
+}
+
+message Session {
+ string actor_id = 1;
+ string display_name = 2;
+ optional string tenant_id = 3;
+ optional string tenant_name = 4;
+ optional TenantRoleEnum role = 5;
+ repeated AuthorizationActionEnum permissions = 6;
+ string csrf_token = 7;
+ google.protobuf.Timestamp expires_at = 8;
+}
+
+message Tenant {
+ string id = 1;
+ string name = 2;
+ TenantStatusEnum status = 3;
+ optional string billing_sub2api_user_id = 4;
+ google.protobuf.Timestamp restore_until = 5;
+ TenantAssetCustodyStatusEnum asset_custody_status = 6;
+ google.protobuf.Timestamp created_at = 7;
+ google.protobuf.Timestamp updated_at = 8;
+}
+
+message CreateTenantRequest {
+ string name = 1;
+ string billing_sub2api_user_id = 2;
+ string owner_gateway_subject_id = 3;
+}
+
+message BindTenantWalletRequest {
+ string billing_sub2api_user_id = 1;
+ int64 expected_binding_version = 2;
+}
+
+message Member {
+ string id = 1;
+ string actor_id = 2;
+ string display_name = 3;
+ TenantRoleEnum role = 4;
+ MemberStatusEnum status = 5;
+ google.protobuf.Timestamp created_at = 6;
+}
+
+message Invitation {
+ string id = 1;
+ string invitee_gateway_subject_id = 2;
+ InvitationRoleEnum role = 3;
+ InvitationStatusEnum status = 4;
+ google.protobuf.Timestamp expires_at = 5;
+ google.protobuf.Timestamp created_at = 6;
+}
+
+message InviteMemberRequest {
+ string invitee_gateway_subject_id = 1;
+ InviteMemberRequestRoleEnum role = 2;
+}
+
+message UpdateMemberRoleRequest {
+ TenantRoleEnum role = 1;
+}
+
+message TenantActionRequest {
+ string reason = 1;
+}
+
+message DeleteTenantRequest {
+ string confirmation_name = 1;
+ string reason = 2;
+}
+
+message AssetCustody {
+ string tenant_id = 1;
+ AssetCustodyStatusEnum status = 2;
+ int64 package_count = 3;
+ int64 build_count = 4;
+ google.protobuf.Timestamp restore_until = 5;
+ repeated string workspace_deletion_operation_ids = 6;
+}
+
+message Namespace {
+ string id = 1;
+ string name = 2;
+ bool is_default = 3;
+ NamespaceStatusEnum status = 4;
+ google.protobuf.Timestamp created_at = 5;
+}
+
+message NamespaceWriteRequest {
+ string name = 1;
+}
+
+message Package {
+ string id = 1;
+ string namespace_id = 2;
+ string name = 3;
+ string description = 4;
+ PackageVisibilityEnum visibility = 5;
+ PackageStatusEnum status = 6;
+ optional string latest_ready_version_id = 7;
+ google.protobuf.Timestamp created_at = 8;
+ google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreatePackageRequest {
+ string namespace_id = 1;
+ string name = 2;
+ string description = 3;
+}
+
+message UpdatePackageRequest {
+ string namespace_id = 1;
+ string name = 2;
+ string description = 3;
+}
+
+message PublishPackageRequest {
+ string admission_receipt_id = 1;
+}
+
+message PackageVersion {
+ string id = 1;
+ string package_id = 2;
+ string version_label = 3;
+ PackageVersionStatusEnum status = 4;
+ string sha256 = 5;
+ int64 size_bytes = 6;
+ google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateUploadRequest {
+ string version_label = 1;
+ string file_name = 2;
+ int64 size_bytes = 3;
+ string sha256 = 4;
+}
+
+message UploadPart {
+ int32 part_number = 1;
+ string etag = 2;
+ int64 size_bytes = 3;
+ string sha256 = 4;
+}
+
+message UploadSession {
+ string id = 1;
+ string package_version_id = 2;
+ UploadSessionStatusEnum status = 3;
+ int64 size_bytes = 4;
+ string sha256 = 5;
+ int64 part_size_bytes = 6;
+ repeated UploadPart completed_parts = 7;
+ google.protobuf.Timestamp expires_at = 8;
+}
+
+message CreateUploadPartRequest {
+ int32 part_number = 1;
+ int64 size_bytes = 2;
+ string sha256 = 3;
+}
+
+message UploadPartAuthorization {
+ string upload_id = 1;
+ int32 part_number = 2;
+ UploadPartAuthorizationMethodEnum method = 3;
+ string url = 4;
+ string content_type = 5;
+ string required_checksum_header_name = 6;
+ string required_checksum_header_value = 7;
+ google.protobuf.Timestamp expires_at = 8;
+}
+
+message CompleteUploadRequest {
+ repeated UploadPart parts = 1;
+}
+
+message ModelRequirement {
+ string slot = 1;
+ bool required = 2;
+ ModelRequirementCapabilityEnum capability = 3;
+ repeated string allowed_model_ids = 4;
+}
+
+message DataCompatibility {
+ string data_schema_version = 1;
+ repeated string compatible_from_versions = 2;
+ bool rollback_safe = 3;
+ bool migration_required = 4;
+ optional string migration_receipt_id = 5;
+}
+
+message CapabilityVersion {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string id = 1;
+ optional string package_id = 2;
+ optional string package_version_id = 3;
+ optional string build_job_id = 4;
+ string version_label = 5;
+ optional string runtime_version_id = 6;
+ optional string webui_version_id = 7;
+ string artifact_digest = 8;
+ CapabilityVersionStatusEnum status = 9;
+ repeated ModelRequirement model_requirements = 10;
+ DataCompatibility data_compatibility = 11;
+ int64 reference_count = 12;
+ google.protobuf.Timestamp created_at = 13;
+ CapabilityVersionProvenanceEnum provenance = 14;
+ optional string legacy_application_revision_id = 15;
+ ArtifactReference artifact = 16;
+ DeploymentDescriptor deployment_descriptor = 17;
+ string deployment_descriptor_digest = 18;
+ string deployment_descriptor_object_ref = 19;
+}
+
+message BuildJob {
+ string id = 1;
+ string operation_id = 2;
+ string package_version_id = 3;
+ string runtime_version_id = 4;
+ string webui_version_id = 5;
+ BuildJobStatusEnum status = 6;
+ string stage = 7;
+ optional string artifact_digest = 8;
+ optional string result_capability_version_id = 9;
+ optional string retry_of_build_job_id = 10;
+ optional ErrorCodeEnum error_code = 11;
+ google.protobuf.Timestamp created_at = 12;
+ google.protobuf.Timestamp updated_at = 13;
+ bool retry_allowed = 14;
+ repeated string input_claim_ids = 15;
+}
+
+message CreateBuildRequest {
+ string package_version_id = 1;
+ string webui_version_id = 2;
+}
+
+message BuildLog {
+ string id = 1;
+ string build_job_id = 2;
+ int64 sequence = 3;
+ string stage = 4;
+ BuildLogLevelEnum level = 5;
+ string message = 6;
+ google.protobuf.Timestamp created_at = 7;
+}
+
+message RuntimeVersion {
+ string id = 1;
+ string name = 2;
+ string version_label = 3;
+ string artifact_digest = 4;
+ RuntimeVersionStatusEnum status = 5;
+ string runtime_abi_version = 6;
+ repeated string package_format_versions = 7;
+ bool default_for_new_builds = 8;
+ string admission_receipt_id = 9;
+ google.protobuf.Timestamp created_at = 10;
+ string publisher_namespace_id = 11;
+ string publisher_contract_digest = 12;
+ RuntimePublisherContract publisher_contract = 13;
+ string publisher_contract_object_ref = 14;
+}
+
+message WebuiVersion {
+ string id = 1;
+ string name = 2;
+ string version_label = 3;
+ string artifact_digest = 4;
+ WebuiVersionStatusEnum status = 5;
+ repeated string runtime_abi_versions = 6;
+ string ui_protocol_version = 7;
+ string admission_receipt_id = 8;
+ google.protobuf.Timestamp created_at = 9;
+ string publisher_namespace_id = 10;
+ string publisher_contract_digest = 11;
+ WebuiPublisherContract publisher_contract = 12;
+ string publisher_contract_object_ref = 13;
+}
+
+message RegisterRuntimeVersionRequest {
+ string name = 1;
+ string version_label = 2;
+ string publisher_namespace_id = 3;
+ RuntimePublisherContract publisher_contract = 4;
+ string admission_receipt_id = 5;
+}
+
+message RegisterWebuiVersionRequest {
+ string name = 1;
+ string version_label = 2;
+ string publisher_namespace_id = 3;
+ WebuiPublisherContract publisher_contract = 4;
+ string admission_receipt_id = 5;
+}
+
+message CatalogStatusRequest {
+ CatalogStatusRequestStatusEnum status = 1;
+ string reason = 2;
+}
+
+message ComputePlan {
+ string id = 1;
+ string name = 2;
+ int32 vcpus = 3;
+ int32 memory_mi_b = 4;
+ ComputePlanAvailabilityEnum availability = 5;
+ ComputePlanBillingModeEnum billing_mode = 6;
+ string provider_capability_version = 7;
+ optional int64 monthly_price_usd_micros = 8;
+ optional string price_policy_version_id = 9;
+ google.protobuf.Timestamp valid_from = 10;
+ google.protobuf.Timestamp valid_until = 11;
+ google.protobuf.Timestamp created_at = 12;
+}
+
+message StoragePlan {
+ string id = 1;
+ string name = 2;
+ int32 capacity_gi_b = 3;
+ StoragePlanAvailabilityEnum availability = 4;
+ StoragePlanBillingModeEnum billing_mode = 5;
+ bool shrink_supported = 6;
+ optional int64 monthly_price_usd_micros = 7;
+ optional string price_policy_version_id = 8;
+ google.protobuf.Timestamp valid_from = 9;
+ google.protobuf.Timestamp valid_until = 10;
+ google.protobuf.Timestamp created_at = 11;
+}
+
+message CreateComputePlanRequest {
+ string name = 1;
+ int32 vcpus = 2;
+ int32 memory_mi_b = 3;
+ string provider_profile_id = 4;
+ string provider_sku_id = 5;
+ string provider_capability_version = 6;
+ google.protobuf.Timestamp valid_from = 7;
+ google.protobuf.Timestamp valid_until = 8;
+}
+
+message CreateStoragePlanRequest {
+ string name = 1;
+ int32 capacity_gi_b = 2;
+ string provider_profile_id = 3;
+ string provider_sku_id = 4;
+ bool shrink_supported = 5;
+ google.protobuf.Timestamp valid_from = 6;
+ google.protobuf.Timestamp valid_until = 7;
+}
+
+message PlanAvailabilityRequest {
+ PlanAvailabilityRequestAvailabilityEnum availability = 1;
+ string reason = 2;
+}
+
+message PricePolicyVersion {
+ string id = 1;
+ string version_label = 2;
+ PricePolicyVersionCurrencyEnum currency = 3;
+ int32 period_months = 4;
+ int64 compute_monthly_usd_micros = 5;
+ int64 storage_monthly_usd_micros = 6;
+ int64 product_monthly_usd_micros = 7;
+ google.protobuf.Timestamp valid_from = 8;
+ google.protobuf.Timestamp valid_until = 9;
+ google.protobuf.Timestamp created_at = 10;
+ string compute_plan_id = 11;
+ string storage_plan_id = 12;
+ RenewalPolicy renewal_policy = 13;
+ PricePolicyVersionPlanChangePolicyVersionEnum plan_change_policy_version = 14;
+ PlanChangePolicy plan_change_policy = 15;
+}
+
+message CreatePricePolicyRequest {
+ string version_label = 1;
+ int32 period_months = 2;
+ int64 compute_monthly_usd_micros = 3;
+ int64 storage_monthly_usd_micros = 4;
+ int64 product_monthly_usd_micros = 5;
+ google.protobuf.Timestamp valid_from = 6;
+ google.protobuf.Timestamp valid_until = 7;
+ string compute_plan_id = 8;
+ string storage_plan_id = 9;
+ RenewalPolicy renewal_policy = 10;
+ CreatePricePolicyRequestPlanChangePolicyVersionEnum plan_change_policy_version = 11;
+}
+
+message RefundPolicyVersion {
+ string id = 1;
+ string version_label = 2;
+ RefundPolicyVersionAlgorithmEnum algorithm = 3;
+ string retention_policy_version_id = 4;
+ string customer_terms = 5;
+ google.protobuf.Timestamp valid_from = 6;
+ google.protobuf.Timestamp valid_until = 7;
+ google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateRefundPolicyRequest {
+ string version_label = 1;
+ CreateRefundPolicyRequestAlgorithmEnum algorithm = 2;
+ string retention_policy_version_id = 3;
+ string customer_terms = 4;
+ google.protobuf.Timestamp valid_from = 5;
+ google.protobuf.Timestamp valid_until = 6;
+}
+
+message RetentionPolicyVersion {
+ string id = 1;
+ string version_label = 2;
+ RetentionPolicyVersionWorkspaceDataDispositionEnum workspace_data_disposition = 3;
+ RetentionPolicyVersionPackageHistoryDispositionEnum package_history_disposition = 4;
+ RetentionPolicyVersionBuildHistoryDispositionEnum build_history_disposition = 5;
+ int32 tenant_restore_days = 6;
+ string customer_terms = 7;
+ google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateRetentionPolicyRequest {
+ string version_label = 1;
+ string customer_terms = 2;
+}
+
+message Model {
+ string id = 1;
+ string name = 2;
+ repeated string capabilities = 3;
+ bool available = 4;
+ int64 input_price_per_million_tokens_usd_micros = 5;
+ int64 output_price_per_million_tokens_usd_micros = 6;
+ ModelPriceSourceEnum price_source = 7;
+ google.protobuf.Timestamp fetched_at = 8;
+}
+
+message ModelSelection {
+ string slot = 1;
+ string model_id = 2;
+}
+
+message QuoteRequest {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ QuoteRequestPurposeEnum purpose = 1;
+ optional string workspace_id = 2;
+ optional string capability_version_id = 3;
+ string compute_plan_id = 4;
+ string storage_plan_id = 5;
+ repeated ModelSelection model_selections = 6;
+ int32 period_months = 7;
+ optional string scheduled_plan_change_id = 8;
+}
+
+message QuoteLine {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ QuoteLineKindEnum kind = 1;
+ string description = 2;
+ int32 quantity = 3;
+ int64 amount_usd_micros = 4;
+ CreditSource credit_source = 5;
+}
+
+message Quote {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string id = 1;
+ QuotePurposeEnum purpose = 2;
+ optional string workspace_id = 3;
+ optional string capability_version_id = 4;
+ string compute_plan_id = 5;
+ string storage_plan_id = 6;
+ repeated ModelSelection model_selections = 7;
+ int32 period_months = 8;
+ google.protobuf.Timestamp period_start = 9;
+ google.protobuf.Timestamp period_end = 10;
+ string price_policy_version_id = 11;
+ string refund_policy_version_id = 12;
+ string retention_policy_version_id = 13;
+ string refund_terms = 14;
+ string retention_terms = 15;
+ string expected_interruption = 16;
+ repeated QuoteLine line_items = 17;
+ int64 total_usd_micros = 18;
+ QuoteStatusEnum status = 19;
+ google.protobuf.Timestamp expires_at = 20;
+ google.protobuf.Timestamp created_at = 21;
+ optional int64 source_subscription_version = 22;
+ PlanChangeCalculation plan_change_calculation = 23;
+ optional string scheduled_plan_change_id = 24;
+ QuoteRuntimeReadbackRequirementEnum runtime_readback_requirement = 25;
+}
+
+message Workspace {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string id = 1;
+ string name = 2;
+ optional string capability_version_id = 3;
+ string compute_plan_id = 4;
+ string storage_plan_id = 5;
+ optional string current_agent_deployment_id = 6;
+ WorkspaceStatusEnum status = 7;
+ WorkspaceResourceReadinessEnum resource_readiness = 8;
+ WorkspaceApplicationAvailabilityEnum application_availability = 9;
+ int64 model_configuration_version = 10;
+ google.protobuf.Timestamp current_period_end = 11;
+ optional string access_url = 12;
+ google.protobuf.Timestamp created_at = 13;
+ google.protobuf.Timestamp updated_at = 14;
+ WorkspaceDeliveryModelEnum delivery_model = 15;
+ int64 version = 16;
+}
+
+message CreateWorkspaceRequest {
+ string name = 1;
+ string quote_id = 2;
+ CreateWorkspaceRequestRenewalModeEnum renewal_mode = 3;
+ optional bool automatic_renewal_consent = 4;
+}
+
+message WorkspaceAccess {
+ string workspace_id = 1;
+ string url = 2;
+ WorkspaceAccessAuthenticationModeEnum authentication_mode = 3;
+ google.protobuf.Timestamp expires_at = 4;
+ optional bool application_credentials_available = 5;
+}
+
+message ModelConfiguration {
+ string workspace_id = 1;
+ int64 version = 2;
+ repeated ModelSelection selections = 3;
+ ModelConfigurationStatusEnum status = 4;
+ optional int64 applied_version = 5;
+ optional string operation_id = 6;
+ google.protobuf.Timestamp updated_at = 7;
+}
+
+message UpdateWorkspaceModelsRequest {
+ int64 expected_version = 1;
+ repeated ModelSelection selections = 2;
+}
+
+message Deployment {
+ string id = 1;
+ string workspace_id = 2;
+ string capability_version_id = 3;
+ optional string runtime_instance_id = 4;
+ optional string previous_deployment_id = 5;
+ DeploymentStatusEnum status = 6;
+ DataCompatibility data_compatibility = 7;
+ google.protobuf.Timestamp created_at = 8;
+ google.protobuf.Timestamp updated_at = 9;
+}
+
+message UpdateWorkspaceVersionRequest {
+ string capability_version_id = 1;
+ string expected_current_agent_deployment_id = 2;
+}
+
+message RollbackWorkspaceRequest {
+ string target_deployment_id = 1;
+ string expected_current_agent_deployment_id = 2;
+}
+
+message ApplyQuoteRequest {
+ string quote_id = 1;
+}
+
+message DeleteWorkspaceRequest {
+ string confirmation_name = 1;
+ bool acknowledge_data_destruction = 2;
+}
+
+message WorkspaceDeletion {
+ string workspace_id = 1;
+ string operation_id = 2;
+ WorkspaceDeletionResourceDeletionStatusEnum resource_deletion_status = 3;
+ WorkspaceDeletionDataDeletionStatusEnum data_deletion_status = 4;
+ optional string refund_operation_id = 5;
+ WorkspaceDeletionRefundStatusEnum refund_status = 6;
+ google.protobuf.Timestamp updated_at = 7;
+}
+
+message Subscription {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string id = 1;
+ string workspace_id = 2;
+ google.protobuf.Timestamp current_period_start = 3;
+ google.protobuf.Timestamp current_period_end = 4;
+ int32 period_months = 5;
+ SubscriptionStatusEnum status = 6;
+ optional string accepted_quote_id = 7;
+ optional string renewal_operation_id = 8;
+ google.protobuf.Timestamp created_at = 9;
+ SubscriptionProvenanceEnum provenance = 10;
+ optional string legacy_purchase_id = 11;
+ optional string refund_policy_version_id = 12;
+ optional string retention_policy_version_id = 13;
+ optional string refund_terms = 14;
+ optional string retention_terms = 15;
+ SubscriptionRenewalModeEnum renewal_mode = 16;
+ optional string renewal_consent_id = 17;
+ int64 renewal_settings_version = 18;
+ int64 version = 19;
+ optional string current_price_policy_version_id = 20;
+ optional int64 current_monthly_usd_micros = 21;
+}
+
+message WalletOperation {
+ string id = 1;
+ optional string workspace_id = 2;
+ WalletOperationKindEnum kind = 3;
+ int64 amount_usd_micros = 4;
+ WalletOperationStatusEnum status = 5;
+ optional string external_reference = 6;
+ optional string receipt_id = 7;
+ optional ErrorCodeEnum error_code = 8;
+ google.protobuf.Timestamp created_at = 9;
+ google.protobuf.Timestamp updated_at = 10;
+ optional WalletOperationPurposeEnum purpose = 11;
+ optional string plan_change_id = 12;
+ optional string original_charge_operation_id = 13;
+ google.protobuf.Timestamp coverage_start = 14;
+ google.protobuf.Timestamp coverage_end = 15;
+ optional int64 coverage_start_milliseconds = 16;
+ optional int64 coverage_end_milliseconds = 17;
+}
+
+message Wallet {
+ WalletSourceEnum source = 1;
+ WalletStatusEnum status = 2;
+ int64 balance_usd_micros = 3;
+ WalletCurrencyEnum currency = 4;
+ google.protobuf.Timestamp fetched_at = 5;
+}
+
+message Usage {
+ string id = 1;
+ string model_id = 2;
+ google.protobuf.Timestamp period_start = 3;
+ google.protobuf.Timestamp period_end = 4;
+ int64 input_tokens = 5;
+ int64 output_tokens = 6;
+ int64 cost_usd_micros = 7;
+ UsageSourceEnum source = 8;
+ google.protobuf.Timestamp created_at = 9;
+}
+
+message GatewayKey {
+ string id = 1;
+ string name = 2;
+ string fingerprint = 3;
+ GatewayKeyPurposeEnum purpose = 4;
+ optional string workspace_id = 5;
+ GatewayKeyStatusEnum status = 6;
+ repeated string model_ids = 7;
+ google.protobuf.Timestamp created_at = 8;
+ google.protobuf.Timestamp expires_at = 9;
+}
+
+message CreateGatewayKeyRequest {
+ string name = 1;
+ repeated string model_ids = 2;
+ google.protobuf.Timestamp expires_at = 3;
+}
+
+message GatewayKeySecret {
+ GatewayKey key = 1;
+ string secret = 2;
+}
+
+message AuditEvent {
+ string id = 1;
+ string actor_id = 2;
+ string action = 3;
+ string resource_id = 4;
+ AuditEventOutcomeEnum outcome = 5;
+ string request_id = 6;
+ google.protobuf.Timestamp created_at = 7;
+}
+
+message Receipt {
+ string id = 1;
+ ReceiptKindEnum kind = 2;
+ OwnerEnum owner = 3;
+ optional string source_sha = 4;
+ optional string artifact_digest = 5;
+ optional string operation_id = 6;
+ optional string workflow_run_id = 7;
+ ReceiptOutcomeEnum outcome = 8;
+ string evidence_summary = 9;
+ google.protobuf.Timestamp created_at = 10;
+}
+
+message ReconcileOperationRequest {
+ string reason = 1;
+}
+
+message AdminOperation {
+ Operation operation = 1;
+ string tenant_id = 2;
+}
+
+message Qualification {
+ string id = 1;
+ string candidate_source_sha = 2;
+ string artifact_digest = 3;
+ optional string local_receipt_id = 4;
+ optional string instance_receipt_id = 5;
+ QualificationStatusEnum status = 6;
+ google.protobuf.Timestamp created_at = 7;
+}
+
+message MemberPage {
+ repeated Member items = 1;
+ optional string next_cursor = 2;
+}
+
+message InvitationPage {
+ repeated Invitation items = 1;
+ optional string next_cursor = 2;
+}
+
+message NamespacePage {
+ repeated Namespace items = 1;
+ optional string next_cursor = 2;
+}
+
+message PackagePage {
+ repeated Package items = 1;
+ optional string next_cursor = 2;
+}
+
+message PackageVersionPage {
+ repeated PackageVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message CapabilityVersionPage {
+ repeated CapabilityVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message BuildJobPage {
+ repeated BuildJob items = 1;
+ optional string next_cursor = 2;
+}
+
+message BuildLogPage {
+ repeated BuildLog items = 1;
+ optional string next_cursor = 2;
+}
+
+message RuntimeVersionPage {
+ repeated RuntimeVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message WebuiVersionPage {
+ repeated WebuiVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message ComputePlanPage {
+ repeated ComputePlan items = 1;
+ optional string next_cursor = 2;
+}
+
+message StoragePlanPage {
+ repeated StoragePlan items = 1;
+ optional string next_cursor = 2;
+}
+
+message PricePolicyVersionPage {
+ repeated PricePolicyVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message RefundPolicyVersionPage {
+ repeated RefundPolicyVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message RetentionPolicyVersionPage {
+ repeated RetentionPolicyVersion items = 1;
+ optional string next_cursor = 2;
+}
+
+message ModelPage {
+ repeated Model items = 1;
+ optional string next_cursor = 2;
+}
+
+message WorkspacePage {
+ repeated Workspace items = 1;
+ optional string next_cursor = 2;
+}
+
+message DeploymentPage {
+ repeated Deployment items = 1;
+ optional string next_cursor = 2;
+}
+
+message WalletOperationPage {
+ repeated WalletOperation items = 1;
+ optional string next_cursor = 2;
+}
+
+message UsagePage {
+ repeated Usage items = 1;
+ optional string next_cursor = 2;
+}
+
+message GatewayKeyPage {
+ repeated GatewayKey items = 1;
+ optional string next_cursor = 2;
+}
+
+message TenantPage {
+ repeated Tenant items = 1;
+ optional string next_cursor = 2;
+}
+
+message AuditEventPage {
+ repeated AuditEvent items = 1;
+ optional string next_cursor = 2;
+}
+
+message ReceiptPage {
+ repeated Receipt items = 1;
+ optional string next_cursor = 2;
+}
+
+message AdminOperationPage {
+ repeated AdminOperation items = 1;
+ optional string next_cursor = 2;
+}
+
+message QualificationPage {
+ repeated Qualification items = 1;
+ optional string next_cursor = 2;
+}
+
+message AdoptWorkspaceRequest {
+ string capability_version_id = 1;
+ int64 expected_workspace_version = 2;
+ repeated ModelSelection model_selections = 3;
+}
+
+message BuildRuntimePolicy {
+ string id = 1;
+ string runtime_version_id = 2;
+ optional string default_webui_version_id = 3;
+ string policy_version = 4;
+ google.protobuf.Timestamp effective_at = 5;
+ google.protobuf.Timestamp created_at = 6;
+}
+
+message SetBuildRuntimePolicyRequest {
+ string runtime_version_id = 1;
+ optional string default_webui_version_id = 2;
+ optional string expected_policy_version_id = 3;
+}
+
+message ImagePlatform {
+ ImagePlatformOsEnum os = 1;
+ ImagePlatformArchitectureEnum architecture = 2;
+ optional string variant = 3;
+}
+
+message ArtifactReference {
+ string repository = 1;
+ string digest = 2;
+ ImagePlatform platform = 3;
+}
+
+message RecipeArtifact {
+ string repository = 1;
+ string digest = 2;
+ RecipeArtifactMediaTypeEnum media_type = 3;
+ string dockerfile_path = 4;
+}
+
+message PackageBuildInput {
+ PackageBuildInputContextNameEnum context_name = 1;
+ string format_version = 2;
+ string source_root = 3;
+ string target_path = 4;
+ int32 uid = 5;
+ int32 gid = 6;
+}
+
+message WebuiBuildInput {
+ WebuiBuildInputContextNameEnum context_name = 1;
+ string source_path = 2;
+ string target_path = 3;
+ int32 uid = 4;
+ int32 gid = 5;
+}
+
+message BuildRecipeContract {
+ BuildRecipeContractVersionEnum version = 1;
+ ArtifactReference frontend = 2;
+ RecipeArtifact recipe = 3;
+ BuildRecipeContractRuntimeContextNameEnum runtime_context_name = 4;
+ PackageBuildInput package_input = 5;
+ WebuiBuildInput webui_input = 6;
+ BuildRecipeContractNetworkPolicyEnum network_policy = 7;
+ ImagePlatform output_platform = 8;
+ BuildRecipeContractOutputImageCommand output_image_command = 9;
+}
+
+message ModelConfigurationContract {
+ ModelConfigurationContractProtocolEnum protocol = 1;
+ string port_name = 2;
+ string apply_path = 3;
+ string readback_path = 4;
+ repeated ModelConfigurationContractRequestFieldsEnum request_fields = 5;
+ repeated ModelConfigurationContractReadbackFieldsEnum readback_fields = 6;
+ string authorization_secret_input_name = 7;
+}
+
+message ApplicationAccessContract {
+ oneof value {
+  ApplicationOwnedAccessContract application_owned_access_contract = 1;
+  CloudPrivateAccessContract cloud_private_access_contract = 2;
+  AnonymousAccessContract anonymous_access_contract = 3;
+ }
+}
+
+message DataUpgradeContract {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ DataUpgradeContractModeEnum mode = 1;
+ repeated string compatible_from_schema_versions = 2;
+ ArtifactReference migration_artifact = 3;
+ bool backup_required = 4;
+ optional string backup_format_version = 5;
+}
+
+message DataRollbackContract {
+ bool safe = 1;
+ repeated string compatible_schema_versions = 2;
+}
+
+message DataContract {
+ string schema_version = 1;
+ DataUpgradeContract upgrade = 2;
+ DataRollbackContract rollback = 3;
+ repeated DataMountPolicy mount_policies = 4;
+}
+
+message RuntimePublisherContract {
+ RuntimePublisherContractSchemaVersionEnum schema_version = 1;
+ string publisher_namespace_id = 2;
+ ArtifactReference image = 3;
+ RuntimePublisherContractKindEnum kind = 4;
+ string runtime_abi_version = 5;
+ repeated string package_format_versions = 6;
+ BuildRecipeContract build_recipe = 7;
+ ModelConfigurationContract model_configuration = 8;
+ ApplicationAccessContract application_access = 9;
+ DataContract data = 10;
+ WorkspaceApplicationRevision application_revision_template = 11;
+ repeated PackageFormatContractReference package_format_contracts = 12;
+}
+
+message WebuiPublisherContract {
+ WebuiPublisherContractSchemaVersionEnum schema_version = 1;
+ string publisher_namespace_id = 2;
+ ArtifactReference image = 3;
+ WebuiPublisherContractKindEnum kind = 4;
+ repeated string runtime_abi_versions = 5;
+ WebuiPublisherContractUiProtocolVersionEnum ui_protocol_version = 6;
+ WebuiPublisherContractIntegrationModeEnum integration_mode = 7;
+ string static_root = 8;
+ string entry_file = 9;
+ string asset_base_path = 10;
+ string api_base_path = 11;
+ WebuiPublisherContractAuthenticationProtocolEnum authentication_protocol = 12;
+ bool supports_sse = 13;
+ bool supports_websocket = 14;
+}
+
+message PublisherContract {
+ oneof value {
+  RuntimePublisherContract runtime_publisher_contract = 1;
+  WebuiPublisherContract webui_publisher_contract = 2;
+ }
+}
+
+message PublisherContractReference {
+ string publisher_namespace_id = 1;
+ string version_id = 2;
+ PublisherContractReferenceKindEnum kind = 3;
+ string descriptor_digest = 4;
+ string descriptor_object_ref = 5;
+}
+
+message DeploymentDescriptor {
+ DeploymentDescriptorSchemaVersionEnum schema_version = 1;
+ ArtifactReference artifact = 2;
+ RuntimePublisherContract runtime_contract = 3;
+ PublisherContractReference runtime_contract_reference = 4;
+ WebuiPublisherContract webui_contract = 5;
+ PublisherContractReference webui_contract_reference = 6;
+ optional string package_version_id = 7;
+ optional string build_input_digest = 8;
+ DeploymentDescriptorProvenanceEnum provenance = 9;
+ optional string legacy_application_revision_id = 10;
+ WorkspaceApplicationRevision application_revision = 11;
+}
+
+message PublisherNamespace {
+ string id = 1;
+ string name = 2;
+ PublisherNamespaceKindEnum kind = 3;
+ string registry_id = 4;
+ string repository_prefix = 5;
+ string admission_receipt_id = 6;
+ PublisherNamespaceStatusEnum status = 7;
+ google.protobuf.Timestamp created_at = 8;
+}
+
+message CreatePublisherNamespaceRequest {
+ string name = 1;
+ CreatePublisherNamespaceRequestKindEnum kind = 2;
+ string registry_id = 3;
+ string repository_prefix = 4;
+ string admission_receipt_id = 5;
+}
+
+message RevokePublisherNamespaceRequest {
+ string reason = 1;
+}
+
+message PublisherNamespacePage {
+ repeated PublisherNamespace items = 1;
+ optional string next_cursor = 2;
+}
+
+message ReenableTenantRequest {
+ string reason = 1;
+}
+
+message RenewalPolicy {
+ RenewalPolicyVersionEnum version = 1;
+ RenewalPolicyTriggerEnum trigger = 2;
+ RenewalPolicyEffectiveStartEnum effective_start = 3;
+ int32 months = 4;
+ bool uses_accepted_price_snapshot = 5;
+}
+
+message WorkspaceApplicationExecution {
+ optional int32 user_id = 1;
+ optional int32 group_id = 2;
+ optional bool init = 3;
+ optional string seccomp_profile = 4;
+}
+
+message WorkspaceApplicationCompute {
+ optional int32 cpu_request_milli = 1;
+ optional int32 cpu_limit_milli = 2;
+ optional int64 memory_request_bytes = 3;
+ optional int64 memory_limit_bytes = 4;
+}
+
+message WorkspaceApplicationCredential {
+ string name = 1;
+ WorkspaceApplicationCredentialKindEnum kind = 2;
+ string target = 3;
+ optional string env = 4;
+ optional string username = 5;
+}
+
+message WorkspaceApplicationPort {
+ string name = 1;
+ int32 port = 2;
+ WorkspaceApplicationPortProtocolEnum protocol = 3;
+}
+
+message WorkspaceApplicationHealthCheck {
+ int32 port = 1;
+ string path = 2;
+ optional int32 initial_delay_seconds = 3;
+}
+
+message WorkspaceApplicationMount {
+ string name = 1;
+ string mount_path = 2;
+ optional bool read_only = 3;
+ optional int32 mode = 4;
+ optional int32 user_id = 5;
+ optional int32 group_id = 6;
+ optional int64 size_bytes = 7;
+ optional bool executable = 8;
+}
+
+message WorkspaceApplicationSecretInput {
+ string name = 1;
+ optional string target = 2;
+ optional string env = 3;
+}
+
+message WorkspaceApplicationConfigInput {
+ string name = 1;
+ string target = 2;
+}
+
+message WorkspaceApplicationDependencyCommand {
+ repeated string entrypoint = 1;
+ repeated string args = 2;
+ map<string, string> env = 3;
+}
+
+message WorkspaceApplicationDependencyHealthCheck {
+ WorkspaceApplicationDependencyHealthCheckTypeEnum type = 1;
+ int32 port = 2;
+ optional string path = 3;
+ repeated string command = 4;
+ optional int32 initial_delay_seconds = 5;
+}
+
+message WorkspaceApplicationDependency {
+ string name = 1;
+ string image = 2;
+ WorkspaceApplicationExecution execution = 3;
+ repeated string depends_on = 4;
+ repeated WorkspaceApplicationPort ports = 5;
+ repeated WorkspaceApplicationDependencyHealthCheck health_checks = 6;
+ repeated WorkspaceApplicationMount persistent_mounts = 7;
+ repeated WorkspaceApplicationMount scratch_mounts = 8;
+ WorkspaceApplicationDependencyCommand command = 9;
+ repeated WorkspaceApplicationSecretInput secret_inputs = 10;
+ repeated WorkspaceApplicationConfigInput config_inputs = 11;
+ WorkspaceApplicationCompute compute = 12;
+}
+
+message WorkspaceApplicationRevision {
+ int32 schema_version = 1;
+ string application_id = 2;
+ string version = 3;
+ string platform = 4;
+ string image = 5;
+ WorkspaceApplicationExecution execution = 6;
+ repeated WorkspaceApplicationCredential credentials = 7;
+ repeated string entrypoint = 8;
+ repeated WorkspaceApplicationPort ports = 9;
+ optional string entry_port = 10;
+ repeated WorkspaceApplicationHealthCheck health_checks = 11;
+ repeated WorkspaceApplicationMount persistent_mounts = 12;
+ repeated WorkspaceApplicationMount scratch_mounts = 13;
+ repeated WorkspaceApplicationSecretInput secret_inputs = 14;
+ repeated WorkspaceApplicationConfigInput config_inputs = 15;
+ repeated WorkspaceApplicationDependency dependencies = 16;
+ WorkspaceApplicationRevisionExposurePolicyEnum exposure_policy = 17;
+ WorkspaceApplicationCompute compute = 18;
+}
+
+message DataMountPolicy {
+ string mount_name = 1;
+ bool concurrent_writers_supported = 2;
+}
+
+message ApplicationOwnedAccessContract {
+ ApplicationOwnedAccessContractModeEnum mode = 1;
+ string login_path = 2;
+ string logout_path = 3;
+ optional string username_credential_name = 4;
+}
+
+message CloudPrivateAccessContract {
+ CloudPrivateAccessContractModeEnum mode = 1;
+ CloudPrivateAccessContractEntryContractEnum entry_contract = 2;
+ string admission_receipt_id = 3;
+}
+
+message AnonymousAccessContract {
+ AnonymousAccessContractModeEnum mode = 1;
+}
+
+message CreditSource {
+ string original_wallet_operation_id = 1;
+ string original_subscription_period_id = 2;
+ string policy_version_id = 3;
+ string credit_receipt_id = 4;
+ int64 amount_usd_micros = 5;
+}
+
+message TenantWorkspaceAction {
+ string workspace_id = 1;
+ TenantWorkspaceActionActionEnum action = 2;
+ string operation_id = 3;
+ TenantWorkspaceActionOperationOwnerEnum operation_owner = 4;
+ TenantWorkspaceActionStatusEnum status = 5;
+}
+
+message TenantWorkspaceSkip {
+ string workspace_id = 1;
+ TenantWorkspaceSkipReasonEnum reason = 2;
+}
+
+message TenantLifecycleProgress {
+ string tenant_id = 1;
+ Operation operation = 2;
+ TenantLifecycleProgressAccessStatusEnum access_status = 3;
+ repeated TenantWorkspaceAction workspace_actions = 4;
+ repeated TenantWorkspaceSkip skipped = 5;
+}
+
+message BuildRecipeContractOutputImageCommand {
+ repeated string entrypoint = 1;
+ repeated string cmd = 2;
+}
+
+message UpdateRenewalSettingsRequest {
+ UpdateRenewalSettingsRequestRenewalModeEnum renewal_mode = 1;
+ int64 expected_renewal_settings_version = 2;
+ optional bool automatic_renewal_consent = 3;
+}
+
+message WorkspaceApplicationEntry {
+ optional string service_name = 1;
+ optional int32 port = 2;
+ optional string url = 3;
+}
+
+message PackageFormatContractReference {
+ PackageFormatContractReferenceOwnerEnum owner = 1;
+ string format_version = 2;
+ string schema_object_ref = 3;
+ string schema_digest = 4;
+ ArtifactReference validator_artifact = 5;
+ string admission_receipt_id = 6;
+}
+
+message WorkspaceApplicationCredentials {
+ string workspace_id = 1;
+ string runtime_instance_id = 2;
+ string username = 3;
+ string password = 4;
+}
+
+message UpgradePlanRules {
+ UpgradePlanRulesKindEnum kind = 1;
+ UpgradePlanRulesEffectiveWhenEnum effective_when = 2;
+ bool preserve_paid_period = 3;
+ UpgradePlanRulesOldPriceSourceEnum old_price_source = 4;
+ UpgradePlanRulesChargeClockEnum charge_clock = 5;
+ UpgradePlanRulesTimeUnitEnum time_unit = 6;
+ UpgradePlanRulesChargeRoundingEnum charge_rounding = 7;
+ UpgradePlanRulesZeroChargeEnum zero_charge = 8;
+ UpgradePlanRulesKnownFailureCompensationEnum known_failure_compensation = 9;
+ UpgradePlanRulesUnknownOutcomeEnum unknown_outcome = 10;
+ UpgradePlanRulesIrreversibleResidualCostOwnerEnum irreversible_residual_cost_owner = 11;
+ UpgradePlanRulesSupplementDeleteRefundEnum supplement_delete_refund = 12;
+}
+
+message DowngradePlanRules {
+ DowngradePlanRulesKindEnum kind = 1;
+ DowngradePlanRulesPlannedBoundaryEnum planned_boundary = 2;
+ DowngradePlanRulesCurrentPeriodRefundEnum current_period_refund = 3;
+ DowngradePlanRulesNextPeriodPriceEnum next_period_price = 4;
+ bool requires_confirmed_next_period_payment = 5;
+ DowngradePlanRulesCancelBeforeEnum cancel_before = 6;
+ DowngradePlanRulesEarlyPaidChangeEnum early_paid_change = 7;
+ DowngradePlanRulesManualUnpaidBoundaryEnum manual_unpaid_boundary = 8;
+ DowngradePlanRulesKnownFailureCompensationEnum known_failure_compensation = 9;
+ DowngradePlanRulesFallbackEnum fallback = 10;
+}
+
+message PlanChangePolicy {
+ PlanChangePolicyVersionEnum version = 1;
+ PlanChangePolicyApprovalStatusEnum approval_status = 2;
+ UpgradePlanRules upgrade = 3;
+ DowngradePlanRules downgrade = 4;
+ PlanChangePolicyClassificationEnum classification = 5;
+ PlanChangePolicyMixedOrIncomparableTransitionEnum mixed_or_incomparable_transition = 6;
+ PlanChangePolicyNoOpTransitionEnum no_op_transition = 7;
+ PlanChangePolicyStorageShrinkEnum storage_shrink = 8;
+ PlanChangePolicyConcurrencyEnum concurrency = 9;
+ PlanChangePolicyCancelAndReplaceEnum cancel_and_replace = 10;
+ PlanChangePolicyBaseRefundPolicyEnum base_refund_policy = 11;
+ PlanChangePolicyProviderExecutionPlanEnum provider_execution_plan = 12;
+}
+
+message UpgradeProration {
+ int64 period_milliseconds = 1;
+ int64 remaining_milliseconds = 2;
+ int64 price_delta_usd_micros = 3;
+ UpgradeProrationRoundingEnum rounding = 4;
+}
+
+message NextPeriodPlanQuote {
+ google.protobuf.Timestamp period_start = 1;
+ google.protobuf.Timestamp period_end = 2;
+ int64 total_usd_micros = 3;
+ string price_policy_version_id = 4;
+}
+
+message PlanChangeCalculation {
+ PlanChangeCalculationPolicyVersionEnum policy_version = 1;
+ PlanChangeCalculationKindEnum kind = 2;
+ string transition_id = 3;
+ string source_subscription_id = 4;
+ int64 source_subscription_version = 5;
+ string source_period_id = 6;
+ string source_compute_plan_id = 7;
+ string source_storage_plan_id = 8;
+ string target_compute_plan_id = 9;
+ string target_storage_plan_id = 10;
+ string source_price_policy_version_id = 11;
+ string target_price_policy_version_id = 12;
+ int64 source_monthly_usd_micros = 13;
+ int64 target_monthly_usd_micros = 14;
+ google.protobuf.Timestamp quote_at = 15;
+ google.protobuf.Timestamp period_start = 16;
+ google.protobuf.Timestamp period_end = 17;
+ int64 charge_usd_micros = 18;
+ google.protobuf.Timestamp planned_effective_at = 19;
+ UpgradeProration upgrade_proration = 20;
+ NextPeriodPlanQuote next_period = 21;
+ string execution_plan_id = 22;
+ string execution_plan_digest = 23;
+ int64 quote_at_milliseconds = 24;
+ int64 period_start_milliseconds = 25;
+ int64 period_end_milliseconds = 26;
+ string source_financial_snapshot_digest = 27;
+}
+
+message PlanChange {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ string id = 1;
+ string workspace_id = 2;
+ PlanChangeKindEnum kind = 3;
+ PlanChangeStatusEnum status = 4;
+ string source_compute_plan_id = 5;
+ string source_storage_plan_id = 6;
+ string target_compute_plan_id = 7;
+ string target_storage_plan_id = 8;
+ string source_price_policy_version_id = 9;
+ string target_price_policy_version_id = 10;
+ string source_subscription_id = 11;
+ int64 source_subscription_version = 12;
+ string source_period_id = 13;
+ int64 source_monthly_usd_micros = 14;
+ int64 target_monthly_usd_micros = 15;
+ string quote_id = 16;
+ PlanChangePolicyVersionEnum policy_version = 17;
+ google.protobuf.Timestamp quote_at = 18;
+ google.protobuf.Timestamp period_start = 19;
+ google.protobuf.Timestamp period_end = 20;
+ int64 charge_usd_micros = 21;
+ google.protobuf.Timestamp planned_effective_at = 22;
+ google.protobuf.Timestamp applied_at = 23;
+ string operation_id = 24;
+ optional string execution_operation_id = 25;
+ optional string cancellation_operation_id = 26;
+ optional string charge_operation_id = 27;
+ PlanChangeChargeStatusEnum charge_status = 28;
+ google.protobuf.Timestamp next_period_start = 29;
+ google.protobuf.Timestamp next_period_end = 30;
+ optional int64 next_period_charge_usd_micros = 31;
+ optional string next_period_obligation_id = 32;
+ optional string next_period_charge_operation_id = 33;
+ optional PlanChangeNextPeriodChargeStatusEnum next_period_charge_status = 34;
+ repeated string refund_operation_ids = 35;
+ int64 schedule_version = 36;
+ PlanChangeObservationResultEnum observation_result = 37;
+ optional ErrorCodeEnum error_code = 38;
+ bool cancellable = 39;
+ google.protobuf.Timestamp created_at = 40;
+ google.protobuf.Timestamp updated_at = 41;
+ PlanChangeDeliveryOutcomeEnum delivery_outcome = 42;
+ PlanChangeResourceOutcomeEnum resource_outcome = 43;
+ PlanChangeRuntimeReadbackRequirementEnum runtime_readback_requirement = 44;
+ PlanChangeCurrentRequirementValidationEnum current_requirement_validation = 45;
+ optional ErrorCodeEnum risk_code = 46;
+ google.protobuf.Timestamp last_validated_at = 47;
+ string execution_plan_id = 48;
+ string execution_plan_digest = 49;
+ int64 quote_at_milliseconds = 50;
+ int64 period_start_milliseconds = 51;
+ int64 period_end_milliseconds = 52;
+ string source_financial_snapshot_digest = 53;
+}
+
+message PlanChangePage {
+ repeated PlanChange items = 1;
+ optional string next_cursor = 2;
+}
+
+message CancelPlanChangeRequest {
+ int64 expected_schedule_version = 1;
+ string reason = 2;
+}
+
+message PlanChangeEvidence {
+ // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
+ int32 schema_version = 1;
+ string plan_change_id = 2;
+ string workspace_id = 3;
+ PlanChangeEvidenceKindEnum kind = 4;
+ PlanChangeEvidencePolicyVersionEnum policy_version = 5;
+ string quote_id = 6;
+ string source_subscription_id = 7;
+ int64 source_subscription_version = 8;
+ string source_period_id = 9;
+ string source_compute_plan_id = 10;
+ string source_storage_plan_id = 11;
+ string target_compute_plan_id = 12;
+ string target_storage_plan_id = 13;
+ string source_price_policy_version_id = 14;
+ string target_price_policy_version_id = 15;
+ google.protobuf.Timestamp quote_at = 16;
+ google.protobuf.Timestamp period_start = 17;
+ google.protobuf.Timestamp period_end = 18;
+ int64 charge_usd_micros = 19;
+ optional string charge_operation_id = 20;
+ optional string next_period_obligation_id = 21;
+ optional int64 execution_epoch = 22;
+ optional string resource_observation_receipt_id = 23;
+ optional string runtime_readiness_receipt_id = 24;
+ optional string failure_receipt_id = 25;
+ google.protobuf.Timestamp applied_at = 26;
+ PlanChangeEvidenceOutcomeEnum outcome = 27;
+ bool retained_irreversible_resources = 28;
+ PlanChangeEvidenceDeliveryOutcomeEnum delivery_outcome = 29;
+ PlanChangeEvidenceResourceOutcomeEnum resource_outcome = 30;
+ PlanChangeEvidenceRuntimeReadbackRequirementEnum runtime_readback_requirement = 31;
+ int64 quote_at_milliseconds = 32;
+ int64 period_start_milliseconds = 33;
+ int64 period_end_milliseconds = 34;
+ string source_financial_snapshot_digest = 35;
+}
+
+message SupplementalRefundEvidence {
+ int32 schema_version = 1;
+ SupplementalRefundEvidencePurposeEnum purpose = 2;
+ string workspace_id = 3;
+ string plan_change_id = 4;
+ string original_charge_operation_id = 5;
+ string original_charge_receipt_id = 6;
+ int64 original_confirmed_usd_micros = 7;
+ int64 requested_refund_usd_micros = 8;
+ SupplementalRefundEvidencePolicyVersionEnum policy_version = 9;
+ google.protobuf.Timestamp coverage_start = 10;
+ google.protobuf.Timestamp coverage_end = 11;
+ google.protobuf.Timestamp delete_confirmed_at = 12;
+ optional string failure_receipt_id = 13;
+ optional string deletion_receipt_id = 14;
+ optional string fence_receipt_id = 15;
+ int64 coverage_start_milliseconds = 16;
+ optional int64 delete_confirmed_at_milliseconds = 17;
+ int64 coverage_end_milliseconds = 18;
+}
+
+message GetLoginContextRpcRequest {
+ CallContext context = 1;
+}
+
+message LoginRpcRequest {
+ CallContext context = 1;
+ LoginRequest body = 2;
+}
+
+message GetSessionRpcRequest {
+ CallContext context = 1;
+}
+
+message LogoutRpcRequest {
+ CallContext context = 1;
+}
+
+message GetTenantRpcRequest {
+ CallContext context = 1;
+}
+
+message ListMembersRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message ListInvitationsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message InviteMemberRpcRequest {
+ CallContext context = 1;
+ InviteMemberRequest body = 2;
+}
+
+message AcceptInvitationRpcRequest {
+ CallContext context = 1;
+ string invitation_id = 2;
+}
+
+message RevokeInvitationRpcRequest {
+ CallContext context = 1;
+ string invitation_id = 2;
+}
+
+message UpdateMemberRoleRpcRequest {
+ CallContext context = 1;
+ UpdateMemberRoleRequest body = 2;
+ string member_id = 3;
+}
+
+message RemoveMemberRpcRequest {
+ CallContext context = 1;
+ string member_id = 2;
+}
+
+message ListNamespacesRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreateNamespaceRpcRequest {
+ CallContext context = 1;
+ NamespaceWriteRequest body = 2;
+}
+
+message UpdateNamespaceRpcRequest {
+ CallContext context = 1;
+ NamespaceWriteRequest body = 2;
+ string namespace_id = 3;
+}
+
+message ArchiveNamespaceRpcRequest {
+ CallContext context = 1;
+ string namespace_id = 2;
+}
+
+message ListPackagesRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional ListPackagesRpcRequestVisibilityEnum query_visibility = 4;
+ optional string query_namespace_id = 5;
+ optional ListPackagesRpcRequestStatusEnum query_status = 6;
+ optional string query_search = 7;
+}
+
+message CreatePackageRpcRequest {
+ CallContext context = 1;
+ CreatePackageRequest body = 2;
+}
+
+message GetPackageRpcRequest {
+ CallContext context = 1;
+ string package_id = 2;
+}
+
+message UpdatePackageRpcRequest {
+ CallContext context = 1;
+ UpdatePackageRequest body = 2;
+ string package_id = 3;
+}
+
+message ArchivePackageRpcRequest {
+ CallContext context = 1;
+ string package_id = 2;
+}
+
+message CreateUploadRpcRequest {
+ CallContext context = 1;
+ CreateUploadRequest body = 2;
+ string package_id = 3;
+}
+
+message GetUploadRpcRequest {
+ CallContext context = 1;
+ string upload_id = 2;
+}
+
+message CreateUploadPartRpcRequest {
+ CallContext context = 1;
+ CreateUploadPartRequest body = 2;
+ string upload_id = 3;
+}
+
+message CompleteUploadRpcRequest {
+ CallContext context = 1;
+ CompleteUploadRequest body = 2;
+ string upload_id = 3;
+}
+
+message ListPackageVersionsRpcRequest {
+ CallContext context = 1;
+ string package_id = 2;
+ optional string query_cursor = 3;
+ optional int32 query_limit = 4;
+}
+
+message GetPackageVersionRpcRequest {
+ CallContext context = 1;
+ string package_version_id = 2;
+}
+
+message CreateBuildRpcRequest {
+ CallContext context = 1;
+ CreateBuildRequest body = 2;
+}
+
+message ListBuildsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_package_version_id = 4;
+}
+
+message GetBuildRpcRequest {
+ CallContext context = 1;
+ string build_id = 2;
+}
+
+message ListBuildLogsRpcRequest {
+ CallContext context = 1;
+ string build_id = 2;
+ optional string query_cursor = 3;
+ optional int32 query_limit = 4;
+}
+
+message RetryBuildRpcRequest {
+ CallContext context = 1;
+ string build_id = 2;
+}
+
+message ListCapabilityVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_package_id = 4;
+ optional ListCapabilityVersionsRpcRequestStatusEnum query_status = 5;
+}
+
+message GetCapabilityVersionRpcRequest {
+ CallContext context = 1;
+ string capability_version_id = 2;
+}
+
+message DeleteCapabilityVersionRpcRequest {
+ CallContext context = 1;
+ string capability_version_id = 2;
+}
+
+message PublishOfficialPackageRpcRequest {
+ CallContext context = 1;
+ PublishPackageRequest body = 2;
+ string package_id = 3;
+}
+
+message CreateQuoteRpcRequest {
+ CallContext context = 1;
+ QuoteRequest body = 2;
+}
+
+message GetQuoteRpcRequest {
+ CallContext context = 1;
+ string quote_id = 2;
+}
+
+message CreateWorkspaceRpcRequest {
+ CallContext context = 1;
+ CreateWorkspaceRequest body = 2;
+}
+
+message ListWorkspacesRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message GetWorkspaceRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message DeleteWorkspaceRpcRequest {
+ CallContext context = 1;
+ DeleteWorkspaceRequest body = 2;
+ string workspace_id = 3;
+}
+
+message GetWorkspaceAccessRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message GetWorkspaceModelsRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message UpdateWorkspaceModelsRpcRequest {
+ CallContext context = 1;
+ UpdateWorkspaceModelsRequest body = 2;
+ string workspace_id = 3;
+}
+
+message ListDeploymentsRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+ optional string query_cursor = 3;
+ optional int32 query_limit = 4;
+}
+
+message GetDeploymentRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+ string deployment_id = 3;
+}
+
+message UpdateWorkspaceVersionRpcRequest {
+ CallContext context = 1;
+ UpdateWorkspaceVersionRequest body = 2;
+ string workspace_id = 3;
+}
+
+message RollbackWorkspaceRpcRequest {
+ CallContext context = 1;
+ RollbackWorkspaceRequest body = 2;
+ string workspace_id = 3;
+}
+
+message ResizeWorkspaceRpcRequest {
+ CallContext context = 1;
+ ApplyQuoteRequest body = 2;
+ string workspace_id = 3;
+}
+
+message RenewWorkspaceRpcRequest {
+ CallContext context = 1;
+ ApplyQuoteRequest body = 2;
+ string workspace_id = 3;
+}
+
+message GetSubscriptionRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message GetWorkspaceDeletionRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message ListWorkspaceTransactionsRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+ optional string query_cursor = 3;
+ optional int32 query_limit = 4;
+}
+
+message GetOperationRpcRequest {
+ CallContext context = 1;
+ OperationOwnerEnum owner = 2;
+ string operation_id = 3;
+}
+
+message GetWalletRpcRequest {
+ CallContext context = 1;
+}
+
+message ListUsageRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ google.protobuf.Timestamp query_from = 4;
+ google.protobuf.Timestamp query_until = 5;
+ optional string query_model_id = 6;
+}
+
+message ListGatewayKeysRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreateGatewayKeyRpcRequest {
+ CallContext context = 1;
+ CreateGatewayKeyRequest body = 2;
+}
+
+message RevealGatewayKeyRpcRequest {
+ CallContext context = 1;
+ string key_id = 2;
+}
+
+message RevokeGatewayKeyRpcRequest {
+ CallContext context = 1;
+ string key_id = 2;
+}
+
+message ListRechargeRecordsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_tenant_id = 4;
+}
+
+message ListTenantsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreateTenantRpcRequest {
+ CallContext context = 1;
+ CreateTenantRequest body = 2;
+}
+
+message GetAdminTenantRpcRequest {
+ CallContext context = 1;
+ string tenant_id = 2;
+}
+
+message DeleteTenantRpcRequest {
+ CallContext context = 1;
+ DeleteTenantRequest body = 2;
+ string tenant_id = 3;
+}
+
+message BindTenantWalletRpcRequest {
+ CallContext context = 1;
+ BindTenantWalletRequest body = 2;
+ string tenant_id = 3;
+}
+
+message SuspendTenantRpcRequest {
+ CallContext context = 1;
+ TenantActionRequest body = 2;
+ string tenant_id = 3;
+}
+
+message RestoreTenantRpcRequest {
+ CallContext context = 1;
+ TenantActionRequest body = 2;
+ string tenant_id = 3;
+}
+
+message GetTenantAssetCustodyRpcRequest {
+ CallContext context = 1;
+ string tenant_id = 2;
+}
+
+message ListAdminOperationsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ OperationOwnerEnum query_owner = 4;
+ optional string query_tenant_id = 5;
+}
+
+message ReconcileOperationRpcRequest {
+ CallContext context = 1;
+ ReconcileOperationRequest body = 2;
+ OperationOwnerEnum owner = 3;
+ string operation_id = 4;
+}
+
+message ListAuditEventsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_tenant_id = 4;
+}
+
+message ListReceiptsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_artifact_digest = 4;
+}
+
+message GetReceiptRpcRequest {
+ CallContext context = 1;
+ string receipt_id = 2;
+}
+
+message ListQualificationsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_artifact_digest = 4;
+}
+
+message ListRuntimeVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message ListWebuiVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message ListComputePlansRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_storage_plan_id = 4;
+}
+
+message ListStoragePlansRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+ optional string query_compute_plan_id = 4;
+}
+
+message ListModelsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message RegisterRuntimeVersionRpcRequest {
+ CallContext context = 1;
+ RegisterRuntimeVersionRequest body = 2;
+}
+
+message SetRuntimeVersionStatusRpcRequest {
+ CallContext context = 1;
+ CatalogStatusRequest body = 2;
+ string version_id = 3;
+}
+
+message RegisterWebuiVersionRpcRequest {
+ CallContext context = 1;
+ RegisterWebuiVersionRequest body = 2;
+}
+
+message SetWebuiVersionStatusRpcRequest {
+ CallContext context = 1;
+ CatalogStatusRequest body = 2;
+ string version_id = 3;
+}
+
+message CreateComputePlanRpcRequest {
+ CallContext context = 1;
+ CreateComputePlanRequest body = 2;
+}
+
+message SetComputePlanAvailabilityRpcRequest {
+ CallContext context = 1;
+ PlanAvailabilityRequest body = 2;
+ string plan_id = 3;
+}
+
+message CreateStoragePlanRpcRequest {
+ CallContext context = 1;
+ CreateStoragePlanRequest body = 2;
+}
+
+message SetStoragePlanAvailabilityRpcRequest {
+ CallContext context = 1;
+ PlanAvailabilityRequest body = 2;
+ string plan_id = 3;
+}
+
+message ListPricePolicyVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreatePricePolicyVersionRpcRequest {
+ CallContext context = 1;
+ CreatePricePolicyRequest body = 2;
+}
+
+message ListRefundPolicyVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreateRefundPolicyVersionRpcRequest {
+ CallContext context = 1;
+ CreateRefundPolicyRequest body = 2;
+}
+
+message ListRetentionPolicyVersionsRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreateRetentionPolicyVersionRpcRequest {
+ CallContext context = 1;
+ CreateRetentionPolicyRequest body = 2;
+}
+
+message AdoptWorkspaceRpcRequest {
+ CallContext context = 1;
+ AdoptWorkspaceRequest body = 2;
+ string workspace_id = 3;
+}
+
+message GetBuildRuntimePolicyRpcRequest {
+ CallContext context = 1;
+}
+
+message SetBuildRuntimePolicyRpcRequest {
+ CallContext context = 1;
+ SetBuildRuntimePolicyRequest body = 2;
+}
+
+message ListPublisherNamespacesRpcRequest {
+ CallContext context = 1;
+ optional string query_cursor = 2;
+ optional int32 query_limit = 3;
+}
+
+message CreatePublisherNamespaceRpcRequest {
+ CallContext context = 1;
+ CreatePublisherNamespaceRequest body = 2;
+}
+
+message RevokePublisherNamespaceRpcRequest {
+ CallContext context = 1;
+ RevokePublisherNamespaceRequest body = 2;
+ string publisher_namespace_id = 3;
+}
+
+message ReenableTenantRpcRequest {
+ CallContext context = 1;
+ ReenableTenantRequest body = 2;
+ string tenant_id = 3;
+}
+
+message GetTenantLifecycleOperationRpcRequest {
+ CallContext context = 1;
+ string tenant_id = 2;
+ string operation_id = 3;
+}
+
+message UpdateRenewalSettingsRpcRequest {
+ CallContext context = 1;
+ UpdateRenewalSettingsRequest body = 2;
+ string workspace_id = 3;
+}
+
+message RevealWorkspaceApplicationCredentialsRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+}
+
+message ListPlanChangesRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+ optional string query_cursor = 3;
+ optional int32 query_limit = 4;
+}
+
+message GetPlanChangeRpcRequest {
+ CallContext context = 1;
+ string workspace_id = 2;
+ string plan_change_id = 3;
+}
+
+message CancelPlanChangeRpcRequest {
+ CallContext context = 1;
+ CancelPlanChangeRequest body = 2;
+ string workspace_id = 3;
+ string plan_change_id = 4;
+}
+
+service TenantProductService {
+ rpc GetLoginContext(GetLoginContextRpcRequest) returns (LoginContext);
+ rpc Login(LoginRpcRequest) returns (Session);
+ rpc GetSession(GetSessionRpcRequest) returns (Session);
+ rpc Logout(LogoutRpcRequest) returns (google.protobuf.Empty);
+ rpc GetTenant(GetTenantRpcRequest) returns (Tenant);
+ rpc ListMembers(ListMembersRpcRequest) returns (MemberPage);
+ rpc ListInvitations(ListInvitationsRpcRequest) returns (InvitationPage);
+ rpc InviteMember(InviteMemberRpcRequest) returns (Invitation);
+ rpc AcceptInvitation(AcceptInvitationRpcRequest) returns (Member);
+ rpc RevokeInvitation(RevokeInvitationRpcRequest) returns (Invitation);
+ rpc UpdateMemberRole(UpdateMemberRoleRpcRequest) returns (Member);
+ rpc RemoveMember(RemoveMemberRpcRequest) returns (google.protobuf.Empty);
+ rpc ListTenants(ListTenantsRpcRequest) returns (TenantPage);
+ rpc CreateTenant(CreateTenantRpcRequest) returns (Operation);
+ rpc GetAdminTenant(GetAdminTenantRpcRequest) returns (Tenant);
+ rpc DeleteTenant(DeleteTenantRpcRequest) returns (Operation);
+ rpc BindTenantWallet(BindTenantWalletRpcRequest) returns (Operation);
+ rpc SuspendTenant(SuspendTenantRpcRequest) returns (Operation);
+ rpc RestoreTenant(RestoreTenantRpcRequest) returns (Operation);
+ rpc GetTenantAssetCustody(GetTenantAssetCustodyRpcRequest) returns (AssetCustody);
+ rpc ListAuditEvents(ListAuditEventsRpcRequest) returns (AuditEventPage);
+ rpc ReenableTenant(ReenableTenantRpcRequest) returns (Operation);
+ rpc GetTenantLifecycleOperation(GetTenantLifecycleOperationRpcRequest) returns (TenantLifecycleProgress);
+}
+
+service CapabilityProductService {
+ rpc ListNamespaces(ListNamespacesRpcRequest) returns (NamespacePage);
+ rpc CreateNamespace(CreateNamespaceRpcRequest) returns (Namespace);
+ rpc UpdateNamespace(UpdateNamespaceRpcRequest) returns (Namespace);
+ rpc ArchiveNamespace(ArchiveNamespaceRpcRequest) returns (Namespace);
+ rpc ListPackages(ListPackagesRpcRequest) returns (PackagePage);
+ rpc CreatePackage(CreatePackageRpcRequest) returns (Package);
+ rpc GetPackage(GetPackageRpcRequest) returns (Package);
+ rpc UpdatePackage(UpdatePackageRpcRequest) returns (Package);
+ rpc ArchivePackage(ArchivePackageRpcRequest) returns (Package);
+ rpc CreateUpload(CreateUploadRpcRequest) returns (UploadSession);
+ rpc GetUpload(GetUploadRpcRequest) returns (UploadSession);
+ rpc CreateUploadPart(CreateUploadPartRpcRequest) returns (UploadPartAuthorization);
+ rpc CompleteUpload(CompleteUploadRpcRequest) returns (Operation);
+ rpc ListPackageVersions(ListPackageVersionsRpcRequest) returns (PackageVersionPage);
+ rpc GetPackageVersion(GetPackageVersionRpcRequest) returns (PackageVersion);
+ rpc ListCapabilityVersions(ListCapabilityVersionsRpcRequest) returns (CapabilityVersionPage);
+ rpc GetCapabilityVersion(GetCapabilityVersionRpcRequest) returns (CapabilityVersion);
+ rpc DeleteCapabilityVersion(DeleteCapabilityVersionRpcRequest) returns (Operation);
+ rpc PublishOfficialPackage(PublishOfficialPackageRpcRequest) returns (Package);
+ rpc ListWebuiVersions(ListWebuiVersionsRpcRequest) returns (WebuiVersionPage);
+ rpc RegisterWebuiVersion(RegisterWebuiVersionRpcRequest) returns (WebuiVersion);
+ rpc SetWebuiVersionStatus(SetWebuiVersionStatusRpcRequest) returns (WebuiVersion);
+ rpc ListPublisherNamespaces(ListPublisherNamespacesRpcRequest) returns (PublisherNamespacePage);
+ rpc CreatePublisherNamespace(CreatePublisherNamespaceRpcRequest) returns (PublisherNamespace);
+ rpc RevokePublisherNamespace(RevokePublisherNamespaceRpcRequest) returns (PublisherNamespace);
+}
+
+service RuntimeControlProductService {
+ rpc ListRuntimeVersions(ListRuntimeVersionsRpcRequest) returns (RuntimeVersionPage);
+ rpc GetBuildRuntimePolicy(GetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
+ rpc SetBuildRuntimePolicy(SetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
+ rpc RegisterRuntimeVersion(RegisterRuntimeVersionRpcRequest) returns (RuntimeVersion);
+ rpc SetRuntimeVersionStatus(SetRuntimeVersionStatusRpcRequest) returns (RuntimeVersion);
+}
+
+service BuildProductService {
+ rpc CreateBuild(CreateBuildRpcRequest) returns (BuildJob);
+ rpc ListBuilds(ListBuildsRpcRequest) returns (BuildJobPage);
+ rpc GetBuild(GetBuildRpcRequest) returns (BuildJob);
+ rpc ListBuildLogs(ListBuildLogsRpcRequest) returns (BuildLogPage);
+ rpc RetryBuild(RetryBuildRpcRequest) returns (BuildJob);
+}
+
+service ResourceCatalogProductService {
+ rpc CreateQuote(CreateQuoteRpcRequest) returns (Quote);
+ rpc GetQuote(GetQuoteRpcRequest) returns (Quote);
+ rpc ListComputePlans(ListComputePlansRpcRequest) returns (ComputePlanPage);
+ rpc ListStoragePlans(ListStoragePlansRpcRequest) returns (StoragePlanPage);
+ rpc CreateComputePlan(CreateComputePlanRpcRequest) returns (ComputePlan);
+ rpc SetComputePlanAvailability(SetComputePlanAvailabilityRpcRequest) returns (ComputePlan);
+ rpc CreateStoragePlan(CreateStoragePlanRpcRequest) returns (StoragePlan);
+ rpc SetStoragePlanAvailability(SetStoragePlanAvailabilityRpcRequest) returns (StoragePlan);
+ rpc ListPricePolicyVersions(ListPricePolicyVersionsRpcRequest) returns (PricePolicyVersionPage);
+ rpc CreatePricePolicyVersion(CreatePricePolicyVersionRpcRequest) returns (PricePolicyVersion);
+ rpc ListRefundPolicyVersions(ListRefundPolicyVersionsRpcRequest) returns (RefundPolicyVersionPage);
+ rpc CreateRefundPolicyVersion(CreateRefundPolicyVersionRpcRequest) returns (RefundPolicyVersion);
+ rpc ListRetentionPolicyVersions(ListRetentionPolicyVersionsRpcRequest) returns (RetentionPolicyVersionPage);
+ rpc CreateRetentionPolicyVersion(CreateRetentionPolicyVersionRpcRequest) returns (RetentionPolicyVersion);
+}
+
+service WorkspaceProductService {
+ rpc CreateWorkspace(CreateWorkspaceRpcRequest) returns (Operation);
+ rpc ListWorkspaces(ListWorkspacesRpcRequest) returns (WorkspacePage);
+ rpc GetWorkspace(GetWorkspaceRpcRequest) returns (Workspace);
+ rpc DeleteWorkspace(DeleteWorkspaceRpcRequest) returns (Operation);
+ rpc GetWorkspaceModels(GetWorkspaceModelsRpcRequest) returns (ModelConfiguration);
+ rpc UpdateWorkspaceModels(UpdateWorkspaceModelsRpcRequest) returns (Operation);
+ rpc ResizeWorkspace(ResizeWorkspaceRpcRequest) returns (Operation);
+ rpc RenewWorkspace(RenewWorkspaceRpcRequest) returns (Operation);
+ rpc GetSubscription(GetSubscriptionRpcRequest) returns (Subscription);
+ rpc GetWorkspaceDeletion(GetWorkspaceDeletionRpcRequest) returns (WorkspaceDeletion);
+ rpc GetOperation(GetOperationRpcRequest) returns (Operation);
+ rpc ListAdminOperations(ListAdminOperationsRpcRequest) returns (AdminOperationPage);
+ rpc ReconcileOperation(ReconcileOperationRpcRequest) returns (Operation);
+ rpc AdoptWorkspace(AdoptWorkspaceRpcRequest) returns (Operation);
+ rpc UpdateRenewalSettings(UpdateRenewalSettingsRpcRequest) returns (Operation);
+ rpc RevealWorkspaceApplicationCredentials(RevealWorkspaceApplicationCredentialsRpcRequest) returns (WorkspaceApplicationCredentials);
+ rpc ListPlanChanges(ListPlanChangesRpcRequest) returns (PlanChangePage);
+ rpc GetPlanChange(GetPlanChangeRpcRequest) returns (PlanChange);
+ rpc CancelPlanChange(CancelPlanChangeRpcRequest) returns (Operation);
+}
+
+service ServeProductService {
+ rpc ListDeployments(ListDeploymentsRpcRequest) returns (DeploymentPage);
+ rpc GetDeployment(GetDeploymentRpcRequest) returns (Deployment);
+ rpc UpdateWorkspaceVersion(UpdateWorkspaceVersionRpcRequest) returns (Operation);
+ rpc RollbackWorkspace(RollbackWorkspaceRpcRequest) returns (Operation);
+ rpc GetWorkspaceAccess(GetWorkspaceAccessRpcRequest) returns (WorkspaceAccess);
+}
+
+service GatewayProductService {
+ rpc ListWorkspaceTransactions(ListWorkspaceTransactionsRpcRequest) returns (WalletOperationPage);
+ rpc GetWallet(GetWalletRpcRequest) returns (Wallet);
+ rpc ListUsage(ListUsageRpcRequest) returns (UsagePage);
+ rpc ListGatewayKeys(ListGatewayKeysRpcRequest) returns (GatewayKeyPage);
+ rpc CreateGatewayKey(CreateGatewayKeyRpcRequest) returns (GatewayKeySecret);
+ rpc RevealGatewayKey(RevealGatewayKeyRpcRequest) returns (GatewayKeySecret);
+ rpc RevokeGatewayKey(RevokeGatewayKeyRpcRequest) returns (Operation);
+ rpc ListRechargeRecords(ListRechargeRecordsRpcRequest) returns (WalletOperationPage);
+ rpc ListModels(ListModelsRpcRequest) returns (ModelPage);
+}
+
+service LedgerProductService {
+ rpc ListReceipts(ListReceiptsRpcRequest) returns (ReceiptPage);
+ rpc GetReceipt(GetReceiptRpcRequest) returns (Receipt);
+ rpc ListQualifications(ListQualificationsRpcRequest) returns (QualificationPage);
+}
+
+enum Observation { OBSERVATION_UNSPECIFIED = 0; OBSERVATION_CONFIRMED = 1; OBSERVATION_REJECTED = 2; OBSERVATION_UNKNOWN = 3; }
+message OwnerOperationRequest { CallContext context = 1; string operation_id = 2; }
+message SourceObjectReference { string storage_object_id = 1; string version_id = 2; string sha256 = 3; int64 size_bytes = 4; }
+message BuildInputRequest { CallContext context = 1; string package_version_id = 2; string webui_version_id = 3; }
+message BuildInputSnapshot { string package_id = 1; string package_version_id = 2; SourceObjectReference package_object = 3; string runtime_version_id = 4; ArtifactReference runtime_artifact = 5; string webui_version_id = 6; ArtifactReference webui_artifact = 7; RuntimePublisherContract runtime_contract = 8; WebuiPublisherContract webui_contract = 9; string snapshot_digest = 10; PublisherContractReference runtime_contract_reference = 11; PublisherContractReference webui_contract_reference = 12; string package_claim_id = 13; string runtime_claim_id = 14; string webui_claim_id = 15; }
+// ResolveBuildInput is side-effect-free. Claim IDs are empty until a queued job
+// exists. Worker acquires all three, commits IDs locally, then binds owner evidence
+// BEFORE reading source bytes or invoking BuildKit. No cross-owner atomic transaction.
+message ReferenceTarget { oneof target { string package_version_id = 1; string runtime_version_id = 2; string webui_version_id = 3; string capability_version_id = 4; } }
+enum ReferenceClaimState { REFERENCE_CLAIM_STATE_UNSPECIFIED = 0; REFERENCE_CLAIM_STATE_ACQUIRED = 1; REFERENCE_CLAIM_STATE_BOUND = 2; REFERENCE_CLAIM_STATE_RELEASED = 3; }
+message ReferenceClaimRequest { CallContext context = 1; ReferenceTarget target = 2; OwnerEnum claimant_owner = 3; string claimant_resource_id = 4; }
+message OwnerCommitEvidence { OwnerEnum owner = 1; string operation_id = 2; string resource_id = 3; string accepted_input_digest = 4; int64 committed_version = 5; google.protobuf.Timestamp accepted_at = 6; }
+message BindReferenceRequest { CallContext context = 1; string claim_id = 2; OwnerCommitEvidence owner_commit_evidence = 3; }
+enum TerminalOperationStatus { TERMINAL_OPERATION_STATUS_UNSPECIFIED = 0; TERMINAL_OPERATION_STATUS_SUCCEEDED = 1; TERMINAL_OPERATION_STATUS_FAILED = 2; TERMINAL_OPERATION_STATUS_CANCELLED = 3; }
+message ReleaseEvidence { OwnerEnum owner = 1; string operation_id = 2; string resource_id = 3; TerminalOperationStatus terminal_status = 4; string terminal_receipt_id = 5; optional string confirmed_resource_absence_receipt_id = 6; }
+message ReleaseReferenceRequest { CallContext context = 1; string claim_id = 2; ReleaseEvidence release_evidence = 3; }
+message ReferenceClaim { string id = 1; ReferenceTarget target = 2; OwnerEnum claimant_owner = 3; string claimant_resource_id = 4; ReferenceClaimState state = 5; optional string bound_operation_id = 6; optional string bound_input_digest = 7; google.protobuf.Timestamp acquired_at = 8; optional google.protobuf.Timestamp released_at = 9; }
+message ReadClaimUsageRequest { CallContext context = 1; string claim_id = 2; string claimant_resource_id = 3; string claimant_operation_id = 4; }
+message ClaimUsageEvidence { string claim_id = 1; OwnerEnum owner = 2; string resource_id = 3; string operation_id = 4; string accepted_input_digest = 5; OperationStatusEnum operation_status = 6; bool actively_required = 7; int64 committed_version = 8; optional string terminal_receipt_id = 9; optional string confirmed_absence_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message ResolvePublisherContractRequest { CallContext context = 1; PublisherContractReference reference = 2; }
+message ResolvedPublisherContract { PublisherContractReference reference = 1; PublisherContract contract = 2; ArtifactReference image = 3; Observation outcome = 4; }
+// ClaimUsageReadback is implemented by existing Build/Workspace owners, not a new
+// process. Capability authenticates the exact owner peer and queries committed
+// state; a caller-supplied receipt string alone never proves bind/release validity.
+service ClaimUsageReadback { rpc ReadClaimUsage(ReadClaimUsageRequest) returns (ClaimUsageEvidence); }
+service CapabilityCoordination {
+ rpc ResolveBuildInput(BuildInputRequest) returns (BuildInputSnapshot);
+ rpc ResolvePublisherContract(ResolvePublisherContractRequest) returns (ResolvedPublisherContract);
+ rpc AcquireReference(ReferenceClaimRequest) returns (ReferenceClaim);
+ rpc BindReference(BindReferenceRequest) returns (ReferenceClaim);
+ rpc ReleaseReference(ReleaseReferenceRequest) returns (ReferenceClaim);
+}
+message ReadBuildArtifactRequest { CallContext context = 1; string build_job_id = 2; }
+message BuildArtifactReadback { string build_job_id = 1; BuildInputSnapshot input = 2; ArtifactReference artifact = 3; string artifact_receipt_id = 4; string version_label = 5; repeated ModelRequirement model_requirements = 6; DataCompatibility data_compatibility = 7; Observation outcome = 8; DeploymentDescriptor deployment_descriptor = 9; string deployment_descriptor_digest = 10; string deployment_descriptor_object_ref = 11; }
+service BuildCoordination { rpc ReadArtifact(ReadBuildArtifactRequest) returns (BuildArtifactReadback); }
+service OwnerOperations { rpc Read(OwnerOperationRequest) returns (Operation); rpc Reconcile(ReconcileOperationRpcRequest) returns (Operation); }
+message PlatformScope {}
+message TenantScope { string tenant_id = 1; }
+message AuthorizationScope { oneof scope { PlatformScope platform = 1; TenantScope tenant = 2; } }
+enum AuthorizationResourceKind { AUTHORIZATION_RESOURCE_KIND_UNSPECIFIED = 0; AUTHORIZATION_RESOURCE_KIND_PLATFORM = 1; AUTHORIZATION_RESOURCE_KIND_TENANT = 2; AUTHORIZATION_RESOURCE_KIND_PACKAGE = 3; AUTHORIZATION_RESOURCE_KIND_BUILD = 4; AUTHORIZATION_RESOURCE_KIND_VERSION = 5; AUTHORIZATION_RESOURCE_KIND_WORKSPACE = 6; AUTHORIZATION_RESOURCE_KIND_SUBSCRIPTION = 7; AUTHORIZATION_RESOURCE_KIND_OPERATION = 8; AUTHORIZATION_RESOURCE_KIND_KEY = 9; AUTHORIZATION_RESOURCE_KIND_ROUTE = 10; AUTHORIZATION_RESOURCE_KIND_RECEIPT = 11; AUTHORIZATION_RESOURCE_KIND_CATALOG = 12; }
+message AuthorizationResource { AuthorizationResourceKind kind = 1; optional string id = 2; }
+enum AuthorizationResult { AUTHORIZATION_RESULT_UNSPECIFIED = 0; AUTHORIZATION_RESULT_ALLOWED = 1; AUTHORIZATION_RESULT_DENIED = 2; }
+message AuthorizationRequest { AuthorizationScope scope = 1; string actor_id = 2; optional string session_id = 3; optional string authorization_context_id = 4; optional string accepted_operation_grant_id = 5; OwnerEnum audience_owner = 6; AuthorizationActionEnum action = 7; AuthorizationResource resource = 8; optional int64 expected_permission_version = 9; string request_id = 10; }
+enum AuthorizationIssuer { AUTHORIZATION_ISSUER_UNSPECIFIED = 0; AUTHORIZATION_ISSUER_CLOUD_IDENTITY = 1; }
+message AuthorizationDecision { AuthorizationResult result = 1; AuthorizationIssuer issuer = 2; optional string authorization_context_id = 3; AuthorizationScope scope = 4; string actor_id = 5; optional string session_id = 6; OwnerEnum audience_owner = 7; AuthorizationActionEnum action = 8; AuthorizationResource resource = 9; int64 permission_version = 10; google.protobuf.Timestamp issued_at = 11; google.protobuf.Timestamp expires_at = 12; optional ErrorCodeEnum denial_code = 13; optional string accepted_operation_grant_id = 14; }
+message GetAuthorizationContextRequest { string authorization_context_id = 1; OwnerEnum expected_audience_owner = 2; AuthorizationActionEnum expected_action = 3; AuthorizationResource expected_resource = 4; string request_id = 5; }
+message AcceptedOperationGrantRequest { string authorization_context_id = 1; OwnerCommitEvidence owner_commit_evidence = 2; repeated AuthorizationActionEnum allowed_actions = 3; optional string renewal_consent_id = 4; optional string subscription_period_id = 5; }
+enum AcceptedGrantMode { ACCEPTED_GRANT_MODE_UNSPECIFIED = 0; ACCEPTED_GRANT_MODE_CONTINUE_ORIGINAL = 1; ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY = 2; ACCEPTED_GRANT_MODE_REVOKED = 3; }
+message AcceptedOperationGrant { string id = 1; AuthorizationScope scope = 2; string actor_id = 3; OwnerEnum accepted_operation_owner = 4; string accepted_operation_id = 5; AuthorizationActionEnum accepted_action = 6; string resource_id = 7; int64 accepted_permission_version = 8; repeated AuthorizationActionEnum allowed_actions = 9; AcceptedGrantMode mode = 10; google.protobuf.Timestamp issued_at = 11; optional google.protobuf.Timestamp expires_at = 12; optional google.protobuf.Timestamp revoked_at = 13; optional google.protobuf.Timestamp obligation_completed_at = 14; }
+// CloudIdentityAuthorization lives in Gateway Integration using tenant owner DB.
+// issuer MUST be cloud_identity; signed mTLS peer has a fixed service/action
+// allowlist. Never trust a service identity or role supplied inside request body.
+// Interactive: validate live session, scope, membership/platform role, latest
+// permission_version, exact audience/action/resource on EVERY privileged call.
+// Accepted grant: verify owner committed operation accepted within original context
+// lifetime via typed owner readback. Allowed actions are the intersection of the
+// original action's fixed workflow and requested actions, never arbitrary elevation.
+// Logout/member revoke cannot erase debt/cleanup obligations; Tenant inactive or
+// revoked owner access allows ONLY readback/closeout/refund/revoke/delete already
+// authorized resources, not a new debit/purchase/resize/extension. Automatic renewal
+// additionally requires exact saved consent+same subscription period identity.
+// Unavailable authorizer rejects; no stale cached allow decision. Platform scope has
+// NO fabricated tenant ID. Platform admins may target a tenant unlike their session.
+message ReadOwnerCommitRequest { OwnerEnum owner = 1; string operation_id = 2; string resource_id = 3; }
+service OwnerCommitReadback { rpc ReadOwnerCommit(ReadOwnerCommitRequest) returns (OwnerCommitEvidence); }
+message ReadRenewalConsentRequest { CallContext context = 1; string subscription_id = 2; string consent_id = 3; string subscription_period_id = 4; }
+message RenewalConsentReadback { string subscription_id = 1; string consent_id = 2; string subscription_period_id = 3; bool active = 4; int64 settings_version = 5; string accepted_policy_version_id = 6; string actor_id = 7; google.protobuf.Timestamp accepted_at = 8; Observation outcome = 9; }
+service WorkspaceAuthorizationReadback { rpc ReadRenewalConsent(ReadRenewalConsentRequest) returns (RenewalConsentReadback); }
+service CloudIdentityAuthorization {
+ rpc AuthorizeAction(AuthorizationRequest) returns (AuthorizationDecision);
+ rpc GetAuthorizationContext(GetAuthorizationContextRequest) returns (AuthorizationDecision);
+ rpc IssueAcceptedOperationGrant(AcceptedOperationGrantRequest) returns (AcceptedOperationGrant);
+}
+message AdmissionRequest { CallContext context = 1; string workspace_id = 2; string capability_version_id = 3; string compute_plan_id = 4; string storage_plan_id = 5; repeated ModelSelection model_selections = 6; string purpose = 7; }
+message AdmissionResult { Observation outcome = 1; string admission_id = 2; string capability_snapshot_digest = 3; string provider_capability_version = 4; string policy_version_id = 5; string error_code = 6; google.protobuf.Timestamp expires_at = 7; string expected_interruption = 8; }
+message AcceptQuoteRequest { CallContext context = 1; string quote_id = 2; string workspace_id = 3; string obligation_id = 4; string admission_id = 5; optional string plan_change_id = 6; optional int64 source_subscription_version = 7; optional string subscription_period_obligation_id = 8; }
+message QuoteAcceptance { Quote quote = 1; string obligation_id = 2; string acceptance_id = 3; string snapshot_digest = 4; optional bytes source_financial_snapshot_bytes = 5; optional string source_financial_snapshot_digest = 6; }
+service CatalogCoordination { rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteAcceptance); }
+service WorkspaceAdmission { rpc CheckAdmission(AdmissionRequest) returns (AdmissionResult); }
+message WalletBindingCommand { CallContext context = 1; string target_tenant_id = 2; string billing_sub2api_user_id = 3; int64 expected_binding_version = 4; string authorization_receipt_id = 5; }
+message WalletBindingReadback { string tenant_id = 1; string billing_sub2api_user_id = 2; int64 binding_version = 3; Observation outcome = 4; string authorization_receipt_id = 5; }
+message WalletDebitCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; string quote_acceptance_id = 4; int64 amount_usd_micros = 5; string currency = 6; string subscription_period_id = 7; }
+message WalletRefundCommand { CallContext context = 1; string workspace_id = 2; string original_wallet_operation_id = 3; string original_external_payment_reference = 4; int64 amount_usd_micros = 5; string refund_policy_version_id = 6; string confirmed_deletion_receipt_id = 7; string subscription_period_id = 8; }
+message WalletReadbackRequest { CallContext context = 1; string wallet_operation_id = 2; string original_idempotency_key = 3; }
+message ManagedKeyCommand { CallContext context = 1; string workspace_id = 2; repeated string model_ids = 3; string target_runtime_instance_id = 4; }
+message ManagedKeyBinding { string key_binding_id = 1; string fingerprint = 2; string secret_delivery_reference = 3; string workspace_id = 4; string target_runtime_instance_id = 5; google.protobuf.Timestamp expires_at = 6; }
+message ManagedKeyRevoke { CallContext context = 1; string key_binding_id = 2; string workspace_id = 3; }
+service GatewayCoordination {
+ rpc BindWallet(WalletBindingCommand) returns (WalletBindingReadback);
+ rpc Debit(WalletDebitCommand) returns (WalletOperation);
+ rpc Refund(WalletRefundCommand) returns (WalletOperation);
+ rpc ReadWalletAction(WalletReadbackRequest) returns (WalletOperation);
+ rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
+ rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
+}
+message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; }
+message ResourceAdmissionRequest { CallContext context = 1; ResourcePlanSnapshot plan = 2; string workspace_id = 3; string existing_resource_set_id = 4; string purpose = 5; }
+message EnsureResourcesCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; ResourcePlanSnapshot plan = 4; string confirmed_charge_receipt_id = 5; string instance_authorization_reference = 6; }
+message MutateResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; string instance_authorization_reference = 5; }
+message ResizeResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; ResourcePlanSnapshot target = 5; string quote_acceptance_id = 6; PlanChangeFundingEvidence funding_evidence = 7; string instance_authorization_reference = 8; string plan_change_id = 9; string transition_id = 10; int64 execution_epoch = 11; ProviderPlanChangeExecutionPlanReference execution_plan = 12; }
+message RenewResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string subscription_period_id = 4; int32 prepaid_months = 5; string confirmed_charge_receipt_id = 6; string instance_authorization_reference = 7; }
+message ResourceReadbackRequest { CallContext context = 1; string resource_set_id = 2; string resource_action_id = 3; }
+message ResourceFact { string id = 1; string kind = 2; string opaque_provider_reference = 3; string state = 4; string receipt_id = 5; }
+message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; }
+message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; }
+message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; }
+service FabricCoordination {
+ rpc AdmitResources(ResourceAdmissionRequest) returns (AdmissionResult);
+ rpc EnsureResources(EnsureResourcesCommand) returns (Operation);
+ rpc ResizeResources(ResizeResourcesCommand) returns (Operation);
+ rpc RenewResources(RenewResourcesCommand) returns (Operation);
+ rpc SuspendResources(MutateResourcesCommand) returns (Operation);
+ rpc ResumeResources(MutateResourcesCommand) returns (Operation);
+ rpc DeleteResources(MutateResourcesCommand) returns (Operation);
+ rpc ReadResources(ResourceReadbackRequest) returns (ResourceReadback);
+ rpc BindSecret(SecretBindingCommand) returns (SecretBindingReadback);
+}
+message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; }
+message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; }
+enum AgentRuntimeObservationState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
+message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
+message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
+message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
+service ServeAgentCoordination {
+ rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);
+ rpc Deploy(RuntimeDeployCommand) returns (RuntimeReadback);
+ rpc ReloadModels(RuntimeReloadCommand) returns (Operation);
+ rpc ReadRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
+ rpc Retire(RuntimeStopCommand) returns (Operation);
+}
+// Serve owns Agent runtime lifecycle; Fabric exposes only infrastructure resource readback.
+message ReadApplicationCredentialsRequest { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string deployment_id = 4; }
+// Existing Fabric credential provider path; response is never durable/idempotency-cache/event data.
+service ServeRuntimeAdapter {
+ rpc ReadApplicationCredentials(ReadApplicationCredentialsRequest) returns (WorkspaceApplicationCredentials);
+ rpc StartRuntime(RuntimeDeployCommand) returns (RuntimeReadback);
+ rpc StopRuntime(RuntimeStopCommand) returns (Operation);
+ rpc ReloadRuntime(RuntimeReloadCommand) returns (Operation);
+ rpc ObserveRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
+}
+message ConfirmedRouteAbsence { string receipt_id = 1; google.protobuf.Timestamp observed_at = 2; }
+message ProviderRevisionPrecondition { oneof condition { string exact_revision = 1; ConfirmedRouteAbsence require_absent = 2; } }
+message FenceRouteEpochCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; }
+message RouteActivateCommand { CallContext context = 1; string workspace_id = 2; string operation_id = 3; int64 execution_epoch = 4; int64 expected_route_generation = 5; ProviderRevisionPrecondition provider_precondition = 6; string target_execution_resource_id = 7; string target_runtime_instance_id = 8; string target_deployment_id = 9; string confirmed_readiness_receipt_id = 10; }
+message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
+message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; ProviderRevisionPrecondition provider_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
+message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string provider_revision = 9; string provider_command_id = 10; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; }
+// Workspace allocates execution_epoch and intent in one local transaction. Before
+// any route mutation it confirms FenceRouteEpoch at provider: router must CAS the
+// same object's metadata epoch+target using provider conditional revision. Merely
+// allocating a new epoch is NOT proof the external router has been fenced.
+// Fabric reserves a unique route switch (fence/activate/rollback), then executes
+// exact provider identity. unknown blocks new fences/switches; observe original ID.
+// First route requires provider_precondition.require_absent receipt and generation 0;
+// no empty revision means wildcard. Existing routes require exact_revision from
+// confirmed readback. require_absent is rejected if any route/provider revision exists.
+// Fence does not change route generation/target. Activate/rollback require current
+// accepted epoch and expected provider revision+generation; success increases route
+// generation by exactly one. Old provider requests after fence fail conditional CAS.
+// Workspace commits currentAgentDeploymentId and selected_route_generation/epoch only
+// after confirmed exact target readback and its own current-intent CAS, then emits
+// selection evidence. Lost DB response resumes original switch, never new activation.
+// Failed selection CAS leaves intent needs_attention: authoritative readback, then
+// complete original commit or explicitly fence+rollback. Never last-writer-wins.
+service ServeAccessControl {
+ rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
+ rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
+ rpc ObserveRoute(RouteObserveRequest) returns (RouteReadback);
+ rpc RollbackRoute(RouteRollbackCommand) returns (RouteReadback);
+}
+message TenantWorkspaceLifecycleCommand { CallContext context = 1; string target_tenant_id = 2; string tenant_operation_id = 3; string reason = 4; }
+message TenantWorkspaceLifecycleReadback { string target_tenant_id = 1; repeated TenantWorkspaceAction workspace_actions = 2; Observation outcome = 3; repeated TenantWorkspaceSkip skipped = 4; }
+message ResumeTenantWorkspacesRequest { CallContext context = 1; string target_tenant_id = 2; string reenable_operation_id = 3; string original_tenant_suspend_operation_id = 4; }
+service TenantWorkspaceCoordination {
+ rpc SuspendTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
+ rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
+ rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
+}
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; }
+message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
+service LedgerCoordination {
+ rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
+ rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
+}
+
+// D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,
+// Catalog, Fabric, Gateway Integration and Ledger processes. They are not services
+// to deploy and do not introduce a workflow engine or another wallet.
+message ReadSubscriptionPlanStateRequest { CallContext context = 1; string workspace_id = 2; }
+message SubscriptionPlanState { string subscription_id = 1; string workspace_id = 2; int64 subscription_version = 3; string current_period_id = 4; google.protobuf.Timestamp period_start = 5; google.protobuf.Timestamp period_end = 6; int32 billing_anchor_day = 7; string compute_plan_id = 8; string storage_plan_id = 9; optional string accepted_price_policy_version_id = 10; optional int64 accepted_monthly_usd_micros = 11; optional string unfinished_plan_change_id = 12; optional string next_period_obligation_id = 13; google.protobuf.Timestamp next_period_start = 14; google.protobuf.Timestamp next_period_end = 15; SubscriptionRenewalModeEnum renewal_mode = 16; optional string renewal_consent_id = 17; Observation outcome = 18; optional string other_future_committed_obligation_id = 19; bool runtime_readback_required = 20; optional string current_application_deployment_id = 21; int64 period_start_milliseconds = 22; int64 period_end_milliseconds = 23; bytes source_financial_snapshot_bytes = 24; string source_financial_snapshot_digest = 25; SourceFinancialSnapshot source_financial_snapshot = 26; }
+message ReadPlanChangeRequest { CallContext context = 1; string workspace_id = 2; string plan_change_id = 3; }
+message ReadNextPeriodObligationRequest { CallContext context = 1; string subscription_id = 2; google.protobuf.Timestamp period_start = 3; optional string obligation_id = 4; }
+enum PeriodObligationStatus { PERIOD_OBLIGATION_STATUS_UNSPECIFIED = 0; PERIOD_OBLIGATION_STATUS_AWAITING_PAYMENT = 1; PERIOD_OBLIGATION_STATUS_ACCEPTED = 2; PERIOD_OBLIGATION_STATUS_CONFIRMED = 3; PERIOD_OBLIGATION_STATUS_FAILED = 4; PERIOD_OBLIGATION_STATUS_NEEDS_ATTENTION = 5; }
+message NextPeriodObligation { string id = 1; string workspace_id = 2; string subscription_id = 3; google.protobuf.Timestamp period_start = 4; google.protobuf.Timestamp period_end = 5; optional string plan_change_id = 6; string target_compute_plan_id = 7; string target_storage_plan_id = 8; string accepted_target_price_policy_version_id = 9; int64 amount_usd_micros = 10; string accepted_quote_id = 11; string operation_id = 12; PeriodObligationStatus status = 13; optional string wallet_operation_id = 14; optional string confirmed_charge_receipt_id = 15; optional string zero_amount_receipt_id = 16; int64 source_subscription_version = 17; optional int64 confirmed_subscription_version = 18; optional string renewal_consent_id = 19; Observation outcome = 20; int64 version = 21; }
+message ReadPlanChangeFailureRequest { CallContext context = 1; string workspace_id = 2; string plan_change_id = 3; string failure_receipt_id = 4; }
+// Catalog reads current accepted price/period/version before producing a quote;
+// Gateway reads the exact committed plan/period obligation before charging/refunding.
+// Same-owner creation/locking of PlanChange and period obligations is a Workspace
+// transaction, not an RPC to itself. UNIQUE(subscription_id,period_start) is claimed
+// before any Gateway call by manual, automatic and boundary workers alike.
+service WorkspacePlanChangeReadback {
+ rpc ReadSubscriptionPlanState(ReadSubscriptionPlanStateRequest) returns (SubscriptionPlanState);
+ rpc ReadPlanChange(ReadPlanChangeRequest) returns (PlanChange);
+ rpc ReadNextPeriodObligation(ReadNextPeriodObligationRequest) returns (NextPeriodObligation);
+ rpc ReadPlanChangeFailure(ReadPlanChangeFailureRequest) returns (PlanChangeEvidence);
+}
+message PlanTransitionRequest { CallContext context = 1; string workspace_id = 2; string source_compute_plan_id = 3; string source_storage_plan_id = 4; string target_compute_plan_id = 5; string target_storage_plan_id = 6; string resource_set_id = 7; string expected_resource_version = 8; }
+enum TransitionReversibility { TRANSITION_REVERSIBILITY_UNSPECIFIED = 0; TRANSITION_REVERSIBILITY_VERIFIED_RESTORE = 1; TRANSITION_REVERSIBILITY_IRREVERSIBLE_STORAGE_GROWTH = 2; TRANSITION_REVERSIBILITY_NO_RESTORE = 3; }
+message ApprovedPlanTransition { string id = 1; string workspace_id = 2; PlanChangeKindEnum kind = 3; string provider_profile_id = 4; string capability_class = 5; ResourcePlanSnapshot source = 6; ResourcePlanSnapshot target = 7; string provider_capability_version = 8; bool storage_shrink_supported = 9; string expected_interruption = 10; TransitionReversibility reversibility = 11; string admission_receipt_id = 12; google.protobuf.Timestamp observed_at = 13; google.protobuf.Timestamp expires_at = 14; Observation outcome = 15; ProviderPlanChangeExecutionPlanReference execution_plan = 16; }
+// Direction is determined by all approved resource dimensions plus explicit family
+// transition capability, never by price or SKU name. CPU/memory/disk all >= and at
+// least one > is upward; all <= and at least one < is downward; mixed/same reject.
+// Current Tencent CBS shrink is unsupported even for a next-period plan. Runtime
+// minimums/data safety and provider prepaid budget are checked before quoting.
+service FabricPlanTransitionReadback {
+ rpc ReadApprovedPlanTransition(PlanTransitionRequest) returns (ApprovedPlanTransition);
+ rpc ReadExecutionPlan(ReadProviderExecutionPlanRequest) returns (ProviderPlanChangeExecutionPlan);
+}
+message ConfirmedPlanChangeCharge { string wallet_operation_id = 1; string charge_receipt_id = 2; int64 amount_usd_micros = 3; }
+message ZeroAmountPlanChangeEvidence { string zero_amount_receipt_id = 1; }
+message PlanChangeFundingEvidence { oneof funding { ConfirmedPlanChangeCharge confirmed_charge = 1; ZeroAmountPlanChangeEvidence zero_amount = 2; } }
+message PlanChangeSupplementChargeCommand { CallContext context = 1; string workspace_id = 2; string plan_change_id = 3; string subscription_period_id = 4; string quote_acceptance_id = 5; string original_charge_identity = 6; int64 amount_usd_micros = 7; google.protobuf.Timestamp coverage_start = 8; google.protobuf.Timestamp coverage_end = 9; string policy_version = 10; int64 source_subscription_version = 11; int64 coverage_start_milliseconds = 12; int64 coverage_end_milliseconds = 13; string source_financial_snapshot_digest = 14; }
+message ScheduledPeriodChargeCommand { CallContext context = 1; string workspace_id = 2; string plan_change_id = 3; string subscription_id = 4; string period_obligation_id = 5; google.protobuf.Timestamp period_start = 6; google.protobuf.Timestamp period_end = 7; string accepted_target_quote_id = 8; string target_price_policy_version_id = 9; int64 amount_usd_micros = 10; optional string renewal_consent_id = 11; }
+message PlanChangeFailureRefundCommand { CallContext context = 1; SupplementalRefundEvidence evidence = 2; string original_external_payment_reference = 3; string refund_identity = 4; }
+message SupplementDeletionRefundCommand { CallContext context = 1; SupplementalRefundEvidence evidence = 2; string original_external_payment_reference = 3; string refund_identity = 4; }
+// Both debit commands require amount > 0; zero amounts use owner evidence and NEVER
+// invoke Gateway. Gateway recomputes original accepted quote amount and verifies the
+// same owner obligation before external call; retries retain original identity.
+// Failure refund requires confirmed original charge + definite undelivered target +
+// late-execution fencing + actual resource evidence. Unknown never means failure.
+// Already-expanded disks are retained, not fake-shrunk; platform owns residual cost.
+// Failure returns full remaining original supplement/target-period charge; no 720h.
+// Successful supplement deletion uses floor(amount*max(E-deleteAt,0)/(E-T)), deletion
+// receipt and applied PlanChange. Base Refund(WalletRefundCommand) stays unchanged.
+// Under the original charge row lock, sum confirmed + requested/unknown refund
+// reservations must stay <= confirmed charge. This reserves an original refund
+// obligation only, NOT a wallet balance or a cross-service payment reservation.
+service GatewayPlanChangeSettlement {
+ rpc DebitSupplement(PlanChangeSupplementChargeCommand) returns (WalletOperation);
+ rpc DebitScheduledPeriod(ScheduledPeriodChargeCommand) returns (WalletOperation);
+ rpc RefundFailure(PlanChangeFailureRefundCommand) returns (WalletOperation);
+ rpc RefundSupplementOnDeletion(SupplementDeletionRefundCommand) returns (WalletOperation);
+}
+message RestorePlanChangeRuntimeCommand { CallContext context = 1; string workspace_id = 2; string plan_change_id = 3; string deployment_id = 4; string runtime_instance_id = 5; string confirmed_resource_action_id = 6; ResourcePlanSnapshot target = 7; int64 execution_epoch = 8; string unchanged_application_descriptor_digest = 9; int64 current_workspace_version = 10; }
+message PlanChangeRuntimeReadback { string workspace_id = 1; string plan_change_id = 2; RuntimeReadback runtime = 3; ResourceReadback resources = 4; bool target_limits_confirmed = 5; string receipt_id = 6; Observation outcome = 7; }
+// Reuses the existing Runtime/Fabric owner; adjusts only approved resource envelope
+// and necessary configuration. Image, data and Key identities are not recreated.
+service ServePlanChangeControl {
+ rpc RestoreAfterResourceChange(RestorePlanChangeRuntimeCommand) returns (PlanChangeRuntimeReadback);
+}
+message AppendPlanChangeReceiptRequest { CallContext context = 1; ReceiptKindEnum kind = 2; PlanChangeEvidence evidence = 3; PlanChangeCalculation accepted_calculation = 4; string owner_evidence_reference = 5; }
+message AppendPlanChangeRefundReceiptRequest { CallContext context = 1; ReceiptKindEnum kind = 2; SupplementalRefundEvidence evidence = 3; WalletOperation wallet_readback = 4; string owner_evidence_reference = 5; }
+service LedgerPlanChangeEvidence {
+ rpc AppendPlanChangeReceipt(AppendPlanChangeReceiptRequest) returns (Receipt);
+ rpc AppendPlanChangeRefundReceipt(AppendPlanChangeRefundReceiptRequest) returns (Receipt);
+}
+
+// Scheduled plans do not hold a resource execution lock. Workspace app/model
+// admission must remain compatible with the scheduled target and reject a conflict
+// BEFORE changing the app, without silently cancelling/repricing the plan.
+// Runtime restore RPC is NOT called for resource-only legacy bindings. Ledger
+// evidence then explicitly says not_applicable and contains no fake readiness.
+// quoteAt is the quote-generated pricing basis T, never the acceptance/worker time.
+// An unrelated future period obligation already accepted/confirmed blocks a new
+// PlanChange. An unpaid, unaccepted obligation may be rebound only by explicit
+// cancel + new quote and obligation.version CAS, preserving its period identity.
+// Own scheduled prepayment retains original source subscription version and may
+// advance only to the matching obligation.confirmed_subscription_version; all
+// unrelated financial/resource changes are stale. Current Workspace CAS fences
+// ordinary app/config changes separately, not by changing the financial basis.
+
+enum PlanChangeExecutionStrategy { PLAN_CHANGE_EXECUTION_STRATEGY_UNSPECIFIED = 0; PLAN_CHANGE_EXECUTION_STRATEGY_IN_PLACE_RESIZE = 1; PLAN_CHANGE_EXECUTION_STRATEGY_CLAIM_TARGET_POOL_AND_REBIND_EXISTING_STORAGE = 2; }
+enum PlanChangeStorageAction { PLAN_CHANGE_STORAGE_ACTION_UNSPECIFIED = 0; PLAN_CHANGE_STORAGE_ACTION_KEEP = 1; PLAN_CHANGE_STORAGE_ACTION_EXPAND = 2; }
+message ProviderPlanChangeExecutionPlanReference { string id = 1; string digest = 2; PlanChangeExecutionStrategy strategy = 3; string approval_receipt_id = 4; }
+message ReadProviderExecutionPlanRequest { CallContext context = 1; string workspace_id = 2; ProviderPlanChangeExecutionPlanReference reference = 3; }
+message ProviderPlanChangeExecutionPlan { ProviderPlanChangeExecutionPlanReference reference = 1; string workspace_id = 2; string provider_profile_id = 3; string source_resource_set_id = 4; string expected_source_resource_version = 5; string source_compute_resource_id = 6; string source_storage_resource_id = 7; string source_attachment_id = 8; ResourcePlanSnapshot source = 9; ResourcePlanSnapshot target = 10; optional string target_pool_id = 11; PlanChangeStorageAction storage_action = 12; bool filesystem_expansion_required = 13; bool drain_required = 14; bool preserve_storage_identity = 15; google.protobuf.Timestamp approved_at = 16; }
+// Fabric freezes this concrete strategy before quote. Its immutable preflight
+// record/approval receipt, not a client-provided plan, is resolved on execution.
+// Current Tencent TKE may claim a target pool and rebind existing CBS rather than
+// directly reset a customer CVM type. A changed Compute ID is valid only under that
+// approved strategy and exact data/app/Key readback. Storage expansion is a separate
+// supported capability; shrink is never fabricated. Failure cannot switch strategy.
+
+message SourceFinancialSnapshot { int32 schema_version = 1; string subscription_id = 2; int64 subscription_version = 3; string period_id = 4; string compute_plan_id = 5; string storage_plan_id = 6; string accepted_price_policy_version_id = 7; int64 accepted_monthly_usd_micros = 8; string original_period_start = 9; string original_period_end = 10; int64 period_start_milliseconds = 11; int64 period_end_milliseconds = 12; int32 billing_anchor_day = 13; string source_owner_evidence_reference = 14; }
+// SourceFinancialSnapshot is a fixed, typed, immutable financial basis: no observedAt,
+// current app/config state or display-only mutable data in its bytes. Workspace
+// encodes once and returns original UTF-8 bytes plus SHA-256; Catalog/acceptance/plan
+// retain those SAME bytes. The typed projection is decoded and checked against them,
+// not reserialized to invent a matching digest. Source native UnixMilli is computed
+// before PG timestamp rounding. Original S/E text remains unchanged for provenance.
+// Catalog captures quoteT native UnixMilli once. All price/refund multiplication is
+// arbitrary precision integer; canonical ms columns, NEVER PG timestamps or float.
+
+// The Gateway derives the refund settlement key from original charge + purpose +
+// PlanChange (+ deletion receipt for deletion). A requested/unknown SAME settlement
+// returns its existing refund identity/readback, never a second smaller refund.
+// Missing authoritative accepted price means no financial snapshot/quote; never
+// encode absent evidence as a zero-price snapshot or recalculate from current catalog.
+
+
+message PackageUploadedEvent {
+ string package_version_id = 1;
+ string package_id = 2;
+ string sha256 = 3;
+ int64 size_bytes = 4;
+}
+
+message BuildArtifactConfirmedEvent {
+ string build_job_id = 1;
+ string package_version_id = 2;
+ string runtime_version_id = 3;
+ string webui_version_id = 4;
+ string artifact_digest = 5;
+ string artifact_receipt_id = 6;
+ string deployment_descriptor_digest = 7;
+}
+
+message CapabilityVersionRegisteredEvent {
+ string capability_version_id = 1;
+ string build_job_id = 2;
+ string artifact_digest = 3;
+}
+
+message BuildFailedEvent {
+ string build_job_id = 1;
+ string error_code = 2;
+}
+
+message WalletOperationObservedEvent {
+ string wallet_operation_id = 1;
+ string workspace_id = 2;
+ string kind = 3;
+ string status = 4;
+ int64 amount_usd_micros = 5;
+ optional string external_reference = 6;
+ optional string receipt_id = 7;
+ optional string purpose = 8;
+ optional string plan_change_id = 9;
+ optional string original_charge_operation_id = 10;
+ google.protobuf.Timestamp coverage_start = 11;
+ google.protobuf.Timestamp coverage_end = 12;
+}
+
+message ResourcesObservedEvent {
+ string resource_set_id = 1;
+ string workspace_id = 2;
+ string resource_action_id = 3;
+ string outcome = 4;
+ bool absence_confirmed = 5;
+ optional string receipt_id = 6;
+}
+
+message RuntimeReadinessObservedEvent {
+ string runtime_instance_id = 1;
+ string workspace_id = 2;
+ string deployment_id = 3;
+ string outcome = 4;
+ bool application_available = 5;
+ bool credential_injection_verified = 6;
+ int64 applied_model_configuration_version = 7;
+ optional string receipt_id = 8;
+}
+
+message WorkspaceStateChangedEvent {
+ string workspace_id = 1;
+ string operation_id = 2;
+ string status = 3;
+ optional string current_agent_deployment_id = 4;
+}
+
+message WorkspaceDeletionConfirmedEvent {
+ string workspace_id = 1;
+ string operation_id = 2;
+ string resource_deletion_receipt_id = 3;
+ string data_deletion_receipt_id = 4;
+ google.protobuf.Timestamp deleted_at = 5;
+}
+
+message TenantAccessRevokedEvent {
+ string target_tenant_id = 1;
+ string tenant_operation_id = 2;
+ string status = 3;
+ google.protobuf.Timestamp restore_until = 4;
+}
+
+message TenantRestoredEvent {
+ string target_tenant_id = 1;
+ string tenant_operation_id = 2;
+ google.protobuf.Timestamp restored_at = 3;
+}
+
+message ReceiptRecordedEvent {
+ string receipt_id = 1;
+ string source_owner = 2;
+ string owner_evidence_reference = 3;
+ string evidence_digest = 4;
+}
+
+message CatalogPolicyChangedEvent {
+ string policy_version_id = 1;
+ string policy_kind = 2;
+ google.protobuf.Timestamp valid_from = 3;
+}
+
+message TenantReenabledEvent {
+ string target_tenant_id = 1;
+ string tenant_operation_id = 2;
+ string original_tenant_suspend_operation_id = 3;
+ google.protobuf.Timestamp enabled_at = 4;
+}
+
+message RenewalSettingsChangedEvent {
+ string workspace_id = 1;
+ string subscription_id = 2;
+ optional string consent_id = 3;
+ string renewal_mode = 4;
+ int64 settings_version = 5;
+}
+
+message RouteObservedEvent {
+ string workspace_id = 1;
+ string switch_id = 2;
+ string action_kind = 3;
+ int64 route_generation = 4;
+ int64 execution_epoch = 5;
+ string provider_revision = 6;
+ optional string target_execution_resource_id = 7;
+ string outcome = 8;
+ optional string route_receipt_id = 9;
+}
+
+message PlanChangeStateChangedEvent {
+ string plan_change_id = 1;
+ string workspace_id = 2;
+ string kind = 3;
+ string status = 4;
+ int64 schedule_version = 5;
+ string delivery_outcome = 6;
+ string resource_outcome = 7;
+ string operation_id = 8;
+ optional string execution_operation_id = 9;
+ google.protobuf.Timestamp applied_at = 10;
+ string policy_version = 11;
+}
+
+message PeriodObligationChangedEvent {
+ string obligation_id = 1;
+ string workspace_id = 2;
+ string subscription_id = 3;
+ google.protobuf.Timestamp period_start = 4;
+ google.protobuf.Timestamp period_end = 5;
+ optional string plan_change_id = 6;
+ string status = 7;
+ string target_price_policy_version_id = 8;
+ int64 amount_usd_micros = 9;
+ optional string wallet_operation_id = 10;
+ optional string receipt_id = 11;
+}
+
+// Outbox INSERT is atomic with the owning state mutation. Producers retry delivery
+// with the SAME event_id. Consumers verify exact event type/version and tenant scope;
+// INSERT inbox_events(event_id) and local state change + local Outbox happen in one
+// database transaction before ACK. UNIQUE producer+event_id prevents duplicate effects.
+// Event versions may have legitimate gaps because consumers subscribe to a subset.
+// Immutable facts deduplicate by event_id plus business identity, regardless of order.
+// Mutable projections use monotonic aggregate_version CAS to reject stale overwrite.
+// Dependent effects require explicit predecessor facts/receipts; missing dependencies
+// stay unprocessed for retry, never infer lost events from version gaps. Duplicate ACK;
+// unsupported schema rejects explicitly. No cross-owner transaction or NATS.
+message EventEnvelope {
+ string event_id = 1; string event_type = 2; int32 schema_version = 3;
+ string owner = 4; string tenant_id = 5; string aggregate_id = 6;
+ int64 aggregate_version = 7; google.protobuf.Timestamp occurred_at = 8;
+ string request_id = 9;
+ string scope = 10; // tenant requires tenant_id; platform forbids it. Validated against events.json.
+ oneof payload {
+ PackageUploadedEvent package_uploaded = 20;
+ BuildArtifactConfirmedEvent build_artifact_confirmed = 21;
+ CapabilityVersionRegisteredEvent capability_version_registered = 22;
+ BuildFailedEvent build_failed = 23;
+ WalletOperationObservedEvent wallet_operation_observed = 24;
+ ResourcesObservedEvent resources_observed = 25;
+ RuntimeReadinessObservedEvent runtime_readiness_observed = 26;
+ WorkspaceStateChangedEvent workspace_state_changed = 27;
+ WorkspaceDeletionConfirmedEvent workspace_deletion_confirmed = 28;
+ TenantAccessRevokedEvent tenant_access_revoked = 29;
+ TenantRestoredEvent tenant_restored = 30;
+ ReceiptRecordedEvent receipt_recorded = 31;
+ CatalogPolicyChangedEvent catalog_policy_changed = 32;
+ TenantReenabledEvent tenant_reenabled = 33;
+ RenewalSettingsChangedEvent renewal_settings_changed = 34;
+ RouteObservedEvent route_observed = 35;
+ PlanChangeStateChangedEvent plan_change_state_changed = 36;
+ PeriodObligationChangedEvent period_obligation_changed = 37;
+ }
+}
+message DeliverEventRequest { EventEnvelope event = 1; string authenticated_producer = 2; }
+message InboxAck { string event_id = 1; string consumer = 2; bool committed = 3; bool duplicate = 4; int64 applied_aggregate_version = 5; string rejection_code = 6; }
+service DomainInbox { rpc Deliver(DeliverEventRequest) returns (InboxAck); }
+
+
+enum ErrorCodeEnum {
+ ERROR_CODE_ENUM_UNSPECIFIED = 0;
+ ERROR_CODE_ENUM_VALIDATION_FAILED = 1;
+ ERROR_CODE_ENUM_UNAUTHENTICATED = 2;
+ ERROR_CODE_ENUM_FORBIDDEN = 3;
+ ERROR_CODE_ENUM_NOT_FOUND = 4;
+ ERROR_CODE_ENUM_CSRF_INVALID = 5;
+ ERROR_CODE_ENUM_ORIGIN_REJECTED = 6;
+ ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED = 7;
+ ERROR_CODE_ENUM_IDEMPOTENCY_CONFLICT = 8;
+ ERROR_CODE_ENUM_VERSION_CONFLICT = 9;
+ ERROR_CODE_ENUM_LAST_OWNER = 10;
+ ERROR_CODE_ENUM_INVITATION_INVALID = 11;
+ ERROR_CODE_ENUM_TENANT_INACTIVE = 12;
+ ERROR_CODE_ENUM_TENANT_RESTORE_EXPIRED = 13;
+ ERROR_CODE_ENUM_GATEWAY_UNAVAILABLE = 14;
+ ERROR_CODE_ENUM_OWNER_CAPABILITY_UNAVAILABLE = 15;
+ ERROR_CODE_ENUM_WALLET_BINDING_REQUIRED = 16;
+ ERROR_CODE_ENUM_INSUFFICIENT_BALANCE = 17;
+ ERROR_CODE_ENUM_QUOTE_EXPIRED = 18;
+ ERROR_CODE_ENUM_QUOTE_MISMATCH = 19;
+ ERROR_CODE_ENUM_POLICY_UNCONFIGURED = 20;
+ ERROR_CODE_ENUM_CAPACITY_UNAVAILABLE = 21;
+ ERROR_CODE_ENUM_PROVIDER_CAPABILITY_UNSUPPORTED = 22;
+ ERROR_CODE_ENUM_RUNTIME_REVOKED = 23;
+ ERROR_CODE_ENUM_WEBUI_INCOMPATIBLE = 24;
+ ERROR_CODE_ENUM_MODEL_NOT_ALLOWED = 25;
+ ERROR_CODE_ENUM_PACKAGE_ARCHIVED = 26;
+ ERROR_CODE_ENUM_UPLOAD_EXPIRED = 27;
+ ERROR_CODE_ENUM_UPLOAD_PART_MISMATCH = 28;
+ ERROR_CODE_ENUM_UPLOAD_CHECKSUM_MISMATCH = 29;
+ ERROR_CODE_ENUM_PACKAGE_INVALID = 30;
+ ERROR_CODE_ENUM_BUILD_INPUT_REJECTED = 31;
+ ERROR_CODE_ENUM_BUILD_FAILED = 32;
+ ERROR_CODE_ENUM_ARTIFACT_REFERENCED = 33;
+ ERROR_CODE_ENUM_ARTIFACT_UNAVAILABLE = 34;
+ ERROR_CODE_ENUM_INCOMPATIBLE_VERSION = 35;
+ ERROR_CODE_ENUM_DATA_MIGRATION_REQUIRED = 36;
+ ERROR_CODE_ENUM_ROLLBACK_UNSAFE = 37;
+ ERROR_CODE_ENUM_WORKSPACE_NOT_READY = 38;
+ ERROR_CODE_ENUM_WORKSPACE_EXPIRED = 39;
+ ERROR_CODE_ENUM_OPERATION_IN_PROGRESS = 40;
+ ERROR_CODE_ENUM_EXTERNAL_OUTCOME_UNKNOWN = 41;
+ ERROR_CODE_ENUM_RESOURCE_DELETE_UNCONFIRMED = 42;
+ ERROR_CODE_ENUM_REFUND_PENDING = 43;
+ ERROR_CODE_ENUM_KEY_REVEAL_FORBIDDEN = 44;
+ ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE = 45;
+ ERROR_CODE_ENUM_RATE_LIMITED = 46;
+ ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE = 47;
+ ERROR_CODE_ENUM_INSTANCE_AUTHORIZATION_REQUIRED = 48;
+ ERROR_CODE_ENUM_INTERNAL_ERROR = 49;
+ ERROR_CODE_ENUM_PUBLISHER_NAMESPACE_MISMATCH = 50;
+ ERROR_CODE_ENUM_PUBLISHER_CONTRACT_INVALID = 51;
+ ERROR_CODE_ENUM_REFERENCE_CLAIM_INVALID = 52;
+ ERROR_CODE_ENUM_AUTHORIZATION_CONTEXT_EXPIRED = 53;
+ ERROR_CODE_ENUM_AUTHORIZATION_REVOKED = 54;
+ ERROR_CODE_ENUM_AUTHORIZATION_AUDIENCE_MISMATCH = 55;
+ ERROR_CODE_ENUM_ROUTE_GENERATION_CONFLICT = 56;
+ ERROR_CODE_ENUM_STALE_EXECUTION_EPOCH = 57;
+ ERROR_CODE_ENUM_TENANT_NOT_SUSPENDED = 58;
+ ERROR_CODE_ENUM_RENEWAL_PERIOD_ELAPSED = 59;
+ ERROR_CODE_ENUM_PLAN_CHANGE_EXISTS = 60;
+ ERROR_CODE_ENUM_PLAN_CHANGE_NOT_CANCELLABLE = 61;
+ ERROR_CODE_ENUM_PLAN_CHANGE_QUOTE_STALE = 62;
+ ERROR_CODE_ENUM_PLAN_TRANSITION_NOT_SUPPORTED = 63;
+ ERROR_CODE_ENUM_PLAN_TRANSITION_MIXED = 64;
+ ERROR_CODE_ENUM_PLAN_CHANGE_NO_OP = 65;
+ ERROR_CODE_ENUM_STORAGE_SHRINK_UNSUPPORTED = 66;
+ ERROR_CODE_ENUM_SUBSCRIPTION_VERSION_CONFLICT = 67;
+ ERROR_CODE_ENUM_PLAN_CHANGE_PAYMENT_REQUIRED = 68;
+ ERROR_CODE_ENUM_PLAN_CHANGE_PERIOD_ELAPSED = 69;
+ ERROR_CODE_ENUM_REFUND_ORIGINAL_CHARGE_CONFLICT = 70;
+ ERROR_CODE_ENUM_FUTURE_PERIOD_COMMITTED = 71;
+ ERROR_CODE_ENUM_SCHEDULED_PLAN_APPLICATION_CONFLICT = 72;
+}
+
+enum OwnerEnum {
+ OWNER_ENUM_UNSPECIFIED = 0;
+ OWNER_ENUM_TENANT = 1;
+ OWNER_ENUM_CAPABILITY = 2;
+ OWNER_ENUM_BUILD = 3;
+ OWNER_ENUM_WORKSPACE = 4;
+ OWNER_ENUM_RUNTIME_CONTROL = 5;
+ OWNER_ENUM_FABRIC = 6;
+ OWNER_ENUM_GATEWAY = 7;
+ OWNER_ENUM_RESOURCE_CATALOG = 8;
+ OWNER_ENUM_LEDGER = 9;
+ OWNER_ENUM_SERVE = 10;
+}
+
+enum TenantRoleEnum {
+ TENANT_ROLE_ENUM_UNSPECIFIED = 0;
+ TENANT_ROLE_ENUM_OWNER = 1;
+ TENANT_ROLE_ENUM_ADMIN = 2;
+ TENANT_ROLE_ENUM_MEMBER = 3;
+}
+
+enum OperationKindEnum {
+ OPERATION_KIND_ENUM_UNSPECIFIED = 0;
+ OPERATION_KIND_ENUM_COMPLETE_UPLOAD = 1;
+ OPERATION_KIND_ENUM_BUILD = 2;
+ OPERATION_KIND_ENUM_DELETE_CAPABILITY_VERSION = 3;
+ OPERATION_KIND_ENUM_CREATE_WORKSPACE = 4;
+ OPERATION_KIND_ENUM_UPDATE_MODELS = 5;
+ OPERATION_KIND_ENUM_UPDATE_WORKSPACE = 6;
+ OPERATION_KIND_ENUM_ROLLBACK_WORKSPACE = 7;
+ OPERATION_KIND_ENUM_RESIZE_WORKSPACE = 8;
+ OPERATION_KIND_ENUM_RENEW_WORKSPACE = 9;
+ OPERATION_KIND_ENUM_DELETE_WORKSPACE = 10;
+ OPERATION_KIND_ENUM_CREATE_TENANT = 11;
+ OPERATION_KIND_ENUM_BIND_TENANT_WALLET = 12;
+ OPERATION_KIND_ENUM_SUSPEND_TENANT = 13;
+ OPERATION_KIND_ENUM_DELETE_TENANT = 14;
+ OPERATION_KIND_ENUM_RESTORE_TENANT = 15;
+ OPERATION_KIND_ENUM_REVOKE_KEY = 16;
+ OPERATION_KIND_ENUM_RECONCILE = 17;
+ OPERATION_KIND_ENUM_ADOPT_WORKSPACE = 18;
+ OPERATION_KIND_ENUM_RESOURCE_PROVISION = 19;
+ OPERATION_KIND_ENUM_RESOURCE_RESIZE = 20;
+ OPERATION_KIND_ENUM_RESOURCE_RENEW = 21;
+ OPERATION_KIND_ENUM_RESOURCE_SUSPEND = 22;
+ OPERATION_KIND_ENUM_RESOURCE_RESUME = 23;
+ OPERATION_KIND_ENUM_RESOURCE_DELETE = 24;
+ OPERATION_KIND_ENUM_RUNTIME_DEPLOY = 25;
+ OPERATION_KIND_ENUM_RUNTIME_RELOAD = 26;
+ OPERATION_KIND_ENUM_RUNTIME_RETIRE = 27;
+ OPERATION_KIND_ENUM_REENABLE_TENANT = 28;
+ OPERATION_KIND_ENUM_MIGRATION = 29;
+ OPERATION_KIND_ENUM_UPDATE_RENEWAL_SETTINGS = 30;
+ OPERATION_KIND_ENUM_APPLY_SCHEDULED_PLAN_CHANGE = 31;
+ OPERATION_KIND_ENUM_CANCEL_PLAN_CHANGE = 32;
+ OPERATION_KIND_ENUM_COMPENSATE_PLAN_CHANGE = 33;
+ OPERATION_KIND_ENUM_REFUND_SUPPLEMENT_ON_DELETE = 34;
+}
+
+enum OperationStageEnum {
+ OPERATION_STAGE_ENUM_UNSPECIFIED = 0;
+ OPERATION_STAGE_ENUM_ABSENCE_VERIFICATION = 1;
+ OPERATION_STAGE_ENUM_ACCESS_ENABLEMENT = 2;
+ OPERATION_STAGE_ENUM_ACCESS_REVOCATION = 3;
+ OPERATION_STAGE_ENUM_ACTIVATION = 4;
+ OPERATION_STAGE_ENUM_ACTUAL_RESOURCE_EVIDENCE = 5;
+ OPERATION_STAGE_ENUM_ADMISSION = 6;
+ OPERATION_STAGE_ENUM_ASSET_CUSTODY = 7;
+ OPERATION_STAGE_ENUM_ATTACHMENT = 8;
+ OPERATION_STAGE_ENUM_ATTACHMENT_DELETION = 9;
+ OPERATION_STAGE_ENUM_BUILDING = 10;
+ OPERATION_STAGE_ENUM_CANCELLATION_GUARD = 11;
+ OPERATION_STAGE_ENUM_CATALOG_TOMBSTONE = 12;
+ OPERATION_STAGE_ENUM_COMPATIBILITY = 13;
+ OPERATION_STAGE_ENUM_COMPUTE = 14;
+ OPERATION_STAGE_ENUM_COMPUTE_DELETION = 15;
+ OPERATION_STAGE_ENUM_CONFIGURATION = 16;
+ OPERATION_STAGE_ENUM_CONSENT_COMMIT = 17;
+ OPERATION_STAGE_ENUM_CONSENT_VALIDATION = 18;
+ OPERATION_STAGE_ENUM_COVERAGE_CALCULATION = 19;
+ OPERATION_STAGE_ENUM_DEBIT = 20;
+ OPERATION_STAGE_ENUM_DELETION_EVIDENCE = 21;
+ OPERATION_STAGE_ENUM_FAILURE_FENCE = 22;
+ OPERATION_STAGE_ENUM_GRANT_REVOCATION = 23;
+ OPERATION_STAGE_ENUM_IDENTITY_VERIFICATION = 24;
+ OPERATION_STAGE_ENUM_KEY = 25;
+ OPERATION_STAGE_ENUM_KEY_REVOCATION = 26;
+ OPERATION_STAGE_ENUM_MEMBERSHIP = 27;
+ OPERATION_STAGE_ENUM_OBLIGATION_CHECK = 28;
+ OPERATION_STAGE_ENUM_ORIGINAL_ACTION_READBACK = 29;
+ OPERATION_STAGE_ENUM_OWNER_SWITCH = 30;
+ OPERATION_STAGE_ENUM_PAYMENT_AUTHORIZATION = 31;
+ OPERATION_STAGE_ENUM_PERIOD_BOUNDARY = 32;
+ OPERATION_STAGE_ENUM_PERIOD_UPDATE = 33;
+ OPERATION_STAGE_ENUM_PLAN_CHANGE_COMMIT = 34;
+ OPERATION_STAGE_ENUM_PLAN_COMMIT = 35;
+ OPERATION_STAGE_ENUM_PROVIDER_RENEWAL = 36;
+ OPERATION_STAGE_ENUM_PROVIDER_RESUME = 37;
+ OPERATION_STAGE_ENUM_PROVIDER_SUSPEND = 38;
+ OPERATION_STAGE_ENUM_PUSHING = 39;
+ OPERATION_STAGE_ENUM_QUEUED = 40;
+ OPERATION_STAGE_ENUM_QUOTE_BINDING = 41;
+ OPERATION_STAGE_ENUM_READBACK = 42;
+ OPERATION_STAGE_ENUM_RECEIPT = 43;
+ OPERATION_STAGE_ENUM_RECONCILIATION = 44;
+ OPERATION_STAGE_ENUM_REFERENCE_CHECK = 45;
+ OPERATION_STAGE_ENUM_REFUND = 46;
+ OPERATION_STAGE_ENUM_REFUND_ORIGINAL_CHARGE = 47;
+ OPERATION_STAGE_ENUM_REGISTERING = 48;
+ OPERATION_STAGE_ENUM_RELOAD = 49;
+ OPERATION_STAGE_ENUM_RESOURCE_PREFLIGHT = 50;
+ OPERATION_STAGE_ENUM_RESTORE_WINDOW_CHECK = 51;
+ OPERATION_STAGE_ENUM_RETIREMENT = 52;
+ OPERATION_STAGE_ENUM_RUNTIME = 53;
+ OPERATION_STAGE_ENUM_RUNTIME_DELETION = 54;
+ OPERATION_STAGE_ENUM_SCHEDULE_CANCEL = 55;
+ OPERATION_STAGE_ENUM_SCHEDULE_COMMIT = 56;
+ OPERATION_STAGE_ENUM_SECRET_UNBINDING = 57;
+ OPERATION_STAGE_ENUM_SNAPSHOT_IMPORT = 58;
+ OPERATION_STAGE_ENUM_SOURCE_VERIFICATION = 59;
+ OPERATION_STAGE_ENUM_STORAGE = 60;
+ OPERATION_STAGE_ENUM_STORAGE_DELETION = 61;
+ OPERATION_STAGE_ENUM_SUCCEEDED = 62;
+ OPERATION_STAGE_ENUM_SUPPLEMENT_PAYMENT = 63;
+ OPERATION_STAGE_ENUM_TARGET_PERIOD_PAYMENT = 64;
+ OPERATION_STAGE_ENUM_TENANT_STATE_CHECK = 65;
+ OPERATION_STAGE_ENUM_UPLOAD_VERIFICATION = 66;
+ OPERATION_STAGE_ENUM_VALIDATING = 67;
+ OPERATION_STAGE_ENUM_VERIFICATION = 68;
+ OPERATION_STAGE_ENUM_WALLET_BINDING = 69;
+ OPERATION_STAGE_ENUM_WORKSPACE_DELETION = 70;
+ OPERATION_STAGE_ENUM_WORKSPACE_RESUMPTION = 71;
+ OPERATION_STAGE_ENUM_WORKSPACE_SUSPENSION = 72;
+ OPERATION_STAGE_ENUM_WRITE_BARRIER = 73;
+}
+
+enum OperationOwnerEnum {
+ OPERATION_OWNER_ENUM_UNSPECIFIED = 0;
+ OPERATION_OWNER_ENUM_TENANT = 1;
+ OPERATION_OWNER_ENUM_CAPABILITY = 2;
+ OPERATION_OWNER_ENUM_BUILD = 3;
+ OPERATION_OWNER_ENUM_WORKSPACE = 4;
+ OPERATION_OWNER_ENUM_RUNTIME_CONTROL = 5;
+ OPERATION_OWNER_ENUM_FABRIC = 6;
+ OPERATION_OWNER_ENUM_GATEWAY = 7;
+ OPERATION_OWNER_ENUM_RESOURCE_CATALOG = 8;
+ OPERATION_OWNER_ENUM_SERVE = 9;
+}
+
+enum AuthorizationActionEnum {
+ AUTHORIZATION_ACTION_ENUM_UNSPECIFIED = 0;
+ AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION = 1;
+ AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE = 2;
+ AUTHORIZATION_ACTION_ENUM_ACTIVATEROUTE = 3;
+ AUTHORIZATION_ACTION_ENUM_ADOPTWORKSPACE = 4;
+ AUTHORIZATION_ACTION_ENUM_APPENDPLANCHANGEEVIDENCE = 5;
+ AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT = 6;
+ AUTHORIZATION_ACTION_ENUM_ARCHIVENAMESPACE = 7;
+ AUTHORIZATION_ACTION_ENUM_ARCHIVEPACKAGE = 8;
+ AUTHORIZATION_ACTION_ENUM_BINDMANAGEDSECRET = 9;
+ AUTHORIZATION_ACTION_ENUM_BINDREFERENCE = 10;
+ AUTHORIZATION_ACTION_ENUM_BINDTENANTWALLET = 11;
+ AUTHORIZATION_ACTION_ENUM_CANCELACCEPTEDOBLIGATION = 12;
+ AUTHORIZATION_ACTION_ENUM_CANCELPLANCHANGE = 13;
+ AUTHORIZATION_ACTION_ENUM_CHARGEACCEPTEDOBLIGATION = 14;
+ AUTHORIZATION_ACTION_ENUM_CHARGEPLANCHANGESUPPLEMENT = 15;
+ AUTHORIZATION_ACTION_ENUM_CLAIMNEXTPERIODOBLIGATION = 16;
+ AUTHORIZATION_ACTION_ENUM_CLOSEOUTACCEPTEDOBLIGATION = 17;
+ AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION = 18;
+ AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD = 19;
+ AUTHORIZATION_ACTION_ENUM_CREATEBUILD = 20;
+ AUTHORIZATION_ACTION_ENUM_CREATECOMPUTEPLAN = 21;
+ AUTHORIZATION_ACTION_ENUM_CREATEGATEWAYKEY = 22;
+ AUTHORIZATION_ACTION_ENUM_CREATENAMESPACE = 23;
+ AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE = 24;
+ AUTHORIZATION_ACTION_ENUM_CREATEPRICEPOLICYVERSION = 25;
+ AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE = 26;
+ AUTHORIZATION_ACTION_ENUM_CREATEQUOTE = 27;
+ AUTHORIZATION_ACTION_ENUM_CREATEREFUNDPOLICYVERSION = 28;
+ AUTHORIZATION_ACTION_ENUM_CREATERETENTIONPOLICYVERSION = 29;
+ AUTHORIZATION_ACTION_ENUM_CREATESTORAGEPLAN = 30;
+ AUTHORIZATION_ACTION_ENUM_CREATETENANT = 31;
+ AUTHORIZATION_ACTION_ENUM_CREATEUPLOAD = 32;
+ AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART = 33;
+ AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE = 34;
+ AUTHORIZATION_ACTION_ENUM_DELETECAPABILITYVERSION = 35;
+ AUTHORIZATION_ACTION_ENUM_DELETETENANT = 36;
+ AUTHORIZATION_ACTION_ENUM_DELETEWORKSPACE = 37;
+ AUTHORIZATION_ACTION_ENUM_EXECUTESCHEDULEDPLANCHANGE = 38;
+ AUTHORIZATION_ACTION_ENUM_FENCEROUTEEPOCH = 39;
+ AUTHORIZATION_ACTION_ENUM_GETADMINTENANT = 40;
+ AUTHORIZATION_ACTION_ENUM_GETBUILD = 41;
+ AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY = 42;
+ AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION = 43;
+ AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT = 44;
+ AUTHORIZATION_ACTION_ENUM_GETLOGINCONTEXT = 45;
+ AUTHORIZATION_ACTION_ENUM_GETOPERATION = 46;
+ AUTHORIZATION_ACTION_ENUM_GETPACKAGE = 47;
+ AUTHORIZATION_ACTION_ENUM_GETPACKAGEVERSION = 48;
+ AUTHORIZATION_ACTION_ENUM_GETPLANCHANGE = 49;
+ AUTHORIZATION_ACTION_ENUM_GETQUOTE = 50;
+ AUTHORIZATION_ACTION_ENUM_GETRECEIPT = 51;
+ AUTHORIZATION_ACTION_ENUM_GETSESSION = 52;
+ AUTHORIZATION_ACTION_ENUM_GETSUBSCRIPTION = 53;
+ AUTHORIZATION_ACTION_ENUM_GETTENANT = 54;
+ AUTHORIZATION_ACTION_ENUM_GETTENANTASSETCUSTODY = 55;
+ AUTHORIZATION_ACTION_ENUM_GETTENANTLIFECYCLEOPERATION = 56;
+ AUTHORIZATION_ACTION_ENUM_GETUPLOAD = 57;
+ AUTHORIZATION_ACTION_ENUM_GETWALLET = 58;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACE = 59;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS = 60;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACEDELETION = 61;
+ AUTHORIZATION_ACTION_ENUM_GETWORKSPACEMODELS = 62;
+ AUTHORIZATION_ACTION_ENUM_INVITEMEMBER = 63;
+ AUTHORIZATION_ACTION_ENUM_ISSUEACCEPTEDOPERATIONGRANT = 64;
+ AUTHORIZATION_ACTION_ENUM_LISTADMINOPERATIONS = 65;
+ AUTHORIZATION_ACTION_ENUM_LISTAUDITEVENTS = 66;
+ AUTHORIZATION_ACTION_ENUM_LISTBUILDLOGS = 67;
+ AUTHORIZATION_ACTION_ENUM_LISTBUILDS = 68;
+ AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS = 69;
+ AUTHORIZATION_ACTION_ENUM_LISTCOMPUTEPLANS = 70;
+ AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS = 71;
+ AUTHORIZATION_ACTION_ENUM_LISTGATEWAYKEYS = 72;
+ AUTHORIZATION_ACTION_ENUM_LISTINVITATIONS = 73;
+ AUTHORIZATION_ACTION_ENUM_LISTMEMBERS = 74;
+ AUTHORIZATION_ACTION_ENUM_LISTMODELS = 75;
+ AUTHORIZATION_ACTION_ENUM_LISTNAMESPACES = 76;
+ AUTHORIZATION_ACTION_ENUM_LISTPACKAGEVERSIONS = 77;
+ AUTHORIZATION_ACTION_ENUM_LISTPACKAGES = 78;
+ AUTHORIZATION_ACTION_ENUM_LISTPLANCHANGES = 79;
+ AUTHORIZATION_ACTION_ENUM_LISTPRICEPOLICYVERSIONS = 80;
+ AUTHORIZATION_ACTION_ENUM_LISTPUBLISHERNAMESPACES = 81;
+ AUTHORIZATION_ACTION_ENUM_LISTQUALIFICATIONS = 82;
+ AUTHORIZATION_ACTION_ENUM_LISTRECEIPTS = 83;
+ AUTHORIZATION_ACTION_ENUM_LISTRECHARGERECORDS = 84;
+ AUTHORIZATION_ACTION_ENUM_LISTREFUNDPOLICYVERSIONS = 85;
+ AUTHORIZATION_ACTION_ENUM_LISTRETENTIONPOLICYVERSIONS = 86;
+ AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS = 87;
+ AUTHORIZATION_ACTION_ENUM_LISTSTORAGEPLANS = 88;
+ AUTHORIZATION_ACTION_ENUM_LISTTENANTS = 89;
+ AUTHORIZATION_ACTION_ENUM_LISTUSAGE = 90;
+ AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS = 91;
+ AUTHORIZATION_ACTION_ENUM_LISTWORKSPACETRANSACTIONS = 92;
+ AUTHORIZATION_ACTION_ENUM_LISTWORKSPACES = 93;
+ AUTHORIZATION_ACTION_ENUM_LOGIN = 94;
+ AUTHORIZATION_ACTION_ENUM_LOGOUT = 95;
+ AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES = 96;
+ AUTHORIZATION_ACTION_ENUM_OBSERVEROUTE = 97;
+ AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES = 98;
+ AUTHORIZATION_ACTION_ENUM_PUBLISHOFFICIALPACKAGE = 99;
+ AUTHORIZATION_ACTION_ENUM_READAPPLICATIONCREDENTIALS = 100;
+ AUTHORIZATION_ACTION_ENUM_READAPPROVEDPLANTRANSITION = 101;
+ AUTHORIZATION_ACTION_ENUM_READARTIFACT = 102;
+ AUTHORIZATION_ACTION_ENUM_READAUTHORIZATIONCONTEXT = 103;
+ AUTHORIZATION_ACTION_ENUM_READCLAIMUSAGE = 104;
+ AUTHORIZATION_ACTION_ENUM_READNEXTPERIODOBLIGATION = 105;
+ AUTHORIZATION_ACTION_ENUM_READOWNERCOMMIT = 106;
+ AUTHORIZATION_ACTION_ENUM_READRENEWALCONSENT = 107;
+ AUTHORIZATION_ACTION_ENUM_READSUBSCRIPTIONPLANSTATE = 108;
+ AUTHORIZATION_ACTION_ENUM_READWALLETACTION = 109;
+ AUTHORIZATION_ACTION_ENUM_RECONCILEOPERATION = 110;
+ AUTHORIZATION_ACTION_ENUM_REENABLETENANT = 111;
+ AUTHORIZATION_ACTION_ENUM_REFUNDCONFIRMEDDELETION = 112;
+ AUTHORIZATION_ACTION_ENUM_REFUNDPLANCHANGECOMPENSATION = 113;
+ AUTHORIZATION_ACTION_ENUM_REFUNDSUPPLEMENTONDELETION = 114;
+ AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION = 115;
+ AUTHORIZATION_ACTION_ENUM_REGISTERWEBUIVERSION = 116;
+ AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE = 117;
+ AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER = 118;
+ AUTHORIZATION_ACTION_ENUM_RENEWACCEPTEDRESOURCES = 119;
+ AUTHORIZATION_ACTION_ENUM_RENEWWORKSPACE = 120;
+ AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME = 121;
+ AUTHORIZATION_ACTION_ENUM_RESIZEACCEPTEDRESOURCES = 122;
+ AUTHORIZATION_ACTION_ENUM_RESIZEWORKSPACE = 123;
+ AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT = 124;
+ AUTHORIZATION_ACTION_ENUM_RESOLVEPUBLISHERCONTRACT = 125;
+ AUTHORIZATION_ACTION_ENUM_RESTORETENANT = 126;
+ AUTHORIZATION_ACTION_ENUM_RESUMETENANTWORKSPACES = 127;
+ AUTHORIZATION_ACTION_ENUM_RETIRERUNTIME = 128;
+ AUTHORIZATION_ACTION_ENUM_RETRYBUILD = 129;
+ AUTHORIZATION_ACTION_ENUM_REVEALGATEWAYKEY = 130;
+ AUTHORIZATION_ACTION_ENUM_REVEALWORKSPACEAPPLICATIONCREDENTIALS = 131;
+ AUTHORIZATION_ACTION_ENUM_REVOKEGATEWAYKEY = 132;
+ AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION = 133;
+ AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE = 134;
+ AUTHORIZATION_ACTION_ENUM_ROLLBACKROUTE = 135;
+ AUTHORIZATION_ACTION_ENUM_ROLLBACKWORKSPACE = 136;
+ AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY = 137;
+ AUTHORIZATION_ACTION_ENUM_SETCOMPUTEPLANAVAILABILITY = 138;
+ AUTHORIZATION_ACTION_ENUM_SETRUNTIMEVERSIONSTATUS = 139;
+ AUTHORIZATION_ACTION_ENUM_SETSTORAGEPLANAVAILABILITY = 140;
+ AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS = 141;
+ AUTHORIZATION_ACTION_ENUM_SUSPENDTENANT = 142;
+ AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE = 143;
+ AUTHORIZATION_ACTION_ENUM_UPDATENAMESPACE = 144;
+ AUTHORIZATION_ACTION_ENUM_UPDATEPACKAGE = 145;
+ AUTHORIZATION_ACTION_ENUM_UPDATERENEWALSETTINGS = 146;
+ AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEMODELS = 147;
+ AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION = 148;
+ AUTHORIZATION_ACTION_ENUM_READEXECUTIONPLAN = 149;
+ AUTHORIZATION_ACTION_ENUM_RESTOREAFTERRESOURCECHANGE = 150;
+ AUTHORIZATION_ACTION_ENUM_DEBITSCHEDULEDPERIOD = 151;
+ AUTHORIZATION_ACTION_ENUM_READPLANCHANGEFAILURE = 152;
+}
+
+enum ServiceIdentityEnum {
+ SERVICE_IDENTITY_ENUM_UNSPECIFIED = 0;
+ SERVICE_IDENTITY_ENUM_CONSOLE_BFF = 1;
+ SERVICE_IDENTITY_ENUM_CAPABILITY = 2;
+ SERVICE_IDENTITY_ENUM_BUILD = 3;
+ SERVICE_IDENTITY_ENUM_WORKSPACE = 4;
+ SERVICE_IDENTITY_ENUM_RUNTIME_CONTROL = 5;
+ SERVICE_IDENTITY_ENUM_FABRIC = 6;
+ SERVICE_IDENTITY_ENUM_GATEWAY_INTEGRATION = 7;
+ SERVICE_IDENTITY_ENUM_RESOURCE_CATALOG = 8;
+ SERVICE_IDENTITY_ENUM_LEDGER = 9;
+}
+
+enum OperationStatusEnum {
+ OPERATION_STATUS_ENUM_UNSPECIFIED = 0;
+ OPERATION_STATUS_ENUM_ACCEPTED = 1;
+ OPERATION_STATUS_ENUM_RUNNING = 2;
+ OPERATION_STATUS_ENUM_AWAITING_CONFIRMATION = 3;
+ OPERATION_STATUS_ENUM_SUCCEEDED = 4;
+ OPERATION_STATUS_ENUM_FAILED = 5;
+ OPERATION_STATUS_ENUM_NEEDS_ATTENTION = 6;
+ OPERATION_STATUS_ENUM_CANCELLED = 7;
+}
+
+enum OperationObservationResultEnum {
+ OPERATION_OBSERVATION_RESULT_ENUM_UNSPECIFIED = 0;
+ OPERATION_OBSERVATION_RESULT_ENUM_CONFIRMED = 1;
+ OPERATION_OBSERVATION_RESULT_ENUM_REJECTED = 2;
+ OPERATION_OBSERVATION_RESULT_ENUM_UNKNOWN = 3;
+}
+
+enum TenantStatusEnum {
+ TENANT_STATUS_ENUM_UNSPECIFIED = 0;
+ TENANT_STATUS_ENUM_ACTIVE = 1;
+ TENANT_STATUS_ENUM_SUSPENDED = 2;
+ TENANT_STATUS_ENUM_DELETING = 3;
+ TENANT_STATUS_ENUM_DELETED = 4;
+}
+
+enum TenantAssetCustodyStatusEnum {
+ TENANT_ASSET_CUSTODY_STATUS_ENUM_UNSPECIFIED = 0;
+ TENANT_ASSET_CUSTODY_STATUS_ENUM_TENANT_OWNED = 1;
+ TENANT_ASSET_CUSTODY_STATUS_ENUM_RESTRICTED = 2;
+ TENANT_ASSET_CUSTODY_STATUS_ENUM_RETAINED = 3;
+}
+
+enum MemberStatusEnum {
+ MEMBER_STATUS_ENUM_UNSPECIFIED = 0;
+ MEMBER_STATUS_ENUM_ACTIVE = 1;
+ MEMBER_STATUS_ENUM_REVOKED = 2;
+}
+
+enum InvitationRoleEnum {
+ INVITATION_ROLE_ENUM_UNSPECIFIED = 0;
+ INVITATION_ROLE_ENUM_ADMIN = 1;
+ INVITATION_ROLE_ENUM_MEMBER = 2;
+}
+
+enum InvitationStatusEnum {
+ INVITATION_STATUS_ENUM_UNSPECIFIED = 0;
+ INVITATION_STATUS_ENUM_PENDING = 1;
+ INVITATION_STATUS_ENUM_ACCEPTED = 2;
+ INVITATION_STATUS_ENUM_REVOKED = 3;
+ INVITATION_STATUS_ENUM_EXPIRED = 4;
+}
+
+enum InviteMemberRequestRoleEnum {
+ INVITE_MEMBER_REQUEST_ROLE_ENUM_UNSPECIFIED = 0;
+ INVITE_MEMBER_REQUEST_ROLE_ENUM_ADMIN = 1;
+ INVITE_MEMBER_REQUEST_ROLE_ENUM_MEMBER = 2;
+}
+
+enum AssetCustodyStatusEnum {
+ ASSET_CUSTODY_STATUS_ENUM_UNSPECIFIED = 0;
+ ASSET_CUSTODY_STATUS_ENUM_RESTRICTED = 1;
+ ASSET_CUSTODY_STATUS_ENUM_RETAINED = 2;
+}
+
+enum NamespaceStatusEnum {
+ NAMESPACE_STATUS_ENUM_UNSPECIFIED = 0;
+ NAMESPACE_STATUS_ENUM_ACTIVE = 1;
+ NAMESPACE_STATUS_ENUM_ARCHIVED = 2;
+}
+
+enum PackageVisibilityEnum {
+ PACKAGE_VISIBILITY_ENUM_UNSPECIFIED = 0;
+ PACKAGE_VISIBILITY_ENUM_PRIVATE = 1;
+ PACKAGE_VISIBILITY_ENUM_OFFICIAL = 2;
+}
+
+enum PackageStatusEnum {
+ PACKAGE_STATUS_ENUM_UNSPECIFIED = 0;
+ PACKAGE_STATUS_ENUM_ACTIVE = 1;
+ PACKAGE_STATUS_ENUM_ARCHIVED = 2;
+}
+
+enum PackageVersionStatusEnum {
+ PACKAGE_VERSION_STATUS_ENUM_UNSPECIFIED = 0;
+ PACKAGE_VERSION_STATUS_ENUM_UPLOAD_PENDING = 1;
+ PACKAGE_VERSION_STATUS_ENUM_UPLOADED = 2;
+ PACKAGE_VERSION_STATUS_ENUM_REJECTED = 3;
+}
+
+enum UploadSessionStatusEnum {
+ UPLOAD_SESSION_STATUS_ENUM_UNSPECIFIED = 0;
+ UPLOAD_SESSION_STATUS_ENUM_UPLOADING = 1;
+ UPLOAD_SESSION_STATUS_ENUM_COMPLETED = 2;
+ UPLOAD_SESSION_STATUS_ENUM_EXPIRED = 3;
+}
+
+enum UploadPartAuthorizationMethodEnum {
+ UPLOAD_PART_AUTHORIZATION_METHOD_ENUM_UNSPECIFIED = 0;
+ UPLOAD_PART_AUTHORIZATION_METHOD_ENUM_PUT = 1;
+}
+
+enum ModelRequirementCapabilityEnum {
+ MODEL_REQUIREMENT_CAPABILITY_ENUM_UNSPECIFIED = 0;
+ MODEL_REQUIREMENT_CAPABILITY_ENUM_TEXT = 1;
+ MODEL_REQUIREMENT_CAPABILITY_ENUM_VISION = 2;
+ MODEL_REQUIREMENT_CAPABILITY_ENUM_EMBEDDING = 3;
+ MODEL_REQUIREMENT_CAPABILITY_ENUM_AUDIO = 4;
+}
+
+enum CapabilityVersionStatusEnum {
+ CAPABILITY_VERSION_STATUS_ENUM_UNSPECIFIED = 0;
+ CAPABILITY_VERSION_STATUS_ENUM_READY = 1;
+ CAPABILITY_VERSION_STATUS_ENUM_DEPRECATED = 2;
+ CAPABILITY_VERSION_STATUS_ENUM_DELETING = 3;
+ CAPABILITY_VERSION_STATUS_ENUM_DELETED = 4;
+}
+
+enum CapabilityVersionProvenanceEnum {
+ CAPABILITY_VERSION_PROVENANCE_ENUM_UNSPECIFIED = 0;
+ CAPABILITY_VERSION_PROVENANCE_ENUM_BUILD = 1;
+ CAPABILITY_VERSION_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+}
+
+enum BuildJobStatusEnum {
+ BUILD_JOB_STATUS_ENUM_UNSPECIFIED = 0;
+ BUILD_JOB_STATUS_ENUM_QUEUED = 1;
+ BUILD_JOB_STATUS_ENUM_VALIDATING = 2;
+ BUILD_JOB_STATUS_ENUM_BUILDING = 3;
+ BUILD_JOB_STATUS_ENUM_PUSHING = 4;
+ BUILD_JOB_STATUS_ENUM_REGISTERING = 5;
+ BUILD_JOB_STATUS_ENUM_SUCCEEDED = 6;
+ BUILD_JOB_STATUS_ENUM_FAILED = 7;
+ BUILD_JOB_STATUS_ENUM_NEEDS_ATTENTION = 8;
+}
+
+enum BuildLogLevelEnum {
+ BUILD_LOG_LEVEL_ENUM_UNSPECIFIED = 0;
+ BUILD_LOG_LEVEL_ENUM_INFO = 1;
+ BUILD_LOG_LEVEL_ENUM_WARNING = 2;
+ BUILD_LOG_LEVEL_ENUM_ERROR = 3;
+}
+
+enum RuntimeVersionStatusEnum {
+ RUNTIME_VERSION_STATUS_ENUM_UNSPECIFIED = 0;
+ RUNTIME_VERSION_STATUS_ENUM_APPROVED = 1;
+ RUNTIME_VERSION_STATUS_ENUM_DEPRECATED = 2;
+ RUNTIME_VERSION_STATUS_ENUM_REVOKED = 3;
+}
+
+enum WebuiVersionStatusEnum {
+ WEBUI_VERSION_STATUS_ENUM_UNSPECIFIED = 0;
+ WEBUI_VERSION_STATUS_ENUM_APPROVED = 1;
+ WEBUI_VERSION_STATUS_ENUM_DEPRECATED = 2;
+ WEBUI_VERSION_STATUS_ENUM_REVOKED = 3;
+}
+
+enum CatalogStatusRequestStatusEnum {
+ CATALOG_STATUS_REQUEST_STATUS_ENUM_UNSPECIFIED = 0;
+ CATALOG_STATUS_REQUEST_STATUS_ENUM_DEPRECATED = 1;
+ CATALOG_STATUS_REQUEST_STATUS_ENUM_REVOKED = 2;
+}
+
+enum ComputePlanAvailabilityEnum {
+ COMPUTE_PLAN_AVAILABILITY_ENUM_UNSPECIFIED = 0;
+ COMPUTE_PLAN_AVAILABILITY_ENUM_AVAILABLE = 1;
+ COMPUTE_PLAN_AVAILABILITY_ENUM_UNAVAILABLE = 2;
+ COMPUTE_PLAN_AVAILABILITY_ENUM_RETIRED = 3;
+}
+
+enum ComputePlanBillingModeEnum {
+ COMPUTE_PLAN_BILLING_MODE_ENUM_UNSPECIFIED = 0;
+ COMPUTE_PLAN_BILLING_MODE_ENUM_PREPAID_MONTHLY = 1;
+ COMPUTE_PLAN_BILLING_MODE_ENUM_LOCAL_NO_CHARGE = 2;
+}
+
+enum StoragePlanAvailabilityEnum {
+ STORAGE_PLAN_AVAILABILITY_ENUM_UNSPECIFIED = 0;
+ STORAGE_PLAN_AVAILABILITY_ENUM_AVAILABLE = 1;
+ STORAGE_PLAN_AVAILABILITY_ENUM_UNAVAILABLE = 2;
+ STORAGE_PLAN_AVAILABILITY_ENUM_RETIRED = 3;
+}
+
+enum StoragePlanBillingModeEnum {
+ STORAGE_PLAN_BILLING_MODE_ENUM_UNSPECIFIED = 0;
+ STORAGE_PLAN_BILLING_MODE_ENUM_PREPAID_MONTHLY = 1;
+ STORAGE_PLAN_BILLING_MODE_ENUM_LOCAL_NO_CHARGE = 2;
+}
+
+enum PlanAvailabilityRequestAvailabilityEnum {
+ PLAN_AVAILABILITY_REQUEST_AVAILABILITY_ENUM_UNSPECIFIED = 0;
+ PLAN_AVAILABILITY_REQUEST_AVAILABILITY_ENUM_AVAILABLE = 1;
+ PLAN_AVAILABILITY_REQUEST_AVAILABILITY_ENUM_UNAVAILABLE = 2;
+ PLAN_AVAILABILITY_REQUEST_AVAILABILITY_ENUM_RETIRED = 3;
+}
+
+enum PricePolicyVersionCurrencyEnum {
+ PRICE_POLICY_VERSION_CURRENCY_ENUM_UNSPECIFIED = 0;
+ PRICE_POLICY_VERSION_CURRENCY_ENUM_USD = 1;
+}
+
+enum PricePolicyVersionPlanChangePolicyVersionEnum {
+ PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum CreatePricePolicyRequestPlanChangePolicyVersionEnum {
+ CREATE_PRICE_POLICY_REQUEST_PLAN_CHANGE_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ CREATE_PRICE_POLICY_REQUEST_PLAN_CHANGE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum RefundPolicyVersionAlgorithmEnum {
+ REFUND_POLICY_VERSION_ALGORITHM_ENUM_UNSPECIFIED = 0;
+ REFUND_POLICY_VERSION_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1 = 1;
+}
+
+enum CreateRefundPolicyRequestAlgorithmEnum {
+ CREATE_REFUND_POLICY_REQUEST_ALGORITHM_ENUM_UNSPECIFIED = 0;
+ CREATE_REFUND_POLICY_REQUEST_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1 = 1;
+}
+
+enum RetentionPolicyVersionWorkspaceDataDispositionEnum {
+ RETENTION_POLICY_VERSION_WORKSPACE_DATA_DISPOSITION_ENUM_UNSPECIFIED = 0;
+ RETENTION_POLICY_VERSION_WORKSPACE_DATA_DISPOSITION_ENUM_DESTROY_AFTER_CONFIRMED_DELETION = 1;
+}
+
+enum RetentionPolicyVersionPackageHistoryDispositionEnum {
+ RETENTION_POLICY_VERSION_PACKAGE_HISTORY_DISPOSITION_ENUM_UNSPECIFIED = 0;
+ RETENTION_POLICY_VERSION_PACKAGE_HISTORY_DISPOSITION_ENUM_RETAIN = 1;
+}
+
+enum RetentionPolicyVersionBuildHistoryDispositionEnum {
+ RETENTION_POLICY_VERSION_BUILD_HISTORY_DISPOSITION_ENUM_UNSPECIFIED = 0;
+ RETENTION_POLICY_VERSION_BUILD_HISTORY_DISPOSITION_ENUM_RETAIN = 1;
+}
+
+enum ModelPriceSourceEnum {
+ MODEL_PRICE_SOURCE_ENUM_UNSPECIFIED = 0;
+ MODEL_PRICE_SOURCE_ENUM_GATEWAY = 1;
+}
+
+enum QuoteRequestPurposeEnum {
+ QUOTE_REQUEST_PURPOSE_ENUM_UNSPECIFIED = 0;
+ QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY = 1;
+ QUOTE_REQUEST_PURPOSE_ENUM_RESIZE = 2;
+ QUOTE_REQUEST_PURPOSE_ENUM_RENEW = 3;
+}
+
+enum QuoteLineKindEnum {
+ QUOTE_LINE_KIND_ENUM_UNSPECIFIED = 0;
+ QUOTE_LINE_KIND_ENUM_COMPUTE = 1;
+ QUOTE_LINE_KIND_ENUM_STORAGE = 2;
+ QUOTE_LINE_KIND_ENUM_PRODUCT = 3;
+ QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT = 4;
+}
+
+enum QuotePurposeEnum {
+ QUOTE_PURPOSE_ENUM_UNSPECIFIED = 0;
+ QUOTE_PURPOSE_ENUM_DEPLOY = 1;
+ QUOTE_PURPOSE_ENUM_RESIZE = 2;
+ QUOTE_PURPOSE_ENUM_RENEW = 3;
+}
+
+enum QuoteStatusEnum {
+ QUOTE_STATUS_ENUM_UNSPECIFIED = 0;
+ QUOTE_STATUS_ENUM_OFFERED = 1;
+ QUOTE_STATUS_ENUM_ACCEPTED = 2;
+ QUOTE_STATUS_ENUM_EXPIRED = 3;
+}
+
+enum QuoteRuntimeReadbackRequirementEnum {
+ QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_UNSPECIFIED = 0;
+ QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED = 1;
+ QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE = 2;
+}
+
+enum WorkspaceStatusEnum {
+ WORKSPACE_STATUS_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_STATUS_ENUM_PROVISIONING = 1;
+ WORKSPACE_STATUS_ENUM_ACTIVE = 2;
+ WORKSPACE_STATUS_ENUM_UPDATING = 3;
+ WORKSPACE_STATUS_ENUM_SUSPENDED = 4;
+ WORKSPACE_STATUS_ENUM_DELETING = 5;
+ WORKSPACE_STATUS_ENUM_DELETED = 6;
+ WORKSPACE_STATUS_ENUM_FAILED = 7;
+ WORKSPACE_STATUS_ENUM_NEEDS_ATTENTION = 8;
+}
+
+enum WorkspaceResourceReadinessEnum {
+ WORKSPACE_RESOURCE_READINESS_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_RESOURCE_READINESS_ENUM_PENDING = 1;
+ WORKSPACE_RESOURCE_READINESS_ENUM_READY = 2;
+ WORKSPACE_RESOURCE_READINESS_ENUM_UNAVAILABLE = 3;
+ WORKSPACE_RESOURCE_READINESS_ENUM_UNKNOWN = 4;
+}
+
+enum WorkspaceApplicationAvailabilityEnum {
+ WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_AVAILABILITY_ENUM_PENDING = 1;
+ WORKSPACE_APPLICATION_AVAILABILITY_ENUM_AVAILABLE = 2;
+ WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNAVAILABLE = 3;
+ WORKSPACE_APPLICATION_AVAILABILITY_ENUM_UNKNOWN = 4;
+}
+
+enum WorkspaceDeliveryModelEnum {
+ WORKSPACE_DELIVERY_MODEL_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_DELIVERY_MODEL_ENUM_LEGACY_RESOURCE_ONLY = 1;
+ WORKSPACE_DELIVERY_MODEL_ENUM_IMPORTED_APPLICATION = 2;
+ WORKSPACE_DELIVERY_MODEL_ENUM_AGENT_SAAS = 3;
+}
+
+enum CreateWorkspaceRequestRenewalModeEnum {
+ CREATE_WORKSPACE_REQUEST_RENEWAL_MODE_ENUM_UNSPECIFIED = 0;
+ CREATE_WORKSPACE_REQUEST_RENEWAL_MODE_ENUM_MANUAL = 1;
+ CREATE_WORKSPACE_REQUEST_RENEWAL_MODE_ENUM_AUTOMATIC = 2;
+}
+
+enum WorkspaceAccessAuthenticationModeEnum {
+ WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN = 1;
+ WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_CLOUD_PRIVATE = 2;
+ WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS = 3;
+}
+
+enum ModelConfigurationStatusEnum {
+ MODEL_CONFIGURATION_STATUS_ENUM_UNSPECIFIED = 0;
+ MODEL_CONFIGURATION_STATUS_ENUM_PENDING = 1;
+ MODEL_CONFIGURATION_STATUS_ENUM_APPLIED = 2;
+ MODEL_CONFIGURATION_STATUS_ENUM_FAILED = 3;
+ MODEL_CONFIGURATION_STATUS_ENUM_NEEDS_ATTENTION = 4;
+}
+
+enum DeploymentStatusEnum {
+ DEPLOYMENT_STATUS_ENUM_UNSPECIFIED = 0;
+ DEPLOYMENT_STATUS_ENUM_QUEUED = 1;
+ DEPLOYMENT_STATUS_ENUM_DEPLOYING = 2;
+ DEPLOYMENT_STATUS_ENUM_VERIFYING = 3;
+ DEPLOYMENT_STATUS_ENUM_ACTIVE = 4;
+ DEPLOYMENT_STATUS_ENUM_SUPERSEDED = 5;
+ DEPLOYMENT_STATUS_ENUM_FAILED = 6;
+ DEPLOYMENT_STATUS_ENUM_ROLLING_BACK = 7;
+ DEPLOYMENT_STATUS_ENUM_ROLLED_BACK = 8;
+ DEPLOYMENT_STATUS_ENUM_NEEDS_ATTENTION = 9;
+}
+
+enum WorkspaceDeletionResourceDeletionStatusEnum {
+ WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_PENDING = 1;
+ WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_CONFIRMED = 2;
+ WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_REJECTED = 3;
+ WORKSPACE_DELETION_RESOURCE_DELETION_STATUS_ENUM_UNKNOWN = 4;
+}
+
+enum WorkspaceDeletionDataDeletionStatusEnum {
+ WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_PENDING = 1;
+ WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_CONFIRMED = 2;
+ WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_REJECTED = 3;
+ WORKSPACE_DELETION_DATA_DELETION_STATUS_ENUM_UNKNOWN = 4;
+}
+
+enum WorkspaceDeletionRefundStatusEnum {
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_NOT_APPLICABLE = 1;
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_REQUESTED = 2;
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_CONFIRMED = 3;
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_REJECTED = 4;
+ WORKSPACE_DELETION_REFUND_STATUS_ENUM_UNKNOWN = 5;
+}
+
+enum SubscriptionStatusEnum {
+ SUBSCRIPTION_STATUS_ENUM_UNSPECIFIED = 0;
+ SUBSCRIPTION_STATUS_ENUM_PENDING = 1;
+ SUBSCRIPTION_STATUS_ENUM_ACTIVE = 2;
+ SUBSCRIPTION_STATUS_ENUM_EXPIRED = 3;
+ SUBSCRIPTION_STATUS_ENUM_TERMINATED = 4;
+}
+
+enum SubscriptionProvenanceEnum {
+ SUBSCRIPTION_PROVENANCE_ENUM_UNSPECIFIED = 0;
+ SUBSCRIPTION_PROVENANCE_ENUM_QUOTED = 1;
+ SUBSCRIPTION_PROVENANCE_ENUM_LEGACY_IMPORT = 2;
+}
+
+enum SubscriptionRenewalModeEnum {
+ SUBSCRIPTION_RENEWAL_MODE_ENUM_UNSPECIFIED = 0;
+ SUBSCRIPTION_RENEWAL_MODE_ENUM_MANUAL = 1;
+ SUBSCRIPTION_RENEWAL_MODE_ENUM_AUTOMATIC = 2;
+}
+
+enum WalletOperationKindEnum {
+ WALLET_OPERATION_KIND_ENUM_UNSPECIFIED = 0;
+ WALLET_OPERATION_KIND_ENUM_CHARGE = 1;
+ WALLET_OPERATION_KIND_ENUM_REFUND = 2;
+ WALLET_OPERATION_KIND_ENUM_RECHARGE = 3;
+}
+
+enum WalletOperationStatusEnum {
+ WALLET_OPERATION_STATUS_ENUM_UNSPECIFIED = 0;
+ WALLET_OPERATION_STATUS_ENUM_REQUESTED = 1;
+ WALLET_OPERATION_STATUS_ENUM_CONFIRMED = 2;
+ WALLET_OPERATION_STATUS_ENUM_REJECTED = 3;
+ WALLET_OPERATION_STATUS_ENUM_UNKNOWN = 4;
+}
+
+enum WalletOperationPurposeEnum {
+ WALLET_OPERATION_PURPOSE_ENUM_UNSPECIFIED = 0;
+ WALLET_OPERATION_PURPOSE_ENUM_BASE_PERIOD = 1;
+ WALLET_OPERATION_PURPOSE_ENUM_UPGRADE_SUPPLEMENT = 2;
+ WALLET_OPERATION_PURPOSE_ENUM_BASE_PERIOD_DELETE = 3;
+ WALLET_OPERATION_PURPOSE_ENUM_UPGRADE_FAILURE_FULL = 4;
+ WALLET_OPERATION_PURPOSE_ENUM_SUPPLEMENT_DELETE_UNUSED = 5;
+ WALLET_OPERATION_PURPOSE_ENUM_NEXT_PERIOD_PLAN_FAILURE_FULL = 6;
+ WALLET_OPERATION_PURPOSE_ENUM_RECHARGE = 7;
+}
+
+enum WalletSourceEnum {
+ WALLET_SOURCE_ENUM_UNSPECIFIED = 0;
+ WALLET_SOURCE_ENUM_GATEWAY = 1;
+}
+
+enum WalletStatusEnum {
+ WALLET_STATUS_ENUM_UNSPECIFIED = 0;
+ WALLET_STATUS_ENUM_AVAILABLE = 1;
+}
+
+enum WalletCurrencyEnum {
+ WALLET_CURRENCY_ENUM_UNSPECIFIED = 0;
+ WALLET_CURRENCY_ENUM_USD = 1;
+}
+
+enum UsageSourceEnum {
+ USAGE_SOURCE_ENUM_UNSPECIFIED = 0;
+ USAGE_SOURCE_ENUM_GATEWAY = 1;
+}
+
+enum GatewayKeyPurposeEnum {
+ GATEWAY_KEY_PURPOSE_ENUM_UNSPECIFIED = 0;
+ GATEWAY_KEY_PURPOSE_ENUM_PERSONAL = 1;
+ GATEWAY_KEY_PURPOSE_ENUM_WORKSPACE_MANAGED = 2;
+}
+
+enum GatewayKeyStatusEnum {
+ GATEWAY_KEY_STATUS_ENUM_UNSPECIFIED = 0;
+ GATEWAY_KEY_STATUS_ENUM_ACTIVE = 1;
+ GATEWAY_KEY_STATUS_ENUM_REVOKED = 2;
+}
+
+enum AuditEventOutcomeEnum {
+ AUDIT_EVENT_OUTCOME_ENUM_UNSPECIFIED = 0;
+ AUDIT_EVENT_OUTCOME_ENUM_CONFIRMED = 1;
+ AUDIT_EVENT_OUTCOME_ENUM_REJECTED = 2;
+ AUDIT_EVENT_OUTCOME_ENUM_UNKNOWN = 3;
+}
+
+enum ReceiptKindEnum {
+ RECEIPT_KIND_ENUM_UNSPECIFIED = 0;
+ RECEIPT_KIND_ENUM_SOURCE_CHECK = 1;
+ RECEIPT_KIND_ENUM_CANDIDATE = 2;
+ RECEIPT_KIND_ENUM_QUALIFICATION = 3;
+ RECEIPT_KIND_ENUM_DEPLOYMENT = 4;
+ RECEIPT_KIND_ENUM_ROLLBACK = 5;
+ RECEIPT_KIND_ENUM_RELEASE = 6;
+ RECEIPT_KIND_ENUM_PROVIDER_ACTION = 7;
+ RECEIPT_KIND_ENUM_WALLET_ACTION = 8;
+ RECEIPT_KIND_ENUM_PLAN_CHANGE = 9;
+ RECEIPT_KIND_ENUM_SUPPLEMENTAL_CHARGE = 10;
+ RECEIPT_KIND_ENUM_PLAN_CHANGE_FAILURE_COMPENSATION = 11;
+ RECEIPT_KIND_ENUM_SUPPLEMENTAL_DELETION_REFUND = 12;
+ RECEIPT_KIND_ENUM_NEXT_PERIOD_PLAN_SETTLEMENT = 13;
+}
+
+enum ReceiptOutcomeEnum {
+ RECEIPT_OUTCOME_ENUM_UNSPECIFIED = 0;
+ RECEIPT_OUTCOME_ENUM_CONFIRMED = 1;
+ RECEIPT_OUTCOME_ENUM_REJECTED = 2;
+ RECEIPT_OUTCOME_ENUM_UNKNOWN = 3;
+}
+
+enum QualificationStatusEnum {
+ QUALIFICATION_STATUS_ENUM_UNSPECIFIED = 0;
+ QUALIFICATION_STATUS_ENUM_PENDING = 1;
+ QUALIFICATION_STATUS_ENUM_QUALIFIED = 2;
+ QUALIFICATION_STATUS_ENUM_REJECTED = 3;
+}
+
+enum ImagePlatformOsEnum {
+ IMAGE_PLATFORM_OS_ENUM_UNSPECIFIED = 0;
+ IMAGE_PLATFORM_OS_ENUM_LINUX = 1;
+}
+
+enum ImagePlatformArchitectureEnum {
+ IMAGE_PLATFORM_ARCHITECTURE_ENUM_UNSPECIFIED = 0;
+ IMAGE_PLATFORM_ARCHITECTURE_ENUM_AMD64 = 1;
+ IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64 = 2;
+}
+
+enum RecipeArtifactMediaTypeEnum {
+ RECIPE_ARTIFACT_MEDIA_TYPE_ENUM_UNSPECIFIED = 0;
+ RECIPE_ARTIFACT_MEDIA_TYPE_ENUM_APPLICATION_VND_OPL_BUILD_RECIPE_V1_TAR = 1;
+}
+
+enum PackageBuildInputContextNameEnum {
+ PACKAGE_BUILD_INPUT_CONTEXT_NAME_ENUM_UNSPECIFIED = 0;
+ PACKAGE_BUILD_INPUT_CONTEXT_NAME_ENUM_AGENT_PACKAGE = 1;
+}
+
+enum WebuiBuildInputContextNameEnum {
+ WEBUI_BUILD_INPUT_CONTEXT_NAME_ENUM_UNSPECIFIED = 0;
+ WEBUI_BUILD_INPUT_CONTEXT_NAME_ENUM_WEBUI = 1;
+}
+
+enum BuildRecipeContractVersionEnum {
+ BUILD_RECIPE_CONTRACT_VERSION_ENUM_UNSPECIFIED = 0;
+ BUILD_RECIPE_CONTRACT_VERSION_ENUM_OPL_BUILD_RECIPE_V1 = 1;
+}
+
+enum BuildRecipeContractRuntimeContextNameEnum {
+ BUILD_RECIPE_CONTRACT_RUNTIME_CONTEXT_NAME_ENUM_UNSPECIFIED = 0;
+ BUILD_RECIPE_CONTRACT_RUNTIME_CONTEXT_NAME_ENUM_RUNTIME = 1;
+}
+
+enum BuildRecipeContractNetworkPolicyEnum {
+ BUILD_RECIPE_CONTRACT_NETWORK_POLICY_ENUM_UNSPECIFIED = 0;
+ BUILD_RECIPE_CONTRACT_NETWORK_POLICY_ENUM_NONE = 1;
+}
+
+enum ModelConfigurationContractProtocolEnum {
+ MODEL_CONFIGURATION_CONTRACT_PROTOCOL_ENUM_UNSPECIFIED = 0;
+ MODEL_CONFIGURATION_CONTRACT_PROTOCOL_ENUM_OPL_MODEL_CONFIG_V1 = 1;
+}
+
+enum ModelConfigurationContractRequestFieldsEnum {
+ MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_UNSPECIFIED = 0;
+ MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_VERSION = 1;
+ MODEL_CONFIGURATION_CONTRACT_REQUEST_FIELDS_ENUM_SELECTIONS = 2;
+}
+
+enum ModelConfigurationContractReadbackFieldsEnum {
+ MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_UNSPECIFIED = 0;
+ MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_APPLIEDVERSION = 1;
+ MODEL_CONFIGURATION_CONTRACT_READBACK_FIELDS_ENUM_SELECTIONS = 2;
+}
+
+enum DataUpgradeContractModeEnum {
+ DATA_UPGRADE_CONTRACT_MODE_ENUM_UNSPECIFIED = 0;
+ DATA_UPGRADE_CONTRACT_MODE_ENUM_COMPATIBLE = 1;
+ DATA_UPGRADE_CONTRACT_MODE_ENUM_PUBLISHER_MIGRATION = 2;
+}
+
+enum RuntimePublisherContractSchemaVersionEnum {
+ RUNTIME_PUBLISHER_CONTRACT_SCHEMA_VERSION_ENUM_UNSPECIFIED = 0;
+ RUNTIME_PUBLISHER_CONTRACT_SCHEMA_VERSION_ENUM_OPL_PUBLISHER_CONTRACT_V1 = 1;
+}
+
+enum RuntimePublisherContractKindEnum {
+ RUNTIME_PUBLISHER_CONTRACT_KIND_ENUM_UNSPECIFIED = 0;
+ RUNTIME_PUBLISHER_CONTRACT_KIND_ENUM_RUNTIME = 1;
+}
+
+enum WebuiPublisherContractSchemaVersionEnum {
+ WEBUI_PUBLISHER_CONTRACT_SCHEMA_VERSION_ENUM_UNSPECIFIED = 0;
+ WEBUI_PUBLISHER_CONTRACT_SCHEMA_VERSION_ENUM_OPL_PUBLISHER_CONTRACT_V1 = 1;
+}
+
+enum WebuiPublisherContractKindEnum {
+ WEBUI_PUBLISHER_CONTRACT_KIND_ENUM_UNSPECIFIED = 0;
+ WEBUI_PUBLISHER_CONTRACT_KIND_ENUM_WEBUI = 1;
+}
+
+enum WebuiPublisherContractUiProtocolVersionEnum {
+ WEBUI_PUBLISHER_CONTRACT_UI_PROTOCOL_VERSION_ENUM_UNSPECIFIED = 0;
+ WEBUI_PUBLISHER_CONTRACT_UI_PROTOCOL_VERSION_ENUM_OPL_WEBUI_V1 = 1;
+}
+
+enum WebuiPublisherContractIntegrationModeEnum {
+ WEBUI_PUBLISHER_CONTRACT_INTEGRATION_MODE_ENUM_UNSPECIFIED = 0;
+ WEBUI_PUBLISHER_CONTRACT_INTEGRATION_MODE_ENUM_BUNDLED_STATIC = 1;
+}
+
+enum WebuiPublisherContractAuthenticationProtocolEnum {
+ WEBUI_PUBLISHER_CONTRACT_AUTHENTICATION_PROTOCOL_ENUM_UNSPECIFIED = 0;
+ WEBUI_PUBLISHER_CONTRACT_AUTHENTICATION_PROTOCOL_ENUM_OPL_APPLICATION_SESSION_V1 = 1;
+}
+
+enum PublisherContractReferenceKindEnum {
+ PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_UNSPECIFIED = 0;
+ PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME = 1;
+ PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI = 2;
+}
+
+enum DeploymentDescriptorSchemaVersionEnum {
+ DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_UNSPECIFIED = 0;
+ DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1 = 1;
+}
+
+enum DeploymentDescriptorProvenanceEnum {
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_UNSPECIFIED = 0;
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD = 1;
+ DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_LEGACY_APPLICATION = 2;
+}
+
+enum PublisherNamespaceKindEnum {
+ PUBLISHER_NAMESPACE_KIND_ENUM_UNSPECIFIED = 0;
+ PUBLISHER_NAMESPACE_KIND_ENUM_OFFICIAL = 1;
+ PUBLISHER_NAMESPACE_KIND_ENUM_THIRD_PARTY = 2;
+}
+
+enum PublisherNamespaceStatusEnum {
+ PUBLISHER_NAMESPACE_STATUS_ENUM_UNSPECIFIED = 0;
+ PUBLISHER_NAMESPACE_STATUS_ENUM_APPROVED = 1;
+ PUBLISHER_NAMESPACE_STATUS_ENUM_REVOKED = 2;
+}
+
+enum CreatePublisherNamespaceRequestKindEnum {
+ CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_UNSPECIFIED = 0;
+ CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL = 1;
+ CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_THIRD_PARTY = 2;
+}
+
+enum RenewalPolicyVersionEnum {
+ RENEWAL_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ RENEWAL_POLICY_VERSION_ENUM_RENEWAL_POLICY_V1 = 1;
+}
+
+enum RenewalPolicyTriggerEnum {
+ RENEWAL_POLICY_TRIGGER_ENUM_UNSPECIFIED = 0;
+ RENEWAL_POLICY_TRIGGER_ENUM_MANUAL_OR_EXPLICITLY_CONSENTED_AUTOMATIC = 1;
+}
+
+enum RenewalPolicyEffectiveStartEnum {
+ RENEWAL_POLICY_EFFECTIVE_START_ENUM_UNSPECIFIED = 0;
+ RENEWAL_POLICY_EFFECTIVE_START_ENUM_PREVIOUS_PAID_THROUGH = 1;
+}
+
+enum WorkspaceApplicationCredentialKindEnum {
+ WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_ADMIN_PASSWORD = 1;
+ WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_WORKSPACE_SESSION_SECRET = 2;
+ WORKSPACE_APPLICATION_CREDENTIAL_KIND_ENUM_GATEWAY_KEY = 3;
+}
+
+enum WorkspaceApplicationPortProtocolEnum {
+ WORKSPACE_APPLICATION_PORT_PROTOCOL_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_PORT_PROTOCOL_ENUM_TCP = 1;
+ WORKSPACE_APPLICATION_PORT_PROTOCOL_ENUM_UDP = 2;
+}
+
+enum WorkspaceApplicationDependencyHealthCheckTypeEnum {
+ WORKSPACE_APPLICATION_DEPENDENCY_HEALTH_CHECK_TYPE_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_DEPENDENCY_HEALTH_CHECK_TYPE_ENUM_TCP = 1;
+ WORKSPACE_APPLICATION_DEPENDENCY_HEALTH_CHECK_TYPE_ENUM_HTTP = 2;
+ WORKSPACE_APPLICATION_DEPENDENCY_HEALTH_CHECK_TYPE_ENUM_EXEC = 3;
+}
+
+enum WorkspaceApplicationRevisionExposurePolicyEnum {
+ WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_UNSPECIFIED = 0;
+ WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_ANONYMOUS = 1;
+ WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION = 2;
+ WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_CLOUD_PRIVATE = 3;
+}
+
+enum ApplicationOwnedAccessContractModeEnum {
+ APPLICATION_OWNED_ACCESS_CONTRACT_MODE_ENUM_UNSPECIFIED = 0;
+ APPLICATION_OWNED_ACCESS_CONTRACT_MODE_ENUM_APPLICATION = 1;
+}
+
+enum CloudPrivateAccessContractModeEnum {
+ CLOUD_PRIVATE_ACCESS_CONTRACT_MODE_ENUM_UNSPECIFIED = 0;
+ CLOUD_PRIVATE_ACCESS_CONTRACT_MODE_ENUM_CLOUD_PRIVATE = 1;
+}
+
+enum CloudPrivateAccessContractEntryContractEnum {
+ CLOUD_PRIVATE_ACCESS_CONTRACT_ENTRY_CONTRACT_ENUM_UNSPECIFIED = 0;
+ CLOUD_PRIVATE_ACCESS_CONTRACT_ENTRY_CONTRACT_ENUM_WORKSPACEAPPLICATIONENTRY = 1;
+}
+
+enum AnonymousAccessContractModeEnum {
+ ANONYMOUS_ACCESS_CONTRACT_MODE_ENUM_UNSPECIFIED = 0;
+ ANONYMOUS_ACCESS_CONTRACT_MODE_ENUM_ANONYMOUS = 1;
+}
+
+enum TenantWorkspaceActionActionEnum {
+ TENANT_WORKSPACE_ACTION_ACTION_ENUM_UNSPECIFIED = 0;
+ TENANT_WORKSPACE_ACTION_ACTION_ENUM_SUSPEND = 1;
+ TENANT_WORKSPACE_ACTION_ACTION_ENUM_RESUME = 2;
+ TENANT_WORKSPACE_ACTION_ACTION_ENUM_DELETE = 3;
+}
+
+enum TenantWorkspaceActionOperationOwnerEnum {
+ TENANT_WORKSPACE_ACTION_OPERATION_OWNER_ENUM_UNSPECIFIED = 0;
+ TENANT_WORKSPACE_ACTION_OPERATION_OWNER_ENUM_WORKSPACE = 1;
+}
+
+enum TenantWorkspaceActionStatusEnum {
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_UNSPECIFIED = 0;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_ACCEPTED = 1;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_RUNNING = 2;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_AWAITING_CONFIRMATION = 3;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_SUCCEEDED = 4;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_FAILED = 5;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_NEEDS_ATTENTION = 6;
+ TENANT_WORKSPACE_ACTION_STATUS_ENUM_CANCELLED = 7;
+}
+
+enum TenantWorkspaceSkipReasonEnum {
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_UNSPECIFIED = 0;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_NOT_SUSPENDED_BY_TENANT = 1;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_PAID_PERIOD_EXPIRED = 2;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_ALREADY_DELETED = 3;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_RESOURCES_ABSENT = 4;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_RESOURCES_UNKNOWN = 5;
+ TENANT_WORKSPACE_SKIP_REASON_ENUM_OPERATION_IN_PROGRESS = 6;
+}
+
+enum TenantLifecycleProgressAccessStatusEnum {
+ TENANT_LIFECYCLE_PROGRESS_ACCESS_STATUS_ENUM_UNSPECIFIED = 0;
+ TENANT_LIFECYCLE_PROGRESS_ACCESS_STATUS_ENUM_ENABLED = 1;
+ TENANT_LIFECYCLE_PROGRESS_ACCESS_STATUS_ENUM_REVOKED = 2;
+}
+
+enum UpdateRenewalSettingsRequestRenewalModeEnum {
+ UPDATE_RENEWAL_SETTINGS_REQUEST_RENEWAL_MODE_ENUM_UNSPECIFIED = 0;
+ UPDATE_RENEWAL_SETTINGS_REQUEST_RENEWAL_MODE_ENUM_MANUAL = 1;
+ UPDATE_RENEWAL_SETTINGS_REQUEST_RENEWAL_MODE_ENUM_AUTOMATIC = 2;
+}
+
+enum PackageFormatContractReferenceOwnerEnum {
+ PACKAGE_FORMAT_CONTRACT_REFERENCE_OWNER_ENUM_UNSPECIFIED = 0;
+ PACKAGE_FORMAT_CONTRACT_REFERENCE_OWNER_ENUM_FRAMEWORK = 1;
+}
+
+enum UpgradePlanRulesKindEnum {
+ UPGRADE_PLAN_RULES_KIND_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_KIND_ENUM_UPGRADE_IMMEDIATE = 1;
+}
+
+enum UpgradePlanRulesEffectiveWhenEnum {
+ UPGRADE_PLAN_RULES_EFFECTIVE_WHEN_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_EFFECTIVE_WHEN_ENUM_RESOURCE_AND_RUNTIME_READBACK_CONFIRMED = 1;
+}
+
+enum UpgradePlanRulesOldPriceSourceEnum {
+ UPGRADE_PLAN_RULES_OLD_PRICE_SOURCE_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_OLD_PRICE_SOURCE_ENUM_ACCEPTED_APPLIED_SUBSCRIPTION_PLAN = 1;
+}
+
+enum UpgradePlanRulesChargeClockEnum {
+ UPGRADE_PLAN_RULES_CHARGE_CLOCK_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_CHARGE_CLOCK_ENUM_QUOTE_PRICING_BASIS_AT_FROZEN_ON_ACCEPTANCE = 1;
+}
+
+enum UpgradePlanRulesTimeUnitEnum {
+ UPGRADE_PLAN_RULES_TIME_UNIT_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_TIME_UNIT_ENUM_UTC_INTEGER_MILLISECONDS = 1;
+}
+
+enum UpgradePlanRulesChargeRoundingEnum {
+ UPGRADE_PLAN_RULES_CHARGE_ROUNDING_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_CHARGE_ROUNDING_ENUM_CEIL_ONCE_USD_MICRO = 1;
+}
+
+enum UpgradePlanRulesZeroChargeEnum {
+ UPGRADE_PLAN_RULES_ZERO_CHARGE_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_ZERO_CHARGE_ENUM_RECORD_EVIDENCE_SKIP_GATEWAY = 1;
+}
+
+enum UpgradePlanRulesKnownFailureCompensationEnum {
+ UPGRADE_PLAN_RULES_KNOWN_FAILURE_COMPENSATION_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_KNOWN_FAILURE_COMPENSATION_ENUM_FULL_UNREFUNDED_ORIGINAL_SUPPLEMENT = 1;
+}
+
+enum UpgradePlanRulesUnknownOutcomeEnum {
+ UPGRADE_PLAN_RULES_UNKNOWN_OUTCOME_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_UNKNOWN_OUTCOME_ENUM_READ_ORIGINAL_ACTION_NO_REFUND = 1;
+}
+
+enum UpgradePlanRulesIrreversibleResidualCostOwnerEnum {
+ UPGRADE_PLAN_RULES_IRREVERSIBLE_RESIDUAL_COST_OWNER_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_IRREVERSIBLE_RESIDUAL_COST_OWNER_ENUM_PLATFORM = 1;
+}
+
+enum UpgradePlanRulesSupplementDeleteRefundEnum {
+ UPGRADE_PLAN_RULES_SUPPLEMENT_DELETE_REFUND_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PLAN_RULES_SUPPLEMENT_DELETE_REFUND_ENUM_FLOOR_UNUSED_SUPPLEMENT_COVERAGE = 1;
+}
+
+enum DowngradePlanRulesKindEnum {
+ DOWNGRADE_PLAN_RULES_KIND_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_KIND_ENUM_DOWNGRADE_NEXT_PERIOD = 1;
+}
+
+enum DowngradePlanRulesPlannedBoundaryEnum {
+ DOWNGRADE_PLAN_RULES_PLANNED_BOUNDARY_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_PLANNED_BOUNDARY_ENUM_ORIGINAL_PAID_THROUGH = 1;
+}
+
+enum DowngradePlanRulesCurrentPeriodRefundEnum {
+ DOWNGRADE_PLAN_RULES_CURRENT_PERIOD_REFUND_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_CURRENT_PERIOD_REFUND_ENUM_NONE = 1;
+}
+
+enum DowngradePlanRulesNextPeriodPriceEnum {
+ DOWNGRADE_PLAN_RULES_NEXT_PERIOD_PRICE_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_NEXT_PERIOD_PRICE_ENUM_ACCEPTED_TARGET_PLAN_QUOTE = 1;
+}
+
+enum DowngradePlanRulesCancelBeforeEnum {
+ DOWNGRADE_PLAN_RULES_CANCEL_BEFORE_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_CANCEL_BEFORE_ENUM_NEXT_PERIOD_PAYMENT_OBLIGATION_ACCEPTED = 1;
+}
+
+enum DowngradePlanRulesEarlyPaidChangeEnum {
+ DOWNGRADE_PLAN_RULES_EARLY_PAID_CHANGE_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_EARLY_PAID_CHANGE_ENUM_DO_NOT_REDUCE_RESOURCES_BEFORE_ORIGINAL_PAID_THROUGH = 1;
+}
+
+enum DowngradePlanRulesManualUnpaidBoundaryEnum {
+ DOWNGRADE_PLAN_RULES_MANUAL_UNPAID_BOUNDARY_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_MANUAL_UNPAID_BOUNDARY_ENUM_AWAITING_PAYMENT_SUSPEND_UNPAID_USAGE = 1;
+}
+
+enum DowngradePlanRulesKnownFailureCompensationEnum {
+ DOWNGRADE_PLAN_RULES_KNOWN_FAILURE_COMPENSATION_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_KNOWN_FAILURE_COMPENSATION_ENUM_FULL_UNREFUNDED_TARGET_PERIOD_CHARGE = 1;
+}
+
+enum DowngradePlanRulesFallbackEnum {
+ DOWNGRADE_PLAN_RULES_FALLBACK_ENUM_UNSPECIFIED = 0;
+ DOWNGRADE_PLAN_RULES_FALLBACK_ENUM_NONE_NO_OLD_PRICE_RENEWAL_OR_SKU_SUBSTITUTION = 1;
+}
+
+enum PlanChangePolicyVersionEnum {
+ PLAN_CHANGE_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum PlanChangePolicyApprovalStatusEnum {
+ PLAN_CHANGE_POLICY_APPROVAL_STATUS_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_APPROVAL_STATUS_ENUM_APPROVED = 1;
+}
+
+enum PlanChangePolicyClassificationEnum {
+ PLAN_CHANGE_POLICY_CLASSIFICATION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_CLASSIFICATION_ENUM_APPROVED_COMPARABLE_RESOURCES_NOT_PRICE_OR_SKU_NAME = 1;
+}
+
+enum PlanChangePolicyMixedOrIncomparableTransitionEnum {
+ PLAN_CHANGE_POLICY_MIXED_OR_INCOMPARABLE_TRANSITION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_MIXED_OR_INCOMPARABLE_TRANSITION_ENUM_REJECT = 1;
+}
+
+enum PlanChangePolicyNoOpTransitionEnum {
+ PLAN_CHANGE_POLICY_NO_OP_TRANSITION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_NO_OP_TRANSITION_ENUM_REJECT = 1;
+}
+
+enum PlanChangePolicyStorageShrinkEnum {
+ PLAN_CHANGE_POLICY_STORAGE_SHRINK_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_STORAGE_SHRINK_ENUM_REJECT_UNLESS_OWNER_SUPPORTED_TRANSITION = 1;
+}
+
+enum PlanChangePolicyConcurrencyEnum {
+ PLAN_CHANGE_POLICY_CONCURRENCY_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_CONCURRENCY_ENUM_ONE_UNFINISHED_PLAN_CHANGE_PER_WORKSPACE = 1;
+}
+
+enum PlanChangePolicyCancelAndReplaceEnum {
+ PLAN_CHANGE_POLICY_CANCEL_AND_REPLACE_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_CANCEL_AND_REPLACE_ENUM_EXPLICIT_CANCEL_THEN_NEW_QUOTE = 1;
+}
+
+enum PlanChangePolicyBaseRefundPolicyEnum {
+ PLAN_CHANGE_POLICY_BASE_REFUND_POLICY_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_BASE_REFUND_POLICY_ENUM_PRESERVE_ORIGINAL_BASE_ORDER_POLICY = 1;
+}
+
+enum PlanChangePolicyProviderExecutionPlanEnum {
+ PLAN_CHANGE_POLICY_PROVIDER_EXECUTION_PLAN_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_POLICY_PROVIDER_EXECUTION_PLAN_ENUM_APPROVED_STRATEGY_FROZEN_BEFORE_QUOTE = 1;
+}
+
+enum UpgradeProrationRoundingEnum {
+ UPGRADE_PRORATION_ROUNDING_ENUM_UNSPECIFIED = 0;
+ UPGRADE_PRORATION_ROUNDING_ENUM_CEIL_ONCE_USD_MICRO = 1;
+}
+
+enum PlanChangeCalculationPolicyVersionEnum {
+ PLAN_CHANGE_CALCULATION_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_CALCULATION_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum PlanChangeCalculationKindEnum {
+ PLAN_CHANGE_CALCULATION_KIND_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_CALCULATION_KIND_ENUM_UPGRADE_IMMEDIATE = 1;
+ PLAN_CHANGE_CALCULATION_KIND_ENUM_DOWNGRADE_NEXT_PERIOD = 2;
+}
+
+enum PlanChangeKindEnum {
+ PLAN_CHANGE_KIND_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_KIND_ENUM_UPGRADE_IMMEDIATE = 1;
+ PLAN_CHANGE_KIND_ENUM_DOWNGRADE_NEXT_PERIOD = 2;
+}
+
+enum PlanChangeStatusEnum {
+ PLAN_CHANGE_STATUS_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_STATUS_ENUM_REQUESTED = 1;
+ PLAN_CHANGE_STATUS_ENUM_SCHEDULED = 2;
+ PLAN_CHANGE_STATUS_ENUM_AWAITING_PAYMENT = 3;
+ PLAN_CHANGE_STATUS_ENUM_APPLYING = 4;
+ PLAN_CHANGE_STATUS_ENUM_APPLIED = 5;
+ PLAN_CHANGE_STATUS_ENUM_FAILED = 6;
+ PLAN_CHANGE_STATUS_ENUM_NEEDS_ATTENTION = 7;
+ PLAN_CHANGE_STATUS_ENUM_CANCELLED = 8;
+}
+
+enum PlanChangeChargeStatusEnum {
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_NOT_REQUIRED = 1;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_NOT_REQUESTED = 2;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_REQUESTED = 3;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_CONFIRMED = 4;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_REJECTED = 5;
+ PLAN_CHANGE_CHARGE_STATUS_ENUM_UNKNOWN = 6;
+}
+
+enum PlanChangeNextPeriodChargeStatusEnum {
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_NOT_REQUIRED = 1;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_NOT_REQUESTED = 2;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_REQUESTED = 3;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_CONFIRMED = 4;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_REJECTED = 5;
+ PLAN_CHANGE_NEXT_PERIOD_CHARGE_STATUS_ENUM_UNKNOWN = 6;
+}
+
+enum PlanChangeObservationResultEnum {
+ PLAN_CHANGE_OBSERVATION_RESULT_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_OBSERVATION_RESULT_ENUM_CONFIRMED = 1;
+ PLAN_CHANGE_OBSERVATION_RESULT_ENUM_REJECTED = 2;
+ PLAN_CHANGE_OBSERVATION_RESULT_ENUM_UNKNOWN = 3;
+}
+
+enum PlanChangeDeliveryOutcomeEnum {
+ PLAN_CHANGE_DELIVERY_OUTCOME_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_DELIVERY_OUTCOME_ENUM_PENDING = 1;
+ PLAN_CHANGE_DELIVERY_OUTCOME_ENUM_APPLIED = 2;
+ PLAN_CHANGE_DELIVERY_OUTCOME_ENUM_FAILED = 3;
+ PLAN_CHANGE_DELIVERY_OUTCOME_ENUM_UNKNOWN = 4;
+}
+
+enum PlanChangeResourceOutcomeEnum {
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_UNCHANGED = 1;
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_TARGET_CONFIRMED = 2;
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_RESTORED = 3;
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_IRREVERSIBLE_RESIDUAL = 4;
+ PLAN_CHANGE_RESOURCE_OUTCOME_ENUM_UNKNOWN = 5;
+}
+
+enum PlanChangeRuntimeReadbackRequirementEnum {
+ PLAN_CHANGE_RUNTIME_READBACK_REQUIREMENT_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED = 1;
+ PLAN_CHANGE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE = 2;
+}
+
+enum PlanChangeCurrentRequirementValidationEnum {
+ PLAN_CHANGE_CURRENT_REQUIREMENT_VALIDATION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_CURRENT_REQUIREMENT_VALIDATION_ENUM_VALID = 1;
+ PLAN_CHANGE_CURRENT_REQUIREMENT_VALIDATION_ENUM_AT_RISK = 2;
+ PLAN_CHANGE_CURRENT_REQUIREMENT_VALIDATION_ENUM_NOT_CHECKED = 3;
+}
+
+enum PlanChangeEvidenceKindEnum {
+ PLAN_CHANGE_EVIDENCE_KIND_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_KIND_ENUM_UPGRADE_IMMEDIATE = 1;
+ PLAN_CHANGE_EVIDENCE_KIND_ENUM_DOWNGRADE_NEXT_PERIOD = 2;
+}
+
+enum PlanChangeEvidencePolicyVersionEnum {
+ PLAN_CHANGE_EVIDENCE_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum PlanChangeEvidenceOutcomeEnum {
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_SCHEDULED = 1;
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_APPLIED = 2;
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_FAILED = 3;
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_NEEDS_ATTENTION = 4;
+ PLAN_CHANGE_EVIDENCE_OUTCOME_ENUM_CANCELLED = 5;
+}
+
+enum PlanChangeEvidenceDeliveryOutcomeEnum {
+ PLAN_CHANGE_EVIDENCE_DELIVERY_OUTCOME_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_DELIVERY_OUTCOME_ENUM_PENDING = 1;
+ PLAN_CHANGE_EVIDENCE_DELIVERY_OUTCOME_ENUM_APPLIED = 2;
+ PLAN_CHANGE_EVIDENCE_DELIVERY_OUTCOME_ENUM_FAILED = 3;
+ PLAN_CHANGE_EVIDENCE_DELIVERY_OUTCOME_ENUM_UNKNOWN = 4;
+}
+
+enum PlanChangeEvidenceResourceOutcomeEnum {
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_UNCHANGED = 1;
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_TARGET_CONFIRMED = 2;
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_RESTORED = 3;
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_IRREVERSIBLE_RESIDUAL = 4;
+ PLAN_CHANGE_EVIDENCE_RESOURCE_OUTCOME_ENUM_UNKNOWN = 5;
+}
+
+enum PlanChangeEvidenceRuntimeReadbackRequirementEnum {
+ PLAN_CHANGE_EVIDENCE_RUNTIME_READBACK_REQUIREMENT_ENUM_UNSPECIFIED = 0;
+ PLAN_CHANGE_EVIDENCE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED = 1;
+ PLAN_CHANGE_EVIDENCE_RUNTIME_READBACK_REQUIREMENT_ENUM_NOT_APPLICABLE = 2;
+}
+
+enum SupplementalRefundEvidencePurposeEnum {
+ SUPPLEMENTAL_REFUND_EVIDENCE_PURPOSE_ENUM_UNSPECIFIED = 0;
+ SUPPLEMENTAL_REFUND_EVIDENCE_PURPOSE_ENUM_UPGRADE_FAILURE_FULL = 1;
+ SUPPLEMENTAL_REFUND_EVIDENCE_PURPOSE_ENUM_SUPPLEMENT_DELETE_UNUSED = 2;
+ SUPPLEMENTAL_REFUND_EVIDENCE_PURPOSE_ENUM_NEXT_PERIOD_PLAN_FAILURE_FULL = 3;
+}
+
+enum SupplementalRefundEvidencePolicyVersionEnum {
+ SUPPLEMENTAL_REFUND_EVIDENCE_POLICY_VERSION_ENUM_UNSPECIFIED = 0;
+ SUPPLEMENTAL_REFUND_EVIDENCE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1 = 1;
+}
+
+enum ListPackagesRpcRequestVisibilityEnum {
+ LIST_PACKAGES_RPC_REQUEST_VISIBILITY_ENUM_UNSPECIFIED = 0;
+ LIST_PACKAGES_RPC_REQUEST_VISIBILITY_ENUM_ALL = 1;
+ LIST_PACKAGES_RPC_REQUEST_VISIBILITY_ENUM_OFFICIAL = 2;
+ LIST_PACKAGES_RPC_REQUEST_VISIBILITY_ENUM_PRIVATE = 3;
+}
+
+enum ListPackagesRpcRequestStatusEnum {
+ LIST_PACKAGES_RPC_REQUEST_STATUS_ENUM_UNSPECIFIED = 0;
+ LIST_PACKAGES_RPC_REQUEST_STATUS_ENUM_ACTIVE = 1;
+ LIST_PACKAGES_RPC_REQUEST_STATUS_ENUM_ARCHIVED = 2;
+}
+
+enum ListCapabilityVersionsRpcRequestStatusEnum {
+ LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_UNSPECIFIED = 0;
+ LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_READY = 1;
+ LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_DEPRECATED = 2;
+ LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_DELETING = 3;
+ LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_DELETED = 4;
+}

@@ -1,6 +1,6 @@
 # OPL Cloud Current Status
 
-Owner: `one-person-lab-cloud`
+Owner: `opl-cloud`
 Purpose: `replaceable_current_evidence_snapshot`
 State: `current_snapshot`
 
@@ -8,6 +8,153 @@ This page reports current implementation and the latest retained evidence. It
 is not a work log. Target architecture lives in
 [architecture.md](./architecture.md); open outcomes live in
 [roadmap.md](./roadmap.md).
+
+## target architecture Migration Start Point
+
+The target architecture is adopted in
+[decisions.md](./decisions.md) and specified by
+[the target architecture specification](./spec/target/00_master_index.md). This section records
+the exact source facts that the migration starts from. It is a start point, not
+evidence that the target is implemented.
+
+| Fact | Value |
+| --- | --- |
+| Adopting repository | `RenDeHuang/opl-cloud` |
+| Start-point SHA | `50520e27a6b9a630eefdc2df7da3e5ec498d28a0` |
+| Provenance | `gaofeng21cn/one-person-lab-cloud` at that SHA |
+| Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`; shared infrastructure: `services/internal/postgresmigrate` |
+| Current latest control-plane migration | `202609130001_workspace_application_selection.sql` |
+| Current latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
+| Current latest ledger migration | `202609080001_receipt_request_lookup.sql` |
+| Current contracts module | `opl-cloud/packages/contracts/go` (Go 1.22) |
+| Publisher contract schema hash | `5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec` |
+| Target databases | `opl_tenant`, `opl_capability`, `opl_build`, `opl_workspace`, `opl_runtime_control`, `opl_fabric`, `opl_gateway`, `opl_resource_catalog`, `opl_ledger` |
+| Instance repository | `opl-instance-medopl` at `c6ecd808fee16d5052a4b8151508ecc6c0fed1e7` |
+
+### Implementation Start-Point Gap List
+
+The target is not the current implementation. Per
+[09_legacy_migration.md](./spec/target/09_legacy_migration.md) and
+[01_domain_ownership_matrix.md](./spec/target/01_domain_ownership_matrix.md), the
+gaps between them are:
+
+- Current implementation is three services plus Console. The target keeps all
+  Cloud product code in `RenDeHuang/opl-cloud`: eight backend service modules
+  plus a Console BFF serve nine data owners. CloudIdentity and Gateway
+  Integration share one module/process but retain separate databases/roles.
+  The six new domain service directories and BFF remain planned; their exact
+  placement is owned by [01](./spec/target/01_domain_ownership_matrix.md).
+  Control Plane remains the migration source, not an additional permanent
+  writer. No domain GitHub repositories are required.
+- Current integration is typed public HTTP; the target is typed gRPC/protobuf
+  with per-domain PostgreSQL Outbox delivery.
+- Current client entry is resource purchase plus separate administrator
+  deployment; the target entry is Agent version plus plan.
+- The current implementation has no Capability, Package, Build, Quote,
+  PlanChange, or Tenant product model.
+- Legacy migration `M0`-`M5` has not been executed; no source `sourceSHA`
+  inventory, row hashes, or per-domain conversion mapping has been produced
+  beyond this start-point record.
+
+Existing `resource_only` Launch obligations and historical purchases, Keys, and
+receipts remain valid and are carried by the migration, not discarded.
+
+## target architecture Single-Repository Specification Alignment
+
+The 2026-09-22 single-repository decision is reconciled across canonical owners,
+target architecture ownership/delivery/migration documents, and the generated W00–W31 plan.
+The plan derives Cloud paths from its containing checkout, includes Serve as the sole
+Agent delivery/deployment/access Owner, and keeps Runtime Control limited to the
+approved Runtime Release catalog consumed by Build. It retains one contracts module
+and permits necessary consumer dependency updates; it does not create a domain
+repository or change business fields.
+
+[Source-check receipt](./spec/target/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
+records the prior alignment snapshot and exact changed-source hashes. The current
+follow-up plan was regenerated and revalidated in this checkout; that historical
+receipt is not reused as implementation evidence. Verification passed:
+
+- Plan coverage: 32 work packages, 17 features, 108 REST operations, 101 tables,
+  and 172 internal RPCs; no dependency cycle or missing existing source path.
+- Five isolated plan-validator tests cover the current layout, sibling-repo
+  rejection, the CloudIdentity/Gateway deployment exception, and unauthorized
+  external writes including path traversal. Regeneration has no output drift.
+- Ten specification check groups and 56 D17 cases pass. Handoff evidence is
+  `ready_for_implementation`; unchanged exact-hash historical DB/UI evidence is
+  reused, not reported as newly executed qualification.
+- `npm run verify:local` passes: 226 source tests, 114 browser tests, TypeScript
+  typecheck/lint, Console build, existing Go module compilation and database-free
+  tests. The first attempt lacked installed Node dependencies; `npm ci` restored
+  the lockfile-defined environment without changing dependency manifests.
+
+No product Go/TypeScript source, SQL, API/message field, or existing migration
+was changed. No service scaffold, deployment, production access or publication
+was performed. W01 production contracts/consumer adoption and W02 service
+implementation remain open; the pre-existing untracked proto input is preserved.
+
+## Agent delivery chain owner process baseline
+
+On September 24, 2026 the accepted ownership and work-package revision
+(`Align implementation ownership and development plan`) was integrated into the
+current main line on top of the two existing implementation commits, without
+resetting, dropping, or rewriting them. Serve remains the sole Agent delivery,
+deployment, and access Owner; Runtime Control remains the approved Runtime
+Release catalog consumed by Build; Fabric stays resource-only.
+
+Capability, Build, Runtime Control, Workspace, and Serve now each run a real
+owner process: it admits its own `DATABASE_URL` under the one shared PostgreSQL
+admission rule, installs its own migration set through the shared owner
+migration journal, and serves the contract's `OwnerOperations` readback group
+over that owner's own `operations` table. Each process reports SERVING only when
+a declared product service group is registered and every recorded dependency
+answers; otherwise it stays NOT_SERVING and logs the exact missing product group
+or dependency. Because no domain handler is wired yet, all five processes
+currently report NOT_SERVING, which is the honest state rather than a claim.
+
+The Console BFF resolves the browser session and a CloudIdentity authorization
+decision before it reads any owner fact, refuses to start without
+`OPL_CLOUD_IDENTITY_URL`, and routes an Operation to the finite contract owner
+set. `OwnerEnum` and `OperationOwnerEnum` now carry `serve`, so a Serve Operation
+is reachable through that route; the bindings were regenerated with the pinned
+tools and re-ran to no drift.
+
+Two ownership defects in the accepted DDL were corrected because they made
+per-database migration impossible: `runtime_control.catalog_policies` referenced
+`capability.webui_versions`, and `serve.outbox_deliveries` referenced
+`runtime_control.outbox_events`. Each now references only its own database, which
+is what the contract's own cross-owner-FK rule requires.
+
+Executed evidence in this checkout:
+
+- `go test ./...` in each of the five owner modules plus
+  `services/internal/ownerservice`, `services/internal/ownerstore`,
+  `services/internal/postgresmigrate`, `packages/contracts/go` and
+  `apps/console-bff`.
+- Owner isolation on a real `postgres:16.8-bookworm` container
+  (`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` pointed at it), one suite per owner:
+  the owner's own migration entrypoint creates its schema and tables; the DDL
+  refuses a differently named database and names the database it found; the
+  runtime login writes its own schema; and the runtime login is refused when it
+  reads another owner's schema or tries to create outside its own.
+- `TestOwnerProcessOverTheWire` starts a real listener over a real isolated
+  database and proves the reported health status, the typed Operation readback
+  for a stored row (owner, kind, stage, status, observation, poll cadence),
+  `NotFound` for an unknown operation, and an identity refusal for an
+  unauthenticated caller.
+- `go test ./...` in `apps/console-bff`: delivery composition plus the session,
+  authorization-issuer, denial, and Serve-routing cases.
+- `npm test` (228 source tests), `npm run typecheck`, `npm run lint`,
+  `npm run validate:product-boundary`, `git diff --check`.
+- Development plan regenerated and revalidated in this checkout: 32 work
+  packages, 17 features, 108 REST operations, 101 tables, 172 internal RPCs;
+  five plan-validator tests pass.
+
+Still not implemented, and not claimed: every domain product handler
+(`CapabilityProductService`, `BuildProductService`, `RuntimeControlProductService`,
+`WorkspaceProductService`, `ServeProductService`), Package upload, Build
+execution and OCI push, Fabric provisioning/readback, Serve deployment,
+readiness, and access routing, Console pages beyond the delivery composition, and
+any live multi-process or deployed end-to-end run.
 
 ## Conclusion
 

@@ -1,0 +1,3460 @@
+{
+  "schemaVersion": 1,
+  "status": "plan_only_not_implemented",
+  "sourceSHA": "df89607cf9cbd338ecdc7c70f74d106d5ef78fd0",
+  "sourceRoots": {
+    "cloud": ".",
+    "console": "apps/console-ui",
+    "bff": "apps/console-bff",
+    "gateway": "services/gateway-integration",
+    "capability": "services/capability",
+    "build": "services/build",
+    "workspace": "services/workspace",
+    "runtime_control": "services/runtime-control",
+    "serve": "services/serve",
+    "resource_catalog": "services/resource-catalog",
+    "fabric": "services/fabric",
+    "ledger": "services/ledger",
+    "tenant": "services/gateway-integration",
+    "instance": "../opl-instance-medopl"
+  },
+  "sourceRootStatus": {
+    "cloud": "existing",
+    "console": "existing",
+    "bff": "existing",
+    "gateway": "planned_not_created",
+    "capability": "existing",
+    "build": "existing",
+    "workspace": "existing",
+    "runtime_control": "existing",
+    "serve": "existing",
+    "resource_catalog": "planned_not_created",
+    "fabric": "existing",
+    "ledger": "existing",
+    "tenant": "planned_not_created",
+    "instance": "existing"
+  },
+  "assignees": "roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated",
+  "workPackages": [
+    {
+      "id": "W00",
+      "title": "目标入主文档与来源冻结",
+      "coordinator": "Cloud架构负责人",
+      "owners": [
+        "cloud"
+      ],
+      "features": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/decisions.md",
+        "docs/implementation-architecture.md",
+        "docs/status.md",
+        "docs/roadmap.md"
+      ],
+      "plannedWritePaths": [
+        "docs/architecture.md",
+        "docs/decisions.md",
+        "docs/roadmap.md"
+      ],
+      "deliverables": [
+        "把已确认Agent+套餐目标、D17和逐域单writer迁移写入canonical owner，历史resource_only义务保留",
+        "记录Cloud/Instance/Runtime publisher精确sourceSHA与schema版本；形成实现起点差异清单，不把目标写成现状"
+      ],
+      "verification": [
+        "对照00/09/13核对上下层无竞争writer",
+        "git diff --check"
+      ],
+      "acceptance": [
+        "同一目标只一个writer，现行实现/目标/Instance事实分层",
+        "不重新征求已批准业务决定，不改变用户现有未提交文件"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "docs/README.md": true,
+        "docs/architecture.md": true,
+        "docs/decisions.md": true,
+        "docs/implementation-architecture.md": true,
+        "docs/status.md": true,
+        "docs/roadmap.md": true
+      }
+    },
+    {
+      "id": "W01",
+      "title": "生产契约与同仓版本一致性",
+      "coordinator": "Cloud契约负责人",
+      "owners": [
+        "cloud"
+      ],
+      "features": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W00"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "packages/contracts/README.md",
+        "packages/contracts/go/go.mod"
+      ],
+      "plannedWritePaths": [
+        "packages/contracts/proto",
+        "packages/contracts/go",
+        "tests/contracts",
+        "services/control-plane/go.mod",
+        "services/control-plane/go.sum",
+        "services/fabric/go.mod",
+        "services/fabric/go.sum",
+        "services/ledger/go.mod",
+        "services/ledger/go.sum"
+      ],
+      "deliverables": [
+        "按真实两端caller把03/proto/events/publisher/plan-change规格进入生产owner；不是整包inventories复制到runtime",
+        "锁定schema SHA和生成工具版本；每个consumer生成/校验typed client，只有owner定义业务类型",
+        "单仓消费者与契约来自同一Cloud commit，绑定schema SHA与生成工具版本；外部Owner才按精确commit/tag或digest接入，不用moving main/latest",
+        "沿用packages/contracts/go/go.mod；生成包为packages/contracts/go/v226，不为版本子包新建module；以锁定生成配置映射proto import到实际module路径，不手改生成代码",
+        "必要消费者go.mod/go.sum调整属于契约写集：记录实际依赖链与选定版本，不为旧测试或保持diff不变增加兼容字段、强压依赖或另建模块"
+      ],
+      "verification": [
+        "编译Go/TS/protobuf客户端，按各自协议规则验证JSON/protobuf正反例、金额string/int64及source ms精度；仅生成成功不算消费者接入完成",
+        "在同一checkout重放生成并检查无漂移，运行受影响服务回归与npm run verify:local:full；规格验证不替代消费者验证",
+        "运行已有checks/validate_spec.py与validate_d17_contract.py作规格基线，不冒充实现测试",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1"
+      ],
+      "acceptance": [
+        "双方消费者同一契约版本，金额string/int64与source ms精度一致",
+        "契约升级在一组可回放变更中完成，不让旧测试驱动兼容字段"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "packages/contracts/README.md": true,
+        "packages/contracts/go/go.mod": true
+      }
+    },
+    {
+      "id": "W02",
+      "title": "独立服务启动、DB角色及共同操作协议",
+      "coordinator": "各服务Owner",
+      "owners": [
+        "gateway",
+        "tenant",
+        "capability",
+        "build",
+        "workspace",
+        "runtime_control",
+        "serve",
+        "resource_catalog",
+        "fabric",
+        "ledger"
+      ],
+      "features": [
+        "F01",
+        "F17"
+      ],
+      "startAfter": [
+        "W01"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/go.mod",
+        "services/fabric/go.mod",
+        "services/ledger/go.mod",
+        "services/internal/postgresmigrate"
+      ],
+      "plannedWritePaths": [
+        "services/gateway-integration/go.mod",
+        "services/gateway-integration/go.sum",
+        "services/gateway-integration/cmd/server",
+        "services/gateway-integration/internal/transport",
+        "services/gateway-integration/migrations",
+        "services/capability/go.mod",
+        "services/capability/go.sum",
+        "services/capability/cmd/server",
+        "services/capability/internal/transport",
+        "services/capability/migrations",
+        "services/build/go.mod",
+        "services/build/go.sum",
+        "services/build/cmd/server",
+        "services/build/internal/transport",
+        "services/build/migrations",
+        "services/workspace/go.mod",
+        "services/workspace/go.sum",
+        "services/workspace/cmd/server",
+        "services/workspace/internal/transport",
+        "services/workspace/migrations",
+        "services/runtime-control/go.mod",
+        "services/runtime-control/go.sum",
+        "services/runtime-control/cmd/server",
+        "services/runtime-control/internal/transport",
+        "services/runtime-control/migrations",
+        "services/serve/go.mod",
+        "services/serve/go.sum",
+        "services/serve/cmd/server",
+        "services/serve/internal/transport",
+        "services/serve/migrations",
+        "services/resource-catalog/go.mod",
+        "services/resource-catalog/go.sum",
+        "services/resource-catalog/cmd/server",
+        "services/resource-catalog/internal/transport",
+        "services/resource-catalog/migrations",
+        "services/gateway-integration/internal/identity",
+        "services/fabric/cmd/fabric",
+        "services/fabric/internal/http",
+        "services/fabric/internal/fabric/ent_migrations",
+        "services/ledger/cmd/ledger",
+        "services/ledger/internal/http",
+        "services/ledger/internal/ledger/ent_migrations"
+      ],
+      "deliverables": [
+        "按01同仓目录启动独立服务module/进程/DB角色；tenant与gateway同module同部署单元但不同DB角色，不按每个RPC拆服务",
+        "每Owner实现自己的Operation、幂等、Outbox/Inbox、健康/就绪与迁移入口；公共基础设施仅在有两个真实caller时共享",
+        "为本地测试准备各Owner独立database/角色及隔离fixture进程；不以同schema代替跨Owner权限隔离，不复制钱包或造生产test-billing入口"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "DB角色只写本域，无跨库FK/JOIN；同一writer无双写",
+        "readiness真实暴露依赖不就绪；未知结果不默认成功"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "tenant.outbox_events",
+        "tenant.outbox_deliveries",
+        "tenant.inbox_events",
+        "tenant.idempotency_records",
+        "capability.outbox_events",
+        "capability.outbox_deliveries",
+        "capability.inbox_events",
+        "capability.idempotency_records",
+        "build.outbox_events",
+        "build.outbox_deliveries",
+        "build.inbox_events",
+        "build.idempotency_records",
+        "workspace.outbox_events",
+        "workspace.outbox_deliveries",
+        "workspace.inbox_events",
+        "workspace.idempotency_records",
+        "runtime_control.outbox_events",
+        "runtime_control.outbox_deliveries",
+        "runtime_control.inbox_events",
+        "runtime_control.idempotency_records",
+        "fabric.outbox_events",
+        "fabric.outbox_deliveries",
+        "fabric.inbox_events",
+        "fabric.idempotency_records",
+        "gateway.outbox_events",
+        "gateway.outbox_deliveries",
+        "gateway.inbox_events",
+        "gateway.idempotency_records",
+        "resource_catalog.outbox_events",
+        "resource_catalog.outbox_deliveries",
+        "resource_catalog.inbox_events",
+        "resource_catalog.idempotency_records",
+        "ledger.outbox_events",
+        "ledger.outbox_deliveries",
+        "ledger.inbox_events",
+        "ledger.idempotency_records",
+        "tenant.operations",
+        "capability.operations",
+        "build.operations",
+        "workspace.operations",
+        "gateway.operations",
+        "resource_catalog.operations",
+        "runtime_control.operations",
+        "fabric.operations",
+        "serve.outbox_events",
+        "serve.outbox_deliveries",
+        "serve.inbox_events",
+        "serve.idempotency_records",
+        "serve.operations"
+      ],
+      "rpcImplements": [
+        "OwnerOperations.Read",
+        "OwnerOperations.Reconcile",
+        "OwnerCommitReadback.ReadOwnerCommit",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/go.mod": true,
+        "services/fabric/go.mod": true,
+        "services/ledger/go.mod": true,
+        "services/internal/postgresmigrate": true
+      }
+    },
+    {
+      "id": "W03",
+      "title": "身份、Tenant成员及服务间授权",
+      "coordinator": "Gateway Integration/CloudIdentity",
+      "owners": [
+        "tenant",
+        "gateway"
+      ],
+      "features": [
+        "F01"
+      ],
+      "startAfter": [
+        "W02"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/routes_auth.go",
+        "services/control-plane/internal/clients/sub2api.go"
+      ],
+      "plannedWritePaths": [
+        "services/gateway-integration/internal/identity",
+        "services/gateway-integration/internal/authorization"
+      ],
+      "deliverables": [
+        "Gateway个人登录→Cloud session/Tenant/membership；平台权限与Tenant角色分离",
+        "实现AuthorizeAction、OwnerCommitReadback验证、accepted-operation grant、权限版本/受众及撤权",
+        "实现邀请/角色/最后owner保护；开发fixture使用已知测试Tenant，不向外部自动注册钱包"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1"
+      ],
+      "acceptance": [
+        "跨Tenant/伪actor/伪audience/撤权拒绝；session退出不丢原已接受义务",
+        "前端不收到服务token，不保存密码，future consent不从role缓存猜"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "acceptInvitation",
+        "getLoginContext",
+        "getSession",
+        "getTenant",
+        "inviteMember",
+        "listInvitations",
+        "listMembers",
+        "login",
+        "logout",
+        "removeMember",
+        "revokeInvitation",
+        "updateMemberRole"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "tenant.tenants",
+        "tenant.tenant_members",
+        "tenant.invitations",
+        "tenant.sessions",
+        "tenant.audit_events",
+        "tenant.authorization_contexts",
+        "tenant.accepted_operation_grants"
+      ],
+      "rpcImplements": [
+        "TenantProductService.GetLoginContext",
+        "TenantProductService.Login",
+        "TenantProductService.GetSession",
+        "TenantProductService.Logout",
+        "TenantProductService.GetTenant",
+        "TenantProductService.ListMembers",
+        "TenantProductService.ListInvitations",
+        "TenantProductService.InviteMember",
+        "TenantProductService.AcceptInvitation",
+        "TenantProductService.RevokeInvitation",
+        "TenantProductService.UpdateMemberRole",
+        "TenantProductService.RemoveMember",
+        "CloudIdentityAuthorization.AuthorizeAction",
+        "CloudIdentityAuthorization.GetAuthorizationContext",
+        "CloudIdentityAuthorization.IssueAcceptedOperationGrant"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/routes_auth.go": true,
+        "services/control-plane/internal/clients/sub2api.go": true
+      }
+    },
+    {
+      "id": "W04",
+      "title": "Gateway资金、Key与用量适配",
+      "coordinator": "Gateway Integration",
+      "owners": [
+        "gateway"
+      ],
+      "features": [
+        "F08",
+        "F12",
+        "F13",
+        "F14"
+      ],
+      "startAfter": [
+        "W03"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/clients/sub2api.go",
+        "services/control-plane/internal/server/wallet_adjustment.go"
+      ],
+      "plannedWritePaths": [
+        "services/gateway-integration/internal/sub2api",
+        "services/gateway-integration/internal/wallet",
+        "services/gateway-integration/internal/keys"
+      ],
+      "deliverables": [
+        "沿用Sub2API真实接口/身份和一次性Code，完成base/supplement/period/refund原单读回",
+        "仅映射/操作证据，无余额镜像；unknown禁止新财务副作用",
+        "个人Key管理与托管Workspace Key边界明确；明文仅授权一次性响应"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1"
+      ],
+      "acceptance": [
+        "重复/丢响应/余额并发/错原单/错钱包/超额及unknown退款全部用真实decoder验证",
+        "不用余额差作为付款证明，不在普通CI触碰真钱"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "createGatewayKey",
+        "getWallet",
+        "listGatewayKeys",
+        "listModels",
+        "listRechargeRecords",
+        "listUsage",
+        "listWorkspaceTransactions",
+        "revealGatewayKey",
+        "revokeGatewayKey"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "gateway.identity_mappings",
+        "gateway.tenant_wallet_bindings",
+        "gateway.key_bindings",
+        "gateway.wallet_operations"
+      ],
+      "rpcImplements": [
+        "GatewayProductService.ListWorkspaceTransactions",
+        "GatewayProductService.GetWallet",
+        "GatewayProductService.ListUsage",
+        "GatewayProductService.ListGatewayKeys",
+        "GatewayProductService.CreateGatewayKey",
+        "GatewayProductService.RevealGatewayKey",
+        "GatewayProductService.RevokeGatewayKey",
+        "GatewayProductService.ListRechargeRecords",
+        "GatewayProductService.ListModels",
+        "GatewayCoordination.BindWallet",
+        "GatewayCoordination.Debit",
+        "GatewayCoordination.Refund",
+        "GatewayCoordination.ReadWalletAction",
+        "GatewayCoordination.CreateManagedKey",
+        "GatewayCoordination.RevokeManagedKey",
+        "GatewayPlanChangeSettlement.DebitSupplement",
+        "GatewayPlanChangeSettlement.DebitScheduledPeriod",
+        "GatewayPlanChangeSettlement.RefundFailure",
+        "GatewayPlanChangeSettlement.RefundSupplementOnDeletion"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/clients/sub2api.go": true,
+        "services/control-plane/internal/server/wallet_adjustment.go": true
+      }
+    },
+    {
+      "id": "W05",
+      "title": "Ledger类型化证据与读回",
+      "coordinator": "Ledger",
+      "owners": [
+        "ledger"
+      ],
+      "features": [
+        "F05",
+        "F08",
+        "F11",
+        "F12",
+        "F13",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W02"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/ledger/internal/ledger/types.go",
+        "services/control-plane/internal/clients/ledger.go",
+        "services/ledger/ent/schema"
+      ],
+      "plannedWritePaths": [
+        "services/ledger/internal/ledger",
+        "services/ledger/ent/schema",
+        "services/ledger/internal/ledger/ent_migrations"
+      ],
+      "deliverables": [
+        "支持Build无Workspace收据、新计划变更/补差/迁移证据；精确原单和输入输出验证",
+        "保留旧receipt字节/类型/ID与幂等义务，新索引只投影",
+        "提供管理员只读证据和资格投影，不让Ledger编排业务"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "缺必填/伪Workspace/相同键不同hash/秘密泄露拒绝",
+        "append-only/权限/retention真实DB检查；没有运行证据不显示qualified"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "getReceipt",
+        "listQualifications",
+        "listReceipts"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "ledger.receipts",
+        "ledger.reconciliations"
+      ],
+      "rpcImplements": [
+        "LedgerProductService.ListReceipts",
+        "LedgerProductService.GetReceipt",
+        "LedgerProductService.ListQualifications",
+        "LedgerCoordination.AppendReceipt",
+        "LedgerCoordination.ReadReceiptByReference",
+        "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
+        "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "services/ledger/internal/ledger/types.go": true,
+        "services/control-plane/internal/clients/ledger.go": true,
+        "services/ledger/ent/schema": true
+      }
+    },
+    {
+      "id": "W06",
+      "title": "资源、价格与批准政策目录",
+      "coordinator": "Resource Catalog",
+      "owners": [
+        "resource_catalog"
+      ],
+      "features": [
+        "F03",
+        "F07",
+        "F11"
+      ],
+      "startAfter": [
+        "W02"
+      ],
+      "acceptAfter": [
+        "W11"
+      ],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/routes_billing.go",
+        "packages/contracts/go/workspace_delete.go"
+      ],
+      "plannedWritePaths": [
+        "services/resource-catalog/internal/catalog",
+        "services/resource-catalog/internal/pricing",
+        "services/resource-catalog/migrations"
+      ],
+      "deliverables": [
+        "资源plan先创建，组合价格后创建；版本/有效期/approved transition具有明确owner",
+        "实现D17固定政策和base退款政策分离、实际周期/单次ceil、canonical毫秒，不写任意公式框架",
+        "客户列表只投影有效已批准组合，容量仍由Fabric确认"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "重放13及checks/d17_acceptance_vectors.json的独立数值、纳秒进位与int64边界"
+      ],
+      "acceptance": [
+        "无双重取整/浮点/毫秒从PG重算；新购买周期1个月，历史周期不改",
+        "管理员准入目录不执行资源采购"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "createComputePlan",
+        "createPricePolicyVersion",
+        "createRefundPolicyVersion",
+        "createRetentionPolicyVersion",
+        "createStoragePlan",
+        "listComputePlans",
+        "listPricePolicyVersions",
+        "listRefundPolicyVersions",
+        "listRetentionPolicyVersions",
+        "listStoragePlans",
+        "setComputePlanAvailability",
+        "setStoragePlanAvailability"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "resource_catalog.compute_plans",
+        "resource_catalog.storage_plans",
+        "resource_catalog.price_policy_versions",
+        "resource_catalog.refund_policy_versions",
+        "resource_catalog.retention_policy_versions"
+      ],
+      "rpcImplements": [
+        "ResourceCatalogProductService.ListComputePlans",
+        "ResourceCatalogProductService.ListStoragePlans",
+        "ResourceCatalogProductService.CreateComputePlan",
+        "ResourceCatalogProductService.SetComputePlanAvailability",
+        "ResourceCatalogProductService.CreateStoragePlan",
+        "ResourceCatalogProductService.SetStoragePlanAvailability",
+        "ResourceCatalogProductService.ListPricePolicyVersions",
+        "ResourceCatalogProductService.CreatePricePolicyVersion",
+        "ResourceCatalogProductService.ListRefundPolicyVersions",
+        "ResourceCatalogProductService.CreateRefundPolicyVersion",
+        "ResourceCatalogProductService.ListRetentionPolicyVersions",
+        "ResourceCatalogProductService.CreateRetentionPolicyVersion"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/routes_billing.go": true,
+        "packages/contracts/go/workspace_delete.go": true
+      }
+    },
+    {
+      "id": "W07",
+      "title": "发布者空间与Runtime/WebUI准入",
+      "coordinator": "Capability",
+      "owners": [
+        "capability"
+      ],
+      "features": [
+        "F03"
+      ],
+      "startAfter": [
+        "W03"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "packages/contracts/go/workspace_application.go",
+        "services/control-plane/internal/server/workspace_application_admission.go"
+      ],
+      "plannedWritePaths": [
+        "services/capability/internal/publishers",
+        "services/capability/internal/catalog"
+      ],
+      "deliverables": [
+        "官方/第三方publisher namespace、registry prefix、完整不可变PublisherContract",
+        "复用当前WorkspaceApplicationRevision/Go validator，不另造缩减版端口/探针/Secret模型",
+        "默认构建策略只选择批准版本，新发布不自动替换旧Workspace"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "两类Runtime真source validator/startup DAG及schema拒绝反例",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1"
+      ],
+      "acceptance": [
+        "完整repository/digest/platform/recipe/revision来源可回读",
+        "第三方不能混入官方prefix；无新SSO或固定Runtime路径假设"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "createPublisherNamespace",
+        "getBuildRuntimePolicy",
+        "listPublisherNamespaces",
+        "listRuntimeVersions",
+        "listWebuiVersions",
+        "publishOfficialPackage",
+        "registerRuntimeVersion",
+        "registerWebuiVersion",
+        "revokePublisherNamespace",
+        "setBuildRuntimePolicy",
+        "setRuntimeVersionStatus",
+        "setWebuiVersionStatus"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "capability.webui_versions",
+        "capability.publisher_namespaces"
+      ],
+      "rpcImplements": [
+        "CapabilityProductService.PublishOfficialPackage",
+        "CapabilityProductService.ListWebuiVersions",
+        "CapabilityProductService.RegisterWebuiVersion",
+        "CapabilityProductService.SetWebuiVersionStatus",
+        "CapabilityProductService.ListPublisherNamespaces",
+        "CapabilityProductService.CreatePublisherNamespace",
+        "CapabilityProductService.RevokePublisherNamespace",
+        "RuntimeControlProductService.ListRuntimeVersions",
+        "RuntimeControlProductService.GetBuildRuntimePolicy",
+        "RuntimeControlProductService.SetBuildRuntimePolicy",
+        "RuntimeControlProductService.RegisterRuntimeVersion",
+        "RuntimeControlProductService.SetRuntimeVersionStatus",
+        "CapabilityCoordination.ResolveBuildInput",
+        "CapabilityCoordination.ResolvePublisherContract",
+        "CapabilityCoordination.AcquireReference",
+        "CapabilityCoordination.BindReference",
+        "CapabilityCoordination.ReleaseReference"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "packages/contracts/go/workspace_application.go": true,
+        "services/control-plane/internal/server/workspace_application_admission.go": true
+      }
+    },
+    {
+      "id": "W08",
+      "title": "Namespace、Package上传及输入claims",
+      "coordinator": "Capability",
+      "owners": [
+        "capability"
+      ],
+      "features": [
+        "F02",
+        "F04",
+        "F06"
+      ],
+      "startAfter": [
+        "W03",
+        "W07"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/application_revision_store.go"
+      ],
+      "plannedWritePaths": [
+        "services/capability/internal/packages",
+        "services/capability/internal/uploads",
+        "services/capability/internal/references"
+      ],
+      "deliverables": [
+        "分组/Package/版本与受限Storage直传、实际摘要校验及续传",
+        "四类ReferenceTarget，Acquire→consumer本地保存→Bind；释放须真实Owner usage/终态",
+        "归档保留历史，目录tombstone与物理删除分开；无过期自动释放引用"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "首包无CapabilityVersion仍可保护Package/Runtime/WebUI输入",
+        "路径穿越/错摘要/跨Tenant/过期签名/并发删除/Bind丢响应均覆盖"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "archiveNamespace",
+        "archivePackage",
+        "completeUpload",
+        "createNamespace",
+        "createPackage",
+        "createUpload",
+        "createUploadPart",
+        "getPackage",
+        "getPackageVersion",
+        "getUpload",
+        "listNamespaces",
+        "listPackageVersions",
+        "listPackages",
+        "updateNamespace",
+        "updatePackage"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "capability.namespaces",
+        "capability.packages",
+        "capability.package_versions",
+        "capability.upload_sessions",
+        "capability.upload_chunks",
+        "capability.reference_claims"
+      ],
+      "rpcImplements": [
+        "CapabilityProductService.ListNamespaces",
+        "CapabilityProductService.CreateNamespace",
+        "CapabilityProductService.UpdateNamespace",
+        "CapabilityProductService.ArchiveNamespace",
+        "CapabilityProductService.ListPackages",
+        "CapabilityProductService.CreatePackage",
+        "CapabilityProductService.GetPackage",
+        "CapabilityProductService.UpdatePackage",
+        "CapabilityProductService.ArchivePackage",
+        "CapabilityProductService.CreateUpload",
+        "CapabilityProductService.GetUpload",
+        "CapabilityProductService.CreateUploadPart",
+        "CapabilityProductService.CompleteUpload",
+        "CapabilityProductService.ListPackageVersions",
+        "CapabilityProductService.GetPackageVersion",
+        "ClaimUsageReadback.ReadClaimUsage",
+        "CapabilityCoordination.ResolveBuildInput",
+        "CapabilityCoordination.ResolvePublisherContract",
+        "CapabilityCoordination.AcquireReference",
+        "CapabilityCoordination.BindReference",
+        "CapabilityCoordination.ReleaseReference"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/application_revision_store.go": true
+      }
+    },
+    {
+      "id": "W09",
+      "title": "真实构建、注册和可部署版本",
+      "coordinator": "Build（协调），Capability（资产writer）",
+      "owners": [
+        "build",
+        "capability"
+      ],
+      "features": [
+        "F04",
+        "F05",
+        "F06"
+      ],
+      "startAfter": [
+        "W05",
+        "W08"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/agent-lifecycle.md"
+      ],
+      "plannedWritePaths": [
+        "services/build/internal/jobs",
+        "services/build/internal/builder",
+        "services/build/internal/registry",
+        "services/capability/internal/artifacts"
+      ],
+      "deliverables": [
+        "冻结输入与recipe，真实BuildKit构建及Registry exporter/readback",
+        "typed完成事件→Capability Inbox事务创建唯一ready版本；重试新job保留旧历史",
+        "管理员/客户查询构建日志及版本、引用保护下架；无用户自定义任意脚本旁路"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "真实Storage+Registry+BuildKit隔离集成；worker重启、push已成但丢响应、注册ACK丢失",
+        "输出digest/descriptor可被后续Runtime读取；不以fixture假Build完成"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "createBuild",
+        "deleteCapabilityVersion",
+        "getBuild",
+        "getCapabilityVersion",
+        "listBuildLogs",
+        "listBuilds",
+        "listCapabilityVersions",
+        "retryBuild"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "capability.capability_versions",
+        "build.build_jobs",
+        "build.build_artifacts",
+        "build.build_logs"
+      ],
+      "rpcImplements": [
+        "CapabilityProductService.ListCapabilityVersions",
+        "CapabilityProductService.GetCapabilityVersion",
+        "CapabilityProductService.DeleteCapabilityVersion",
+        "BuildProductService.CreateBuild",
+        "BuildProductService.ListBuilds",
+        "BuildProductService.GetBuild",
+        "BuildProductService.ListBuildLogs",
+        "BuildProductService.RetryBuild",
+        "ClaimUsageReadback.ReadClaimUsage",
+        "CapabilityCoordination.ResolveBuildInput",
+        "CapabilityCoordination.ResolvePublisherContract",
+        "CapabilityCoordination.AcquireReference",
+        "CapabilityCoordination.BindReference",
+        "CapabilityCoordination.ReleaseReference",
+        "BuildCoordination.ReadArtifact",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "docs/agent-lifecycle.md": true
+      }
+    },
+    {
+      "id": "W10",
+      "title": "Runtime Release注册、准入与精确引用",
+      "coordinator": "Runtime Control",
+      "owners": [
+        "runtime_control"
+      ],
+      "features": [
+        "F03",
+        "F04",
+        "F05"
+      ],
+      "startAfter": [
+        "W02",
+        "W07"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/architecture.md",
+        "packages/contracts/proto/internal.proto"
+      ],
+      "plannedWritePaths": [
+        "services/runtime-control/internal/releases",
+        "services/runtime-control/internal/catalog",
+        "services/runtime-control/migrations"
+      ],
+      "deliverables": [
+        "注册并审核OPL App/Framework Runtime Release；保存不可变artifact digest、ABI/Package兼容契约、状态与准入证据",
+        "向Build提供精确RuntimeRelease引用；只读回版本目录，不部署Workspace Agent、不拥有Runtime实例或readiness",
+        "撤销/退役只影响新Build准入，已固定Build输入和历史证据不被改写"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C packages/contracts/go test ./... -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+      ],
+      "acceptance": [
+        "相同digest/兼容契约/状态转换与Build引用反例",
+        "Runtime目录读回不得被解释为Agent已部署或已运行"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "runtime_control.runtime_releases",
+        "runtime_control.catalog_policies"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "docs/architecture.md": true,
+        "packages/contracts/proto/internal.proto": true
+      }
+    },
+    {
+      "id": "W11",
+      "title": "Local-Docker资源开通、绑定与资格能力",
+      "coordinator": "Fabric Local-Docker",
+      "owners": [
+        "fabric"
+      ],
+      "features": [
+        "F07",
+        "F08",
+        "F11",
+        "F12",
+        "F13",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W02"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/fabric/internal/fabric/local_docker_provider.go",
+        "services/fabric/internal/fabric/provider_port.go"
+      ],
+      "plannedWritePaths": [
+        "services/fabric/internal/fabric/local_docker_provider.go",
+        "services/fabric/internal/fabric",
+        "services/fabric/internal/http"
+      ],
+      "deliverables": [
+        "只负责Compute/Storage/Network/Secret资源的admit、ensure、resize、renew、suspend、resume、delete与状态读回",
+        "实现Local-Docker资源集、挂载和配额资格；把资源引用交给Serve，不部署Agent OCI、不控制Runtime生命周期、不拥有访问路由",
+        "Linux存储/权限前提不满足明确失败，不把Mac Docker Desktop冒充Local资格"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "Linux隔离集成：真实volume数据、资源动作丢响应、unknown不重发",
+        "资源only路径不伪造Agent readiness，零金额路径无Gateway动作"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "fabric.resource_sets",
+        "fabric.resources",
+        "fabric.attachments",
+        "fabric.secret_bindings",
+        "fabric.resource_actions"
+      ],
+      "rpcImplements": [
+        "FabricCoordination.AdmitResources",
+        "FabricCoordination.EnsureResources",
+        "FabricCoordination.ResizeResources",
+        "FabricCoordination.RenewResources",
+        "FabricCoordination.SuspendResources",
+        "FabricCoordination.ResumeResources",
+        "FabricCoordination.DeleteResources",
+        "FabricCoordination.ReadResources",
+        "FabricCoordination.BindSecret",
+        "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
+        "FabricPlanTransitionReadback.ReadExecutionPlan"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "services/fabric/internal/fabric/local_docker_provider.go": true,
+        "services/fabric/internal/fabric/provider_port.go": true
+      }
+    },
+    {
+      "id": "W12",
+      "title": "Tencent/TKE资源适配与资格读回",
+      "coordinator": "Fabric Tencent",
+      "owners": [
+        "fabric"
+      ],
+      "features": [
+        "F07",
+        "F08",
+        "F11",
+        "F12",
+        "F13",
+        "F17"
+      ],
+      "startAfter": [
+        "W02"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/fabric/internal/fabric/tencent_provider.go",
+        "services/fabric/internal/fabric/tencent_provider_storage.go",
+        "services/fabric/cmd/opl-tencent-provisioner"
+      ],
+      "plannedWritePaths": [
+        "services/fabric/internal/fabric",
+        "services/fabric/cmd/opl-tencent-provisioner"
+      ],
+      "deliverables": [
+        "只负责Tencent/TKE Compute/Storage/Network/Secret资源能力、预付执行计划、provider readback与资源变更",
+        "报价前固定已资格的in-place或目标pool+原CBS重绑策略；禁止POSTPAID_BY_HOUR；把已确认资源引用交给Workspace/Serve",
+        "不负责Agent OCI部署、Runtime启停/readiness或Serve访问路由；ordinary CI无真钱采购/销毁"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试"
+      ],
+      "acceptance": [
+        "SDK请求和原请求读回边界使用typed tests；真正变更仅W29授权Instance验证",
+        "不能把SDK RequestId或kubectl接受当资源完成"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "rpcImplements": [
+        "FabricCoordination.AdmitResources",
+        "FabricCoordination.EnsureResources",
+        "FabricCoordination.ResizeResources",
+        "FabricCoordination.RenewResources",
+        "FabricCoordination.SuspendResources",
+        "FabricCoordination.ResumeResources",
+        "FabricCoordination.DeleteResources",
+        "FabricCoordination.ReadResources",
+        "FabricCoordination.BindSecret",
+        "FabricPlanTransitionReadback.ReadApprovedPlanTransition",
+        "FabricPlanTransitionReadback.ReadExecutionPlan"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md"
+      ],
+      "existingPathStatus": {
+        "services/fabric/internal/fabric/tencent_provider.go": true,
+        "services/fabric/internal/fabric/tencent_provider_storage.go": true,
+        "services/fabric/cmd/opl-tencent-provisioner": true
+      }
+    },
+    {
+      "id": "W13",
+      "title": "BFF和Console基础接入",
+      "coordinator": "Console/BFF",
+      "owners": [
+        "bff",
+        "console",
+        "workspace"
+      ],
+      "features": [
+        "F01",
+        "F17"
+      ],
+      "startAfter": [
+        "W01",
+        "W03"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "apps/console-ui/src/app/console-router.ts",
+        "apps/console-ui/src/layout/ConsoleShell.tsx",
+        "apps/console-ui/src/api/auth-api.ts",
+        "apps/console-ui/src/app/use-console-controller.ts"
+      ],
+      "plannedWritePaths": [
+        "apps/console-bff/go.mod",
+        "apps/console-bff/go.sum",
+        "apps/console-bff/cmd/server",
+        "apps/console-bff/internal/session",
+        "apps/console-bff/internal/routes",
+        "apps/console-ui/src/api",
+        "apps/console-ui/src/layout/ConsoleShell.tsx",
+        "apps/console-ui/src/app/console-router.ts"
+      ],
+      "deliverables": [
+        "同源REST/session/CSRF/Origin→typed Owner RPC；Operation按owner路径路由",
+        "保留当前React/TypeScript/tokens；按11导航和状态/响应式/焦点，不按Domain铺菜单",
+        "secret no-store与内存清理；所有异步读取遵守owner提示，不自行认定成功"
+      ],
+      "verification": [
+        "go -C apps/console-bff test ./...",
+        "npm run typecheck",
+        "npm run test:browser:console-owner-reads",
+        "真实BFF会话/跨Tenant/退出缓存清理测试"
+      ],
+      "acceptance": [
+        "BFF不写业务表、不拥有Saga/钱包；未知Owner拒绝不遍历猜测",
+        "旧/api与新/api/v2按明确切换，不请求失败再fallback"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "getOperation"
+      ],
+      "apiConsumes": [
+        "acceptInvitation",
+        "bindTenantWallet",
+        "createTenant",
+        "getAdminTenant",
+        "getLoginContext",
+        "getOperation",
+        "getReceipt",
+        "getSession",
+        "getTenant",
+        "inviteMember",
+        "listAdminOperations",
+        "listAuditEvents",
+        "listInvitations",
+        "listMembers",
+        "listQualifications",
+        "listReceipts",
+        "login",
+        "logout",
+        "reconcileOperation",
+        "removeMember",
+        "revokeInvitation",
+        "updateMemberRole"
+      ],
+      "rpcImplements": [
+        "WorkspaceProductService.GetOperation"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "apps/console-ui/src/app/console-router.ts": true,
+        "apps/console-ui/src/layout/ConsoleShell.tsx": true,
+        "apps/console-ui/src/api/auth-api.ts": true,
+        "apps/console-ui/src/app/use-console-controller.ts": true
+      }
+    },
+    {
+      "id": "W14",
+      "title": "智能体/上传/构建/目录前端",
+      "coordinator": "Console",
+      "owners": [
+        "console"
+      ],
+      "features": [
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06"
+      ],
+      "startAfter": [
+        "W13"
+      ],
+      "acceptAfter": [
+        "W06",
+        "W07",
+        "W08",
+        "W09"
+      ],
+      "existingReadPaths": [
+        "apps/console-ui/src/pages/CustomerPages.tsx",
+        "apps/console-ui/src/pages/AdminPages.tsx"
+      ],
+      "plannedWritePaths": [
+        "apps/console-ui/src/pages/agents",
+        "apps/console-ui/src/app/agent-controllers",
+        "apps/console-ui/src/api/capability-api.ts"
+      ],
+      "deliverables": [
+        "按04/11实现Agent目录、版本、分组、上传向导、构建日志/重试及publisher表单",
+        "fixtures只用于并行开发；最后换真实BFF读写并验证关闭/刷新恢复",
+        "目录下架/物理清除文案不混，技术详情只给有权限的角色"
+      ],
+      "verification": [
+        "新增typed controller/model与browser用例",
+        "npm run typecheck",
+        "按F02-F06正常/错误/重复/越权/刷新验收"
+      ],
+      "acceptance": [
+        "首包与新版本都可用；选择WebUI确实进入产物",
+        "不把字段存在、静态原型或传输100%当构建完成"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [
+        "archiveNamespace",
+        "archivePackage",
+        "completeUpload",
+        "createBuild",
+        "createComputePlan",
+        "createNamespace",
+        "createPackage",
+        "createPricePolicyVersion",
+        "createPublisherNamespace",
+        "createRefundPolicyVersion",
+        "createRetentionPolicyVersion",
+        "createStoragePlan",
+        "createUpload",
+        "createUploadPart",
+        "deleteCapabilityVersion",
+        "getBuild",
+        "getBuildRuntimePolicy",
+        "getCapabilityVersion",
+        "getOperation",
+        "getPackage",
+        "getPackageVersion",
+        "getUpload",
+        "listBuildLogs",
+        "listBuilds",
+        "listCapabilityVersions",
+        "listComputePlans",
+        "listModels",
+        "listNamespaces",
+        "listPackageVersions",
+        "listPackages",
+        "listPricePolicyVersions",
+        "listPublisherNamespaces",
+        "listRefundPolicyVersions",
+        "listRetentionPolicyVersions",
+        "listRuntimeVersions",
+        "listStoragePlans",
+        "listWebuiVersions",
+        "publishOfficialPackage",
+        "registerRuntimeVersion",
+        "registerWebuiVersion",
+        "retryBuild",
+        "revokePublisherNamespace",
+        "setBuildRuntimePolicy",
+        "setComputePlanAvailability",
+        "setRuntimeVersionStatus",
+        "setStoragePlanAvailability",
+        "setWebuiVersionStatus",
+        "updateNamespace",
+        "updatePackage"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "apps/console-ui/src/pages/CustomerPages.tsx": true,
+        "apps/console-ui/src/pages/AdminPages.tsx": true
+      }
+    },
+    {
+      "id": "W15",
+      "title": "准确报价与Agent+套餐Launch闭环",
+      "coordinator": "Workspace（协调）/Catalog/Serve",
+      "owners": [
+        "workspace",
+        "resource_catalog",
+        "serve"
+      ],
+      "features": [
+        "F07",
+        "F08"
+      ],
+      "startAfter": [
+        "W04",
+        "W05",
+        "W06",
+        "W09",
+        "W10",
+        "W11"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/routes_workspace_launch.go",
+        "services/control-plane/internal/server/workspace_launch_service.go",
+        "services/control-plane/internal/server/workspace_launch_reconciler.go"
+      ],
+      "plannedWritePaths": [
+        "services/workspace/internal/admission",
+        "services/workspace/internal/launch",
+        "services/resource-catalog/internal/quotes",
+        "services/serve/internal/delivery"
+      ],
+      "deliverables": [
+        "Workspace只负责准入、报价接受、原单/权益/资源计划；Fabric确认资源后将OCI digest与resource refs交给Serve",
+        "Serve创建该Workspace唯一Agent delivery，执行部署/readiness/access并返回真实读回；Workspace通过ServeAgentCoordination.Reserve/Deploy发起，不写Agent deployment/current selection",
+        "本地真实链覆盖Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；每阶段原身份/原单/epoch持久化，已接受报价不因执行耗时重新计价"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "本地真实服务链+外部权威fixture：余额不足、扣款丢响应、资源/receipt不确定、restart",
+        "同一次请求串API→Owner→DB→下一Owner→实际应用响应",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1"
+      ],
+      "acceptance": [
+        "一个Workspace一次原单且最多一个当前Agent；ready来自Serve实际Agent而非资源开通",
+        "失败收尾/unknown/退款分开展示，拒绝跨Tenant与伪价格"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "createQuote",
+        "createWorkspace",
+        "getQuote",
+        "getWorkspace",
+        "listWorkspaces"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "workspace.workspaces",
+        "workspace.saga_steps",
+        "resource_catalog.quotes",
+        "resource_catalog.quote_items",
+        "workspace.supplemental_charges"
+      ],
+      "rpcImplements": [
+        "ResourceCatalogProductService.CreateQuote",
+        "ResourceCatalogProductService.GetQuote",
+        "WorkspaceProductService.CreateWorkspace",
+        "WorkspaceProductService.ListWorkspaces",
+        "WorkspaceProductService.GetWorkspace",
+        "ClaimUsageReadback.ReadClaimUsage",
+        "CatalogCoordination.AcceptQuote",
+        "WorkspaceAdmission.CheckAdmission",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/routes_workspace_launch.go": true,
+        "services/control-plane/internal/server/workspace_launch_service.go": true,
+        "services/control-plane/internal/server/workspace_launch_reconciler.go": true
+      }
+    },
+    {
+      "id": "W16",
+      "title": "部署向导与Workspace页面",
+      "coordinator": "Console",
+      "owners": [
+        "console"
+      ],
+      "features": [
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F16"
+      ],
+      "startAfter": [
+        "W13"
+      ],
+      "acceptAfter": [
+        "W15",
+        "W17",
+        "W25"
+      ],
+      "existingReadPaths": [
+        "apps/console-ui/src/app/use-workspace-launch-controller.ts",
+        "apps/console-ui/src/app/workspace-launch-controller-model.ts",
+        "apps/console-ui/src/api/workspaces-api.ts"
+      ],
+      "plannedWritePaths": [
+        "apps/console-ui/src/pages/workspaces",
+        "apps/console-ui/src/app/workspace-launch-controller-model.ts",
+        "apps/console-ui/src/app/use-workspace-launch-controller.ts",
+        "apps/console-ui/src/api/workspaces-api.ts"
+      ],
+      "deliverables": [
+        "版本/套餐/模型→固定报价→确认→真实进度；修改选项使旧quote失效",
+        "部署/版本/访问读取走Serve API，经BFF组合后呈现；Workspace UI不写Agent deployment或current selection",
+        "详情并列权益/资源/应用/资金结果，owner凭据一次性查看",
+        "原资源adopt和已部署legacy应用有独立入口，不重购"
+      ],
+      "verification": [
+        "npm run test:browser:workspace-lifecycle",
+        "npm run typecheck",
+        "新页面controller与浏览器丢响应/刷新/窄屏/键盘测试"
+      ],
+      "acceptance": [
+        "按钮条件、错误和场景与04/11完全同词",
+        "生产UI不执行价格算法，准确显示最多6位微美元"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [
+        "adoptWorkspace",
+        "createQuote",
+        "createWorkspace",
+        "getCapabilityVersion",
+        "getDeployment",
+        "getOperation",
+        "getQuote",
+        "getSubscription",
+        "getWallet",
+        "getWorkspace",
+        "getWorkspaceAccess",
+        "getWorkspaceModels",
+        "listCapabilityVersions",
+        "listComputePlans",
+        "listDeployments",
+        "listModels",
+        "listRuntimeVersions",
+        "listStoragePlans",
+        "listWebuiVersions",
+        "listWorkspaceTransactions",
+        "listWorkspaces",
+        "revealWorkspaceApplicationCredentials",
+        "rollbackWorkspace",
+        "updateWorkspaceModels",
+        "updateWorkspaceVersion"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "apps/console-ui/src/app/use-workspace-launch-controller.ts": true,
+        "apps/console-ui/src/app/workspace-launch-controller-model.ts": true,
+        "apps/console-ui/src/api/workspaces-api.ts": true
+      }
+    },
+    {
+      "id": "W17",
+      "title": "Serve Agent交付、版本切换与访问回滚",
+      "coordinator": "Serve",
+      "owners": [
+        "serve"
+      ],
+      "features": [
+        "F09",
+        "F10",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W09",
+        "W11",
+        "W15"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/opl-serve.md",
+        "docs/architecture.md",
+        "packages/contracts/go/workspace_application_runtime.go"
+      ],
+      "plannedWritePaths": [
+        "services/serve/internal/delivery",
+        "services/serve/internal/runtime_adapter",
+        "services/serve/internal/access",
+        "services/serve/migrations"
+      ],
+      "deliverables": [
+        "Serve接收Workspace授权、OCI digest、Fabric resource refs与expected current deployment，创建唯一Agent deployment并持久化部署/运行/访问事实",
+        "通过ServeAgentCoordination、ServeRuntimeAdapter、ServeAccessControl完成部署、readiness、模型reload、Fence/Activate/Observe/Rollback；同一Workspace最多一个当前Agent",
+        "API/Embed/Hosted UI只读Serve当前Agent；失败回滚保留原路由与数据证据，Workspace不写deployment/current selection，Fabric不写readiness/access"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "真实HTTP根路径/资产/API/SSE/cookie隔离与数据持久化",
+        "晚到worker/旧epoch/不同target、data不可逆和多写挂载拒绝",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+      ],
+      "acceptance": [
+        "一个确认选中部署，appliedVersion/readiness/access与实际读回一致",
+        "没有隐式自动升级、重新购买或第二份Workspace部署真相"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "getDeployment",
+        "getWorkspaceAccess",
+        "getWorkspaceModels",
+        "listDeployments",
+        "revealWorkspaceApplicationCredentials",
+        "rollbackWorkspace",
+        "updateWorkspaceModels",
+        "updateWorkspaceVersion"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "serve.agent_deployments",
+        "workspace.model_configurations",
+        "serve.agent_runtime_instances",
+        "serve.agent_runtime_actions",
+        "serve.access_bindings",
+        "serve.access_switches"
+      ],
+      "rpcImplements": [
+        "WorkspaceProductService.GetWorkspaceModels",
+        "WorkspaceProductService.UpdateWorkspaceModels",
+        "WorkspaceProductService.RevealWorkspaceApplicationCredentials",
+        "ServeProductService.ListDeployments",
+        "ServeProductService.GetDeployment",
+        "ServeProductService.UpdateWorkspaceVersion",
+        "ServeProductService.RollbackWorkspace",
+        "ServeProductService.GetWorkspaceAccess",
+        "ServeAgentCoordination.Reserve",
+        "ServeAgentCoordination.Deploy",
+        "ServeAgentCoordination.ReloadModels",
+        "ServeAgentCoordination.ReadRuntime",
+        "ServeAgentCoordination.Retire",
+        "ServeRuntimeAdapter.ReadApplicationCredentials",
+        "ServeRuntimeAdapter.StartRuntime",
+        "ServeRuntimeAdapter.StopRuntime",
+        "ServeRuntimeAdapter.ReloadRuntime",
+        "ServeRuntimeAdapter.ObserveRuntime",
+        "ServeAccessControl.FenceRouteEpoch",
+        "ServeAccessControl.ActivateRoute",
+        "ServeAccessControl.ObserveRoute",
+        "ServeAccessControl.RollbackRoute",
+        "ServePlanChangeControl.RestoreAfterResourceChange"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "docs/opl-serve.md": true,
+        "docs/architecture.md": true,
+        "packages/contracts/go/workspace_application_runtime.go": true
+      }
+    },
+    {
+      "id": "W18",
+      "title": "周期、显式续费授权和到期停用",
+      "coordinator": "Workspace",
+      "owners": [
+        "workspace",
+        "gateway",
+        "fabric"
+      ],
+      "features": [
+        "F12"
+      ],
+      "startAfter": [
+        "W04",
+        "W05",
+        "W15"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/workspace_renewal.go",
+        "services/control-plane/internal/server/monthly_billing.go",
+        "services/control-plane/internal/server/renewal_worker.go"
+      ],
+      "plannedWritePaths": [
+        "services/workspace/internal/subscriptions",
+        "services/workspace/internal/renewal"
+      ],
+      "deliverables": [
+        "保留source billingAnchorDay/原paidThrough/自动授权；周期唯一资金义务",
+        "到期不免费运行；原单/原资源续期回读后提交新周期",
+        "手动/自动/恢复worker竞争同一义务，不因session过期丢原授权"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "Jan31→Feb28→Mar31及闰年；窗口已过拒绝；source纳秒不回写",
+        "人工/自动并发、资金unknown、停用后恢复、provider资源回收",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+      ],
+      "acceptance": [
+        "一周期最多一原单；不偷偷从now重新开始一月",
+        "关闭自动续费只影响未来未接受义务"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "getSubscription",
+        "renewWorkspace",
+        "updateRenewalSettings"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "workspace.subscriptions",
+        "workspace.subscription_periods"
+      ],
+      "rpcImplements": [
+        "WorkspaceProductService.RenewWorkspace",
+        "WorkspaceProductService.GetSubscription",
+        "WorkspaceProductService.UpdateRenewalSettings",
+        "WorkspaceAuthorizationReadback.ReadRenewalConsent"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/workspace_renewal.go": true,
+        "services/control-plane/internal/server/monthly_billing.go": true,
+        "services/control-plane/internal/server/renewal_worker.go": true
+      }
+    },
+    {
+      "id": "W19",
+      "title": "D17套餐变更与补差账务",
+      "coordinator": "Workspace（协调）/Catalog",
+      "owners": [
+        "workspace",
+        "resource_catalog",
+        "gateway",
+        "fabric",
+        "serve",
+        "ledger"
+      ],
+      "features": [
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "startAfter": [
+        "W06",
+        "W11",
+        "W12",
+        "W15",
+        "W18"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/fabric/internal/fabric/provider_port.go",
+        "services/control-plane/internal/server/workspace_renewal.go"
+      ],
+      "plannedWritePaths": [
+        "services/workspace/internal/plan_changes",
+        "services/resource-catalog/internal/plan_change_pricing",
+        "services/gateway-integration/internal/settlement",
+        "services/fabric/internal/fabric"
+      ],
+      "deliverables": [
+        "PlanChange第一类实体：立即upgrade与scheduled downgrade区分初次/执行Operation",
+        "固定T、canonical毫秒、单次ceil、原E不变；下期目标价及取消/锁定边界按13",
+        "supplement失败全退及成功后T..E未用退款，与base720分开；原单防超额/unknown",
+        "复用W18 worker执行due计划，不新建scheduler服务或资金预占钱包"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "重放13及全部D17数值/并发/PG纳秒进位/原单退款用例",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+      ],
+      "acceptance": [
+        "20→40剩半期补10；31天例子19.354839；资源+运行确认才applied",
+        "scheduled当前不扣/不减；无下期授权awaiting_payment；future paid/mixed/shrink拒绝清楚"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "cancelPlanChange",
+        "getPlanChange",
+        "listPlanChanges",
+        "resizeWorkspace"
+      ],
+      "apiConsumes": [],
+      "tablesPrimary": [
+        "workspace.plan_changes",
+        "workspace.subscription_period_obligations"
+      ],
+      "rpcImplements": [
+        "WorkspaceProductService.ResizeWorkspace",
+        "WorkspaceProductService.ListPlanChanges",
+        "WorkspaceProductService.GetPlanChange",
+        "WorkspaceProductService.CancelPlanChange",
+        "WorkspacePlanChangeReadback.ReadSubscriptionPlanState",
+        "WorkspacePlanChangeReadback.ReadPlanChange",
+        "WorkspacePlanChangeReadback.ReadNextPeriodObligation",
+        "WorkspacePlanChangeReadback.ReadPlanChangeFailure",
+        "GatewayPlanChangeSettlement.DebitSupplement",
+        "GatewayPlanChangeSettlement.DebitScheduledPeriod",
+        "GatewayPlanChangeSettlement.RefundFailure",
+        "GatewayPlanChangeSettlement.RefundSupplementOnDeletion",
+        "ServePlanChangeControl.RestoreAfterResourceChange",
+        "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
+        "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md"
+      ],
+      "existingPathStatus": {
+        "services/fabric/internal/fabric/provider_port.go": true,
+        "services/control-plane/internal/server/workspace_renewal.go": true
+      }
+    },
+    {
+      "id": "W20",
+      "title": "删除、base与supplement原单结算",
+      "coordinator": "Workspace（协调）",
+      "owners": [
+        "workspace",
+        "gateway",
+        "fabric",
+        "serve",
+        "ledger"
+      ],
+      "features": [
+        "F13"
+      ],
+      "startAfter": [
+        "W04",
+        "W05",
+        "W15",
+        "W18"
+      ],
+      "acceptAfter": [
+        "W19"
+      ],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/workspace_delete.go",
+        "services/control-plane/internal/server/workspace_delete_refund.go",
+        "services/control-plane/internal/server/wallet_adjustment.go"
+      ],
+      "plannedWritePaths": [
+        "services/workspace/internal/deletion",
+        "services/gateway-integration/internal/settlement"
+      ],
+      "deliverables": [
+        "Workspace持久化删除意图并协调原单/退款；Serve负责Agent retirement、访问撤销与absence readback；Fabric负责资源删除事实",
+        "base保留原policy；已applied升级supplement用自身coverage，不合并当整月款",
+        "与续费/plan change/rotation串行，不撤销用户保留Key，不删Package/Build历史"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "资源已删丢响应、原身份/receipt错配、refund unknown/超额、窗口/退款上界",
+        "UI同时能显示已删+退款待确认；没有手工set success接口",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1"
+      ],
+      "acceptance": [
+        "无证据不退款，已删除不等于退款到账",
+        "不靠列表未找到或钱包余额差证明结果"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "deleteWorkspace",
+        "getWorkspaceDeletion"
+      ],
+      "apiConsumes": [],
+      "rpcImplements": [
+        "WorkspaceProductService.DeleteWorkspace",
+        "WorkspaceProductService.GetWorkspaceDeletion"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/workspace_delete.go": true,
+        "services/control-plane/internal/server/workspace_delete_refund.go": true,
+        "services/control-plane/internal/server/wallet_adjustment.go": true
+      }
+    },
+    {
+      "id": "W21",
+      "title": "Tenant开通、暂停/重新启用及删除恢复",
+      "coordinator": "CloudIdentity（协调）",
+      "owners": [
+        "tenant",
+        "gateway",
+        "workspace",
+        "serve"
+      ],
+      "features": [
+        "F01",
+        "F15"
+      ],
+      "startAfter": [
+        "W03",
+        "W04",
+        "W15",
+        "W20"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/routes_admin.go"
+      ],
+      "plannedWritePaths": [
+        "services/gateway-integration/internal/tenant_lifecycle",
+        "services/workspace/internal/tenant_actions"
+      ],
+      "deliverables": [
+        "创建/绑定账单主体与个人登录分开；暂停权限及子Workspace结果可追踪",
+        "reenable只恢复原暂停且仍已付/原资源存在对象；删除后15天恢复是独立操作",
+        "删除资产转平台私有托管，不公开、不自动退款全部余额或重购资源"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "暂停后直接reenable不要求restoreUntil；误恢复/过期/子任务unknown",
+        "成员失权、生效窗口及账户历史权限不放大",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1"
+      ],
+      "acceptance": [
+        "Tenant权限和各Workspace运行结果分开",
+        "没有跨Tenant资源管理和删除后假复活数据"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "bindTenantWallet",
+        "createTenant",
+        "deleteTenant",
+        "getAdminTenant",
+        "getTenantAssetCustody",
+        "getTenantLifecycleOperation",
+        "listTenants",
+        "reenableTenant",
+        "restoreTenant",
+        "suspendTenant"
+      ],
+      "apiConsumes": [],
+      "rpcImplements": [
+        "TenantProductService.ListTenants",
+        "TenantProductService.CreateTenant",
+        "TenantProductService.GetAdminTenant",
+        "TenantProductService.DeleteTenant",
+        "TenantProductService.BindTenantWallet",
+        "TenantProductService.SuspendTenant",
+        "TenantProductService.RestoreTenant",
+        "TenantProductService.GetTenantAssetCustody",
+        "TenantProductService.ReenableTenant",
+        "TenantProductService.GetTenantLifecycleOperation",
+        "TenantWorkspaceCoordination.SuspendTenantWorkspaces",
+        "TenantWorkspaceCoordination.DeleteTenantWorkspaces",
+        "TenantWorkspaceCoordination.ResumeTenantWorkspaces",
+        "DomainInbox.Deliver"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/routes_admin.go": true
+      }
+    },
+    {
+      "id": "W22",
+      "title": "费用、计划、续费/退款与Key前端",
+      "coordinator": "Console",
+      "owners": [
+        "console"
+      ],
+      "features": [
+        "F11",
+        "F12",
+        "F13",
+        "F14"
+      ],
+      "startAfter": [
+        "W13"
+      ],
+      "acceptAfter": [
+        "W04",
+        "W18",
+        "W19",
+        "W20"
+      ],
+      "existingReadPaths": [
+        "apps/console-ui/src/app/use-billing-controller.ts",
+        "apps/console-ui/src/app/use-workspace-renewal-controller.ts",
+        "apps/console-ui/src/api/workspaces-api.ts"
+      ],
+      "plannedWritePaths": [
+        "apps/console-ui/src/pages/billing",
+        "apps/console-ui/src/app/plan-change-controller",
+        "apps/console-ui/src/api/plan-change-api.ts"
+      ],
+      "deliverables": [
+        "立即升配quote/进度、下期计划/取消/付款边界，原E和资金/资源状态分开",
+        "精确BigInt金额展示而非业务重算；31天19.354839不可隐藏实际更多小数",
+        "订阅/交易/Token各有原始来源；Key与应用密码只内存/离页清理"
+      ],
+      "verification": [
+        "npm run test:browser:billing",
+        "npm run test:browser:gateway-usage",
+        "D17真实BFF浏览器与320/390px回归"
+      ],
+      "acceptance": [
+        "不把预约持久化当资源已降配；unknown不建议重新付款",
+        "取消/删除确认对象范围明确，旧单/新补差不混"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [
+        "cancelPlanChange",
+        "createGatewayKey",
+        "createQuote",
+        "deleteWorkspace",
+        "getOperation",
+        "getPlanChange",
+        "getQuote",
+        "getSubscription",
+        "getWallet",
+        "getWorkspace",
+        "getWorkspaceDeletion",
+        "getWorkspaceModels",
+        "listComputePlans",
+        "listGatewayKeys",
+        "listPlanChanges",
+        "listRechargeRecords",
+        "listStoragePlans",
+        "listUsage",
+        "listWorkspaceTransactions",
+        "renewWorkspace",
+        "resizeWorkspace",
+        "revealGatewayKey",
+        "revokeGatewayKey",
+        "updateRenewalSettings"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md"
+      ],
+      "existingPathStatus": {
+        "apps/console-ui/src/app/use-billing-controller.ts": true,
+        "apps/console-ui/src/app/use-workspace-renewal-controller.ts": true,
+        "apps/console-ui/src/api/workspaces-api.ts": true
+      }
+    },
+    {
+      "id": "W23",
+      "title": "管理员目录、Tenant与运维前端",
+      "coordinator": "Console",
+      "owners": [
+        "console"
+      ],
+      "features": [
+        "F03",
+        "F15",
+        "F17"
+      ],
+      "startAfter": [
+        "W13"
+      ],
+      "acceptAfter": [
+        "W06",
+        "W07",
+        "W21",
+        "W24"
+      ],
+      "existingReadPaths": [
+        "apps/console-ui/src/pages/AdminPages.tsx",
+        "apps/console-ui/src/pages/OperatorRuntimeObservations.tsx"
+      ],
+      "plannedWritePaths": [
+        "apps/console-ui/src/pages/admin",
+        "apps/console-ui/src/app/admin-controllers"
+      ],
+      "deliverables": [
+        "完整publisher schema表单/有效namespace，资源/价格版本不得改写已接受快照",
+        "Tenant子操作/访问恢复分离，技术证据仅授权详情",
+        "只读资格/操作查询，不能从Console dispatch生产部署或直接改状态"
+      ],
+      "verification": [
+        "npm run test:browser:operator-account",
+        "新增admin目录/权限/危害确认browser tests"
+      ],
+      "acceptance": [
+        "普通owner无platform_admin权限；无伪JSON表单",
+        "缺证据显示未验证，不用文案冒充资格通过"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [
+        "bindTenantWallet",
+        "createComputePlan",
+        "createPricePolicyVersion",
+        "createPublisherNamespace",
+        "createRefundPolicyVersion",
+        "createRetentionPolicyVersion",
+        "createStoragePlan",
+        "createTenant",
+        "deleteTenant",
+        "getAdminTenant",
+        "getBuildRuntimePolicy",
+        "getOperation",
+        "getReceipt",
+        "getTenant",
+        "getTenantAssetCustody",
+        "getTenantLifecycleOperation",
+        "listAdminOperations",
+        "listAuditEvents",
+        "listComputePlans",
+        "listModels",
+        "listPricePolicyVersions",
+        "listPublisherNamespaces",
+        "listQualifications",
+        "listReceipts",
+        "listRefundPolicyVersions",
+        "listRetentionPolicyVersions",
+        "listRuntimeVersions",
+        "listStoragePlans",
+        "listTenants",
+        "listWebuiVersions",
+        "publishOfficialPackage",
+        "reconcileOperation",
+        "reenableTenant",
+        "registerRuntimeVersion",
+        "registerWebuiVersion",
+        "restoreTenant",
+        "revokePublisherNamespace",
+        "setBuildRuntimePolicy",
+        "setComputePlanAvailability",
+        "setRuntimeVersionStatus",
+        "setStoragePlanAvailability",
+        "setWebuiVersionStatus",
+        "suspendTenant"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "apps/console-ui/src/pages/AdminPages.tsx": true,
+        "apps/console-ui/src/pages/OperatorRuntimeObservations.tsx": true
+      }
+    },
+    {
+      "id": "W24",
+      "title": "Owner运维、原操作恢复和可观测性",
+      "coordinator": "各Owner/Console集成",
+      "owners": [
+        "workspace",
+        "tenant",
+        "ledger",
+        "bff"
+      ],
+      "features": [
+        "F17"
+      ],
+      "startAfter": [
+        "W03",
+        "W05"
+      ],
+      "acceptAfter": [
+        "W15",
+        "W19",
+        "W20",
+        "W21"
+      ],
+      "existingReadPaths": [
+        "services/control-plane/internal/server/operational_alerts.go",
+        "services/control-plane/internal/server/routes_admin.go"
+      ],
+      "plannedWritePaths": [
+        "apps/console-bff/internal/operations",
+        "services/workspace/internal/operations"
+      ],
+      "deliverables": [
+        "每Owner依据原意图/readback实现Reconcile，BFF仅路由，不能统一setStatus",
+        "结构化request/operation/phase、unknown、队列/重试/陈旧观察告警和脱敏日志",
+        "恢复手册列精确前置/允许动作/不可逆边界，容量参数从实例配置"
+      ],
+      "verification": [
+        "在拥有方Go module执行go test ./...；使用实际typed DTO与decoder",
+        "Cloud结构性/持久化/跨模块修改后npm run verify:local:full；仅普通源码改变用verify:local",
+        "该命令只作实施后要求；本轮没有执行新产品实现测试",
+        "日志canary-secret不泄露；错误/告警只绑定脱敏身份",
+        "无个人凭据操作、越权Owner路由、过期readback拒绝"
+      ],
+      "acceptance": [
+        "运营能知道真实失败点与唯一下一动作",
+        "无新全局事件总线/中央workflow/第二lock authority"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "listAdminOperations",
+        "listAuditEvents",
+        "reconcileOperation"
+      ],
+      "apiConsumes": [],
+      "rpcImplements": [
+        "TenantProductService.ListAuditEvents",
+        "WorkspaceProductService.ListAdminOperations",
+        "WorkspaceProductService.ReconcileOperation",
+        "OwnerOperations.Read",
+        "OwnerOperations.Reconcile"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/internal/server/operational_alerts.go": true,
+        "services/control-plane/internal/server/routes_admin.go": true
+      }
+    },
+    {
+      "id": "W25",
+      "title": "逐域数据转换与迁移演练",
+      "coordinator": "各数据Owner/Instance",
+      "owners": [
+        "tenant",
+        "capability",
+        "build",
+        "workspace",
+        "runtime_control",
+        "serve",
+        "fabric",
+        "gateway",
+        "ledger"
+      ],
+      "features": [
+        "F16"
+      ],
+      "startAfter": [
+        "W00",
+        "W02"
+      ],
+      "acceptAfter": [
+        "W09",
+        "W17",
+        "W19",
+        "W20",
+        "W21"
+      ],
+      "existingReadPaths": [
+        "services/control-plane/ent/schema/shared.go",
+        "services/control-plane/migrations",
+        "services/fabric/ent/schema",
+        "services/ledger/ent/schema",
+        "services/control-plane/internal/server/ent_state_store.go",
+        "services/control-plane/migrations/migrations.go",
+        "services/fabric/internal/fabric/ent_migrations",
+        "services/ledger/internal/ledger/ent_migrations"
+      ],
+      "plannedWritePaths": [
+        "tools/migration",
+        "services/workspace/internal/migration",
+        "services/serve/internal/migration"
+      ],
+      "deliverables": [
+        "按09对每张源表/字段确定target或保留档案，不丢未知历史",
+        "legacy_resource_only/legacy_application/legacy_import保留真实ID/原单/时间、未决义务/补差coverage",
+        "Serve deployment/access/runtime observation迁移到serve Owner并退出旧部署writer，不复制Workspace current-agent字段",
+        "隔离副本试迁移、hash/金额/周期/权限对账、single-writer fence及回滚演练",
+        "修改真实migration加载链：CP ent_state_store→migrations.Apply*；Fabric/Ledger各自internal Owner的ent_migrations。不得只改展示SQL。"
+      ],
+      "verification": [
+        "只在隔离副本运行转换，生产数据仅Instance保护runner",
+        "row/ID集合、金额/时间/quote/receipt/user权限等值和未决操作重放",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
+        "实施前现有基线（不证明新功能）：rtk proxy go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1"
+      ],
+      "acceptance": [
+        "无假Build/Quote/重购；不做双写或失败时切旧接口",
+        "反向不保真就不宣称可回滚，原证据不能覆盖"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [
+        "adoptWorkspace"
+      ],
+      "apiConsumes": [],
+      "rpcImplements": [
+        "WorkspaceProductService.AdoptWorkspace"
+      ],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "services/control-plane/ent/schema/shared.go": true,
+        "services/control-plane/migrations": true,
+        "services/fabric/ent/schema": true,
+        "services/ledger/ent/schema": true,
+        "services/control-plane/internal/server/ent_state_store.go": true,
+        "services/control-plane/migrations/migrations.go": true,
+        "services/fabric/internal/fabric/ent_migrations": true,
+        "services/ledger/internal/ledger/ent_migrations": true
+      }
+    },
+    {
+      "id": "W26",
+      "title": "真实业务链集成与浏览器验收",
+      "coordinator": "集成负责人+各Owner",
+      "owners": [
+        "bff",
+        "console",
+        "workspace",
+        "capability",
+        "build",
+        "gateway",
+        "fabric",
+        "runtime_control",
+        "serve",
+        "ledger"
+      ],
+      "features": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W09",
+        "W13",
+        "W15"
+      ],
+      "acceptAfter": [
+        "W14",
+        "W16",
+        "W17",
+        "W19",
+        "W20",
+        "W21",
+        "W22",
+        "W23",
+        "W24",
+        "W25"
+      ],
+      "existingReadPaths": [
+        "tests/integration",
+        "tests/ui",
+        "tools/local-sub2api-authority-fixture.ts"
+      ],
+      "plannedWritePaths": [
+        "tests/integration",
+        "tests/ui",
+        "tools"
+      ],
+      "deliverables": [
+        "前端真实BFF→真实Owner DB/RPC→Local provider/应用；业务链固定为Capability→Build→Workspace→Fabric→Serve→API/Embed/Hosted UI；外部财务只用明确隔离authority fixture",
+        "以17F逐项执行正常/拒绝/丢响应/重启/重复/越权/并发/取消/恢复向量",
+        "性能记录实际实例输入和测量值，不创造50人/3分钟承诺"
+      ],
+      "verification": [
+        "npm run verify:local:full",
+        "npm run test:browser:suite",
+        "持续运行应用/上传真实样例构建及金额账期cross-tests"
+      ],
+      "acceptance": [
+        "功能、接口、DB、页面呈现同一结果；原型不替代浏览器真链",
+        "每项证据说明实测和未测，不将fixture等同真实钱/provider"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "13_plan_change_policy.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "tests/integration": true,
+        "tests/ui": true,
+        "tools/local-sub2api-authority-fixture.ts": true
+      }
+    },
+    {
+      "id": "W27",
+      "title": "可移植候选构建与CI契约演进",
+      "coordinator": "Cloud发布机制Owner",
+      "owners": [
+        "cloud",
+        "serve"
+      ],
+      "features": [
+        "F17"
+      ],
+      "startAfter": [
+        "W01",
+        "W02"
+      ],
+      "acceptAfter": [
+        "W09",
+        "W12",
+        "W21",
+        "W24",
+        "W26"
+      ],
+      "existingReadPaths": [
+        "Dockerfile",
+        "compose.yaml",
+        "deploy/portable",
+        ".github/workflows/build-opl-cloud-candidate.yml",
+        ".github/workflows/release-opl-cloud-image.yml",
+        "packages/contracts/opl-cloud-candidate-receipt-contract.json",
+        "packages/contracts/opl-cloud-distribution-contract.json"
+      ],
+      "plannedWritePaths": [
+        ".github/workflows/build-opl-cloud-candidate.yml",
+        "deploy/portable",
+        "packages/contracts/opl-cloud-candidate-receipt-contract.json",
+        "packages/contracts/opl-cloud-distribution-contract.json"
+      ],
+      "deliverables": [
+        "目标多服务制品纳入同一个Cloud Candidate/安装清单与同字节资格单位；不另起release authority",
+        "固定Cloud SHA及各参与Owner sourceSHA、镜像digests/平台、契约revision、配置schema、全部assets checksum；无latest/main输入",
+        "更新现有Candidate/qualification/release消费者与实例接收校验，历史v2单镜像Candidate可读但不是第二当前writer",
+        "CI只有code/build/sandbox测试权限；构建Candidate不等于正式发布或Instance部署"
+      ],
+      "verification": [
+        "contracts/工具生成/拒绝反例与portable Compose一致检查",
+        "假造digest/遗漏组件/漂移source/schema拒绝；构建不需要生产环境",
+        "实施前现有基线（不证明新功能）：rtk proxy node --test tests/tools/cloud-candidate-receipt.test.ts tests/contracts/clean-host-qualification.test.ts"
+      ],
+      "acceptance": [
+        "候选集合是不可变单位，任何组件变更必须新Candidate重新适用资格",
+        "Release只提升已资格同字节，不rebuild；原发布者权限边界不变"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "Dockerfile": true,
+        "compose.yaml": true,
+        "deploy/portable": true,
+        ".github/workflows/build-opl-cloud-candidate.yml": true,
+        ".github/workflows/release-opl-cloud-image.yml": true,
+        "packages/contracts/opl-cloud-candidate-receipt-contract.json": true,
+        "packages/contracts/opl-cloud-distribution-contract.json": true
+      }
+    },
+    {
+      "id": "W28",
+      "title": "干净Linux Local资格",
+      "coordinator": "Cloud/Local qualification",
+      "owners": [
+        "cloud",
+        "fabric"
+      ],
+      "features": [
+        "F17"
+      ],
+      "startAfter": [
+        "W27"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        ".github/workflows/clean-host-qualification.yml",
+        "tools/local-workspace-qualification.ts"
+      ],
+      "plannedWritePaths": [
+        ".github/workflows/clean-host-qualification.yml",
+        "tools/local-workspace-qualification.ts"
+      ],
+      "deliverables": [
+        "固定Candidate在合格Linux安装，执行启动/存储/应用/生命周期与重启/数据保留",
+        "记录image/platform/config摘要与真实readback，失败不得包装PASS"
+      ],
+      "verification": [
+        "干净Linux exact-candidate资格；不以Mac Desktop代替",
+        "本轮仅计划命令，后续实际执行再出receipt"
+      ],
+      "acceptance": [
+        "Local receipt绑定同一候选及provider条件",
+        "不买真实Tencent资源、不调用真实客户钱包"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        ".github/workflows/clean-host-qualification.yml": true,
+        "tools/local-workspace-qualification.ts": true
+      }
+    },
+    {
+      "id": "W29",
+      "title": "Instance/Tencent资格与受限业务实测",
+      "coordinator": "opl-instance-medopl Owner",
+      "owners": [
+        "instance"
+      ],
+      "features": [
+        "F17"
+      ],
+      "startAfter": [
+        "W28",
+        "W12",
+        "W19",
+        "W25"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/runtime/release.md"
+      ],
+      "plannedWritePaths": [
+        "../opl-instance-medopl/receipts",
+        "../opl-instance-medopl/.github/workflows"
+      ],
+      "deliverables": [
+        "在既有保护workflow/授权runner中采用同一Candidate和真实provider profile",
+        "若验收需要付费/采购/销毁，先有独立明确金额/资源/账户范围授权；Cloud本机不进生产私网",
+        "验证真实Agent使用、允许调配策略、升级/下期降配、原单读回与数据恢复/迁移样本"
+      ],
+      "verification": [
+        "Instance现有receipt validators、真实runtime/账务/provider读回",
+        "精确scope/hash/时间/cleanup；只测试获得授权的案例"
+      ],
+      "acceptance": [
+        "与Local同候选字节；不能以公网404/Pod Running作完整合格",
+        "未拿授权或必要凭据则记录未执行，不产生假资格"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        "docs/runtime/release.md": true
+      }
+    },
+    {
+      "id": "W30",
+      "title": "生产客户逐批切换与旧writer退休",
+      "coordinator": "Instance+数据Owner",
+      "owners": [
+        "instance",
+        "workspace",
+        "gateway",
+        "fabric",
+        "ledger"
+      ],
+      "features": [
+        "F16",
+        "F17"
+      ],
+      "startAfter": [
+        "W25",
+        "W26",
+        "W29"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        "docs/status.md",
+        "docs/roadmap.md"
+      ],
+      "plannedWritePaths": [
+        "../opl-instance-medopl/receipts",
+        "docs/status.md",
+        "docs/roadmap.md"
+      ],
+      "deliverables": [
+        "按09 M0-M5：写屏障/终态增量/路由epoch/实际用户读回/分批接收",
+        "未决对象保持唯一原Owner，不先切新再失败fallback；新写后回退须可证明无损",
+        "业务/数据接收完成后退休旧writer；旧历史只读保留义务"
+      ],
+      "verification": [
+        "每批数据/资金/资源/权限对账和真实浏览器故事",
+        "Instance采用/回滚新不可变receipt"
+      ],
+      "acceptance": [
+        "不丢原单/Key/数据，零重复收费；未完成批次明确保留",
+        "本步骤与Cloud正式发布不同，不从Cloud dispatch实例切换"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md",
+        "09_legacy_migration.md"
+      ],
+      "existingPathStatus": {
+        "docs/status.md": true,
+        "docs/roadmap.md": true
+      }
+    },
+    {
+      "id": "W31",
+      "title": "同字节正式发布与文档收尾",
+      "coordinator": "Cloud发布Owner",
+      "owners": [
+        "cloud"
+      ],
+      "features": [
+        "F17"
+      ],
+      "startAfter": [
+        "W28",
+        "W29"
+      ],
+      "acceptAfter": [],
+      "existingReadPaths": [
+        ".github/workflows/release-opl-cloud-image.yml",
+        ".github/workflows/release-opl-cloud-public-readback.yml",
+        "docs/runtime/release.md",
+        "docs/status.md",
+        "docs/roadmap.md"
+      ],
+      "plannedWritePaths": [
+        ".github/workflows/release-opl-cloud-image.yml",
+        "docs/status.md",
+        "docs/roadmap.md"
+      ],
+      "deliverables": [
+        "仅在明确正式发布授权后，由允许actor从main提升同一资格制品，不重建",
+        "实际公共制品/digest/资产回读；Cloud状态和外部Instance义务分别记录",
+        "实施后更新canonical文档，完成工作清单转历史，保留未完成gap"
+      ],
+      "verification": [
+        "当前release owner校验器与public artifact readback",
+        "Local+Instance同候选证明；没有授权不dispatch"
+      ],
+      "acceptance": [
+        "只有owner及RenDeHuang符合既有发布权限，original publisher不被替换",
+        "产品发布不要求所有客户迁移已完成；但声明的迁移兼容性须有W25/W29证据"
+      ],
+      "state": "not_implemented",
+      "apiPrimary": [],
+      "apiConsumes": [],
+      "riskBoundary": "只改文档所定义的代码/测试；真钱、采购、删除、生产网络、正式发布另按Owner授权执行",
+      "contractRefs": [
+        "00_master_index.md",
+        "01_domain_ownership_matrix.md",
+        "03_api_contract_complete.yaml",
+        "06_data_flow_and_state_machine.md",
+        "08_delivery_checklist_per_role.md"
+      ],
+      "existingPathStatus": {
+        ".github/workflows/release-opl-cloud-image.yml": true,
+        ".github/workflows/release-opl-cloud-public-readback.yml": true,
+        "docs/runtime/release.md": true,
+        "docs/status.md": true,
+        "docs/roadmap.md": true
+      }
+    }
+  ],
+  "tablePrimary": {
+    "tenant.tenants": "W03",
+    "tenant.tenant_members": "W03",
+    "tenant.invitations": "W03",
+    "tenant.sessions": "W03",
+    "tenant.audit_events": "W03",
+    "capability.namespaces": "W08",
+    "capability.packages": "W08",
+    "runtime_control.runtime_releases": "W10",
+    "capability.webui_versions": "W07",
+    "runtime_control.catalog_policies": "W10",
+    "capability.package_versions": "W08",
+    "capability.upload_sessions": "W08",
+    "capability.upload_chunks": "W08",
+    "capability.capability_versions": "W09",
+    "capability.reference_claims": "W08",
+    "build.build_jobs": "W09",
+    "build.build_artifacts": "W09",
+    "build.build_logs": "W09",
+    "workspace.workspaces": "W15",
+    "serve.agent_deployments": "W17",
+    "workspace.subscriptions": "W18",
+    "workspace.subscription_periods": "W18",
+    "workspace.model_configurations": "W17",
+    "workspace.saga_steps": "W15",
+    "serve.agent_runtime_instances": "W17",
+    "serve.agent_runtime_actions": "W17",
+    "fabric.resource_sets": "W11",
+    "fabric.resources": "W11",
+    "fabric.attachments": "W11",
+    "fabric.secret_bindings": "W11",
+    "fabric.resource_actions": "W11",
+    "gateway.identity_mappings": "W04",
+    "gateway.tenant_wallet_bindings": "W04",
+    "gateway.key_bindings": "W04",
+    "gateway.wallet_operations": "W04",
+    "resource_catalog.compute_plans": "W06",
+    "resource_catalog.storage_plans": "W06",
+    "resource_catalog.price_policy_versions": "W06",
+    "resource_catalog.refund_policy_versions": "W06",
+    "resource_catalog.retention_policy_versions": "W06",
+    "resource_catalog.quotes": "W15",
+    "resource_catalog.quote_items": "W15",
+    "ledger.receipts": "W05",
+    "ledger.reconciliations": "W05",
+    "tenant.outbox_events": "W02",
+    "tenant.outbox_deliveries": "W02",
+    "tenant.inbox_events": "W02",
+    "tenant.idempotency_records": "W02",
+    "capability.outbox_events": "W02",
+    "capability.outbox_deliveries": "W02",
+    "capability.inbox_events": "W02",
+    "capability.idempotency_records": "W02",
+    "build.outbox_events": "W02",
+    "build.outbox_deliveries": "W02",
+    "build.inbox_events": "W02",
+    "build.idempotency_records": "W02",
+    "workspace.outbox_events": "W02",
+    "workspace.outbox_deliveries": "W02",
+    "workspace.inbox_events": "W02",
+    "workspace.idempotency_records": "W02",
+    "runtime_control.outbox_events": "W02",
+    "runtime_control.outbox_deliveries": "W02",
+    "runtime_control.inbox_events": "W02",
+    "runtime_control.idempotency_records": "W02",
+    "fabric.outbox_events": "W02",
+    "fabric.outbox_deliveries": "W02",
+    "fabric.inbox_events": "W02",
+    "fabric.idempotency_records": "W02",
+    "gateway.outbox_events": "W02",
+    "gateway.outbox_deliveries": "W02",
+    "gateway.inbox_events": "W02",
+    "gateway.idempotency_records": "W02",
+    "resource_catalog.outbox_events": "W02",
+    "resource_catalog.outbox_deliveries": "W02",
+    "resource_catalog.inbox_events": "W02",
+    "resource_catalog.idempotency_records": "W02",
+    "ledger.outbox_events": "W02",
+    "ledger.outbox_deliveries": "W02",
+    "ledger.inbox_events": "W02",
+    "ledger.idempotency_records": "W02",
+    "tenant.operations": "W02",
+    "capability.operations": "W02",
+    "build.operations": "W02",
+    "workspace.operations": "W02",
+    "gateway.operations": "W02",
+    "resource_catalog.operations": "W02",
+    "runtime_control.operations": "W02",
+    "fabric.operations": "W02",
+    "capability.publisher_namespaces": "W07",
+    "tenant.authorization_contexts": "W03",
+    "tenant.accepted_operation_grants": "W03",
+    "serve.access_bindings": "W17",
+    "serve.access_switches": "W17",
+    "workspace.plan_changes": "W19",
+    "workspace.subscription_period_obligations": "W19",
+    "workspace.supplemental_charges": "W15",
+    "serve.outbox_events": "W02",
+    "serve.outbox_deliveries": "W02",
+    "serve.inbox_events": "W02",
+    "serve.idempotency_records": "W02",
+    "serve.operations": "W02"
+  },
+  "rpcImplementers": {
+    "TenantProductService.GetLoginContext": [
+      "W03"
+    ],
+    "TenantProductService.Login": [
+      "W03"
+    ],
+    "TenantProductService.GetSession": [
+      "W03"
+    ],
+    "TenantProductService.Logout": [
+      "W03"
+    ],
+    "TenantProductService.GetTenant": [
+      "W03"
+    ],
+    "TenantProductService.ListMembers": [
+      "W03"
+    ],
+    "TenantProductService.ListInvitations": [
+      "W03"
+    ],
+    "TenantProductService.InviteMember": [
+      "W03"
+    ],
+    "TenantProductService.AcceptInvitation": [
+      "W03"
+    ],
+    "TenantProductService.RevokeInvitation": [
+      "W03"
+    ],
+    "TenantProductService.UpdateMemberRole": [
+      "W03"
+    ],
+    "TenantProductService.RemoveMember": [
+      "W03"
+    ],
+    "TenantProductService.ListTenants": [
+      "W21"
+    ],
+    "TenantProductService.CreateTenant": [
+      "W21"
+    ],
+    "TenantProductService.GetAdminTenant": [
+      "W21"
+    ],
+    "TenantProductService.DeleteTenant": [
+      "W21"
+    ],
+    "TenantProductService.BindTenantWallet": [
+      "W21"
+    ],
+    "TenantProductService.SuspendTenant": [
+      "W21"
+    ],
+    "TenantProductService.RestoreTenant": [
+      "W21"
+    ],
+    "TenantProductService.GetTenantAssetCustody": [
+      "W21"
+    ],
+    "TenantProductService.ListAuditEvents": [
+      "W24"
+    ],
+    "TenantProductService.ReenableTenant": [
+      "W21"
+    ],
+    "TenantProductService.GetTenantLifecycleOperation": [
+      "W21"
+    ],
+    "CapabilityProductService.ListNamespaces": [
+      "W08"
+    ],
+    "CapabilityProductService.CreateNamespace": [
+      "W08"
+    ],
+    "CapabilityProductService.UpdateNamespace": [
+      "W08"
+    ],
+    "CapabilityProductService.ArchiveNamespace": [
+      "W08"
+    ],
+    "CapabilityProductService.ListPackages": [
+      "W08"
+    ],
+    "CapabilityProductService.CreatePackage": [
+      "W08"
+    ],
+    "CapabilityProductService.GetPackage": [
+      "W08"
+    ],
+    "CapabilityProductService.UpdatePackage": [
+      "W08"
+    ],
+    "CapabilityProductService.ArchivePackage": [
+      "W08"
+    ],
+    "CapabilityProductService.CreateUpload": [
+      "W08"
+    ],
+    "CapabilityProductService.GetUpload": [
+      "W08"
+    ],
+    "CapabilityProductService.CreateUploadPart": [
+      "W08"
+    ],
+    "CapabilityProductService.CompleteUpload": [
+      "W08"
+    ],
+    "CapabilityProductService.ListPackageVersions": [
+      "W08"
+    ],
+    "CapabilityProductService.GetPackageVersion": [
+      "W08"
+    ],
+    "CapabilityProductService.ListCapabilityVersions": [
+      "W09"
+    ],
+    "CapabilityProductService.GetCapabilityVersion": [
+      "W09"
+    ],
+    "CapabilityProductService.DeleteCapabilityVersion": [
+      "W09"
+    ],
+    "CapabilityProductService.PublishOfficialPackage": [
+      "W07"
+    ],
+    "CapabilityProductService.ListWebuiVersions": [
+      "W07"
+    ],
+    "CapabilityProductService.RegisterWebuiVersion": [
+      "W07"
+    ],
+    "CapabilityProductService.SetWebuiVersionStatus": [
+      "W07"
+    ],
+    "CapabilityProductService.ListPublisherNamespaces": [
+      "W07"
+    ],
+    "CapabilityProductService.CreatePublisherNamespace": [
+      "W07"
+    ],
+    "CapabilityProductService.RevokePublisherNamespace": [
+      "W07"
+    ],
+    "RuntimeControlProductService.ListRuntimeVersions": [
+      "W07"
+    ],
+    "RuntimeControlProductService.GetBuildRuntimePolicy": [
+      "W07"
+    ],
+    "RuntimeControlProductService.SetBuildRuntimePolicy": [
+      "W07"
+    ],
+    "RuntimeControlProductService.RegisterRuntimeVersion": [
+      "W07"
+    ],
+    "RuntimeControlProductService.SetRuntimeVersionStatus": [
+      "W07"
+    ],
+    "BuildProductService.CreateBuild": [
+      "W09"
+    ],
+    "BuildProductService.ListBuilds": [
+      "W09"
+    ],
+    "BuildProductService.GetBuild": [
+      "W09"
+    ],
+    "BuildProductService.ListBuildLogs": [
+      "W09"
+    ],
+    "BuildProductService.RetryBuild": [
+      "W09"
+    ],
+    "ResourceCatalogProductService.CreateQuote": [
+      "W15"
+    ],
+    "ResourceCatalogProductService.GetQuote": [
+      "W15"
+    ],
+    "ResourceCatalogProductService.ListComputePlans": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.ListStoragePlans": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.CreateComputePlan": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.SetComputePlanAvailability": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.CreateStoragePlan": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.SetStoragePlanAvailability": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.ListPricePolicyVersions": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.CreatePricePolicyVersion": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.ListRefundPolicyVersions": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.CreateRefundPolicyVersion": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.ListRetentionPolicyVersions": [
+      "W06"
+    ],
+    "ResourceCatalogProductService.CreateRetentionPolicyVersion": [
+      "W06"
+    ],
+    "WorkspaceProductService.CreateWorkspace": [
+      "W15"
+    ],
+    "WorkspaceProductService.ListWorkspaces": [
+      "W15"
+    ],
+    "WorkspaceProductService.GetWorkspace": [
+      "W15"
+    ],
+    "WorkspaceProductService.DeleteWorkspace": [
+      "W20"
+    ],
+    "WorkspaceProductService.GetWorkspaceModels": [
+      "W17"
+    ],
+    "WorkspaceProductService.UpdateWorkspaceModels": [
+      "W17"
+    ],
+    "WorkspaceProductService.ResizeWorkspace": [
+      "W19"
+    ],
+    "WorkspaceProductService.RenewWorkspace": [
+      "W18"
+    ],
+    "WorkspaceProductService.GetSubscription": [
+      "W18"
+    ],
+    "WorkspaceProductService.GetWorkspaceDeletion": [
+      "W20"
+    ],
+    "WorkspaceProductService.GetOperation": [
+      "W13"
+    ],
+    "WorkspaceProductService.ListAdminOperations": [
+      "W24"
+    ],
+    "WorkspaceProductService.ReconcileOperation": [
+      "W24"
+    ],
+    "WorkspaceProductService.AdoptWorkspace": [
+      "W25"
+    ],
+    "WorkspaceProductService.UpdateRenewalSettings": [
+      "W18"
+    ],
+    "WorkspaceProductService.RevealWorkspaceApplicationCredentials": [
+      "W17"
+    ],
+    "WorkspaceProductService.ListPlanChanges": [
+      "W19"
+    ],
+    "WorkspaceProductService.GetPlanChange": [
+      "W19"
+    ],
+    "WorkspaceProductService.CancelPlanChange": [
+      "W19"
+    ],
+    "ServeProductService.ListDeployments": [
+      "W17"
+    ],
+    "ServeProductService.GetDeployment": [
+      "W17"
+    ],
+    "ServeProductService.UpdateWorkspaceVersion": [
+      "W17"
+    ],
+    "ServeProductService.RollbackWorkspace": [
+      "W17"
+    ],
+    "ServeProductService.GetWorkspaceAccess": [
+      "W17"
+    ],
+    "GatewayProductService.ListWorkspaceTransactions": [
+      "W04"
+    ],
+    "GatewayProductService.GetWallet": [
+      "W04"
+    ],
+    "GatewayProductService.ListUsage": [
+      "W04"
+    ],
+    "GatewayProductService.ListGatewayKeys": [
+      "W04"
+    ],
+    "GatewayProductService.CreateGatewayKey": [
+      "W04"
+    ],
+    "GatewayProductService.RevealGatewayKey": [
+      "W04"
+    ],
+    "GatewayProductService.RevokeGatewayKey": [
+      "W04"
+    ],
+    "GatewayProductService.ListRechargeRecords": [
+      "W04"
+    ],
+    "GatewayProductService.ListModels": [
+      "W04"
+    ],
+    "LedgerProductService.ListReceipts": [
+      "W05"
+    ],
+    "LedgerProductService.GetReceipt": [
+      "W05"
+    ],
+    "LedgerProductService.ListQualifications": [
+      "W05"
+    ],
+    "ClaimUsageReadback.ReadClaimUsage": [
+      "W08",
+      "W09",
+      "W15"
+    ],
+    "CapabilityCoordination.ResolveBuildInput": [
+      "W07",
+      "W08",
+      "W09"
+    ],
+    "CapabilityCoordination.ResolvePublisherContract": [
+      "W07",
+      "W08",
+      "W09"
+    ],
+    "CapabilityCoordination.AcquireReference": [
+      "W07",
+      "W08",
+      "W09"
+    ],
+    "CapabilityCoordination.BindReference": [
+      "W07",
+      "W08",
+      "W09"
+    ],
+    "CapabilityCoordination.ReleaseReference": [
+      "W07",
+      "W08",
+      "W09"
+    ],
+    "BuildCoordination.ReadArtifact": [
+      "W09"
+    ],
+    "OwnerOperations.Read": [
+      "W02",
+      "W24"
+    ],
+    "OwnerOperations.Reconcile": [
+      "W02",
+      "W24"
+    ],
+    "OwnerCommitReadback.ReadOwnerCommit": [
+      "W02"
+    ],
+    "WorkspaceAuthorizationReadback.ReadRenewalConsent": [
+      "W18"
+    ],
+    "CloudIdentityAuthorization.AuthorizeAction": [
+      "W03"
+    ],
+    "CloudIdentityAuthorization.GetAuthorizationContext": [
+      "W03"
+    ],
+    "CloudIdentityAuthorization.IssueAcceptedOperationGrant": [
+      "W03"
+    ],
+    "CatalogCoordination.AcceptQuote": [
+      "W15"
+    ],
+    "WorkspaceAdmission.CheckAdmission": [
+      "W15"
+    ],
+    "GatewayCoordination.BindWallet": [
+      "W04"
+    ],
+    "GatewayCoordination.Debit": [
+      "W04"
+    ],
+    "GatewayCoordination.Refund": [
+      "W04"
+    ],
+    "GatewayCoordination.ReadWalletAction": [
+      "W04"
+    ],
+    "GatewayCoordination.CreateManagedKey": [
+      "W04"
+    ],
+    "GatewayCoordination.RevokeManagedKey": [
+      "W04"
+    ],
+    "FabricCoordination.AdmitResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.EnsureResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.ResizeResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.RenewResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.SuspendResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.ResumeResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.DeleteResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.ReadResources": [
+      "W11",
+      "W12"
+    ],
+    "FabricCoordination.BindSecret": [
+      "W11",
+      "W12"
+    ],
+    "ServeAgentCoordination.Reserve": [
+      "W17"
+    ],
+    "ServeAgentCoordination.Deploy": [
+      "W17"
+    ],
+    "ServeAgentCoordination.ReloadModels": [
+      "W17"
+    ],
+    "ServeAgentCoordination.ReadRuntime": [
+      "W17"
+    ],
+    "ServeAgentCoordination.Retire": [
+      "W17"
+    ],
+    "ServeRuntimeAdapter.ReadApplicationCredentials": [
+      "W17"
+    ],
+    "ServeRuntimeAdapter.StartRuntime": [
+      "W17"
+    ],
+    "ServeRuntimeAdapter.StopRuntime": [
+      "W17"
+    ],
+    "ServeRuntimeAdapter.ReloadRuntime": [
+      "W17"
+    ],
+    "ServeRuntimeAdapter.ObserveRuntime": [
+      "W17"
+    ],
+    "ServeAccessControl.FenceRouteEpoch": [
+      "W17"
+    ],
+    "ServeAccessControl.ActivateRoute": [
+      "W17"
+    ],
+    "ServeAccessControl.ObserveRoute": [
+      "W17"
+    ],
+    "ServeAccessControl.RollbackRoute": [
+      "W17"
+    ],
+    "TenantWorkspaceCoordination.SuspendTenantWorkspaces": [
+      "W21"
+    ],
+    "TenantWorkspaceCoordination.DeleteTenantWorkspaces": [
+      "W21"
+    ],
+    "TenantWorkspaceCoordination.ResumeTenantWorkspaces": [
+      "W21"
+    ],
+    "LedgerCoordination.AppendReceipt": [
+      "W05"
+    ],
+    "LedgerCoordination.ReadReceiptByReference": [
+      "W05"
+    ],
+    "WorkspacePlanChangeReadback.ReadSubscriptionPlanState": [
+      "W19"
+    ],
+    "WorkspacePlanChangeReadback.ReadPlanChange": [
+      "W19"
+    ],
+    "WorkspacePlanChangeReadback.ReadNextPeriodObligation": [
+      "W19"
+    ],
+    "WorkspacePlanChangeReadback.ReadPlanChangeFailure": [
+      "W19"
+    ],
+    "FabricPlanTransitionReadback.ReadApprovedPlanTransition": [
+      "W11",
+      "W12"
+    ],
+    "FabricPlanTransitionReadback.ReadExecutionPlan": [
+      "W11",
+      "W12"
+    ],
+    "GatewayPlanChangeSettlement.DebitSupplement": [
+      "W04",
+      "W19"
+    ],
+    "GatewayPlanChangeSettlement.DebitScheduledPeriod": [
+      "W04",
+      "W19"
+    ],
+    "GatewayPlanChangeSettlement.RefundFailure": [
+      "W04",
+      "W19"
+    ],
+    "GatewayPlanChangeSettlement.RefundSupplementOnDeletion": [
+      "W04",
+      "W19"
+    ],
+    "ServePlanChangeControl.RestoreAfterResourceChange": [
+      "W17",
+      "W19"
+    ],
+    "LedgerPlanChangeEvidence.AppendPlanChangeReceipt": [
+      "W05",
+      "W19"
+    ],
+    "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt": [
+      "W05",
+      "W19"
+    ],
+    "DomainInbox.Deliver": [
+      "W02",
+      "W05",
+      "W09",
+      "W15",
+      "W19",
+      "W21"
+    ]
+  },
+  "baselineCommands": {
+    "AUTH": "go -C services/control-plane test ./internal/server -run '^(TestDelegatedCredentialNeverPersistsOrLeaks|TestAccountDisableRevokesSessionCredential|TestGatewayKeyOwnership|TestCloudAdminCanRevealOnlyOwnGatewayKey)$' -count=1",
+    "WALLET": "go -C services/control-plane test ./internal/clients -run '^(TestAuthenticateUserReturnsDelegatedCredential|TestSub2APIFinancialHistoryUsesNativeExactNotesAndAllPages|TestSub2APIAdjustmentConnectionLossDoesNotRepeatDebit|TestSub2APIRefundRequiresReadOnlyRebatePolicy)$' -count=1",
+    "LAUNCH": "go -C services/control-plane test ./internal/server -run '^(TestPricingCatalogLookupRequiresExactAcceptedVersion|TestWorkspaceLaunchMonthlyPreflightRunsBeforeDebitAndProviderStages|TestWorkspaceLaunchDebitAuthoritativeReadbackClassification|TestWorkspaceLaunchResourceOnlyReconcilerCompletesWithoutApplicationFacts)$' -count=1",
+    "SETTLEMENT": "go -C services/control-plane test ./internal/server -run '^(TestWorkspaceRenewalConcurrentWorkersClaimOnce|TestWorkspaceRenewalUsesOneDebitStableProviderIDsAndOneReceipt|TestWorkspaceDeleteRefundRecoversLostResponseWithoutSecondDispatch|TestWorkspaceDeleteRefundStatusIsReportedSeparatelyFromDeletion)$' -count=1",
+    "RUNTIME": "go -C services/control-plane test ./internal/server -run '^(TestApplicationRevisionAdmissionHTTP|TestWorkspaceApplicationDeploymentHTTPReplayRetainsAcceptedCredentials|TestWorkspaceApplicationBindingHTTPReplacementAndPreflight)$' -count=1",
+    "ABI": "go -C packages/contracts/go test ./... -count=1",
+    "CANDIDATE": "node --test tests/tools/cloud-candidate-receipt.test.ts tests/contracts/clean-host-qualification.test.ts"
+  },
+  "rules": {
+    "startDependencies": "finished producer contracts/scaffolding needed to start useful implementation",
+    "acceptDependencies": "real producers needed for integrated acceptance; no fixture-only completion",
+    "formalReleaseVsInstance": "separate authorized Owners; same qualified bytes; Cloud never dispatches Instance deployment"
+  }
+}

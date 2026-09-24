@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-21T17:54:46.731246+00:00",
+  "passed": true,
+  "scope": "Publisher sample contract accepted by current canonical Go decoder/validator/startup DAG; not a container build or deployment",
+  "sourceSHA": "50520e27a6b9a630eefdc2df7da3e5ec498d28a0",
+  "sourceHashes": {
+    "packages/contracts/go/workspace_application.go": "542ebaea8ba71f3872703545410565a3042afb007ac8bed4fc533eb7320f5af1",
+    "packages/contracts/go/workspace_application_data.go": "28f3108ffb2ed7c628fe19d275a5fb53ffb261be23b6d996fe85b49b21ca6440",
+    "packages/contracts/go/workspace_application_dependency.go": "1ee730c568eb176defca3f3bb4e32817fc44c2a9f491da15c883793237ec645a",
+    "packages/contracts/go/workspace_application_execution.go": "ed05d9209c9b88b3feb5cd5b5cf5f36f6fb1cc0cbdb891697dc8c0efd3b924fc",
+    "packages/contracts/go/workspace_application_inputs.go": "af576d9167b08b5a056d7df86003176ae048144344dafdd17708bb2bb2d3e869",
+    "packages/contracts/go/workspace_application_mount_options.go": "5abc108a6ba112ea40b430e0493ce6542a3a3c24f6ad2e27f03b5ee58477e630",
+    "packages/contracts/go/workspace_application_runtime.go": "66499792c91c50728d7210a1da14b8f836012728ca4efc0bf38d11101c8934ee",
+    "packages/contracts/go/workspace_application_startup.go": "4f030c9d9b3ed9a311a7730afc63095a3d69bfee2a2ae12b123e0236ce65b769"
+  },
+  "publisherSchemaHash": "5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec",
+  "stdout": "PASS canonical Go validator: opl-runtime linux/amd64 app\nPASS canonical Go validator: acme-runtime linux/amd64 app\n",
+  "stderr": "",
+  "command": "GOWORK=off go run <isolated-check-module> <publisher-schema>",
+  "productSourceChanged": false
+}

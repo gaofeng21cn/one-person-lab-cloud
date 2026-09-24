@@ -1,0 +1,424 @@
+{
+  "scope": "temporary PostgreSQL16-alpine, --network none, tmpfs only; no current DB/volume touched",
+  "ddlDatabases": 9,
+  "tableCount": 88,
+  "fieldCount": 1145,
+  "tests": [
+    {
+      "label": "opaque legacy ID + valid imported provenance",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "legacy provenance rejects fabricated build refs",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "build provenance requires all five source refs",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "claim accepts existing legacy version",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "live claim blocks physical metadata DELETE via same-owner FK",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23503",
+      "passed": true
+    },
+    {
+      "label": "duplicate active claim rejected",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23505",
+      "passed": true
+    },
+    {
+      "label": "claim cannot release without owner evidence",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "same-owner namespace FK rejects missing owner row",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "23503",
+      "passed": true
+    },
+    {
+      "label": "cross-owner opaque IDs accepted without cross-DB FK ws-A",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "cross-owner opaque IDs accepted without cross-DB FK ws-B",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "same-workspace selected deployment accepted",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "selected deployment cannot belong to another Workspace",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "23503",
+      "passed": true
+    },
+    {
+      "label": "bare legacy resource cannot pretend to have Capability",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "bare legacy resource preserves no-app state",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "first active Tenant membership accepted",
+      "database": "opl_tenant",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "one actor cannot have two active Tenant memberships",
+      "database": "opl_tenant",
+      "expectedSQLSTATE": "23505",
+      "passed": true
+    },
+    {
+      "label": "ledger writer can append receipt",
+      "database": "opl_ledger",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "ledger runtime writer cannot overwrite receipt",
+      "database": "opl_ledger",
+      "expectedSQLSTATE": "42501",
+      "passed": true
+    },
+    {
+      "label": "ledger runtime writer cannot delete receipt",
+      "database": "opl_ledger",
+      "expectedSQLSTATE": "42501",
+      "passed": true
+    },
+    {
+      "label": "runtime writer cannot create policy/schema tables",
+      "database": "opl_ledger",
+      "expectedSQLSTATE": "42501",
+      "passed": true
+    },
+    {
+      "label": "actual tenant field inventory",
+      "database": "opl_tenant",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual capability field inventory",
+      "database": "opl_capability",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual build field inventory",
+      "database": "opl_build",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual workspace field inventory",
+      "database": "opl_workspace",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual runtime_control field inventory",
+      "database": "opl_runtime_control",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual fabric field inventory",
+      "database": "opl_fabric",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual gateway field inventory",
+      "database": "opl_gateway",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual resource_catalog field inventory",
+      "database": "opl_resource_catalog",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "actual ledger field inventory",
+      "database": "opl_ledger",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "opaque binding seed",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.tenant_wallet_bindings(id,tenant_id,billing_sub2api_user_id,delegation_ref,verification_evidence_ref,bound_at) VALUES ('binding-test','tenant-test','external-subject','delegation-fixture','evidence-fixture',now());",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "non-positive wallet amount rejected 0",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('money-0','tenant-test','binding-test','charge',0,'money-0','request-hash');",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "non-positive wallet amount rejected -1",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('money--1','tenant-test','binding-test','charge',-1,'money--1','request-hash');",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "bigint exact int64 maximum accepted without float",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('int64-max','tenant-test','binding-test','charge',9223372036854775807,'int64-max','request-hash');",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "int64 overflow rejected",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('overflow','tenant-test','binding-test','charge',9223372036854775808,'overflow','request-hash');",
+      "expectedSQLSTATE": "22003",
+      "passed": true
+    },
+    {
+      "label": "original wallet business key cannot be duplicated",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('dup-money','tenant-test','binding-test','charge',1,'int64-max','request-hash');",
+      "expectedSQLSTATE": "23505",
+      "passed": true
+    },
+    {
+      "label": "refund requires original charge and entitlement",
+      "database": "opl_gateway",
+      "sql": "INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('bad-refund','tenant-test','binding-test','refund',1,'refund-key','request-hash');",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "local catalog fixture compute_plans",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.compute_plans(id,name,version_label,provider,provider_profile_ref,region,status,billing_mode,valid_from,published_by,provider_capability_version,provider_specification,vcpus,memory_mib) VALUES ('compute_plans-1','plan','v1','local','isolated-profile','local','approved','LOCAL_NO_CHARGE',now(),'fixture-admin','cap-v1','{}',1,1024);",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "local catalog fixture storage_plans",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.storage_plans(id,name,version_label,provider,provider_profile_ref,region,status,billing_mode,valid_from,published_by,provider_capability_version,provider_specification,capacity_gib,shrink_supported) VALUES ('storage_plans-1','plan','v1','local','isolated-profile','local','approved','LOCAL_NO_CHARGE',now(),'fixture-admin','cap-v1','{}',1,false);",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "versioned zero-cost Local policy fixtures",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.retention_policy_versions(id,version_label,rules,customer_terms,valid_from,published_by,workspace_data_disposition,package_history_disposition,build_history_disposition,tenant_restore_days) VALUES ('retain-1','v1','{}','fixture',now(),'fixture-admin','destroy_after_confirmed_deletion','retain','retain',15); INSERT INTO resource_catalog.refund_policy_versions(id,version_label,rules,customer_terms,valid_from,published_by,algorithm,retention_policy_version_id) VALUES ('refund-1','v1','{}','fixture',now(),'fixture-admin','workspace-delete-refund-v1','retain-1'); INSERT INTO resource_catalog.price_policy_versions(id,version_label,compute_plan_id,storage_plan_id,compute_monthly_usd_micros,storage_monthly_usd_micros,product_monthly_usd_micros,adjustment_rules,renewal_rules,valid_from,published_by,period_months) VALUES ('price-1','v1','compute_plans-1','storage_plans-1',0,0,0,'{}','{}',now(),'fixture-admin',1);",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "accepted Quote shape binds operation and timestamp",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,accepted_by_operation_id,accepted_at,expires_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES ('quote-accepted','tenant-test','actor-test','create','capability-test','compute_plans-1','storage_plans-1','price-1','refund-1','retain-1',0,now(),now()+interval '1 month','accepted','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}','workspace-operation-original',now(),now()+interval '1 hour','[]',1,'fixture-refund','fixture-retention','none');",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "accepted Quote requires operation and acceptedAt",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,accepted_by_operation_id,accepted_at,expires_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES ('quote-no-binding','tenant-test','actor-test','create','capability-test','compute_plans-1','storage_plans-1','price-1','refund-1','retain-1',0,now(),now()+interval '1 month','accepted','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',NULL,NULL,now()+interval '1 hour','[]',1,'fixture-refund','fixture-retention','none');",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "one Workspace Operation cannot accept multiple Quotes",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,accepted_by_operation_id,accepted_at,expires_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES ('quote-duplicate-binding','tenant-test','actor-test','create','capability-test','compute_plans-1','storage_plans-1','price-1','refund-1','retain-1',0,now(),now()+interval '1 month','accepted','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}','workspace-operation-original',now(),now()+interval '1 hour','[]',1,'fixture-refund','fixture-retention','none');",
+      "expectedSQLSTATE": "23505",
+      "passed": true
+    },
+    {
+      "label": "negative Quote total rejected",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,accepted_by_operation_id,accepted_at,expires_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES ('quote-negative','tenant-test','actor-test','create','capability-test','compute_plans-1','storage_plans-1','price-1','refund-1','retain-1',-1,now(),now()+interval '1 month','offered','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',NULL,NULL,now()+interval '1 hour','[]',1,'fixture-refund','fixture-retention','none');",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "negative ordinary charge line rejected",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quote_items(id,quote_id,kind,description,amount_usd_micros,calculation,sort_order,quantity) VALUES ('bad-line','quote-accepted','compute','fixture',-1,'{}',0,1);",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "explicit signed adjustment allowed; sum verified by Owner transaction not SQL",
+      "database": "opl_resource_catalog",
+      "sql": "INSERT INTO resource_catalog.quote_items(id,quote_id,kind,description,amount_usd_micros,calculation,sort_order,quantity) VALUES ('adjustment-line','quote-accepted','adjustment','fixture',-1,'{}',0,1);",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "postpaid hourly resource billing prohibited",
+      "database": "opl_resource_catalog",
+      "sql": "UPDATE resource_catalog.compute_plans SET billing_mode='POSTPAID_BY_HOUR' WHERE id='compute_plans-1';",
+      "expectedSQLSTATE": "23514",
+      "passed": true
+    },
+    {
+      "label": "tenant writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_tenant_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_capability','opl_build','opl_workspace','opl_runtime_control','opl_fabric','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "capability writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_capability_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_build','opl_workspace','opl_runtime_control','opl_fabric','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "build writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_build_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_workspace','opl_runtime_control','opl_fabric','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "workspace writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_workspace_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_runtime_control','opl_fabric','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "runtime_control writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_runtime_control_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_workspace','opl_fabric','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "fabric writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_fabric_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_workspace','opl_runtime_control','opl_gateway','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "gateway writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_gateway_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_workspace','opl_runtime_control','opl_fabric','opl_resource_catalog','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "resource_catalog writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_resource_catalog_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_workspace','opl_runtime_control','opl_fabric','opl_gateway','opl_ledger']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "ledger writer cannot connect any other owner database",
+      "database": "postgres",
+      "sql": "SELECT bool_and(NOT has_database_privilege('opl_ledger_writer',d,'CONNECT')) FROM unnest(ARRAY['opl_tenant','opl_capability','opl_build','opl_workspace','opl_runtime_control','opl_fabric','opl_gateway','opl_resource_catalog']) d;",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "exact PostgreSQL version readback",
+      "database": "postgres",
+      "sql": "SELECT version();",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    },
+    {
+      "label": "single selected deployment authority column exists",
+      "database": "opl_workspace",
+      "sql": "SELECT count(*) FROM information_schema.columns WHERE table_schema='workspace' AND table_name='workspaces' AND column_name='current_agent_deployment_id';",
+      "expectedSQLSTATE": "00000",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "notProven": [
+    "Owner business transactions not implemented",
+    "end-to-end services/browser",
+    "production/instance qualification"
+  ],
+  "executedAt": "2026-09-21T16:14:08.832231+00:00",
+  "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "image": {
+    "name": "postgres:16-alpine",
+    "imageId": "sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "repoDigests": [
+      "postgres@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb"
+    ]
+  },
+  "commands": [
+    "docker run --rm -d --network none --name <isolated-test-container> --tmpfs /var/lib/postgresql/data -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine",
+    "docker exec -i <isolated-test-container> psql -X -v ON_ERROR_STOP=1 -U postgres -d <each-opl-owner-db> < split-database-block.sql",
+    "docker stop <isolated-test-container> (auto-removes only this --rm container)"
+  ],
+  "caveats": [
+    "Only seeded isolated test databases were used; public/provider/Gateway network unavailable",
+    "Quote accepted immutability/body/expiry checks are Owner transaction rules, not falsely asserted as DDL CAS",
+    "Quote item sum total is Owner transaction invariant; no database trigger asserted",
+    "One selected deployment is Workspace pointer with same-workspace FK; Deployment.status is lifecycle history, not a second selection writer"
+  ],
+  "cleanup": {
+    "passed": true,
+    "containerAbsent": true,
+    "storage": "tmpfs; no named volume or bind mount ever created",
+    "confirmedAt": "2026-09-21T16:14:36.864796+00:00"
+  },
+  "schemaSha256": "e62ba5fea2f46c8d777f268a06e00a4e8efece7728fd44cdf5be8bbde7e15575",
+  "inventorySha256": "020cb81f881d5ed507e1a117e8d770195af8af93a21355841634e25abbf98f46",
+  "replayScripts": [
+    {
+      "description": "seeded isolated database semantic checks; create empty 9 DBs/roles and apply each schema block first",
+      "language": "python",
+      "source": "import subprocess, pathlib, json, re\nP=pathlib.Path('/Users/huangrende/Desktop/应聘/chatgpt-share-6ab13ad3/opl_v226_execution_spec'); C='opl-spec-db-alignment-20260922'; results=[]\ndef run(db,sql,expect=None,label=''):\n p=subprocess.run(['docker','exec','-i',C,'psql','-X','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-U','postgres','-d',db,'-At'],input=sql,capture_output=True,text=True)\n ok=(p.returncode==0) if not expect else (p.returncode!=0 and re.search(r'ERROR:\\s+'+expect+r':',p.stderr) is not None)\n results.append(dict(label=label,database=db,expectedSQLSTATE=expect or '00000',passed=ok))\n if not ok: raise RuntimeError(label+'\\n'+p.stdout+'\\n'+p.stderr)\n return p.stdout\nD='sha256:'+'a'*64\ncap=\"INSERT INTO capability.capability_versions(id,version_label,artifact_repository,artifact_digest,model_requirements,data_compatibility,provenance_evidence,provenance,legacy_application_revision_id) VALUES ('legacy-revision-A','legacy-v1','sandbox/repo','\"+D+\"','[]','{}','{}','legacy_application','existing-string-revision');\"\nrun('opl_capability',cap,label='opaque legacy ID + valid imported provenance')\nrun('opl_capability',\"INSERT INTO capability.capability_versions(id,version_label,artifact_repository,artifact_digest,model_requirements,data_compatibility,provenance_evidence,provenance,legacy_application_revision_id,build_job_id) VALUES ('bad-legacy','v','r','\"+D+\"','[]','{}','{}','legacy_application','rev','fabricated-job');\",'23514','legacy provenance rejects fabricated build refs')\nrun('opl_capability',\"INSERT INTO capability.capability_versions(id,version_label,artifact_repository,artifact_digest,model_requirements,data_compatibility,provenance_evidence,provenance) VALUES ('bad-build','v','r','\"+D+\"','[]','{}','{}','build');\",'23514','build provenance requires all five source refs')\nrun('opl_capability',\"INSERT INTO capability.reference_claims(id,target_type,capability_version_id,claimant_owner,claimant_resource_id,purpose,request_id) VALUES ('claim-1','capability_version','legacy-revision-A','workspace','old-ws','deployment','req-1');\",label='claim accepts existing legacy version')\nrun('opl_capability',\"DELETE FROM capability.capability_versions WHERE id='legacy-revision-A';\",'23503','live claim blocks physical metadata DELETE via same-owner FK')\nrun('opl_capability',\"INSERT INTO capability.reference_claims(id,target_type,capability_version_id,claimant_owner,claimant_resource_id,purpose,request_id) VALUES ('claim-2','capability_version','legacy-revision-A','workspace','old-ws','deployment','req-2');\",'23505','duplicate active claim rejected')\nrun('opl_capability',\"UPDATE capability.reference_claims SET released_at=now() WHERE id='claim-1';\",'23514','claim cannot release without owner evidence')\nrun('opl_capability',\"INSERT INTO capability.packages(id,namespace_id,name,visibility,created_by) VALUES ('x','nonexistent-ns','p','private','actor');\",'23503','same-owner namespace FK rejects missing owner row')\nfor id in ['ws-A','ws-B']:\n run('opl_workspace',f\"INSERT INTO workspace.workspaces(id,tenant_id,name,status,capability_version_id,compute_plan_id,storage_plan_id,created_by,delivery_model,version) VALUES ('{id}','opaque-tenant','test','provisioning','opaque-capability','compute-existing','storage-existing','actor','agent_saas',0);\",label='cross-owner opaque IDs accepted without cross-DB FK '+id)\nrun('opl_workspace',\"INSERT INTO workspace.operations(id,tenant_id,actor_id,kind,resource_id,stage,request_id,accepted_input) VALUES ('op-A','opaque-tenant','actor','deploy','ws-A','accepted','req-A','{}'); INSERT INTO serve.agent_deployments(id,workspace_id,capability_version_id,artifact_digest,reference_claim_id,operation_id,data_compatibility) VALUES ('dep-A','ws-A','opaque-capability','\"+D+\"','claim-opaque','op-A','{}'); UPDATE workspace.workspaces SET current_agent_deployment_id='dep-A' WHERE id='ws-A';\",label='same-workspace selected deployment accepted')\nrun('opl_workspace',\"UPDATE workspace.workspaces SET current_agent_deployment_id='dep-A' WHERE id='ws-B';\",'23503','selected deployment cannot belong to another Workspace')\nrun('opl_workspace',\"INSERT INTO workspace.workspaces(id,tenant_id,name,compute_plan_id,storage_plan_id,created_by,delivery_model,version,capability_version_id) VALUES ('bad-bare','tenant','bare','c','s','actor','legacy_resource_only',0,'fabricated-cap');\",'23514','bare legacy resource cannot pretend to have Capability')\nrun('opl_workspace',\"INSERT INTO workspace.workspaces(id,tenant_id,name,compute_plan_id,storage_plan_id,created_by,delivery_model,version) VALUES ('valid-bare','tenant','bare','c','s','actor','legacy_resource_only',0);\",label='bare legacy resource preserves no-app state')\nrun('opl_tenant',\"INSERT INTO tenant.tenants(id,name) VALUES ('t1','one'),('t2','two'); INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES ('m1','t1','same-actor','owner');\",label='first active Tenant membership accepted')\nrun('opl_tenant',\"INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES ('m2','t2','same-actor','owner');\",'23505','one actor cannot have two active Tenant memberships')\nrun('opl_ledger',\"SET ROLE opl_ledger_writer; INSERT INTO ledger.receipts(id,source_owner,source_event_id,kind,subject_type,subject_id,source_operation_id,request_id,evidence_sha256,evidence,source_occurred_at) VALUES ('receipt-opaque','workspace','event-1','test','workspace','ws-A','op-A','req-A','\"+'b'*64+\"','{}',now());\",label='ledger writer can append receipt')\nrun('opl_ledger',\"SET ROLE opl_ledger_writer; UPDATE ledger.receipts SET kind='changed' WHERE id='receipt-opaque';\",'42501','ledger runtime writer cannot overwrite receipt')\nrun('opl_ledger',\"SET ROLE opl_ledger_writer; DELETE FROM ledger.receipts WHERE id='receipt-opaque';\",'42501','ledger runtime writer cannot delete receipt')\nrun('opl_ledger',\"SET ROLE opl_ledger_writer; CREATE TABLE ledger.rogue(id text);\",'42501','runtime writer cannot create policy/schema tables')\n# Compare actual Postgres information_schema to inventory including type, nullability, constraints and indexes.\ninv=json.loads((P/'contracts/db_inventory.json').read_text()); count=0\nfor db in inv['databases']:\n o=db['owner']; raw=run(db['name'],\"SELECT table_name||'|'||column_name||'|'||udt_name||'|'||is_nullable FROM information_schema.columns WHERE table_schema='\"+o+\"' ORDER BY table_name,ordinal_position;\",label='actual '+o+' field inventory')\n actual={tuple(x.split('|')[:2]):x.split('|')[2:] for x in raw.splitlines() if '|' in x}\n for t in [t for t in inv['tables'] if t['owner']==o]:\n  for f in t['fields']:\n   typ={'text':'text','bigint':'int8','integer':'int4','timestamptz':'timestamptz','boolean':'bool','jsonb':'jsonb','text[]':'_text'}[f['type']]\n   assert actual[(t['name'],f['name'])]==[typ,'YES' if f['nullable'] else 'NO'],(o,t['name'],f['name'],actual.get((t['name'],f['name'])))\n   count+=1\n print(db['name'],'inventory actual match')\nres=dict(scope='temporary PostgreSQL16-alpine, --network none, tmpfs only; no current DB/volume touched',ddlDatabases=9,tableCount=len(inv['tables']),fieldCount=count,tests=results,passed=True,notProven=['Owner business transactions not implemented','end-to-end services/browser','production/instance qualification'])\npathlib.Path('/tmp/opl-db-runtime-verification.json').write_text(json.dumps(res,ensure_ascii=False,indent=2)+'\\n')\nprint('PASS',len(results),'DDL/semantic/privilege/inventory checks,',count,'actual fields matched')\n"
+    },
+    {
+      "description": "additional monetary, accepted-quote, forbidden billing and role isolation checks",
+      "language": "python",
+      "source": "import subprocess,pathlib,json,re,datetime\nP=pathlib.Path('/Users/huangrende/Desktop/应聘/chatgpt-share-6ab13ad3/opl_v226_execution_spec'); C='opl-spec-db-alignment-20260922'\nres=json.loads(pathlib.Path('/tmp/opl-db-runtime-verification.json').read_text()); additional=[]\ndef run(db,sql,expect=None,label=''):\n p=subprocess.run(['docker','exec','-i',C,'psql','-X','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-U','postgres','-d',db,'-At'],input=sql,capture_output=True,text=True)\n ok=(p.returncode==0) if not expect else (p.returncode!=0 and re.search(r'ERROR:\\s+'+expect+r':',p.stderr) is not None)\n additional.append(dict(label=label,database=db,sql=sql,expectedSQLSTATE=expect or '00000',passed=ok))\n if not ok: raise RuntimeError(label+'\\n'+p.stdout+'\\n'+p.stderr)\n return p.stdout.strip()\nrun('opl_gateway',\"INSERT INTO gateway.tenant_wallet_bindings(id,tenant_id,billing_sub2api_user_id,delegation_ref,verification_evidence_ref,bound_at) VALUES ('binding-test','tenant-test','external-subject','delegation-fixture','evidence-fixture',now());\",label='opaque binding seed')\nfor amount in [0,-1]:\n run('opl_gateway',f\"INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('money-{amount}','tenant-test','binding-test','charge',{amount},'money-{amount}','request-hash');\",'23514','non-positive wallet amount rejected '+str(amount))\nrun('opl_gateway',\"INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('int64-max','tenant-test','binding-test','charge',9223372036854775807,'int64-max','request-hash');\",label='bigint exact int64 maximum accepted without float')\nrun('opl_gateway',\"INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('overflow','tenant-test','binding-test','charge',9223372036854775808,'overflow','request-hash');\",'22003','int64 overflow rejected')\nrun('opl_gateway',\"INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('dup-money','tenant-test','binding-test','charge',1,'int64-max','request-hash');\",'23505','original wallet business key cannot be duplicated')\nrun('opl_gateway',\"INSERT INTO gateway.wallet_operations(id,tenant_id,wallet_binding_id,kind,amount_usd_micros,business_idempotency_key,request_fingerprint) VALUES ('bad-refund','tenant-test','binding-test','refund',1,'refund-key','request-hash');\",'23514','refund requires original charge and entitlement')\n# Catalog rows needed by same-owner quote FKs; no real provider calls.\nfor table,ext in [('compute_plans',\",vcpus,memory_mib\"),('storage_plans',\",capacity_gib,shrink_supported\")]:\n vals=',1,1024' if table=='compute_plans' else ',1,false'\n run('opl_resource_catalog',f\"INSERT INTO resource_catalog.{table}(id,name,version_label,provider,provider_profile_ref,region,status,billing_mode,valid_from,published_by,provider_capability_version,provider_specification{ext}) VALUES ('{table}-1','plan','v1','local','isolated-profile','local','approved','LOCAL_NO_CHARGE',now(),'fixture-admin','cap-v1','{{}}'{vals});\",label='local catalog fixture '+table)\nrun('opl_resource_catalog',\"INSERT INTO resource_catalog.retention_policy_versions(id,version_label,rules,customer_terms,valid_from,published_by,workspace_data_disposition,package_history_disposition,build_history_disposition,tenant_restore_days) VALUES ('retain-1','v1','{}','fixture',now(),'fixture-admin','destroy_after_confirmed_deletion','retain','retain',15); INSERT INTO resource_catalog.refund_policy_versions(id,version_label,rules,customer_terms,valid_from,published_by,algorithm,retention_policy_version_id) VALUES ('refund-1','v1','{}','fixture',now(),'fixture-admin','workspace-delete-refund-v1','retain-1'); INSERT INTO resource_catalog.price_policy_versions(id,version_label,compute_plan_id,storage_plan_id,compute_monthly_usd_micros,storage_monthly_usd_micros,product_monthly_usd_micros,adjustment_rules,renewal_rules,valid_from,published_by,period_months) VALUES ('price-1','v1','compute_plans-1','storage_plans-1',0,0,0,'{}','{}',now(),'fixture-admin',1);\",label='versioned zero-cost Local policy fixtures')\ndef quote(qid,amount=0,status='offered',accepted='NULL',at='NULL'):\n return f\"INSERT INTO resource_catalog.quotes(id,tenant_id,actor_id,purpose,capability_version_id,compute_plan_id,storage_plan_id,price_policy_version_id,refund_policy_version_id,retention_policy_version_id,total_usd_micros,period_start,period_end,status,input_digest,admission_snapshot,accepted_by_operation_id,accepted_at,expires_at,model_selections,period_months,refund_terms,retention_terms,expected_interruption) VALUES ('{qid}','tenant-test','actor-test','create','capability-test','compute_plans-1','storage_plans-1','price-1','refund-1','retain-1',{amount},now(),now()+interval '1 month','{status}','sha256:\"+'c'*64+f\"','{{}}',{accepted},{at},now()+interval '1 hour','[]',1,'fixture-refund','fixture-retention','none');\"\nrun('opl_resource_catalog',quote('quote-accepted',status='accepted',accepted=\"'workspace-operation-original'\",at='now()'),label='accepted Quote shape binds operation and timestamp')\nrun('opl_resource_catalog',quote('quote-no-binding',status='accepted'),'23514','accepted Quote requires operation and acceptedAt')\nrun('opl_resource_catalog',quote('quote-duplicate-binding',status='accepted',accepted=\"'workspace-operation-original'\",at='now()'),'23505','one Workspace Operation cannot accept multiple Quotes')\nrun('opl_resource_catalog',quote('quote-negative',amount=-1),'23514','negative Quote total rejected')\nrun('opl_resource_catalog',\"INSERT INTO resource_catalog.quote_items(id,quote_id,kind,description,amount_usd_micros,calculation,sort_order,quantity) VALUES ('bad-line','quote-accepted','compute','fixture',-1,'{}',0,1);\",'23514','negative ordinary charge line rejected')\nrun('opl_resource_catalog',\"INSERT INTO resource_catalog.quote_items(id,quote_id,kind,description,amount_usd_micros,calculation,sort_order,quantity) VALUES ('adjustment-line','quote-accepted','adjustment','fixture',-1,'{}',0,1);\",label='explicit signed adjustment allowed; sum verified by Owner transaction not SQL')\nrun('opl_resource_catalog',\"UPDATE resource_catalog.compute_plans SET billing_mode='POSTPAID_BY_HOUR' WHERE id='compute_plans-1';\",'23514','postpaid hourly resource billing prohibited')\n# Cross-domain privilege denial checks do not need a network route.\nfor o in ['tenant','capability','build','workspace','runtime_control','fabric','gateway','resource_catalog','ledger']:\n others=[x for x in ['tenant','capability','build','workspace','runtime_control','fabric','gateway','resource_catalog','ledger'] if x!=o]\n sql=\"SELECT bool_and(NOT has_database_privilege('opl_\"+o+\"_writer',d,'CONNECT')) FROM unnest(ARRAY[\"+','.join(\"'opl_\"+x+\"'\" for x in others)+\"]) d;\"\n output=run('postgres',sql,label=o+' writer cannot connect any other owner database'); assert output=='t',(o,output)\nversion=run('postgres','SELECT version();',label='exact PostgreSQL version readback')\nimage=subprocess.check_output(['docker','image','inspect','postgres:16-alpine','--format','{{json .}}'],text=True); image=json.loads(image)\nactual_tables=run('opl_workspace',\"SELECT count(*) FROM information_schema.columns WHERE table_schema='workspace' AND table_name='workspaces' AND column_name='current_agent_deployment_id';\",label='single selected deployment authority column exists'); assert actual_tables=='1'\nres['tests']+=additional; res['executedAt']=datetime.datetime.now(datetime.timezone.utc).isoformat(); res['postgresVersion']=version; res['image']={'name':'postgres:16-alpine','imageId':image['Id'],'repoDigests':image.get('RepoDigests',[])}\nres['commands']=['docker run --rm -d --network none --name <isolated-test-container> --tmpfs /var/lib/postgresql/data -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine','docker exec -i <isolated-test-container> psql -X -v ON_ERROR_STOP=1 -U postgres -d <each-opl-owner-db> < split-database-block.sql','docker stop <isolated-test-container> (auto-removes only this --rm container)']\nres['caveats']=['Only seeded isolated test databases were used; public/provider/Gateway network unavailable','Quote accepted immutability/body/expiry checks are Owner transaction rules, not falsely asserted as DDL CAS','Quote item sum total is Owner transaction invariant; no database trigger asserted','One selected deployment is Workspace pointer with same-workspace FK; Deployment.status is lifecycle history, not a second selection writer']\npathlib.Path('/tmp/opl-db-runtime-verification.json').write_text(json.dumps(res,ensure_ascii=False,indent=2)+'\\n')\nprint('extra checks',len(additional),'total',len(res['tests']),'PASS')\n"
+    }
+  ]
+}

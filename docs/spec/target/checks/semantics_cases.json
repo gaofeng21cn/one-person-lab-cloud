@@ -1,0 +1,972 @@
+{
+  "schemaVersion": "opl-cross-domain-semantics/v2",
+  "status": "executable specification cases, not implemented-service evidence",
+  "moneyRule": "Nonnegative integer line totals; total=positive lines-credit lines; no quantity second multiplication",
+  "cases": [
+    {
+      "id": "R01-deploy-credit-roundtrip",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        },
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "expectedTotalUSDMicros": "90",
+      "expected": "accept"
+    },
+    {
+      "id": "R01-deploy-product-roundtrip",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        },
+        {
+          "kind": "storage",
+          "amountUSDMicros": "20"
+        },
+        {
+          "kind": "product",
+          "amountUSDMicros": "30"
+        }
+      ],
+      "expectedTotalUSDMicros": "150",
+      "expected": "accept"
+    },
+    {
+      "id": "R01-retired-create-purpose",
+      "suite": "quote",
+      "purpose": "create",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        }
+      ],
+      "expected": "api_reject"
+    },
+    {
+      "id": "R01-retired-service-kind",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "service",
+          "amountUSDMicros": "100"
+        }
+      ],
+      "expected": "api_reject"
+    },
+    {
+      "id": "R01-retired-adjustment-kind",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "adjustment",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "expected": "api_reject"
+    },
+    {
+      "id": "R01-negative-credit-wire",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "-10"
+        }
+      ],
+      "expected": "api_reject"
+    },
+    {
+      "id": "R01-credit-source-amount-mismatch",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        },
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "creditSourceAmountUSDMicros": "11",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R01-credit-missing-confirmed-source",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        },
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "creditSourceConfirmed": false,
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R01-credit-exceeds-charge",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "1"
+        },
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R01-credit-counted-positive",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "100"
+        },
+        {
+          "kind": "adjustment_credit",
+          "amountUSDMicros": "10"
+        }
+      ],
+      "claimedTotalUSDMicros": "110",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R01-int64-money-limit",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "9223372036854775807"
+        }
+      ],
+      "expectedTotalUSDMicros": "9223372036854775807",
+      "expected": "accept"
+    },
+    {
+      "id": "R01-int64-money-overflow",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "9223372036854775808"
+        }
+      ],
+      "expected": "api_reject"
+    },
+    {
+      "id": "R01-sum-overflow",
+      "suite": "quote",
+      "purpose": "deploy",
+      "lines": [
+        {
+          "kind": "compute",
+          "amountUSDMicros": "9223372036854775807"
+        },
+        {
+          "kind": "product",
+          "amountUSDMicros": "1"
+        }
+      ],
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R02-packageVersionId-acquire-bind-release",
+      "suite": "reference",
+      "targetField": "packageVersionId",
+      "expected": "accept"
+    },
+    {
+      "id": "R02-runtimeVersionId-acquire-bind-release",
+      "suite": "reference",
+      "targetField": "runtimeVersionId",
+      "expected": "accept"
+    },
+    {
+      "id": "R02-webuiVersionId-acquire-bind-release",
+      "suite": "reference",
+      "targetField": "webuiVersionId",
+      "expected": "accept"
+    },
+    {
+      "id": "R02-capabilityVersionId-acquire-bind-release",
+      "suite": "reference",
+      "targetField": "capabilityVersionId",
+      "expected": "accept"
+    },
+    {
+      "id": "R02-two-targets-rejected",
+      "suite": "reference",
+      "targetField": "packageVersionId",
+      "extraTarget": "runtimeVersionId",
+      "expected": "decoder_reject"
+    },
+    {
+      "id": "R02-missing-target-rejected",
+      "suite": "reference",
+      "targetField": null,
+      "expected": "decoder_reject"
+    },
+    {
+      "id": "R02-bound-input-replay-conflict",
+      "suite": "reference",
+      "targetField": "packageVersionId",
+      "mutation": "bind_digest_changed",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R02-release-missing-receipt",
+      "suite": "reference",
+      "targetField": "packageVersionId",
+      "mutation": "missing_release_receipt",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R02-release-unknown-side-effect",
+      "suite": "reference",
+      "targetField": "packageVersionId",
+      "mutation": "unknown_release",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R03-official-descriptor-roundtrip",
+      "suite": "publisher",
+      "publisherKind": "official",
+      "expected": "accept"
+    },
+    {
+      "id": "R03-third-party-descriptor-roundtrip",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "expected": "accept"
+    },
+    {
+      "id": "R03-descriptor-missing-execution-template",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "mutation": "missing_template",
+      "expected": "api_reject"
+    },
+    {
+      "id": "R03-descriptor-image-mismatch",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "mutation": "template_image_mismatch",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R03-descriptor-object-digest-mismatch",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "mutation": "stored_digest_mismatch",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R09-namespace-prefix-confusion",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "mutation": "prefix_confusion",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R09-official-third-party-boundary",
+      "suite": "publisher",
+      "publisherKind": "third_party",
+      "mutation": "official_namespace",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-valid-tenant-context",
+      "suite": "authorization",
+      "expected": "accept"
+    },
+    {
+      "id": "R04-wrong-tenant-context",
+      "suite": "authorization",
+      "mutation": "tenant",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-wrong-service-audience",
+      "suite": "authorization",
+      "mutation": "audience",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-wrong-action-context",
+      "suite": "authorization",
+      "mutation": "action",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-wrong-resource-context",
+      "suite": "authorization",
+      "mutation": "resource",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-stale-permission-version",
+      "suite": "authorization",
+      "mutation": "permission_version",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-revoked-session-context",
+      "suite": "authorization",
+      "mutation": "session_revoked",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-body-service-identity-forgery",
+      "suite": "authorization",
+      "mutation": "mtls_caller",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-grant-bound-original-obligation",
+      "suite": "authorization_grant",
+      "expected": "accept"
+    },
+    {
+      "id": "R04-grant-new-procurement-denied",
+      "suite": "authorization_grant",
+      "mutation": "new_purchase",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R04-platform-context-no-fake-tenant",
+      "suite": "authorization_platform",
+      "expected": "accept"
+    },
+    {
+      "id": "R05-route-switch-select-commit",
+      "suite": "route",
+      "expected": "accept"
+    },
+    {
+      "id": "R05-stale-route-generation",
+      "suite": "route",
+      "mutation": "generation",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R05-stale-execution-epoch",
+      "suite": "route",
+      "mutation": "epoch",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R05-unknown-switch-blocks-next",
+      "suite": "route",
+      "mutation": "unknown_pending",
+      "expected": "database_reject"
+    },
+    {
+      "id": "R05-selected-commit-stale-epoch",
+      "suite": "route",
+      "mutation": "commit_epoch",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R07-suspended-reenable-without-delete",
+      "suite": "tenant_lifecycle",
+      "action": "reenable",
+      "expected": "accept"
+    },
+    {
+      "id": "R07-reenable-deleted-denied",
+      "suite": "tenant_lifecycle",
+      "action": "reenable",
+      "mutation": "deleted",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R07-deleted-restore-before-deadline",
+      "suite": "tenant_lifecycle",
+      "action": "restore",
+      "expected": "accept"
+    },
+    {
+      "id": "R07-delete-request-not-window-start",
+      "suite": "tenant_lifecycle",
+      "action": "restore",
+      "mutation": "request_earlier",
+      "expected": "accept"
+    },
+    {
+      "id": "R07-deleted-restore-after-deadline",
+      "suite": "tenant_lifecycle",
+      "action": "restore",
+      "mutation": "expired",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "R05-late-provider-request-after-fence",
+      "suite": "route",
+      "mutation": "late_provider",
+      "expected": "provider_reject"
+    },
+    {
+      "id": "R03-legacy-descriptor-no-fake-build",
+      "suite": "legacy_descriptor",
+      "expected": "accept"
+    },
+    {
+      "id": "R03-legacy-descriptor-rejects-fake-publisher",
+      "suite": "legacy_descriptor",
+      "mutation": "fake_build",
+      "expected": "api_reject"
+    },
+    {
+      "id": "R16-existing-automatic-consent-preserved",
+      "suite": "renewal_consent",
+      "expected": "accept"
+    },
+    {
+      "id": "R16-automatic-consent-missing-denied",
+      "suite": "renewal_consent",
+      "mutation": "missing_consent",
+      "expected": "database_reject"
+    },
+    {
+      "id": "R16-cancel-future-automatic-keeps-original-consent",
+      "suite": "renewal_consent",
+      "mutation": "cancel",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-upgrade-half-30-days",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-upgrade-actual-20-days",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-09-21T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "5000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-upgrade-actual-31-days",
+      "suite": "plan_change",
+      "periodStart": "2026-08-01T00:00:00Z",
+      "periodEnd": "2026-09-01T00:00:00Z",
+      "quoteAt": "2026-08-12T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "50000000",
+      "expectedChargeUSDMicros": "19354839",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-upgrade-at-period-start",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-01T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "20000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-upgrade-last-millisecond",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-30T23:59:59.999Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "1",
+      "expected": "accept",
+      "mathOnly": true
+    },
+    {
+      "id": "D17-upgrade-price-unchanged",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "20000000",
+      "expectedChargeUSDMicros": "0",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-resource-upgrade-price-lower",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "expectedChargeUSDMicros": "0",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-bigint-product-no-intermediate-overflow",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "0",
+      "targetMonthlyUSDMicros": "9223372036854775807",
+      "expectedChargeUSDMicros": "4611686018427387904",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-preserve-source-nanosecond-text",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00.123456789Z",
+      "periodEnd": "2026-10-01T00:00:00.123456789Z",
+      "quoteAt": "2026-09-16T00:00:00.123Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-expired-source-period",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-10-01T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-before-source-period",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-08-31T23:59:59.999Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-under-one-billable-ms",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00.000999999Z",
+      "quoteAt": "2026-10-01T00:00:00.000Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-no-op-resource-transition",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "transitionMutation": "no_op",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-mixed-resource-transition",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "transitionMutation": "mixed",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-unsupported-storage-shrink",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "transitionMutation": "shrink",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-unapproved-resource-family",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "transitionMutation": "incomparable",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-stale-source-subscription-version",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "stale_source",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-accepted-quote-expired",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "expired_quote",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-same-request-same-charge",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "duplicate",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-chain-upgrades-current-applied-price",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "chain",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-scheduled-no-early-provider-effect",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "scheduled",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-manual-downgrade-awaiting-payment",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "manual_boundary",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-boundary-race-one-target-payment",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "boundary_race",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-cancel-before-next-obligation",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "cancel",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-cancel-after-payment-accepted-denied",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "cancel_after_accept",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-delete-cancels-unstarted-plan",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "delete_scheduled",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-delete-during-applying-denied",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "delete_applying",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-no-second-unfinished-change",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "second_plan",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "database_reject"
+    },
+    {
+      "id": "D17-renew-conflict-uses-scheduled-target",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "renew_target",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-known-partial-failure-full-supplement-refund",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "partial_failure",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-unknown-resource-no-refund",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "unknown_resource",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-unknown-charge-no-new-provider-effect",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "unknown_charge",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-supplement-deletion-own-coverage-not-720",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "supplement_delete",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-original-charge-refund-cap-including-unknown",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "mutation": "refund_cap",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "database_reject"
+    },
+    {
+      "id": "D17-Jan31-Feb28-Mar31-anchor",
+      "suite": "billing_anchor",
+      "start": "2026-01-31T01:02:03.123456789Z",
+      "anchorDay": 31,
+      "expectedNext": "2026-02-28T01:02:03.123456789Z",
+      "expectedFollowing": "2026-03-31T01:02:03.123456789Z",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-Jan31-Feb29-Mar31-leap-anchor",
+      "suite": "billing_anchor",
+      "start": "2028-01-31T01:02:03.123456789Z",
+      "anchorDay": 31,
+      "expectedNext": "2028-02-29T01:02:03.123456789Z",
+      "expectedFollowing": "2028-03-31T01:02:03.123456789Z",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-nanosecond-PG-rounding-carry-does-not-overcharge",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00.999999999Z",
+      "periodEnd": "2026-10-01T00:00:00.999999999Z",
+      "quoteAt": "2026-09-16T00:00:00.999Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-legacy-resource-only-no-fabricated-runtime",
+      "suite": "plan_change",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "40000000",
+      "expectedChargeUSDMicros": "10000000",
+      "expected": "accept",
+      "resourceOnly": true
+    },
+    {
+      "id": "D17-scheduled-worker-before-E-has-no-effect",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "worker_early",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-accepted-other-next-period-blocks-change",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "future_other",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-own-prepaid-period-allows-exact-version-bridge",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "own_prepay",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-other-version-change-after-prepayment-rejected",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "wrong_version_after_prepay",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-app-update-no-financial-version-bump-but-risk-at-E",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "runtime_risk",
+      "expected": "owner_reject"
+    },
+    {
+      "id": "D17-manual-unfunded-cancel-new-quote-same-obligation",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "cancel_rebind_unpaid",
+      "expected": "accept"
+    },
+    {
+      "id": "D17-downgrade-failure-refunds-next-period-not-current-zero",
+      "suite": "plan_change_extended",
+      "periodStart": "2026-09-01T00:00:00Z",
+      "periodEnd": "2026-10-01T00:00:00Z",
+      "quoteAt": "2026-09-16T00:00:00Z",
+      "sourceMonthlyUSDMicros": "20000000",
+      "targetMonthlyUSDMicros": "10000000",
+      "mutation": "next_period_failure",
+      "expected": "accept"
+    }
+  ],
+  "approvedPlanChangePolicy": "workspace-plan-change-v1"
+}

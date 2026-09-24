@@ -1,8 +1,8 @@
 # OPL Cloud Development Rules
 
-`one-person-lab-cloud` is the product repository for OPL Cloud architecture,
-Console, Control Plane, Fabric, Ledger, contracts, portable distribution, and
-reusable release mechanisms.
+`opl-cloud` is the single GitHub product repository for OPL Cloud architecture,
+Console/BFF, domain services, contracts, portable distribution, and reusable
+release mechanisms. A domain is not a separate GitHub repository.
 
 ## Canonical Owners
 
@@ -19,9 +19,10 @@ reusable release mechanisms.
 - `opl-instance-medopl` owns the medopl domains, provider profile, production
   environment and Secrets, deployment, rollback, acceptance, and receipts.
 
-`opl-cloud` is an internal package, image, service, namespace, and runner name.
-The archived documentation repository and Git history are provenance, not
-current writers.
+`opl-cloud` is also the package, image, service, namespace, and runner name.
+The former `one-person-lab-cloud` name, archived documentation repository, and
+Git history are provenance, not separate current product writers. Instance,
+Sub2API, and Framework remain separate authorities outside this consolidation.
 
 ## Reconcile Before Editing
 
@@ -64,6 +65,21 @@ absent.
 
 ## Module Ownership
 
+The target architecture is the domain-separated Agent SaaS architecture adopted
+in [docs/decisions.md](docs/decisions.md) on 2026-09-22 and specified by the
+target architecture development specification under
+[docs/spec/target](docs/spec/target/00_master_index.md). The target domains are
+`tenant` (CloudIdentity), `capability`, `build`, `workspace`,
+`runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
+`fabric`, and `ledger`, surfaced through `apps/console-ui` and a Console BFF.
+Each domain owns its own data and writes; cross-owner references use opaque
+identifiers only. The canonical in-repository directory and deployment-unit map
+is [Repository And Instance Topology](docs/architecture.md#repository-and-instance-topology).
+
+The table below is the current implementation that is being migrated. Its rows
+remain authoritative for the code that exists today; the target domains above
+govern new work, and the target architecture work packages own the migration.
+
 | Module | Owns |
 | --- | --- |
 | `apps/console-ui` | Presentation and calls to Control Plane product APIs |
@@ -72,9 +88,25 @@ absent.
 | `services/ledger` | Receipts, evidence, retention, reconciliation, opaque provenance |
 | `services/internal` | Policy-free infrastructure shared by at least two current services |
 
-- Control Plane, Fabric, and Ledger remain separate Go modules, processes, and
-  PostgreSQL schema owners. Integration uses typed public HTTP contracts.
-- Console reaches service data through Control Plane APIs.
+- Under the target architecture, each business service has an independent Go
+  module and process inside this repository. Each data owner has its own
+  PostgreSQL database and roles. CloudIdentity (`tenant`) and Gateway Integration
+  (`gateway`) are distinct data owners in the same Gateway Integration module
+  and deployment unit; neither each domain name nor each proto service creates
+  another process. Internal calls use typed gRPC/protobuf; Console uses the BFF
+  REST API. Until migrated, Control Plane, Fabric, and Ledger keep their current
+  module, process, and typed HTTP boundaries.
+- Control Plane is a migration source, not a permanent second writer alongside
+  the extracted services. Move a capability and its real callers together, then
+  retire its old write path while preserving historical obligations.
+- Console currently reaches service data through Control Plane APIs; the target
+  browser entry is `apps/console-bff`.
+- Keep one shared contracts Go module at `packages/contracts/go/go.mod`. W01
+  places proto sources in `packages/contracts/proto/` and generated target architecture Go
+  bindings in `packages/contracts/go/v226/`, not another module. Internal
+  consumers build from the same Cloud commit, record the schema hash, and lock
+  generator versions. Necessary consumer `go.mod`/`go.sum` updates belong to
+  that contract change; do not add a module solely to avoid those updates.
 - Provider-specific behavior stays behind the owning Fabric adapter.
 - Console does not own persistence, provider calls, billing decisions, or
   Fabric/Ledger/Sub2API state. Control Plane does not own the wallet, provider
@@ -91,11 +123,14 @@ Development with distinct owners and write sets may proceed in parallel. Changes
 to the same file, one shared contract revision, canonical `main`, or production
 state are serialized.
 
-Cross-service coordination remains typed HTTP plus owner readback. Do not add a
-new framework, service, shared policy layer, durable workflow engine, or global
-event bus unless a current caller and observed missing capability justify it;
-the current architecture does not adopt Spring Modulith, Dapr, Temporal, or a
-second Cordis runtime.
+Cross-service coordination is typed gRPC/protobuf plus owner readback under the
+target architecture, with per-domain PostgreSQL Outbox delivery where a
+reliable event is required; the un-migrated services still coordinate over typed
+HTTP. Do not add a framework, service, shared policy layer, durable workflow
+engine, or global event bus beyond the domains and mechanisms the adopted target
+defines. A new service still needs a current caller, an observed missing
+capability, a bounded migration, and an owner. The target architecture does not
+adopt Spring Modulith, Dapr, Temporal, or a second Cordis runtime.
 
 ## Implementation
 

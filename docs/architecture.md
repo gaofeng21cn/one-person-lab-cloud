@@ -1,6 +1,6 @@
 # OPL Cloud Architecture
 
-Owner: `one-person-lab-cloud`
+Owner: `opl-cloud`
 Purpose: `architecture_boundary`
 State: `active_target_reference`
 Machine boundary: Canonical human-readable target architecture; implementation
@@ -70,12 +70,12 @@ For Cloud, the authority surfaces are concrete products and services:
 | Family capability domain | Cloud authority surface | Boundary outside Cloud |
 | --- | --- | --- |
 | Console | Cloud Console and Control Plane own the account/control-plane product, Workspace policy, approval, quota and billing projection | Framework may expose operator/readiness/action projections; App owns local product interaction, neither owns Cloud policy or service state |
-| Workspace | Control Plane owns Cloud Workspace entitlement, Launch and application deployment coordination; Fabric owns runtime/resource binding and readback | The selected application owns its business behavior and data formats; Framework owns only its scoped runtime composition |
-| Fabric | Fabric owns provider-neutral remote resource facts, mutation ports and provider adapters | Framework and App consume typed adapters and cannot acquire provider or deployment authority |
+| Workspace | The Workspace service owns Workspace identity, membership/entitlement, resource plan and target authorization; its Saga provisions resources then requests Serve delivery | Agent Package, build artifact and Agent deployment state are owned by Capability, Build and Serve respectively |
+| Fabric | Fabric owns provider-neutral compute/storage/network resource facts, provisioning/binding ports and provider adapters | Agent OCI deployment, Agent runtime readiness and Serve traffic selection are not Fabric facts |
 | Ledger | Cloud Ledger owns Cloud receipts, reconciliation, idempotency, and caller-owned opaque provenance refs | Framework observers and product projections do not become the persistent Cloud Ledger or a review/continuation authority |
 | Remote Companion / OPL Link | `opl-link/service` owns broker, pairing, capacity and provider transport authority | OPL Cloud only hosts Workspace/WebUI delivery and does not own a remote-companion route, provider, persistence or contract |
 | Gateway / Wallet | Control Plane projects Gateway account data and coordinates settlement | Sub2API remains the external identity, spendable-wallet, Key, routing and usage authority |
-| Packages / Connect / Runway | Cloud consumes exact owner refs, connector capabilities and execution results where required | Package owners, native carriers and Framework retain discovery, carrier currentness, connector access and invocation lifecycle |
+| Capability / Build / Runtime Control / Serve | Capability owns Agent Packages and WebUI catalog; Build owns OCI build jobs/evidence; Runtime Control owns approved Runtime release versions; Serve owns per-Workspace Agent delivery and API/Embed/Hosted UI access | OPL App/Framework owns Runtime implementation; Fabric owns only infrastructure resources; no parallel Agent Service lifecycle |
 
 This rebaseline keeps the family vocabulary useful without making a Cloud
 directory, service, API, package, or plugin the owner of the whole brand.
@@ -83,7 +83,7 @@ directory, service, API, package, or plugin the owner of the whole brand.
 OPL Cloud
 ├─ OPL Gateway       user-visible AI access, routing and usage
 ├─ OPL Workspace     user-visible isolated application environment
-├─ OPL Serve         Agent API, Embed and Hosted UI publishing
+├─ OPL Serve         Agent Package-to-Workspace delivery, deployment authority, API/Embed/Hosted UI access
 ├─ OPL Console       account policy, approval, quota and billing
 ├─ OPL Fabric        Connect, Compute, Storage, Environments and adapters
 └─ OPL Ledger        receipt and provenance refs
@@ -101,9 +101,9 @@ Domain agents        domain strategy, quality verdict and delivery authority
 ## Repository And Instance Topology
 
 ```text
-one-person-lab-cloud
+opl-cloud
   product architecture, whitepaper, roadmap
-  Console + Control Plane + Fabric + Ledger implementation
+  Console/BFF + the target domain services
   reusable contracts, portable images and GitHub Releases
         | immutable product SHA + image digest
         v
@@ -111,12 +111,71 @@ opl-instance-medopl
   medopl customization, production environment, deployment, rollback and evidence
 ```
 
-`one-person-lab-cloud` is the single product and implementation repository.
-Console, Control Plane, Fabric, and Ledger remain logical service owners inside
-it; similarly named prototype repositories are historical inputs, not parallel
-current writers. The short identifier `opl-cloud` remains valid for packages,
-images, binaries, services, namespaces, environment variables and runner
-labels, but it is not a repository boundary.
+This repository is the product and implementation repository for the target
+domain-separated Agent SaaS architecture. The target domains are `tenant`
+(CloudIdentity), `capability`, `build`, `workspace`, `runtime_control`,
+`resource_catalog`, `gateway` (Gateway Integration), `fabric`, and `ledger`,
+with `console-ui` and a Console BFF as the browser surface. All Cloud product
+code belongs to this one GitHub repository, `opl-cloud`; service boundaries are
+not repository boundaries. `Fabric` and `Ledger` retain their execution and
+evidence authority. The target architecture work packages track the migration from the current
+Control Plane, Fabric, and Ledger implementation, not creation of domain repos.
+
+### Target Directory And Service Map
+
+This is the target layout, not evidence that the new modules already exist:
+
+| In-repository path | Module / deployment boundary | Data and responsibility owner |
+| --- | --- | --- |
+| `apps/console-ui/` | React/TypeScript application | Presentation; calls Console BFF only |
+| `apps/console-bff/` | Independent Go module and process | Browser REST, server-side session security and DTO aggregation; no business persistence or business Saga |
+| `services/gateway-integration/` | Independent Go module and process | `tenant` / CloudIdentity and `gateway` integration: two distinct database/writer owners in one deployment unit; Sub2API remains the external wallet/Gateway authority |
+| `services/capability/` | Independent Go module and process | `capability`: publishers, Packages, versions and catalog metadata |
+| `services/build/` | Independent Go module and process | `build`: build jobs, immutable input references and artifact evidence |
+| `services/workspace/` | Independent Go module and process | `workspace`: Workspace lifecycle and business Saga |
+| `services/runtime-control/` | Independent Go module and process | `runtime_control`: approved Runtime release catalog, immutable Runtime version references and admission lifecycle used by Build |
+| `services/resource-catalog/` | Independent Go module and process | `resource_catalog`: product plans and pricing rules |
+| `services/serve/` | New independent Go module and process | `serve`: per-Workspace Agent delivery/deployment lifecycle, Runtime execution adapter, readiness and access routing; API/Embed/Hosted UI |
+| `services/fabric/` | Existing independent Go module and process | `fabric`: provider mutation, compute/storage/network provisioning, binding and resource readback only |
+| `services/ledger/` | Existing independent Go module and process | `ledger`: receipts, evidence and reconciliation |
+| `packages/contracts/go/` | One shared Go module, no process or database | Cross-owner wire contracts and generated `v226/` bindings |
+| `services/internal/` | Existing narrowly scoped, policy-free shared infrastructure | Only reusable mechanisms with at least two real service callers |
+| `services/control-plane/` | Existing independent Go module and process during migration | Retained capabilities until their callers and obligations move to the target owner; not a permanent second writer |
+
+Each business data owner has its own database and writer roles. Co-location in
+one repository does not permit cross-service implementation imports, direct
+access to another owner's database, cross-owner joins, or shared business state.
+CloudIdentity and Gateway Integration stay in one service module and deployment
+unit while retaining two data owners; a proto `service` declaration does not
+create a process. The BFF owns no business Saga; Workspace does.
+
+This adds seven planned business-service modules and one BFF module to the
+repository, rather than new GitHub repositories. This includes Serve as one new
+Agent-delivery Owner; Runtime Control remains one existing target service but its
+responsibility is narrowed to Runtime release versions. Fabric, Ledger, Console UI and
+the existing contracts module are retained. The Control Plane is migrated one
+live capability at a time: switch its real callers and preserve historical data
+obligations before retiring each old write path. This decision does not add an
+orchestrator, event bus, shared policy layer, or a second Gateway.
+
+W01 uses `packages/contracts/proto/` for production proto source and
+`packages/contracts/go/v226/` for generated bindings under the existing
+`packages/contracts/go/go.mod`; it does not create a second contracts module.
+Contracts and internal consumers use the same Cloud source commit, recorded
+schema hashes, and locked generation tools. Consumer `go.mod` and `go.sum`
+changes required by that dependency graph are part of the contract change, not
+a reason to invent another module. Service-local domain models remain local.
+Independent Instance, Sub2API and Framework authorities are not merged into
+Cloud; their external integration and exact artifact pins remain unchanged.
+
+### Current Implementation And Instance Boundary
+
+The current implementation still runs the earlier Control Plane, Fabric, and
+Ledger services. Their boundaries are described below and remain authoritative
+for the code that exists today; the target topology governs new work. Similarly
+named prototype repositories are historical inputs, not parallel current
+writers. The short identifier `opl-cloud` remains valid for packages, images,
+binaries, services, namespaces, environment variables and runner labels.
 
 An instance repository materializes one installation without copying product or
 runtime code. It owns non-secret domains, provider selection, region and
@@ -185,25 +244,24 @@ flowchart TB
   Console -. account availability policy .-> Packages
 
   App --> Serve
+  Console --> Capability[Capability: Package upload/catalog]
+  Capability --> Build[Build: immutable OCI]
+  RuntimeControl[Runtime Control: approved Runtime releases] --> Build
+  Build --> Serve
   Workspace --> Serve
-  Console -. service policy, quota and billing .-> Serve
-  Serve -. exact publication revision refs .-> Owners
-  Serve --> Runway[OPL Runway]
+  Serve --> Fabric[Fabric: provisioned resource refs]
+  Serve --> AgentRuntime[Packaged OPL App/Framework Runtime]
+  Console -. product DTO aggregation .-> Serve
 
-  App --> Fabric[OPL Fabric]
-  Workspace --> Fabric
+  Workspace -. entitlement/resource plan .-> Fabric
   Console -. resource policy and approval .-> Fabric
-  Packages -. package refs and requirements .-> Fabric
-  Runway --> Fabric
-  Runway --> Gateway
+  Serve --> Gateway[OPL Gateway: model access]
+  Serve --> Ledger[OPL Ledger: evidence]
 
   Fabric --> Connect[OPL Connect]
   Fabric --> Compute[OPL Compute]
   Fabric --> Environments[OPL Environments]
   Fabric --> Storage[Workspace Storage]
-  Fabric --> Ledger[OPL Ledger]
-  Runway --> Ledger
-  Serve --> Ledger
   Domain --> Ledger
 ```
 
@@ -212,15 +270,15 @@ flowchart TB
 | Surface | Owner responsibility | Explicit non-owner boundary |
 | --- | --- | --- |
 | OPL Gateway | AI access, routing, provider policy and usage signals | Package state and domain quality |
-| OPL Workspace | Application environment, access, entitlement and selected-deployment lifecycle | Application business state, Package lifecycle and provider resource truth |
-| OPL Serve | Agent Service, immutable Revision, Deployment, endpoint, traffic and Hosted UI projection | Package lifecycle, sandbox internals and domain verdicts |
+| OPL Workspace | Workspace identity, membership/entitlement, resource plan and authorization of the target | Agent deployment lifecycle/current selection (Serve), Package/Build facts, Fabric resource facts |
+| OPL Serve | Sole Agent delivery/deployment lifecycle per Workspace, deployment history/current Agent, OCI execution/readiness/routing, API/Embed/Hosted UI | Package/Skill contents, Runtime release catalog, Workspace entitlement, infrastructure resource truth and domain verdicts |
 | OPL Console | Account onboarding, Workspace lifecycle, quota, approval, account-total billing view and managed-resource policy | Spendable wallet, package install/update/repair and resource execution |
-| OPL Fabric | Provider-neutral connector, compute, storage and environment capabilities; resource binding and execution adapters | Customer balance, package identity, carrier state and domain verdicts |
+| OPL Fabric | Provider-neutral compute, storage, network and connector resource provisioning/binding plus resource readback | Agent OCI deployment, Runtime release selection, Agent readiness and Serve access routing |
 | OPL Ledger | Receipt, opaque provenance, reconciliation and idempotency | Source data, package truth, review policy, continuation authorization and domain verdicts |
 | Package owner | Stable identity, capabilities, entrypoints and exact publication revisions | Physical carrier state, Cloud policy and domain verdicts |
 | Native carrier | Physical install, update, remove and fresh installed/callable readback | Package identity, Cloud policy and domain verdicts |
 | OPL Packages | Carrier-neutral discovery, descriptor projection, configured-carrier delegation and fresh state aggregation | Parallel resolver/lock/currentness, account policy and domain truth |
-| OPL Runway | Invocation/session lifecycle and execution-provider routing | Service identity, package lifecycle and domain verdicts |
+| OPL Runtime Control | Approved Runtime release versions and immutable artifact/compatibility references consumed by Build | Agent deployment, running instance state and Runtime implementation |
 | Domain agent | Domain strategy, evidence judgment, quality verdict and delivery authority | Cloud infrastructure truth |
 
 ## Workspace Application Boundary
@@ -490,29 +548,19 @@ post-expiry retention.
 
 ### DDD Model And Consistency Boundaries
 
-Bounded contexts follow authority, not a new service for each noun. Control
-Plane owns Workspace management and application admission; Fabric owns resource
-execution; Ledger owns evidence. Application publication and data formats are
-upstream application-owner facts, and Sub2API remains the external wallet/Key
-context. Console is a presentation adapter. Instance is the installation and
-operations owner, not another writer of Workspace business state.
+Bounded contexts follow authority, not a service per noun. Workspace owns its identity, entitlement and resource plan; Serve owns Agent delivery/deployment; Capability owns Package; Build owns OCI construction; Runtime Control owns approved Runtime release versions; Fabric owns infrastructure resource facts; Ledger owns evidence. Console/BFF aggregates owner APIs. Instance owns installation configuration and protected production deployment.
 
 | Model | Kind and owner | Invariant |
 | --- | --- | --- |
-| Workspace | Control Plane aggregate root | Owns account/entitlement, optional current deployment reference, exposure policy, lifecycle version and deployment reservation. Provisioned with no deployment is valid; expired/deleting state cannot admit or activate another runtime. |
+| Workspace | Workspace aggregate root | Owns tenant/membership relation, entitlement, resource plan, lifecycle and target authorization. Resource-provisioned Workspace may have no Agent; it stores no Agent deployment/current pointer. |
 | Application revision | Immutable publisher-owned description admitted by Control Plane | Exact descriptor and component digests are fixed. Cloud registration owns availability/permission to use that revision, not the application's upstream release identity or implementation. |
-| Application deployment | Workspace-scoped entity and durable Control Plane operation | Fixes predecessor, target revision, configuration digest, Secret versions, data references, idempotency identity and expected Workspace version. Its progress does not independently define the Workspace's current application. |
+| Agent delivery/deployment | Serve-owned per-Workspace entity and durable operation | Fixes exact CapabilityVersion/OCI, predecessor, deployment config/resource refs, idempotency and readiness evidence; Serve alone selects the current Agent for that Workspace. |
 | Data restore | Separate durable Control Plane operation | Fixes restore artifact, input consistency set and new target bindings; application-owned validation and Fabric execution readback precede successful binding. Restart/update cannot implicitly create this operation. |
-| Runtime group | Fabric evolution of the existing Workspace Runtime model | Binds deployment identity/specification to all required service instances and entrypoints; Fabric alone determines their observed resource identities and readiness. |
+| Runtime release | Runtime Control-owned immutable release | Identifies the approved OPL App/Framework Runtime artifact and compatibility contract that Build pins into an OCI; it has no Workspace instance/deployment state. |
 | Volume, attachment and Secret binding | Existing Fabric resource owners, referenced by a runtime or restore operation | Physical ownership, version, allowed consumers and lifecycle remain authoritative here; logical data names are not provider identities. |
 | Image/platform/probe/resource/mount/Secret/data reference | Typed value objects | Validated immutable facts passed only where consumed; none requires its own service, repository or workflow engine. |
 
-The Workspace aggregate is the consistency gate for the current binding. The
-deployment entity uses the existing durable operation/lease/store mechanisms;
-adding it does not justify a parallel business state machine. Domain rules
-operate on typed owner facts, while application services coordinate repositories
-and HTTP ports. Database row shape, Kubernetes objects and Docker responses do
-not become domain models shared across services.
+Workspace is the consistency gate for whether a target may receive a delivery and which resources it is entitled to. Serve is the consistency gate for which Agent deployment is current. The BFF composes these facts but does not persist a second current selection. Durable deployment operations and runtime observations live in Serve; resource observations live in Fabric. Typed owner references cross service boundaries; no shared ORM or cross-owner database joins.
 
 ### Independent Facts And Completion
 
@@ -523,8 +571,11 @@ meaning and do not prescribe new wire enums or database columns.
 | --- | --- | --- |
 | Paid entitlement and lifecycle version | Control Plane, anchored to confirmed Sub2API settlement | Whether the Workspace may consume its resources and admit an operation. |
 | Resource fulfillment and current resource condition | Fabric readback; Control Plane records accepted fulfillment | Which compute, storage and attachments were delivered and which exist now. |
-| Selected application and desired specification | Control Plane Workspace aggregate | An optional current deployment and the exact reserved successor, including logical data bindings. |
-| Observed application availability | Fabric execution/entry facts projected through Control Plane access policy | Which components and entry actually work for the selected specification now. |
+| Workspace entitlement and target authorization | Workspace aggregate | Whether delivery is allowed and which resource plan/Workspace is the target; not which Agent deployment is current. |
+| Current Agent and deployment history | Serve | The single current deployment and all accepted/replacement deployment operations for a Workspace. |
+| Runtime release catalog | Runtime Control | Which immutable Runtime releases Build may use for new OCI artifacts. |
+| Observed Agent readiness and Serve route | Serve readback | Whether the selected OCI is running and reachable through Serve. |
+| Provisioned infrastructure resources | Fabric readback | Which compute/storage/network resources exist and their provider state. |
 | Operation and evidence completion | Owning durable operation and Ledger receipt readback | Whether provisioning, deployment or restore completed and whether its result was recorded. |
 
 Resource provisioning validates resource requirements without an application
@@ -947,32 +998,24 @@ Agent Services do not change this identity. Workspaces and Services can both be
 zero-to-many per account, but Services remain deployment resources for external
 consumers rather than workbench instances.
 
-## Service Publication Boundary
+## Agent Delivery And Serve Boundary
 
-OPL Serve publishes an exact package revision through a dedicated Agent Edge:
+OPL Serve is the single product and data owner for delivering a built Agent to a Workspace and serving that same Agent. A Workspace is the target and authorization/resource boundary, not a second deployment writer. Each Workspace has at most one current Agent; deployment history and failed/replacement candidates do not create parallel current Agents.
 
 ```text
-Agent Package exact digest
--> Service Entrypoint Contract
--> Agent Service
--> immutable Agent Revision
--> Deployment and traffic policy
--> API / Embed / Hosted UI
--> Invocation or Session
+Serve experience / Console UI starts Package upload
+-> Capability owns upload session, Package and immutable PackageVersion
+-> Build fixes Package + WebUI + Runtime release refs and produces OCI digest
+-> Workspace validates target membership, entitlement and resource plan
+-> Fabric provisions/binds infrastructure resources and returns resource readback
+-> Serve deploys the exact OCI to the authorized Workspace and owns readiness/current selection
+-> API / Embed / Hosted UI reach that same current Agent through Serve
+-> Ledger records required delivery/invocation evidence
 ```
 
-The Agent Edge owns public authentication, request validation, rate limits,
-quota, routing, event streaming and signed Webhooks. Public traffic does not
-terminate at a Workspace, sandbox, container or external provider session.
+The upload screen may be part of Serve, but Package bytes, upload completion and Package identity are written only by Capability. Runtime Control owns the approved Runtime release catalog used by Build; the OPL App/Framework owner supplies the Runtime implementation. Build binds the exact Runtime release into the immutable OCI. Fabric does not start/stop Agent OCI or own its readiness/routing. Serve's deployment adapter applies the OCI to resources already provisioned by Fabric and records its own authoritative result. Workspace may expose Serve read models through BFF aggregation but stores no duplicate Agent deployment pointer or status.
 
-Runway owns the OPL Invocation and Session lifecycle and routes each exact
-revision to an approved execution-provider adapter. The OPL-native Runway/Fabric
-path and any external managed-Agent runtime remain adapters; their identifiers
-are refs, not OPL Service or Deployment truth.
-
-Hosted UI and Embed clients consume the same Serve API. They may project an
-Agent's schemas, events, artifacts and publisher branding, but cannot bypass
-Serve authentication, policy, quota or receipts.
+Serve owns public authentication, access policy and route selection for its API/Embed/Hosted UI surfaces. Invocation/session execution semantics remain in the packaged Runtime unless a separately adopted invocation owner is introduced; Serve's access surface must not silently create a second Agent execution model.
 
 ## Execution Boundary
 

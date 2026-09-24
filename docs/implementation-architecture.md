@@ -5,6 +5,23 @@ Cloud Control Plane APIs; App Shells consume Cloud-facing projections through
 App/Framework contracts. Cloud service and database authority stays in the
 owning Cloud service.
 
+## Target And Current Evidence
+
+This document describes the implementation that exists, not completed target architecture
+migration. The adopted target keeps all Cloud product code in one GitHub
+repository, `opl-cloud`, while retaining independent service modules and
+processes. Its canonical directory/deployment-unit map is
+[Repository And Instance Topology](architecture.md#repository-and-instance-topology).
+New target service modules and the Console BFF are planned; this documentation
+change does not claim W01 or W02 complete. CloudIdentity and Gateway Integration
+share one target service module/deployment unit but retain separate data owners.
+
+Control Plane remains the current caller and writer for capabilities not yet
+migrated. Extraction must switch real callers and retire the old write path;
+it must not create a permanent second writer. The existing contracts Go module
+will also contain generated target architecture bindings under `v226/`, rather than a second
+module. Consumer dependency updates are verified with that contract change.
+
 ## Request Path
 
 ```text
@@ -91,18 +108,19 @@ blast radius creates a separate requirement.
 
 ## Repository And Instance Boundary
 
-`one-person-lab-cloud` owns both product architecture and this reusable Console,
-Control Plane, Fabric, and Ledger implementation. These are logical service
-boundaries inside one repository, not authorization for separate current
-implementation repos. `opl-cloud` is retained only as the short package, image,
-binary, service, namespace, environment-variable and runner identifier.
+`opl-cloud` (formerly `one-person-lab-cloud`) owns product architecture, the
+current reusable Console, Control Plane, Fabric, and Ledger implementation, and
+the target domain services. These are module and service boundaries inside one
+GitHub repository, not authorization for separate implementation repositories.
+The same short name also identifies packages, images, binaries, services,
+namespaces, environment variables and runner labels.
 
 `opl-instance-medopl` owns one concrete installation: domain names, provider
 profile, region and resource ids, the enabled subset of Cloud-defined plans,
 image pins, secret references, promotion policy, and deployment receipts. The
 current fixed customer prices and `priceVersion` are implemented by the Cloud
 Control Plane catalog; an Instance does not override them. Instance repositories
-consume exact `one-person-lab-cloud` candidates for pre-publication qualification
+consume exact Cloud candidates for pre-publication qualification
 and digest-addressed Releases after publication. Their internal artifacts may use the
 `opl-cloud` identifier, but they never copy runtime code, product contracts, or
 spendable-balance state.
