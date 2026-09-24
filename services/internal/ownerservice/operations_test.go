@@ -16,10 +16,10 @@ import (
 // constructible over an owner-local store: an owner cannot advertise the surface
 // without the table that answers it.
 func TestOperationsRequireAnOwnerStore(t *testing.T) {
-	if _, err := NewOperations(OwnerServe, nil); err == nil {
+	if _, err := NewOperations(OwnerServe, nil, nil); err == nil {
 		t.Fatal("OwnerOperations was constructed without an owner store")
 	}
-	if _, err := NewOperations(Owner("not-an-owner"), &ownerstore.Store{}); err == nil {
+	if _, err := NewOperations(Owner("not-an-owner"), &ownerstore.Store{}, nil); err == nil {
 		t.Fatal("OwnerOperations accepted an unknown owner identity")
 	}
 }

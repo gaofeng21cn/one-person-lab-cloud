@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -72,6 +74,9 @@ func allowedIdentity() *fakeIdentity {
 	return &fakeIdentity{
 		session: &api.Session{ActorId: "actor-1", TenantId: ptr("tenant-1"), CsrfToken: "csrf-1"},
 		decision: &api.AuthorizationDecision{
+			ActorId: "actor-1", SessionId: ptr("session-1"),
+			Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
+			PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
 			Result:        api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
 			Issuer:        api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
 			Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,

@@ -2,10 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"net/http"
+	"opl-cloud/apps/console-bff/internal/clients"
 	"strings"
+	"time"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -93,17 +98,8 @@ func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, calle
 	if err != nil {
 		return fmt.Errorf("read CloudIdentity authorization: %w", err)
 	}
-	if decision.GetIssuer() != api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY {
-		return fmt.Errorf("authorization was not issued by CloudIdentity: %w", ErrAuthorizationRequired)
-	}
-	if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
-		return fmt.Errorf("CloudIdentity denied %s on %s: %w", action, resource.GetId(), ErrAuthorizationRequired)
-	}
-	if decision.GetAction() != action || decision.GetAudienceOwner() != audienceOwner {
-		return fmt.Errorf("authorization covers a different action or audience: %w", ErrAuthorizationRequired)
-	}
-	if expected := strings.TrimSpace(resource.GetId()); expected != "" && decision.GetResource().GetId() != expected {
-		return fmt.Errorf("authorization covers a different resource: %w", ErrAuthorizationRequired)
+	if err := owneridentity.ValidateDecision(request, decision, time.Now()); err != nil {
+		return fmt.Errorf("%v: %w", err, ErrAuthorizationRequired)
 	}
 	return nil
 }
@@ -123,4 +119,20 @@ func ownerEnum(owner owneridentity.Owner) api.OwnerEnum {
 		return api.OwnerEnum_OWNER_ENUM_UNSPECIFIED
 	}
 	return api.OwnerEnum(value)
+}
+
+// WithCaller forwards only the session identity resolved by CloudIdentity. Browser
+// actor and tenant headers never enter this context.
+func WithCaller(ctx context.Context, caller Caller, requestID string) context.Context {
+	if strings.TrimSpace(requestID) == "" {
+		var bytes [16]byte
+		_, _ = rand.Read(bytes[:])
+		requestID = hex.EncodeToString(bytes[:])
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	sessionID := caller.SessionID
+	return clients.WithCallContext(ctx, &api.CallContext{ActorId: caller.Session.GetActorId(), SessionId: &sessionID, Scope: sessionScope(caller.Session), RequestId: requestID, DeadlineAt: timestamppb.New(deadline)})
 }

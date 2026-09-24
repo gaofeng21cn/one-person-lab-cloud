@@ -3,6 +3,7 @@ package ownerservice
 import (
 	"context"
 	"errors"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"strings"
 	"testing"
 
@@ -11,9 +12,10 @@ import (
 
 func testConfig(owner Owner) Config {
 	return Config{
+		TLS:   owneridentity.TLSConfig{AllowInsecureLocal: true},
 		Owner: owner,
 		Addr:  "127.0.0.1:0",
-		Peers: map[Owner]string{OwnerWorkspace: "0123456789abcdef0123456789abcdef"},
+		Peers: map[Service]string{Service(OwnerWorkspace): "0123456789abcdef0123456789abcdef"},
 	}
 }
 

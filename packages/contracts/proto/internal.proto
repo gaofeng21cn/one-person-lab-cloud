@@ -549,6 +549,7 @@ message Quote {
 }
 
 message Workspace {
+ // BFF projection: deployment/application fields come from Serve, not Workspace persistence.
  // Discriminator/required validation follows the matching OpenAPI schema; reject invalid variants.
  string id = 1;
  string name = 2;
@@ -2427,7 +2428,7 @@ message RouteReadback { string workspace_id = 1; string switch_id = 2; Observati
 // Fence does not change route generation/target. Activate/rollback require current
 // accepted epoch and expected provider revision+generation; success increases route
 // generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Workspace commits currentAgentDeploymentId and selected_route_generation/epoch only
+// Serve commits the sole active AgentDeployment and its route selection only
 // after confirmed exact target readback and its own current-intent CAS, then emits
 // selection evidence. Lost DB response resumes original switch, never new activation.
 // Failed selection CAS leaves intent needs_attention: authoritative readback, then

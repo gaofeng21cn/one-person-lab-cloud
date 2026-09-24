@@ -38,6 +38,28 @@ type Server struct {
 	checks   map[string]ReadyCheck
 	mu       sync.Mutex
 	serving  bool
+	closers  []interface{ Close() error }
+}
+
+// TrackCloser registers a dependency opened while wiring product handlers. The
+// owner bootstrap closes tracked connections together with its database.
+func (s *Server) TrackCloser(c interface{ Close() error }) error {
+	if c == nil {
+		return fmt.Errorf("%s: closer is required", s.config.Owner)
+	}
+	s.closers = append(s.closers, c)
+	return nil
+}
+
+func (s *Server) closeTracked() error {
+	var first error
+	for i := len(s.closers) - 1; i >= 0; i-- {
+		if err := s.closers[i].Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	s.closers = nil
+	return first
 }
 
 // ErrNotReady reports that this owner cannot truthfully claim SERVING. A process in
@@ -53,6 +75,13 @@ func (e ErrNotReady) Error() string { return e.Reason }
 func NewServer(config Config, options ...grpc.ServerOption) (*Server, error) {
 	if !config.Owner.Valid() {
 		return nil, fmt.Errorf("%q is not a Cloud owner", config.Owner)
+	}
+	creds, err := config.TLS.ServerCredentials(config.Owner.Service())
+	if err != nil {
+		return nil, err
+	}
+	if creds != nil {
+		options = append(options, grpc.Creds(creds))
 	}
 	options = append(options, grpc.ChainUnaryInterceptor(identityInterceptor(config)))
 	server := grpc.NewServer(options...)
@@ -245,7 +274,7 @@ func identityInterceptor(config Config) grpc.UnaryServerInterceptor {
 // verifies it against its allowlist. It delegates to the shared wire convention so
 // every in-repo caller presents the identical headers.
 func OutboundIdentityInterceptor(owner Owner, token string) grpc.UnaryClientInterceptor {
-	return owneridentity.OutboundInterceptor(owner, token)
+	return owneridentity.OutboundInterceptor(owner.Service(), token)
 }
 
 // DialOptions returns the client-side credentials for calling one owner from

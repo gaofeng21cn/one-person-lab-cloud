@@ -10,10 +10,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
+
+	"google.golang.org/grpc"
+	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/services/capability/catalog"
 
 	"opl-cloud/services/capability/migrations"
 	"opl-cloud/services/internal/ownerservice"
@@ -34,11 +42,44 @@ func main() {
 	}
 
 	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
-		if err := server.RequireProductGroups("CapabilityProductService"); err != nil {
+		if database == nil {
+			return ownerservice.ErrHandlersNotImplemented
+		}
+		root, publicURL, schemaPath, schemaDigest, signing := os.Getenv("OPL_CAPABILITY_OBJECT_ROOT"), os.Getenv("OPL_CAPABILITY_OBJECT_URL"), os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_PATH"), os.Getenv("OPL_CAPABILITY_PACKAGE_SCHEMA_DIGEST"), os.Getenv("OPL_CAPABILITY_OBJECT_SIGNING_KEY")
+		if root == "" || publicURL == "" || schemaPath == "" || schemaDigest == "" || len(signing) < 32 {
+			return ownerservice.ErrHandlersNotImplemented
+		}
+		objects, err := catalog.NewObjects(root, publicURL, []byte(signing), catalog.UploadPolicy{MaxBytes: 1 << 30, PartBytes: 16 << 20, MaxExpandedBytes: 4 << 30, MaxFiles: 100000, TTL: 24 * time.Hour, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: schemaDigest})
+		if err != nil {
 			return err
 		}
-		_ = database
-		return ownerservice.ErrHandlersNotImplemented
+		tls := owneridentity.TLSFromEnv(os.Getenv)
+		runtimeConn, err := dialPeer(config, tls, owneridentity.RuntimeControl, os.Getenv("OPL_RUNTIME_CONTROL_ADDR"))
+		if err != nil {
+			return err
+		}
+		if err := server.TrackCloser(runtimeConn); err != nil {
+			return err
+		}
+		buildConn, err := dialPeer(config, tls, owneridentity.Build, os.Getenv("OPL_BUILD_ADDR"))
+		if err != nil {
+			return err
+		}
+		if err := server.TrackCloser(buildConn); err != nil {
+			return err
+		}
+		authorizer, _, err := ownerservice.AuthorizerFromConfig(config)
+		if err != nil {
+			return err
+		}
+		service, err := catalog.New(database.DB(), authorizer.Authorize, objects)
+		if err != nil {
+			return err
+		}
+		service.Runtime = api.NewRuntimeControlProductServiceClient(runtimeConn)
+		service.Build = api.NewBuildCoordinationClient(buildConn)
+		service.Usage = api.NewClaimUsageReadbackClient(buildConn)
+		return service.Register(server)
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -53,4 +94,15 @@ func main() {
 	if err := server.Serve(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func dialPeer(config ownerservice.Config, tls owneridentity.TLSConfig, target owneridentity.Owner, address string) (*grpc.ClientConn, error) {
+	if address == "" {
+		return nil, fmt.Errorf("%s address is required", target)
+	}
+	options, err := tls.DialOptions(config.Owner.Service(), target.Service(), os.Getenv("OPL_"+strings.ToUpper(target.String())+"_TOKEN"))
+	if err != nil {
+		return nil, err
+	}
+	return grpc.NewClient(address, options...)
 }

@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -38,12 +37,14 @@ type Config struct {
 	Tokens             map[owneridentity.Owner]string
 	CloudIdentityAddr  string
 	CloudIdentityToken string
+	TLS                owneridentity.TLSConfig
 }
 
 // ConfigFromEnv resolves the owner addresses and per-owner tokens from the
 // environment.
 func ConfigFromEnv(getenv func(string) string) Config {
 	return Config{
+		TLS: owneridentity.TLSFromEnv(getenv),
 		Addresses: map[owneridentity.Owner]string{
 			owneridentity.Capability: strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
 			owneridentity.Build:      strings.TrimSpace(getenv("OPL_BUILD_URL")),
@@ -95,9 +96,10 @@ func Dial(config Config) (*Clients, error) {
 		if addr == "" {
 			continue
 		}
-		options := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-		if token := strings.TrimSpace(config.Tokens[owner]); token != "" {
-			options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owner, token)))
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owner.Service(), config.Tokens[owner])
+		if err != nil {
+			clients.Close()
+			return nil, err
 		}
 		conn, err := grpc.NewClient(addr, options...)
 		if err != nil {
@@ -118,11 +120,10 @@ func Dial(config Config) (*Clients, error) {
 		}
 	}
 	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
-		options := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-		if token := strings.TrimSpace(config.CloudIdentityToken); token != "" {
-			// CloudIdentity presents its own identity on the boundary; the BFF calls
-			// it as an in-repo peer with the configured token.
-			options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Tenant, token)))
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.Service(owneridentity.Tenant), config.CloudIdentityToken)
+		if err != nil {
+			clients.Close()
+			return nil, err
 		}
 		conn, err := grpc.NewClient(addr, options...)
 		if err != nil {
@@ -168,7 +169,7 @@ func (c *Clients) Workspace(ctx context.Context, workspaceID string) (*api.Works
 	if c.workspace == nil {
 		return nil, fmt.Errorf("workspace: %w", ErrUpstreamUnconfigured)
 	}
-	return c.workspace.GetWorkspace(ctx, &api.GetWorkspaceRpcRequest{WorkspaceId: workspaceID})
+	return c.workspace.GetWorkspace(ctx, &api.GetWorkspaceRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
 }
 
 // Deployments lists the Serve-owned deployment attempts for one Workspace.
@@ -176,7 +177,7 @@ func (c *Clients) Deployments(ctx context.Context, workspaceID string) (*api.Dep
 	if c.serve == nil {
 		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
 	}
-	return c.serve.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{WorkspaceId: workspaceID})
+	return c.serve.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
 }
 
 // WorkspaceAccess reads the Serve-owned access facts for one Workspace.
@@ -184,7 +185,7 @@ func (c *Clients) WorkspaceAccess(ctx context.Context, workspaceID string) (*api
 	if c.serve == nil {
 		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
 	}
-	return c.serve.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{WorkspaceId: workspaceID})
+	return c.serve.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
 }
 
 // Build reads one Build job from the Build owner.
@@ -192,7 +193,7 @@ func (c *Clients) Build(ctx context.Context, buildID string) (*api.BuildJob, err
 	if c.build == nil {
 		return nil, fmt.Errorf("build: %w", ErrUpstreamUnconfigured)
 	}
-	return c.build.GetBuild(ctx, &api.GetBuildRpcRequest{BuildId: buildID})
+	return c.build.GetBuild(ctx, &api.GetBuildRpcRequest{Context: CallContext(ctx), BuildId: buildID})
 }
 
 // CapabilityVersion reads one capability version from the Capability owner.
@@ -200,7 +201,7 @@ func (c *Clients) CapabilityVersion(ctx context.Context, capabilityVersionID str
 	if c.capability == nil {
 		return nil, fmt.Errorf("capability: %w", ErrUpstreamUnconfigured)
 	}
-	return c.capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{CapabilityVersionId: capabilityVersionID})
+	return c.capability.GetCapabilityVersion(ctx, &api.GetCapabilityVersionRpcRequest{Context: CallContext(ctx), CapabilityVersionId: capabilityVersionID})
 }
 
 // Operation reads one operation from the single owner named by the request. The
@@ -210,5 +211,16 @@ func (c *Clients) Operation(ctx context.Context, owner owneridentity.Owner, oper
 	if !ok || client == nil {
 		return nil, fmt.Errorf("%s: %w", owner, ErrUpstreamUnconfigured)
 	}
-	return client.Read(ctx, &api.OwnerOperationRequest{OperationId: operationID})
+	return client.Read(ctx, &api.OwnerOperationRequest{Context: CallContext(ctx), OperationId: operationID})
+}
+
+type callContextKey struct{}
+
+// WithCallContext carries typed server-validated user context through BFF adapters.
+func WithCallContext(ctx context.Context, call *api.CallContext) context.Context {
+	return context.WithValue(ctx, callContextKey{}, call)
+}
+func CallContext(ctx context.Context) *api.CallContext {
+	call, _ := ctx.Value(callContextKey{}).(*api.CallContext)
+	return call
 }

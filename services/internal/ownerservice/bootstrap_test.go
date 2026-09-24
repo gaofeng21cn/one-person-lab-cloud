@@ -3,6 +3,7 @@ package ownerservice
 import (
 	"context"
 	"errors"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -19,7 +20,7 @@ func (emptyMigrations) ReadDir(string) ([]ownerstore.DirEntry, error) { return n
 func (emptyMigrations) ReadFile(string) ([]byte, error)               { return nil, errors.New("no migrations") }
 
 func bootstrapConfig(owner Owner) Config {
-	return Config{Owner: owner, Addr: "127.0.0.1:0", Peers: map[Owner]string{OwnerWorkspace: "0123456789abcdef0123456789abcdef"}}
+	return Config{TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Owner: owner, Addr: "127.0.0.1:0", Peers: map[Service]string{Service(OwnerWorkspace): "0123456789abcdef0123456789abcdef"}}
 }
 
 // TestStartRefusesUnimplementedHandlersWithoutServing proves the honest

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -63,14 +64,15 @@ func (s *Server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		s.writeIdentityError(w, err)
 		return
 	}
-	if err := RequireAuthorizedAction(r.Context(), s.identity, caller, owneridentity.Workspace,
+	ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,
 		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
-		r.Header.Get(requestIDHeader)); err != nil {
+		clients.CallContext(ctx).GetRequestId()); err != nil {
 		s.writeIdentityError(w, err)
 		return
 	}
-	view, err := s.deliveryView(r.Context(), workspaceID)
+	view, err := s.deliveryView(ctx, workspaceID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "owner_read_failed", err.Error())
 		return
@@ -100,14 +102,15 @@ func (s *Server) handleOperation(w http.ResponseWriter, r *http.Request) {
 		s.writeIdentityError(w, err)
 		return
 	}
-	if err := RequireAuthorizedAction(r.Context(), s.identity, caller, owner,
+	ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+	if err := RequireAuthorizedAction(ctx, s.identity, caller, owner,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION,
 		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION, Id: &operationID},
-		r.Header.Get(requestIDHeader)); err != nil {
+		clients.CallContext(ctx).GetRequestId()); err != nil {
 		s.writeIdentityError(w, err)
 		return
 	}
-	operation, err := s.reader.Operation(r.Context(), owner, operationID)
+	operation, err := s.reader.Operation(ctx, owner, operationID)
 	if err != nil {
 		if errors.Is(err, errOwnerUnconfigured) {
 			writeError(w, http.StatusServiceUnavailable, "owner_unconfigured", err.Error())

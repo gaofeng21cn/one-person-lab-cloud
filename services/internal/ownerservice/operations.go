@@ -31,19 +31,20 @@ const checkCadence = 5 * time.Second
 type Operations struct {
 	api.UnimplementedOwnerOperationsServer
 
-	owner Owner
-	store *ownerstore.Store
+	owner      Owner
+	store      *ownerstore.Store
+	authorizer *Authorizer
 }
 
 // NewOperations binds the OwnerOperations group to one owner's own store.
-func NewOperations(owner Owner, store *ownerstore.Store) (*Operations, error) {
+func NewOperations(owner Owner, store *ownerstore.Store, authorizer *Authorizer) (*Operations, error) {
 	if !owner.Valid() {
 		return nil, fmt.Errorf("%q is not a Cloud owner", owner)
 	}
 	if store == nil {
 		return nil, errors.New("ownerstore is required to serve owner operations")
 	}
-	return &Operations{owner: owner, store: store}, nil
+	return &Operations{owner: owner, store: store, authorizer: authorizer}, nil
 }
 
 // Register installs the OwnerOperations group on this owner's gRPC server. It is
@@ -62,12 +63,18 @@ func (o *Operations) Read(ctx context.Context, request *api.OwnerOperationReques
 	if operationID == "" {
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
+	if err := ValidateCallContext(ctx, request.GetContext()); err != nil {
+		return nil, err
+	}
 	record, err := o.store.ReadOperation(ctx, operationID)
 	if errors.Is(err, ownerstore.ErrOperationNotFound) {
 		return nil, status.Errorf(codes.NotFound, "%s has no operation %s", o.owner, operationID)
 	}
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "read %s operation: %v", o.owner, err)
+	}
+	if err := o.authorize(ctx, request.GetContext(), record, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION); err != nil {
+		return nil, err
 	}
 	return o.toContract(record)
 }
@@ -81,6 +88,19 @@ func (o *Operations) Reconcile(ctx context.Context, request *api.ReconcileOperat
 		return nil, status.Error(codes.InvalidArgument, "operation id is required")
 	}
 	if err := o.requireOwnedOperationOwner(request.GetOwner()); err != nil {
+		return nil, err
+	}
+	if err := ValidateCallContext(ctx, request.GetContext()); err != nil {
+		return nil, err
+	}
+	record, err := o.store.ReadOperation(ctx, operationID)
+	if errors.Is(err, ownerstore.ErrOperationNotFound) {
+		return nil, status.Error(codes.NotFound, "operation not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "operation read unavailable")
+	}
+	if err := o.authorize(ctx, request.GetContext(), record, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RECONCILEOPERATION); err != nil {
 		return nil, err
 	}
 	result, err := o.store.ReconcileOperation(ctx, operationID)
@@ -201,4 +221,8 @@ func operationErrorCode(value string) (api.ErrorCodeEnum, error) {
 		return 0, fmt.Errorf("error code %q is not an accepted error code", value)
 	}
 	return api.ErrorCodeEnum(number), nil
+}
+
+func (o *Operations) authorize(ctx context.Context, call *api.CallContext, record ownerstore.Operation, action api.AuthorizationActionEnum) error {
+	return o.authorizer.Authorize(ctx, call, action, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION, Id: &record.ID}, ResourceScope{TenantID: record.TenantID, ActorID: record.ActorID})
 }

@@ -845,3 +845,17 @@ publication admission, same-digest promotion, recovery and public readback.
 [Installation](installation.md) owns the downloadable installation procedure.
 [Status](status.md) owns retained release and Instance evidence, while
 [roadmap](roadmap.md) owns unresolved qualification outcomes.
+
+
+## Target owner transition under product review
+
+The current Control Plane/Fabric/Ledger implementation remains the migration
+source. The proposed target moves one live capability at a time to the domain
+owners described by the canonical target specification: Capability owns
+Package facts, Build owns immutable OCI build facts, Runtime Control owns the
+approved Runtime Release catalog, Workspace owns business authorization and
+resource-plan obligations, Fabric owns infrastructure resource facts, Serve
+owns Agent delivery/readiness/access, and Ledger owns evidence. During the
+transition, the old writer is retired only after its real callers and historical
+obligations are transferred and verified; no dual current-deployment writer is
+allowed.

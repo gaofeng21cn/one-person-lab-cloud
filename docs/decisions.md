@@ -1,5 +1,23 @@
 # Decisions
 
+## Review package: historical definition and proposed Cloud boundary
+
+This section is the reviewable product and architecture proposal after the September 21, 2026 source baseline. It deliberately separates the historical definition from the proposed target. It is not implementation or release evidence.
+
+| Area | Historical definition at the baseline | Proposed definition for approval | Why the change is necessary | Affected modules, fields, and interactions |
+| --- | --- | --- | --- | --- |
+| Product identity | Workspace and externally served Agent Service are separate product objects. | Workspace is the delivery target and has at most one current Agent; API, Embed, and Hosted UI reach that same current Agent. | Removes competing lifecycles and makes replacement, access, and deletion unambiguous. | `workspace` keeps identity, membership, entitlement, and resource plan; `serve.agent_deployments` is the sole deployment/current-state writer; BFF/UI read owner projections. |
+| Package ownership | Publication is described at product level without one Cloud Package writer. | Capability owns uploaded Package bytes, identity, metadata, and immutable versions. | Prevents Serve, Workspace, or Build from becoming a second Package authority. | Capability package/version/upload APIs; Build consumes opaque version IDs and digest claims; Serve UI starts the flow but does not persist Package truth. |
+| Runtime release | Runtime and serving responsibilities are not separated in the product contract. | Runtime Control owns only the approved Runtime Release catalog; OPL App/Framework owns Runtime implementation. | Separates version admission from instance deployment and execution. | `runtime_release_id`, digest, ABI/compatibility claims; Build fixes the release in its input snapshot; Serve never writes the catalog. |
+| OCI build | Image/runtime selection can be read as part of Control Plane/Fabric application delivery. | Build fixes Package + WebUI + Runtime Release and emits one immutable OCI digest. | Makes the executable reproducible and prevents mutable tag drift. | `build_jobs`, input snapshot, artifact digest; Build reads Capability/Runtime Control and hands the digest to Serve. |
+| Workspace authority | Workspace orchestration may carry application/deployment selection. | Workspace owns identity, member authorization, entitlement, resource plan, quote/purchase obligations, and target authorization; it stores no current-Agent deployment copy. | Keeps business entitlement separate from delivery truth. | Workspace fields remain business-only; Workspace→Serve passes opaque workspace/tenant/grant/resource references; duplicate current-deployment fields are retired. |
+| Fabric authority | Fabric is a broad runtime/resource substrate and may be mistaken for application readiness authority. | Fabric only provisions, binds, and reads back compute/storage/network/Secret resource facts. | Resource readiness is not Agent readiness; each fact needs one writer. | Fabric resource-set/action/readback fields; Serve consumes resource refs but owns deployment/readiness/access. |
+| Serve authority | Serve is an external Agent Service publication surface without one Workspace deployment owner. | Serve is the sole Agent delivery/deployment/readiness/access owner for a Workspace, retaining history and one current selection. | Gives the delivery chain one real result and removes duplicate deployment writers. | `agent_deployments`, `agent_runtime_instances`, `access_bindings`; delivery/readiness/access APIs; all access modes share one route. |
+| Evidence and presentation | Console/Control Plane projections can be mistaken for business truth. | Ledger remains append-only evidence; BFF/UI aggregate owner readbacks and persist no business copy. | Preserves DDD ownership and traceability. | Typed RPC/events use opaque IDs; BFF DTOs name reporting owners; Ledger receives receipt references only. |
+
+This proposal requires review of the public product promise and the canonical engineering contracts together. It does not authorize a merge, deployment, publication, or end-to-end implementation claim.
+
+
 This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).

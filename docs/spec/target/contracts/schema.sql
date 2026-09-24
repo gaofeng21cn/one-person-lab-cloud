@@ -735,6 +735,7 @@ CREATE TABLE build.build_jobs (
   updated_at timestamptz NOT NULL DEFAULT now(),
   operation_id text NOT NULL,
   catalog_policy_id text NOT NULL,
+  call_context jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (id),
   FOREIGN KEY (retry_of_build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT,
   CHECK (status IN ('queued','validating','building','pushing','registering','succeeded','failed','needs_attention')),
@@ -760,6 +761,7 @@ CREATE TABLE build.build_artifacts (
   deployment_descriptor jsonb NOT NULL,
   deployment_descriptor_digest text NOT NULL,
   deployment_descriptor_object_ref text NOT NULL,
+  descriptor_bytes bytea,
   PRIMARY KEY (id),
   FOREIGN KEY (build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT,
   UNIQUE (build_job_id),
@@ -1426,7 +1428,6 @@ CREATE TABLE runtime_control.catalog_policies (
   effective_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT,
   UNIQUE (policy_version)
 );
 CREATE INDEX catalog_policies_effective ON runtime_control.catalog_policies (effective_at DESC, id DESC);
@@ -1595,6 +1596,7 @@ CREATE TABLE serve.agent_deployments (
 );
 CREATE INDEX agent_deployments_workspace_list ON serve.agent_deployments (workspace_id, created_at DESC, id DESC);
 CREATE INDEX agent_deployments_operation ON serve.agent_deployments (operation_id);
+CREATE UNIQUE INDEX agent_deployments_one_active ON serve.agent_deployments (workspace_id) WHERE status = 'active';
 -- readiness/accessUrl真实回读；无active布尔、无订阅业务状态
 CREATE TABLE serve.agent_runtime_instances (
   id text NOT NULL,
@@ -1648,7 +1650,7 @@ CREATE TABLE serve.agent_runtime_actions (
   CHECK (observation_result IN ('confirmed','rejected','unknown'))
 );
 CREATE INDEX agent_runtime_actions_instance ON serve.agent_runtime_actions (runtime_instance_id, created_at DESC, id DESC);
--- Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback
+-- Serve owns observed route generation and deployment execution epochs; generation advances only on verified access-adapter readback
 CREATE TABLE serve.access_bindings (
   id text NOT NULL,
   workspace_id text NOT NULL,
@@ -1742,7 +1744,7 @@ CREATE TABLE serve.outbox_deliveries (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (event_id) REFERENCES runtime_control.outbox_events (id) ON DELETE RESTRICT,
+  FOREIGN KEY (event_id) REFERENCES serve.outbox_events (id) ON DELETE RESTRICT,
   UNIQUE (event_id, consumer_owner),
   CHECK (attempt_count >= 0),
   CHECK ((lease_token IS NULL) = (lease_until IS NULL))

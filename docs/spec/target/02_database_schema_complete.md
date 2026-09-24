@@ -1125,6 +1125,7 @@ createBuild(packageVersionId,webuiVersionId)冻结批准Runtime/catalogPolicy/di
 | `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/BuildJob/properties/updatedAt` |
 | `operation_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/BuildJob/properties/operationId` |
 | `catalog_policy_id` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_jobs.catalog_policy_id` |
+| `call_context` | `jsonb` | 否 | `'{}'::jsonb` | `02_database_schema_complete.md#build.build_jobs.call_context` |
 
 约束：
 - `PRIMARY KEY (id)`
@@ -1158,6 +1159,7 @@ Build输出不可变证据，非第二Registry/版本可见性writer。覆盖 F0
 | `deployment_descriptor` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor` |
 | `deployment_descriptor_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor_digest` |
 | `deployment_descriptor_object_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor_object_ref` |
+| `descriptor_bytes` | `bytea` | NULL | `—` | `02_database_schema_complete.md#build.build_artifacts.descriptor_bytes` |
 
 约束：
 - `PRIMARY KEY (id)`

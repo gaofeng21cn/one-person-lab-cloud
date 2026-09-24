@@ -97,3 +97,13 @@ Examples of domain-owned review semantics:
 - RCA: chart data source, transformation, and narrative consistency.
 - BookForge: chapter continuity, citation coverage, style consistency, and
   export readiness.
+
+
+## Target owner boundary under product review
+
+Ledger remains append-only evidence. It accepts opaque references from
+Capability, Build, Runtime Control, Workspace, Serve, Fabric, Gateway, and
+domain owners, and records receipts where the contract requires them. It does
+not own Package bytes, Runtime Release catalog rows, OCI deployment state,
+Workspace entitlement, Fabric resources, Agent readiness, routing, or business
+Saga decisions.

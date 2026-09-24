@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"google.golang.org/grpc"
 	"log"
 	"strings"
 
@@ -25,7 +26,9 @@ type Bootstrap struct {
 	Server   *Server
 	Database *Database
 	// Migrated reports whether the owner's own migrations ran in this process.
-	Migrated bool
+	Migrated     bool
+	Authorizer   *Authorizer
+	identityConn *grpc.ClientConn
 }
 
 // Start opens the owner's dependencies, installs its migrations, registers the
@@ -55,7 +58,14 @@ func StartWithDatabase(ctx context.Context, database *Database, config Config, s
 	if err != nil {
 		return nil, err
 	}
-	bootstrap := &Bootstrap{Server: server}
+	authorizer, identityConn, err := AuthorizerFromConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	bootstrap := &Bootstrap{Server: server, Authorizer: authorizer, identityConn: identityConn}
+	if config.CloudIdentityAddr == "" && (config.DatabaseURL != "" || database != nil) {
+		_ = server.AddReadinessCheck("cloud_identity", func(context.Context) error { return errors.New("CloudIdentity authorization is not configured") })
+	}
 
 	if database != nil {
 		if err := database.Migrate(ctx, source); err != nil {
@@ -66,7 +76,10 @@ func StartWithDatabase(ctx context.Context, database *Database, config Config, s
 		if err := server.RequireDatabaseReadiness(database); err != nil {
 			return nil, err
 		}
-		registerOperations(server, config.Owner, bootstrap)
+		if err := registerOperations(server, config.Owner, bootstrap); err != nil {
+			_ = bootstrap.Close()
+			return nil, err
+		}
 		if err := register(server, bootstrap.Database); err != nil {
 			return nil, err
 		}
@@ -99,7 +112,10 @@ func StartWithDatabase(ctx context.Context, database *Database, config Config, s
 
 	// The Operation readback group is infrastructure every owner serves over its own
 	// store. It does not by itself satisfy a declared product group.
-	registerOperations(server, config.Owner, bootstrap)
+	if err := registerOperations(server, config.Owner, bootstrap); err != nil {
+		_ = bootstrap.Close()
+		return nil, err
+	}
 	// Without persistence this process registers no product group and therefore
 	// stays NOT_SERVING: it has no owner-local Operation record to read, and an
 	// empty answer would misrepresent a missing writer as a missing record.
@@ -123,7 +139,7 @@ func registerOperations(server *Server, owner Owner, bootstrap *Bootstrap) error
 	if bootstrap.Database == nil {
 		return nil
 	}
-	operations, err := NewOperations(owner, bootstrap.Database.Store())
+	operations, err := NewOperations(owner, bootstrap.Database.Store(), bootstrap.Authorizer)
 	if err != nil {
 		return err
 	}
@@ -142,8 +158,20 @@ func (b *Bootstrap) finish(ctx context.Context) (*Bootstrap, error) {
 
 // Close releases the owner's dependencies.
 func (b *Bootstrap) Close() error {
-	if b == nil || b.Database == nil {
-		return nil
+	var first error
+	if b != nil && b.Server != nil {
+		first = b.Server.closeTracked()
 	}
-	return b.Database.Close()
+	if b != nil && b.identityConn != nil {
+		if err := b.identityConn.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	if b == nil || b.Database == nil {
+		return first
+	}
+	if err := b.Database.Close(); err != nil && first == nil {
+		first = err
+	}
+	return first
 }

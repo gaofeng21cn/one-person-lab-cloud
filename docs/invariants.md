@@ -263,3 +263,26 @@ implementation and remaining gaps are reported separately in status/roadmap.
   deployed and read back by the production owner.
 - Evidence is reported at the layer actually observed; lower-layer evidence
   does not imply a higher layer.
+
+
+## Proposed Agent delivery invariants under product review
+
+The following target invariants are proposed for approval and are not a claim
+that the migration is complete:
+
+- Capability is the sole writer of uploaded Package bytes, Package identity,
+  metadata, immutable versions, and Package reference claims.
+- Runtime Control is the sole writer of the approved Runtime Release catalog;
+  it does not deploy Workspace instances or report their readiness.
+- Build fixes exact Package, WebUI, and Runtime Release identifiers and emits a
+  single immutable OCI digest; consumers do not reconstruct it from mutable tags.
+- Workspace owns business identity, membership, entitlement, resource plan,
+  quote/purchase obligations, and target authorization; it does not persist a
+  second Agent deployment or current-selection fact.
+- Fabric owns infrastructure resource mutation and readback only. Resource
+  readiness cannot substitute for Agent readiness.
+- Serve is the sole writer of Agent deployment history, current deployment,
+  Runtime instance readiness evidence, and access bindings for a Workspace.
+  API, Embed, and Hosted UI address that same current Agent.
+- Console/BFF composes owner readbacks and does not persist a business copy;
+  Ledger records opaque evidence and does not become a domain workflow writer.

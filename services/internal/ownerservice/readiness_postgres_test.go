@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
@@ -44,7 +46,15 @@ func TestOwnerReportsServingOnlyWithAReachableDatabase(t *testing.T) {
 	}
 	defer database.Close()
 
-	bootstrap, err := StartWithDatabase(ctx, database, bootstrapConfig(OwnerTenant), emptyMigrations{}, func(server *Server, _ *Database) error {
+	identity, err := NewServer(Config{Owner: OwnerTenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[Service]string{OwnerTenant.Service(): wireToken}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = identity.Register(func(s *grpc.Server) { api.RegisterCloudIdentityAuthorizationServer(s, &wireIdentity{}) })
+	config := bootstrapConfig(OwnerTenant)
+	config.CloudIdentityAddr = startWireServer(t, identity)
+	config.CloudIdentityToken = wireToken
+	bootstrap, err := StartWithDatabase(ctx, database, config, emptyMigrations{}, func(server *Server, _ *Database) error {
 		if err := server.RequireProductGroups("TenantProductService"); err != nil {
 			return err
 		}

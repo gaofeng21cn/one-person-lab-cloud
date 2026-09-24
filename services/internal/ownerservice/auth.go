@@ -3,6 +3,8 @@ package ownerservice
 import (
 	"context"
 	"crypto/subtle"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -21,7 +23,7 @@ const (
 // Authenticate resolves the calling owner from the inbound metadata and verifies
 // its token against the configured allowlist. An unknown peer, a missing token, or
 // a mismatched token is refused here, before any owner store is touched.
-func Authenticate(ctx context.Context, config Config) (Owner, error) {
+func Authenticate(ctx context.Context, config Config) (Service, error) {
 	if len(config.Peers) == 0 {
 		return "", status.Error(codes.Unauthenticated, "this owner accepts no inbound peers in this configuration")
 	}
@@ -33,7 +35,7 @@ func Authenticate(ctx context.Context, config Config) (Owner, error) {
 	if name == "" {
 		return "", status.Error(codes.Unauthenticated, "calling owner identity is required")
 	}
-	owner := Owner(name)
+	owner := Service(name)
 	expected, allowed := config.Peers[owner]
 	if !allowed {
 		return "", status.Errorf(codes.PermissionDenied, "owner %s may not call %s", owner, config.Owner)
@@ -45,12 +47,26 @@ func Authenticate(ctx context.Context, config Config) (Owner, error) {
 	if subtle.ConstantTimeCompare([]byte(presented), []byte(expected)) != 1 {
 		return "", status.Error(codes.Unauthenticated, "calling owner token is invalid")
 	}
+	if !config.TLS.AllowInsecureLocal {
+		remote, ok := peer.FromContext(ctx)
+		if !ok {
+			return "", status.Error(codes.Unauthenticated, "mTLS peer is required")
+		}
+		tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
+		if !ok || len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.PeerCertificates) == 0 {
+			return "", status.Error(codes.Unauthenticated, "verified mTLS peer is required")
+		}
+		certificateOwner, err := owneridentity.CertificateService(tlsInfo.State.PeerCertificates[0])
+		if err != nil || certificateOwner != owner {
+			return "", status.Error(codes.Unauthenticated, "calling service differs from its mTLS certificate")
+		}
+	}
 	return owner, nil
 }
 
 func firstHeader(md metadata.MD, key string) string {
 	values := md.Get(key)
-	if len(values) == 0 {
+	if len(values) != 1 {
 		return ""
 	}
 	return strings.TrimSpace(values[0])
@@ -61,12 +77,12 @@ type peerContextKey struct{}
 
 // WithPeerOwner records the authenticated peer owner on the context so a handler
 // can bind the caller into its owner-local commit evidence.
-func WithPeerOwner(ctx context.Context, owner Owner) context.Context {
+func WithPeerOwner(ctx context.Context, owner Service) context.Context {
 	return context.WithValue(ctx, peerContextKey{}, owner)
 }
 
 // PeerOwner returns the authenticated peer owner recorded on the context.
-func PeerOwner(ctx context.Context) (Owner, bool) {
-	owner, ok := ctx.Value(peerContextKey{}).(Owner)
+func PeerOwner(ctx context.Context) (Service, bool) {
+	owner, ok := ctx.Value(peerContextKey{}).(Service)
 	return owner, ok
 }

@@ -40,6 +40,7 @@ CREATE TABLE serve.agent_deployments (
 );
 CREATE INDEX agent_deployments_workspace_list ON serve.agent_deployments (workspace_id, created_at DESC, id DESC);
 CREATE INDEX agent_deployments_operation ON serve.agent_deployments (operation_id);
+CREATE UNIQUE INDEX agent_deployments_one_active ON serve.agent_deployments (workspace_id) WHERE status = 'active';
 -- readiness/accessUrl真实回读；无active布尔、无订阅业务状态
 CREATE TABLE serve.agent_runtime_instances (
   id text NOT NULL,
@@ -93,7 +94,7 @@ CREATE TABLE serve.agent_runtime_actions (
   CHECK (observation_result IN ('confirmed','rejected','unknown'))
 );
 CREATE INDEX agent_runtime_actions_instance ON serve.agent_runtime_actions (runtime_instance_id, created_at DESC, id DESC);
--- Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback
+-- Serve owns observed route generation and deployment execution epochs; generation advances only on verified access-adapter readback
 CREATE TABLE serve.access_bindings (
   id text NOT NULL,
   workspace_id text NOT NULL,

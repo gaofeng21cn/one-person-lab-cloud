@@ -22,6 +22,7 @@ import (
 // Owner names one Cloud data owner. A process serves exactly one owner identity
 // even when it carries more than one API group.
 type Owner = owneridentity.Owner
+type Service = owneridentity.Service
 
 // The fixed Cloud owner names, aliased from the shared wire convention.
 const (
@@ -47,7 +48,10 @@ type Config struct {
 	DatabaseURL string
 	// Peers maps an accepted inbound owner identity to the bearer token that
 	// owner must present. A peer absent from this map can never call this owner.
-	Peers map[Owner]string
+	Peers              map[Service]string
+	TLS                owneridentity.TLSConfig
+	CloudIdentityAddr  string
+	CloudIdentityToken string
 }
 
 // LoadConfig resolves the process configuration for one owner from the
@@ -60,9 +64,12 @@ func LoadConfig(getenv func(string) string, owner Owner, defaultAddr string) (Co
 	}
 	prefix := "OPL_" + strings.ToUpper(owner.String())
 	config := Config{
-		Owner:       owner,
-		Addr:        strings.TrimSpace(getenv(prefix + "_ADDR")),
-		DatabaseURL: strings.TrimSpace(getenv("DATABASE_URL")),
+		Owner:              owner,
+		TLS:                owneridentity.TLSFromEnv(getenv),
+		CloudIdentityAddr:  strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_URL")),
+		CloudIdentityToken: strings.TrimSpace(getenv("OPL_CLOUD_IDENTITY_TOKEN")),
+		Addr:               strings.TrimSpace(getenv(prefix + "_ADDR")),
+		DatabaseURL:        strings.TrimSpace(getenv("DATABASE_URL")),
 	}
 	if config.Addr == "" {
 		config.Addr = defaultAddr
@@ -85,7 +92,7 @@ func LoadConfig(getenv func(string) string, owner Owner, defaultAddr string) (Co
 
 // parsePeerTokens reads the `{"<owner>":"<token>"}` allowlist. An unknown owner
 // name or a short token is rejected instead of silently widening the boundary.
-func parsePeerTokens(raw string) (map[Owner]string, error) {
+func parsePeerTokens(raw string) (map[Service]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
@@ -94,9 +101,9 @@ func parsePeerTokens(raw string) (map[Owner]string, error) {
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
 		return nil, fmt.Errorf("peer tokens must be a JSON object of owner to token: %w", err)
 	}
-	peers := make(map[Owner]string, len(decoded))
+	peers := make(map[Service]string, len(decoded))
 	for name, token := range decoded {
-		owner := Owner(strings.TrimSpace(name))
+		owner := Service(strings.TrimSpace(name))
 		if !owner.Valid() {
 			return nil, fmt.Errorf("%q is not a Cloud owner", name)
 		}

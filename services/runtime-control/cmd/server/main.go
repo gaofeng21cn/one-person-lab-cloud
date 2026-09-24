@@ -10,12 +10,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"google.golang.org/grpc"
+	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/runtime-control/catalog"
 	"opl-cloud/services/runtime-control/migrations"
 )
 
@@ -34,11 +40,30 @@ func main() {
 	}
 
 	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
-		if err := server.RequireProductGroups("RuntimeControlProductService"); err != nil {
+		if database == nil {
+			return ownerservice.ErrHandlersNotImplemented
+		}
+		schemaPath, schemaDigest := os.Getenv("OPL_RUNTIME_PUBLISHER_SCHEMA_PATH"), os.Getenv("OPL_RUNTIME_PUBLISHER_SCHEMA_DIGEST")
+		if schemaPath == "" || schemaDigest == "" {
+			return ownerservice.ErrHandlersNotImplemented
+		}
+		tls := owneridentity.TLSFromEnv(os.Getenv)
+		capabilityConn, err := dialPeer(config, tls, owneridentity.Capability, os.Getenv("OPL_CAPABILITY_ADDR"))
+		if err != nil {
 			return err
 		}
-		_ = database
-		return ownerservice.ErrHandlersNotImplemented
+		if err := server.TrackCloser(capabilityConn); err != nil {
+			return err
+		}
+		authorizer, _, err := ownerservice.AuthorizerFromConfig(config)
+		if err != nil {
+			return err
+		}
+		service, err := catalog.New(database.DB(), authorizer, api.NewCapabilityProductServiceClient(capabilityConn), schemaPath, schemaDigest)
+		if err != nil {
+			return err
+		}
+		return service.Register(server)
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -53,4 +78,15 @@ func main() {
 	if err := server.Serve(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func dialPeer(config ownerservice.Config, tls owneridentity.TLSConfig, target owneridentity.Owner, address string) (*grpc.ClientConn, error) {
+	if address == "" {
+		return nil, fmt.Errorf("%s address is required", target)
+	}
+	options, err := tls.DialOptions(config.Owner.Service(), target.Service(), os.Getenv("OPL_"+strings.ToUpper(target.String())+"_TOKEN"))
+	if err != nil {
+		return nil, err
+	}
+	return grpc.NewClient(address, options...)
 }

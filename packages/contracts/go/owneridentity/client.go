@@ -9,10 +9,13 @@ import (
 
 // OutboundInterceptor presents the calling owner's identity and token on every
 // outbound call. The target verifies the token against its own allowlist.
-func OutboundInterceptor(owner Owner, token string) grpc.UnaryClientInterceptor {
+func OutboundInterceptor(owner interface{ String() string }, token string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, request, reply any, conn *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		outgoing := metadata.AppendToOutgoingContext(ctx, PeerHeader, owner.String())
-		outgoing = metadata.AppendToOutgoingContext(outgoing, TokenHeader, token)
+		md, _ := metadata.FromOutgoingContext(ctx)
+		md = md.Copy()
+		md.Set(PeerHeader, owner.String())
+		md.Set(TokenHeader, token)
+		outgoing := metadata.NewOutgoingContext(ctx, md)
 		return invoker(outgoing, method, request, reply, conn, opts...)
 	}
 }

@@ -194,7 +194,7 @@
         "PRIMARY KEY (id)",
         "CHECK (status IN ('active','suspended','deleting','deleted'))",
         "CHECK (permission_version >= 0)",
-        "CHECK ((deleted_at IS NULL AND restore_until IS NULL) OR (deleted_at IS NOT NULL AND restore_until = deleted_at + interval '15 days'))",
+        "CHECK ((deleted_at IS NULL AND restore_until IS NULL) OR (deleted_at IS NOT NULL AND restore_until = (deleted_at + CAST('15 days' AS interval))))",
         "CHECK (status <> 'deleted' OR deleted_at IS NOT NULL)"
       ],
       "indexes": [
@@ -1177,29 +1177,28 @@
         "UNIQUE (name, version_label)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT",
-        "CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)",
-        "CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)",
-        "CHECK ((publisher_contract->>'kind' = 'runtime') IS TRUE)",
-        "CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}' = (publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)",
-        "CHECK ((publisher_contract->>'runtimeAbiVersion' = runtime_abi_version) IS TRUE)",
-        "CHECK ((publisher_contract->'packageFormatVersions' = to_jsonb(package_format_versions)) IS TRUE)"
+        "CHECK (jsonb_typeof(publisher_contract) = 'object' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'schemaVersion') = 'opl-publisher-contract/v1' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'kind') = 'runtime' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'publisherNamespaceId') = publisher_namespace_id IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,repository}') = artifact_repository IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,digest}') = artifact_digest IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,os}') = 'linux' IS TRUE)",
+        "CHECK (publisher_contract #>> '{image,platform,architecture}' IN ('amd64', 'arm64') IS TRUE)",
+        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}') = ((publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)",
+        "CHECK ((publisher_contract ->> 'runtimeAbiVersion') = runtime_abi_version IS TRUE)",
+        "CHECK ((publisher_contract -> 'packageFormatVersions') = to_jsonb(package_format_versions) IS TRUE)"
       ],
       "indexes": [
         {
-          "name": "runtime_versions_status",
+          "name": "runtime_releases_status",
           "columns": "status, created_at DESC, id DESC",
           "unique": false,
           "where": null
         },
         {
-          "name": "runtime_versions_publisher",
+          "name": "runtime_releases_publisher",
           "columns": "publisher_namespace_id",
           "unique": false,
           "where": null
@@ -1209,12 +1208,6 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/RuntimeVersion"
-      ],
-      "postCreateConstraints": [
-        {
-          "name": "runtime_versions_publisher_namespace_fk",
-          "sql": "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT"
-        }
       ]
     },
     {
@@ -1405,17 +1398,16 @@
         "UNIQUE (name, version_label)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT",
-        "CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)",
-        "CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)",
-        "CHECK ((publisher_contract->>'kind' = 'webui') IS TRUE)",
-        "CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)",
-        "CHECK ((publisher_contract->'runtimeAbiVersions' = to_jsonb(runtime_abi_versions)) IS TRUE)",
-        "CHECK ((publisher_contract->>'uiProtocolVersion' = ui_protocol_version) IS TRUE)"
+        "CHECK (jsonb_typeof(publisher_contract) = 'object' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'schemaVersion') = 'opl-publisher-contract/v1' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'kind') = 'webui' IS TRUE)",
+        "CHECK ((publisher_contract ->> 'publisherNamespaceId') = publisher_namespace_id IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,repository}') = artifact_repository IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,digest}') = artifact_digest IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,os}') = 'linux' IS TRUE)",
+        "CHECK (publisher_contract #>> '{image,platform,architecture}' IN ('amd64', 'arm64') IS TRUE)",
+        "CHECK ((publisher_contract -> 'runtimeAbiVersions') = to_jsonb(runtime_abi_versions) IS TRUE)",
+        "CHECK ((publisher_contract ->> 'uiProtocolVersion') = ui_protocol_version IS TRUE)"
       ],
       "indexes": [
         {
@@ -1439,7 +1431,7 @@
       "postCreateConstraints": [
         {
           "name": "webui_versions_publisher_namespace_fk",
-          "sql": "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT webui_versions_publisher_namespace_fk FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -1533,8 +1525,6 @@
       ],
       "constraints": [
         "PRIMARY KEY (id)",
-        "FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT",
-        "FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT",
         "UNIQUE (policy_version)"
       ],
       "indexes": [
@@ -2196,23 +2186,21 @@
         "PRIMARY KEY (id)",
         "FOREIGN KEY (package_id) REFERENCES capability.packages (id) ON DELETE RESTRICT",
         "FOREIGN KEY (package_version_id, package_id) REFERENCES capability.package_versions (id, package_id) ON DELETE RESTRICT",
-        "FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT",
         "FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT",
         "CHECK (status IN ('ready','deprecated','deleting','deleted'))",
         "UNIQUE (build_job_id)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))",
-        "FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT",
         "CHECK (provenance IN ('build','legacy_application'))",
         "CHECK ((provenance = 'build' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 5 AND legacy_application_revision_id IS NULL) OR (provenance = 'legacy_application' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 0 AND legacy_application_revision_id IS NOT NULL))",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor->>'schemaVersion' = 'opl-deployment-descriptor/v1') IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,repository}' = artifact_repository) IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)",
-        "CHECK ((deployment_descriptor->>'provenance' = provenance) IS TRUE)",
-        "CHECK (provenance <> 'legacy_application' OR ((deployment_descriptor->>'legacyApplicationRevisionId' = legacy_application_revision_id AND NOT (deployment_descriptor ?| ARRAY['packageVersionId','buildInputDigest','runtimeContract','runtimeContractReference','webuiContract','webuiContractReference'])) IS TRUE))",
-        "CHECK (provenance <> 'build' OR ((deployment_descriptor->>'packageVersionId' = package_version_id AND deployment_descriptor #>> '{runtimeContractReference,versionId}' = runtime_version_id AND deployment_descriptor #>> '{webuiContractReference,versionId}' = webui_version_id) IS TRUE))"
+        "CHECK ((deployment_descriptor ->> 'schemaVersion') = 'opl-deployment-descriptor/v1' IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,repository}') = artifact_repository IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)",
+        "CHECK ((deployment_descriptor ->> 'provenance') = provenance IS TRUE)",
+        "CHECK (provenance <> 'legacy_application' OR ((deployment_descriptor ->> 'legacyApplicationRevisionId') = legacy_application_revision_id AND NOT deployment_descriptor ?| ARRAY['packageVersionId', 'buildInputDigest', 'runtimeContract', 'runtimeContractReference', 'webuiContract', 'webuiContractReference']) IS TRUE)",
+        "CHECK (provenance <> 'build' OR ((deployment_descriptor ->> 'packageVersionId') = package_version_id AND (deployment_descriptor #>> '{runtimeContractReference,versionId}') = runtime_version_id AND (deployment_descriptor #>> '{webuiContractReference,versionId}') = webui_version_id) IS TRUE)"
       ],
       "indexes": [
         {
@@ -2248,7 +2236,7 @@
       "postCreateConstraints": [
         {
           "name": "capability_versions_deletion_operation_fk",
-          "sql": "FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT capability_versions_deletion_operation_fk FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -2423,7 +2411,6 @@
         "CHECK ((target_type = 'package_version') = (package_version_id IS NOT NULL))",
         "FOREIGN KEY (capability_version_id) REFERENCES capability.capability_versions (id) ON DELETE RESTRICT",
         "CHECK ((target_type = 'capability_version') = (capability_version_id IS NOT NULL))",
-        "FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT",
         "CHECK ((target_type = 'runtime_version') = (runtime_version_id IS NOT NULL))",
         "FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT",
         "CHECK ((target_type = 'webui_version') = (webui_version_id IS NOT NULL))",
@@ -2708,6 +2695,14 @@
           "default": null,
           "description": "",
           "source": "02_database_schema_complete.md#build.build_jobs.catalog_policy_id"
+        },
+        {
+          "name": "call_context",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb",
+          "description": "",
+          "source": "02_database_schema_complete.md#build.build_jobs.call_context"
         }
       ],
       "constraints": [
@@ -2717,8 +2712,7 @@
         "CHECK (input_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (artifact_digest IS NULL OR artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (status <> 'succeeded' OR (artifact_digest IS NOT NULL AND result_capability_version_id IS NOT NULL AND finished_at IS NOT NULL))",
-        "CHECK ((worker_lease_token IS NULL) = (worker_lease_until IS NULL))",
-        "FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
+        "CHECK ((worker_lease_token IS NULL) = (worker_lease_until IS NULL))"
       ],
       "indexes": [
         {
@@ -2748,7 +2742,7 @@
       "postCreateConstraints": [
         {
           "name": "build_jobs_operation_fk",
-          "sql": "FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT build_jobs_operation_fk FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -2853,6 +2847,14 @@
           "default": null,
           "description": "",
           "source": "02_database_schema_complete.md#build.build_artifacts.deployment_descriptor_object_ref"
+        },
+        {
+          "name": "descriptor_bytes",
+          "type": "bytea",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "02_database_schema_complete.md#build.build_artifacts.descriptor_bytes"
         }
       ],
       "constraints": [
@@ -2862,10 +2864,10 @@
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (size_bytes > 0)",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor->>'schemaVersion' = 'opl-deployment-descriptor/v1') IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,repository}' = artifact_repository) IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)"
+        "CHECK ((deployment_descriptor ->> 'schemaVersion') = 'opl-deployment-descriptor/v1' IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,repository}') = artifact_repository IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)"
       ],
       "indexes": [
         {
@@ -3001,7 +3003,7 @@
       "schema": "workspace",
       "schemaOwnerRole": "opl_workspace_owner",
       "writerRole": "opl_workspace_writer",
-      "purpose": "当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；expiresAt从订阅投影",
+      "purpose": "Workspace identity, entitlement and resource-plan coordination; Agent deployment and readiness are read from Serve",
       "features": [
         "F08",
         "F09",
@@ -3145,7 +3147,6 @@
         "PRIMARY KEY (id)",
         "CHECK (status IN ('provisioning','active','updating','suspended','deleting','deleted','failed','needs_attention'))",
         "CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))",
-        "FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT",
         "CHECK (version >= 0)",
         "UNIQUE (id, tenant_id)"
       ],
@@ -3170,12 +3171,8 @@
       ],
       "postCreateConstraints": [
         {
-          "name": "workspaces_active_deployment_fk",
-          "sql": "FOREIGN KEY (current_agent_deployment_id, id) REFERENCES serve.agent_deployments (id, workspace_id) ON DELETE RESTRICT"
-        },
-        {
           "name": "workspaces_active_operation_fk",
-          "sql": "FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT workspaces_active_operation_fk FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -3186,7 +3183,7 @@
       "schema": "serve",
       "schemaOwnerRole": "opl_serve_owner",
       "writerRole": "opl_serve_writer",
-      "purpose": "workspaces.current_agent_deployment_id唯一选中；同事务切换指针和supersede旧部署，不由Runtime写",
+      "purpose": "Serve owns deployment history and at most one active Agent per Workspace; activation and superseding commit in one owner-local transaction",
       "features": [
         "F08",
         "F09",
@@ -3375,39 +3372,37 @@
       ],
       "constraints": [
         "PRIMARY KEY (id)",
-        "FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT",
         "FOREIGN KEY (previous_deployment_id) REFERENCES serve.agent_deployments (id) ON DELETE RESTRICT",
         "CHECK (status IN ('queued','deploying','verifying','active','superseded','failed','rolling_back','rolled_back','needs_attention'))",
         "UNIQUE (id, workspace_id)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (status <> 'active' OR (runtime_instance_id IS NOT NULL AND verification_evidence_ref IS NOT NULL AND activated_at IS NOT NULL))",
-        "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT",
         "CHECK (execution_epoch >= 0)"
       ],
       "indexes": [
         {
-          "name": "deployments_workspace_list",
+          "name": "agent_deployments_workspace_list",
           "columns": "workspace_id, created_at DESC, id DESC",
           "unique": false,
           "where": null
         },
         {
-          "name": "deployments_operation",
+          "name": "agent_deployments_operation",
           "columns": "operation_id",
           "unique": false,
           "where": null
+        },
+        {
+          "name": "agent_deployments_one_active",
+          "columns": "workspace_id",
+          "unique": true,
+          "where": "status = 'active'"
         }
       ],
       "sourceLineage": [
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
         "03_api_contract_complete.yaml#/components/schemas/Deployment"
-      ],
-      "postCreateConstraints": [
-        {
-          "name": "deployments_operation_fk",
-          "sql": "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
-        }
       ]
     },
     {
@@ -3665,7 +3660,6 @@
         "FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT",
         "UNIQUE (workspace_id)",
         "CHECK (current_period_end > current_period_start)",
-        "FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT",
         "CHECK (period_months > 0)",
         "CHECK (provenance IN ('quoted','legacy_import'))",
         "CHECK ((provenance = 'quoted' AND accepted_quote_id IS NOT NULL AND accepted_quote_snapshot IS NOT NULL AND legacy_purchase_id IS NULL AND legacy_obligation_snapshot IS NULL) OR (provenance = 'legacy_import' AND accepted_quote_id IS NULL AND accepted_quote_snapshot IS NULL AND legacy_purchase_id IS NOT NULL AND legacy_obligation_snapshot IS NOT NULL))",
@@ -3695,7 +3689,7 @@
       "postCreateConstraints": [
         {
           "name": "subscriptions_change_operation_fk",
-          "sql": "FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT subscriptions_change_operation_fk FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -3969,8 +3963,7 @@
         "FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT",
         "UNIQUE (workspace_id, version)",
         "CHECK (version > 0)",
-        "CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown'))",
-        "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+        "CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown'))"
       ],
       "indexes": [
         {
@@ -3989,7 +3982,7 @@
       "postCreateConstraints": [
         {
           "name": "model_configurations_operation_fk",
-          "sql": "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT model_configurations_operation_fk FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -4162,8 +4155,7 @@
         "UNIQUE (command_id)",
         "CHECK (sequence >= 0 AND attempt_count >= 0)",
         "CHECK (observation_result IN ('confirmed','rejected','unknown'))",
-        "CHECK (compensation_observation IN ('confirmed','rejected','unknown'))",
-        "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+        "CHECK (compensation_observation IN ('confirmed','rejected','unknown'))"
       ],
       "indexes": [
         {
@@ -4188,7 +4180,7 @@
       "postCreateConstraints": [
         {
           "name": "saga_steps_operation_fk",
-          "sql": "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT saga_steps_operation_fk FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -4370,11 +4362,11 @@
         "CHECK (status <> 'ready' OR (access_url IS NOT NULL AND readiness_evidence_ref IS NOT NULL AND observed_at IS NOT NULL))",
         "CHECK (execution_epoch >= 0)",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)"
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)"
       ],
       "indexes": [
         {
-          "name": "runtime_instances_workspace",
+          "name": "agent_runtime_instances_workspace",
           "columns": "workspace_id, created_at DESC, id DESC",
           "unique": false,
           "where": null
@@ -4508,7 +4500,7 @@
       ],
       "indexes": [
         {
-          "name": "runtime_actions_instance",
+          "name": "agent_runtime_actions_instance",
           "columns": "runtime_instance_id, created_at DESC, id DESC",
           "unique": false,
           "where": null
@@ -5258,7 +5250,7 @@
         "CHECK (observation_result IN ('confirmed','rejected','unknown'))",
         "CHECK (execution_epoch IS NULL OR execution_epoch >= 0)",
         "CHECK ((execution_plan_digest IS NULL) = (execution_plan_bytes IS NULL))",
-        "CHECK (execution_plan_digest IS NULL OR execution_plan_digest = 'sha256:' || encode(sha256(execution_plan_bytes),'hex'))",
+        "CHECK (execution_plan_digest IS NULL OR execution_plan_digest = ('sha256:' || encode(sha256(execution_plan_bytes), 'hex')))",
         "CHECK (action <> 'prepare_resize' OR (execution_plan_digest IS NOT NULL AND evidence_ref IS NOT NULL AND observation_result = 'confirmed'))"
       ],
       "indexes": [
@@ -6551,7 +6543,7 @@
         "CHECK (valid_until IS NULL OR valid_until > valid_from)",
         "CHECK (period_months > 0)",
         "UNIQUE (compute_plan_id, storage_plan_id, valid_from)",
-        "CHECK ((renewal_rules->>'version' = 'renewal-policy/v1' AND renewal_rules->>'trigger' = 'manual_or_explicitly_consented_automatic' AND (renewal_rules->>'months')::integer = period_months AND renewal_rules->>'usesAcceptedPriceSnapshot' = 'true') IS TRUE)",
+        "CHECK (((renewal_rules ->> 'version') = 'renewal-policy/v1' AND (renewal_rules ->> 'trigger') = 'manual_or_explicitly_consented_automatic' AND CAST(renewal_rules ->> 'months' AS integer) = period_months AND (renewal_rules ->> 'usesAcceptedPriceSnapshot') = 'true') IS TRUE)",
         "CHECK (plan_change_policy_version IN ('workspace-plan-change-v1'))",
         "CHECK (period_months = 1)"
       ],
@@ -6694,8 +6686,7 @@
         "PRIMARY KEY (id)",
         "UNIQUE (version_label)",
         "CHECK (valid_until IS NULL OR valid_until > valid_from)",
-        "CHECK (algorithm IN ('workspace-delete-refund-v1'))",
-        "FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
+        "CHECK (algorithm IN ('workspace-delete-refund-v1'))"
       ],
       "indexes": [
         {
@@ -6713,7 +6704,7 @@
       "postCreateConstraints": [
         {
           "name": "refund_retention_policy_fk",
-          "sql": "FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT refund_retention_policy_fk FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -7351,7 +7342,7 @@
         "CHECK (kind IN ('compute','storage','product','adjustment_credit'))",
         "CHECK (amount_usd_micros >= 0)",
         "CHECK ((kind = 'adjustment_credit') = (credit_source IS NOT NULL))",
-        "CHECK (credit_source IS NULL OR ((jsonb_typeof(credit_source) = 'object' AND credit_source ?& ARRAY['originalWalletOperationId','originalSubscriptionPeriodId','policyVersionId','creditReceiptId','amountUSDMicros'] AND (credit_source->>'amountUSDMicros')::bigint = amount_usd_micros) IS TRUE))"
+        "CHECK (credit_source IS NULL OR (jsonb_typeof(credit_source) = 'object' AND credit_source ?& ARRAY['originalWalletOperationId', 'originalSubscriptionPeriodId', 'policyVersionId', 'creditReceiptId', 'amountUSDMicros'] AND CAST(credit_source ->> 'amountUSDMicros' AS bigint) = amount_usd_micros) IS TRUE)"
       ],
       "indexes": [
         {
@@ -14696,8 +14687,7 @@
         "CHECK ((scope_type = 'tenant') = (tenant_id IS NOT NULL))",
         "CHECK (permission_version >= 0)",
         "CHECK (expires_at > issued_at)",
-        "CHECK (num_nonnulls(session_id,accepted_operation_grant_id) = 1)",
-        "FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
+        "CHECK (num_nonnulls(session_id,accepted_operation_grant_id) = 1)"
       ],
       "indexes": [
         {
@@ -14721,7 +14711,7 @@
       "postCreateConstraints": [
         {
           "name": "authorization_context_grant_fk",
-          "sql": "FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT authorization_context_grant_fk FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -14917,7 +14907,7 @@
       "schema": "serve",
       "schemaOwnerRole": "opl_serve_owner",
       "writerRole": "opl_serve_writer",
-      "purpose": "Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback",
+      "purpose": "Serve owns observed access-route generation and execution epoch; current selection requires exact adapter readback",
       "features": [
         "F08",
         "F09",
@@ -15008,15 +14998,13 @@
       ],
       "constraints": [
         "PRIMARY KEY (id)",
-        "FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT",
         "UNIQUE (workspace_id)",
         "UNIQUE (id, workspace_id)",
-        "CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)",
-        "FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
+        "CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)"
       ],
       "indexes": [
         {
-          "name": "route_bindings_target",
+          "name": "access_bindings_target",
           "columns": "target_execution_resource_id",
           "unique": false,
           "where": null
@@ -15031,7 +15019,7 @@
       "postCreateConstraints": [
         {
           "name": "route_bindings_last_switch_fk",
-          "sql": "FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT route_bindings_last_switch_fk FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -15245,8 +15233,6 @@
       "constraints": [
         "PRIMARY KEY (id)",
         "FOREIGN KEY (route_binding_id, workspace_id) REFERENCES serve.access_bindings (id, workspace_id) ON DELETE RESTRICT",
-        "FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT",
-        "FOREIGN KEY (previous_target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT",
         "CHECK (status IN ('requested','confirmed','rejected','unknown'))",
         "CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)",
         "UNIQUE (provider_command_id)",
@@ -15254,7 +15240,7 @@
         "CHECK (action_kind IN ('fence','activate','rollback'))",
         "CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)",
         "CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)",
-        "CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))",
+        "CHECK (status <> 'confirmed' OR (observed_route_generation = (expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END) AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE)",
         "CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))"
       ],
       "indexes": [
@@ -15265,7 +15251,7 @@
           "where": "status IN ('requested','unknown')"
         },
         {
-          "name": "route_switches_operation",
+          "name": "access_switches_operation",
           "columns": "operation_owner, operation_id, created_at DESC, id DESC",
           "unique": false,
           "where": null
@@ -15799,14 +15785,13 @@
         "CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))",
         "UNIQUE (quote_id)",
         "UNIQUE (id, workspace_id)",
-        "FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT",
         "CHECK (date_trunc('milliseconds',quote_at) = quote_at)",
         "CHECK (execution_plan_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (period_end > period_start)",
-        "CHECK (period_end_ms > period_start_ms AND period_end_ms-period_start_ms <= 2678400000)",
+        "CHECK (period_end_ms > period_start_ms AND (period_end_ms - period_start_ms) <= 2678400000)",
         "CHECK (quote_at_ms >= period_start_ms AND quote_at_ms < period_end_ms)",
-        "CHECK (source_financial_snapshot_digest = 'sha256:' || encode(sha256(source_financial_snapshot_bytes),'hex'))",
-        "CHECK (kind <> 'upgrade_immediate' OR charge_usd_micros = ceil(greatest(target_monthly_usd_micros-source_monthly_usd_micros,0)::numeric * (period_end_ms-quote_at_ms)::numeric / (period_end_ms-period_start_ms)::numeric))"
+        "CHECK (source_financial_snapshot_digest = ('sha256:' || encode(sha256(source_financial_snapshot_bytes), 'hex')))",
+        "CHECK (kind <> 'upgrade_immediate' OR charge_usd_micros = ceil((CAST(GREATEST(target_monthly_usd_micros - source_monthly_usd_micros, 0) AS numeric) * CAST(period_end_ms - quote_at_ms AS numeric)) / CAST(period_end_ms - period_start_ms AS numeric)))"
       ],
       "indexes": [
         {
@@ -15836,7 +15821,7 @@
       "postCreateConstraints": [
         {
           "name": "plan_change_next_period_obligation_fk",
-          "sql": "FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT"
+          "sql": "CONSTRAINT plan_change_next_period_obligation_fk FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT"
         }
       ]
     },

@@ -54,7 +54,17 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Fatalf("open owner database: %v", err)
 	}
 	defer database.Close()
-	operations, err := NewOperations(OwnerServe, database.Store())
+	identity, err := NewServer(Config{Owner: OwnerTenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[Service]string{OwnerServe.Service(): wireToken}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = identity.Register(func(s *grpc.Server) { api.RegisterCloudIdentityAuthorizationServer(s, &wireIdentity{}) })
+	auth, identityConn, err := AuthorizerFromConfig(Config{Owner: OwnerServe, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, CloudIdentityAddr: startWireServer(t, identity), CloudIdentityToken: wireToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer identityConn.Close()
+	operations, err := NewOperations(OwnerServe, database.Store(), auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +75,7 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Fatalf("record operation: %v", err)
 	}
 
-	config := Config{Owner: OwnerServe, Peers: map[Owner]string{OwnerWorkspace: token}}
+	config := Config{TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Owner: OwnerServe, Peers: map[Service]string{Service(OwnerWorkspace): token}}
 	server, err := NewServer(config)
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +131,9 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Fatalf("health = %s, want NOT_SERVING for an owner without its product handlers", health.GetStatus())
 	}
 
-	read, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-wire-proof"})
+	session := "session-wire"
+	userContext := &api.CallContext{ActorId: "actor-wire", SessionId: &session, RequestId: "request-wire", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}}
+	read, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{Context: userContext, OperationId: "op-wire-proof"})
 	if err != nil {
 		t.Fatalf("read stored operation: %v", err)
 	}
@@ -140,10 +152,25 @@ func TestOwnerProcessOverTheWire(t *testing.T) {
 		t.Errorf("pollAfterSeconds = %d, want the owner's own cadence", read.GetPollAfterSeconds())
 	}
 
-	if _, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-missing"}); status.Code(err) != codes.NotFound {
+	if _, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{Context: userContext, OperationId: "op-missing"}); status.Code(err) != codes.NotFound {
 		t.Errorf("unknown operation code = %v, want NotFound", status.Code(err))
 	}
 
+	for _, test := range []struct {
+		name string
+		call *api.CallContext
+	}{
+		{"missing context", nil},
+		{"other actor", &api.CallContext{ActorId: "another-actor", SessionId: &session, RequestId: "request-other", Scope: userContext.Scope}},
+		{"tenant against platform record", &api.CallContext{ActorId: "actor-wire", SessionId: &session, RequestId: "request-other", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "other-tenant"}}}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := api.NewOwnerOperationsClient(authenticated).Read(callCtx, &api.OwnerOperationRequest{Context: test.call, OperationId: "op-wire-proof"})
+			if status.Code(err) != codes.Unauthenticated && status.Code(err) != codes.PermissionDenied {
+				t.Fatalf("expected authorization refusal, got %v", err)
+			}
+		})
+	}
 	anonymous := dialOwner(t, addr, "")
 	defer anonymous.Close()
 	_, err = api.NewOwnerOperationsClient(anonymous).Read(callCtx, &api.OwnerOperationRequest{OperationId: "op-wire-proof"})
@@ -208,7 +235,7 @@ func dialOwner(t *testing.T, addr, token string) *grpc.ClientConn {
 	t.Helper()
 	options := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if token != "" {
-		options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Workspace, token)))
+		options = append(options, grpc.WithChainUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Service(owneridentity.Workspace), token)))
 	}
 	conn, err := grpc.NewClient(addr, options...)
 	if err != nil {
