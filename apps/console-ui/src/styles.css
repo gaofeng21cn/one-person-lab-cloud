@@ -6695,7 +6695,7 @@ textarea:focus-visible,
   font-size: 28px;
   font-weight: 680;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .overview-summary .band-metric small {
