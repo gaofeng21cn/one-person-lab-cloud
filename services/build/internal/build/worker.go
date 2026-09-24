@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publisherjson"
 	"opl-cloud/services/internal/ownerstore"
 	"strings"
 	"time"
@@ -246,12 +247,7 @@ func descriptor(in *api.BuildInputSnapshot, artifact *api.ArtifactReference, job
 	return &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: artifact, RuntimeContract: in.RuntimeContract, RuntimeContractReference: in.RuntimeContractReference, WebuiContract: in.WebuiContract, WebuiContractReference: in.WebuiContractReference, PackageVersionId: &packageVersion, BuildInputDigest: &inputDigest, Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD, ApplicationRevision: revision}
 }
 func descriptorBytes(d *api.DeploymentDescriptor) ([]byte, error) {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(wire(d), &object); err != nil {
-		return nil, err
-	}
-	object["schemaVersion"] = json.RawMessage(`"opl-deployment-descriptor/v1"`)
-	return json.Marshal(object)
+	return publisherjson.Marshal(d)
 }
 func (s *Service) confirm(ctx context.Context, r *record, repository string, m Manifest) error {
 	a := &api.ArtifactReference{Repository: repository, Digest: m.Digest, Platform: r.Input.RuntimeArtifact.Platform}
@@ -350,7 +346,7 @@ func (s *Service) deliver(ctx context.Context) error {
 				}
 				continue
 			}
-			if err = s.store.AcknowledgeDelivery(ctx, e.ID, consumer); err != nil {
+			if err = s.store.AcknowledgeDelivery(ctx, consumer, e.ID); err != nil {
 				return err
 			}
 		}

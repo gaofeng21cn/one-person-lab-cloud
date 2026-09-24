@@ -30,13 +30,15 @@ type Service struct {
 	api.UnimplementedCapabilityProductServiceServer
 	api.UnimplementedCapabilityCoordinationServer
 	api.UnimplementedDomainInboxServer
-	DB        *sql.DB
-	Store     *ownerstore.Store
-	Authorize AuthorizeFunc
-	Runtime   api.RuntimeControlProductServiceClient
-	Build     api.BuildCoordinationClient
-	Usage     api.ClaimUsageReadbackClient
-	Objects   *Objects
+	DB         *sql.DB
+	Store      *ownerstore.Store
+	Authorize  AuthorizeFunc
+	Runtime    api.RuntimeControlProductServiceClient
+	Build      api.BuildCoordinationClient
+	Usage      api.ClaimUsageReadbackClient
+	Commit     api.OwnerCommitReadbackClient
+	BuildInbox api.DomainInboxClient
+	Objects    *Objects
 }
 
 // Register exposes the complete Capability owner surface behind the shared
@@ -70,7 +72,7 @@ func (s *Service) auth(ctx context.Context, c *api.CallContext, action string, k
 	scope := ownerservice.ResourceScope{TenantID: tenant(c)}
 	if id != "" && (kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE || kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION) {
 		var tid sql.NullString
-		e := s.DB.QueryRowContext(ctx, `SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id WHERE p.id=$1 UNION ALL SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id WHERE v.id=$1 UNION ALL SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id JOIN capability.upload_sessions u ON u.package_version_id=v.id WHERE u.id=$1 LIMIT 1`, id).Scan(&tid)
+		e := s.DB.QueryRowContext(ctx, `SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id WHERE p.id=$1 UNION ALL SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id WHERE v.id=$1 UNION ALL SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id JOIN capability.upload_sessions u ON u.package_version_id=v.id WHERE u.id=$1 UNION ALL SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.capability_versions v ON v.package_id=p.id WHERE v.id=$1 LIMIT 1`, id).Scan(&tid)
 		if e != nil {
 			return dbError(e)
 		}

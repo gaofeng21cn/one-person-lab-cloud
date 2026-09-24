@@ -154,18 +154,34 @@ manifest/config digest readback, and Build's persisted recovery from a pre-ack
 matching descriptor bytes. Multipart retries, completion retries, conflicting
 completion, corrupt bytes, and cross-tenant reads are also exercised.
 
-This is a bounded local execution proof. Publisher/CloudIdentity authentication
-is a test fixture; Runtime/WebUI selection and the accepted Build input are
-injected fixtures. The recovery fixture recreates the durable pre-ack state; it
-does not kill a live CreateBuild worker during a registry push. Complete
-ResolveBuildInput/claim binding, registration acknowledgement replay, Ledger and
-BFF/Console readback remain unqualified. These are Cloud-local obligations, not
-all external Instance blockers. Issue #625 remains open.
+The follow-up owner-chain check now uses actual Runtime registration and policy
+selection, CreateBuild/ResolveBuildInput, all three claims bound against Build
+commit readback, and Build/Capability registration Inbox/Outbox delivery. Both
+consumer acknowledgements are deliberately lost after commit. Retrying converges
+to one ready CapabilityVersion, one succeeded Build and zero pending deliveries
+between those two owners. The check exposed and repaired reversed consumer/event
+arguments that previously left acknowledged deliveries pending indefinitely.
 
-[Local execution receipt](./evidence/source-checks/2026-09-25-package-buildkit-local.json)
-records the exact tested source files, commands, artifact and descriptor digests,
-and remaining coverage. [Reproduction and configuration](./runtime/package-buildkit-local.md)
-describe the isolated test and the new data-plane listener.
+Publisher JSON now uses its public schema vocabulary rather than protobuf enum
+names, including required false/zero/empty values and access-union objects. The
+shared codec is used by Runtime admission, Capability reads and Build descriptor
+creation. The schema compiler supports the canonical ECMA-262 lookahead patterns;
+Package source roots are safe relative paths as the existing contract requires.
+
+The [owner registration receipt](./evidence/source-checks/2026-09-25-package-owner-registration-local.json)
+binds the tested source and successful full-local gate (228 source tests, 114
+browser tests, all required PostgreSQL modules with zero skips, Docker integration)
+plus final focused rechecks. The earlier
+[local execution receipt](./evidence/source-checks/2026-09-25-package-buildkit-local.json)
+remains historical evidence for its own source.
+
+This remains bounded local evidence. CloudIdentity/peer identities, the publisher
+namespace and approved WebUI catalog entry are fixtures. Live worker termination
+during push, the real accepted-grant path, publisher BFF commands, Ledger delivery
+and the complete Console journey remain unqualified Cloud obligations. Instance
+adoption and release readiness are separate. Issue #625 remains open.
+[Reproduction and configuration](./runtime/package-buildkit-local.md) describes
+the command, its fixtures and the data-plane listener.
 
 ## Conclusion
 

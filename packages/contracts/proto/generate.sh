@@ -34,3 +34,6 @@ gen_grpc="$(command -v protoc-gen-go-grpc)"
   --go_out="${out}" --go_opt=module=opl-cloud/packages/contracts/go \
   --go-grpc_out="${out}" --go-grpc_opt=module=opl-cloud/packages/contracts/go \
   "${here}/internal.proto"
+
+# Public JSON enum names and required defaults are owned by the publisher schema.
+"${py}" "${here}/generate_publisher_shape.py"

@@ -80,6 +80,8 @@ func main() {
 		service.Runtime = api.NewRuntimeControlProductServiceClient(runtimeConn)
 		service.Build = api.NewBuildCoordinationClient(buildConn)
 		service.Usage = api.NewClaimUsageReadbackClient(buildConn)
+		service.Commit = api.NewOwnerCommitReadbackClient(buildConn)
+		service.BuildInbox = api.NewDomainInboxClient(buildConn)
 		if err := service.Register(server); err != nil {
 			return err
 		}
@@ -106,6 +108,7 @@ func main() {
 				stop()
 			}
 		}()
+		go service.RunRegistrationDelivery(ctx)
 		return nil
 	})
 	if err != nil {

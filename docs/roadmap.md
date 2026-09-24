@@ -29,15 +29,16 @@ The owner-process implementation is present on canonical `main` through PR
 This is a partial foundation, not a claim that the complete product delivery
 chain is finished. Open work in dependency order:
 
-1. Join the now-proven Capability multipart upload and real BuildKit/Registry
-   execution through actual Runtime/WebUI owner selection, CreateBuild admission
-   and all three bound claims. The [local execution evidence](./status.md#isolated-package-upload-and-buildkit-execution)
-   uses publisher/authentication and accepted-input fixtures at those boundaries.
-2. Prove the complete registered CapabilityVersion result, duplicate event and
-   registration acknowledgement delivery, actual worker termination during
-   export, Ledger evidence, and authenticated BFF/Console readback. Persisted
-   Build recovery and registry-read uncertainty already have isolated evidence;
-   they do not replace these remaining end-to-end cases.
+1. The local Package upload → Runtime API/policy selection → immutable Build
+   admission → three bound claims → BuildKit/Registry → ready CapabilityVersion
+   chain is now proven with duplicate delivery and lost registration replies.
+   See the [owner-chain evidence](./status.md#isolated-package-upload-and-buildkit-execution).
+   Complete the real CloudIdentity/accepted-grant and publisher namespace/WebUI
+   admission paths; local identity and approved WebUI entries remain fixtures.
+2. Implement and verify the authenticated publisher BFF/Console entry and Ledger
+   consumer against these owner handlers, then prove live worker termination
+   during export. The local two-owner registration replay and persisted pre-ack
+   recovery evidence do not replace these remaining end-to-end cases.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.

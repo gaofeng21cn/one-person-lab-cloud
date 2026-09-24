@@ -128,7 +128,10 @@ func (r *Runner) ValidateInput(in *api.BuildInputSnapshot) error {
 		return errors.New("recipe Dockerfile must be the artifact root Dockerfile")
 	}
 	p, w := recipe.PackageInput, recipe.WebuiInput
-	for _, v := range []string{p.SourceRoot, p.TargetPath, w.SourcePath, w.TargetPath} {
+	if p.SourceRoot == "." || p.SourceRoot == ".." || strings.HasPrefix(p.SourceRoot, "/") || strings.HasPrefix(p.SourceRoot, "../") || path.Clean(p.SourceRoot) != p.SourceRoot || !regexp.MustCompile(`^[A-Za-z0-9_./-]+$`).MatchString(p.SourceRoot) {
+		return errors.New("unsafe relative Package source root")
+	}
+	for _, v := range []string{p.TargetPath, w.SourcePath, w.TargetPath} {
 		if !safePath(v) {
 			return errors.New("unsafe recipe input path")
 		}

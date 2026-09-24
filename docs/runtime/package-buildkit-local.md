@@ -15,16 +15,27 @@ Containers and their anonymous volumes are removed at test exit.
 
 The test uses real Capability gRPC handlers, its restricted runtime database
 role and the same HTTP data handler wired by `services/capability/cmd/server`.
-The publisher identity decision is a test fixture. After digest-checked upload,
-the production Build runner consumes those exact ZIP bytes and a fixed recipe.
-A filesystem export verifies the actual Package and WebUI content. Registry
-read failures and a reopened Build database then exercise the real worker's
-unknown/recovery transitions while the builder is stopped.
+CloudIdentity and peer identity decisions are test fixtures. After digest-checked
+upload, Runtime admission and default policy selection use real owner APIs.
+CreateBuild resolves the exact Package/WebUI/Runtime input, acquires and binds
+three claims against Build commit readback, and runs the production Build runner.
+A filesystem export verifies actual Package and WebUI content. Build and
+Capability each lose one post-commit registration acknowledgement; retries must
+leave one ready CapabilityVersion and zero pending deliveries between them.
+Registry read failures and a reopened Build database separately exercise the
+worker's unknown/recovery transitions while the builder is stopped.
 
-This command does **not** qualify Runtime/WebUI catalog admission, all reference
-claims, a live worker killed during push, complete Build/Capability Inbox/Outbox
-acknowledgements, Ledger, Console, a protected Instance or release readiness.
-It must not close #625 by itself. Those gaps are owned by [the roadmap](../roadmap.md).
+The publisher namespace and approved WebUI entry are seeded fixtures. This
+command does **not** qualify their admission APIs, live identity/grant decisions,
+a worker process killed during push, Ledger delivery, publisher BFF commands,
+the complete Console journey, a protected Instance or release readiness. It must
+not close #625 by itself. Those gaps are owned by [the roadmap](../roadmap.md).
+
+The shared publisher JSON codec is generated from the canonical schema vocabulary
+with `python3 packages/contracts/proto/generate_publisher_shape.py` (also called
+by the existing protobuf generation entrypoint). It serializes owner-created
+public descriptors; it does not claim to reproduce an external publisher's
+original JSON bytes or replace schema validation.
 
 ## Capability data plane
 

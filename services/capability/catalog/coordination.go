@@ -3,7 +3,9 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -11,7 +13,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publisherjson"
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/internal/ownerstore"
 )
 
 func targetInfo(t *api.ReferenceTarget) (string, string, error) {
@@ -59,21 +64,14 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 	if e := s.DB.QueryRowContext(ctx, `SELECT publisher_contract,status,publisher_namespace_id,publisher_contract_digest,publisher_contract_object_ref FROM capability.webui_versions WHERE id=$1`, r.GetWebuiVersionId()).Scan(&webuiRaw, &webuiStatus, &webuiRef.PublisherNamespaceId, &webuiRef.DescriptorDigest, &webuiRef.DescriptorObjectRef); e != nil {
 		return nil, dbError(e)
 	}
-	if webuiStatus != "approved" || protojson.Unmarshal(webuiRaw, &webui) != nil {
+	if webuiStatus != "approved" || publisherjson.Unmarshal(webuiRaw, &webui) != nil {
 		return nil, status.Error(codes.FailedPrecondition, "WebUI version is not approved")
 	}
 	webuiRef.VersionId = r.GetWebuiVersionId()
 	webuiRef.Kind = api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI
-	page, e := s.Runtime.ListRuntimeVersions(ctx, &api.ListRuntimeVersionsRpcRequest{Context: r.GetContext()})
+	runtime, e := s.runtimeVersion(ctx, r.GetContext(), "")
 	if e != nil {
 		return nil, e
-	}
-	var runtime *api.RuntimeVersion
-	for _, v := range page.GetItems() {
-		if v.GetDefaultForNewBuilds() && v.GetStatus() == api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED {
-			runtime = v
-			break
-		}
 	}
 	if runtime == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no approved Runtime catalog policy is available")
@@ -94,10 +92,10 @@ func (s *Service) AcquireReference(ctx context.Context, r *api.ReferenceClaimReq
 	if e != nil {
 		return nil, e
 	}
-	if r.GetClaimantResourceId() == "" || r.GetClaimantOwner() == api.OwnerEnum_OWNER_ENUM_UNSPECIFIED {
-		return nil, status.Error(codes.InvalidArgument, "claimant identity is required")
+	if r.GetClaimantResourceId() == "" || r.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_BUILD {
+		return nil, status.Error(codes.InvalidArgument, "Build claimant identity is required")
 	}
-	if e = s.auth(ctx, r.GetContext(), "AcquireReference", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, target); e != nil {
+	if e = s.authorizeReference(ctx, r.GetContext(), "AcquireReference", kind, target); e != nil {
 		return nil, e
 	}
 	claim := &api.ReferenceClaim{Id: id("claim"), Target: r.Target, ClaimantOwner: r.ClaimantOwner, ClaimantResourceId: r.ClaimantResourceId, State: api.ReferenceClaimState_REFERENCE_CLAIM_STATE_ACQUIRED, AcquiredAt: timestamppb.Now()}
@@ -158,15 +156,32 @@ func (s *Service) BindReference(ctx context.Context, r *api.BindReferenceRequest
 	if e != nil {
 		return nil, dbError(e)
 	}
-	if e := s.auth(ctx, r.GetContext(), "BindReference", referenceKind(kind), target); e != nil {
+	if e := s.authorizeReference(ctx, r.GetContext(), "BindReference", kind, target); e != nil {
 		return nil, e
 	}
-	if boundAt.Valid || owner != ownerName(r.GetOwnerCommitEvidence().GetOwner()) || r.GetOwnerCommitEvidence().GetResourceId() != claim.ClaimantResourceId || r.GetOwnerCommitEvidence().GetOperationId() == "" || r.GetOwnerCommitEvidence().GetAcceptedInputDigest() == "" {
+	if owner != ownerName(r.GetOwnerCommitEvidence().GetOwner()) || r.GetOwnerCommitEvidence().GetResourceId() != claim.ClaimantResourceId || r.GetOwnerCommitEvidence().GetOperationId() == "" || r.GetOwnerCommitEvidence().GetAcceptedInputDigest() == "" {
 		return nil, status.Error(codes.FailedPrecondition, "owner commit evidence does not match claim")
 	}
-	_, e = s.DB.ExecContext(ctx, `UPDATE capability.reference_claims SET bound_at=now(),bound_operation_id=$2,bound_input_digest=$3,updated_at=now() WHERE id=$1 AND bound_at IS NULL`, r.GetClaimId(), r.GetOwnerCommitEvidence().GetOperationId(), r.GetOwnerCommitEvidence().GetAcceptedInputDigest())
+	if s.Commit == nil {
+		return nil, status.Error(codes.Unavailable, "Build commit readback unavailable")
+	}
+	actual, e := s.Commit.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: r.OwnerCommitEvidence.Owner, OperationId: r.OwnerCommitEvidence.OperationId, ResourceId: r.OwnerCommitEvidence.ResourceId})
+	if e != nil {
+		return nil, e
+	}
+	if !proto.Equal(actual, r.OwnerCommitEvidence) {
+		return nil, status.Error(codes.FailedPrecondition, "owner commit readback mismatch")
+	}
+	result, e := s.DB.ExecContext(ctx, `UPDATE capability.reference_claims SET bound_at=COALESCE(bound_at,now()),bound_operation_id=$2,bound_input_digest=$3,updated_at=now() WHERE id=$1 AND released_at IS NULL AND (bound_at IS NULL OR (bound_operation_id=$2 AND bound_input_digest=$3))`, r.ClaimId, actual.OperationId, actual.AcceptedInputDigest)
 	if e != nil {
 		return nil, dbError(e)
+	}
+	count, e := result.RowsAffected()
+	if e != nil {
+		return nil, dbError(e)
+	}
+	if count != 1 {
+		return nil, status.Error(codes.FailedPrecondition, "claim binding conflicts with persisted evidence")
 	}
 	claim.Id = r.GetClaimId()
 	claim.State = api.ReferenceClaimState_REFERENCE_CLAIM_STATE_BOUND
@@ -201,7 +216,7 @@ func (s *Service) ReleaseReference(ctx context.Context, r *api.ReleaseReferenceR
 	if err != nil {
 		return nil, dbError(err)
 	}
-	if err := s.auth(ctx, r.GetContext(), "ReleaseReference", referenceKind(targetType), targetID); err != nil {
+	if err := s.authorizeReference(ctx, r.GetContext(), "ReleaseReference", targetType, targetID); err != nil {
 		return nil, err
 	}
 	if releasedAt.Valid {
@@ -256,49 +271,135 @@ func targetRef(kind, id string) *api.ReferenceTarget {
 }
 
 func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api.InboxAck, error) {
-	if r.GetAuthenticatedProducer() != "build" || r.GetEvent().GetOwner() != "build" || r.GetEvent().GetBuildArtifactConfirmed() == nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid Build artifact event")
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || peer != owneridentity.Build.Service() {
+		return nil, status.Error(codes.Unauthenticated, "verified Build peer required")
 	}
 	event := r.GetEvent()
 	payload := event.GetBuildArtifactConfirmed()
-	if event.GetEventType() != "build.artifact_confirmed.v1" || payload.GetBuildJobId() == "" {
+	if r.GetAuthenticatedProducer() != "build" || event.GetOwner() != "build" || event.GetEventType() != "build.artifact_confirmed.v1" || event.GetSchemaVersion() != 1 || event.GetEventId() == "" || payload == nil || event.GetAggregateId() != payload.BuildJobId || event.GetScope() != "tenant" {
 		return nil, status.Error(codes.InvalidArgument, "invalid Build artifact event")
 	}
 	if s.Build == nil {
-		return nil, status.Error(codes.Unavailable, "Build readback is unavailable")
+		return nil, status.Error(codes.Unavailable, "Build readback unavailable")
 	}
-	readback, e := s.Build.ReadArtifact(ctx, &api.ReadBuildArtifactRequest{BuildJobId: payload.GetBuildJobId(), Context: eventCall(event)})
+	readback, e := s.Build.ReadArtifact(ctx, &api.ReadBuildArtifactRequest{BuildJobId: payload.BuildJobId, Context: eventCall(event)})
 	if e != nil {
 		return nil, e
 	}
-	if readback.GetArtifact().GetDigest() != payload.GetArtifactDigest() || readback.GetDeploymentDescriptorDigest() != payload.GetDeploymentDescriptorDigest() {
+	if readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || readback.GetBuildJobId() != payload.BuildJobId || readback.GetInput().GetPackageVersionId() != payload.PackageVersionId || readback.GetInput().GetRuntimeVersionId() != payload.RuntimeVersionId || readback.GetInput().GetWebuiVersionId() != payload.WebuiVersionId || readback.GetArtifact().GetDigest() != payload.ArtifactDigest || readback.GetArtifactReceiptId() != payload.ArtifactReceiptId || readback.GetDeploymentDescriptorDigest() != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build artifact readback mismatch")
 	}
-	descriptor, _ := protojson.Marshal(readback.GetDeploymentDescriptor())
-	versionID := id("capv")
+	descriptor, e := publisherjson.Marshal(readback.GetDeploymentDescriptor())
+	if e != nil || digest(descriptor) != payload.DeploymentDescriptorDigest {
+		return nil, status.Error(codes.FailedPrecondition, "Build descriptor bytes differ from digest")
+	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, dbError(e)
 	}
 	defer tx.Rollback()
-	_, e = tx.ExecContext(ctx, `INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15) ON CONFLICT(build_job_id) DO NOTHING`, versionID, readback.GetInput().GetPackageId(), payload.GetPackageVersionId(), payload.GetBuildJobId(), readback.GetVersionLabel(), payload.GetRuntimeVersionId(), payload.GetWebuiVersionId(), readback.GetArtifact().GetRepository(), payload.GetArtifactDigest(), jsonBytesList(readback.GetModelRequirements()), jsonBytes(readback.GetDataCompatibility()), jsonBytes(readback), descriptor, payload.GetDeploymentDescriptorDigest(), readback.GetDeploymentDescriptorObjectRef())
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, payload.BuildJobId); e != nil {
+		return nil, dbError(e)
+	}
+	var tenantID string
+	if e = tx.QueryRowContext(ctx, `SELECT n.tenant_id FROM capability.namespaces n JOIN capability.packages p ON p.namespace_id=n.id JOIN capability.package_versions v ON v.package_id=p.id WHERE p.id=$1 AND v.id=$2`, readback.Input.PackageId, payload.PackageVersionId).Scan(&tenantID); e != nil {
+		return nil, dbError(e)
+	}
+	if tenantID != event.TenantId {
+		return nil, status.Error(codes.PermissionDenied, "Build event belongs to another tenant")
+	}
+	result, e := s.Store.DeliverInbox(ctx, tx, ownerstore.InboundEvent{ID: "in_" + event.EventId, SourceOwner: "build", SourceEventID: event.EventId, EventType: event.EventType, SchemaVersion: 1, AggregateType: "build", AggregateID: payload.BuildJobId, AggregateRevision: event.AggregateVersion, Payload: jsonBytes(payload)}, time.Now())
 	if e != nil {
 		return nil, dbError(e)
 	}
-	var actual string
-	if e = tx.QueryRowContext(ctx, `SELECT id FROM capability.capability_versions WHERE build_job_id=$1`, payload.GetBuildJobId()).Scan(&actual); e != nil {
-		return nil, dbError(e)
+	if result.Decision == ownerstore.InboxConflict {
+		return nil, status.Error(codes.AlreadyExists, "Build event identity conflicts")
+	}
+	if result.Applied {
+		versionID := id("capv")
+		_, e = tx.ExecContext(ctx, `INSERT INTO capability.capability_versions(id,package_id,package_version_id,build_job_id,version_label,runtime_version_id,webui_version_id,artifact_repository,artifact_digest,status,model_requirements,data_compatibility,provenance_evidence,provenance,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready',$10,$11,$12,'build',$13,$14,$15)`, versionID, readback.Input.PackageId, payload.PackageVersionId, payload.BuildJobId, readback.VersionLabel, payload.RuntimeVersionId, payload.WebuiVersionId, readback.Artifact.Repository, payload.ArtifactDigest, jsonBytesList(readback.ModelRequirements), jsonBytes(readback.DataCompatibility), jsonBytes(readback), descriptor, payload.DeploymentDescriptorDigest, readback.DeploymentDescriptorObjectRef)
+		if e != nil {
+			return nil, dbError(e)
+		}
+		if e = s.Store.MarkInboxProcessed(ctx, tx, "build", event.EventId, versionID, "", time.Now()); e != nil {
+			return nil, dbError(e)
+		}
+		registered := &api.CapabilityVersionRegisteredEvent{CapabilityVersionId: versionID, BuildJobId: payload.BuildJobId, ArtifactDigest: payload.ArtifactDigest}
+		if e = s.Store.AppendEvent(ctx, tx, ownerstore.Event{ID: "evt_" + versionID, EventType: "capability.version_registered.v1", SchemaVersion: 1, AggregateType: "capability_version", AggregateID: versionID, AggregateRevision: 1, TenantID: tenantID, CorrelationID: event.RequestId, Payload: jsonBytes(registered), OccurredAt: time.Now()}); e != nil {
+			return nil, dbError(e)
+		}
 	}
 	if e = tx.Commit(); e != nil {
 		return nil, dbError(e)
 	}
-	return &api.InboxAck{EventId: event.GetEventId(), Consumer: "capability", Committed: true, AppliedAggregateVersion: event.GetAggregateVersion()}, nil
+	return &api.InboxAck{EventId: event.EventId, Consumer: "capability", Committed: true, Duplicate: result.Decision == ownerstore.InboxDuplicate, AppliedAggregateVersion: event.AggregateVersion}, nil
 }
 
 func eventCall(e *api.EventEnvelope) *api.CallContext {
 	return &api.CallContext{RequestId: e.GetRequestId(), Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: e.GetTenantId()}}}}
 }
 func jsonBytesList(v []*api.ModelRequirement) []byte {
-	b, _ := protojson.Marshal(&api.BuildArtifactReadback{ModelRequirements: v})
+	var values []json.RawMessage
+	for _, value := range v {
+		values = append(values, jsonBytes(value))
+	}
+	if values == nil {
+		values = []json.RawMessage{}
+	}
+	b, _ := json.Marshal(values)
 	return b
+}
+
+func (s *Service) authorizeReference(ctx context.Context, c *api.CallContext, action, kind, target string) error {
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || peer != owneridentity.Build.Service() {
+		return status.Error(codes.PermissionDenied, "Build reference peer required")
+	}
+	if kind == "package_version" || kind == "capability_version" {
+		return s.auth(ctx, c, action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, target)
+	}
+	if err := ownerservice.ValidateCallContext(ctx, c); err != nil {
+		return err
+	}
+	if kind == "runtime_version" {
+		if s.Runtime == nil {
+			return status.Error(codes.Unavailable, "Runtime owner unavailable")
+		}
+		v, err := s.runtimeVersion(ctx, c, target)
+		if err != nil {
+			return err
+		}
+		if action != "ReleaseReference" && v.Status != api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED {
+			return status.Error(codes.FailedPrecondition, "Runtime is not approved")
+		}
+	} else if kind == "webui_version" {
+		var st string
+		if err := s.DB.QueryRowContext(ctx, `SELECT status FROM capability.webui_versions WHERE id=$1`, target).Scan(&st); err != nil {
+			return dbError(err)
+		}
+		if action != "ReleaseReference" && st != "approved" {
+			return status.Error(codes.FailedPrecondition, "WebUI is not approved")
+		}
+	}
+	return s.Authorize(ctx, c, api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_"+strings.ToUpper(action)]), &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, Id: proto.String(target)}, ownerservice.ResourceScope{TenantID: tenant(c)})
+}
+
+func (s *Service) runtimeVersion(ctx context.Context, c *api.CallContext, id string) (*api.RuntimeVersion, error) {
+	cursor := ""
+	for {
+		page, err := s.Runtime.ListRuntimeVersions(ctx, &api.ListRuntimeVersionsRpcRequest{Context: c, QueryCursor: &cursor})
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range page.Items {
+			if (id != "" && v.Id == id) || (id == "" && v.DefaultForNewBuilds && v.Status == api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED) {
+				return v, nil
+			}
+		}
+		if page.GetNextCursor() == "" {
+			return nil, status.Error(codes.NotFound, "Runtime selection not found")
+		}
+		cursor = page.GetNextCursor()
+	}
 }
