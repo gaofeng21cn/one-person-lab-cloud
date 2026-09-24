@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
@@ -31,7 +32,7 @@ import (
 
 // Only CloudIdentity and the external publisher are fixtures. Capability's
 // upload commands, signed data plane, persistence and ZIP verification are real.
-func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string) {
+func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, *catalog.Service, string) {
 	t.Helper()
 	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: "capability", Database: "opl_capability", SchemaOwnerRole: "opl_capability_owner", WriterRole: "opl_capability_writer", RuntimeRole: "opl_capability_runtime"})
 	if err != nil {
@@ -61,7 +62,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal(err)
 	}
 	service, err := catalog.New(db, func(_ context.Context, c *api.CallContext, _ api.AuthorizationActionEnum, _ *api.AuthorizationResource, scope ownerservice.ResourceScope) error {
-		if c.GetSessionId() != "isolated-publisher" || c.GetScope().GetTenant().GetTenantId() != scope.TenantID {
+		if (c.GetSessionId() != "isolated-publisher" && c.GetAcceptedOperationGrantId() != "isolated-grant") || c.GetScope().GetTenant().GetTenantId() != scope.TenantID {
 			return status.Error(codes.PermissionDenied, "fixture identity denied")
 		}
 		return nil
@@ -82,9 +83,15 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal(err)
 	}
 	server := grpc.NewServer(grpc.UnaryInterceptor(func(c context.Context, r any, _ *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
-		return next(ownerservice.WithPeerOwner(c, owneridentity.ConsoleBFF), r)
+		peer := owneridentity.ConsoleBFF
+		if values := metadata.ValueFromIncomingContext(c, "test-peer"); len(values) > 0 {
+			peer = owneridentity.Service(values[0])
+		}
+		return next(ownerservice.WithPeerOwner(c, peer), r)
 	}))
 	api.RegisterCapabilityProductServiceServer(server, service)
+	api.RegisterCapabilityCoordinationServer(server, service)
+	api.RegisterDomainInboxServer(server, service)
 	go server.Serve(listener)
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -195,5 +202,5 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal("confirmed object bytes differ")
 	}
 	t.Logf("Capability wire upload complete: %d replayed parts, idempotent completion, corrupt bytes and cross-tenant reads rejected", len(parts))
-	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id
+	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id, service, listener.Addr().String()
 }

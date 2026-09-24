@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"opl-cloud/packages/contracts/go/publisherjson"
 )
 
 // UploadPolicy is explicit instance configuration, not customer-controlled input.
@@ -59,7 +60,7 @@ func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, e
 	if e = json.Unmarshal(b, &raw); e != nil {
 		return nil, e
 	}
-	compiler := jsonschema.NewCompiler()
+	compiler := publisherjson.NewSchemaCompiler()
 	if e = compiler.AddResource("package-schema.json", raw); e != nil {
 		return nil, e
 	}

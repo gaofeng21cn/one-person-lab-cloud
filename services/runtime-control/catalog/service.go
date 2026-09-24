@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publisherjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
 )
@@ -58,7 +59,7 @@ func New(db *sql.DB, a *ownerservice.Authorizer, capability api.CapabilityProduc
 	if e = json.Unmarshal(b, &raw); e != nil {
 		return nil, e
 	}
-	c := jsonschema.NewCompiler()
+	c := publisherjson.NewSchemaCompiler()
 	if e = c.AddResource("publisher.json", raw); e != nil {
 		return nil, e
 	}
@@ -172,7 +173,7 @@ func (s *Service) RegisterRuntimeVersion(ctx context.Context, r *api.RegisterRun
 	if !nameRE.MatchString(b.GetName()) || !nameRE.MatchString(b.GetVersionLabel()) || b.GetAdmissionReceiptId() == "" || b.GetPublisherContract() == nil || b.PublisherNamespaceId != b.PublisherContract.PublisherNamespaceId {
 		return nil, status.Error(codes.InvalidArgument, "invalid runtime admission")
 	}
-	raw, e := protojson.Marshal(b.PublisherContract)
+	raw, e := publisherjson.Marshal(b.PublisherContract)
 	if e != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid publisher contract")
 	}
@@ -223,7 +224,7 @@ func scanRuntime(row scanner) (*api.RuntimeVersion, error) {
 	v.Status = api.RuntimeVersionStatusEnum(api.RuntimeVersionStatusEnum_value["RUNTIME_VERSION_STATUS_ENUM_"+strings.ToUpper(st)])
 	v.CreatedAt = timestamppb.New(created)
 	v.PublisherContract = &api.RuntimePublisherContract{}
-	if e = protojson.Unmarshal(raw, v.PublisherContract); e != nil {
+	if e = publisherjson.Unmarshal(raw, v.PublisherContract); e != nil {
 		return nil, status.Error(codes.DataLoss, "stored publisher contract invalid")
 	}
 	return v, nil

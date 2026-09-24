@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publisherjson"
 	"opl-cloud/services/build/migrations"
 	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
@@ -99,44 +99,43 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	runtime := seed("runtime", "runtime.txt", "approved runtime\n")
 	webui := seed("webui", "index.html", "<h1>WebUI</h1>\n")
-	input := &api.BuildInputSnapshot{PackageId: "pkg-live",
-		PackageVersionId:         "pv-live",
-		RuntimeVersionId:         "runtime-live",
-		WebuiVersionId:           "webui-live",
-		RuntimeArtifact:          runtime,
-		WebuiArtifact:            webui,
-		RuntimeContractReference: &api.PublisherContractReference{},
-		WebuiContractReference:   &api.PublisherContractReference{},
-		WebuiContract: &api.WebuiPublisherContract{
-			Image: webui}}
-	input.RuntimeContract = &api.RuntimePublisherContract{
-		Image:                       runtime,
-		ApplicationRevisionTemplate: &api.WorkspaceApplicationRevision{},
-		BuildRecipe: &api.BuildRecipeContract{Version: api.BuildRecipeContractVersionEnum_BUILD_RECIPE_CONTRACT_VERSION_ENUM_OPL_BUILD_RECIPE_V1,
-			Frontend: &api.ArtifactReference{Repository: frontRepo,
-				Digest:   frontDigest,
-				Platform: p},
-			NetworkPolicy:      api.BuildRecipeContractNetworkPolicyEnum_BUILD_RECIPE_CONTRACT_NETWORK_POLICY_ENUM_NONE,
-			RuntimeContextName: api.BuildRecipeContractRuntimeContextNameEnum_BUILD_RECIPE_CONTRACT_RUNTIME_CONTEXT_NAME_ENUM_RUNTIME,
-			OutputPlatform:     p,
-			PackageInput: &api.PackageBuildInput{ContextName: api.PackageBuildInputContextNameEnum_PACKAGE_BUILD_INPUT_CONTEXT_NAME_ENUM_AGENT_PACKAGE,
-				SourceRoot: "/src",
-				TargetPath: "/agent",
-				Uid:        1000,
-				Gid:        1000},
-			WebuiInput: &api.WebuiBuildInput{ContextName: api.WebuiBuildInputContextNameEnum_WEBUI_BUILD_INPUT_CONTEXT_NAME_ENUM_WEBUI,
-				SourcePath: "/index.html",
-				TargetPath: "/web/index.html",
-				Uid:        1000,
-				Gid:        1000},
-			OutputImageCommand: &api.BuildRecipeContractOutputImageCommand{Entrypoint: []string{"/app/start"},
-				Cmd: []string{}},
-			Recipe: &api.RecipeArtifact{Repository: registry + "/recipe",
-				Digest:         digest([]byte("placeholder")),
-				MediaType:      api.RecipeArtifactMediaTypeEnum_RECIPE_ARTIFACT_MEDIA_TYPE_ENUM_APPLICATION_VND_OPL_BUILD_RECIPE_V1_TAR,
-				DockerfilePath: "Dockerfile"}}}
+	schemaBytes, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct{ Examples []json.RawMessage }
+	if err = json.Unmarshal(schemaBytes, &schema); err != nil {
+		t.Fatal(err)
+	}
+	runtimeContract := &api.RuntimePublisherContract{}
+	webuiContract := &api.WebuiPublisherContract{}
+	if err = publisherjson.Unmarshal(schema.Examples[0], runtimeContract); err != nil {
+		t.Fatal(err)
+	}
+	if err = publisherjson.Unmarshal(schema.Examples[1], webuiContract); err != nil {
+		t.Fatal(err)
+	}
+	runtimeContract.Image = runtime
+	webuiContract.Image = webui
+	runtimeContract.ApplicationRevisionTemplate.Image = runtime.Repository + "@" + runtime.Digest
+	runtimeContract.ApplicationRevisionTemplate.Platform = "linux/arm64"
+	recipeContract := runtimeContract.BuildRecipe
+	recipeContract.Frontend = &api.ArtifactReference{Repository: frontRepo, Digest: frontDigest, Platform: p}
+	recipeContract.OutputPlatform = p
+	recipeContract.PackageInput.SourceRoot = "src"
+	recipeContract.PackageInput.TargetPath = "/agent"
+	recipeContract.WebuiInput.SourcePath = "/index.html"
+	recipeContract.WebuiInput.TargetPath = "/web/index.html"
+	recipeContract.Recipe.Repository = registry + "/recipe"
+	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	pkg := packageZIP(t, zipEntry{"manifest.json", `{"name":"live-package"}`, 0644}, zipEntry{"src/payload.txt", "immutable package payload\n", 0644})
-	input.PackageObject, r.StorageURL, r.StorageToken, input.PackageId, input.PackageVersionId = uploadLivePackage(t, ctx, startLivePostgres(t, ctx), pkg)
+	dsn := startLivePostgres(t, ctx)
+	object, storageURL, storageToken, packageID, packageVersionID, capability, capabilityAddr := uploadLivePackage(t, ctx, dsn, pkg)
+	input.PackageObject = object
+	r.StorageURL = storageURL
+	r.StorageToken = storageToken
+	input.PackageId = packageID
+	input.PackageVersionId = packageVersionID
 	recipe := archiveEntry(t, "Dockerfile", tar.TypeReg, string(FixedDockerfile(input)))
 	putBlob := func(repo string, b []byte) {
 		t.Helper()
@@ -173,6 +172,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input)
 	jobID := "build_" + strings.Repeat("2", 32)
 	repository := r.Repository("tenant-live", input.PackageId)
 	t.Log("executing production Runner against isolated BuildKit and registry")
@@ -338,7 +338,7 @@ func verifyPersistedRecovery(t *testing.T, ctx context.Context, r *Runner, in *a
 		t.Fatal(e)
 	}
 	got := &api.ArtifactReference{}
-	if e = protojson.Unmarshal(desc["artifact"], got); e != nil {
+	if e = publisherjson.Unmarshal(desc["artifact"], got); e != nil {
 		t.Fatal(e)
 	}
 	if got.Digest != m.Digest {
