@@ -1,40 +1,12 @@
 # OPL Cloud Roadmap And Current Gaps
 
-Owner: `opl-cloud`
+Owner: `one-person-lab-cloud`
 Purpose: `single_active_gap_and_priority_owner`
 State: `active_planning`
 
 This file contains only open outcomes. Current evidence belongs in
 [status.md](./status.md); architecture and durable decisions belong in
 [architecture.md](./architecture.md) and [decisions.md](./decisions.md).
-
-## Target Delivery: target architecture Domain-Separated Agent SaaS
-
-The target product and the delivery sequence are owned by the adopted
-[2026-09-22 decision](./decisions.md) and the
-[target architecture development specification](./spec/target/00_master_index.md).
-
-- Authoritative implementation work packages `W00`-`W31`:
-  [14_implementation_work_packages.md](./spec/target/14_implementation_work_packages.md)
-- Development batches and per-role acceptance:
-  [08_delivery_checklist_per_role.md](./spec/target/08_delivery_checklist_per_role.md)
-- Legacy migration program `M0`-`M5`:
-  [09_legacy_migration.md](./spec/target/09_legacy_migration.md)
-
-Those files are the single writer for the target sequence. This file does not
-restate, renumber, or paraphrase them.
-
-The single-repository topology is decided, not an open A/B choice. W01 still
-requires the production contracts, reproducible generation, necessary consumer
-dependency updates and actual boundary verification in the same checkout. W02
-then creates the planned service modules and verifies owner-isolated startup;
-this documentation alignment does not mark either implementation outcome done.
-See [current evidence](./status.md#target-architecture-single-repository-specification-alignment).
-
-
-The sections below describe the **current implementation** lane. They remain
-open until the target architecture work packages replace them, and they are not the target
-delivery order.
 
 ## Priority
 

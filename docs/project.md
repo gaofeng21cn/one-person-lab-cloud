@@ -1,19 +1,10 @@
 # Project Scope
 
-This is the single `opl-cloud` GitHub product and implementation repository,
-derived from `one-person-lab-cloud`. It follows the development framework from
-`one-person-lab`; `opl-cloud` also remains the package and runtime identifier.
-All target Cloud domain services stay in this repository with independent
-module, process and data-owner boundaries. The adopted target and detailed
-placement are owned by [architecture.md](./architecture.md) and the
-[target architecture owner mapping](./spec/target/01_domain_ownership_matrix.md); external
-Instance, Sub2API and Framework authorities are not consolidated here.
+This repository is the `one-person-lab-cloud` product and implementation owner.
+It follows the development framework from `one-person-lab`. The short
+`opl-cloud` identifier remains internal to packages and runtime artifacts.
 
 ## Owned Here
-
-The following describes retained implementation responsibilities. The target architecture
-work packages transfer them to their target owners without creating a second
-writer; new target capabilities do not imply completed implementation.
 
 - Console UI and its runtime route registry.
 - Control Plane Sessions, account mapping, permissions, named product DTOs,

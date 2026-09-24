@@ -3,31 +3,30 @@
 Owner: `one-person-lab-cloud`
 Purpose: `cloud_agent_lifecycle_reference`
 State: `active_target_reference`
-Machine boundary: Human-readable target cross-surface object and owner model.
-Actual implementation and runtime evidence remain with the current owning source,
-test, service, Runtime implementation, and domain surfaces; this target model
-does not assert that the end-to-end flow already exists.
+Machine boundary: Human-readable cross-surface object and owner model. Actual
+package, carrier, service, invocation, resource, receipt, and domain truth stays
+with the owning Package, carrier, Framework, service, runtime, and domain
+surfaces.
 
-This is the target Cloud Agent delivery model, not a claim that the complete
-flow is implemented. Agent design, Package ownership, Runtime release selection,
-OCI build, Workspace authorization, Agent delivery, infrastructure resources,
-execution and evidence remain separate responsibilities. OPL Serve is the
-delivery product and owns the authoritative current-Agent delivery state for a
-Workspace; it is not a second Agent Package or Runtime owner.
+The target Cloud lifecycle exposes standard OPL Agents in App/Workspace and
+supports publication through the planned OPL Serve capability. Agent design,
+package publication, carrier lifecycle, account policy, service publication,
+resource binding, execution and evidence remain separate responsibilities.
 
 ```text
 Agent design / domain source
--> Agent Package upload begins in Serve UI
--> Capability validates and stores uploaded bytes + metadata as immutable Package version
--> user selects WebUI and an approved Runtime version from Runtime Control catalog
--> Build fixes Package + WebUI + Runtime refs/digests and produces immutable OCI
--> user requests delivery to a Workspace through Serve
--> Workspace authorizes its identity, member, entitlement, target and resource plan
--> Fabric provisions/binds infrastructure and returns authoritative resource readback
--> Serve delivery executor applies OCI and owns the single current-Agent state for Workspace
--> Runtime implementation supplied by OPL App/Framework runs OCI in Workspace
--> API / Embed / Hosted UI route to that same Workspace Agent
--> Agent invocation/session evidence refs -> Ledger where required
+-> Agent Package candidate
+-> owner descriptor + exact publication revision
+-> configured native carrier install + installed/callable readback
+-> Framework discovery and state aggregation
+-> optional Console account availability policy
+-> App / Workspace Agent Instance -> Agent Run
+or
+-> Service Entrypoint Contract
+-> OPL Serve Agent Service -> immutable Agent Revision -> Deployment
+-> OPL Runway Invocation / Session
+-> Fabric/provider resource binding
+-> Ledger receipt refs
 ```
 
 ## Lifecycle Objects
@@ -35,59 +34,53 @@ Agent design / domain source
 | Object | Meaning | Owner |
 | --- | --- | --- |
 | Agent design | Goal, boundary, stages, inputs, outputs, review rules and authority functions | OMA / domain owner |
-| Agent design | Goal, boundary, stages, inputs, outputs, review rules and authority functions | OMA / domain owner |
-| Agent Package | Uploaded distributable bytes, identity, metadata and immutable versions | Capability |
-| WebUI selection | Exact selected WebUI reference/version | Build input; WebUI remains with its owning source |
-| Runtime release | Approved Runtime-version catalog and exact selectable references | Runtime Control; implementation/release belongs to OPL App/Framework owner |
-| OCI Build | Fixed Package/WebUI/Runtime inputs, build operation, immutable OCI digest and evidence | Build |
-| Workspace | Identity, membership, lifecycle, entitlement, resource plan and target authorization | Workspace |
-| Agent delivery/current state | Delivery operation and unique current-Agent OCI for a Workspace | OPL Serve |
-| Resource binding | Compute, storage and network resources and their current facts | OPL Fabric |
-| Runtime execution | Loading/running OCI and execution observations | OPL App/Framework Runtime implementation; Serve owns delivery status, not Runtime internals |
-| Invocation / Session | Bounded request or stateful sequence against the current Workspace Agent | Serving/runtime path; owner contract determines execution details |
-| Evidence refs | Opaque provenance and receipt references | OPL Ledger |
+| Agent Package | Versioned distributable candidate and its owner source | Package-owning repo |
+| Package descriptor and publication revision | Stable identity, capabilities, entrypoints and exact published bytes | Package owner |
+| Carrier installation | Physical bytes and fresh installed/callable state | Configured native carrier; Framework aggregates and delegates |
+| Account availability policy | Which package refs the account Workspace may use | OPL Console |
+| Resource binding | Compute, storage, environment and connector bindings for one instance or run | OPL Fabric |
+| Agent Instance | A package ref exposed in App or Workspace with explicit permissions and resources | OPL App / Workspace |
+| Agent Run | One execution with output and review refs | Runtime owner; Ledger records refs |
+| Service Entrypoint | Portable action/stage, I/O, event, permission, side-effect and data-policy declaration | Package/domain owner contract |
+| Agent Service | Stable publisher-owned external service identity | OPL Serve |
+| Agent Revision | Immutable package digest, entrypoint, configuration, policy and provider refs | OPL Serve references owner truths |
+| Deployment | Desired revision set, environment, endpoint and traffic policy | OPL Serve |
+| Invocation / Session | Bounded request or stateful event sequence against an exact revision | OPL Runway; Serve projects status |
 
 ## Product Flow
 
-1. Agent design owner creates the package content and declared Skills/entrypoints.
-2. User begins upload in Serve; Capability validates and persists the exact
-   Package bytes, metadata, identity and immutable version. Serve UI is not the
-   Package writer.
-3. User selects the WebUI and Runtime version. Runtime Control supplies only
-   approved Runtime-version references; the OPL App/Framework owner supplies
-   the Runtime implementation.
-4. Build consumes exact Package, WebUI and Runtime refs and emits an immutable
-   OCI digest plus build evidence. OCI fixes those inputs; changing one requires
-   a new Build output.
-5. User requests delivery to a target Workspace. Workspace authorizes the
-   target, member, entitlement and resource plan; it does not create another
-   current-Agent deployment record.
-6. Fabric provisions/binds approved infrastructure resources and returns
-   resource facts. It does not install or own Agent OCI lifecycle.
-7. Serve executes the delivery, reads the Agent result, and records the one
-   authoritative current-Agent state for that Workspace. Replacement changes
-   that current state; history may be retained for audit/rollback.
-8. API, Embed and Hosted UI authenticate and route to the same current Agent.
-   The Runtime implementation runs OCI and reports execution observations.
-9. Ledger records required Package, Build, delivery, invocation/session,
-   resource and output refs as opaque provenance, without becoming their Owner.
+1. OMA or another domain owner produces an Agent Package candidate.
+2. The Package owner publishes an exact revision whose descriptor declares
+   stable identity, capabilities, entrypoints and resource requirements.
+3. The configured native carrier installs, updates or removes physical bytes
+   and returns fresh installed/callable state; Framework delegates the action
+   and aggregates the readback without creating a second lifecycle authority.
+4. App or Workspace can expose the exact package as an Agent Instance for
+   workbench use.
+5. A publishable package may additionally declare a Service Entrypoint Contract.
+6. Serve creates a stable Agent Service and immutable Revision referencing the
+   exact package digest. It does not copy or mutate package state.
+7. Console applies account service, quota, budget, data and retention policy.
+8. Serve deploys the revision behind its Agent Edge. Runway owns Invocation and
+   Session execution and selects an approved provider adapter.
+9. Fabric consumes package, revision and policy refs to bind approved compute,
+   storage, environments, secrets, network and connectors.
+10. Ledger records package, service, deployment, invocation/session, resource,
+    output, review and continuation refs as opaque provenance without becoming
+    package, service, continuation-authority, or domain truth.
 
 ## Readiness Evidence
 
-Package, Build, Runtime-version approval, Workspace authorization, Serve
-delivery, Fabric resource readback, Runtime execution and domain quality are
-separate owner facts. A readiness statement combines relevant owner readbacks;
-no single Package, policy, delivery, resource, execution or receipt result
-substitutes for the others. Existing OCI-to-Workspace evidence does not prove
-the full upload -> Build -> delivery -> serving path.
+Package and carrier state, account policy, resource execution, service
+publication, and domain quality are separate owner facts. A readiness statement
+combines the relevant owner readbacks; no single package, policy, execution, or
+receipt result substitutes for the others.
 
 ## Failure And Repair
 
-Capability handles Package upload/validation failures; Runtime Control handles
-Runtime-version catalog/reference failures; Build handles OCI build failures;
-Workspace handles target authorization/resource-plan failures; Fabric reports
-infrastructure provisioning/binding failures; Serve reports delivery failures
-and owns current-Agent state; the external OPL App/Framework Runtime
-implementation reports execution failures; Console/policy owners report policy
-decisions. Immutable Package or OCI changes create a new version/digest through
-the corresponding owner path.
+Package owners handle publication and descriptor failures. Configured carriers
+handle physical byte operations through their Framework adapter. Fabric reports
+resource binding failures, Console reports policy decisions, Runway reports
+provider session failures, and Serve reports deployment failures. Immutable
+Revision repair creates a successor revision through the owning publication
+path.

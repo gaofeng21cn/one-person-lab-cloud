@@ -4,106 +4,7 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
-## 2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture
-
-This repository's target product is Agent SaaS: a customer selects an Agent
-version and a compute/storage plan, pays, and receives a running online agent it
-can use, update, and renew. The earlier path in which a customer bought bare
-resources and an administrator separately deployed an application is replaced,
-with an explicit migration for existing Workspaces, purchases, Keys, and
-receipts.
-
-The target is domain-separated services rather than one Control Plane process.
-Each domain owns its data, its API, and its writes. The target domains are
-`tenant` (CloudIdentity), `capability`, `build`, `workspace`,
-`runtime_control`, `resource_catalog`, `gateway` (Gateway Integration),
-`fabric`, and `ledger`; `console`/BFF is the browser aggregation surface.
-All Cloud product code lives in the single GitHub repository `opl-cloud`.
-`Capability`, `Build`, `Workspace`, `Runtime Control`, `Resource Catalog`, and
-`Gateway Integration` are service modules inside that repository, not new
-GitHub repositories. `Fabric` and `Ledger` keep their execution and evidence
-authority. The physical target map is owned by
-[Repository And Instance Topology](architecture.md#repository-and-instance-topology).
-
-The product has one Agent delivery chain, not parallel Workspace and Agent Service lifecycles. A Workspace may have zero or one current Agent; replacing it creates a new deployment attempt and preserves history, but never exposes two current Agents. OPL Serve owns the Agent delivery/deployment lifecycle and its sole current-deployment fact for each Workspace. Workspace owns the Workspace identity, membership, entitlement, resource plan and target authorization, not an Agent deployment pointer or status copy. The Console/BFF reads the two owners and composes a product view without becoming a writer.
-
-The owner flow is: the user may start upload in the Serve experience, while Capability owns upload sessions, Package metadata/versions and immutable Package bytes/references; Build fixes exact Package, WebUI and Runtime-release inputs and owns the build job and OCI evidence; Runtime Control owns the approved Runtime release catalog and immutable Runtime references consumed by Build, not deployed Agent instances; Workspace owns the target Workspace and resource entitlement; Fabric provisions/binds compute, storage and network resources and owns those resource facts; Serve deploys the built OCI to the authorized Workspace, owns deployment/readiness/routing state and exposes API, Embed and Hosted UI access to that same Agent. The Runtime implementation is supplied by the OPL App/Framework owner and is packaged into the OCI. Ledger records required evidence without becoming a lifecycle writer.
-
-Serve is a Cloud service/data Owner because it owns a durable per-Workspace Agent delivery lifecycle. This adds one service module and one data Owner to the target topology; Runtime Control is an existing target module with a narrowed, accurately documented version-catalog responsibility, not a new service. Product entry screens may live in the Console UI/Serve experience, but UI placement never transfers Package or deployment write authority.
-
-The remaining target decisions are:
-
-- Each business service keeps its own Go module, process, and service boundary.
-  CloudIdentity (`tenant`) remains inside the Gateway Integration module and
-  deployment unit, with a separate database/writer boundary from `gateway`.
-  Proto service groups are API groups, not extra processes. The old Control
-  Plane is a bounded migration source, not a permanent parallel writer.
-- Shared wire contracts use the existing `packages/contracts/go/go.mod` module:
-  proto source belongs in `packages/contracts/proto/`, and generated target architecture Go
-  bindings belong in `packages/contracts/go/v226/`. No independent target architecture Go
-  module or contracts GitHub repository is introduced. Cloud consumers and
-  contracts are revised atomically at one source commit, with schema hashes
-  and locked generation tools. Necessary consumer dependency-file changes are
-  part of W01; unchanged dependency files are not an architectural boundary.
-- Consolidation covers Cloud product code only. Instance deployment, Sub2API
-  wallet/Gateway authority, and Framework remain outside this repository;
-  their exact artifact references and authority boundaries remain intact.
-- Each data owner has its own PostgreSQL database and owner/writer roles. Cross-
-  owner references use opaque identifiers only; there are no cross-domain
-  foreign keys, joins, or transactions.
-- Browser traffic reaches the product only through the Console BFF over REST.
-  Internal calls use typed gRPC/protobuf. Reliable events use a per-domain
-  PostgreSQL Outbox delivered to a consumer Inbox; no additional message
-  runtime is introduced for the current chains.
-- The BFF performs authentication, authorization context, and product DTO
-  aggregation only. The Workspace service owns the business Saga.
-- `Capability` owns Package, version, and catalog metadata while object bytes
-  live in the storage provider. `Build` reads immutable references and writes
-  its own jobs and artifact evidence. A ready Capability version is created only
-  after a successful build; there is no pending version without a digest.
-- Package, OCI references, and Build history are not deleted with a Workspace.
-  Package archival does not cascade to history, and there is no automatic
-  90-day purge.
-- New identifiers are opaque strings. Existing identifiers, original charge
-  keys, original receipts, and timestamps are preserved across migration.
-- Money is `USDMicros` on the wire and `bigint` in PostgreSQL; times are UTC
-  RFC3339. Authorized product roles are `owner`, `admin`, `member`, and
-  `platform_admin`. Login identity is separate from the Tenant billing subject.
-- The Console stays React/TypeScript. Public marketplace, self-service
-  third-party WebUI publishing, cross-Tenant private OCI sharing, arbitrary
-  customer-selected Runtime images, and public registration are out of this
-  delivery unless separately decided.
-
-The authoritative product, field, API, frontend, migration, and acceptance
-specification is the target architecture development specification retained under
-[`docs/spec/target`](./spec/target/00_master_index.md). That specification is a
-target and planning owner, not implementation evidence.
-
-### Superseded Decisions
-
-This decision replaces two earlier statements, which are retained here only as
-history:
-
-- **2026-08-15: Keep The Current Service Architecture Until A Real Gap Pays For
-  Change.** Its requirement that Cloud remain exactly Control Plane, Fabric,
-  and Ledger is superseded for the target. Its general rule still holds: a new
-  service still needs a current caller, an observed missing capability, a
-  bounded migration, and an owner. The target architecture work packages supply that
-  justification for the target domains.
-- **2026-09-11: Control Plane Coordinates Applications And Keeps One Process.**
-  Its single-process requirement is superseded. Its application-authority
-  boundary remains: the owning service admits immutable revisions and drives
-  lifecycle, while application behavior and data formats stay with the
-  publisher, execution and readback stay with Fabric, wallet authority stays
-  with Sub2API, and evidence stays with Ledger.
-
 ## 2026-09-17: A Customer Launch Delivers Resources, Not An Application
-
-> **Superseded as the new-customer default entry** by
-> [2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
-> The new customer entry is Agent version plus plan. This decision remains the
-> historical interpretation of an existing resource-only Launch, and the
-> retained Launch obligations below still hold.
 
 A Workspace purchase ends at resource fulfillment. The customer Console path
 opens compute, storage, attachment and the Workspace's entitlement, and it does
@@ -193,11 +94,6 @@ does not require Control Plane and the runtime nodes to share one credential.
 
 ## 2026-09-11: Control Plane Coordinates Applications And Keeps One Process
 
-> **Superseded for the target** by [2026-09-22: Adopt The Domain-Separated
-> Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
-> The single-process requirement no longer holds; the application-authority
-> boundary described below still does.
-
 Control Plane's application authority is admission and deployment coordination,
 not application business. It admits immutable revisions, selects each
 Workspace's current deployment binding and drives lifecycle operations.
@@ -276,10 +172,6 @@ Instance adoption requirement. The native API wire binding belongs to
 
 ## 2026-08-20: Cloud Owns The Product; Instances Own Installations
 
-> The repository name below is historical. The 2026-09-22 decision uses
-> `opl-cloud` for the single Cloud GitHub repository and keeps this
-> product/Instance authority boundary unchanged.
-
 `one-person-lab-cloud` is the single product and implementation repository for
 Console, Control Plane, Fabric, Ledger, reusable provider adapters, portable
 installation assets, Candidate images, and formal Releases. `opl-cloud` remains
@@ -347,11 +239,6 @@ must preserve identity, money, resource, idempotency, billing-period, and attemp
 facts with exact-row compare-and-swap. Otherwise the row remains manual review.
 
 ## 2026-08-15: Keep The Current Service Architecture Until A Real Gap Pays For Change
-
-> **Superseded for the target** by [2026-09-22: Adopt The Domain-Separated
-> Agent SaaS Target Architecture](#2026-09-22-adopt-the-domain-separated-agent-saas-target-architecture).
-> Retained as history; the general "new service needs a current caller" rule
-> still applies.
 
 Console remains a TypeScript browser application. Control Plane, Fabric, and
 Ledger remain separate Go modules, processes, and PostgreSQL schema owners.
