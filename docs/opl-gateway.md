@@ -63,3 +63,12 @@ OPL Fabric owns general connectors, compute, storage, environments, and
 execution adapters. OPL Gateway owns frontier AI access, provider policy, model
 routing, keys, and usage metering. OPL Serve owns the external Agent endpoint;
 it does not turn Gateway into the Agent Service control plane.
+
+
+## Target Agent interaction boundary under product review
+
+Serve may invoke Gateway for model access, usage, and provider policy, but
+Gateway remains the authority for model routing, Keys, usage, and spendable
+balance through its external integration. Gateway does not own Package
+identity, OCI builds, Workspace deployment, Agent readiness, or the Serve
+access route. Those facts are passed by opaque references and owner readbacks.

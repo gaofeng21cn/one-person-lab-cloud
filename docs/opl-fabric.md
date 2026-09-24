@@ -147,3 +147,15 @@ resource issues to Fabric or Console policy as applicable.
 
 This catalog lets products select resources without exposing infrastructure
 internals or creating a second package registry.
+
+
+## Target Agent delivery boundary under product review
+
+For Agent delivery, Fabric is deliberately narrower than the general Fabric
+vision: it provisions, binds, and reads back compute, storage, network, and
+approved Secret/resource references. Serve remains the only owner of Agent
+Deployment, Runtime instance readiness, route generation, and API/Embed/Hosted
+UI access. Fabric may prepare the sandbox and return resource facts, but a
+successful resource readback is not an Agent-ready result. Existing remote jobs,
+Connectors, App, Workspace, and domain-agent callers remain valid outside this
+specific delivery chain.

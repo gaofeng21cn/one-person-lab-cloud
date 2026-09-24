@@ -111,3 +111,17 @@ Serve performs Agent Service lifecycle actions, Runway owns Invocation/Session
 execution, Fabric executes approved resource bindings, the configured carrier
 performs Package mutations through Framework delegation, and Ledger records
 refs. Domain owners retain professional quality and delivery authority.
+
+
+## Target boundary under product review
+
+The proposed product model separates the browser surface from domain authority:
+
+- Console UI calls the Console BFF; the BFF authenticates the session and composes typed owner readbacks.
+- Workspace owns identity, membership, entitlement, resource plans, quote/purchase obligations, and target authorization.
+- Capability, Build, and Runtime Control own Package facts, immutable OCI build facts, and approved Runtime Release facts respectively.
+- Serve owns the Workspace Agent delivery, current deployment, readiness, and API/Embed/Hosted UI access.
+- Fabric returns only infrastructure resource provisioning, binding, and readback facts; it does not answer Agent readiness.
+- Ledger records append-only evidence and opaque provenance; it does not become a lifecycle or Saga writer.
+
+The existing Control Plane remains the migration source until each caller and write path is transferred. This proposal does not claim that the target handler set is already deployed.
