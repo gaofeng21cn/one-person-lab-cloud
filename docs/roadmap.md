@@ -24,34 +24,29 @@ The target product and the delivery sequence are owned by the adopted
 Those files are the single writer for the target sequence. This file does not
 restate, renumber, or paraphrase them.
 
-The owner-process foundation is specified but is not current implementation
-evidence on this branch. The current implementation remains the existing
-Control Plane, Fabric, Ledger, and Console; the proposed domain processes, BFF,
-owner migrations, and wire readback remain open until an accepted implementation
-branch supplies exact-head evidence. Open work in dependency order:
+The owner-process implementation is present on canonical `main` through PR
+#627 and is recorded in the [September 24 evidence](./status.md#agent-delivery-chain-owner-process-baseline).
+This is a partial foundation, not a claim that the complete product delivery
+chain is finished. Open work in dependency order:
 
-1. Register each owner's real domain service group and its persistent command
-   handlers, starting with the first vertical slice the plan names: Capability
-   Package, then Build fixing Package + WebUI + Runtime Release inputs into an
-   immutable OCI, then Workspace authorization and resource plan, then Fabric
-   resource references and readback, then the single Serve Agent deployment with
-   readiness and access readback.
-2. Add the per-owner reliable-event and idempotency use only where a current
-   caller needs it; the shared mechanisms exist but no owner has a live producer
-   or consumer yet.
-3. Keep Console to the composed owner read only after the relevant owners expose
-   real commands.
-4. Verify the full chain as one run once the handlers exist; documentation and
-   contract checks do not prove service execution.
+1. Turn the existing Capability and Build process shells into a real, replayable
+   Package-to-OCI path, including the package-format contract and the isolated
+   registry/object-store/BuildKit fault-injection harness.
+2. Prove worker restart, lost push acknowledgement, duplicate event delivery,
+   and owner readback from a clean isolated baseline; retain exact source-check
+   evidence for each result.
+3. Continue Workspace authorization and resource planning, then Fabric resource
+   references/readback and the single Serve Agent deployment with readiness and
+   access readback.
+4. Keep Console to the composed owner read only after the relevant owners expose
+   real commands; do not treat source scaffolds or documentation checks as
+   product execution evidence.
 
-The single-repository topology is decided, not an open A/B choice. The shared
-production contract, generated Go bindings, owner identity convention, and the
-first five isolated domain-process baselines are implemented and recorded in the
-[September 24 evidence](./status.md#agent-delivery-chain-owner-process-baseline).
-This is a partial foundation, not a claim that every domain owner or product
-handler is complete. The earlier specification-alignment snapshot above records
-the state at that time; its statement that no service scaffold existed is not the
-current implementation state.
+The single-repository topology is decided, not an open A/B choice. Runtime
+Release admission, Ledger evidence, and independent Fabric provider work may
+proceed in parallel only where their owners and file write sets do not overlap.
+Changes to the shared contract, a single migration sequence, or shared routers
+remain serialized.
 
 The next implementation should turn the existing Capability and Build process
 shells into a real, replayable Package-to-OCI path. Runtime Release admission,
