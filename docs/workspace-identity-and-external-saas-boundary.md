@@ -48,3 +48,19 @@ resource and entitlement facts.
 Organizations and teams govern policy, approval, and collaboration around
 independent Workspaces. OPL Serve publishes Agent Revisions as separate Agent
 Services through its Agent Edge.
+
+
+## Proposed Workspace Agent relationship under product review
+
+The proposed target changes only the Agent relationship, not Workspace
+cardinality: one account may still own many independent Workspaces. An Agent
+is delivered into a selected Workspace, and that Workspace has at most one
+current Agent at a time; replacement preserves deployment history but never
+creates a second current selection. Serve owns the delivery/current state.
+Workspace owns identity, membership, entitlement, resource plan, and target
+authorization, and stores no deployment pointer or readiness copy. API, Embed,
+and Hosted UI all route to the same Serve-owned current Agent.
+
+The historical separate Agent Service wording is retained in the baseline
+commit for review; this section is the proposed target and requires explicit
+product-owner approval.

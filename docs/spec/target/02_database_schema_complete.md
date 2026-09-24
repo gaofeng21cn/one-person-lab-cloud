@@ -65,8 +65,8 @@
 
 ### 2.5 Workspace、Deployment、配置与迁移
 
-- workspaces保存当前已接受业务选择及version；互斥变更锁Workspace行，校验expectedVersion与active_operation_id，创建Operation/Saga同事务推进版本。目标版本放Deployment/Operation；失败不能先覆盖当前选择。
-- `current_agent_deployment_id`唯一选中事实；复合FK保证指向同Workspace的Deployment。Runtime没有active布尔。新部署经真实挂载、应用健康、Gateway认证/模型调用验证后，Workspace同事务切换指针、更新所选Capability、supersede旧Deployment；不能由Runtime服务反向双写选择。
+- workspaces保存当前已接受的业务选择及version；互斥变更锁Workspace行，校验expectedVersion与active_operation_id，创建Operation/Saga同事务推进版本。目标版本和Agent delivery intent由Serve持有；Workspace不保存部署指针，也不跨库提交部署选择。
+- Serve的`agent_deployments`以每个Workspace至多一条`active`记录作为唯一当前选中事实。新部署经真实挂载、应用健康、Gateway认证/模型调用验证后，由Serve在自己的事务中完成current-selection CAS并supersede旧Deployment；Workspace只提供授权和不透明目标事实，不能成为第二个选择写入者。
 - model_configurations持新version与typed selections(slot,modelId)。Runtime确认真实reload后，Workspace同事务推进model_configuration_version；appliedVersion从Workspace字段派生，status从Operation及确认结果派生。请求的新值不提前显示为生效值。
 - Workspace.resourceReadiness/applicationAvailability/accessUrl通过当前选中Deployment、Fabric/Runtime授权readback聚合；不存在这些字段的第二份持久副本。readback未知显示unknown，不把Workspace.status=active硬解释为模型可用。
 - legacy_resource_only：Capability/activeDeployment均空，资源和原订阅义务保留；adoptWorkspace在原资源部署，不产生资源重购或套餐扣款。imported_application：引用以exact legacyApplicationRevisionId+artifactDigest导入的CapabilityVersion，不伪造Package/Build；agent_saas走完整构建/目录链。
@@ -146,15 +146,15 @@ GetAuthorizationContext/AuthorizeAction在每次特权调用同时核对：连�
 
 accepted_operation_grants绑定原Owner/Operation/resource、原permission version、固定allowed_actions、mode及必要续费consent/period身份；不是任意action数组授权。撤权/停用转为closeout_only时只允许已获准的原义务核对/完成/撤销/退款/清理，不得新增采购、扣款、resize或延期。自动续费另用WorkspaceAuthorizationReadback验证最新consent及同周期身份，客户撤销未来授权不能被历史grant绕过。
 
-### R05：Workspace选择提交和真实路由的两个提交点
+### R05：Serve选择提交和真实路由的两个提交点
 
-Workspace唯一分配execution_epoch；Fabric唯一拥有route_generation、accepted_execution_epoch、provider_revision和实际target。Workspace.selected_route_generation/selected_execution_epoch仅保存最终选择提交对应的已确认Fabric结果，不成为第二路由writer。
+Serve唯一分配delivery `execution_epoch`并持有当前Deployment/route selection；Fabric唯一拥有`route_generation`、`accepted_execution_epoch`、`provider_revision`和实际target。Workspace不保存`current_agent_deployment_id`、`selected_route_generation`或`selected_execution_epoch`，也不承担跨数据库选择事务。
 
-1. Workspace本库锁定当前意图并递增execution_epoch，持久化Operation/目标Deployment。
+1. Workspace在自己的库中锁定授权/业务意图并创建原始Operation；Serve在自己的库中接收不透明Workspace授权和目标引用，分配`execution_epoch`并持久化目标Deployment。
 2. Fabric先锁route_bindings，检查expected generation/provider revision并写唯一非终态route_switches(action_kind=fence)。真正调用provider的同一路由对象conditional revision CAS，同时更新epoch metadata并保持target不变；读回确认后更新accepted_execution_epoch/provider_revision，generation不变。
 3. Activate/Rollback要求已确认fence的epoch、同provider revision、预期generation与精确目标/ready或compatibility receipt。先持久命令再调用provider CAS；成功读回后generation+1。旧provider请求即使晚到，也因同对象revision已变化而被拒绝，不能只在Cloud DB里检查epoch。
 4. unknown的fence/activate/rollback占该Workspace唯一非终态位置；只能按原provider_command_id读回，禁止以更高epoch抢占/新命令重试。
-5. Workspace核验原操作、当前epoch、原选中及Fabric目标读回后，以本库CAS提交current_agent_deployment_id/selected generation/epoch并发selection receipt。Fabric记录workspace_selection_commit_receipt_id后才允许退休旧实例。提交响应丢失读取原身份；选择CAS失败为needs_attention，完成原提交或明确fence+rollback，禁止last-writer-wins。
+5. Serve核验原操作、当前epoch、原选中及Fabric目标读回后，以Serve本库CAS提交当前Deployment、route generation/epoch并发selection receipt。Fabric记录selection commit receipt后才允许退休旧实例。提交响应丢失读取原Serve身份；选择CAS失败为needs_attention，完成原提交或明确fence+rollback，禁止last-writer-wins。Workspace只读Serve的typed selection/readback，不写回部署选择。
 
 ProviderRevisionPrecondition为exactRevision或ConfirmedRouteAbsence(receiptId,observedAt) oneof。首次require_absent只允许generation0且有真实absence证据；DB保存expected_absence_receipt_id/time，不用空串当通配条件。数据库事务不声称与外部router原子。
 
@@ -277,7 +277,6 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
 - `CHECK (role IN ('owner','admin','member'))`
 - `UNIQUE (tenant_id, actor_id)`
 
@@ -306,7 +305,6 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
 - `CHECK (role IN ('admin','member'))`
 - `UNIQUE (token_hash)`
 - `CHECK (NOT (accepted_at IS NOT NULL AND revoked_at IS NOT NULL))`
@@ -333,7 +331,6 @@ CloudIdentity owns Tenant authorization; permission_version advances on access c
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
 - `UNIQUE (session_hash)`
 
 索引：
@@ -359,7 +356,6 @@ append-only权限审计，不含token/Key/密码。覆盖 F01, F15, F17。
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
 
 索引：
 - `tenant_audit_list`: `(tenant_id, created_at DESC, id DESC)`
@@ -414,7 +410,6 @@ append-only权限审计，不含token/Key/密码。覆盖 F01, F15, F17。
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES tenant.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -541,15 +536,12 @@ Opaque context introspected by CloudIdentity; authenticated mTLS caller, audienc
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (session_id) REFERENCES tenant.sessions (id) ON DELETE RESTRICT`
 - `CHECK (scope_type IN ('tenant','platform'))`
 - `CHECK (issuer IN ('cloud_identity'))`
 - `CHECK ((scope_type = 'tenant') = (tenant_id IS NOT NULL))`
 - `CHECK (permission_version >= 0)`
 - `CHECK (expires_at > issued_at)`
 - `CHECK (num_nonnulls(session_id,accepted_operation_grant_id) = 1)`
-- `FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT`
 
 索引：
 - `authorization_contexts_session`: `(session_id)`
@@ -581,7 +573,6 @@ Bounded original accepted-operation obligation; revocation permits only approved
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (tenant_id) REFERENCES tenant.tenants (id) ON DELETE RESTRICT`
 - `CHECK (scope_type IN ('tenant','platform'))`
 - `CHECK ((scope_type = 'tenant') = (tenant_id IS NOT NULL))`
 - `CHECK (accepted_permission_version >= 0)`
@@ -643,7 +634,6 @@ visibility与namespace.kind同事务校验；不存最新对象或Build状态。
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (namespace_id) REFERENCES capability.namespaces (id) ON DELETE RESTRICT`
 - `CHECK (visibility IN ('official','private'))`
 - `CHECK (status IN ('active','archived'))`
 - `UNIQUE (namespace_id, name)`
@@ -681,7 +671,6 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 - `UNIQUE (name, version_label)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT`
 - `CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)`
 - `CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)`
 - `CHECK ((publisher_contract->>'kind' = 'webui') IS TRUE)`
@@ -713,8 +702,6 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `UNIQUE (policy_version)`
 
 索引：
@@ -742,7 +729,6 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (package_id) REFERENCES capability.packages (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('upload_pending','uploaded','rejected'))`
 - `UNIQUE (package_id, version_label)`
 - `UNIQUE (id, package_id)`
@@ -771,7 +757,6 @@ Storage multipart直传凭据由Capability签发；sizeBytes/sha256从PackageVer
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (package_version_id) REFERENCES capability.package_versions (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('uploading','completed','expired'))`
 - `CHECK (part_size_bytes > 0)`
 
@@ -796,7 +781,6 @@ Storage multipart直传凭据由Capability签发；sizeBytes/sha256从PackageVer
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (upload_session_id) REFERENCES capability.upload_sessions (id) ON DELETE RESTRICT`
 - `CHECK (sha256 ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
 - `UNIQUE (upload_session_id, part_number)`
@@ -838,15 +822,10 @@ build引用五项齐全才ready；legacy_application保留旧exact revision/dige
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (package_id) REFERENCES capability.packages (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (package_version_id, package_id) REFERENCES capability.package_versions (id, package_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('ready','deprecated','deleting','deleted'))`
 - `UNIQUE (build_job_id)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))`
-- `FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT`
 - `CHECK (provenance IN ('build','legacy_application'))`
 - `CHECK ((provenance = 'build' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 5 AND legacy_application_revision_id IS NULL) OR (provenance = 'legacy_application' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 0 AND legacy_application_revision_id IS NOT NULL))`
 - `CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')`
@@ -894,13 +873,9 @@ Four-way ReferenceTarget maps to exactly one local FK; Bind records original ope
 - `CHECK (target_type IN ('package_version','capability_version','runtime_version','webui_version'))`
 - `CHECK (num_nonnulls(package_version_id, capability_version_id, runtime_version_id, webui_version_id) = 1)`
 - `CHECK (released_at IS NULL OR release_evidence_ref IS NOT NULL)`
-- `FOREIGN KEY (package_version_id) REFERENCES capability.package_versions (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'package_version') = (package_version_id IS NOT NULL))`
-- `FOREIGN KEY (capability_version_id) REFERENCES capability.capability_versions (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'capability_version') = (capability_version_id IS NOT NULL))`
-- `FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'runtime_version') = (runtime_version_id IS NOT NULL))`
-- `FOREIGN KEY (webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT`
 - `CHECK ((target_type = 'webui_version') = (webui_version_id IS NOT NULL))`
 - `CHECK ((bound_at IS NULL AND bound_operation_id IS NULL AND bound_input_digest IS NULL) OR (bound_at IS NOT NULL AND bound_operation_id IS NOT NULL AND bound_input_digest IS NOT NULL))`
 - `CHECK (bound_input_digest IS NULL OR bound_input_digest ~ '^sha256:[0-9a-f]{64}$')`
@@ -961,7 +936,6 @@ Four-way ReferenceTarget maps to exactly one local FK; Bind records original ope
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES capability.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -1125,16 +1099,16 @@ createBuild(packageVersionId,webuiVersionId)冻结批准Runtime/catalogPolicy/di
 | `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/BuildJob/properties/updatedAt` |
 | `operation_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/BuildJob/properties/operationId` |
 | `catalog_policy_id` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_jobs.catalog_policy_id` |
+| `call_context` | `jsonb` | 否 | `'{}'::jsonb` | `02_database_schema_complete.md#build.build_jobs.call_context` |
+| `call_context` | `jsonb` | 否 | `'{}'::jsonb` | `02_database_schema_complete.md#build.build_jobs.call_context` |
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (retry_of_build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('queued','validating','building','pushing','registering','succeeded','failed','needs_attention'))`
 - `CHECK (input_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (artifact_digest IS NULL OR artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (status <> 'succeeded' OR (artifact_digest IS NOT NULL AND result_capability_version_id IS NOT NULL AND finished_at IS NOT NULL))`
 - `CHECK ((worker_lease_token IS NULL) = (worker_lease_until IS NULL))`
-- `FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT`
 
 索引：
 - `build_jobs_tenant_list`: `(tenant_id, created_at DESC, id DESC)`
@@ -1158,10 +1132,11 @@ Build输出不可变证据，非第二Registry/版本可见性writer。覆盖 F0
 | `deployment_descriptor` | `jsonb` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor` |
 | `deployment_descriptor_digest` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor_digest` |
 | `deployment_descriptor_object_ref` | `text` | 否 | `—` | `02_database_schema_complete.md#build.build_artifacts.deployment_descriptor_object_ref` |
+| `descriptor_bytes` | `bytea` | NULL | `—` | `02_database_schema_complete.md#build.build_artifacts.descriptor_bytes` |
+| `descriptor_bytes` | `bytea` | NULL | `—` | `02_database_schema_complete.md#build.build_artifacts.descriptor_bytes` |
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT`
 - `UNIQUE (build_job_id)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (size_bytes > 0)`
@@ -1190,7 +1165,6 @@ Build输出不可变证据，非第二Registry/版本可见性writer。覆盖 F0
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT`
 - `UNIQUE (build_job_id, sequence)`
 - `CHECK (sequence >= 0)`
 - `CHECK (level IN ('info','warning','error'))`
@@ -1247,7 +1221,6 @@ Build输出不可变证据，非第二Registry/版本可见性writer。覆盖 F0
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES build.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -1356,7 +1329,7 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 #### workspace.workspaces
 
-当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；expiresAt从订阅投影。覆盖 F08, F09, F10, F11, F12, F13, F16。
+当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；部署/current selection由Serve读回，expiresAt从订阅投影。覆盖 F08, F09, F10, F11, F12, F13, F16。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -1367,7 +1340,6 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 | `capability_version_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/capabilityVersionId` |
 | `compute_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/computePlanId` |
 | `storage_plan_id` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/storagePlanId` |
-| `current_agent_deployment_id` | `text` | NULL | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/currentAgentDeploymentId` |
 | `model_configuration_version` | `bigint` | 否 | `0` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/modelConfigurationVersion` |
 | `active_operation_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.active_operation_id` |
 | `legacy_origin_id` | `text` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.legacy_origin_id` |
@@ -1377,24 +1349,15 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 | `updated_at` | `timestamptz` | 否 | `now()` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/updatedAt` |
 | `delivery_model` | `text` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/deliveryModel` |
 | `version` | `bigint` | 否 | `—` | `03_api_contract_complete.yaml#/components/schemas/Workspace/properties/version` |
-| `execution_epoch` | `bigint` | 否 | `0` | `02_database_schema_complete.md#workspace.workspaces.execution_epoch` |
-| `selected_route_generation` | `bigint` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.selected_route_generation` |
-| `selected_execution_epoch` | `bigint` | NULL | `—` | `02_database_schema_complete.md#workspace.workspaces.selected_execution_epoch` |
 
 约束：
 - `PRIMARY KEY (id)`
 - `CHECK (status IN ('provisioning','active','updating','suspended','deleting','deleted','failed','needs_attention'))`
 - `CHECK (model_configuration_version >= 0)`
 - `CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))`
-- `FOREIGN KEY (current_agent_deployment_id, id) REFERENCES serve.agent_deployments (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `CHECK (delivery_model IN ('legacy_resource_only','imported_application','agent_saas'))`
 - `CHECK (version >= 0)`
-- `CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL AND current_agent_deployment_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL))`
-- `CHECK (execution_epoch >= 0)`
-- `CHECK ((selected_route_generation IS NULL) = (selected_execution_epoch IS NULL))`
-- `CHECK (selected_route_generation IS NULL OR selected_route_generation >= 0)`
-- `CHECK (selected_execution_epoch IS NULL OR (selected_execution_epoch >= 0 AND selected_execution_epoch <= execution_epoch))`
+- `CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL))`
 - `UNIQUE (id, tenant_id)`
 
 索引：
@@ -1433,10 +1396,8 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT`
 - `UNIQUE (workspace_id)`
 - `CHECK (current_period_end > current_period_start)`
-- `FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `CHECK (period_months > 0)`
 - `CHECK (provenance IN ('quoted','legacy_import'))`
 - `CHECK ((provenance = 'quoted' AND accepted_quote_id IS NOT NULL AND accepted_quote_snapshot IS NOT NULL AND legacy_purchase_id IS NULL AND legacy_obligation_snapshot IS NULL) OR (provenance = 'legacy_import' AND accepted_quote_id IS NULL AND accepted_quote_snapshot IS NULL AND legacy_purchase_id IS NOT NULL AND legacy_obligation_snapshot IS NOT NULL))`
@@ -1474,7 +1435,6 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (subscription_id) REFERENCES workspace.subscriptions (id) ON DELETE RESTRICT`
 - `UNIQUE (subscription_id, period_start)`
 - `UNIQUE (billing_key)`
 - `UNIQUE (charge_wallet_operation_id)`
@@ -1507,11 +1467,9 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT`
 - `UNIQUE (workspace_id, version)`
 - `CHECK (version > 0)`
 - `CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown'))`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 
 索引：
 - `model_configurations_workspace`: `(workspace_id, version DESC)`
@@ -1548,7 +1506,6 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 - `CHECK (sequence >= 0 AND attempt_count >= 0)`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
 - `CHECK (compensation_observation IN ('confirmed','rejected','unknown'))`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 
 索引：
 - `saga_steps_recovery`: `(next_attempt_at)` WHERE `confirmed_at IS NULL`
@@ -1603,7 +1560,6 @@ Database `opl_workspace` · Schema `workspace` · Writer `opl_workspace_writer`�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES workspace.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -1762,12 +1718,6 @@ D17 PlanChange is the sole active/scheduled resource-change identity; upgrade us
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (workspace_id, tenant_id) REFERENCES workspace.workspaces (id, tenant_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (source_subscription_id, workspace_id) REFERENCES workspace.subscriptions (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (source_period_id, source_subscription_id) REFERENCES workspace.subscription_periods (id, subscription_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (execution_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (cancellation_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `CHECK (kind IN ('upgrade_immediate','downgrade_next_period'))`
 - `CHECK (status IN ('requested','scheduled','awaiting_payment','applying','applied','failed','needs_attention','cancelled'))`
 - `CHECK (policy_version IN ('workspace-plan-change-v1'))`
@@ -1779,7 +1729,6 @@ D17 PlanChange is the sole active/scheduled resource-change identity; upgrade us
 - `CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))`
 - `UNIQUE (quote_id)`
 - `UNIQUE (id, workspace_id)`
-- `FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT`
 - `CHECK (date_trunc('milliseconds',quote_at) = quote_at)`
 - `CHECK (execution_plan_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (period_end > period_start)`
@@ -1826,9 +1775,6 @@ One original next-period obligation before payment confirmation, shared by manua
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (subscription_id, workspace_id) REFERENCES workspace.subscriptions (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (plan_change_id, workspace_id) REFERENCES workspace.plan_changes (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `UNIQUE (subscription_id, period_start)`
 - `UNIQUE (billing_key)`
 - `CHECK (period_end > period_start)`
@@ -1868,8 +1814,6 @@ Immutable successful-upgrade supplement coverage T..E; original Gateway charge i
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (plan_change_id, workspace_id) REFERENCES workspace.plan_changes (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (subscription_period_id) REFERENCES workspace.subscription_periods (id) ON DELETE RESTRICT`
 - `CHECK (policy_version IN ('workspace-plan-change-v1'))`
 - `UNIQUE (plan_change_id)`
 - `UNIQUE (original_wallet_operation_id)`
@@ -1916,7 +1860,6 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 - `UNIQUE (name, version_label)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')`
-- `FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT`
 - `CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)`
 - `CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)`
 - `CHECK ((publisher_contract->>'kind' = 'runtime') IS TRUE)`
@@ -1984,7 +1927,6 @@ Strict PublisherContract schema; repository/digest must match contract and admit
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES runtime_control.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -2093,7 +2035,7 @@ Database `opl_serve` · Schema `serve` · Writer `opl_serve_writer`。
 
 #### serve.agent_deployments
 
-workspaces.current_agent_deployment_id唯一选中；同事务切换指针和supersede旧部署，不由Runtime写。覆盖 F08, F09, F10。
+Serve在本库以每个Workspace至多一条active Deployment作为唯一当前选中；同事务完成current-selection CAS并supersede旧部署，不由Runtime写。覆盖 F08, F09, F10。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -2119,18 +2061,16 @@ workspaces.current_agent_deployment_id唯一选中；同事务切换指针和sup
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (previous_deployment_id) REFERENCES serve.agent_deployments (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('queued','deploying','verifying','active','superseded','failed','rolling_back','rolled_back','needs_attention'))`
 - `UNIQUE (id, workspace_id)`
 - `CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')`
 - `CHECK (status <> 'active' OR (runtime_instance_id IS NOT NULL AND verification_evidence_ref IS NOT NULL AND activated_at IS NOT NULL))`
-- `FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT`
 - `CHECK (execution_epoch >= 0)`
 
 索引：
 - `deployments_workspace_list`: `(workspace_id, created_at DESC, id DESC)`
 - `deployments_operation`: `(operation_id)`
+- `agent_deployments_one_active`: UNIQUE `(workspace_id)` WHERE `status = 'active'`
 
 #### serve.agent_runtime_instances
 
@@ -2193,7 +2133,6 @@ readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (runtime_instance_id) REFERENCES serve.agent_runtime_instances (id) ON DELETE RESTRICT`
 - `UNIQUE (command_id)`
 - `CHECK (action IN ('start','stop','terminate','reload','verify'))`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
@@ -2203,7 +2142,7 @@ readiness/accessUrl真实回读；无active布尔、无订阅业务状态。覆�
 
 #### serve.access_bindings
 
-Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback。覆盖 F08, F09, F10, F13。
+Serve owns the delivery execution epoch; Fabric owns observed route generation; generation advances only on verified route readback。覆盖 F08, F09, F10, F13。
 
 | 字段 | 类型 | 可空 | 默认 | 字段来源 |
 |---|---|---|---|---|
@@ -2220,11 +2159,9 @@ Fabric alone owns observed route generation; Workspace-assigned execution epoch 
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
 - `UNIQUE (workspace_id)`
 - `UNIQUE (id, workspace_id)`
 - `CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)`
-- `FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT`
 
 索引：
 - `route_bindings_target`: `(target_execution_resource_id)`
@@ -2250,7 +2187,7 @@ Provider conditional revision CAS covers target plus epoch metadata; confirmed f
 | `observed_route_generation` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_route_generation` |
 | `observed_execution_epoch` | `bigint` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.observed_execution_epoch` |
 | `evidence_ref` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.evidence_ref` |
-| `workspace_selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.workspace_selection_commit_receipt_id` |
+| `selection_commit_receipt_id` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.selection_commit_receipt_id` |
 | `error_code` | `text` | NULL | `—` | `02_database_schema_complete.md#serve.access_switches.error_code` |
 | `created_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.created_at` |
 | `updated_at` | `timestamptz` | 否 | `now()` | `02_database_schema_complete.md#serve.access_switches.updated_at` |
@@ -2262,13 +2199,10 @@ Provider conditional revision CAS covers target plus epoch metadata; confirmed f
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (route_binding_id, workspace_id) REFERENCES serve.access_bindings (id, workspace_id) ON DELETE RESTRICT`
-- `FOREIGN KEY (target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (previous_target_execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
 - `CHECK (status IN ('requested','confirmed','rejected','unknown'))`
 - `CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)`
 - `UNIQUE (provider_command_id)`
-- `CHECK (workspace_selection_commit_receipt_id IS NULL OR status = 'confirmed')`
+- `CHECK (selection_commit_receipt_id IS NULL OR status = 'confirmed')`
 - `CHECK (action_kind IN ('fence','activate','rollback'))`
 - `CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)`
 - `CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)`
@@ -2337,7 +2271,6 @@ provider从批准套餐解析，不复制wallet余额或Cloud订阅价格。覆�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (resource_set_id) REFERENCES fabric.resource_sets (id) ON DELETE RESTRICT`
 - `CHECK (kind IN ('compute','storage','network','execution'))`
 - `CHECK (billing_mode IN ('PREPAID_MONTHLY','LOCAL_NO_CHARGE'))`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
@@ -2368,9 +2301,6 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (resource_set_id) REFERENCES fabric.resource_sets (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (storage_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
 
 索引：
@@ -2397,8 +2327,6 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (resource_set_id) REFERENCES fabric.resource_sets (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (execution_resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
 
 索引：
@@ -2430,8 +2358,6 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (resource_set_id) REFERENCES fabric.resource_sets (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (resource_id) REFERENCES fabric.resources (id) ON DELETE RESTRICT`
 - `UNIQUE (command_id)`
 - `UNIQUE (provider_idempotency_key)`
 - `CHECK (action IN ('allocate','attach','detach','resize','renew','suspend','resume','delete','inject_secret','prepare_resize'))`
@@ -2493,7 +2419,6 @@ Owner事务核验同resource_set和kind，更新/回滚满足卷单写挂载约�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES fabric.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -2670,7 +2595,6 @@ Database `opl_gateway` · Schema `gateway` · Writer `opl_gateway_writer`。
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (rotation_of_key_binding_id) REFERENCES gateway.key_bindings (id) ON DELETE RESTRICT`
 - `UNIQUE (external_key_id)`
 - `CHECK (purpose IN ('workspace_managed','personal'))`
 - `CHECK (observation_result IN ('confirmed','rejected','unknown'))`
@@ -2713,8 +2637,6 @@ Gateway请求事实不是wallet；unknown不得重复扣费或逆向退款；ref
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (wallet_binding_id) REFERENCES gateway.tenant_wallet_bindings (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (original_wallet_operation_id) REFERENCES gateway.wallet_operations (id) ON DELETE RESTRICT`
 - `CHECK (kind IN ('charge','refund','recharge'))`
 - `CHECK (status IN ('requested','confirmed','rejected','unknown'))`
 - `UNIQUE (business_idempotency_key)`
@@ -2780,7 +2702,6 @@ Gateway请求事实不是wallet；unknown不得重复扣费或逆向退款；ref
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES gateway.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -2981,8 +2902,6 @@ Database `opl_resource_catalog` · Schema `resource_catalog` · Writer `opl_reso
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (compute_plan_id) REFERENCES resource_catalog.compute_plans (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (storage_plan_id) REFERENCES resource_catalog.storage_plans (id) ON DELETE RESTRICT`
 - `UNIQUE (version_label, compute_plan_id, storage_plan_id)`
 - `CHECK (currency = 'USD')`
 - `CHECK (compute_monthly_usd_micros >= 0 AND storage_monthly_usd_micros >= 0 AND product_monthly_usd_micros >= 0)`
@@ -3018,7 +2937,6 @@ Database `opl_resource_catalog` · Schema `resource_catalog` · Writer `opl_reso
 - `UNIQUE (version_label)`
 - `CHECK (valid_until IS NULL OR valid_until > valid_from)`
 - `CHECK (algorithm IN ('workspace-delete-refund-v1'))`
-- `FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT`
 
 索引：
 - `refund_policy_versions_effective`: `(valid_from DESC, id DESC)`
@@ -3092,11 +3010,6 @@ Catalog唯一writer，AcceptQuote本库锁row校验并绑定唯一Workspace Oper
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (compute_plan_id) REFERENCES resource_catalog.compute_plans (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (storage_plan_id) REFERENCES resource_catalog.storage_plans (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (price_policy_version_id) REFERENCES resource_catalog.price_policy_versions (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (refund_policy_version_id) REFERENCES resource_catalog.refund_policy_versions (id) ON DELETE RESTRICT`
-- `FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT`
 - `CHECK (purpose IN ('deploy','resize','renew'))`
 - `CHECK (status IN ('offered','accepted','expired'))`
 - `CHECK (total_usd_micros >= 0)`
@@ -3130,7 +3043,6 @@ All line amounts are nonnegative; total=sum(compute/storage/product)-sum(adjustm
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (quote_id) REFERENCES resource_catalog.quotes (id) ON DELETE RESTRICT`
 - `UNIQUE (quote_id, sort_order)`
 - `CHECK (sort_order >= 0)`
 - `CHECK (quantity > 0)`
@@ -3191,7 +3103,6 @@ All line amounts are nonnegative; total=sum(compute/storage/product)-sum(adjustm
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES resource_catalog.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`
@@ -3321,7 +3232,6 @@ append-only证据/hash/provenance；修正append新receipt，不覆写原事实�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (previous_receipt_id) REFERENCES ledger.receipts (id) ON DELETE RESTRICT`
 - `UNIQUE (source_owner, source_event_id)`
 - `CHECK (evidence_sha256 ~ '^[0-9a-f]{64}$')`
 
@@ -3349,7 +3259,6 @@ append-only证据/hash/provenance；修正append新receipt，不覆写原事实�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (receipt_id) REFERENCES ledger.receipts (id) ON DELETE RESTRICT`
 - `CHECK (result IN ('matched','mismatch','unknown'))`
 
 索引：
@@ -3404,7 +3313,6 @@ append-only证据/hash/provenance；修正append新receipt，不覆写原事实�
 
 约束：
 - `PRIMARY KEY (id)`
-- `FOREIGN KEY (event_id) REFERENCES ledger.outbox_events (id) ON DELETE RESTRICT`
 - `UNIQUE (event_id, consumer_owner)`
 - `CHECK (attempt_count >= 0)`
 - `CHECK ((lease_token IS NULL) = (lease_until IS NULL))`

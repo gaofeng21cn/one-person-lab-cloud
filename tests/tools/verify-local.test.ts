@@ -87,12 +87,18 @@ test("full local gate covers every PostgreSQL owner with the CI-only extensions"
   assert.notEqual(postgresImage, "postgres:16");
   assert.deepEqual(postgresVerificationSpecs.map((spec) => spec.cwd), [
     "services/internal/postgresmigrate",
+    "services/internal/ownerservice",
+    "services/capability",
+    "services/build",
+    "services/runtime-control",
+    "services/workspace",
+    "services/serve",
     "services/ledger",
     "services/control-plane",
     "services/fabric"
   ]);
   assert.equal(postgresVerificationSpecs[0].race, true);
-  assert.equal(postgresVerificationSpecs[2].timeout, "15m");
+  assert.equal(postgresVerificationSpecs.find((spec) => spec.cwd === "services/control-plane").timeout, "15m");
 });
 
 test("full verification adds the temporary PostgreSQL modules after the default checks", async () => {

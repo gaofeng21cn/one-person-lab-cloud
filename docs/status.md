@@ -63,14 +63,18 @@ receipts remain valid and are carried by the migration, not discarded.
 
 The 2026-09-22 single-repository decision is reconciled across canonical owners,
 target architecture ownership/delivery/migration documents, and the generated W00–W31 plan.
-The plan derives Cloud paths from its containing checkout. It retains one
-contracts module and permits necessary consumer dependency updates; it does not
-create a domain repository or change business fields.
+The plan derives Cloud paths from its containing checkout, includes Serve as the sole
+Agent delivery/deployment/access Owner, and keeps Runtime Control limited to the
+approved Runtime Release catalog consumed by Build. It retains one contracts module
+and permits necessary consumer dependency updates; it does not create a domain
+repository or change business fields.
 
 [Source-check receipt](./spec/target/checks/runs/monorepo-alignment-20260922T145543711633Z.json)
-binds the base SHA and exact changed-source hashes. Verification passed:
+records the prior alignment snapshot and exact changed-source hashes. The current
+follow-up plan was regenerated and revalidated in this checkout; that historical
+receipt is not reused as implementation evidence. Verification passed:
 
-- Plan coverage: 32 work packages, 17 features, 108 REST operations, 96 tables,
+- Plan coverage: 32 work packages, 17 features, 108 REST operations, 101 tables,
   and 172 internal RPCs; no dependency cycle or missing existing source path.
 - Five isolated plan-validator tests cover the current layout, sibling-repo
   rejection, the CloudIdentity/Gateway deployment exception, and unauthorized
@@ -83,10 +87,28 @@ binds the base SHA and exact changed-source hashes. Verification passed:
   tests. The first attempt lacked installed Node dependencies; `npm ci` restored
   the lockfile-defined environment without changing dependency manifests.
 
-No product Go/TypeScript source, SQL, API/message field, or existing migration
-was changed. No service scaffold, deployment, production access or publication
-was performed. W01 production contracts/consumer adoption and W02 service
-implementation remain open; the pre-existing untracked proto input is preserved.
+The accepted owner-process implementation is now present on this integration
+branch. No production deployment, production access, or publication was
+performed. The implementation remains a candidate until it is read back from
+canonical `main` and instance qualification is completed.
+
+## Target owner-process implementation boundary
+
+Capability, Build, Runtime Control, Workspace, and Serve each have an owner
+process, migration set, readiness surface, and owner-local Operation readback.
+The Console BFF carries the authenticated `CallContext` and `console_bff` mTLS
+identity to owner boundaries, where tenant and actor authorization is checked
+again. Capability Package upload/reference claims, Runtime Release catalog
+validation, Build input admission, BuildKit/OCI digest and descriptor readback,
+and Build-to-Capability artifact registration are implemented with focused
+tests. Workspace and Serve product handlers, Fabric provisioning/readback,
+deployed multi-process execution, and instance qualification remain open.
+
+The implementation branch also incorporates the accepted SSOT correction: Serve
+owns current Agent deployment selection and route/readiness/access state;
+Workspace carries authorization and business intent without a deployment pointer
+or cross-database selection transaction. Build persistence includes the exact
+`call_context` and `descriptor_bytes` fields used by the worker and migration.
 
 ## Conclusion
 

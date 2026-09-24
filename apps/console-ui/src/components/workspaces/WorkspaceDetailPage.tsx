@@ -10,6 +10,7 @@ import {
 import { presentWorkspaceDelete, presentWorkspaceDeleteReason } from "../../app/workspace-delete-controller-model.ts";
 import type { WorkspaceDTO, WorkspaceGatewayBudgetDTO, WorkspaceGatewayBudgetUpdateRequest, WorkspaceRuntimeDTO } from "../../api/dtos.ts";
 import { Alert, Button, Checkbox, Field } from "../ui/index.ts";
+import { AgentDeliveryPanel } from "./AgentDeliveryPanel.tsx";
 import { formatDate, formatUsdMicros } from "../../console-model.ts";
 import { sourceData } from "./workspace-shared.tsx";
 
@@ -177,6 +178,11 @@ function WorkspaceTechnicalDetails({ controller, detail, runtime }: {
       <div className="workspace-runtime-checks">
         <h3>Runtime checks</h3>
         {runtime?.checks.length ? <ul>{runtime.checks.map((check) => <li key={check.name}><code>{check.name}</code><span>{check.ok ? "true" : "false"}</span></li>)}</ul> : <p>暂无检查记录</p>}
+      </div>
+      <div className="workspace-delivery-details" data-agent-delivery>
+        <h3>交付链</h3>
+        <p>按负责服务展示当前工作空间的智能体交付读回。</p>
+        <dl className="data-list"><AgentDeliveryPanel workspaceId={detail.id} /></dl>
       </div>
     </div>
   </details>;

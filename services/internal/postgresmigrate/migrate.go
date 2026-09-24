@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -73,6 +74,23 @@ func postgresTLSSettings(databaseURL string) (string, string, error) {
 		return "", "", errors.New("PostgreSQL DSN requires one host setting")
 	}
 	return first(values["sslmode"]), values["host"][0], nil
+}
+
+// validSchemaName accepts one unqualified lower-case identifier, so a caller cannot
+// inject SQL through the journal's schema prefix.
+func validSchemaName(value string) bool {
+	if value == "" || len(value) > 63 {
+		return false
+	}
+	for index, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r == '_':
+		case r >= '0' && r <= '9' && index > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func first(values []string) string {
@@ -174,13 +192,34 @@ func dsnKeyByte(value byte) bool {
 	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_'
 }
 
+// Apply records migration history in the connection's default schema. It is the
+// shared entry point for owners whose migrating role also owns the database's
+// default schema, which is the current Control Plane, Fabric and Ledger shape.
 func Apply(ctx context.Context, db *sql.DB, service string, migrations []Migration) error {
+	return ApplyInSchema(ctx, db, "", service, migrations)
+}
+
+// ApplyInSchema records migration history in one explicit schema. An owner whose
+// migrating role may only write its own schema needs the journal inside that
+// schema, so the journal belongs to the owner rather than to a shared default
+// schema the owner cannot create in.
+func ApplyInSchema(ctx context.Context, db *sql.DB, schema, service string, migrations []Migration) error {
 	if db == nil {
 		return errors.New("migration database is required")
 	}
 	service = strings.TrimSpace(service)
 	if service == "" {
 		return errors.New("migration service is required")
+	}
+	schema = strings.TrimSpace(schema)
+	qualifiedJournal := "opl_schema_migrations"
+	createJournal := createJournalSQL
+	if schema != "" {
+		if !validSchemaName(schema) {
+			return fmt.Errorf("migration schema %q is not a plain identifier", schema)
+		}
+		qualifiedJournal = schema + ".opl_schema_migrations"
+		createJournal = strings.Replace(createJournalSQL, "CREATE TABLE ", "CREATE TABLE "+schema+".", 1)
 	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -195,11 +234,11 @@ func Apply(ctx context.Context, db *sql.DB, service string, migrations []Migrati
 	}()
 
 	var journalExists bool
-	if err := conn.QueryRowContext(ctx, "SELECT to_regclass('opl_schema_migrations') IS NOT NULL").Scan(&journalExists); err != nil {
+	if err := conn.QueryRowContext(ctx, "SELECT to_regclass($1) IS NOT NULL", qualifiedJournal).Scan(&journalExists); err != nil {
 		return fmt.Errorf("inspect migration journal: %w", err)
 	}
 	if !journalExists {
-		if _, err := conn.ExecContext(ctx, createJournalSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, createJournal); err != nil {
 			return fmt.Errorf("create migration journal: %w", err)
 		}
 	}
@@ -211,7 +250,7 @@ func Apply(ctx context.Context, db *sql.DB, service string, migrations []Migrati
 		}
 		var applied bool
 		if err := conn.QueryRowContext(ctx, `SELECT EXISTS (
-			SELECT 1 FROM opl_schema_migrations WHERE service = $1 AND version = $2
+			SELECT 1 FROM `+qualifiedJournal+` WHERE service = $1 AND version = $2
 		)`, service, version).Scan(&applied); err != nil {
 			return fmt.Errorf("inspect migration %s/%s: %w", service, version, err)
 		}
@@ -222,10 +261,41 @@ func Apply(ctx context.Context, db *sql.DB, service string, migrations []Migrati
 			return fmt.Errorf("apply migration %s/%s: %w", service, version, err)
 		}
 		if _, err := conn.ExecContext(ctx, `
-			INSERT INTO opl_schema_migrations (service, version) VALUES ($1, $2)
+			INSERT INTO `+qualifiedJournal+` (service, version) VALUES ($1, $2)
 		`, service, version); err != nil {
 			return fmt.Errorf("record migration %s/%s: %w", service, version, err)
 		}
+	}
+	return nil
+}
+
+// AdmitDatabaseURL is the single accepted admission rule for an owner's
+// PostgreSQL DSN. Production requires sslmode=verify-full on an explicit TCP
+// host. The one local exception is an explicit OPL_POSTGRES_TESTS=1 with
+// sslmode=disable against a loopback host, which only an isolated test database
+// may use. Every Cloud owner applies this same rule, so no service invents its own
+// weaker or stronger variant.
+func AdmitDatabaseURL(getenv func(string) string, databaseURL string) error {
+	databaseURL = strings.TrimSpace(databaseURL)
+	if databaseURL == "" {
+		return errors.New("PostgreSQL DATABASE_URL is required")
+	}
+	if err := ValidateTLS(databaseURL); err == nil {
+		return nil
+	}
+	if getenv("NODE_ENV") == "production" || getenv("OPL_POSTGRES_TESTS") != "1" {
+		return ValidateTLS(databaseURL)
+	}
+	parsed, err := url.Parse(databaseURL)
+	if err != nil || parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" || parsed.Host == "" || parsed.Fragment != "" {
+		return ValidateTLS(databaseURL)
+	}
+	query := parsed.Query()
+	if len(query["sslmode"]) != 1 || query.Get("sslmode") != "disable" || query.Has("host") {
+		return ValidateTLS(databaseURL)
+	}
+	if address := net.ParseIP(parsed.Hostname()); address == nil || !address.IsLoopback() {
+		return ValidateTLS(databaseURL)
 	}
 	return nil
 }

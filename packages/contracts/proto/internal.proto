@@ -1,6 +1,6 @@
 syntax = "proto3";
-package opl.cloud.v226;
-option go_package = "opl.cloud/contracts/v226;v226";
+package opl.cloud.api;
+option go_package = "opl-cloud/packages/contracts/go/api;api";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
 // Target contract, not current runtime evidence. Internal services authenticate mTLS
@@ -555,7 +555,7 @@ message Workspace {
  optional string capability_version_id = 3;
  string compute_plan_id = 4;
  string storage_plan_id = 5;
- optional string active_deployment_id = 6;
+ reserved 6;
  WorkspaceStatusEnum status = 7;
  WorkspaceResourceReadinessEnum resource_readiness = 8;
  WorkspaceApplicationAvailabilityEnum application_availability = 9;
@@ -612,12 +612,12 @@ message Deployment {
 
 message UpdateWorkspaceVersionRequest {
  string capability_version_id = 1;
- string expected_active_deployment_id = 2;
+ string expected_current_agent_deployment_id = 2;
 }
 
 message RollbackWorkspaceRequest {
  string target_deployment_id = 1;
- string expected_active_deployment_id = 2;
+ string expected_current_agent_deployment_id = 2;
 }
 
 message ApplyQuoteRequest {
@@ -2177,17 +2177,20 @@ service CapabilityProductService {
  rpc GetCapabilityVersion(GetCapabilityVersionRpcRequest) returns (CapabilityVersion);
  rpc DeleteCapabilityVersion(DeleteCapabilityVersionRpcRequest) returns (Operation);
  rpc PublishOfficialPackage(PublishOfficialPackageRpcRequest) returns (Package);
- rpc ListRuntimeVersions(ListRuntimeVersionsRpcRequest) returns (RuntimeVersionPage);
  rpc ListWebuiVersions(ListWebuiVersionsRpcRequest) returns (WebuiVersionPage);
- rpc RegisterRuntimeVersion(RegisterRuntimeVersionRpcRequest) returns (RuntimeVersion);
- rpc SetRuntimeVersionStatus(SetRuntimeVersionStatusRpcRequest) returns (RuntimeVersion);
  rpc RegisterWebuiVersion(RegisterWebuiVersionRpcRequest) returns (WebuiVersion);
  rpc SetWebuiVersionStatus(SetWebuiVersionStatusRpcRequest) returns (WebuiVersion);
- rpc GetBuildRuntimePolicy(GetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
- rpc SetBuildRuntimePolicy(SetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
  rpc ListPublisherNamespaces(ListPublisherNamespacesRpcRequest) returns (PublisherNamespacePage);
  rpc CreatePublisherNamespace(CreatePublisherNamespaceRpcRequest) returns (PublisherNamespace);
  rpc RevokePublisherNamespace(RevokePublisherNamespaceRpcRequest) returns (PublisherNamespace);
+}
+
+service RuntimeControlProductService {
+ rpc ListRuntimeVersions(ListRuntimeVersionsRpcRequest) returns (RuntimeVersionPage);
+ rpc GetBuildRuntimePolicy(GetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
+ rpc SetBuildRuntimePolicy(SetBuildRuntimePolicyRpcRequest) returns (BuildRuntimePolicy);
+ rpc RegisterRuntimeVersion(RegisterRuntimeVersionRpcRequest) returns (RuntimeVersion);
+ rpc SetRuntimeVersionStatus(SetRuntimeVersionStatusRpcRequest) returns (RuntimeVersion);
 }
 
 service BuildProductService {
@@ -2220,13 +2223,8 @@ service WorkspaceProductService {
  rpc ListWorkspaces(ListWorkspacesRpcRequest) returns (WorkspacePage);
  rpc GetWorkspace(GetWorkspaceRpcRequest) returns (Workspace);
  rpc DeleteWorkspace(DeleteWorkspaceRpcRequest) returns (Operation);
- rpc GetWorkspaceAccess(GetWorkspaceAccessRpcRequest) returns (WorkspaceAccess);
  rpc GetWorkspaceModels(GetWorkspaceModelsRpcRequest) returns (ModelConfiguration);
  rpc UpdateWorkspaceModels(UpdateWorkspaceModelsRpcRequest) returns (Operation);
- rpc ListDeployments(ListDeploymentsRpcRequest) returns (DeploymentPage);
- rpc GetDeployment(GetDeploymentRpcRequest) returns (Deployment);
- rpc UpdateWorkspaceVersion(UpdateWorkspaceVersionRpcRequest) returns (Operation);
- rpc RollbackWorkspace(RollbackWorkspaceRpcRequest) returns (Operation);
  rpc ResizeWorkspace(ResizeWorkspaceRpcRequest) returns (Operation);
  rpc RenewWorkspace(RenewWorkspaceRpcRequest) returns (Operation);
  rpc GetSubscription(GetSubscriptionRpcRequest) returns (Subscription);
@@ -2240,6 +2238,14 @@ service WorkspaceProductService {
  rpc ListPlanChanges(ListPlanChangesRpcRequest) returns (PlanChangePage);
  rpc GetPlanChange(GetPlanChangeRpcRequest) returns (PlanChange);
  rpc CancelPlanChange(CancelPlanChangeRpcRequest) returns (Operation);
+}
+
+service ServeProductService {
+ rpc ListDeployments(ListDeploymentsRpcRequest) returns (DeploymentPage);
+ rpc GetDeployment(GetDeploymentRpcRequest) returns (Deployment);
+ rpc UpdateWorkspaceVersion(UpdateWorkspaceVersionRpcRequest) returns (Operation);
+ rpc RollbackWorkspace(RollbackWorkspaceRpcRequest) returns (Operation);
+ rpc GetWorkspaceAccess(GetWorkspaceAccessRpcRequest) returns (WorkspaceAccess);
 }
 
 service GatewayProductService {
@@ -2379,23 +2385,23 @@ service FabricCoordination {
 }
 message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; }
 message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; }
-enum RuntimeInstanceState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
+enum AgentRuntimeObservationState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
-message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; RuntimeInstanceState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
 message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
 message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
-service RuntimeCoordination {
+service ServeAgentCoordination {
  rpc Reserve(RuntimeReservationCommand) returns (RuntimeReservation);
  rpc Deploy(RuntimeDeployCommand) returns (RuntimeReadback);
  rpc ReloadModels(RuntimeReloadCommand) returns (Operation);
  rpc ReadRuntime(RuntimeReadbackRequest) returns (RuntimeReadback);
  rpc Retire(RuntimeStopCommand) returns (Operation);
 }
-// Runtime Control owns policy/rollout; Fabric executes provider-neutral primitives.
+// Serve owns Agent runtime lifecycle; Fabric exposes only infrastructure resource readback.
 message ReadApplicationCredentialsRequest { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string deployment_id = 4; }
 // Existing Fabric credential provider path; response is never durable/idempotency-cache/event data.
-service FabricRuntimeExecution {
+service ServeRuntimeAdapter {
  rpc ReadApplicationCredentials(ReadApplicationCredentialsRequest) returns (WorkspaceApplicationCredentials);
  rpc StartRuntime(RuntimeDeployCommand) returns (RuntimeReadback);
  rpc StopRuntime(RuntimeStopCommand) returns (Operation);
@@ -2409,8 +2415,9 @@ message RouteActivateCommand { CallContext context = 1; string workspace_id = 2;
 message RouteObserveRequest { CallContext context = 1; string workspace_id = 2; optional string switch_id = 3; }
 message RouteRollbackCommand { CallContext context = 1; string workspace_id = 2; string original_switch_id = 3; string operation_id = 4; int64 execution_epoch = 5; int64 expected_route_generation = 6; ProviderRevisionPrecondition provider_precondition = 7; string target_execution_resource_id = 8; string target_runtime_instance_id = 9; string target_deployment_id = 10; string compatibility_receipt_id = 11; }
 message RouteReadback { string workspace_id = 1; string switch_id = 2; Observation observation = 3; int64 current_generation = 4; int64 accepted_execution_epoch = 5; optional string target_execution_resource_id = 6; optional string target_runtime_instance_id = 7; optional string target_deployment_id = 8; string provider_revision = 9; string provider_command_id = 10; optional string route_receipt_id = 11; google.protobuf.Timestamp observed_at = 12; optional ErrorCodeEnum error_code = 13; }
-// Workspace allocates execution_epoch and intent in one local transaction. Before
-// any route mutation it confirms FenceRouteEpoch at provider: router must CAS the
+// Serve allocates execution_epoch and persists the delivery intent in one local
+// Serve transaction. Before any route mutation it confirms FenceRouteEpoch at
+// provider: router must CAS the
 // same object's metadata epoch+target using provider conditional revision. Merely
 // allocating a new epoch is NOT proof the external router has been fenced.
 // Fabric reserves a unique route switch (fence/activate/rollback), then executes
@@ -2421,12 +2428,14 @@ message RouteReadback { string workspace_id = 1; string switch_id = 2; Observati
 // Fence does not change route generation/target. Activate/rollback require current
 // accepted epoch and expected provider revision+generation; success increases route
 // generation by exactly one. Old provider requests after fence fail conditional CAS.
-// Workspace commits activeDeploymentId and selected_route_generation/epoch only
-// after confirmed exact target readback and its own current-intent CAS, then emits
-// selection evidence. Lost DB response resumes original switch, never new activation.
-// Failed selection CAS leaves intent needs_attention: authoritative readback, then
-// complete original commit or explicitly fence+rollback. Never last-writer-wins.
-service FabricRouteExecution {
+// Serve commits the current deployment and route generation/epoch only after
+// confirmed exact target readback and its own current-intent CAS, then emits
+// selection evidence. Workspace supplies authorization and opaque target facts;
+// it does not store or commit a deployment pointer. Lost DB response resumes the
+// original Serve switch, never a new activation. Failed selection CAS leaves the
+// Serve intent needs_attention: authoritative readback, then complete the original
+// commit or explicitly fence+rollback. Never last-writer-wins.
+service ServeAccessControl {
  rpc FenceRouteEpoch(FenceRouteEpochCommand) returns (RouteReadback);
  rpc ActivateRoute(RouteActivateCommand) returns (RouteReadback);
  rpc ObserveRoute(RouteObserveRequest) returns (RouteReadback);
@@ -2509,7 +2518,7 @@ message RestorePlanChangeRuntimeCommand { CallContext context = 1; string worksp
 message PlanChangeRuntimeReadback { string workspace_id = 1; string plan_change_id = 2; RuntimeReadback runtime = 3; ResourceReadback resources = 4; bool target_limits_confirmed = 5; string receipt_id = 6; Observation outcome = 7; }
 // Reuses the existing Runtime/Fabric owner; adjusts only approved resource envelope
 // and necessary configuration. Image, data and Key identities are not recreated.
-service RuntimePlanChangeControl {
+service ServePlanChangeControl {
  rpc RestoreAfterResourceChange(RestorePlanChangeRuntimeCommand) returns (PlanChangeRuntimeReadback);
 }
 message AppendPlanChangeReceiptRequest { CallContext context = 1; ReceiptKindEnum kind = 2; PlanChangeEvidence evidence = 3; PlanChangeCalculation accepted_calculation = 4; string owner_evidence_reference = 5; }
@@ -2629,7 +2638,7 @@ message WorkspaceStateChangedEvent {
  string workspace_id = 1;
  string operation_id = 2;
  string status = 3;
- optional string active_deployment_id = 4;
+ reserved 4;
 }
 
 message WorkspaceDeletionConfirmedEvent {
@@ -2850,6 +2859,7 @@ enum OwnerEnum {
  OWNER_ENUM_GATEWAY = 7;
  OWNER_ENUM_RESOURCE_CATALOG = 8;
  OWNER_ENUM_LEDGER = 9;
+ OWNER_ENUM_SERVE = 10;
 }
 
 enum TenantRoleEnum {
@@ -2984,6 +2994,7 @@ enum OperationOwnerEnum {
  OPERATION_OWNER_ENUM_FABRIC = 6;
  OPERATION_OWNER_ENUM_GATEWAY = 7;
  OPERATION_OWNER_ENUM_RESOURCE_CATALOG = 8;
+ OPERATION_OWNER_ENUM_SERVE = 9;
 }
 
 enum AuthorizationActionEnum {

@@ -735,6 +735,7 @@ CREATE TABLE build.build_jobs (
   updated_at timestamptz NOT NULL DEFAULT now(),
   operation_id text NOT NULL,
   catalog_policy_id text NOT NULL,
+  call_context jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (id),
   FOREIGN KEY (retry_of_build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT,
   CHECK (status IN ('queued','validating','building','pushing','registering','succeeded','failed','needs_attention')),
@@ -760,6 +761,7 @@ CREATE TABLE build.build_artifacts (
   deployment_descriptor jsonb NOT NULL,
   deployment_descriptor_digest text NOT NULL,
   deployment_descriptor_object_ref text NOT NULL,
+  descriptor_bytes bytea,
   PRIMARY KEY (id),
   FOREIGN KEY (build_job_id) REFERENCES build.build_jobs (id) ON DELETE RESTRICT,
   UNIQUE (build_job_id),
@@ -928,7 +930,7 @@ REVOKE ALL ON DATABASE opl_workspace FROM PUBLIC;
 GRANT CONNECT ON DATABASE opl_workspace TO opl_workspace_writer;
 SET LOCAL ROLE opl_workspace_owner;
 
--- 当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；expiresAt从订阅投影
+-- 当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；Serve负责Deployment/current selection，expiresAt从订阅投影
 CREATE TABLE workspace.workspaces (
   id text NOT NULL,
   tenant_id text NOT NULL,
@@ -936,6 +938,9 @@ CREATE TABLE workspace.workspaces (
   status text NOT NULL DEFAULT 'provisioning',
   compute_plan_id text NOT NULL,
   storage_plan_id text NOT NULL,
+  capability_version_id text,
+  delivery_model text NOT NULL,
+  model_configuration_version bigint NOT NULL DEFAULT 0,
   active_operation_id text,
   legacy_origin_id text,
   created_by text NOT NULL,
@@ -946,6 +951,8 @@ CREATE TABLE workspace.workspaces (
   PRIMARY KEY (id),
   CHECK (status IN ('provisioning','active','updating','suspended','deleting','deleted','failed','needs_attention')),
   CHECK ((status = 'deleted') = (deleted_at IS NOT NULL)),
+  CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL)),
+  CHECK (model_configuration_version >= 0),
   CHECK (version >= 0),
   UNIQUE (id, tenant_id)
 );
@@ -1426,7 +1433,6 @@ CREATE TABLE runtime_control.catalog_policies (
   effective_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (default_webui_version_id) REFERENCES capability.webui_versions (id) ON DELETE RESTRICT,
   UNIQUE (policy_version)
 );
 CREATE INDEX catalog_policies_effective ON runtime_control.catalog_policies (effective_at DESC, id DESC);
@@ -1595,6 +1601,7 @@ CREATE TABLE serve.agent_deployments (
 );
 CREATE INDEX agent_deployments_workspace_list ON serve.agent_deployments (workspace_id, created_at DESC, id DESC);
 CREATE INDEX agent_deployments_operation ON serve.agent_deployments (operation_id);
+CREATE UNIQUE INDEX agent_deployments_one_active ON serve.agent_deployments (workspace_id) WHERE status = 'active';
 -- readiness/accessUrl真实回读；无active布尔、无订阅业务状态
 CREATE TABLE serve.agent_runtime_instances (
   id text NOT NULL,
@@ -1648,7 +1655,7 @@ CREATE TABLE serve.agent_runtime_actions (
   CHECK (observation_result IN ('confirmed','rejected','unknown'))
 );
 CREATE INDEX agent_runtime_actions_instance ON serve.agent_runtime_actions (runtime_instance_id, created_at DESC, id DESC);
--- Fabric alone owns observed route generation; Workspace-assigned execution epoch fences stale workers; generation advances only on verified route readback
+-- Serve owns the delivery execution epoch; Fabric owns observed route generation; generation advances only on verified route readback
 CREATE TABLE serve.access_bindings (
   id text NOT NULL,
   workspace_id text NOT NULL,
@@ -1683,7 +1690,7 @@ CREATE TABLE serve.access_switches (
   observed_route_generation bigint,
   observed_execution_epoch bigint,
   evidence_ref text,
-  workspace_selection_commit_receipt_id text,
+  selection_commit_receipt_id text,
   error_code text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -1697,7 +1704,7 @@ CREATE TABLE serve.access_switches (
   CHECK (status IN ('requested','confirmed','rejected','unknown')),
   CHECK (expected_route_generation >= 0 AND execution_epoch >= 0),
   UNIQUE (provider_command_id),
-  CHECK (workspace_selection_commit_receipt_id IS NULL OR status = 'confirmed'),
+  CHECK (selection_commit_receipt_id IS NULL OR status = 'confirmed'),
   CHECK (action_kind IN ('fence','activate','rollback')),
   CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL),
   CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0),
@@ -1742,7 +1749,6 @@ CREATE TABLE serve.outbox_deliveries (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (id),
-  FOREIGN KEY (event_id) REFERENCES runtime_control.outbox_events (id) ON DELETE RESTRICT,
   UNIQUE (event_id, consumer_owner),
   CHECK (attempt_count >= 0),
   CHECK ((lease_token IS NULL) = (lease_until IS NULL))

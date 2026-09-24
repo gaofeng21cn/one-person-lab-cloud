@@ -51,7 +51,7 @@ flow('F08','购买到实际可用的部署',['createWorkspace','getOperation','g
  step('runtime_control','fabric','FabricCoordination.BindSecret',['fabric.secret_bindings'],'完整发布描述指定的Secret引用实际注入','不把Gateway Key当任意环境变量公开'),
  step('workspace','serve','ServeAgentCoordination.Deploy',['serve.agent_runtime_actions'],'完整DeploymentDescriptor送执行层并实际ready','非就绪不开放入口'),
  step('serve','serve','ServeAccessControl.FenceRouteEpoch',['serve.access_bindings','serve.access_switches'],'provider conditional revision确认新epoch','未知旧switch先读回，不抢占'),
- step('serve','serve','ServeAccessControl.ActivateRoute',['serve.access_bindings','serve.access_switches'],'epoch/revision/target精确，provider实际路由确认','旧epoch/旧revision拒绝，丢响应ObserveRoute'),R('workspace','workspace')], 'Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用','Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉')
+ step('serve','serve','ServeAccessControl.ActivateRoute',['serve.access_bindings','serve.access_switches'],'epoch/revision/target精确，provider实际路由确认','旧epoch/旧revision拒绝，丢响应ObserveRoute'),R('workspace','workspace')], 'Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用','Serve的active Deployment是选中业务权威，Fabric是真实路由权威；Workspace只提供授权和业务目标事实，没有跨库原子提交幻觉')
 flow('F09','使用、模型配置与应用登录',['getWorkspace','getWorkspaceAccess','getWorkspaceModels','updateWorkspaceModels','revealWorkspaceApplicationCredentials'],[A('workspace'),
  step('bff','workspace','ServeProductService.GetWorkspaceAccess',[],'当前部署/访问策略和运行事实一致','按canonical应用登录，不新增SSO'),
  step('bff','workspace','WorkspaceProductService.RevealWorkspaceApplicationCredentials',[],'所有者权限+当前声明workspace_admin_password+实际ready，只一次性用户名/密码','no-store不缓存；不返回GatewayKey或session_secret'),

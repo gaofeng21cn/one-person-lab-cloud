@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-24T06:02:09.894564+00:00",
+  "passed": true,
+  "scope": "implementation plan completeness/coverage/dependency verification only; no work package implemented",
+  "counts": {
+    "workPackages": 32,
+    "features": 17,
+    "restOperations": 108,
+    "tables": 101,
+    "internalRPCs": 172
+  },
+  "topologicalOrder": [
+    "W00",
+    "W01",
+    "W02",
+    "W03",
+    "W05",
+    "W11",
+    "W12",
+    "W04",
+    "W06",
+    "W07",
+    "W13",
+    "W08",
+    "W10",
+    "W09",
+    "W14",
+    "W15",
+    "W17",
+    "W18",
+    "W19",
+    "W20",
+    "W21",
+    "W22",
+    "W24",
+    "W25",
+    "W16",
+    "W23",
+    "W26",
+    "W27",
+    "W28",
+    "W29",
+    "W30",
+    "W31"
+  ],
+  "acceptanceDependencyWaves": [
+    [
+      "W00"
+    ],
+    [
+      "W01"
+    ],
+    [
+      "W02"
+    ],
+    [
+      "W03",
+      "W05",
+      "W11",
+      "W12"
+    ],
+    [
+      "W04",
+      "W06",
+      "W07",
+      "W13"
+    ],
+    [
+      "W08",
+      "W10"
+    ],
+    [
+      "W09"
+    ],
+    [
+      "W14",
+      "W15"
+    ],
+    [
+      "W17",
+      "W18"
+    ],
+    [
+      "W19"
+    ],
+    [
+      "W20"
+    ],
+    [
+      "W21",
+      "W22"
+    ],
+    [
+      "W24",
+      "W25"
+    ],
+    [
+      "W16",
+      "W23"
+    ],
+    [
+      "W26"
+    ],
+    [
+      "W27"
+    ],
+    [
+      "W28"
+    ],
+    [
+      "W29"
+    ],
+    [
+      "W30",
+      "W31"
+    ]
+  ],
+  "errors": [],
+  "sourceHashes": {
+    "00_master_index.md": "464f302ddd6b0a6d9f37e994ce49663571ca502b5ef8211926683e13213bde56",
+    "01_domain_ownership_matrix.md": "2d533187b96e4a711518bfd5624d3dec2d11ad0f669f30051c669651c54e3234",
+    "14_implementation_work_packages.md": "3e24664890a96240b105ac1177a2f19ae9087d15364680135ec2bf5160536d94",
+    "checks/development_plan.json": "2c96648e44482c908414c3d6b6afa0a4ca9adedc826d796495a28daaa0ef71f2",
+    "checks/render_development_plan.py": "d85b142cc7376f0a5ac46e2700ea5d806ee7872951de964df654542aa13fb7c8",
+    "checks/validate_development_plan.py": "c242b690129a0d024b75aa3989709f996c07414df7307d248a2a4c6509c33d08",
+    "contracts/api_inventory.json": "9652d9170d319447f14aa9be152b7eb95f124f3c55e0e6244129124db70cff36",
+    "contracts/db_inventory.json": "3d1bce7e29f92a3cfa31ba5ac74becfba68db6aba873f8f3cd0e80014e02b663",
+    "contracts/ui_inventory.json": "95e66916ed26c897dff97c4c905cba8061e4bd05a11330bb798276d35a186bbe",
+    "contracts/internal.proto": "2ca397209773705e527802ce3993e56aa00d29d82f992a2300c216cf70bf950f"
+  }
+}

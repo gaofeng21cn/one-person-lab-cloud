@@ -601,8 +601,8 @@
           "when": "按当前入口/阶段与06/13状态机前置执行；不是无条件调用"
         }
       ],
-      "terminal": "Serve本域CAS currentAgentDeployment/访问generation后，receipt核对；客户可打开当前应用",
-      "notes": "Workspace.currentAgentDeploymentId是选中业务权威，Fabric是真实路由权威；没有跨库原子提交幻觉"
+      "terminal": "Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用",
+      "notes": "Serve的active Deployment是选中业务权威，Fabric是真实路由权威；Workspace只提供授权和业务目标事实，没有跨库原子提交幻觉"
     },
     {
       "featureId": "F09",

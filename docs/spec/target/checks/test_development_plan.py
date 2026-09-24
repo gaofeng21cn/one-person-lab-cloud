@@ -1,6 +1,5 @@
 """Exercise the real plan validator with current plan inputs in an isolated checkout."""
 from pathlib import Path
-import copy
 import json
 import shutil
 import subprocess
@@ -36,7 +35,12 @@ class RepositoryPlacementTests(unittest.TestCase):
         # Existing source entries are read-only provenance for this validator.
         # Keep them at the real checkout; only planned writes and roots move.
         for work, source in zip(self.plan['workPackages'], original['workPackages']):
-            work['existingReadPaths'] = copy.deepcopy(source['existingReadPaths'])
+            # Existing-source provenance stays anchored to the real checkout; planned
+            # writes are resolved against the isolated temporary checkout by the validator.
+            work['existingReadPaths'] = [
+                str((CLOUD / path).resolve()) if not Path(path).is_absolute() else path
+                for path in source['existingReadPaths']
+            ]
         self.plan['sourceRoots']['instance'] = str(Path(self.temp.name) / 'opl-instance-medopl')
         old_instance = original['sourceRoots']['instance']
         for work in self.plan['workPackages']:
