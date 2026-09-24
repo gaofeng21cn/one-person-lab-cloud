@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "action": "Verify the owner-process foundation and required full local gate after reconciling the Fabric delete readback fixture",
+  "canonicalRef": "refs/heads/main",
+  "canonicalMainSha": "4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe",
+  "canonicalMainTree": "4903b2b5a6bdc126f65f7a231e18ca82d4080c3c",
+  "testedSourceSha": "de6eeb046300656b7879783ce60c901656a2687d",
+  "testedTree": "c4806d77c87c7767e815a8e0477297b583076a2e",
+  "startedAt": "2026-09-24T13:17:33Z",
+  "finishedAt": "2026-09-24T13:23:36Z",
+  "command": "GOMAXPROCS=2 GOFLAGS=-p=1 GOPROXY=direct npm run verify:local:full",
+  "result": "passed",
+  "exitCode": 0,
+  "sourceTests": 228,
+  "browserSuiteTests": 114,
+  "postgresModulePackagesPassed": {
+    "services/internal/postgresmigrate": 1,
+    "services/internal/ownerservice": 1,
+    "services/capability": 1,
+    "services/build": 2,
+    "services/runtime-control": 1,
+    "services/workspace": 1,
+    "services/serve": 1,
+    "services/ledger": 3,
+    "services/control-plane": 8,
+    "services/fabric": 6
+  },
+  "requiredPostgresSkips": 0,
+  "localDockerIntegration": "passed",
+  "changeUnderTest": {
+    "path": "services/fabric/internal/fabric/postgres_runtime_integration_test.go",
+    "summary": "The fixture accepts the existing read_storage_for_delete readback action alongside sync_storage_volume.",
+    "productionCodeChanged": false,
+    "noRedispatchAssertionWeakened": false
+  },
+  "log": {
+    "localPath": "output/final-acceptance-main-20260924/verify-local-full-committed.log",
+    "sha256": "32930933d7392bf96b0f9bdf28a0158e415f84e95178eba62a7205892736eacf",
+    "retention": "local ignored artifact; not a Candidate, production, or Instance receipt"
+  },
+  "verificationAttempts": [
+    {
+      "testedSourceSha": "4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe",
+      "testedTree": "4903b2b5a6bdc126f65f7a231e18ca82d4080c3c",
+      "result": "failed",
+      "exitCode": 1,
+      "failure": "The first full-gate attempts could not download github.com/santhosh-tekuri/jsonschema/v6 through proxy.golang.org; this was an environment dependency-fetch failure before the new owner service compiled.",
+      "logSha256": "b30538f2f12f43ab42848536371cc5ef8faff0004b0e9bebef46d7221523f9e9"
+    },
+    {
+      "testedSourceSha": "4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe",
+      "testedTree": "4903b2b5a6bdc126f65f7a231e18ca82d4080c3c",
+      "result": "failed",
+      "exitCode": 1,
+      "failure": "With direct module retrieval, the full gate reached the Fabric PostgreSQL suite and reproduced the fixture mismatch: the production delete path sent read_storage_for_delete, which the fixture rejected.",
+      "logSha256": "32d49207cfcd62479abe837a75daca6976da36fcdf68f3d3101fc8b0a5bdade7"
+    },
+    {
+      "testedSourceSha": "de6eeb046300656b7879783ce60c901656a2687d",
+      "testedTree": "c4806d77c87c7767e815a8e0477297b583076a2e",
+      "result": "passed",
+      "exitCode": 0,
+      "logSha256": "32930933d7392bf96b0f9bdf28a0158e415f84e95178eba62a7205892736eacf"
+    }
+  ],
+  "scope": "Cloud source checks, isolated PostgreSQL, and Local-Docker integration only. The one-line change is a test-fixture reconciliation; no production service behavior, provider purchase, production deployment, Candidate publication, or Instance workflow was invoked.",
+  "notProven": [
+    "A real Package upload to immutable OCI artifact path from a clean isolated baseline.",
+    "Restart and lost-ack replay across BuildKit, registry export/readback, and owner event delivery.",
+    "Production-like registry qualification and Instance deployment or runtime readback.",
+    "Issue #625 completion and Product Release readiness.",
+    "The current ZIP upload versus Build tar extraction format mismatch remains an open product-path defect.",
+    "A repository-native isolated registry/object-store/BuildKit fault-injection harness."
+  ],
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false,
+  "notes": "The exact-head candidate gate is green, but canonical main itself still needs this test-fixture correction to make the same full gate reproducible. The receipt is source evidence for the proposed correction, not a claim that the complete Package-to-OCI outcome is finished."
+}

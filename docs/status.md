@@ -87,12 +87,13 @@ receipt is not reused as implementation evidence. Verification passed:
   tests. The first attempt lacked installed Node dependencies; `npm ci` restored
   the lockfile-defined environment without changing dependency manifests.
 
-The accepted owner-process implementation is now present on this integration
-branch. No production deployment, production access, or publication was
-performed. The implementation remains a candidate until it is read back from
-canonical `main` and instance qualification is completed.
+The accepted owner-process implementation is present on canonical `main`
+through merge commit `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe` (PR #627).
+No production deployment, production access, publication, or Instance
+qualification was performed. The implementation is a Cloud source candidate,
+not a qualified production release.
 
-## Target owner-process implementation boundary
+## Agent Delivery Chain Owner-Process Baseline
 
 Capability, Build, Runtime Control, Workspace, and Serve each have an owner
 process, migration set, readiness surface, and owner-local Operation readback.
@@ -102,13 +103,36 @@ again. Capability Package upload/reference claims, Runtime Release catalog
 validation, Build input admission, BuildKit/OCI digest and descriptor readback,
 and Build-to-Capability artifact registration are implemented with focused
 tests. Workspace and Serve product handlers, Fabric provisioning/readback,
-deployed multi-process execution, and instance qualification remain open.
+deployed multi-process execution, and Instance qualification remain open.
 
-The implementation branch also incorporates the accepted SSOT correction: Serve
-owns current Agent deployment selection and route/readiness/access state;
-Workspace carries authorization and business intent without a deployment pointer
-or cross-database selection transaction. Build persistence includes the exact
+The implementation incorporates the accepted SSOT correction: Serve owns
+current Agent deployment selection and route/readiness/access state; Workspace
+carries authorization and business intent without a deployment pointer or
+cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
+
+### Canonical-main local verification and receipt
+
+The canonical-main baseline at `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe`
+was first exercised and exposed a Fabric PostgreSQL fixture mismatch: the
+production delete path uses `read_storage_for_delete`, while the fixture only
+accepted `sync_storage_volume`. A one-line test-fixture correction was applied
+on candidate source `de6eeb046300656b7879783ce60c901656a2687d`; production code
+and the no-redispatch assertion were unchanged. The exact-head full local gate
+then passed with 228 source tests, 114 browser tests, all required PostgreSQL
+packages with zero skips, and Local-Docker integration. The append-only
+[source-check receipt](./evidence/source-checks/2026-09-24-owner-process-full-local-verification.json)
+records the failed attempts, final pass, log digest, exact source SHA/tree, and
+scope limits.
+
+This proves Cloud source/local verification for the candidate test correction.
+It does not prove the real Package upload → immutable input admission →
+BuildKit/registry execution → digest readback chain, because the current
+implementation still has an open ZIP-package versus Build tar extraction
+mismatch and no repository-native isolated registry/object-store/BuildKit
+fault-injection harness. Issue #625 remains open for that product path,
+restart/lost-ack replay, production-like registry qualification, and any
+Instance evidence.
 
 ## Conclusion
 
