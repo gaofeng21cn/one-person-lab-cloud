@@ -88,7 +88,8 @@ receipt is not reused as implementation evidence. Verification passed:
   the lockfile-defined environment without changing dependency manifests.
 
 The accepted owner-process implementation is present on canonical `main`
-through merge commit `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe` (PR #627).
+through merge commits PR #627 (`4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe`)
+and PR #628 (`67e51143b0b23cda429f6d62048e5ea595dcd779`).
 No production deployment, production access, publication, or Instance
 qualification was performed. The implementation is a Cloud source candidate,
 not a qualified production release.
@@ -114,7 +115,8 @@ cross-database selection transaction. Build persistence includes the exact
 ### Canonical-main local verification and receipt
 
 The canonical-main baseline at `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe`
-was first exercised and exposed a Fabric PostgreSQL fixture mismatch: the
+(before the subsequent PR #628 CSS-only correction) was first exercised and
+exposed a Fabric PostgreSQL fixture mismatch:
 production delete path uses `read_storage_for_delete`, while the fixture only
 accepted `sync_storage_volume`. A one-line test-fixture correction was applied
 on candidate source `de6eeb046300656b7879783ce60c901656a2687d`; production code
