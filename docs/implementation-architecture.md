@@ -57,9 +57,19 @@ recorded in [status](status.md); remaining outcomes are in the
 
 ## Physical Module And Dependency Map
 
-The current repository is a modular product repository with three Go service
-modules and one browser application. Repository co-location and one release image
-do not authorize implementation imports between service owners.
+The retained Workspace lane has Control Plane, Fabric and Ledger Go services.
+The Package publishing lane additionally uses Console BFF, Capability, Build and
+Runtime Control modules with typed gRPC owner contracts. Repository co-location
+and one release image do not authorize implementation imports between owners.
+Ledger's domain-event listener reuses the policy-free `ownerservice` identity
+and mTLS mechanics already used by the other owner processes. It records events
+in Ledger's existing receipt store; it does not import another owner's state or
+create a second receipt database. The retained Ledger HTTP interface remains
+available for its existing callers.
+
+Console publisher commands use the same-origin BFF API. Only a bounded signed
+Capability upload permit sends ZIP part bytes directly to the data plane through
+the UI API adapter, without cookies or service credentials.
 
 ```text
 apps/console-ui

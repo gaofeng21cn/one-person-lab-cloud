@@ -32,7 +32,7 @@ the complete Console journey, a protected Instance or release readiness. It must
 not close #625 by itself. Those gaps are owned by [the roadmap](../roadmap.md).
 
 The shared publisher JSON codec is generated from the canonical schema vocabulary
-with `python3 packages/contracts/proto/generate_publisher_shape.py` (also called
+with `python3 packages/contracts/proto/generate_public_json_shape.py` (also called
 by the existing protobuf generation entrypoint). It serializes owner-created
 public descriptors; it does not claim to reproduce an external publisher's
 original JSON bytes or replace schema validation.

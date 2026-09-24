@@ -1,4 +1,4 @@
-package publisherjson
+package publicjson
 
 import (
 	"github.com/dlclark/regexp2"

@@ -1,4 +1,4 @@
-package publisherjson
+package publicjson
 
 import (
 	"encoding/json"

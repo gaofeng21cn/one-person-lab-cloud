@@ -52,6 +52,7 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     requiresSession: true,
     navigationId: "customer.overview"
   },
+  "/console/publisher": { kind: "customer.publisher", surface: "customer", title: "发布 Package", requiresSession: true, navigationId: "customer.workspaces" },
   "/console/workspaces": {
     kind: "customer.workspaces",
     surface: "customer",

@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 func TestPublisherAdmissionEncodingMatchesApprovedSchema(t *testing.T) {
@@ -20,7 +20,7 @@ func TestPublisherAdmissionEncodingMatchesApprovedSchema(t *testing.T) {
 	if err = json.Unmarshal(raw, &schemaDocument); err != nil {
 		t.Fatal(err)
 	}
-	compiler := publisherjson.NewSchemaCompiler()
+	compiler := publicjson.NewSchemaCompiler()
 	if err = compiler.AddResource("publisher.json", schemaDocument); err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +39,10 @@ func TestPublisherAdmissionEncodingMatchesApprovedSchema(t *testing.T) {
 		} else {
 			message = &api.WebuiPublisherContract{}
 		}
-		if err = publisherjson.Unmarshal(e, message); err != nil {
+		if err = publicjson.Unmarshal(e, message); err != nil {
 			t.Fatal(err)
 		}
-		admitted, err := publisherjson.Marshal(message)
+		admitted, err := publicjson.Marshal(message)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // UploadPolicy is explicit instance configuration, not customer-controlled input.
@@ -60,7 +60,7 @@ func NewObjects(root, publicURL string, key []byte, p UploadPolicy) (*Objects, e
 	if e = json.Unmarshal(b, &raw); e != nil {
 		return nil, e
 	}
-	compiler := publisherjson.NewSchemaCompiler()
+	compiler := publicjson.NewSchemaCompiler()
 	if e = compiler.AddResource("package-schema.json", raw); e != nil {
 		return nil, e
 	}
@@ -220,6 +220,20 @@ func (o *Objects) readPermit(v string) (partPermit, error) {
 // UploadHandler is a restricted signed PUT data plane; it cannot list or read objects.
 func (s *Service) UploadHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This endpoint is authorized solely by its signed, bounded permit, not
+		// cookies. Browser uploads omit credentials; CORS grants no object reads.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Expose-Headers", "ETag")
+		if r.Method == http.MethodOptions {
+			if _, err := s.Objects.readPermit(r.URL.Query().Get("permit")); err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "PUT")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-OPL-SHA256")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if r.Method != "PUT" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return

@@ -8,8 +8,45 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"time"
 )
+
+func (s *Service) ListWebuiVersions(ctx context.Context, r *api.ListWebuiVersionsRpcRequest) (*api.WebuiVersionPage, error) {
+	if err := s.auth(ctx, r.GetContext(), "ListWebuiVersions", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, ""); err != nil {
+		return nil, err
+	}
+	n := limit(r.GetQueryLimit())
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,version_label,artifact_digest,status,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract_object_ref,publisher_contract,created_at FROM capability.webui_versions WHERE id>$1 ORDER BY id LIMIT $2`, r.GetQueryCursor(), n+1)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer rows.Close()
+	out := &api.WebuiVersionPage{}
+	for rows.Next() {
+		v := &api.WebuiVersion{}
+		var raw []byte
+		var state string
+		var created time.Time
+		if err := rows.Scan(&v.Id, &v.Name, &v.VersionLabel, &v.ArtifactDigest, &state, &v.AdmissionReceiptId, &v.PublisherNamespaceId, &v.PublisherContractDigest, &v.PublisherContractObjectRef, &raw, &created); err != nil {
+			return nil, dbError(err)
+		}
+		v.PublisherContract = &api.WebuiPublisherContract{}
+		if err := publicjson.Unmarshal(raw, v.PublisherContract); err != nil {
+			return nil, status.Error(codes.DataLoss, "invalid persisted WebUI contract")
+		}
+		v.RuntimeAbiVersions = v.PublisherContract.RuntimeAbiVersions
+		v.UiProtocolVersion = "opl-webui/v1"
+		v.Status = api.WebuiVersionStatusEnum(api.WebuiVersionStatusEnum_value["WEBUI_VERSION_STATUS_ENUM_"+upper(state)])
+		v.CreatedAt = timestamppb.New(created)
+		out.Items = append(out.Items, v)
+	}
+	if len(out.Items) > n {
+		out.Items = out.Items[:n]
+		out.NextCursor = proto.String(out.Items[n-1].Id)
+	}
+	return out, dbError(rows.Err())
+}
 
 func (s *Service) ListPublisherNamespaces(ctx context.Context, r *api.ListPublisherNamespacesRpcRequest) (*api.PublisherNamespacePage, error) {
 	if err := s.auth(ctx, r.GetContext(), "ListPublisherNamespaces", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, ""); err != nil {

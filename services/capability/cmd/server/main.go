@@ -77,6 +77,14 @@ func main() {
 		if err != nil {
 			return err
 		}
+		ledgerConn, err := dialPeer(config, tls, owneridentity.Ledger, os.Getenv("OPL_LEDGER_ADDR"))
+		if err != nil {
+			return err
+		}
+		if err := server.TrackCloser(ledgerConn); err != nil {
+			return err
+		}
+		service.LedgerInbox = api.NewDomainInboxClient(ledgerConn)
 		service.Runtime = api.NewRuntimeControlProductServiceClient(runtimeConn)
 		service.Build = api.NewBuildCoordinationClient(buildConn)
 		service.Usage = api.NewClaimUsageReadbackClient(buildConn)

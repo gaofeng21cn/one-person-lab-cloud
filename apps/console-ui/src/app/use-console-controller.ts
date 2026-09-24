@@ -514,6 +514,7 @@ export function useConsoleController() {
       case "public.home":
       case "public.login":
       case "public.forbidden":
+      case "customer.publisher":
         return;
       case "customer.overview":
         await Promise.all([customerWorkspaceReadCapability.load(), gatewayAccountReadCapability.load(), billingCapability.loadOverview(), customerAnnouncementCapability.load()]);

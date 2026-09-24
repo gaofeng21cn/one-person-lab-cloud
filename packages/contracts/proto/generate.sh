@@ -36,4 +36,4 @@ gen_grpc="$(command -v protoc-gen-go-grpc)"
   "${here}/internal.proto"
 
 # Public JSON enum names and required defaults are owned by the publisher schema.
-"${py}" "${here}/generate_publisher_shape.py"
+"${py}" "${here}/generate_public_json_shape.py"

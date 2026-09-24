@@ -21,7 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/build/migrations"
 	capabilitycatalog "opl-cloud/services/capability/catalog"
 	"opl-cloud/services/internal/ownerservice"
@@ -76,7 +76,7 @@ func liveServer(t *testing.T, register func(*grpc.Server)) string {
 	t.Cleanup(server.Stop)
 	return l.Addr().String()
 }
-func liveOwnerDB(t *testing.T, ctx context.Context, dsn, name string, source ownerstore.MigrationSource) *sql.DB {
+func liveOwnerDB(t *testing.T, ctx context.Context, dsn, name string, source ownerstore.MigrationSource) (*sql.DB, string) {
 	t.Helper()
 	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: name, Database: "opl_" + name, SchemaOwnerRole: "opl_" + name + "_owner", WriterRole: "opl_" + name + "_writer", RuntimeRole: "opl_" + name + "_runtime"})
 	if err != nil {
@@ -91,16 +91,20 @@ func liveOwnerDB(t *testing.T, ctx context.Context, dsn, name string, source own
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return db
+	return db, h.RuntimeDSN
 }
 
 type lostInboxAck struct {
 	api.DomainInboxClient
-	lost atomic.Bool
+	lost      atomic.Bool
+	last      *api.DeliverEventRequest
+	lastError error
 }
 
 func (c *lostInboxAck) Deliver(ctx context.Context, r *api.DeliverEventRequest, opts ...grpc.CallOption) (*api.InboxAck, error) {
+	c.last = proto.Clone(r).(*api.DeliverEventRequest)
 	ack, err := c.DomainInboxClient.Deliver(ctx, r, opts...)
+	c.lastError = err
 	if err == nil && c.lost.CompareAndSwap(false, true) {
 		return nil, status.Error(codes.Unavailable, "injected lost consumer acknowledgement")
 	}
@@ -114,7 +118,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if _, err := capability.DB.ExecContext(ctx, `INSERT INTO capability.publisher_namespaces(id,name,kind,registry_id,repository_prefix,admission_receipt_id) VALUES($1,'local-publisher','official','local-registry',$2,'isolated-publisher-admission')`, input.RuntimeContract.PublisherNamespaceId, runner.RegistryPrefix[:len(runner.RegistryPrefix)-len("/result")]); err != nil {
 		t.Fatal(err)
 	}
-	webuiBytes, err := publisherjson.Marshal(input.WebuiContract)
+	webuiBytes, err := publicjson.Marshal(input.WebuiContract)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +134,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtimeDB := liveOwnerDB(t, ctx, dsn, "runtime_control", runtimeSource)
+	runtimeDB, _ := liveOwnerDB(t, ctx, dsn, "runtime_control", runtimeSource)
 	runtimeService, err := runtimecatalog.New(runtimeDB, ownerservice.NewAuthorizer(ownerservice.OwnerRuntimeControl, fixtureIdentity{}), api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.RuntimeControl.Service())), schemaPath, digest(schemaBytes))
 	if err != nil {
 		t.Fatal(err)
@@ -156,14 +160,16 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err != nil {
 		t.Fatal(err)
 	}
-	buildDB := liveOwnerDB(t, ctx, dsn, "build", source)
+	buildDB, buildDSN := liveOwnerDB(t, ctx, dsn, "build", source)
 	store, err := ownerstore.New(buildDB, "build")
 	if err != nil {
 		t.Fatal(err)
 	}
 	capConn := liveConn(t, capAddr, owneridentity.Build.Service())
 	capDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(capConn)}
-	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, fixtureIdentity{}), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop}, fixtureIdentity{}, runner)
+	ledgerDB, ledgerBuild, ledgerCapability := liveLedger(t, ctx)
+	capability.LedgerInbox = ledgerCapability
+	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, fixtureIdentity{}), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop, "ledger": ledgerBuild}, fixtureIdentity{}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +186,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	capability.Usage = api.NewClaimUsageReadbackClient(buildCapConn)
 	buildDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(buildCapConn)}
 	capability.BuildInbox = buildDrop
-	client := api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF))
+	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)))}
 	req := &api.CreateBuildRpcRequest{Context: call("create-build", false), Body: &api.CreateBuildRequest{PackageVersionId: input.PackageVersionId, WebuiVersionId: input.WebuiVersionId}}
 	job, err := client.CreateBuild(ctx, req)
 	if err != nil {
@@ -213,14 +219,14 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		if err = service.RunOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err = capability.DeliverBuildResults(ctx); err != nil {
+		if err = capability.DeliverRegistrations(ctx); err != nil {
 			t.Fatal(err)
 		}
 		var buildPending, capPending int
-		if err = buildDB.QueryRowContext(ctx, `SELECT count(*) FROM build.outbox_deliveries WHERE consumer_owner='capability' AND acknowledged_at IS NULL`).Scan(&buildPending); err != nil {
+		if err = buildDB.QueryRowContext(ctx, `SELECT count(*) FROM build.outbox_deliveries WHERE consumer_owner IN ('capability','ledger') AND acknowledged_at IS NULL`).Scan(&buildPending); err != nil {
 			t.Fatal(err)
 		}
-		if err = capability.DB.QueryRowContext(ctx, `SELECT count(*) FROM capability.outbox_deliveries WHERE consumer_owner='build' AND acknowledged_at IS NULL`).Scan(&capPending); err != nil {
+		if err = capability.DB.QueryRowContext(ctx, `SELECT count(*) FROM capability.outbox_deliveries WHERE consumer_owner IN ('build','ledger') AND acknowledged_at IS NULL`).Scan(&capPending); err != nil {
 			t.Fatal(err)
 		}
 		rec, err = service.read(ctx, job.Id)
@@ -231,7 +237,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("registration did not converge: state=%s pending=%d/%d", rec.Job.Status, buildPending, capPending)
+			t.Fatalf("registration did not converge: state=%s pending=%d/%d ledger errors=%v / %v", rec.Job.Status, buildPending, capPending, ledgerBuild.lastError, ledgerCapability.lastError)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -252,5 +258,8 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if !capDrop.lost.Load() || !buildDrop.lost.Load() {
 		t.Fatal("lost acknowledgement scenarios did not execute")
 	}
+	verifyLedgerEvidence(t, ctx, ledgerDB, job.Id, ledgerBuild, ledgerCapability)
+	verifyInterruptedWorker(t, ctx, buildDSN, capAddr, client, service, capability, runner, req)
+	verifyPublisherBrowser(t, ctx, client.base, service, capability, runner, input)
 	t.Logf("real owner chain: Runtime API admission, CreateBuild replay, three bound claims, one ready CapabilityVersion; both registration acknowledgements lost and recovered; artifact=%s", version.ArtifactDigest)
 }
