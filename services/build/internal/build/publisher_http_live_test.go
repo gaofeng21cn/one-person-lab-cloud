@@ -5,6 +5,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func newPublisherHTTP(t *testing.T, cap api.CapabilityProductServiceClient, buil
 		if test.cookie != "" {
 			req.AddCookie(&http.Cookie{Name: "opl_session", Value: test.cookie})
 		}
-		req.Header.Set("x-opl-csrf", test.csrf)
+		req.Header.Set("X-CSRF-Token", test.csrf)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Idempotency-Key", "must-not-create")
 		resp, err := http.DefaultClient.Do(req)
@@ -84,7 +85,7 @@ func publisherRequest(ctx context.Context, base, method, path string, call *api.
 	}
 	req.AddCookie(&http.Cookie{Name: "opl_session", Value: cookie})
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-opl-csrf", "isolated-csrf")
+	req.Header.Set("X-CSRF-Token", "isolated-csrf")
 	req.Header.Set("Idempotency-Key", call.GetIdempotencyKey())
 	req.Header.Set("x-opl-request-id", call.GetRequestId())
 	resp, err := http.DefaultClient.Do(req)
@@ -113,6 +114,19 @@ func publisherRequest(ctx context.Context, base, method, path string, call *api.
 			code = codes.FailedPrecondition
 		}
 		return status.Errorf(code, "BFF status %d: %s", resp.StatusCode, data)
+	}
+	expected := 200
+	if method == "POST" {
+		expected = 201
+		switch result.(type) {
+		case *api.UploadPartAuthorization:
+			expected = 200
+		case *api.Operation:
+			expected = 202
+		}
+	}
+	if resp.StatusCode != expected {
+		return fmt.Errorf("public HTTP status %d, want %d", resp.StatusCode, expected)
 	}
 	return publicjson.Unmarshal(data, result)
 }

@@ -36,7 +36,7 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 	prepare := func(body string) {
 		request.Body = io.NopCloser(strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("x-opl-csrf", "csrf-1")
+		request.Header.Set("X-CSRF-Token", "csrf-1")
 		request.Header.Set("Idempotency-Key", "stable-command")
 		request.Header.Set("x-opl-actor", "forged-actor")
 		request.Header.Set("x-opl-tenant", "forged-tenant")
@@ -62,7 +62,7 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 	request.Header.Set("Origin", "https://cross-site.test")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != 403 || probe.received != nil {
+	if response.Code != 403 || probe.received != nil || !strings.Contains(response.Body.String(), "ORIGIN_REJECTED") {
 		t.Fatal("cross-origin write reached owner")
 	}
 }

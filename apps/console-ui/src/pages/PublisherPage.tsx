@@ -68,7 +68,7 @@ export function PublisherPage() {
     const abort = new AbortController();
     void (async () => {
       try {
-        const active = await getJson<Session>(`${base}/session`, { signal: abort.signal });
+        const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
         const [ns, ui] = await Promise.all([pages(`${base}/namespaces`, abort.signal), pages(`${base}/catalog/webui-versions`, abort.signal)]);
         if (abort.signal.aborted) return;
         setSession(active); setNamespaces(ns); setWebuis(ui.filter((v) => v.status === "approved"));
@@ -117,7 +117,7 @@ export function PublisherPage() {
     const abort = new AbortController(); execution.current?.abort(); execution.current = abort;
     setBusy(true); setError("");
     try {
-      const active = await getJson<Session>(`${base}/session`, { signal: abort.signal });
+      const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
       if (storageKey(active) !== storageKey(session)) throw new Error("会话已切换，请重新打开发布页面。");
       if (resumeBuild && work.current?.buildId) { await readBuild(work.current.buildId, abort.signal); return; }
       if (!file || !versionLabel || !webuiId || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写发布信息并选择 ZIP 文件。");

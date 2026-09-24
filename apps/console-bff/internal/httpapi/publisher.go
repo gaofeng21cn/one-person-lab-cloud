@@ -1,11 +1,15 @@
 package httpapi
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
+	"errors"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -27,35 +31,40 @@ type publisherCall func(*http.Request, *api.CallContext, proto.Message) (proto.M
 
 func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneridentity.Owner, action api.AuthorizationActionEnum, kind api.AuthorizationResourceKind, resourcePath string, body func() proto.Message, invoke publisherCall) {
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		publisherRequestID(r)
 		w.Header().Set("Cache-Control", "no-store")
 		caller, err := RequireSession(r.Context(), s.identity, r)
 		if err != nil {
-			s.writeIdentityError(w, err)
+			writePublisherIdentityError(w, r, err)
 			return
 		}
 		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
 		call := clients.CallContext(ctx)
 		var input proto.Message
 		if body != nil {
+			if caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
+				writePublisherError(w, r, 403, "csrf_required", "session CSRF token required")
+				return
+			}
 			origin, originErr := url.Parse(r.Header.Get("Origin"))
-			if caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("x-opl-csrf"))) != 1 || r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && (originErr != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http"))) {
-				writeError(w, 403, "csrf_required", "same-origin session CSRF token required")
+			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && (originErr != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http"))) {
+				writePublisherError(w, r, 403, "origin_rejected", "same-origin request required")
 				return
 			}
 			call.IdempotencyKey = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 			if call.IdempotencyKey == "" || len(call.IdempotencyKey) > 256 {
-				writeError(w, 400, "idempotency_key_required", "Idempotency-Key is required")
+				writePublisherError(w, r, 400, "idempotency_key_required", "Idempotency-Key is required")
 				return
 			}
 			media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || media != "application/json" {
-				writeError(w, 415, "json_required", "application/json required")
+				writePublisherError(w, r, 415, "json_required", "application/json required")
 				return
 			}
 			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
 			input = body()
 			if err != nil || publicjson.Unmarshal(raw, input) != nil {
-				writeError(w, 400, "invalid_request", "invalid or oversized request body")
+				writePublisherError(w, r, 400, "invalid_request", "invalid or oversized request body")
 				return
 			}
 		}
@@ -67,11 +76,11 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			resource.Id = proto.String(input.PackageVersionId)
 		}
 		if err := RequireAuthorizedAction(ctx, s.identity, caller, owner, action, resource, call.RequestId); err != nil {
-			s.writeIdentityError(w, err)
+			writePublisherIdentityError(w, r, err)
 			return
 		}
 		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) {
-			writeError(w, 503, "owner_unconfigured", "publisher owner unavailable")
+			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
 			return
 		}
 		result, err := invoke(r.WithContext(ctx), call, input)
@@ -95,24 +104,27 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			case codes.Unavailable, codes.DeadlineExceeded:
 				code = 503
 			}
-			writeError(w, code, "owner_request_failed", "publisher request could not be completed")
+			writePublisherError(w, r, code, "owner_request_failed", "publisher request could not be completed")
 			return
 		}
 		raw, err := publicjson.Marshal(result)
 		if err != nil {
-			writeError(w, 502, "invalid_owner_response", "publisher owner returned an invalid response")
+			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		code := 200
 		if body != nil {
 			code = 201
-			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD {
-				code = 202
+			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART {
+				code = 200
 			}
 			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD {
 				code = 202
 			}
+		}
+		if op, ok := result.(*api.Operation); ok && op.GetPollAfterSeconds() > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(op.GetPollAfterSeconds())))
 		}
 		w.WriteHeader(code)
 		_, _ = w.Write(raw)
@@ -120,16 +132,17 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 }
 
 func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v2/session", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v2/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		publisherRequestID(r)
 		w.Header().Set("Cache-Control", "no-store")
 		caller, err := RequireSession(r.Context(), s.identity, r)
 		if err != nil {
-			s.writeIdentityError(w, err)
+			writePublisherIdentityError(w, r, err)
 			return
 		}
 		raw, err := publicjson.Marshal(caller.Session)
 		if err != nil {
-			writeError(w, 502, "invalid_session", "invalid session response")
+			writePublisherError(w, r, 502, "invalid_session", "invalid session response")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -178,4 +191,54 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		return s.capability.GetPackageVersion(r.Context(), &api.GetPackageVersionRpcRequest{Context: c, PackageVersionId: r.PathValue("packageVersionId")})
 	})
 
+}
+
+func publisherRequestID(r *http.Request) {
+	if r.Header.Get(requestIDHeader) == "" {
+		var id [16]byte
+		_, _ = rand.Read(id[:])
+		r.Header.Set(requestIDHeader, hex.EncodeToString(id[:]))
+	}
+}
+func writePublisherIdentityError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, ErrSessionRequired):
+		writePublisherError(w, r, 401, "UNAUTHENTICATED", "session required")
+	case errors.Is(err, ErrAuthorizationRequired):
+		writePublisherError(w, r, 403, "FORBIDDEN", "action is not authorized")
+	default:
+		writePublisherError(w, r, 503, "DEPENDENCY_UNAVAILABLE", "identity authority unavailable")
+	}
+}
+func writePublisherError(w http.ResponseWriter, r *http.Request, httpStatus int, reason, message string) {
+	code := "INTERNAL_ERROR"
+	switch reason {
+	case "csrf_required":
+		code = "CSRF_INVALID"
+	case "origin_rejected":
+		code = "ORIGIN_REJECTED"
+	case "idempotency_key_required":
+		code = "IDEMPOTENCY_REQUIRED"
+	default:
+		switch httpStatus {
+		case 400, 413, 415, 422:
+			code = "VALIDATION_FAILED"
+		case 401:
+			code = "UNAUTHENTICATED"
+		case 403:
+			code = "FORBIDDEN"
+		case 404:
+			code = "NOT_FOUND"
+		case 409:
+			code = "IDEMPOTENCY_CONFLICT"
+		case 429:
+			code = "RATE_LIMITED"
+		case 503:
+			code = "DEPENDENCY_UNAVAILABLE"
+		}
+	}
+	if httpStatus == 429 || httpStatus == 503 {
+		w.Header().Set("Retry-After", "2")
+	}
+	writeJSON(w, httpStatus, map[string]any{"code": code, "message": message, "requestId": r.Header.Get(requestIDHeader)})
 }
