@@ -34,7 +34,7 @@ function goModulePath(source) {
   return match[1];
 }
 
-test("Go services remain physically isolated behind typed HTTP contracts", async () => {
+test("Go services remain physically isolated behind typed owner contracts", async () => {
   const sharedModulePath = goModulePath(await text("services/internal/postgresmigrate/go.mod"));
   const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];
   for (const service of ["control-plane", "fabric", "ledger"]) {
@@ -49,7 +49,7 @@ test("Go services remain physically isolated behind typed HTTP contracts", async
       for (const imported of goImports(source)) {
         if (imported.startsWith("opl-cloud/services/")) {
           const owned = imported === modulePath || imported.startsWith(`${modulePath}/`);
-          const shared = imported === sharedModulePath || imported.startsWith(`${sharedModulePath}/`);
+          const shared = imported === sharedModulePath || imported.startsWith(`${sharedModulePath}/`) || (service === "ledger" && imported === "opl-cloud/services/internal/ownerservice");
           assert.equal(owned || shared, true, `${file} crosses into ${imported}`);
         }
         if (service !== "fabric") {

@@ -29,16 +29,17 @@ The owner-process implementation is present on canonical `main` through PR
 This is a partial foundation, not a claim that the complete product delivery
 chain is finished. Open work in dependency order:
 
-1. The local Package upload → Runtime API/policy selection → immutable Build
-   admission → three bound claims → BuildKit/Registry → ready CapabilityVersion
-   chain is now proven with duplicate delivery and lost registration replies.
-   See the [owner-chain evidence](./status.md#isolated-package-upload-and-buildkit-execution).
-   Complete the real CloudIdentity/accepted-grant and publisher namespace/WebUI
-   admission paths; local identity and approved WebUI entries remain fixtures.
-2. Implement and verify the authenticated publisher BFF/Console entry and Ledger
-   consumer against these owner handlers, then prove live worker termination
-   during export. The local two-owner registration replay and persisted pre-ack
-   recovery evidence do not replace these remaining end-to-end cases.
+1. Cloud-local publisher delivery now covers the Console/BFF interaction,
+   Capability multipart upload, Runtime API selection, immutable Build admission,
+   three bound claims, BuildKit/Registry, ready CapabilityVersion and Ledger event
+   consumption. Duplicate/lost acknowledgements and an actual worker killed at
+   the post-commit push-acknowledgement boundary are proven in the
+   [current source receipt](./evidence/source-checks/2026-09-25-publisher-ledger-worker-local.json).
+2. Implement the canonical Gateway Integration / CloudIdentity owner and qualify
+   real session/accepted-grant issuance, plus publisher namespace/WebUI admission.
+   These are Cloud obligations; the local identity and approved WebUI fixtures
+   are explicit prerequisites, not evidence that those owners are implemented.
+   No second identity issuer or permissive fallback belongs in BFF or Build.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.

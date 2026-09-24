@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "action": "Deliver the publisher BFF/Console journey, Ledger domain consumer and actual worker-process interruption recovery",
+  "recordedAt": "2026-09-24T22:19:28.798123+00:00",
+  "baseSha": "2e8a5055b4ea24eb55e26a24117877f56b7ec20a",
+  "sourceSha": "ff79d8c0f00ed8a445872e3468a7d00bc2079e88",
+  "sourceTree": "4864b78c2afe1ba60fe191cf8bac6864ab3b9446",
+  "sourceFilesSha256": {
+    "apps/console-bff/bff.go": "af33c1fed4cc05253fee8ccd32cbd8ac884e317358a2e880308b2f3543717917",
+    "apps/console-bff/go.mod": "c440ccb2217efaa3f336129fbf3eac9c6e04439332a19c74c4f300f906e7cc9f",
+    "apps/console-bff/go.sum": "ae8ebed493fd080eae59481a9a6ac9bcbb3c21de19c480bee7da2c385e76844b",
+    "apps/console-bff/internal/clients/clients.go": "71757dc3a618b5ce3993403f415aec743d0a439271b86e86dfce0223c3d63359",
+    "apps/console-bff/internal/httpapi/publisher.go": "dd46f1ea35c5a9b3847d1ac365671d3847c45b8412556cf5218751968eee932b",
+    "apps/console-bff/internal/httpapi/publisher_test.go": "8216069ffea5ab75b31b0d0d15a74761b3693a330a87cbb7655ea5415bf9fb08",
+    "apps/console-bff/internal/httpapi/server.go": "57975989225769c54a88aefcb70811abb226dec4235b92f6167ada5be34196da",
+    "apps/console-bff/internal/httpapi/session.go": "7e99d9d36ee446e6da7950dab525c3d166d5532a67fdeb24e8c6567f563eda8f",
+    "apps/console-ui/src/api/publisher-api.ts": "85d11def6965f309600896d241aaa72cb9dde1629d4314ac9ac69c5c5765af72",
+    "apps/console-ui/src/app/console-router.ts": "a06b3abe9bd72343ca640ef649102b902ee2ab9cd00d169a4e107fe93cdd8f0d",
+    "apps/console-ui/src/app/use-console-controller.ts": "48110936c6da3726706226bc18bf9cd187117761d0cbe8bf5316bc7997892471",
+    "apps/console-ui/src/components/workspaces/WorkspaceListPage.tsx": "dd169bfd7074220cda40982ab049aa7bfe72ebf2edc1e398efe1283e8d307859",
+    "apps/console-ui/src/pages/CustomerPages.tsx": "0f0914340a020124c98431d5a0103d200ecd90664600267389f3d00d243d13af",
+    "apps/console-ui/src/pages/PublisherPage.tsx": "a67f2e6223dfd4e4f7bb3775776dc53d829bae73d1f48795c4ae07410009465d",
+    "apps/console-ui/src/pages/publisher.css": "f7dc2ae5567082eb36f984e7d93fc80de192609c1e273a6292a7e3135f2ef355",
+    "docs/implementation-architecture.md": "a024c34a87364418e00836877774cba9901983d354812eec25e66828236be3eb",
+    "docs/runtime/package-buildkit-local.md": "8e21503127684a11ee459aa26912222ee603db5aed4f9ae2c515d36305d55081",
+    "docs/spec/target/03_api_contract_complete.yaml": "0ffdc444ace1792ccd67b51ca57e6791ac5eea1dbddf097cef3ad96ea8204773",
+    "packages/contracts/go/publicjson/codec.go": "67b6cdce22be6dd2b2f78b39c1c24b3a1b2e78f3eb3b40974f593a41be5da519",
+    "packages/contracts/go/publicjson/codec_test.go": "a7439f9b97656ec3ff676125bc9f82f8a22d58eabc8861a66f6c23f23c9df2a2",
+    "packages/contracts/go/publicjson/schema.go": "4e90de4ba71695da584c16a8801c83471cd6fc116202900b8ab5959a85543399",
+    "packages/contracts/go/publicjson/shape_generated.go": "4c8fd91667580a7df9989e7c0c06c9c67b4c3592972e1822baadf31eba8c69b2",
+    "packages/contracts/proto/generate.sh": "6c7f59090cd3f2e5b4eed4379766012edde810bd1c112fd20ede9d8686156d03",
+    "packages/contracts/proto/generate_public_json_shape.py": "15fca0aeab38351418e56f8febebce4e6179a59f51c8d6897e479fbabac7937d",
+    "services/build/go.mod": "c2821ed35f88c593175b08ac65a9c2f3dd0e80eedcaa62202d6057a8e119544f",
+    "services/build/go.sum": "d360f7cc68c616e80354f5809d85c3e2dfda556df7026ab88d41515d838ba4e5",
+    "services/build/internal/build/browser_live_test.go": "36d06851197021d189d206781c37c16519aeb0e887f81c37ae3c6d0c4862197b",
+    "services/build/internal/build/ledger_live_test.go": "9ad32df4a311ad0257ffd55467f891ab9adb5489d3436cffbadf4a20133488b1",
+    "services/build/internal/build/owner_chain_live_test.go": "7d317b2d1a4ab38fdecbc04675c8c8beb4712318c5f6213dba8c319389168b8f",
+    "services/build/internal/build/publisher_http_live_test.go": "0b48512bf12f3ef6c76a9906a6b24f252eadd9a8053f81c08f51785ecdc31f2f",
+    "services/build/internal/build/runner_live_test.go": "c1f72375a5996c01286fbc5da2f40144543ac37ce486fb6edb2ce8fddebb4c1f",
+    "services/build/internal/build/upload_live_test.go": "3b1ebe85aa945e7dc5f970c90ed8079a21879bfaf93430b66c22adc8ee18c9b3",
+    "services/build/internal/build/worker.go": "8b9c860b3967db8c0bdf5e3a4932f948677ef80d037a5a4b6cc746bc69136592",
+    "services/build/internal/build/worker_process_live_test.go": "efd6753636af6d8355a88958cb9ca53b4c0775f2fa80726a9687ae6d2095c356",
+    "services/capability/catalog/coordination.go": "e2443fac0800afdd013511544c165fd91d7a07922cca9116d50159d137db3024",
+    "services/capability/catalog/objects.go": "3200f536d8037cff3f9ae561ae4367b3eccc578faf09a7264c8d062471aa4271",
+    "services/capability/catalog/read_catalog.go": "e7c0ba29c94a27b57627706a044da58c0b43726f2fa617393863f32516735d52",
+    "services/capability/catalog/registration_delivery.go": "26b9c941d23a644d1ff2e85f8d0acac7c1f8e8d9ff5ab21aa0cd5e1564d63c30",
+    "services/capability/catalog/service.go": "cb32648f1c8ec138f2c7fe47b80e06e4b9921ef6c61a8c6c906334184ed7e1ab",
+    "services/capability/cmd/server/main.go": "f5885237c00d307d5eb28a3ef1ac443205f448a9a7eee9512de408d89a5c6bce",
+    "services/ledger/cmd/ledger/main.go": "5a50d78788b339fe543b6673781c3031ce0fbe6a4b527cb4e3693560aa2f0bdc",
+    "services/ledger/eventconsumer/server.go": "7b52e0439119cba843f88d79e581747a52e6ca3f0924407568b02d1f93f25785",
+    "services/ledger/go.mod": "e67ea7e13f137795a511e616a0a1ec7133cae0501fba9e8bcd47bacf2d70408d",
+    "services/ledger/go.sum": "3745f6728ffe85f5ea01ba62665337f4e3446c4b02d3f898c7f97aeb89d32087",
+    "services/ledger/internal/ledger/domain_event.go": "c342d3bbfd6c860e1d4e2b1a2a4659c14aeafa5016b53b8343f049f58c97ae40",
+    "services/ledger/internal/ledger/domain_event_test.go": "6475dd645185da03d943a5ff717944ef4ee60478b984da8e96036065d724345a",
+    "services/ledger/internal/ledger/postgres_store.go": "f923a9fe01c4d509d312181ce0bd1dbcd55642387a65085e203eb3b8112ea45a",
+    "services/ledger/internal/ledger/types.go": "ebed063e3ba9fc867055dcd54bae1e2a07f3d70320732c7d7901106ed08f319b",
+    "services/runtime-control/catalog/publisher_test.go": "3bbbe0806b3ff005302b307655856cae0da52f7d837469de7f15ea613cdd570b",
+    "services/runtime-control/catalog/service.go": "4f69142bd2d7ca4bc1a975d6c3a8e4d9e15df9d85851828cc13d8c925e813322",
+    "tests/contracts/module-physical-boundaries.test.ts": "0f8eb0dd89641c38714c624e07f9a5df4db27c06a5d7a76fd8b5805c4573cbe9",
+    "tests/live/publisher-browser.ts": "41b5ef9750897a1b37c867bf399968c448253bd6114dff01da33ca9844c44731"
+  },
+  "deletedSourceFiles": [
+    "packages/contracts/go/publisherjson/codec.go",
+    "packages/contracts/go/publisherjson/codec_test.go",
+    "packages/contracts/go/publisherjson/schema.go",
+    "packages/contracts/go/publisherjson/shape_generated.go",
+    "packages/contracts/proto/generate_publisher_shape.py"
+  ],
+  "verification": {
+    "liveCommand": "npm run verify:package-to-oci",
+    "liveResult": "passed",
+    "browserArtifactDigest": "sha256:91683d73ab5efd5400f38db896516a1cd632d1b74530e356761a561b7f7cd301",
+    "browserCapabilityVersionId": "capv_cc7b4a163bd9366909361b3c7c8728d0",
+    "fullCommand": "GOMAXPROCS=2 GOFLAGS=-p=1 npm run verify:local:full",
+    "fullResult": "passed",
+    "sourceTests": 228,
+    "browserSuiteTests": 114,
+    "requiredPostgresModules": "all passed with zero test skips",
+    "dockerIntegration": "passed",
+    "additionalFocusedChecks": [
+      "BFF authorization-context forwarding, forged browser identity and cross-origin rejection passed",
+      "Generic receipt writer rejects domain evidence forgery",
+      "Build, Capability, Runtime Control, Ledger, BFF and shared contracts go vet passed"
+    ],
+    "failedAttempts": "Initial aggregate found UI transport outside its API adapter and stale transport/navigation assertions; subsequent browser run found a fifth mobile navigation item obscuring controls. The publisher entry now lives inside Workspaces; required checks and real publishing were rerun successfully."
+  },
+  "proven": [
+    "Actual Console production assets enter through the Workspace publishing link; BFF resolves the session, validates CSRF and exact authorization, and forwards the returned authorization context plus stable idempotency identity.",
+    "Real HTTP BFF, Capability signed multipart and restricted owner databases execute Package upload and Build admission; browser-body actor injection, missing session, wrong CSRF, cross-origin writes and cross-tenant reads are rejected.",
+    "Browser-driven real BuildKit/Registry output reaches a ready CapabilityVersion with matching immutable artifact digest, and reload reads the same result. Desktop/mobile screenshots were inspected.",
+    "Ledger records package.uploaded, build.artifact_confirmed/build.failed and capability.version_registered through authenticated typed events in the existing receipt store. Real PostgreSQL tests prove replay after lost acknowledgements, producer binding and rejection of changed bytes for the same event identity.",
+    "An actually admitted worker runs in a separate OS process. A test-only docker wrapper lets the real exporter commit to Registry but withholds its exit acknowledgement; SIGKILL terminates the worker. A fresh worker/database connection, configured with an unusable builder, recovers the original digest to one artifact/event/version without rerunning export."
+  ],
+  "notProven": [
+    "CloudIdentity session and authorization decisions and service-peer identities for BFF/Build/Capability/Runtime remain fixtures. The canonical gateway-integration CloudIdentity module is still planned and has no implementation in this checkout; this is a Cloud implementation obligation, not an external/Instance blocker.",
+    "The approved publisher namespace and WebUI catalog entry are seeded prerequisites, not a qualification of their admission APIs. Runtime registration and selection use actual APIs.",
+    "The process test covers interruption after Registry commit and before worker exporter acknowledgement. It does not simulate mid-layer network interruption or Registry-process loss.",
+    "Protected Instance adoption, real Sub2API credentials, production TLS/registry policy and release readiness."
+  ],
+  "logs": [
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-browser-final.log",
+      "sha256": "e65a138cf0b28334d785b9542267c3f5473a72e286bba6fbc3a0a76bc4e243b4",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-publisher-full-final.log",
+      "sha256": "d913f30cd2a1d539c2265d4970f1be68b17e0c741cd6cd4f05f3455434420c1b",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-publisher-full.log",
+      "sha256": "307a67fd2227f70edc7de806bc73eac33b2c5e246a07511e63874526f073304f",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-boundary-recheck.log",
+      "sha256": "fa6252d0b241118f7299dd5f76fa5bb85c157a3d821008183e7d949a7477ac87",
+      "retention": "local ignored artifact"
+    },
+    {
+      "path": "output/cloud625-publisher-browser/desktop.png",
+      "sha256": "a0ca85aa2a2fc121b4f4137ae4690b30c0b5e487fe36d7fe74b315f2e9b6e74d",
+      "retention": "local ignored screenshot"
+    },
+    {
+      "path": "output/cloud625-publisher-browser/mobile.png",
+      "sha256": "2a2a73d12fb6ff82029b81344bb2f61a0e02a217cba2bb654dde8b1ddf9d38eb",
+      "retention": "local ignored screenshot"
+    }
+  ],
+  "temporaryResources": "All task-created local test containers are removed; source-check artifacts are retained locally. No production, provider or payment action.",
+  "issue625Complete": false,
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false
+}

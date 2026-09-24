@@ -12997,6 +12997,8 @@ x-service-action-allowlist:
   ledger: []
 x-accepted-operation-actions:
   build:
+  - listRuntimeVersions
+  - getCapabilityVersion
   - resolveBuildInput
   - resolvePublisherContract
   - acquireReference

@@ -105,6 +105,10 @@ func (s *PostgresStore) RecordReceipt(ctx context.Context, input ReceiptInput) (
 	if err := validateReceiptInput(input); err != nil {
 		return Receipt{}, err
 	}
+	return s.recordReceipt(ctx, input)
+}
+
+func (s *PostgresStore) recordReceipt(ctx context.Context, input ReceiptInput) (Receipt, error) {
 	hashInput := input
 	hashInput.IdempotencyKey = ""
 	requestHash, err := hashJSON(hashInput)

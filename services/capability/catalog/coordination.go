@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
 )
@@ -64,7 +64,7 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 	if e := s.DB.QueryRowContext(ctx, `SELECT publisher_contract,status,publisher_namespace_id,publisher_contract_digest,publisher_contract_object_ref FROM capability.webui_versions WHERE id=$1`, r.GetWebuiVersionId()).Scan(&webuiRaw, &webuiStatus, &webuiRef.PublisherNamespaceId, &webuiRef.DescriptorDigest, &webuiRef.DescriptorObjectRef); e != nil {
 		return nil, dbError(e)
 	}
-	if webuiStatus != "approved" || publisherjson.Unmarshal(webuiRaw, &webui) != nil {
+	if webuiStatus != "approved" || publicjson.Unmarshal(webuiRaw, &webui) != nil {
 		return nil, status.Error(codes.FailedPrecondition, "WebUI version is not approved")
 	}
 	webuiRef.VersionId = r.GetWebuiVersionId()
@@ -290,7 +290,7 @@ func (s *Service) Deliver(ctx context.Context, r *api.DeliverEventRequest) (*api
 	if readback.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || readback.GetBuildJobId() != payload.BuildJobId || readback.GetInput().GetPackageVersionId() != payload.PackageVersionId || readback.GetInput().GetRuntimeVersionId() != payload.RuntimeVersionId || readback.GetInput().GetWebuiVersionId() != payload.WebuiVersionId || readback.GetArtifact().GetDigest() != payload.ArtifactDigest || readback.GetArtifactReceiptId() != payload.ArtifactReceiptId || readback.GetDeploymentDescriptorDigest() != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build artifact readback mismatch")
 	}
-	descriptor, e := publisherjson.Marshal(readback.GetDeploymentDescriptor())
+	descriptor, e := publicjson.Marshal(readback.GetDeploymentDescriptor())
 	if e != nil || digest(descriptor) != payload.DeploymentDescriptorDigest {
 		return nil, status.Error(codes.FailedPrecondition, "Build descriptor bytes differ from digest")
 	}

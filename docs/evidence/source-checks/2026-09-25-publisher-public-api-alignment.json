@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "action": "Align publisher HTTP boundary with canonical session path, CSRF header, success codes and Error response",
+  "recordedAt": "2026-09-24T22:32:51.346079+00:00",
+  "sourceSha": "d897a4a8f324bb640be366cd572ca61bb76b7f3e",
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/httpapi/publisher.go": "e93a970b9a2ea25701997dc51d4253c9c893567b8d3a8a94bef2083d8533738b",
+    "apps/console-bff/internal/httpapi/publisher_test.go": "cff8109691b54c44841efac574128e32a520dbca4b3e10cb4360716c2fa8fce5",
+    "apps/console-ui/src/api/console-api.ts": "8d8121a148a1f6868d2bcd3043a53c39cd5c451978c4305f26fc2754a7c3e845",
+    "apps/console-ui/src/pages/PublisherPage.tsx": "3f91f2f0699abe7d6dab7e18877dbaedb2efea4acfd1f2b47615489edaffa7c7",
+    "services/build/internal/build/publisher_http_live_test.go": "2dd19317f8b47fada3b344c52421f7e423116f9fe3d88603267ad88b9cdcdc38"
+  },
+  "verification": {
+    "fullLocalBaseline": "2026-09-25-publisher-ledger-worker-local.json",
+    "focusedChecks": [
+      "apps/console-bff go test ./... passed, including separate CSRF/origin rejection",
+      "npm run typecheck passed",
+      "npm run test:source passed: 228/228",
+      "npm run verify:package-to-oci passed: real browser/owners/BuildKit/Registry/Ledger and process interruption"
+    ],
+    "finalBrowserArtifactDigest": "sha256:4de368347fefce8c50c62dbf7329899b0cfddca1ff4670ab36557637db64850b",
+    "finalScope": "Only the affected HTTP/UI boundary was rechecked after the successful full-local baseline; persistence code is unchanged. The final origin error-code distinction additionally passed the BFF guard test."
+  },
+  "logs": [
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-session-route-final.log",
+      "sha256": "80a595748e9ef8c36a597d4e2c06c14986c2cbc8d1dc9c463bcb56114650b1f7"
+    },
+    {
+      "path": "output/cloud625-publisher-delivery/cloud625-public-api-source.log",
+      "sha256": "4903574920a0a45b5a26dc630fe166ea55ce0ce0b16c93f845041b38a50e4266"
+    }
+  ],
+  "remainingBoundary": "CloudIdentity decisions and publisher/WebUI approval prerequisites remain fixtures. CloudIdentity is a planned Cloud owner, not an external blocker. No Instance, provider or payment action."
+}

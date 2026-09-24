@@ -20,8 +20,10 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
-	reader   OwnerReader
-	identity IdentityReader
+	reader     OwnerReader
+	identity   IdentityReader
+	capability api.CapabilityProductServiceClient
+	build      api.BuildProductServiceClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -35,12 +37,19 @@ type OwnerReader interface {
 // caller must also supply the CloudIdentity identity reader the browser session
 // and authorization preconditions are resolved through.
 func NewServer(reader OwnerReader, identity IdentityReader) *Server {
-	return &Server{reader: reader, identity: identity}
+	s := &Server{reader: reader, identity: identity}
+	if p, ok := reader.(interface {
+		PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient)
+	}); ok {
+		s.capability, s.build = p.PublisherClients()
+	}
+	return s
 }
 
 // Handler returns the BFF's same-origin REST handler.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.registerPublisherRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})

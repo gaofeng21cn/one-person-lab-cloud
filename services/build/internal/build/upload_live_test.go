@@ -99,7 +99,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	client := api.NewCapabilityProductServiceClient(conn)
+	client := &publisherCapabilityClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(conn), nil)}
 	call := func(key string) *api.CallContext {
 		return &api.CallContext{ActorId: "publisher", SessionId: proto.String("isolated-publisher"), RequestId: key, IdempotencyKey: key, Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-live"}}}}
 	}

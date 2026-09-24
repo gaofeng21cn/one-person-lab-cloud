@@ -101,6 +101,9 @@ func RequireAuthorizedAction(ctx context.Context, identity IdentityReader, calle
 	if err := owneridentity.ValidateDecision(request, decision, time.Now()); err != nil {
 		return fmt.Errorf("%v: %w", err, ErrAuthorizationRequired)
 	}
+	if call := clients.CallContext(ctx); call != nil {
+		call.AuthorizationContextId = decision.GetAuthorizationContextId()
+	}
 	return nil
 }
 

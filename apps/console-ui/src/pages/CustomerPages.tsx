@@ -1,3 +1,4 @@
+import { PublisherPage } from "./PublisherPage.tsx";
 import {
   ArrowRight,
   ChevronLeft,
@@ -335,6 +336,8 @@ function AnnouncementsPage({ controller }: { controller: ConsoleController }) {
 
 export function CustomerPages({ controller, route }: { controller: ConsoleController; route: CustomerConsoleRoute }) {
   switch (route.kind) {
+    case "customer.publisher":
+      return <PublisherPage key={controller.session?.user.id} />;
     case "customer.overview":
       return <OverviewPage controller={controller} />;
     case "customer.workspaces":

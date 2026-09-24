@@ -17,7 +17,7 @@ function asObject(value: unknown): JsonObject {
 
 export function customerSafeMessage(payload: unknown = {}, fallback = "request_failed") {
   const object = asObject(payload);
-  const raw = String(object.safeMessage || object.error || fallback);
+  const raw = String(object.safeMessage || object.message || object.error || fallback);
   if (/workspace_url_failed|workspace_runtime_not_ready|workspace_url_not_ready/i.test(raw)) {
     return "正在分发 Docker，预计 3-5 分钟，请稍后再打开 URL。";
   }
@@ -37,7 +37,7 @@ function throwApiError(payload: unknown, status: number): never {
 
 async function writeJson<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body: unknown, csrfToken: string, idempotencyKey: string, timeoutMs: number, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (csrfToken) headers["x-opl-csrf"] = csrfToken;
+  if (csrfToken) headers[path.startsWith("/api/v2/") ? "X-CSRF-Token" : "x-opl-csrf"] = csrfToken;
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   const timeout = AbortSignal.timeout(timeoutMs);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;

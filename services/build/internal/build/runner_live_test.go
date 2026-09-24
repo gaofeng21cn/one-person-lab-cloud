@@ -22,7 +22,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/build/migrations"
 	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
@@ -109,10 +109,10 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	runtimeContract := &api.RuntimePublisherContract{}
 	webuiContract := &api.WebuiPublisherContract{}
-	if err = publisherjson.Unmarshal(schema.Examples[0], runtimeContract); err != nil {
+	if err = publicjson.Unmarshal(schema.Examples[0], runtimeContract); err != nil {
 		t.Fatal(err)
 	}
-	if err = publisherjson.Unmarshal(schema.Examples[1], webuiContract); err != nil {
+	if err = publicjson.Unmarshal(schema.Examples[1], webuiContract); err != nil {
 		t.Fatal(err)
 	}
 	runtimeContract.Image = runtime
@@ -338,7 +338,7 @@ func verifyPersistedRecovery(t *testing.T, ctx context.Context, r *Runner, in *a
 		t.Fatal(e)
 	}
 	got := &api.ArtifactReference{}
-	if e = publisherjson.Unmarshal(desc["artifact"], got); e != nil {
+	if e = publicjson.Unmarshal(desc["artifact"], got); e != nil {
 		t.Fatal(e)
 	}
 	if got.Digest != m.Digest {

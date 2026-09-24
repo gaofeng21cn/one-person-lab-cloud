@@ -30,15 +30,16 @@ type Service struct {
 	api.UnimplementedCapabilityProductServiceServer
 	api.UnimplementedCapabilityCoordinationServer
 	api.UnimplementedDomainInboxServer
-	DB         *sql.DB
-	Store      *ownerstore.Store
-	Authorize  AuthorizeFunc
-	Runtime    api.RuntimeControlProductServiceClient
-	Build      api.BuildCoordinationClient
-	Usage      api.ClaimUsageReadbackClient
-	Commit     api.OwnerCommitReadbackClient
-	BuildInbox api.DomainInboxClient
-	Objects    *Objects
+	DB          *sql.DB
+	Store       *ownerstore.Store
+	Authorize   AuthorizeFunc
+	Runtime     api.RuntimeControlProductServiceClient
+	Build       api.BuildCoordinationClient
+	Usage       api.ClaimUsageReadbackClient
+	Commit      api.OwnerCommitReadbackClient
+	BuildInbox  api.DomainInboxClient
+	LedgerInbox api.DomainInboxClient
+	Objects     *Objects
 }
 
 // Register exposes the complete Capability owner surface behind the shared

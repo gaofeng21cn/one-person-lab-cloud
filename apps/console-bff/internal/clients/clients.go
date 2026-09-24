@@ -224,3 +224,7 @@ func CallContext(ctx context.Context) *api.CallContext {
 	call, _ := ctx.Value(callContextKey{}).(*api.CallContext)
 	return call
 }
+
+func (c *Clients) PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient) {
+	return c.capability, c.build
+}

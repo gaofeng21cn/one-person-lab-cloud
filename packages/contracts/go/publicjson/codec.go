@@ -1,7 +1,7 @@
-// Package publisherjson adapts the public publisher JSON vocabulary to typed
+// Package publicjson adapts the canonical public API and publisher JSON to typed
 // protobuf messages. It does not replace the publisher schema validator or hash
 // reserialized bytes as if they were an external publisher's original bytes.
-package publisherjson
+package publicjson
 
 import (
 	"bytes"
@@ -117,6 +117,9 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 				return nil, fmt.Errorf("unsupported publisher enum %s: %s", fd.Enum().Name(), text)
 			}
 			if fd.Message() != nil {
+				if fd.Message().FullName() == "google.protobuf.Timestamp" || fd.Message().FullName() == "google.protobuf.Struct" || fd.Message().FullName() == "google.protobuf.Value" {
+					return x, nil
+				}
 				obj, ok := x.(map[string]any)
 				if !ok {
 					return nil, fmt.Errorf("invalid publisher object %s", key)

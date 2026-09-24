@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
-	"opl-cloud/packages/contracts/go/publisherjson"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerstore"
 	"strings"
 	"time"
@@ -128,7 +128,7 @@ func (s *Service) grant(ctx context.Context, r *record) error {
 	if s.identity == nil {
 		return errors.New("accepted-operation grant issuer is unavailable")
 	}
-	grant, err := s.identity.IssueAcceptedOperationGrant(ctx, &api.AcceptedOperationGrantRequest{AuthorizationContextId: r.Call.AuthorizationContextId, OwnerCommitEvidence: evidence(r), AllowedActions: []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION}})
+	grant, err := s.identity.IssueAcceptedOperationGrant(ctx, &api.AcceptedOperationGrantRequest{AuthorizationContextId: r.Call.AuthorizationContextId, OwnerCommitEvidence: evidence(r), AllowedActions: []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION}})
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func descriptor(in *api.BuildInputSnapshot, artifact *api.ArtifactReference, job
 	return &api.DeploymentDescriptor{SchemaVersion: api.DeploymentDescriptorSchemaVersionEnum_DEPLOYMENT_DESCRIPTOR_SCHEMA_VERSION_ENUM_OPL_DEPLOYMENT_DESCRIPTOR_V1, Artifact: artifact, RuntimeContract: in.RuntimeContract, RuntimeContractReference: in.RuntimeContractReference, WebuiContract: in.WebuiContract, WebuiContractReference: in.WebuiContractReference, PackageVersionId: &packageVersion, BuildInputDigest: &inputDigest, Provenance: api.DeploymentDescriptorProvenanceEnum_DEPLOYMENT_DESCRIPTOR_PROVENANCE_ENUM_BUILD, ApplicationRevision: revision}
 }
 func descriptorBytes(d *api.DeploymentDescriptor) ([]byte, error) {
-	return publisherjson.Marshal(d)
+	return publicjson.Marshal(d)
 }
 func (s *Service) confirm(ctx context.Context, r *record, repository string, m Manifest) error {
 	a := &api.ArtifactReference{Repository: repository, Digest: m.Digest, Platform: r.Input.RuntimeArtifact.Platform}

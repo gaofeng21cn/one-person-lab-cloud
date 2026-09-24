@@ -14,7 +14,9 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/postgresmigrate"
+	"opl-cloud/services/ledger/eventconsumer"
 	ledgerhttp "opl-cloud/services/ledger/internal/http"
 	"opl-cloud/services/ledger/internal/ledger"
 )
@@ -38,11 +40,13 @@ func main() {
 		log.Fatal(err)
 	}
 	store := ledger.Store(ledger.NewMemoryStore())
+	var domainDB *sql.DB
 	if databaseURL != "" {
 		db, err := sql.Open("postgres", databaseURL)
 		if err != nil {
 			log.Fatal(err)
 		}
+		domainDB = db
 		postgresStore := ledger.NewPostgresStore(db)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -50,6 +54,31 @@ func main() {
 			log.Fatal(err)
 		}
 		store = postgresStore
+	}
+
+	if os.Getenv("OPL_LEDGER_ADDR") != "" {
+		config, err := ownerservice.LoadConfig(os.Getenv, ownerservice.OwnerLedger, ":8186")
+		if err != nil {
+			log.Fatal(err)
+		}
+		consumer, err := eventconsumer.New(domainDB)
+		if err != nil {
+			log.Fatal(err)
+		}
+		server, err := consumer.NewGRPC(config)
+		if err != nil {
+			log.Fatal(err)
+		}
+		listener, err := net.Listen("tcp", config.Addr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer server.Stop()
+		go func() {
+			if err := server.Serve(listener); err != nil {
+				log.Fatal("Ledger domain listener stopped")
+			}
+		}()
 	}
 
 	handler := ledgerhttp.NewServerWithAuth(store, token, capabilityKey)
