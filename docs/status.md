@@ -87,146 +87,28 @@ receipt is not reused as implementation evidence. Verification passed:
   tests. The first attempt lacked installed Node dependencies; `npm ci` restored
   the lockfile-defined environment without changing dependency manifests.
 
-This September 22 alignment snapshot predates the September 24 owner-process
-implementation recorded below. Its statements that no service scaffold existed
-and that contract/service implementation remained open describe that earlier
-snapshot only; use the later evidence below for current source status. No
-production deployment, production access, or publication was performed in either
-change.
+The accepted owner-process implementation is now present on this integration
+branch. No production deployment, production access, or publication was
+performed. The implementation remains a candidate until it is read back from
+canonical `main` and instance qualification is completed.
 
-## Agent delivery chain owner process baseline
+## Target owner-process implementation boundary
 
-On September 24, 2026 the accepted ownership and work-package revision
-(`Align implementation ownership and development plan`) was integrated into the
-current main line on top of the two existing implementation commits, without
-resetting, dropping, or rewriting them. Serve remains the sole Agent delivery,
-deployment, and access Owner; Runtime Control remains the approved Runtime
-Release catalog consumed by Build; Fabric stays resource-only.
+Capability, Build, Runtime Control, Workspace, and Serve each have an owner
+process, migration set, readiness surface, and owner-local Operation readback.
+The Console BFF carries the authenticated `CallContext` and `console_bff` mTLS
+identity to owner boundaries, where tenant and actor authorization is checked
+again. Capability Package upload/reference claims, Runtime Release catalog
+validation, Build input admission, BuildKit/OCI digest and descriptor readback,
+and Build-to-Capability artifact registration are implemented with focused
+tests. Workspace and Serve product handlers, Fabric provisioning/readback,
+deployed multi-process execution, and instance qualification remain open.
 
-Capability, Build, Runtime Control, Workspace, and Serve now each run a real
-owner process: it admits its own `DATABASE_URL` under the one shared PostgreSQL
-admission rule, installs its own migration set through the shared owner
-migration journal, and serves the contract's `OwnerOperations` readback group
-over that owner's own `operations` table. Each process reports SERVING only when
-a declared product service group is registered and every recorded dependency
-answers; otherwise it stays NOT_SERVING and logs the exact missing product group
-or dependency. Capability, Build, and Runtime Control now register their
-product handlers when their required object, schema, peer, and authorization
-configuration is present; Workspace and Serve remain NOT_SERVING until their
-product handlers are implemented.
-
-The Console BFF resolves the browser session and a CloudIdentity authorization
-decision before it reads any owner fact, refuses to start without
-`OPL_CLOUD_IDENTITY_URL`, and routes an Operation to the finite contract owner
-set. `OwnerEnum` and `OperationOwnerEnum` now carry `serve`, so a Serve Operation
-is reachable through that route; the bindings were regenerated with the pinned
-tools and re-ran to no drift.
-
-Two ownership defects in the accepted DDL were corrected because they made
-per-database migration impossible: `runtime_control.catalog_policies` referenced
-`capability.webui_versions`, and `serve.outbox_deliveries` referenced
-`runtime_control.outbox_events`. Each now references only its own database, which
-is what the contract's own cross-owner-FK rule requires.
-
-Executed evidence in this checkout:
-
-- `go test ./...` in each of the five owner modules plus
-  `services/internal/ownerservice`, `services/internal/ownerstore`,
-  `services/internal/postgresmigrate`, `packages/contracts/go` and
-  `apps/console-bff`.
-- Owner isolation on a real `postgres:16.8-bookworm` container
-  (`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` pointed at it), one suite per owner:
-  the owner's own migration entrypoint creates its schema and tables; the DDL
-  refuses a differently named database and names the database it found; the
-  runtime login writes its own schema; and the runtime login is refused when it
-  reads another owner's schema or tries to create outside its own.
-- `TestOwnerProcessOverTheWire` starts a real listener over a real isolated
-  database and proves the reported health status, the typed Operation readback
-  for a stored row (owner, kind, stage, status, observation, poll cadence),
-  `NotFound` for an unknown operation, and an identity refusal for an
-  unauthenticated caller.
-- `go test ./...` in `apps/console-bff`: delivery composition plus the session,
-  authorization-issuer, denial, and Serve-routing cases.
-- `npm test` (228 source tests), `npm run typecheck`, `npm run lint`,
-  `npm run validate:product-boundary`, `git diff --check`.
-- Development plan regenerated and revalidated in this checkout: 32 work
-  packages, 17 features, 108 REST operations, 101 tables, 172 internal RPCs;
-  five plan-validator tests pass.
-
-Still not implemented, and not claimed: Workspace and Serve product handlers,
-Fabric provisioning/readback, Serve deployment/readiness/access routing, Console
-pages beyond the delivery composition, and a live multi-process or deployed
-end-to-end run. Capability upload, Runtime Release admission, Build execution,
-OCI digest/config readback, and Build-to-Capability artifact delivery are
-implemented and covered by focused package tests; their production registries,
-object stores, and cross-owner runtime have not been qualified here.
-
-## Agent delivery chain owner process baseline
-
-On September 24, 2026 the accepted ownership and work-package revision
-(`Align implementation ownership and development plan`) was integrated into the
-current main line on top of the two existing implementation commits, without
-resetting, dropping, or rewriting them. Serve remains the sole Agent delivery,
-deployment, and access Owner; Runtime Control remains the approved Runtime
-Release catalog consumed by Build; Fabric stays resource-only.
-
-Capability, Build, Runtime Control, Workspace, and Serve now each run a real
-owner process: it admits its own `DATABASE_URL` under the one shared PostgreSQL
-admission rule, installs its own migration set through the shared owner
-migration journal, and serves the contract's `OwnerOperations` readback group
-over that owner's own `operations` table. Each process reports SERVING only when
-a declared product service group is registered and every recorded dependency
-answers; otherwise it stays NOT_SERVING and logs the exact missing product group
-or dependency. Capability, Build, and Runtime Control now register their
-product handlers when their required object, schema, peer, and authorization
-configuration is present; Workspace and Serve remain NOT_SERVING until their
-product handlers are implemented.
-
-The Console BFF resolves the browser session and a CloudIdentity authorization
-decision before it reads any owner fact, refuses to start without
-`OPL_CLOUD_IDENTITY_URL`, and routes an Operation to the finite contract owner
-set. `OwnerEnum` and `OperationOwnerEnum` now carry `serve`, so a Serve Operation
-is reachable through that route; the bindings were regenerated with the pinned
-tools and re-ran to no drift.
-
-Two ownership defects in the accepted DDL were corrected because they made
-per-database migration impossible: `runtime_control.catalog_policies` referenced
-`capability.webui_versions`, and `serve.outbox_deliveries` referenced
-`runtime_control.outbox_events`. Each now references only its own database, which
-is what the contract's own cross-owner-FK rule requires.
-
-Executed evidence in this checkout:
-
-- `go test ./...` in each of the five owner modules plus
-  `services/internal/ownerservice`, `services/internal/ownerstore`,
-  `services/internal/postgresmigrate`, `packages/contracts/go` and
-  `apps/console-bff`.
-- Owner isolation on a real `postgres:16.8-bookworm` container
-  (`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN` pointed at it), one suite per owner:
-  the owner's own migration entrypoint creates its schema and tables; the DDL
-  refuses a differently named database and names the database it found; the
-  runtime login writes its own schema; and the runtime login is refused when it
-  reads another owner's schema or tries to create outside its own.
-- `TestOwnerProcessOverTheWire` starts a real listener over a real isolated
-  database and proves the reported health status, the typed Operation readback
-  for a stored row (owner, kind, stage, status, observation, poll cadence),
-  `NotFound` for an unknown operation, and an identity refusal for an
-  unauthenticated caller.
-- `go test ./...` in `apps/console-bff`: delivery composition plus the session,
-  authorization-issuer, denial, and Serve-routing cases.
-- `npm test` (228 source tests), `npm run typecheck`, `npm run lint`,
-  `npm run validate:product-boundary`, `git diff --check`.
-- Development plan regenerated and revalidated in this checkout: 32 work
-  packages, 17 features, 108 REST operations, 101 tables, 172 internal RPCs;
-  five plan-validator tests pass.
-
-Still not implemented, and not claimed: Workspace and Serve product handlers,
-Fabric provisioning/readback, Serve deployment/readiness/access routing, Console
-pages beyond the delivery composition, and a live multi-process or deployed
-end-to-end run. Capability upload, Runtime Release admission, Build execution,
-OCI digest/config readback, and Build-to-Capability artifact delivery are
-implemented and covered by focused package tests; their production registries,
-object stores, and cross-owner runtime have not been qualified here.
+The implementation branch also incorporates the accepted SSOT correction: Serve
+owns current Agent deployment selection and route/readiness/access state;
+Workspace carries authorization and business intent without a deployment pointer
+or cross-database selection transaction. Build persistence includes the exact
+`call_context` and `descriptor_bytes` fields used by the worker and migration.
 
 ## Conclusion
 

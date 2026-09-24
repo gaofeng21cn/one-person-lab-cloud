@@ -2,9 +2,9 @@ openapi: 3.0.3
 info:
   title: OPL Cloud complete Console BFF contract
   version: 2.26.3-plan-change
-  description: 2026-09-21目标规格，不是实现/上线证据。React业务API仅同源/api/v2；原始上传字节仅Capability签署Storage URL。内部typed gRPC+PostgreSQL
-    Outbox/Inbox。JSON金额string，UTC RFC3339。不透明ID。写入CSRF+Origin+Idempotency-Key。Tenant role owner>=admin>=member；platform_admin独立权限，不由Tenant
-    owner自动获得。对象越权404。 R01–R10闭环修订；D17套餐变更政策已由用户批准，按固定policy-v1实现。
+  description: 2026-09-21目标规格，不是实现/上线证据。React业务API仅同源/api/v2；原始上传字节仅Capability签署Storage URL。内部typed gRPC+PostgreSQL Outbox/Inbox。JSON金额string，UTC
+    RFC3339。不透明ID。写入CSRF+Origin+Idempotency-Key。Tenant role owner>=admin>=member；platform_admin独立权限，不由Tenant owner自动获得。对象越权404。
+    R01–R10闭环修订；D17套餐变更政策已由用户批准，按固定policy-v1实现。
 servers:
 - url: /
   description: Same-origin BFF, no instance domain hardcoding.
@@ -2340,7 +2340,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
-      description: 先验证新部署/data兼容，再CAS currentAgentDeploymentId选中，最后退役旧Runtime；无新Workspace购买/隐式套餐变更。 scheduled降配不占资源执行锁，正常无关应用/模型更新允许；但必须按已有计划目标规格做Workspace
+      description: Serve先验证新部署/data兼容，再在Serve本库CAS当前Deployment选中，最后退役旧Runtime；无新Workspace购买/隐式套餐变更。 scheduled降配不占资源执行锁，正常无关应用/模型更新允许；但必须按已有计划目标规格做Workspace
         admission，不兼容则SCHEDULED_PLAN_APPLICATION_CONFLICT拒绝，先显式取消可取消计划再更换。不静默取消计划/改价，也不放行到E才制造已付款失败。
       parameters:
       - name: workspaceId
@@ -4774,7 +4774,7 @@ paths:
       x-permission:
       - platform_admin
       x-tables:
-      - capability.catalog_policies
+      - runtime_control.catalog_policies
       responses:
         '200':
           description: 成功。
@@ -4811,7 +4811,7 @@ paths:
       x-permission:
       - platform_admin
       x-tables:
-      - capability.catalog_policies
+      - runtime_control.catalog_policies
       responses:
         '200':
           description: 成功。
@@ -5610,8 +5610,7 @@ components:
       - requestId
       - createdAt
       - updatedAt
-      description: 各域独占写自己的operations；/operations/{owner}/{operationId}路由读回，无BFF业务注册表。202只接受；kind/stage取06表中固定值。
-        succeeded必须stage=succeeded且observationResult=confirmed；failed/needs_attention必须errorCode；awaiting_confirmation必须unknown。
+      description: 各域独占写自己的operations；/operations/{owner}/{operationId}路由读回，无BFF业务注册表。202只接受；kind/stage取06表中固定值。 succeeded必须stage=succeeded且observationResult=confirmed；failed/needs_attention必须errorCode；awaiting_confirmation必须unknown。
         pollAfterSeconds由Owner依据其worker/依赖下一检查时刻给出1..300秒；浏览器严格按秒轮询，不自选指数退避。succeeded/failed/cancelled终态省略字段且停止轮询。
       x-stage-values:
         complete_upload: &id008
@@ -6829,8 +6828,7 @@ components:
       - requiredChecksumHeaderName
       - requiredChecksumHeaderValue
       - expiresAt
-      description: 只允许PUT application/octet-stream到当前part/大小/校验和绑定的临时URL；此处无通用header map。签名URL仅内存使用不写日志，不用于业务调用。
-        签名URL不写持久幂等response_body；幂等重放返回同part身份并新签署有限时授权，不改变已上传字节。
+      description: 只允许PUT application/octet-stream到当前part/大小/校验和绑定的临时URL；此处无通用header map。签名URL仅内存使用不写日志，不用于业务调用。 签名URL不写持久幂等response_body；幂等重放返回同part身份并新签署有限时授权，不改变已上传字节。
     CompleteUploadRequest:
       type: object
       additionalProperties: false
@@ -6987,8 +6985,8 @@ components:
         deploymentDescriptor: capability.capability_versions.deployment_descriptor
         deploymentDescriptorDigest: capability.capability_versions.deployment_descriptor_digest
         deploymentDescriptorObjectRef: capability.capability_versions.deployment_descriptor_object_ref
-      description: 仅Build产物readback确认后创建ready。referenceCount来自Capability reference_claims，不跨Owner JOIN。删除保留历史记录。
-        legacy_application仅迁移现有exact revision，保留artifactDigest和data契约，不重建镜像，不伪造Package/Build；build分支必须所有构建引用。
+      description: 仅Build产物readback确认后创建ready。referenceCount来自Capability reference_claims，不跨Owner JOIN。删除保留历史记录。 legacy_application仅迁移现有exact
+        revision，保留artifactDigest和data契约，不重建镜像，不伪造Package/Build；build分支必须所有构建引用。
       allOf:
       - oneOf:
         - properties:
@@ -7231,8 +7229,8 @@ components:
         defaultForNewBuilds:
           kind: derived
           sources:
-          - capability.catalog_policies.runtime_version_id
-          - capability.catalog_policies.effective_at
+          - runtime_control.catalog_policies.runtime_version_id
+          - runtime_control.catalog_policies.effective_at
           rule: 当前生效策略runtime_version_id等于本ID
         admissionReceiptId: runtime_control.runtime_releases.admission_receipt_id
         createdAt: runtime_control.runtime_releases.created_at
@@ -7952,6 +7950,8 @@ components:
           - renew
         workspaceId:
           $ref: '#/components/schemas/OpaqueId'
+        capabilityVersionId:
+          $ref: '#/components/schemas/OpaqueId'
         computePlanId:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
@@ -7978,13 +7978,20 @@ components:
             enum:
             - deploy
         required:
-          not:
+        - capabilityVersionId
+        not:
           required:
           - workspaceId
       - properties:
           purpose:
             enum:
             - resize
+        required:
+        - workspaceId
+        - capabilityVersionId
+      - properties:
+          purpose:
+            enum:
             - renew
         required:
         - workspaceId
@@ -8307,6 +8314,14 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         storagePlanId:
           $ref: '#/components/schemas/OpaqueId'
+        capabilityVersionId:
+          $ref: '#/components/schemas/OpaqueId'
+        deliveryModel:
+          type: string
+          enum:
+          - legacy_resource_only
+          - imported_application
+          - agent_saas
         status:
           type: string
           enum:
@@ -8354,6 +8369,7 @@ components:
       - computePlanId
       - storagePlanId
       - status
+      - deliveryModel
       - resourceReadiness
       - applicationAvailability
       - modelConfigurationVersion
@@ -8367,6 +8383,8 @@ components:
         name: workspace.workspaces.name
         computePlanId: workspace.workspaces.compute_plan_id
         storagePlanId: workspace.workspaces.storage_plan_id
+        capabilityVersionId: workspace.workspaces.capability_version_id
+        deliveryModel: workspace.workspaces.delivery_model
         status: workspace.workspaces.status
         resourceReadiness:
           kind: derived
@@ -8395,7 +8413,8 @@ components:
         createdAt: workspace.workspaces.created_at
         updatedAt: workspace.workspaces.updated_at
         version: workspace.workspaces.version
-      description: Console BFF composes Workspace identity and Serve/Fabric readbacks; Workspace does not persist Agent deployment selection.
+      description: Console BFF composes Workspace identity and Serve/Fabric readbacks; Workspace does not persist Agent deployment
+        selection.
       allOf:
       - oneOf:
         - properties:
@@ -8579,11 +8598,12 @@ components:
       - dataCompatibility
       - createdAt
       - updatedAt
-      x-owner: workspace
+      x-owner: serve
       x-table: serve.agent_deployments
       x-field-map:
         id: serve.agent_deployments.id
         workspaceId: serve.agent_deployments.workspace_id
+        capabilityVersionId: serve.agent_deployments.capability_version_id
         runtimeInstanceId: serve.agent_deployments.runtime_instance_id
         previousDeploymentId: serve.agent_deployments.previous_deployment_id
         status: serve.agent_deployments.status
@@ -8596,11 +8616,11 @@ components:
       properties:
         capabilityVersionId:
           $ref: '#/components/schemas/OpaqueId'
-        expectedCurrentAgentDeploymentId:
+        expectedCurrentDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
       required:
       - capabilityVersionId
-      - expectedCurrentAgentDeploymentId
+      - expectedCurrentDeploymentId
       description: Runtime重建先createBuild同PackageVersion+WebUI，以管理员当前Runtime产新CapabilityVersion，再显式update。不变购买历史，不自动resize。
     RollbackWorkspaceRequest:
       type: object
@@ -8608,11 +8628,11 @@ components:
       properties:
         targetDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
-        expectedCurrentAgentDeploymentId:
+        expectedCurrentDeploymentId:
           $ref: '#/components/schemas/OpaqueId'
       required:
       - targetDeploymentId
-      - expectedCurrentAgentDeploymentId
+      - expectedCurrentDeploymentId
     ApplyQuoteRequest:
       type: object
       additionalProperties: false
@@ -8830,8 +8850,7 @@ components:
         version: workspace.subscriptions.version
         currentPricePolicyVersionId: workspace.subscriptions.current_price_policy_version_id
         currentMonthlyUSDMicros: workspace.subscriptions.current_monthly_usd_micros
-      description: 保留原订阅的manual/automatic事实；automatic必须精确原授权/同周期义务，不因迁移降为manual或重新授权。新订阅显式选择，默认manual不自动收费；到期无已确认付款停止。
-        version是周期/成功生效计划的业务CAS版本，独立于renewalSettingsVersion。currentPricePolicyVersionId/currentMonthlyUSDMicros只保存客户已接受且成功生效的当前价；连续升级以其为Pold。scheduled目标不提前改它。
+      description: 保留原订阅的manual/automatic事实；automatic必须精确原授权/同周期义务，不因迁移降为manual或重新授权。新订阅显式选择，默认manual不自动收费；到期无已确认付款停止。 version是周期/成功生效计划的业务CAS版本，独立于renewalSettingsVersion。currentPricePolicyVersionId/currentMonthlyUSDMicros只保存客户已接受且成功生效的当前价；连续升级以其为Pold。scheduled目标不提前改它。
         legacy原价/政策证据不足时两current价格字段缺省，F11明确POLICY_UNCONFIGURED待Owner核实，不补0/不取最新价，不影响原资源只读访问。
       allOf:
       - oneOf:
@@ -9819,14 +9838,14 @@ components:
       - effectiveAt
       - createdAt
       x-owner: capability
-      x-table: capability.catalog_policies
+      x-table: runtime_control.catalog_policies
       x-field-map:
-        id: capability.catalog_policies.id
-        runtimeVersionId: capability.catalog_policies.runtime_version_id
-        defaultWebuiVersionId: capability.catalog_policies.default_webui_version_id
-        policyVersion: capability.catalog_policies.policy_version
-        effectiveAt: capability.catalog_policies.effective_at
-        createdAt: capability.catalog_policies.created_at
+        id: runtime_control.catalog_policies.id
+        runtimeVersionId: runtime_control.catalog_policies.runtime_version_id
+        defaultWebuiVersionId: runtime_control.catalog_policies.default_webui_version_id
+        policyVersion: runtime_control.catalog_policies.policy_version
+        effectiveAt: runtime_control.catalog_policies.effective_at
+        createdAt: runtime_control.catalog_policies.created_at
     SetBuildRuntimePolicyRequest:
       type: object
       additionalProperties: false
@@ -10073,9 +10092,8 @@ components:
       - requestFields
       - readbackFields
       - authorizationSecretInputName
-      description: PUT applyPath提交ModelConfigurationPayload{version:int64 string,selections:[{slot,modelId}]}，GET
-        readbackPath返回ModelConfigurationReadback；重复同version同payload返回同结果，异payload冲突；不能借此写应用任意JSON。 portName引用applicationRevisionTemplate.ports；authorizationSecretInputName引用其SecretInputs，不另发明SecretSlot或用Gateway
-        Key代替控制凭据。
+      description: PUT applyPath提交ModelConfigurationPayload{version:int64 string,selections:[{slot,modelId}]}，GET readbackPath返回ModelConfigurationReadback；重复同version同payload返回同结果，异payload冲突；不能借此写应用任意JSON。
+        portName引用applicationRevisionTemplate.ports；authorizationSecretInputName引用其SecretInputs，不另发明SecretSlot或用Gateway Key代替控制凭据。
     ApplicationAccessContract:
       oneOf:
       - $ref: '#/components/schemas/ApplicationOwnedAccessContract'
@@ -10532,8 +10550,8 @@ components:
       - effectiveStart
       - months
       - usesAcceptedPriceSnapshot
-      description: 手动与已明确授权自动续费共享同subscription+period业务幂等身份；新用户默认manual，继承旧automatic不得降级。具体新周期金额必须与有效授权政策和accepted
-        quote相符，不在worker暗中涨价。 当前owner规则：以原paidThrough和billingAnchorDay计算nextBillingMonth；now>=renewedThrough拒绝RENEWAL_PERIOD_ELAPSED，不按恢复时间加整月、不替用户补买。Quote必须展示确切原起止和剩余可用窗口。
+      description: 手动与已明确授权自动续费共享同subscription+period业务幂等身份；新用户默认manual，继承旧automatic不得降级。具体新周期金额必须与有效授权政策和accepted quote相符，不在worker暗中涨价。
+        当前owner规则：以原paidThrough和billingAnchorDay计算nextBillingMonth；now>=renewedThrough拒绝RENEWAL_PERIOD_ELAPSED，不按恢复时间加整月、不替用户补买。Quote必须展示确切原起止和剩余可用窗口。
     AuthorizationAction:
       type: string
       enum:
@@ -11453,8 +11471,8 @@ components:
       - password
       description: 投影当前workspaceCurrentApplicationCredentials→Fabric ReadWorkspaceApplicationRuntimeCredentials：仅声明workspace_admin_password且actual
         ready/身份匹配时，向已授权Workspace owner单次返回username/password。绝不返回workspace_session_secret或GatewayKey；不缓存完整幂等响应、不写DB/日志/事件，重复显式reveal仍实时Owner授权。
-      x-source-interface: services/control-plane/internal/server/routes_workspace.go#runtime-credentials/reveal;
-        workspace_application_access.go#workspaceCurrentApplicationCredentials; packages/contracts/go/workspace_application_runtime.go#WorkspaceApplicationRuntimeCredentials
+      x-source-interface: services/control-plane/internal/server/routes_workspace.go#runtime-credentials/reveal; workspace_application_access.go#workspaceCurrentApplicationCredentials;
+        packages/contracts/go/workspace_application_runtime.go#WorkspaceApplicationRuntimeCredentials
     UpgradePlanRules:
       type: object
       additionalProperties: false
@@ -11742,8 +11760,8 @@ components:
       - sourceFinancialSnapshotDigest
       description: Catalog唯一计算Owner；source价格来自当前已成功生效且客户接受的订阅快照，不用最新目录覆写Pold。upgrade plannedEffectiveAt=T只是立即执行意图，appliedAt需实际读回；downgrade
         plannedEffectiveAt=E且charge=0。 原S/E时间戳不改写；计算使用其UTC UnixMilli()，T由服务器按毫秒生成。nextPeriod边界由Workspace当前billingAnchorDay/nextBillingMonth提供，Catalog不自选月份长度。
-        executionPlan引用在报价前由Fabric批准并冻结；可能原地调整，也可能目标pool claim+迁移计算绑定并保留CBS。执行失败不静默切另一策略；客户E/数据/Key义务不因Compute ID变化而改变。
-        canonical毫秒来自原Owner native时间的UnixMilli及源金融snapshot原bytes，不能从PostgreSQL已舍入timestamptz重算。原quoteAt/periodStart/End只保留原时刻用于展示/溯源，数学以三个Milliseconds字段为准。
+        executionPlan引用在报价前由Fabric批准并冻结；可能原地调整，也可能目标pool claim+迁移计算绑定并保留CBS。执行失败不静默切另一策略；客户E/数据/Key义务不因Compute ID变化而改变。 canonical毫秒来自原Owner
+        native时间的UnixMilli及源金融snapshot原bytes，不能从PostgreSQL已舍入timestamptz重算。原quoteAt/periodStart/End只保留原时刻用于展示/溯源，数学以三个Milliseconds字段为准。
       oneOf:
       - properties:
           kind:
@@ -12487,10 +12505,10 @@ components:
         floor，不用base720。Gateway锁原charge验证confirmed与requested/unknown退款总额不超过原单。 退款数学只用原补差单保存的coverageStart/EndMilliseconds与删除Owner
         native UnixMilli，不从PG timestamp重新取值。
 x-external-capability-boundaries:
-- Gateway tenant wallet delegation, idempotent wallet readback, application delegated session and Key reveal must
-  be verified against actual Owner; missing capability rejects explicitly, no fallback.
-- Cloud specification/CI/local tests do not authorize actual charges, provider procurement/deletion or production
-  network access. Instance protected workflows own those effects.
+- Gateway tenant wallet delegation, idempotent wallet readback, application delegated session and Key reveal must be verified
+  against actual Owner; missing capability rejects explicitly, no fallback.
+- Cloud specification/CI/local tests do not authorize actual charges, provider procurement/deletion or production network
+  access. Instance protected workflows own those effects.
 - No Console endpoint dispatches Product Release or Instance deployment.
 x-error-http-status:
   VALIDATION_FAILED:
@@ -12782,9 +12800,9 @@ x-error-http-status:
     asyncOperationErrorAllowed: true
     description: updateWorkspaceVersion/updateWorkspaceModels/adoptWorkspace/rollbackWorkspace：拟应用或模型需求与scheduled目标资源不兼容；变更前拒绝，先显式取消可取消计划再修改，不放行到E才让已付计划失败。
 x-publisher-contract-schema: contracts/publisher-contract.schema.json
-x-authorization: mTLS identities authenticate the calling service; CloudIdentity within Gateway Integration is the
-  only user/tenant action authorizer. Services call AuthorizeAction and validate exact decision audience/action/resource/version;
-  no BFF-trust shortcut.
+x-authorization: mTLS identities authenticate the calling service; CloudIdentity within Gateway Integration is the only user/tenant
+  action authorizer. Services call AuthorizeAction and validate exact decision audience/action/resource/version; no BFF-trust
+  shortcut.
 x-service-action-allowlist:
   console_bff:
   - acceptInvitation
@@ -13070,21 +13088,21 @@ x-accepted-operation-actions:
 x-authorization-rules:
   issuer: cloud_identity
   issuerProcess: gateway_integration
-  identitySource: mTLS verified Instance CA URI-SAN urn:opl:instance:<instanceId>:service:<ServiceIdentity>; body
-    values never assert service identity
+  identitySource: mTLS verified Instance CA URI-SAN urn:opl:instance:<instanceId>:service:<ServiceIdentity>; body values never
+    assert service identity
   contextLifetimeSeconds: 30
-  interactive: AuthorizeAction live-checks session, current tenant/platform permissions, exact action/resource/audience;
-    no cached allow
-  background: IssueAcceptedOperationGrant checks real Owner committed state, original context scope/acceptance timestamp
-    and exact allowed action intersection; no caller-authored proof
-  inactiveTenant: new entitlement/debit/procurement rejected; original readback/closeout/refund remain bounded to
-    accepted identities
+  interactive: AuthorizeAction live-checks session, current tenant/platform permissions, exact action/resource/audience; no
+    cached allow
+  background: IssueAcceptedOperationGrant checks real Owner committed state, original context scope/acceptance timestamp and
+    exact allowed action intersection; no caller-authored proof
+  inactiveTenant: new entitlement/debit/procurement rejected; original readback/closeout/refund remain bounded to accepted
+    identities
   automaticRenewal: always typed ReadRenewalConsent before issuing a new period debit; revoked consent blocks not-yet-issued
     charge, unknown issued charge remains original readback
-  rpcGroups: Typed interfaces in the existing Owner processes of 01; Tenant/CloudIdentity and Gateway Integration
-    are the same process. An RPC service block never creates a deployment unit.
-  calleeValidation: The target owner calls GetAuthorizationContext, which uses the same live AuthorizeAction decision
-    core; mTLS peer must equal context audience. Outbound service-action allowlist does not grant any end-user role.
+  rpcGroups: Typed interfaces in the existing Owner processes of 01; Tenant/CloudIdentity and Gateway Integration are the
+    same process. An RPC service block never creates a deployment unit.
+  calleeValidation: The target owner calls GetAuthorizationContext, which uses the same live AuthorizeAction decision core;
+    mTLS peer must equal context audience. Outbound service-action allowlist does not grant any end-user role.
 x-approved-decisions:
 - id: D17
   status: approved
@@ -13093,22 +13111,20 @@ x-approved-decisions:
   machinePolicy: contracts/plan-change-policy.json
 x-plan-change-policy: contracts/plan-change-policy.json
 x-d17-semantic-invariants:
-- Resource direction uses approved transition; same configuration/mixed/incomparable rejected, never classify by
-  price.
-- Only one unfinished PlanChange per Workspace; CAS sourceSubscriptionVersion and exact source plans at acceptance;
-  duplicate intent replays original identity.
+- Resource direction uses approved transition; same configuration/mixed/incomparable rejected, never classify by price.
+- Only one unfinished PlanChange per Workspace; CAS sourceSubscriptionVersion and exact source plans at acceptance; duplicate
+  intent replays original identity.
 - Upgrade Quote T/amount frozen; zero charge never invokes Gateway.
-- Scheduled initial Operation may finish while PlanChange remains scheduled; separate stable executionOperationId
-  at boundary.
-- Target next-period payment obligation is unique before confirmed history exists; manual/automatic/boundary share
-  one identity and accepted target price.
-- Confirmed failed target with retained irreversible storage can be fully compensated after fence/evidence; resource
-  discrepancy remains needs_attention and blocks new changes.
+- Scheduled initial Operation may finish while PlanChange remains scheduled; separate stable executionOperationId at boundary.
+- Target next-period payment obligation is unique before confirmed history exists; manual/automatic/boundary share one identity
+  and accepted target price.
+- Confirmed failed target with retained irreversible storage can be fully compensated after fence/evidence; resource discrepancy
+  remains needs_attention and blocks new changes.
 - Each supplemental charge has coverage T..E; normal deletion floor refund independent from preserved base policy.
-- Other future accepted/confirmed paid obligations block new PlanChange; unaccepted unpaid obligation may only rebind
-  with explicit cancel/newQuote and its version CAS.
-- Own scheduled plan prepayment permits only its verified sourceSubscriptionVersion->confirmedSubscriptionVersion
-  advance; original financial/resource basis is unchanged.
-- Scheduled does not hold execution lock; ordinary app/model updates must remain compatible with scheduled target,
-  otherwise reject before change.
+- Other future accepted/confirmed paid obligations block new PlanChange; unaccepted unpaid obligation may only rebind with
+  explicit cancel/newQuote and its version CAS.
+- Own scheduled plan prepayment permits only its verified sourceSubscriptionVersion->confirmedSubscriptionVersion advance;
+  original financial/resource basis is unchanged.
+- Scheduled does not hold execution lock; ordinary app/model updates must remain compatible with scheduled target, otherwise
+  reject before change.
 - Resource-only legacy skips Runtime readback only on authoritative current binding; existing app never skips it.

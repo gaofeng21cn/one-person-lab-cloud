@@ -15335,7 +15335,6 @@ type Workspace struct {
 	CapabilityVersionId       *string                              `protobuf:"bytes,3,opt,name=capability_version_id,json=capabilityVersionId,proto3,oneof" json:"capability_version_id,omitempty"`
 	ComputePlanId             string                               `protobuf:"bytes,4,opt,name=compute_plan_id,json=computePlanId,proto3" json:"compute_plan_id,omitempty"`
 	StoragePlanId             string                               `protobuf:"bytes,5,opt,name=storage_plan_id,json=storagePlanId,proto3" json:"storage_plan_id,omitempty"`
-	CurrentAgentDeploymentId  *string                              `protobuf:"bytes,6,opt,name=current_agent_deployment_id,json=currentAgentDeploymentId,proto3,oneof" json:"current_agent_deployment_id,omitempty"`
 	Status                    WorkspaceStatusEnum                  `protobuf:"varint,7,opt,name=status,proto3,enum=opl.cloud.api.WorkspaceStatusEnum" json:"status,omitempty"`
 	ResourceReadiness         WorkspaceResourceReadinessEnum       `protobuf:"varint,8,opt,name=resource_readiness,json=resourceReadiness,proto3,enum=opl.cloud.api.WorkspaceResourceReadinessEnum" json:"resource_readiness,omitempty"`
 	ApplicationAvailability   WorkspaceApplicationAvailabilityEnum `protobuf:"varint,9,opt,name=application_availability,json=applicationAvailability,proto3,enum=opl.cloud.api.WorkspaceApplicationAvailabilityEnum" json:"application_availability,omitempty"`
@@ -15411,13 +15410,6 @@ func (x *Workspace) GetComputePlanId() string {
 func (x *Workspace) GetStoragePlanId() string {
 	if x != nil {
 		return x.StoragePlanId
-	}
-	return ""
-}
-
-func (x *Workspace) GetCurrentAgentDeploymentId() string {
-	if x != nil && x.CurrentAgentDeploymentId != nil {
-		return *x.CurrentAgentDeploymentId
 	}
 	return ""
 }
@@ -39751,13 +39743,12 @@ func (x *RuntimeReadinessObservedEvent) GetReceiptId() string {
 }
 
 type WorkspaceStateChangedEvent struct {
-	state                    protoimpl.MessageState `protogen:"open.v1"`
-	WorkspaceId              string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
-	OperationId              string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Status                   string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	CurrentAgentDeploymentId *string                `protobuf:"bytes,4,opt,name=current_agent_deployment_id,json=currentAgentDeploymentId,proto3,oneof" json:"current_agent_deployment_id,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	OperationId   string                 `protobuf:"bytes,2,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkspaceStateChangedEvent) Reset() {
@@ -39807,13 +39798,6 @@ func (x *WorkspaceStateChangedEvent) GetOperationId() string {
 func (x *WorkspaceStateChangedEvent) GetStatus() string {
 	if x != nil {
 		return x.Status
-	}
-	return ""
-}
-
-func (x *WorkspaceStateChangedEvent) GetCurrentAgentDeploymentId() string {
-	if x != nil && x.CurrentAgentDeploymentId != nil {
-		return *x.CurrentAgentDeploymentId
 	}
 	return ""
 }
@@ -41761,14 +41745,13 @@ const file_internal_proto_rawDesc = "" +
 	"\r_workspace_idB\x18\n" +
 	"\x16_capability_version_idB\x1e\n" +
 	"\x1c_source_subscription_versionB\x1b\n" +
-	"\x19_scheduled_plan_change_id\"\xdf\a\n" +
+	"\x19_scheduled_plan_change_id\"\x81\a\n" +
 	"\tWorkspace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x127\n" +
 	"\x15capability_version_id\x18\x03 \x01(\tH\x00R\x13capabilityVersionId\x88\x01\x01\x12&\n" +
 	"\x0fcompute_plan_id\x18\x04 \x01(\tR\rcomputePlanId\x12&\n" +
-	"\x0fstorage_plan_id\x18\x05 \x01(\tR\rstoragePlanId\x12B\n" +
-	"\x1bcurrent_agent_deployment_id\x18\x06 \x01(\tH\x01R\x18currentAgentDeploymentId\x88\x01\x01\x12:\n" +
+	"\x0fstorage_plan_id\x18\x05 \x01(\tR\rstoragePlanId\x12:\n" +
 	"\x06status\x18\a \x01(\x0e2\".opl.cloud.api.WorkspaceStatusEnumR\x06status\x12\\\n" +
 	"\x12resource_readiness\x18\b \x01(\x0e2-.opl.cloud.api.WorkspaceResourceReadinessEnumR\x11resourceReadiness\x12n\n" +
 	"\x18application_availability\x18\t \x01(\x0e23.opl.cloud.api.WorkspaceApplicationAvailabilityEnumR\x17applicationAvailability\x12>\n" +
@@ -41776,16 +41759,15 @@ const file_internal_proto_rawDesc = "" +
 	" \x01(\x03R\x19modelConfigurationVersion\x12H\n" +
 	"\x12current_period_end\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x10currentPeriodEnd\x12\"\n" +
 	"\n" +
-	"access_url\x18\f \x01(\tH\x02R\taccessUrl\x88\x01\x01\x129\n" +
+	"access_url\x18\f \x01(\tH\x01R\taccessUrl\x88\x01\x01\x129\n" +
 	"\n" +
 	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12P\n" +
 	"\x0edelivery_model\x18\x0f \x01(\x0e2).opl.cloud.api.WorkspaceDeliveryModelEnumR\rdeliveryModel\x12\x18\n" +
 	"\aversion\x18\x10 \x01(\x03R\aversionB\x18\n" +
-	"\x16_capability_version_idB\x1e\n" +
-	"\x1c_current_agent_deployment_idB\r\n" +
-	"\v_access_url\"\xff\x01\n" +
+	"\x16_capability_version_idB\r\n" +
+	"\v_access_urlJ\x04\b\x06\x10\a\"\xff\x01\n" +
 	"\x16CreateWorkspaceRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\bquote_id\x18\x02 \x01(\tR\aquoteId\x12W\n" +
@@ -44175,13 +44157,11 @@ const file_internal_proto_rawDesc = "" +
 	"#applied_model_configuration_version\x18\a \x01(\x03R appliedModelConfigurationVersion\x12\"\n" +
 	"\n" +
 	"receipt_id\x18\b \x01(\tH\x00R\treceiptId\x88\x01\x01B\r\n" +
-	"\v_receipt_id\"\xde\x01\n" +
+	"\v_receipt_id\"\x80\x01\n" +
 	"\x1aWorkspaceStateChangedEvent\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\x12B\n" +
-	"\x1bcurrent_agent_deployment_id\x18\x04 \x01(\tH\x00R\x18currentAgentDeploymentId\x88\x01\x01B\x1e\n" +
-	"\x1c_current_agent_deployment_id\"\x9c\x02\n" +
+	"\x06status\x18\x03 \x01(\tR\x06statusJ\x04\b\x04\x10\x05\"\x9c\x02\n" +
 	"\x1fWorkspaceDeletionConfirmedEvent\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12!\n" +
 	"\foperation_id\x18\x02 \x01(\tR\voperationId\x12?\n" +
@@ -47582,7 +47562,6 @@ func file_internal_proto_init() {
 	file_internal_proto_msgTypes[374].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[375].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[376].OneofWrappers = []any{}
-	file_internal_proto_msgTypes[377].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[384].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[385].OneofWrappers = []any{}
 	file_internal_proto_msgTypes[386].OneofWrappers = []any{}

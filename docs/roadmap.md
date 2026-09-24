@@ -24,28 +24,25 @@ The target product and the delivery sequence are owned by the adopted
 Those files are the single writer for the target sequence. This file does not
 restate, renumber, or paraphrase them.
 
-W02's process and operation baseline now exists for Capability, Build, Runtime
-Control, Workspace, and Serve: each owner runs its own process, admits its own
-database, installs its own migrations, serves the contract's `OwnerOperations`
-readback group over its own `operations` table, and reports readiness truthfully.
-Owner database isolation and the over-the-wire Operation readback are verified on
-an isolated PostgreSQL server; [current evidence](./status.md#agent-delivery-chain-owner-process-baseline)
-records the exact commands. This is not completion of the target chain. Open work
-in dependency order:
+The owner-process foundation is specified but is not current implementation
+evidence on this branch. The current implementation remains the existing
+Control Plane, Fabric, Ledger, and Console; the proposed domain processes, BFF,
+owner migrations, and wire readback remain open until an accepted implementation
+branch supplies exact-head evidence. Open work in dependency order:
 
 1. Register each owner's real domain service group and its persistent command
-   handlers, starting with the first vertical slice the plan names:
-   Capability Package, then Build fixing Package + WebUI + Runtime Release inputs
-   into an immutable OCI, then Workspace authorization and resource plan, then
-   Fabric resource references and readback, then the single Serve Agent
-   deployment with readiness and access readback.
+   handlers, starting with the first vertical slice the plan names: Capability
+   Package, then Build fixing Package + WebUI + Runtime Release inputs into an
+   immutable OCI, then Workspace authorization and resource plan, then Fabric
+   resource references and readback, then the single Serve Agent deployment with
+   readiness and access readback.
 2. Add the per-owner reliable-event and idempotency use only where a current
    caller needs it; the shared mechanisms exist but no owner has a live producer
    or consumer yet.
-3. Keep Console to the composed owner read until an owner exposes a real command.
-4. Verify the full chain as one run once the handlers exist; today only the
-   process, migration, isolation, readiness, and Operation readback layers have
-   executed.
+3. Keep Console to the composed owner read only after the relevant owners expose
+   real commands.
+4. Verify the full chain as one run once the handlers exist; documentation and
+   contract checks do not prove service execution.
 
 The single-repository topology is decided, not an open A/B choice. The shared
 production contract, generated Go bindings, owner identity convention, and the

@@ -194,7 +194,7 @@
         "PRIMARY KEY (id)",
         "CHECK (status IN ('active','suspended','deleting','deleted'))",
         "CHECK (permission_version >= 0)",
-        "CHECK ((deleted_at IS NULL AND restore_until IS NULL) OR (deleted_at IS NOT NULL AND restore_until = (deleted_at + CAST('15 days' AS interval))))",
+        "CHECK ((deleted_at IS NULL AND restore_until IS NULL) OR (deleted_at IS NOT NULL AND restore_until = deleted_at + interval '15 days'))",
         "CHECK (status <> 'deleted' OR deleted_at IS NOT NULL)"
       ],
       "indexes": [
@@ -209,7 +209,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
         "03_api_contract_complete.yaml#/components/schemas/Tenant"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -317,7 +318,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
         "03_api_contract_complete.yaml#/components/schemas/Member"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -462,7 +464,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
         "03_api_contract_complete.yaml#/components/schemas/MemberInvite"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -582,7 +585,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -723,7 +727,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -845,7 +850,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/Namespace"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -987,7 +993,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/Package"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -1177,18 +1184,18 @@
         "UNIQUE (name, version_label)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK (jsonb_typeof(publisher_contract) = 'object' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'schemaVersion') = 'opl-publisher-contract/v1' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'kind') = 'runtime' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'publisherNamespaceId') = publisher_namespace_id IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,repository}') = artifact_repository IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,digest}') = artifact_digest IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,os}') = 'linux' IS TRUE)",
-        "CHECK (publisher_contract #>> '{image,platform,architecture}' IN ('amd64', 'arm64') IS TRUE)",
-        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)",
-        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}') = ((publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)",
-        "CHECK ((publisher_contract ->> 'runtimeAbiVersion') = runtime_abi_version IS TRUE)",
-        "CHECK ((publisher_contract -> 'packageFormatVersions') = to_jsonb(package_format_versions) IS TRUE)"
+        "CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)",
+        "CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)",
+        "CHECK ((publisher_contract->>'kind' = 'runtime') IS TRUE)",
+        "CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{applicationRevisionTemplate,platform}' = (publisher_contract #>> '{image,platform,os}') || '/' || (publisher_contract #>> '{image,platform,architecture}') || CASE WHEN publisher_contract #>> '{image,platform,variant}' IS NULL THEN '' ELSE '/' || (publisher_contract #>> '{image,platform,variant}') END) IS TRUE)",
+        "CHECK ((publisher_contract->>'runtimeAbiVersion' = runtime_abi_version) IS TRUE)",
+        "CHECK ((publisher_contract->'packageFormatVersions' = to_jsonb(package_format_versions)) IS TRUE)"
       ],
       "indexes": [
         {
@@ -1208,7 +1215,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/RuntimeVersion"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -1398,16 +1406,17 @@
         "UNIQUE (name, version_label)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (publisher_contract_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK (jsonb_typeof(publisher_contract) = 'object' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'schemaVersion') = 'opl-publisher-contract/v1' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'kind') = 'webui' IS TRUE)",
-        "CHECK ((publisher_contract ->> 'publisherNamespaceId') = publisher_namespace_id IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,repository}') = artifact_repository IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,digest}') = artifact_digest IS TRUE)",
-        "CHECK ((publisher_contract #>> '{image,platform,os}') = 'linux' IS TRUE)",
-        "CHECK (publisher_contract #>> '{image,platform,architecture}' IN ('amd64', 'arm64') IS TRUE)",
-        "CHECK ((publisher_contract -> 'runtimeAbiVersions') = to_jsonb(runtime_abi_versions) IS TRUE)",
-        "CHECK ((publisher_contract ->> 'uiProtocolVersion') = ui_protocol_version IS TRUE)"
+        "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT",
+        "CHECK ((jsonb_typeof(publisher_contract) = 'object') IS TRUE)",
+        "CHECK ((publisher_contract->>'schemaVersion' = 'opl-publisher-contract/v1') IS TRUE)",
+        "CHECK ((publisher_contract->>'kind' = 'webui') IS TRUE)",
+        "CHECK ((publisher_contract->>'publisherNamespaceId' = publisher_namespace_id) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,repository}' = artifact_repository) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,digest}' = artifact_digest) IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,os}' = 'linux') IS TRUE)",
+        "CHECK ((publisher_contract #>> '{image,platform,architecture}' IN ('amd64','arm64')) IS TRUE)",
+        "CHECK ((publisher_contract->'runtimeAbiVersions' = to_jsonb(runtime_abi_versions)) IS TRUE)",
+        "CHECK ((publisher_contract->>'uiProtocolVersion' = ui_protocol_version) IS TRUE)"
       ],
       "indexes": [
         {
@@ -1431,7 +1440,7 @@
       "postCreateConstraints": [
         {
           "name": "webui_versions_publisher_namespace_fk",
-          "sql": "CONSTRAINT webui_versions_publisher_namespace_fk FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (publisher_namespace_id) REFERENCES capability.publisher_namespaces (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -1525,6 +1534,7 @@
       ],
       "constraints": [
         "PRIMARY KEY (id)",
+        "FOREIGN KEY (runtime_version_id) REFERENCES runtime_control.runtime_releases (id) ON DELETE RESTRICT",
         "UNIQUE (policy_version)"
       ],
       "indexes": [
@@ -1540,7 +1550,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -1706,7 +1717,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/PackageVersion"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -1826,7 +1838,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/UploadSession"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -1936,7 +1949,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -2191,16 +2205,17 @@
         "UNIQUE (build_job_id)",
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))",
+        "FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT",
         "CHECK (provenance IN ('build','legacy_application'))",
         "CHECK ((provenance = 'build' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 5 AND legacy_application_revision_id IS NULL) OR (provenance = 'legacy_application' AND num_nonnulls(package_id, package_version_id, build_job_id, runtime_version_id, webui_version_id) = 0 AND legacy_application_revision_id IS NOT NULL))",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor ->> 'schemaVersion') = 'opl-deployment-descriptor/v1' IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,repository}') = artifact_repository IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)",
-        "CHECK ((deployment_descriptor ->> 'provenance') = provenance IS TRUE)",
-        "CHECK (provenance <> 'legacy_application' OR ((deployment_descriptor ->> 'legacyApplicationRevisionId') = legacy_application_revision_id AND NOT deployment_descriptor ?| ARRAY['packageVersionId', 'buildInputDigest', 'runtimeContract', 'runtimeContractReference', 'webuiContract', 'webuiContractReference']) IS TRUE)",
-        "CHECK (provenance <> 'build' OR ((deployment_descriptor ->> 'packageVersionId') = package_version_id AND (deployment_descriptor #>> '{runtimeContractReference,versionId}') = runtime_version_id AND (deployment_descriptor #>> '{webuiContractReference,versionId}') = webui_version_id) IS TRUE)"
+        "CHECK ((deployment_descriptor->>'schemaVersion' = 'opl-deployment-descriptor/v1') IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,repository}' = artifact_repository) IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)",
+        "CHECK ((deployment_descriptor->>'provenance' = provenance) IS TRUE)",
+        "CHECK (provenance <> 'legacy_application' OR ((deployment_descriptor->>'legacyApplicationRevisionId' = legacy_application_revision_id AND NOT (deployment_descriptor ?| ARRAY['packageVersionId','buildInputDigest','runtimeContract','runtimeContractReference','webuiContract','webuiContractReference'])) IS TRUE))",
+        "CHECK (provenance <> 'build' OR ((deployment_descriptor->>'packageVersionId' = package_version_id AND deployment_descriptor #>> '{runtimeContractReference,versionId}' = runtime_version_id AND deployment_descriptor #>> '{webuiContractReference,versionId}' = webui_version_id) IS TRUE))"
       ],
       "indexes": [
         {
@@ -2236,7 +2251,7 @@
       "postCreateConstraints": [
         {
           "name": "capability_versions_deletion_operation_fk",
-          "sql": "CONSTRAINT capability_versions_deletion_operation_fk FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (deletion_operation_id) REFERENCES capability.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -2449,7 +2464,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -2712,7 +2728,8 @@
         "CHECK (input_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (artifact_digest IS NULL OR artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (status <> 'succeeded' OR (artifact_digest IS NOT NULL AND result_capability_version_id IS NOT NULL AND finished_at IS NOT NULL))",
-        "CHECK ((worker_lease_token IS NULL) = (worker_lease_until IS NULL))"
+        "CHECK ((worker_lease_token IS NULL) = (worker_lease_until IS NULL))",
+        "FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -2742,7 +2759,7 @@
       "postCreateConstraints": [
         {
           "name": "build_jobs_operation_fk",
-          "sql": "CONSTRAINT build_jobs_operation_fk FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (operation_id) REFERENCES build.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -2864,10 +2881,10 @@
         "CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (size_bytes > 0)",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor ->> 'schemaVersion') = 'opl-deployment-descriptor/v1' IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,repository}') = artifact_repository IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)",
-        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}') = (artifact_repository || '@' || artifact_digest) IS TRUE)"
+        "CHECK ((deployment_descriptor->>'schemaVersion' = 'opl-deployment-descriptor/v1') IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,repository}' = artifact_repository) IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)",
+        "CHECK ((deployment_descriptor #>> '{applicationRevision,image}' = artifact_repository || '@' || artifact_digest) IS TRUE)"
       ],
       "indexes": [
         {
@@ -2882,7 +2899,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -2994,7 +3012,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -3003,7 +3022,7 @@
       "schema": "workspace",
       "schemaOwnerRole": "opl_workspace_owner",
       "writerRole": "opl_workspace_writer",
-      "purpose": "Workspace identity, entitlement and resource-plan coordination; Agent deployment and readiness are read from Serve",
+      "purpose": "当前已接受业务选择；迁移裸资源capabilityVersionId可空，UI不得称已部署；Serve负责Deployment/current selection，expiresAt从订阅投影",
       "features": [
         "F08",
         "F09",
@@ -3078,6 +3097,39 @@
           ]
         },
         {
+          "name": "capability_version_id",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "description": "",
+          "source": "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/capabilityVersionId",
+          "apiLineage": [
+            "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/capabilityVersionId"
+          ]
+        },
+        {
+          "name": "delivery_model",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "description": "",
+          "source": "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/deliveryModel",
+          "apiLineage": [
+            "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/deliveryModel"
+          ]
+        },
+        {
+          "name": "model_configuration_version",
+          "type": "bigint",
+          "nullable": false,
+          "default": "0",
+          "description": "",
+          "source": "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/modelConfigurationVersion",
+          "apiLineage": [
+            "03_api_contract_complete.yaml#/components/schemas/Workspace/properties/modelConfigurationVersion"
+          ]
+        },
+        {
           "name": "active_operation_id",
           "type": "text",
           "nullable": true,
@@ -3147,6 +3199,9 @@
         "PRIMARY KEY (id)",
         "CHECK (status IN ('provisioning','active','updating','suspended','deleting','deleted','failed','needs_attention'))",
         "CHECK ((status = 'deleted') = (deleted_at IS NOT NULL))",
+        "FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT",
+        "CHECK ((delivery_model = 'legacy_resource_only' AND capability_version_id IS NULL) OR (delivery_model IN ('imported_application','agent_saas') AND capability_version_id IS NOT NULL))",
+        "CHECK (model_configuration_version >= 0)",
         "CHECK (version >= 0)",
         "UNIQUE (id, tenant_id)"
       ],
@@ -3172,7 +3227,7 @@
       "postCreateConstraints": [
         {
           "name": "workspaces_active_operation_fk",
-          "sql": "CONSTRAINT workspaces_active_operation_fk FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (active_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -3183,7 +3238,7 @@
       "schema": "serve",
       "schemaOwnerRole": "opl_serve_owner",
       "writerRole": "opl_serve_writer",
-      "purpose": "Serve owns deployment history and at most one active Agent per Workspace; activation and superseding commit in one owner-local transaction",
+      "purpose": "Serve在本库以每个Workspace至多一条active Deployment作为唯一当前选中；同事务完成current-selection CAS并supersede旧部署，不由Runtime写",
       "features": [
         "F08",
         "F09",
@@ -3403,7 +3458,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
         "03_api_contract_complete.yaml#/components/schemas/Deployment"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -3660,6 +3716,7 @@
         "FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT",
         "UNIQUE (workspace_id)",
         "CHECK (current_period_end > current_period_start)",
+        "FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT",
         "CHECK (period_months > 0)",
         "CHECK (provenance IN ('quoted','legacy_import'))",
         "CHECK ((provenance = 'quoted' AND accepted_quote_id IS NOT NULL AND accepted_quote_snapshot IS NOT NULL AND legacy_purchase_id IS NULL AND legacy_obligation_snapshot IS NULL) OR (provenance = 'legacy_import' AND accepted_quote_id IS NULL AND accepted_quote_snapshot IS NULL AND legacy_purchase_id IS NOT NULL AND legacy_obligation_snapshot IS NOT NULL))",
@@ -3689,7 +3746,7 @@
       "postCreateConstraints": [
         {
           "name": "subscriptions_change_operation_fk",
-          "sql": "CONSTRAINT subscriptions_change_operation_fk FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (active_change_operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -3838,7 +3895,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -3963,7 +4021,8 @@
         "FOREIGN KEY (workspace_id) REFERENCES workspace.workspaces (id) ON DELETE RESTRICT",
         "UNIQUE (workspace_id, version)",
         "CHECK (version > 0)",
-        "CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown'))"
+        "CHECK (runtime_reload_observation IN ('confirmed','rejected','unknown'))",
+        "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -3982,7 +4041,7 @@
       "postCreateConstraints": [
         {
           "name": "model_configurations_operation_fk",
-          "sql": "CONSTRAINT model_configurations_operation_fk FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -4155,7 +4214,8 @@
         "UNIQUE (command_id)",
         "CHECK (sequence >= 0 AND attempt_count >= 0)",
         "CHECK (observation_result IN ('confirmed','rejected','unknown'))",
-        "CHECK (compensation_observation IN ('confirmed','rejected','unknown'))"
+        "CHECK (compensation_observation IN ('confirmed','rejected','unknown'))",
+        "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -4180,7 +4240,7 @@
       "postCreateConstraints": [
         {
           "name": "saga_steps_operation_fk",
-          "sql": "CONSTRAINT saga_steps_operation_fk FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (operation_id) REFERENCES workspace.operations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -4362,7 +4422,7 @@
         "CHECK (status <> 'ready' OR (access_url IS NOT NULL AND readiness_evidence_ref IS NOT NULL AND observed_at IS NOT NULL))",
         "CHECK (execution_epoch >= 0)",
         "CHECK (deployment_descriptor_digest ~ '^sha256:[0-9a-f]{64}$')",
-        "CHECK ((deployment_descriptor #>> '{artifact,digest}') = artifact_digest IS TRUE)"
+        "CHECK ((deployment_descriptor #>> '{artifact,digest}' = artifact_digest) IS TRUE)"
       ],
       "indexes": [
         {
@@ -4376,7 +4436,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
         "03_api_contract_complete.yaml#/components/schemas/RuntimeInstance"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -4511,7 +4572,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -4660,7 +4722,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -4827,7 +4890,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -4952,7 +5016,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -5084,7 +5149,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -5250,7 +5316,7 @@
         "CHECK (observation_result IN ('confirmed','rejected','unknown'))",
         "CHECK (execution_epoch IS NULL OR execution_epoch >= 0)",
         "CHECK ((execution_plan_digest IS NULL) = (execution_plan_bytes IS NULL))",
-        "CHECK (execution_plan_digest IS NULL OR execution_plan_digest = ('sha256:' || encode(sha256(execution_plan_bytes), 'hex')))",
+        "CHECK (execution_plan_digest IS NULL OR execution_plan_digest = 'sha256:' || encode(sha256(execution_plan_bytes),'hex'))",
         "CHECK (action <> 'prepare_resize' OR (execution_plan_digest IS NOT NULL AND evidence_ref IS NOT NULL AND observation_result = 'confirmed'))"
       ],
       "indexes": [
@@ -5266,7 +5332,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -5357,7 +5424,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -5470,7 +5538,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -5668,7 +5737,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
         "03_api_contract_complete.yaml#/components/schemas/Key"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -5956,7 +6026,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
         "03_api_contract_complete.yaml#/components/schemas/WalletOperation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -6154,7 +6225,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/ComputePlan"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -6349,7 +6421,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/StoragePlan"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -6543,7 +6616,7 @@
         "CHECK (valid_until IS NULL OR valid_until > valid_from)",
         "CHECK (period_months > 0)",
         "UNIQUE (compute_plan_id, storage_plan_id, valid_from)",
-        "CHECK (((renewal_rules ->> 'version') = 'renewal-policy/v1' AND (renewal_rules ->> 'trigger') = 'manual_or_explicitly_consented_automatic' AND CAST(renewal_rules ->> 'months' AS integer) = period_months AND (renewal_rules ->> 'usesAcceptedPriceSnapshot') = 'true') IS TRUE)",
+        "CHECK ((renewal_rules->>'version' = 'renewal-policy/v1' AND renewal_rules->>'trigger' = 'manual_or_explicitly_consented_automatic' AND (renewal_rules->>'months')::integer = period_months AND renewal_rules->>'usesAcceptedPriceSnapshot' = 'true') IS TRUE)",
         "CHECK (plan_change_policy_version IN ('workspace-plan-change-v1'))",
         "CHECK (period_months = 1)"
       ],
@@ -6559,7 +6632,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/PricePolicyVersion"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -6686,7 +6760,8 @@
         "PRIMARY KEY (id)",
         "UNIQUE (version_label)",
         "CHECK (valid_until IS NULL OR valid_until > valid_from)",
-        "CHECK (algorithm IN ('workspace-delete-refund-v1'))"
+        "CHECK (algorithm IN ('workspace-delete-refund-v1'))",
+        "FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -6704,7 +6779,7 @@
       "postCreateConstraints": [
         {
           "name": "refund_retention_policy_fk",
-          "sql": "CONSTRAINT refund_retention_policy_fk FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (retention_policy_version_id) REFERENCES resource_catalog.retention_policy_versions (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -6866,7 +6941,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/RetentionPolicyVersion"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -7221,7 +7297,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/Quote"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -7342,7 +7419,7 @@
         "CHECK (kind IN ('compute','storage','product','adjustment_credit'))",
         "CHECK (amount_usd_micros >= 0)",
         "CHECK ((kind = 'adjustment_credit') = (credit_source IS NOT NULL))",
-        "CHECK (credit_source IS NULL OR (jsonb_typeof(credit_source) = 'object' AND credit_source ?& ARRAY['originalWalletOperationId', 'originalSubscriptionPeriodId', 'policyVersionId', 'creditReceiptId', 'amountUSDMicros'] AND CAST(credit_source ->> 'amountUSDMicros' AS bigint) = amount_usd_micros) IS TRUE)"
+        "CHECK (credit_source IS NULL OR ((jsonb_typeof(credit_source) = 'object' AND credit_source ?& ARRAY['originalWalletOperationId','originalSubscriptionPeriodId','policyVersionId','creditReceiptId','amountUSDMicros'] AND (credit_source->>'amountUSDMicros')::bigint = amount_usd_micros) IS TRUE))"
       ],
       "indexes": [
         {
@@ -7356,7 +7433,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/QuoteLineItem"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -7537,7 +7615,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#ledger",
         "03_api_contract_complete.yaml#/components/schemas/Receipt"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -7654,7 +7733,8 @@
         "02_database_schema_complete.md#ledger",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -7802,7 +7882,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -7932,7 +8013,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -8091,7 +8173,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -8225,7 +8308,8 @@
         "02_database_schema_complete.md#tenant",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -8373,7 +8457,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -8503,7 +8588,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -8662,7 +8748,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -8796,7 +8883,8 @@
         "02_database_schema_complete.md#capability",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -8944,7 +9032,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -9074,7 +9163,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -9233,7 +9323,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -9367,7 +9458,8 @@
         "02_database_schema_complete.md#build",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -9515,7 +9607,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -9645,7 +9738,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -9804,7 +9898,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -9938,7 +10033,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -10086,7 +10182,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -10216,7 +10313,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -10375,7 +10473,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -10509,7 +10608,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -10657,7 +10757,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -10787,7 +10888,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -10946,7 +11048,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -11080,7 +11183,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -11228,7 +11332,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -11358,7 +11463,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -11517,7 +11623,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -11651,7 +11758,8 @@
         "02_database_schema_complete.md#gateway",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -11799,7 +11907,8 @@
         "02_database_schema_complete.md#resource_catalog",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -11929,7 +12038,8 @@
         "02_database_schema_complete.md#resource_catalog",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -12088,7 +12198,8 @@
         "02_database_schema_complete.md#resource_catalog",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -12222,7 +12333,8 @@
         "02_database_schema_complete.md#resource_catalog",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -12370,7 +12482,8 @@
         "02_database_schema_complete.md#ledger",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -12500,7 +12613,8 @@
         "02_database_schema_complete.md#ledger",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -12659,7 +12773,8 @@
         "02_database_schema_complete.md#ledger",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "ledger",
@@ -12793,7 +12908,8 @@
         "02_database_schema_complete.md#ledger",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -12995,7 +13111,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -13197,7 +13314,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "build",
@@ -13399,7 +13517,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#build",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -13601,7 +13720,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#workspace",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "gateway",
@@ -13803,7 +13923,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#gateway",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "resource_catalog",
@@ -14005,7 +14126,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#resource_catalog",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "runtime_control",
@@ -14207,7 +14329,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "fabric",
@@ -14409,7 +14532,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#fabric",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "capability",
@@ -14540,7 +14664,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#capability",
         "03_api_contract_complete.yaml#/components/schemas/PublisherNamespace"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "tenant",
@@ -14687,7 +14812,8 @@
         "CHECK ((scope_type = 'tenant') = (tenant_id IS NOT NULL))",
         "CHECK (permission_version >= 0)",
         "CHECK (expires_at > issued_at)",
-        "CHECK (num_nonnulls(session_id,accepted_operation_grant_id) = 1)"
+        "CHECK (num_nonnulls(session_id,accepted_operation_grant_id) = 1)",
+        "FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -14711,7 +14837,7 @@
       "postCreateConstraints": [
         {
           "name": "authorization_context_grant_fk",
-          "sql": "CONSTRAINT authorization_context_grant_fk FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (accepted_operation_grant_id) REFERENCES tenant.accepted_operation_grants (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -14898,7 +15024,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#tenant",
         "03_api_contract_complete.yaml#/components/schemas/AcceptedOperationGrant"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -14907,7 +15034,7 @@
       "schema": "serve",
       "schemaOwnerRole": "opl_serve_owner",
       "writerRole": "opl_serve_writer",
-      "purpose": "Serve owns observed access-route generation and execution epoch; current selection requires exact adapter readback",
+      "purpose": "Serve owns the delivery execution epoch; Fabric owns observed route generation; generation advances only on verified route readback",
       "features": [
         "F08",
         "F09",
@@ -15000,7 +15127,8 @@
         "PRIMARY KEY (id)",
         "UNIQUE (workspace_id)",
         "UNIQUE (id, workspace_id)",
-        "CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)"
+        "CHECK (route_generation >= 0 AND accepted_execution_epoch >= 0)",
+        "FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
       ],
       "indexes": [
         {
@@ -15019,7 +15147,7 @@
       "postCreateConstraints": [
         {
           "name": "route_bindings_last_switch_fk",
-          "sql": "CONSTRAINT route_bindings_last_switch_fk FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (last_confirmed_switch_id) REFERENCES serve.access_switches (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -15158,12 +15286,12 @@
           "source": "02_database_schema_complete.md#serve.access_switches.evidence_ref"
         },
         {
-          "name": "workspace_selection_commit_receipt_id",
+          "name": "selection_commit_receipt_id",
           "type": "text",
           "nullable": true,
           "default": null,
           "description": "",
-          "source": "02_database_schema_complete.md#serve.access_switches.workspace_selection_commit_receipt_id"
+          "source": "02_database_schema_complete.md#serve.access_switches.selection_commit_receipt_id"
         },
         {
           "name": "error_code",
@@ -15236,11 +15364,11 @@
         "CHECK (status IN ('requested','confirmed','rejected','unknown'))",
         "CHECK (expected_route_generation >= 0 AND execution_epoch >= 0)",
         "UNIQUE (provider_command_id)",
-        "CHECK (workspace_selection_commit_receipt_id IS NULL OR status = 'confirmed')",
+        "CHECK (selection_commit_receipt_id IS NULL OR status = 'confirmed')",
         "CHECK (action_kind IN ('fence','activate','rollback'))",
         "CHECK (action_kind = 'fence' OR target_execution_resource_id IS NOT NULL)",
         "CHECK (expected_provider_revision IS NOT NULL OR expected_route_generation = 0)",
-        "CHECK (status <> 'confirmed' OR (observed_route_generation = (expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END) AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE)",
+        "CHECK (status <> 'confirmed' OR ((observed_route_generation = expected_route_generation + CASE WHEN action_kind = 'fence' THEN 0 ELSE 1 END AND observed_execution_epoch = execution_epoch AND observed_provider_revision IS NOT NULL AND evidence_ref IS NOT NULL) IS TRUE))",
         "CHECK ((expected_provider_revision IS NOT NULL AND expected_absence_receipt_id IS NULL AND expected_absence_observed_at IS NULL) OR (expected_provider_revision IS NULL AND expected_route_generation = 0 AND expected_absence_receipt_id IS NOT NULL AND expected_absence_observed_at IS NOT NULL))"
       ],
       "indexes": [
@@ -15262,7 +15390,8 @@
         "02_database_schema_complete.md#fabric",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -15785,13 +15914,14 @@
         "CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))",
         "UNIQUE (quote_id)",
         "UNIQUE (id, workspace_id)",
+        "FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT",
         "CHECK (date_trunc('milliseconds',quote_at) = quote_at)",
         "CHECK (execution_plan_digest ~ '^sha256:[0-9a-f]{64}$')",
         "CHECK (period_end > period_start)",
-        "CHECK (period_end_ms > period_start_ms AND (period_end_ms - period_start_ms) <= 2678400000)",
+        "CHECK (period_end_ms > period_start_ms AND period_end_ms-period_start_ms <= 2678400000)",
         "CHECK (quote_at_ms >= period_start_ms AND quote_at_ms < period_end_ms)",
-        "CHECK (source_financial_snapshot_digest = ('sha256:' || encode(sha256(source_financial_snapshot_bytes), 'hex')))",
-        "CHECK (kind <> 'upgrade_immediate' OR charge_usd_micros = ceil((CAST(GREATEST(target_monthly_usd_micros - source_monthly_usd_micros, 0) AS numeric) * CAST(period_end_ms - quote_at_ms AS numeric)) / CAST(period_end_ms - period_start_ms AS numeric)))"
+        "CHECK (source_financial_snapshot_digest = 'sha256:' || encode(sha256(source_financial_snapshot_bytes),'hex'))",
+        "CHECK (kind <> 'upgrade_immediate' OR charge_usd_micros = ceil(greatest(target_monthly_usd_micros-source_monthly_usd_micros,0)::numeric * (period_end_ms-quote_at_ms)::numeric / (period_end_ms-period_start_ms)::numeric))"
       ],
       "indexes": [
         {
@@ -15821,7 +15951,7 @@
       "postCreateConstraints": [
         {
           "name": "plan_change_next_period_obligation_fk",
-          "sql": "CONSTRAINT plan_change_next_period_obligation_fk FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT"
+          "sql": "FOREIGN KEY (next_period_obligation_id) REFERENCES workspace.subscription_period_obligations (id) ON DELETE RESTRICT"
         }
       ]
     },
@@ -16066,7 +16196,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "workspace",
@@ -16242,7 +16373,8 @@
         "02_database_schema_complete.md#workspace",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -16390,7 +16522,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -16520,7 +16653,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -16679,7 +16813,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -16813,7 +16948,8 @@
         "02_database_schema_complete.md#runtime_control",
         "contracts/internal.proto",
         "contracts/events.json"
-      ]
+      ],
+      "postCreateConstraints": []
     },
     {
       "owner": "serve",
@@ -17015,7 +17151,8 @@
         "00_master_index.md",
         "02_database_schema_complete.md#runtime_control",
         "03_api_contract_complete.yaml#/components/schemas/Operation"
-      ]
+      ],
+      "postCreateConstraints": []
     }
   ]
 }

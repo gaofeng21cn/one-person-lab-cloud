@@ -2058,10 +2058,6 @@
             "failed",
             "needs_attention"
           ]
-        },
-        "currentAgentDeploymentId": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
