@@ -159,59 +159,87 @@ projection only; they are not a real Deploy and no Runtime observation is claime
 
 #### Read-slice result against the production authority
 
-Absorbed identity dependency: `f83f4f03` on `codex/tenant-member-governance-2`
-(`policy_generated.go` sha256
-`e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e`). With that
-policy the production authority was asked directly, with the exact request Serve
-sends, and the result is per-read:
+Absorbed identity dependencies: `f83f4f03` (policy table), then `c5393772` on
+`codex/tenant-member-governance-2`, which includes `f7a9e649` (contract
+correction) and `413a7d5a` (policy rows). Current policy table sha256
+`fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb`.
+
+All **three** reads are now admitted by the production authority, and the read
+slice is verified end to end:
 
 | Read | Audience Serve policy row | Real result |
 | --- | --- | --- |
 | `listDeployments` | `member` | admitted; the owning Tenant's live member reads Serve's own history |
 | `getDeployment` | `member` | admitted; the current deployment is read back with its runtime instance |
-| `getWorkspaceAccess` | none | **denied** (`PermissionDenied`); Serve fails closed |
+| `getWorkspaceAccess` | `member` | admitted; reports the current Agent's own access state |
 
-The authority decides audience, action and the caller's own role/scope; it holds
-no Workspace-ownership fact, so a tenant member is admitted for a
-workspace-shaped resource and refusing another Tenant's member for a specific
-Workspace is Serve's own persisted-authority guard. The live harness asserts
-both halves of that split separately so neither is "fixed" by giving the
-authority a second copy of Serve's ownership data.
+`getWorkspaceAccess` was previously refused because
+`03_api_contract_complete.yaml` carried a lagging `x-owner: workspace` while
+`decisions.md` (Serve is the sole Agent delivery/deployment/readiness/**access**
+owner), `01`, `02` and the proto placement all said Serve owns the access fact.
+The canonical owner corrected the contract (`f7a9e649`: `x-owner: serve`,
+`x-tables: serve.agent_runtime_instances + serve.access_bindings`), the derived
+feature map and API inventory were regenerated, and the policy writer then
+generated the serve-audience row (`413a7d5a`). No exception was added to
+`authorization.go`; Serve's own request (`audience=serve`, action
+`GETWORKSPACEACCESS`, resource `{kind: WORKSPACE, id: workspaceId}`, caller's own
+scope) is what now matches.
 
-`getWorkspaceAccess` is **not implemented**: `docs/spec/target/03_api_contract_complete.yaml`
-assigns the operation `x-owner: workspace` / `x-tables: workspace.workspaces` /
-`x-feature-id: F09`, while `packages/contracts/proto/internal.proto` declares
-`rpc GetWorkspaceAccess` on `service ServeProductService`. Serve calls the
-authority as `serve`, and the authority admits a caller only when
-`caller == console_bff || caller == audience`, so an `audience=workspace` row
-could not authorize Serve's own call either. Neither row is correct until the
-canonical owner decides, so Serve does not add one and this read stays refused
-rather than answering from a projection.
+The authority decides audience, action and the caller's own role and scope; it
+holds no Workspace-ownership fact, so a tenant member is admitted for a
+workspace-shaped resource, and refusing another Tenant's member for a specific
+Workspace is Serve's own persisted-authority guard. Both halves are asserted
+separately so neither is "fixed" by giving the authority a second copy of Serve's
+ownership data.
 
-The composed BFF delivery view (`GET /api/v2/delivery/{workspaceId}`) guards with
-`GETWORKSPACE` on `audience=workspace`, and the policy table has no
-workspace-audience row at all (that owner's operations are switched by
-W15/W16/W18-W20), so the composed read is refused at the BFF before Serve is
-reached. That guard is the identity integrator's file and the workspace owner's
-switch; Serve reuses its own authenticated read path underneath rather than
-duplicating the route.
+Two harnesses bind this, both `-tags=livebuild` (opt-in, outside
+`verify:local`/`verify:local:full`), running the production CloudIdentity
+implementation from `services/gateway-integration` over real gRPC with its real
+policy table and a real isolated `opl_tenant`, issuing sessions through the real
+BFF login transport. Only the external Sub2API/Gateway HTTP boundary is
+simulated. Seeded Serve rows exercise the read projection only; they are not a
+deployment and no runtime observation is claimed.
 
-A further finding is in shared infrastructure, not in Serve: the shared
-authorizer (`services/internal/ownerservice/authorization.go`) collates **every**
-error from the CloudIdentity client into `codes.Unavailable`, so a policy denial
-is indistinguishable from an authority outage at every owner boundary. It still
-fails closed; the denial code is only observable by asking the authority
-directly, which is what the harness does.
+- `identity_live_test.go` asks the authority directly for each read, then drives
+  Serve's owner process over typed gRPC: all three admitted; cross-Tenant,
+  session-less and revoked-session callers refused; empty history, non-current
+  history and not-ready access state all read back correctly.
+- `bff_live_test.go` drives the whole chain through the **BFF's own handler**
+  (`bff.NewServeDeliveryHandler`, the same code the process serves), covering
+  real login to history, one deployment, access-state consistency with the
+  current deployment, anonymous exposure, resource-ready-is-not-application-ready,
+  empty history, 404 for a missing deployment, 403 across Tenants, 401 without a
+  session, and a revoked session refused.
 
-The [real-identity read-slice receipt](./evidence/source-checks/2026-09-25-serve-read-slice-real-identity.json)
-binds the final tested SHA/tree, the absorbed identity dependency, every command
-with its exit code and log digest, and the per-read readback. Earlier receipts in
-this section are historical.
+`services/serve` passes 21 tests plus subtests with zero failures against a real
+isolated PostgreSQL, and both livebuild suites pass. The
+[read-slice receipt](./evidence/source-checks/2026-09-25-serve-read-slice-real-identity.json)
+and the [BFF end-to-end receipt](./evidence/source-checks/2026-09-25-serve-read-through-bff.json)
+bind the exact source, cases and gate logs.
 
-The read slice is therefore **not complete**, and this section is not a
-completion claim. It delivers two of the three requested reads against the real
-authority, the refusals that must hold (cross-Tenant member, session-less caller,
-revoked session), and a precise statement of what the third read needs.
+#### Serve read routes in the BFF
+
+`apps/console-bff/internal/clients/serve_read.go`,
+`apps/console-bff/internal/httpapi/serve_delivery.go` and
+`apps/console-bff/serve.go` add the BFF's Serve read surface: the deployment
+history, one deployment, and the current Agent's access state, each behind the
+session guard plus a CloudIdentity decision for the exact Serve action and
+Workspace resource. They compose nothing from another owner, so they do not
+depend on the Workspace read.
+
+The composed `GET /api/v2/delivery/{workspaceId}` view still needs a
+`WorkspaceProductService` implementation, which `services/workspace` does not yet
+provide; that is a pre-existing gap in the workspace owner's work package, not
+something these routes introduce. Registering the Serve read routes on the
+shared mux is the identity integrator's one-line wiring, because the route table
+and guard live in the shared server file.
+
+#### Read-slice terminal state
+
+This read slice is **complete for the three Serve reads** (history, deployment,
+access state) and their refusals. It is **not** a deployment claim: the first real
+Serve Agent deployment remains incomplete, and the delivery write path below is
+still blocked.
 
 #### Delivery write path: separate SSOT-required-but-unimplemented from contract changes
 

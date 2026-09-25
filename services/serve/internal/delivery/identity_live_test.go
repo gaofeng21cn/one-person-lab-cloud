@@ -256,14 +256,13 @@ func serveReadClient(t *testing.T, address string) api.ServeProductServiceClient
 	return api.NewServeProductServiceClient(conn)
 }
 
-// serveReadAuthorityEvidence records, for the receipt, which of the three reads
-// the production authority actually admits. It is asserted in the subtest below.
+// serveReadAuthorityEvidence records, for the receipt, which reads the production
+// authority admits. It is asserted in the subtest below.
 const serveReadAuthorityEvidence = "production CloudIdentity policy: " +
-	"audience=serve admits LISTDEPLOYMENTS and GETDEPLOYMENT for a tenant member " +
-	"(services/gateway-integration/identity/policy_generated.go), while " +
-	"GETWORKSPACEACCESS has no row because docs/spec/target/03_api_contract_complete.yaml " +
-	"assigns that operation to the workspace owner and the proto declares it on " +
-	"ServeProductService. The authority therefore denies it, and Serve fails closed."
+	"audience=serve admits LISTDEPLOYMENTS, GETDEPLOYMENT and GETWORKSPACEACCESS for a tenant member " +
+	"(services/gateway-integration/identity/policy_generated.go). GETWORKSPACEACCESS became a " +
+	"serve-audience row when docs/spec/target/03_api_contract_complete.yaml corrected its owner to " +
+	"serve; the proto already declared the RPC on ServeProductService."
 
 // serveReadAuthorization is the exact authorization request Serve's own
 // authorize() builds for one read: the caller's own scope and session, the
@@ -284,17 +283,6 @@ func requireServed(t *testing.T, err error, what string) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("production CloudIdentity refused %s: %v\n%s", what, err, serveReadAuthorityEvidence)
-	}
-}
-
-// requireUnimplementedRead asserts a Serve read that the production authority
-// does not admit stays refused rather than returning invented facts. Any refusal
-// code is accepted because Serve's shared authorizer collates authority errors;
-// the authority's own code is asserted separately below.
-func requireUnimplementedRead(t *testing.T, err error, what string) {
-	t.Helper()
-	if err == nil {
-		t.Fatalf("Serve answered %s although the production authority admits no row for it\n%s", what, serveReadAuthorityEvidence)
 	}
 }
 
@@ -343,40 +331,29 @@ func TestLiveServeReadChain(t *testing.T) {
 	// so a chain failure is attributed correctly: a policy denial at the
 	// authority is not a Serve defect, and the shared authorizer collates every
 	// authority error as Unavailable at the Serve boundary.
-	t.Run("authority_admits_only_the_rowed_reads", func(t *testing.T) {
+	t.Run("authority_admits_all_three_serve_reads", func(t *testing.T) {
 		call := bffReadCall(t, ctx, chain, "serve", "live-direct-decision")
-		for _, tc := range []struct {
-			action api.AuthorizationActionEnum
-			want   api.AuthorizationResult
-		}{
-			{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED},
-			{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT, api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED},
-			// No contract-consistent policy row exists for this read today.
-			{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResult_AUTHORIZATION_RESULT_UNSPECIFIED},
+		for _, action := range []api.AuthorizationActionEnum{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
 		} {
-			request := serveReadAuthorization(call, tc.action, "ws-served", "live-direct-"+tc.action.String())
+			request := serveReadAuthorization(call, action, "ws-served", "live-direct-"+action.String())
 			decision, err := chain.client.Authorize(ctx, request)
-			switch tc.want {
-			case api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED:
-				if err != nil {
-					t.Fatalf("the production authority refused %s: %v\n%s", tc.action, err, serveReadAuthorityEvidence)
-				}
-				if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED || decision.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_SERVE {
-					t.Fatalf("the production authority did not admit %s: %+v", tc.action, decision)
-				}
-			default:
-				if status.Code(err) != codes.PermissionDenied {
-					t.Fatalf("the production authority answered %v for %s, want a policy denial\n%s", err, tc.action, serveReadAuthorityEvidence)
-				}
+			if err != nil {
+				t.Fatalf("the production authority refused %s: %v\n%s", action, err, serveReadAuthorityEvidence)
+			}
+			if decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED || decision.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_SERVE {
+				t.Fatalf("the production authority did not admit %s: %+v", action, decision)
 			}
 		}
-		// The authority decides audience, action and the caller's own role and
-		// scope; it holds no Workspace-ownership fact, so it necessarily admits a
-		// tenant member for a workspace-shaped resource. Refusing another Tenant's
-		// member for this Workspace is Serve's own persisted-authority guard, which
-		// the cross_tenant_is_refused subtest above asserts end to end. Recording
-		// that split here keeps a future reader from "fixing" the authority by
-		// giving it a second copy of Serve's ownership data.
+		// The authority decides audience, action and the caller's own role and scope;
+		// it holds no Workspace-ownership fact, so it necessarily admits a tenant
+		// member for a workspace-shaped resource. Refusing another Tenant's member
+		// for this Workspace is Serve's own persisted-authority guard, which the
+		// cross_tenant_is_refused subtest asserts end to end. Recording that split
+		// keeps a future reader from "fixing" the authority by giving it a second
+		// copy of Serve's ownership data.
 		foreign := bffReadCall(t, ctx, chain, "other", "live-direct-foreign")
 		decision, err := chain.client.Authorize(ctx, serveReadAuthorization(foreign, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, "ws-served", "live-direct-foreign"))
 		if err != nil || decision.GetResult() != api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED {
@@ -419,13 +396,16 @@ func TestLiveServeReadChain(t *testing.T) {
 			t.Fatalf("current deployment runtime = %q, want rt_dep-active", current.GetRuntimeInstanceId())
 		}
 
-		// The current access read has no admitted policy row, so it must stay
-		// unimplemented rather than answer from a fabricated projection.
-		if _, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-served"}); err != nil {
-			requireUnimplementedRead(t, err, "GetWorkspaceAccess for a ready Workspace")
-			t.Logf("GetWorkspaceAccess is refused by the production authority and stays unimplemented: %v", err)
-		} else {
-			t.Fatalf("GetWorkspaceAccess answered although no policy row admits it\n%s", serveReadAuthorityEvidence)
+		// The access read is admitted and must report the same current Agent the
+		// history leads with: the active deployment's own observed entry, never the
+		// superseded predecessor's.
+		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-served"})
+		requireServed(t, err, "GetWorkspaceAccess for the owning Tenant's member")
+		if access.GetWorkspaceId() != "ws-served" || access.GetUrl() != "https://ws-served.example/app" || !access.GetApplicationCredentialsAvailable() {
+			t.Fatalf("access readback = %+v", access)
+		}
+		if access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN {
+			t.Fatalf("access mode = %v", access.GetAuthenticationMode())
 		}
 	})
 
@@ -436,12 +416,13 @@ func TestLiveServeReadChain(t *testing.T) {
 		if len(page.GetItems()) != 1 || page.GetItems()[0].GetStatus() != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
 			t.Fatalf("pending history = %+v", page.GetItems())
 		}
-		// The current Agent is active while its application is not observable
-		// through Serve yet; readiness is a separate, still-blocked read.
-		if _, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-pending"}); err != nil {
-			requireUnimplementedRead(t, err, "GetWorkspaceAccess for a starting runtime")
-		} else {
-			t.Fatalf("GetWorkspaceAccess answered although no policy row admits it")
+		// The current Agent is active while its application is not ready, so the
+		// access read must publish no URL and claim no credentials: a provisioned
+		// resource is not a ready application.
+		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-pending"})
+		requireServed(t, err, "GetWorkspaceAccess for a Workspace whose runtime is starting")
+		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() {
+			t.Fatalf("a starting runtime claimed a ready application: %+v", access)
 		}
 	})
 
@@ -452,10 +433,10 @@ func TestLiveServeReadChain(t *testing.T) {
 		if len(page.GetItems()) != 0 {
 			t.Fatalf("never-delivered Workspace reported history: %+v", page.GetItems())
 		}
-		if _, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"}); err != nil {
-			requireUnimplementedRead(t, err, "GetWorkspaceAccess for a never-delivered Workspace")
-		} else {
-			t.Fatalf("a never-delivered Workspace answered an access read")
+		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
+		requireServed(t, err, "GetWorkspaceAccess for a never-delivered Workspace")
+		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() || access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED {
+			t.Fatalf("a never-delivered Workspace fabricated access: %+v", access)
 		}
 	})
 
@@ -466,10 +447,10 @@ func TestLiveServeReadChain(t *testing.T) {
 		if len(page.GetItems()) != 1 || page.GetItems()[0].GetStatus() != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_QUEUED {
 			t.Fatalf("queued attempt history = %+v", page.GetItems())
 		}
-		if _, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-attempt"}); err != nil {
-			requireUnimplementedRead(t, err, "GetWorkspaceAccess for a Workspace without an active Agent")
-		} else {
-			t.Fatalf("a Workspace without an active Agent answered an access read")
+		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-attempt"})
+		requireServed(t, err, "GetWorkspaceAccess for a Workspace without an active Agent")
+		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() {
+			t.Fatalf("a Workspace without an active Agent published access: %+v", access)
 		}
 	})
 
