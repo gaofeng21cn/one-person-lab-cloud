@@ -1,0 +1,30 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T20:58:38.484189+00:00",
+  "scope": "Final full local verification after main absorption and queued Ledger authorization repair",
+  "source_sha": "4c8a6ea960085b131079196469ddb60ee8537304",
+  "source_tree": "9278b6a57b3a3f9590d2e533145800e9c00cfab7",
+  "results": {
+    "full_local": "passed: npm run verify:local:full; 228 source tests, 116 browser tests, typecheck, lint, Console build, Go module compilation and database-free tests, all required PostgreSQL modules with zero skips, retained Local Docker integration",
+    "accepted_order_with_real_ledger": "passed: TestLiveAcceptedWorkspaceResourceReference after Ledger lock authorization repair, including original receipt recovery and revoked original-resource closeout",
+    "ledger_container": "passed: actual linux/arm64 ledger-build; image sha256:dc712fc86f0c572eacc0022cc9acc24f1f9c13f2b89edb84ac850a95bfa64f02"
+  },
+  "limits": [
+    "The external Sub2API identity is isolated; no customer funds, provider procurement, production access or deployment.",
+    "These results do not prove a qualified Local project-quota host or actual application readiness."
+  ],
+  "logs": {
+    "github-ci-workspace-full-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-full-final.log",
+      "sha256": "05a6975da2d7f0d76a2db3e4091fcf3d083be01c71d7562d62ecc427fa5f49d2"
+    },
+    "github-ci-workspace-ledger-live-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-ledger-live-final.log",
+      "sha256": "d2461c60294b25abc511e0212eba10c9924a499c726dec02afd982d925bc1a73"
+    },
+    "github-ci-workspace-ledger-image-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-ledger-image-final.log",
+      "sha256": "65546cd56f19bfda64eb967dbf83c5227062c2341654a806db146f5f2957d9f4"
+    }
+  }
+}
