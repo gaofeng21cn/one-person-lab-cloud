@@ -45,8 +45,8 @@ jobs:
               process.stdin.setEncoding("utf8");
               process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });
               process.stdin.on("end", () => {
-                const failed = [...output.matchAll(/^# fail (\d+)$/gm)];
-                const skipped = [...output.matchAll(/^# skipped (\d+)$/gm)];
+                const failed = [...output.matchAll(/^(?:#|ℹ) fail (\d+)$/gm)];
+                const skipped = [...output.matchAll(/^(?:#|ℹ) skipped (\d+)$/gm)];
                 if (failed.length !== 1 || skipped.length !== 1 || Number(failed[0][1]) !== 0 || Number(skipped[0][1]) !== 0) {
                   console.error(`Node ${process.env.NODE_SUITE_NAME} FAIL ${failed[0]?.[1] ?? "missing"} SKIP ${skipped[0]?.[1] ?? "missing"}; Node SKIP result missing or nonzero`);
                   process.exit(1);

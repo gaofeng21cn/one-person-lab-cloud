@@ -76,6 +76,8 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   assert.ok(nodeStep.run.includes("npm run test:source"));
   assert.ok(nodeStep.run.includes("npm run test:browser:suite"));
   assert.ok(nodeStep.run.includes("Node SKIP result missing or nonzero"));
+  assert.ok(nodeStep.run.includes("(?:#|ℹ) fail"));
+  assert.ok(nodeStep.run.includes("(?:#|ℹ) skipped"));
   const job = workflow.jobs.fabric;
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
