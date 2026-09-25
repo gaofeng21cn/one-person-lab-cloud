@@ -257,6 +257,13 @@ the contract and authorizing it under the workspace owner would enable an owner
 this policy does not serve. That placement/audience contradiction stays open for
 the canonical owner instead of being resolved here.
 
+The BFF's HTTP success status is now compiled from the same contract into
+`apps/console-bff/internal/httpapi/status_generated.go`, so a routed operation
+answers with the status the contract declares. The previous hand-written switch
+had already drifted: `setComputePlanAvailability` and `setStoragePlanAvailability`
+are declared 200 but would have answered the write default 201. A route whose
+action carries no declared status is refused rather than defaulted.
+
 The invitation validity window is not fixed by the canonical contract, so the
 deployment now supplies it explicitly through `OPL_INVITATION_TTL`; this owner
 refuses to start without a positive value rather than baking a product decision

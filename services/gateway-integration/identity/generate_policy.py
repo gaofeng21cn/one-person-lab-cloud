@@ -1,4 +1,15 @@
-"""Compile current permission metadata from the canonical API contract.
+"""Compile the canonical API contract into the contract-derived runtime tables.
+
+It emits two tables that must not drift from the SSOT and must not be
+hand-maintained:
+
+  1. the CloudIdentity authorization policy, and
+  2. the Console BFF's HTTP success status per routed action.
+
+Both are read from the same `03_api_contract_complete.yaml`, so a declared
+permission or success code reaches the running guard without a second, hand-
+written list.
+
 
 The table is the role/delegation policy AuthorizeAction enforces. It is generated
 wholesale per served owner from the single canonical owner/action/permission
@@ -37,6 +48,23 @@ for methods in api['paths'].values():
 lines+=['}']
 out=Path(__file__).with_name('policy_generated.go')
 out.write_text('\n'.join(lines)+'\n')
-# The generated table is committed source, so emit it already formatted; otherwise
-# a regeneration would show formatting churn unrelated to a permission change.
+# The generated tables are committed source, so emit them already formatted;
+# otherwise a regeneration would show formatting churn unrelated to a change.
 subprocess.run(['gofmt','-w',str(out)],check=True)
+
+# The BFF guard answers with the status the contract declares for the operation,
+# so an operation whose declared code is not the write default (202/204/200)
+# cannot silently answer 201 instead.
+bff=root/'apps/console-bff/internal/httpapi/status_generated.go'
+status=['// Code generated from the canonical API success codes; DO NOT EDIT.','package httpapi','import api "opl-cloud/packages/contracts/go/api"','','// successStatus is the HTTP status the canonical contract declares for each routed','// operation. publisherRoute answers with this value, so a response code cannot be','// hand-maintained per route and cannot drift from the contract.','var successStatus = map[api.AuthorizationActionEnum]int{']
+for methods in api['paths'].values():
+ for x in methods.values():
+  if not isinstance(x,dict) or 'operationId' not in x: continue
+  codes=sorted(int(c) for c in x.get('responses',{}) if str(c).startswith('2'))
+  if not codes: continue
+  action=x['operationId']
+  enum='api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_'+action.upper()
+  status.append(f'{enum}: {min(codes)},')
+status+=['}']
+bff.write_text('\n'.join(status)+'\n')
+subprocess.run(['gofmt','-w',str(bff)],check=True)
