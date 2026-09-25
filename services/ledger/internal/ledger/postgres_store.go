@@ -302,7 +302,9 @@ func (s *PostgresStore) ListReceipts(ctx context.Context, query ReceiptQuery) (R
 	if err != nil {
 		return ReceiptPage{}, err
 	}
-	q := s.client.EvidenceReceipt.Query()
+	// Local coordination evidence carries private owner commitments and is read
+	// only through the authenticated typed LedgerCoordination boundary.
+	q := s.client.EvidenceReceipt.Query().Where(evidencereceipt.ReceiptTypeNEQ(LocalNoChargeReceiptType))
 	if query.AccountID != "" {
 		q = q.Where(evidencereceipt.AccountID(query.AccountID))
 	}
@@ -469,7 +471,7 @@ func (s *PostgresStore) mutateReceipt(ctx context.Context, service, idempotencyK
 	}
 	var payloadJSON string
 	var createdAt time.Time
-	if err := tx.QueryRowContext(ctx, "SELECT payload_json, created_at FROM evidence_receipts WHERE id = $1 FOR UPDATE /* ledger_receipt_mutation */", receiptID).Scan(&payloadJSON, &createdAt); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, "SELECT payload_json, created_at FROM evidence_receipts WHERE id = $1 AND receipt_type <> $2 FOR UPDATE /* ledger_receipt_mutation */", receiptID, LocalNoChargeReceiptType).Scan(&payloadJSON, &createdAt); errors.Is(err, sql.ErrNoRows) {
 		return ReceiptRetentionResult{}, ErrReceiptNotFound
 	} else if err != nil {
 		return ReceiptRetentionResult{}, err
@@ -507,6 +509,9 @@ func (s *PostgresStore) receipt(ctx context.Context, receiptID string) (Receipt,
 	}
 	if err != nil {
 		return Receipt{}, err
+	}
+	if row.ReceiptType == LocalNoChargeReceiptType {
+		return Receipt{}, ErrReceiptNotFound
 	}
 	return receiptFromEnt(row)
 }

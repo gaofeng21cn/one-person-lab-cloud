@@ -93,6 +93,17 @@ func main() {
 		service.Usage = api.NewClaimUsageReadbackClient(buildConn)
 		service.Commit = api.NewOwnerCommitReadbackClient(buildConn)
 		service.BuildInbox = api.NewDomainInboxClient(buildConn)
+		if address := os.Getenv("OPL_SERVE_ADDR"); address != "" {
+			serveConn, err := dialPeer(config, tls, owneridentity.Serve, address)
+			if err != nil {
+				return err
+			}
+			if err = server.TrackCloser(serveConn); err != nil {
+				return err
+			}
+			service.ServeCommit = api.NewOwnerCommitReadbackClient(serveConn)
+			service.ServeUsage = api.NewClaimUsageReadbackClient(serveConn)
+		}
 		if err := service.Register(server); err != nil {
 			return err
 		}

@@ -27,10 +27,12 @@ const maxJSONBodyBytes int64 = 1 << 20
 var errRequestBodyTooLarge = errors.New("request body too large")
 
 type ServerAuthConfig struct {
-	ControlPlaneToken string
-	RunnerToken       string
-	CapabilityKey     string
-	Now               func() time.Time
+	ControlPlaneToken  string
+	RunnerToken        string
+	CapabilityKey      string
+	ServeToken         string
+	ServeCapabilityKey string
+	Now                func() time.Time
 }
 
 type fabricMutationScopeResolver interface {
@@ -782,6 +784,10 @@ func authorizeFabricRequests(next http.Handler, resolver fabricMutationScopeReso
 			next.ServeHTTP(w, r)
 			return
 		}
+		if identity == "serve" && !serveApplicationRoute(r) {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
 		if !isFabricMutation(r) {
 			next.ServeHTTP(w, r)
 			return
@@ -800,7 +806,12 @@ func authorizeFabricRequests(next http.Handler, resolver fabricMutationScopeReso
 			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
-		if !verifyFabricCapability(r.Header.Get(fabricCapabilityHeader), config.CapabilityKey, scope, body, config.Now()) {
+		key := config.CapabilityKey
+		if identity == "serve" {
+			scope.Caller = "serve"
+			key = config.ServeCapabilityKey
+		}
+		if !verifyFabricCapability(r.Header.Get(fabricCapabilityHeader), key, scope, body, config.Now()) {
 			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -808,7 +819,20 @@ func authorizeFabricRequests(next http.Handler, resolver fabricMutationScopeReso
 	})
 }
 
+func serveApplicationRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	if r.URL.Path == "/fabric/workspace-application-runtimes" {
+		return true
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "fabric" && parts[1] == "workspace-application-runtimes" && parts[2] != "" && parts[3] == "readback"
+}
 func fabricTransportIdentity(header string, config ServerAuthConfig) string {
+	if config.ServeToken != "" && constantTimeBearerMatch(header, config.ServeToken) {
+		return "serve"
+	}
 	if config.ControlPlaneToken != "" && constantTimeBearerMatch(header, config.ControlPlaneToken) {
 		return "control-plane"
 	}

@@ -75,7 +75,7 @@ follow-up plan was regenerated and revalidated in this checkout; that historical
 receipt is not reused as implementation evidence. Verification passed:
 
 - Plan coverage: 32 work packages, 17 features, 108 REST operations, 101 tables,
-  and 172 internal RPCs; no dependency cycle or missing existing source path.
+  and 174 internal RPCs; no dependency cycle or missing existing source path.
 - Five isolated plan-validator tests cover the current layout, sibling-repo
   rejection, the CloudIdentity/Gateway deployment exception, and unauthorized
   external writes including path traversal. Regeneration has no output drift.
@@ -104,8 +104,9 @@ identity to owner boundaries, where tenant and actor authorization is checked
 again. Capability Package upload/reference claims, Runtime Release catalog
 validation, Build input admission, BuildKit/OCI digest and descriptor readback,
 and Build-to-Capability artifact registration are implemented with focused
-tests. Workspace and Serve product handlers, Fabric provisioning/readback,
-deployed multi-process execution, and Instance qualification remain open.
+tests. Workspace accepted-order recovery, Fabric resource acceptance/readback and
+Serve first-delivery reservation/execution are implemented. Complete application
+deployment on a qualified provider host and Instance qualification remain open.
 
 The implementation incorporates the accepted SSOT correction: Serve owns
 current Agent deployment selection and route/readiness/access state; Workspace
@@ -135,10 +136,15 @@ rows in the read tests prove authorization and projection, not a real deployment
 The real-identity tests use production CloudIdentity, gRPC, isolated PostgreSQL
 and the BFF; only the external Gateway identity response is simulated.
 
-The first real deployment remains open in the canonical roadmap: Workspace
-product commands, Capability reference-claim consumer support, Fabric resource
-references, Reserve inputs and the Serve runtime adapter are not completed by
-this read slice. Historical source receipts remain under `docs/evidence/source-checks/`.
+Serve also implements the first-delivery write path: it allocates delivery
+identities, acquires and binds the exact Capability claim, requires confirmed
+Fabric execution resources, and calls the retained Fabric application adapter
+with a dedicated Serve identity. Runtime observation and active selection are
+serialized across service instances in one Workspace-scoped transaction.
+ReadRuntime re-observes the original command after response loss. The
+[Serve source receipt](./evidence/source-checks/2026-09-26-serve-write.json)
+records real PostgreSQL owner checks and the remaining fixture boundaries.
+These checks do not establish a deployment on a qualified Local provider host.
 
 ### Resource Catalog approved plans and policy versions
 
@@ -181,14 +187,43 @@ plan change that do not exist yet. The [source-check
 receipt](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)
 binds the revision, commands, exit codes and logs.
 
-Two boundaries remain. The Workspace owner and the Fabric resource reference do
-not exist, so nothing has accepted a quote, no original order or resource intent
-exists, and there is no Local deployment loop; the Catalog side of that edge is
-implemented and verified against a Workspace peer, but the caller is the next
-slice. The Ledger `DomainInbox` accepts only tenant-scoped build and capability
-producers, so the platform-scoped catalog policy event is recorded and retried
-while its consumer delivery stays pending; extending that consumer is Ledger's
-write set.
+The quote also freezes the complete approved provider plan. Workspace accepts it
+through its authenticated BFF create route, commits the original order and
+resumes the same Catalog acceptance and Fabric resource intent after response
+loss or service restart. Fabric stores the original resource-set, resource IDs
+and operation without inventing provider references. The CloudIdentity
+continuation grant is bound to that exact Workspace and Capability version;
+queued creates revalidate authority after their command lock.
+
+The Ledger `DomainInbox` still accepts only tenant-scoped build and capability
+producers, so the platform-scoped catalog policy event remains pending. Local
+zero-charge delivery uses a separate typed receipt operation over the existing
+append-only Ledger store; it reads both original owners and cannot be created,
+read or mutated through the legacy generic HTTP receipt paths. A no-charge
+receipt is not a customer payment or subscription period.
+
+### Workspace original-order and Local delivery boundary
+
+The [Workspace source receipt](./evidence/source-checks/2026-09-26-workspace-resource-original-order.json)
+separates the real accepted-quote/order/resource-reference check from provider
+qualification. The acceptance harness uses production CloudIdentity, Catalog,
+Workspace, Fabric and Ledger implementations over real gRPC and independent
+PostgreSQL databases, with the BFF HTTP routes as caller. Only the external
+Sub2API identity response is a fixture. It checks stable acceptance/resource
+identities, receipt replay after a lost reply, session-expiry recovery, queued
+authority revocation and cross-tenant refusals. No paid subscription, provider
+reference or customer charge is fabricated.
+
+The Local source path validates the exact approved profile/SKU/specification and
+tenant-to-account binding, obtains the typed zero-charge receipt and performs
+storage quota preflight before any compute allocation. On confirmed resource
+readback, Workspace resumes Capability and Serve with durable descriptor,
+reservation and runtime command evidence. Unknown results remain pending;
+Workspace activation, paid periods and access are not inferred from resource
+acceptance. Actual Local deployment remains unqualified: the inspected Fabric
+host is macOS, whose project-quota guard refuses dispatch, and no existing
+qualified Linux entry was established. This environment boundary does not
+invalidate the accepted-order/resource-reference result.
 
 ### Canonical-main local verification and receipt
 

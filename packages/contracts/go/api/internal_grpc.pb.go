@@ -5695,14 +5695,19 @@ var CloudIdentityAuthorization_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	CatalogCoordination_AcceptQuote_FullMethodName = "/opl.cloud.api.CatalogCoordination/AcceptQuote"
+	CatalogCoordination_AcceptQuote_FullMethodName           = "/opl.cloud.api.CatalogCoordination/AcceptQuote"
+	CatalogCoordination_ReadQuoteResourcePlan_FullMethodName = "/opl.cloud.api.CatalogCoordination/ReadQuoteResourcePlan"
 )
 
 // CatalogCoordinationClient is the client API for CatalogCoordination service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Reads the immutable plan frozen when this offer was priced. Accepted results
+// carry the exact Workspace and obligation binding; this call makes no writes.
 type CatalogCoordinationClient interface {
 	AcceptQuote(ctx context.Context, in *AcceptQuoteRequest, opts ...grpc.CallOption) (*QuoteAcceptance, error)
+	ReadQuoteResourcePlan(ctx context.Context, in *QuoteResourcePlanRequest, opts ...grpc.CallOption) (*QuoteAcceptance, error)
 }
 
 type catalogCoordinationClient struct {
@@ -5723,11 +5728,25 @@ func (c *catalogCoordinationClient) AcceptQuote(ctx context.Context, in *AcceptQ
 	return out, nil
 }
 
+func (c *catalogCoordinationClient) ReadQuoteResourcePlan(ctx context.Context, in *QuoteResourcePlanRequest, opts ...grpc.CallOption) (*QuoteAcceptance, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuoteAcceptance)
+	err := c.cc.Invoke(ctx, CatalogCoordination_ReadQuoteResourcePlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CatalogCoordinationServer is the server API for CatalogCoordination service.
 // All implementations must embed UnimplementedCatalogCoordinationServer
 // for forward compatibility.
+//
+// Reads the immutable plan frozen when this offer was priced. Accepted results
+// carry the exact Workspace and obligation binding; this call makes no writes.
 type CatalogCoordinationServer interface {
 	AcceptQuote(context.Context, *AcceptQuoteRequest) (*QuoteAcceptance, error)
+	ReadQuoteResourcePlan(context.Context, *QuoteResourcePlanRequest) (*QuoteAcceptance, error)
 	mustEmbedUnimplementedCatalogCoordinationServer()
 }
 
@@ -5740,6 +5759,9 @@ type UnimplementedCatalogCoordinationServer struct{}
 
 func (UnimplementedCatalogCoordinationServer) AcceptQuote(context.Context, *AcceptQuoteRequest) (*QuoteAcceptance, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AcceptQuote not implemented")
+}
+func (UnimplementedCatalogCoordinationServer) ReadQuoteResourcePlan(context.Context, *QuoteResourcePlanRequest) (*QuoteAcceptance, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadQuoteResourcePlan not implemented")
 }
 func (UnimplementedCatalogCoordinationServer) mustEmbedUnimplementedCatalogCoordinationServer() {}
 func (UnimplementedCatalogCoordinationServer) testEmbeddedByValue()                             {}
@@ -5780,6 +5802,24 @@ func _CatalogCoordination_AcceptQuote_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CatalogCoordination_ReadQuoteResourcePlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QuoteResourcePlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CatalogCoordinationServer).ReadQuoteResourcePlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CatalogCoordination_ReadQuoteResourcePlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CatalogCoordinationServer).ReadQuoteResourcePlan(ctx, req.(*QuoteResourcePlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CatalogCoordination_ServiceDesc is the grpc.ServiceDesc for CatalogCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -5790,6 +5830,10 @@ var CatalogCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AcceptQuote",
 			Handler:    _CatalogCoordination_AcceptQuote_Handler,
+		},
+		{
+			MethodName: "ReadQuoteResourcePlan",
+			Handler:    _CatalogCoordination_ReadQuoteResourcePlan_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -7547,8 +7591,9 @@ var TenantWorkspaceCoordination_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	LedgerCoordination_AppendReceipt_FullMethodName          = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
-	LedgerCoordination_ReadReceiptByReference_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
+	LedgerCoordination_AppendReceipt_FullMethodName            = "/opl.cloud.api.LedgerCoordination/AppendReceipt"
+	LedgerCoordination_ReadReceiptByReference_FullMethodName   = "/opl.cloud.api.LedgerCoordination/ReadReceiptByReference"
+	LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName = "/opl.cloud.api.LedgerCoordination/ReadLocalNoChargeReceipt"
 )
 
 // LedgerCoordinationClient is the client API for LedgerCoordination service.
@@ -7557,6 +7602,7 @@ const (
 type LedgerCoordinationClient interface {
 	AppendReceipt(ctx context.Context, in *AppendReceiptRequest, opts ...grpc.CallOption) (*Receipt, error)
 	ReadReceiptByReference(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*Receipt, error)
+	ReadLocalNoChargeReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*LocalNoChargeReceiptEvidence, error)
 }
 
 type ledgerCoordinationClient struct {
@@ -7587,12 +7633,23 @@ func (c *ledgerCoordinationClient) ReadReceiptByReference(ctx context.Context, i
 	return out, nil
 }
 
+func (c *ledgerCoordinationClient) ReadLocalNoChargeReceipt(ctx context.Context, in *GetReceiptByReferenceRequest, opts ...grpc.CallOption) (*LocalNoChargeReceiptEvidence, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LocalNoChargeReceiptEvidence)
+	err := c.cc.Invoke(ctx, LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerCoordinationServer is the server API for LedgerCoordination service.
 // All implementations must embed UnimplementedLedgerCoordinationServer
 // for forward compatibility.
 type LedgerCoordinationServer interface {
 	AppendReceipt(context.Context, *AppendReceiptRequest) (*Receipt, error)
 	ReadReceiptByReference(context.Context, *GetReceiptByReferenceRequest) (*Receipt, error)
+	ReadLocalNoChargeReceipt(context.Context, *GetReceiptByReferenceRequest) (*LocalNoChargeReceiptEvidence, error)
 	mustEmbedUnimplementedLedgerCoordinationServer()
 }
 
@@ -7608,6 +7665,9 @@ func (UnimplementedLedgerCoordinationServer) AppendReceipt(context.Context, *App
 }
 func (UnimplementedLedgerCoordinationServer) ReadReceiptByReference(context.Context, *GetReceiptByReferenceRequest) (*Receipt, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadReceiptByReference not implemented")
+}
+func (UnimplementedLedgerCoordinationServer) ReadLocalNoChargeReceipt(context.Context, *GetReceiptByReferenceRequest) (*LocalNoChargeReceiptEvidence, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadLocalNoChargeReceipt not implemented")
 }
 func (UnimplementedLedgerCoordinationServer) mustEmbedUnimplementedLedgerCoordinationServer() {}
 func (UnimplementedLedgerCoordinationServer) testEmbeddedByValue()                            {}
@@ -7666,6 +7726,24 @@ func _LedgerCoordination_ReadReceiptByReference_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerCoordination_ReadLocalNoChargeReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReceiptByReferenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerCoordinationServer).ReadLocalNoChargeReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerCoordination_ReadLocalNoChargeReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerCoordinationServer).ReadLocalNoChargeReceipt(ctx, req.(*GetReceiptByReferenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerCoordination_ServiceDesc is the grpc.ServiceDesc for LedgerCoordination service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -7680,6 +7758,10 @@ var LedgerCoordination_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadReceiptByReference",
 			Handler:    _LedgerCoordination_ReadReceiptByReference_Handler,
+		},
+		{
+			MethodName: "ReadLocalNoChargeReceipt",
+			Handler:    _LedgerCoordination_ReadLocalNoChargeReceipt_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

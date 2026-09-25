@@ -69,6 +69,20 @@ func main() {
 			return e
 		}
 		s.BuildCommit = api.NewOwnerCommitReadbackClient(conn)
+		if address := strings.TrimSpace(os.Getenv("OPL_WORKSPACE_ADDR")); address != "" {
+			options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Workspace.Service(), os.Getenv("OPL_WORKSPACE_TOKEN"))
+			if e != nil {
+				return e
+			}
+			conn, e := grpc.NewClient(address, options...)
+			if e != nil {
+				return e
+			}
+			if e = server.TrackCloser(conn); e != nil {
+				return e
+			}
+			s.WorkspaceCommit = api.NewOwnerCommitReadbackClient(conn)
+		}
 		return s.Register(server)
 	})
 	if e != nil {

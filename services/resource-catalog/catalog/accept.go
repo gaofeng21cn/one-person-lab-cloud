@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
 )
 
@@ -47,6 +48,9 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 		return nil, status.Error(codes.InvalidArgument, "a tenant-scoped acceptance is required")
 	}
 
+	if err := s.Auth.Authorize(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(r.WorkspaceId)}, ownerservice.ResourceScope{TenantID: tenantID}); err != nil {
+		return nil, err
+	}
 	accepted := &api.QuoteAcceptance{}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -59,11 +63,13 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 		acceptedBy         sql.NullString
 		acceptedAt         sql.NullTime
 		expiresAt, created time.Time
+		snapshotRaw        []byte
+		snapshot           quoteSnapshot
 	)
 	// The row is locked so two concurrent acceptances cannot both observe an
 	// unaccepted offer.
-	err = tx.QueryRowContext(ctx, `SELECT status,accepted_by_operation_id,accepted_at,expires_at,created_at FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, r.GetQuoteId(), tenantID).
-		Scan(&storedState, &acceptedBy, &acceptedAt, &expiresAt, &created)
+	err = tx.QueryRowContext(ctx, `SELECT status,accepted_by_operation_id,accepted_at,expires_at,created_at,admission_snapshot FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, r.GetQuoteId(), tenantID).
+		Scan(&storedState, &acceptedBy, &acceptedAt, &expiresAt, &created, &snapshotRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, status.Error(codes.NotFound, "no such quote for this tenant")
 	}
@@ -71,9 +77,17 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 		return nil, dbError(err)
 	}
 
+	// Row locking may wait behind another acceptance. Revalidate the bounded
+	// original grant after that wait before changing Catalog state.
+	if err := s.Auth.Authorize(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: proto.String(r.WorkspaceId)}, ownerservice.ResourceScope{TenantID: tenantID}); err != nil {
+		return nil, err
+	}
+	if json.Unmarshal(snapshotRaw, &snapshot) != nil || snapshot.ResourcePlan == nil {
+		return nil, status.Error(codes.FailedPrecondition, "quote has no frozen resource plan; request a new quote")
+	}
 	switch storedState {
 	case "accepted":
-		if acceptedBy.String != r.GetObligationId() {
+		if acceptedBy.String != r.GetObligationId() || snapshot.AcceptedWorkspaceID != r.GetWorkspaceId() {
 			// One quote binds exactly one operation. A second obligation must not
 			// inherit an acceptance it did not make, and must not create a second one.
 			return nil, status.Error(codes.AlreadyExists, "this quote is already bound to another acceptance")
@@ -82,7 +96,12 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 		if !time.Now().UTC().Before(expiresAt) {
 			return nil, status.Error(codes.FailedPrecondition, "this quote has expired; a new quote is required")
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE resource_catalog.quotes SET status='accepted',accepted_by_operation_id=$1,accepted_at=now() WHERE id=$2 AND status='offered'`, r.GetObligationId(), r.GetQuoteId()); err != nil {
+		snapshot.AcceptedWorkspaceID = r.WorkspaceId
+		snapshotRaw, err = json.Marshal(snapshot)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "encode quote binding")
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE resource_catalog.quotes SET status='accepted',accepted_by_operation_id=$1,accepted_at=now(),admission_snapshot=$3 WHERE id=$2 AND status='offered'`, r.GetObligationId(), r.GetQuoteId(), snapshotRaw); err != nil {
 			return nil, dbError(err)
 		}
 	default:
@@ -95,13 +114,15 @@ func (s *Service) AcceptQuote(ctx context.Context, r *api.AcceptQuoteRequest) (*
 	}
 	quote.Status = api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED
 	accepted.Quote = quote
+	accepted.ResourcePlan = snapshot.ResourcePlan
+	accepted.WorkspaceId = snapshot.AcceptedWorkspaceID
 	accepted.ObligationId = r.GetObligationId()
 	accepted.AcceptanceId = acceptanceID(r.GetQuoteId())
-	snapshot, err := acceptedSnapshotDigest(quote)
+	snapshotDigest, err := acceptedSnapshotDigest(quote)
 	if err != nil {
 		return nil, err
 	}
-	accepted.SnapshotDigest = snapshot
+	accepted.SnapshotDigest = snapshotDigest
 	if err := tx.Commit(); err != nil {
 		return nil, dbError(err)
 	}
@@ -189,4 +210,78 @@ func (s *Service) readQuoteTx(ctx context.Context, tx *sql.Tx, quoteID, tenantID
 		quote.LineItems = append(quote.LineItems, &line)
 	}
 	return &quote, dbError(rows.Err())
+}
+
+// ReadQuoteResourcePlan returns the exact catalog-owned offer and its frozen
+// provider plan. It never reconstructs an old offer from today's plan rows.
+func (s *Service) ReadQuoteResourcePlan(ctx context.Context, r *api.QuoteResourcePlanRequest) (*api.QuoteAcceptance, error) {
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || (peer != owneridentity.Workspace.Service() && peer != owneridentity.Fabric.Service() && peer != owneridentity.Ledger.Service()) {
+		return nil, status.Error(codes.Unauthenticated, "Workspace, Fabric or Ledger peer required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	tid := r.GetContext().GetScope().GetTenant().GetTenantId()
+	if tid == "" || r.GetQuoteId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "tenant and quote required")
+	}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer tx.Rollback()
+	quote, err := s.readQuoteTx(ctx, tx, r.QuoteId, tid)
+	if err != nil {
+		return nil, err
+	}
+	var raw []byte
+	var obligation sql.NullString
+	if err = tx.QueryRowContext(ctx, `SELECT admission_snapshot,accepted_by_operation_id FROM resource_catalog.quotes WHERE id=$1 AND tenant_id=$2`, r.QuoteId, tid).Scan(&raw, &obligation); err != nil {
+		return nil, dbError(err)
+	}
+	var snapshot quoteSnapshot
+	if json.Unmarshal(raw, &snapshot) != nil || snapshot.ResourcePlan == nil {
+		return nil, status.Error(codes.FailedPrecondition, "quote has no frozen resource plan; request a new quote")
+	}
+	resource := &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}
+	if r.Context.GetAcceptedOperationGrantId() != "" {
+		resource.Kind = api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE
+		resource.Id = proto.String(snapshot.AcceptedWorkspaceID)
+	}
+	if err = s.Auth.Authorize(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE, resource, ownerservice.ResourceScope{TenantID: tid}); err != nil {
+		return nil, err
+	}
+	out := &api.QuoteAcceptance{Quote: quote, ResourcePlan: snapshot.ResourcePlan, WorkspaceId: snapshot.AcceptedWorkspaceID, ObligationId: obligation.String}
+	if quote.Status == api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED {
+		out.AcceptanceId = acceptanceID(quote.Id)
+		out.SnapshotDigest, err = acceptedSnapshotDigest(quote)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func frozenResourcePlan(ctx context.Context, tx *sql.Tx, computeID, storageID string, months int32) (*api.ResourcePlanSnapshot, error) {
+	p := &api.ResourcePlanSnapshot{ComputePlanId: computeID, StoragePlanId: storageID, PrepaidMonths: months}
+	var computeSpec, storageSpec []byte
+	var storageProvider, storageProfile, storageRegion, storageBilling, storageCapability string
+	err := tx.QueryRowContext(ctx, `SELECT c.provider,c.provider_profile_ref,c.region,c.billing_mode,c.provider_capability_version,c.provider_specification,c.vcpus,c.memory_mib,s.provider,s.provider_profile_ref,s.region,s.billing_mode,s.provider_capability_version,s.provider_specification,s.capacity_gib FROM resource_catalog.compute_plans c JOIN resource_catalog.storage_plans s ON s.id=$2 WHERE c.id=$1`, computeID, storageID).Scan(&p.Provider, &p.ProviderProfileId, &p.Region, &p.BillingMode, &p.ProviderCapabilityVersion, &computeSpec, &p.Vcpus, &p.MemoryMib, &storageProvider, &storageProfile, &storageRegion, &storageBilling, &storageCapability, &storageSpec, &p.CapacityGib)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	if p.Provider != storageProvider || p.ProviderProfileId != storageProfile || p.Region != storageRegion || p.BillingMode != storageBilling || p.ProviderCapabilityVersion != storageCapability {
+		return nil, status.Error(codes.FailedPrecondition, "compute and storage must share the approved provider profile")
+	}
+	var c, s struct {
+		ProviderProfileID string `json:"providerProfileId"`
+		ProviderSKUID     string `json:"providerSkuId"`
+	}
+	if json.Unmarshal(computeSpec, &c) != nil || json.Unmarshal(storageSpec, &s) != nil || c.ProviderSKUID == "" || s.ProviderSKUID == "" {
+		return nil, status.Error(codes.DataLoss, "approved provider SKU is missing")
+	}
+	p.ProviderComputeSkuId = c.ProviderSKUID
+	p.ProviderStorageSkuId = s.ProviderSKUID
+	return p, nil
 }

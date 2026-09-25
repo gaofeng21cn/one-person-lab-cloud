@@ -20,17 +20,17 @@
 | cloud | `.` | existing |
 | console | `apps/console-ui` | existing |
 | bff | `apps/console-bff` | existing |
-| gateway | `services/gateway-integration` | planned_not_created |
+| gateway | `services/gateway-integration` | existing |
 | capability | `services/capability` | existing |
 | build | `services/build` | existing |
 | workspace | `services/workspace` | existing |
 | runtime_control | `services/runtime-control` | existing |
 | serve | `services/serve` | existing |
-| resource_catalog | `services/resource-catalog` | planned_not_created |
+| resource_catalog | `services/resource-catalog` | existing |
 | fabric | `services/fabric` | existing |
 | ledger | `services/ledger` | existing |
-| tenant | `services/gateway-integration` | planned_not_created |
-| instance | `../opl-instance-medopl` | existing |
+| tenant | `services/gateway-integration` | existing |
+| instance | `../opl-instance-medopl` | planned_not_created |
 
 所有Cloud工作根均位于同一个opl-cloud GitHub仓库；路径由当前checkout推导，不绑定开发者机器。instance是外部Owner，不属于Cloud合仓写集；W29/W30仅描述其授权工作，不能由Cloud任务越界执行。具体模块/进程/数据库实施映射见01，架构决定以docs/architecture.md及docs/decisions.md为准，tenant与gateway两行共享一个部署单元。planned_not_created指目录未建，不是等待创建GitHub仓库。
 
@@ -323,7 +323,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`ledger.receipts`, `ledger.reconciliations`
 
-**内部协议实现/协作端口**：`LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
+**内部协议实现/协作端口**：`LedgerProductService.ListReceipts`, `LedgerProductService.GetReceipt`, `LedgerProductService.ListQualifications`, `LedgerCoordination.AppendReceipt`, `LedgerCoordination.ReadReceiptByReference`, `LedgerCoordination.ReadLocalNoChargeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeReceipt`, `LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt`, `DomainInbox.Deliver`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder
@@ -662,7 +662,7 @@
 
 **主实现表（字段唯一来源02，不在此复制字段定义）**：`workspace.workspaces`, `workspace.saga_steps`, `resource_catalog.quotes`, `resource_catalog.quote_items`, `workspace.supplemental_charges`
 
-**内部协议实现/协作端口**：`ResourceCatalogProductService.CreateQuote`, `ResourceCatalogProductService.GetQuote`, `WorkspaceProductService.CreateWorkspace`, `WorkspaceProductService.ListWorkspaces`, `WorkspaceProductService.GetWorkspace`, `ClaimUsageReadback.ReadClaimUsage`, `CatalogCoordination.AcceptQuote`, `WorkspaceAdmission.CheckAdmission`, `DomainInbox.Deliver`
+**内部协议实现/协作端口**：`ResourceCatalogProductService.CreateQuote`, `ResourceCatalogProductService.GetQuote`, `WorkspaceProductService.CreateWorkspace`, `WorkspaceProductService.ListWorkspaces`, `WorkspaceProductService.GetWorkspace`, `ClaimUsageReadback.ReadClaimUsage`, `CatalogCoordination.AcceptQuote`, `CatalogCoordination.ReadQuoteResourcePlan`, `WorkspaceAdmission.CheckAdmission`, `DomainInbox.Deliver`
 
 **验证**：
 - 在拥有方Go module执行go test ./...；使用实际typed DTO与decoder

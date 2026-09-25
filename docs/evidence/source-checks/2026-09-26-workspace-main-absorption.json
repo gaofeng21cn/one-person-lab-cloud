@@ -1,0 +1,50 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T21:16:13.750717+00:00",
+  "scope": "Post-main absorption verification for Workspace original-order delivery",
+  "source_sha": "f9122bdf1f7c0f6a602310cd90bf1a6ec0a7bc22",
+  "source_tree": "769c74a4241f3616318e6ef3a0441a797c113313",
+  "absorbed_canonical_sha": "2bed3bad543c3b0f181b4155fa12fa249942710f",
+  "results": {
+    "semantic_merge": "passed: no conflicts; all three legacy Fabric implementation files exactly match canonical main; Workspace and Local coordination source unchanged",
+    "fabric_recovery": "passed with race detector and actual PostgreSQL store reopen, retained compute identity and deletion readback negative boundaries",
+    "fabric_owner_entry": "passed: coordination, owner migration, process entry and HTTP boundary packages with real owner PostgreSQL and zero skips",
+    "accepted_order_live": "passed: production Identity/Catalog/Workspace/Fabric/Ledger implementations and BFF HTTP, stable original order/resource/receipt replay and revoked closeout"
+  },
+  "counts": {
+    "fabric_recovery": {
+      "top_level_pass": 10,
+      "subcases_pass": 29,
+      "skips": 0
+    },
+    "fabric_owner_entry": {
+      "top_level_pass": 72,
+      "subcases_pass": 105,
+      "skips": 0
+    },
+    "accepted_order_live": {
+      "top_level_pass": 1,
+      "subcases_pass": 0,
+      "skips": 0
+    }
+  },
+  "prior_aggregate_evidence": "2026-09-26-workspace-final-local.json",
+  "limits": [
+    "Only existing isolated local checks ran. No provider procurement, real funds, production access, publication or deployment.",
+    "Qualified Local host/application acceptance remains with the separate qualification lane."
+  ],
+  "logs": {
+    "fabric_recovery": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-after-643-fabric.log",
+      "sha256": "6a4a7bd48bf0fc2e409cb13f569ae264ba8173ad97b191670bfc6e19baf74857"
+    },
+    "fabric_owner_entry": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-after-643-owners.log",
+      "sha256": "33eaabecd85d71c544f84bb4138c14ab52ae5304a48d8fddc30f3ed195bc34f5"
+    },
+    "accepted_order_live": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-after-643-live.log",
+      "sha256": "1b1b48c8e1fcee81f8ee45d8123545b2c3b3e3ee3d89684d93bfa0c6b3f06777"
+    }
+  }
+}

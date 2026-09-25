@@ -56,8 +56,17 @@ type LocalDockerProviderConfig struct {
 }
 
 type localDockerProviderProfile struct {
-	SchemaVersion int                         `json:"schemaVersion"`
-	Packages      []localDockerPackageProfile `json:"packages"`
+	SchemaVersion     int                         `json:"schemaVersion"`
+	Packages          []localDockerPackageProfile `json:"packages"`
+	ProfileID         string                      `json:"profileId,omitempty"`
+	CapabilityVersion string                      `json:"capabilityVersion,omitempty"`
+	Region            string                      `json:"region,omitempty"`
+	AccountBindings   []localDockerAccountBinding `json:"accountBindings,omitempty"`
+}
+
+type localDockerAccountBinding struct {
+	TenantID  string `json:"tenantId"`
+	AccountID string `json:"accountId"`
 }
 
 type localDockerPackageProfile struct {
@@ -69,6 +78,7 @@ type localDockerPackageProfile struct {
 }
 
 type localDockerStoragePlan struct {
+	ID          string `json:"id,omitempty"`
 	SizeGB      int    `json:"sizeGb"`
 	QuotaPolicy string `json:"quotaPolicy"`
 }

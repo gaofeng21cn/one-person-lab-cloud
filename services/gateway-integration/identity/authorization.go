@@ -219,34 +219,71 @@ func (s *Service) GetAuthorizationContext(ctx context.Context, r *api.GetAuthori
 }
 
 var buildActions = []api.AuthorizationActionEnum{api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION}
+var workspaceActions = []api.AuthorizationActionEnum{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT,
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT,
+}
+
+func (s *Service) grantOwner(owner api.OwnerEnum) (api.OwnerCommitReadbackClient, api.AuthorizationActionEnum, []api.AuthorizationActionEnum) {
+	switch owner {
+	case api.OwnerEnum_OWNER_ENUM_BUILD:
+		return s.BuildCommit, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, buildActions
+	case api.OwnerEnum_OWNER_ENUM_WORKSPACE:
+		return s.WorkspaceCommit, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE, workspaceActions
+	default:
+		return nil, 0, nil
+	}
+}
+
+// The accepting owner keeps the immutable input and original authorization
+// evidence. A later readback must still identify the same accepted operation,
+// including when the short-lived interactive decision has since expired.
+func validOwnerCommit(actual *api.OwnerCommitEvidence, d *api.AuthorizationDecision, owner api.OwnerEnum, action api.AuthorizationActionEnum) bool {
+	return actual != nil && actual.Owner == owner && actual.OperationId != "" && actual.ResourceId != "" &&
+		actual.AuthorizationContextId == d.GetAuthorizationContextId() && d.Action == action && d.AudienceOwner == owner &&
+		d.ActorId == actual.ActorId && proto.Equal(d.Scope, actual.Scope) && proto.Equal(d.Resource, actual.AuthorizationResource) &&
+		actual.AcceptedAction == action && actual.AcceptedAt.IsValid() && !actual.AcceptedAt.AsTime().Before(d.IssuedAt.AsTime()) &&
+		!actual.AcceptedAt.AsTime().After(d.ExpiresAt.AsTime()) && actual.AcceptedInputDigest != "" && actual.CommittedVersion >= 1 &&
+		(owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || (d.Resource.GetKind() == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && (d.Resource.GetId() == "" || d.Resource.GetId() == actual.ResourceId)))
+}
 
 func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.AcceptedOperationGrantRequest) (*api.AcceptedOperationGrant, error) {
-	if e := peer(ctx, owneridentity.Build.Service()); e != nil {
+	claimed := r.GetOwnerCommitEvidence()
+	client, action, actions := s.grantOwner(claimed.GetOwner())
+	if e := peer(ctx, owneridentity.Service(ownerName(claimed.GetOwner()))); e != nil {
 		return nil, e
 	}
-	if s.BuildCommit == nil || r.GetOwnerCommitEvidence() == nil || r.GetRenewalConsentId() != "" || r.GetSubscriptionPeriodId() != "" {
+	if client == nil || claimed == nil || r.GetRenewalConsentId() != "" || r.GetSubscriptionPeriodId() != "" {
 		return nil, denied()
 	}
-	claimed := r.OwnerCommitEvidence
-	actual, e := s.BuildCommit.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: claimed.Owner, OperationId: claimed.OperationId, ResourceId: claimed.ResourceId})
+	actual, e := client.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: claimed.Owner, OperationId: claimed.OperationId, ResourceId: claimed.ResourceId})
 	if e != nil {
 		return nil, e
 	}
-	if !proto.Equal(actual, claimed) || actual.Owner != api.OwnerEnum_OWNER_ENUM_BUILD || actual.GetAuthorizationContextId() != r.AuthorizationContextId {
+	if actual == nil || !proto.Equal(actual, claimed) || actual.GetAuthorizationContextId() != r.AuthorizationContextId {
 		return nil, denied()
 	}
 	d, e := s.context(ctx, r.AuthorizationContextId)
 	if e != nil {
 		return nil, e
 	}
-	if d.Action != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD || d.AudienceOwner != api.OwnerEnum_OWNER_ENUM_BUILD || d.ActorId != actual.ActorId || !proto.Equal(d.Scope, actual.Scope) || !proto.Equal(d.Resource, actual.AuthorizationResource) || actual.AcceptedAction != d.Action || actual.AcceptedAt == nil || actual.AcceptedAt.AsTime().Before(d.IssuedAt.AsTime()) || actual.AcceptedAt.AsTime().After(d.ExpiresAt.AsTime()) || actual.AcceptedInputDigest == "" || actual.CommittedVersion < 1 {
+	if !validOwnerCommit(actual, d, claimed.Owner, action) {
 		return nil, denied()
 	}
 	names := []string{}
 	seen := map[api.AuthorizationActionEnum]bool{}
 	for _, a := range r.AllowedActions {
 		allowed := false
-		for _, v := range buildActions {
+		for _, v := range actions {
 			if a == v {
 				allowed = true
 			}
@@ -267,7 +304,7 @@ func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.Accept
 		return nil, persistence(e)
 	}
 	defer tx.Rollback()
-	_, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "grant:"+actual.OperationId)
+	_, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "grant:"+ownerName(actual.Owner)+":"+actual.OperationId)
 	if e != nil {
 		return nil, persistence(e)
 	}
@@ -276,15 +313,15 @@ func (s *Service) IssueAcceptedOperationGrant(ctx context.Context, r *api.Accept
 	if tid != "" {
 		scope = "tenant"
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO tenant.accepted_operation_grants(id,scope_type,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,issued_at,mode) VALUES($1,$2,$3,$4,'build',$5,$6,$7,$8,$9,now(),'continue_original') ON CONFLICT(accepted_operation_owner,accepted_operation_id) DO NOTHING`, "grant_"+randomID(), scope, null(tid), d.ActorId, actual.OperationId, actionName(d.Action), actual.ResourceId, d.PermissionVersion, pq.Array(names))
+	_, e = tx.ExecContext(ctx, `INSERT INTO tenant.accepted_operation_grants(id,scope_type,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,issued_at,mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),'continue_original') ON CONFLICT(accepted_operation_owner,accepted_operation_id) DO NOTHING`, "grant_"+randomID(), scope, null(tid), d.ActorId, ownerName(actual.Owner), actual.OperationId, actionName(d.Action), actual.ResourceId, d.PermissionVersion, pq.Array(names))
 	if e != nil {
 		return nil, persistence(e)
 	}
-	g, e := readGrant(ctx, tx, actual.OperationId, true)
+	g, e := readGrant(ctx, tx, actual.OperationId, actual.Owner)
 	if e != nil {
 		return nil, e
 	}
-	if g.ActorId != d.ActorId || g.ResourceId != actual.ResourceId || !proto.Equal(g.Scope, d.Scope) || len(g.AllowedActions) != len(r.AllowedActions) {
+	if g.ActorId != d.ActorId || g.AcceptedOperationOwner != actual.Owner || g.AcceptedAction != action || g.AcceptedPermissionVersion != d.PermissionVersion || g.ResourceId != actual.ResourceId || !proto.Equal(g.Scope, d.Scope) || len(g.AllowedActions) != len(r.AllowedActions) {
 		return nil, denied()
 	}
 	for _, a := range g.AllowedActions {
@@ -302,17 +339,19 @@ type queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func readGrant(ctx context.Context, db queryer, key string, operation bool) (*api.AcceptedOperationGrant, error) {
-	column := "id"
-	if operation {
-		column = "accepted_operation_id"
+func readGrant(ctx context.Context, db queryer, key string, owner api.OwnerEnum) (*api.AcceptedOperationGrant, error) {
+	where := "id=$1"
+	args := []any{key}
+	if owner != 0 {
+		where = "accepted_operation_id=$1 AND accepted_operation_owner=$2"
+		args = append(args, ownerName(owner))
 	}
 	g := &api.AcceptedOperationGrant{}
 	var tid sql.NullString
 	var actions []string
-	var mode string
+	var mode, acceptedOwner, acceptedAction string
 	var issued time.Time
-	e := db.QueryRowContext(ctx, `SELECT id,tenant_id,actor_id,accepted_operation_id,resource_id,accepted_permission_version,allowed_actions,mode,issued_at FROM tenant.accepted_operation_grants WHERE `+column+`=$1 AND accepted_operation_owner='build' AND revoked_at IS NULL AND obligation_completed_at IS NULL AND (expires_at IS NULL OR expires_at>now())`, key).Scan(&g.Id, &tid, &g.ActorId, &g.AcceptedOperationId, &g.ResourceId, &g.AcceptedPermissionVersion, pq.Array(&actions), &mode, &issued)
+	e := db.QueryRowContext(ctx, `SELECT id,tenant_id,actor_id,accepted_operation_owner,accepted_operation_id,accepted_action,resource_id,accepted_permission_version,allowed_actions,mode,issued_at FROM tenant.accepted_operation_grants WHERE `+where+` AND revoked_at IS NULL AND obligation_completed_at IS NULL AND (expires_at IS NULL OR expires_at>now())`, args...).Scan(&g.Id, &tid, &g.ActorId, &acceptedOwner, &g.AcceptedOperationId, &acceptedAction, &g.ResourceId, &g.AcceptedPermissionVersion, pq.Array(&actions), &mode, &issued)
 	if e != nil {
 		return nil, persistence(e)
 	}
@@ -325,22 +364,25 @@ func readGrant(ctx context.Context, db queryer, key string, operation bool) (*ap
 	}
 	g.Mode = api.AcceptedGrantMode(api.AcceptedGrantMode_value["ACCEPTED_GRANT_MODE_"+strings.ToUpper(mode)])
 	g.IssuedAt = timestamppb.New(issued)
-	g.AcceptedOperationOwner = api.OwnerEnum_OWNER_ENUM_BUILD
-	g.AcceptedAction = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD
+	g.AcceptedOperationOwner = api.OwnerEnum(api.OwnerEnum_value["OWNER_ENUM_"+strings.ToUpper(acceptedOwner)])
+	g.AcceptedAction = api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_"+acceptedAction])
 	return g, nil
 }
 func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
-	g, e := readGrant(ctx, s.DB, r.GetAcceptedOperationGrantId(), false)
+	g, e := readGrant(ctx, s.DB, r.GetAcceptedOperationGrantId(), 0)
 	if e != nil {
 		return nil, e
 	}
-	if g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_REVOKED || g.ActorId != r.ActorId || !proto.Equal(g.Scope, r.Scope) || s.BuildCommit == nil {
+	client, action, actions := s.grantOwner(g.AcceptedOperationOwner)
+	if g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_REVOKED || g.ActorId != r.ActorId || !proto.Equal(g.Scope, r.Scope) || client == nil || g.AcceptedAction != action {
 		return nil, denied()
 	}
 	allowed := false
 	for _, a := range g.AllowedActions {
 		if a == r.Action {
-			allowed = true
+			for _, permitted := range actions {
+				allowed = allowed || a == permitted
+			}
 		}
 	}
 	if !allowed {
@@ -358,16 +400,39 @@ func (s *Service) authorizeGrant(ctx context.Context, r *api.AuthorizationReques
 		g.Mode = api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY
 	}
 	if !active || g.Mode == api.AcceptedGrantMode_ACCEPTED_GRANT_MODE_CLOSEOUT_ONLY {
-		if r.Action != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE && r.Action != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS && r.Action != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION {
+		closeout := r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION
+		if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
+			closeout = r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT
+		}
+		if !closeout {
 			return nil, denied()
 		}
 	}
-	evidence, e := s.BuildCommit.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: g.AcceptedOperationOwner, OperationId: g.AcceptedOperationId, ResourceId: g.ResourceId})
+	evidence, e := client.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: g.AcceptedOperationOwner, OperationId: g.AcceptedOperationId, ResourceId: g.ResourceId})
 	if e != nil {
 		return nil, e
 	}
+	d, e := s.context(ctx, evidence.GetAuthorizationContextId())
+	if e != nil {
+		return nil, e
+	}
+	if !validOwnerCommit(evidence, d, g.AcceptedOperationOwner, action) || evidence.OperationId != g.AcceptedOperationId || evidence.ResourceId != g.ResourceId || evidence.ActorId != g.ActorId || !proto.Equal(evidence.Scope, g.Scope) || d.PermissionVersion != g.AcceptedPermissionVersion {
+		return nil, denied()
+	}
 	matched := false
-	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS {
+	if g.AcceptedOperationOwner == api.OwnerEnum_OWNER_ENUM_WORKSPACE {
+		matched = r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE && r.Resource.GetId() == g.ResourceId &&
+			((r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_FABRIC && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PROVISIONACCEPTEDRESOURCES || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_OBSERVERESOURCES)) ||
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEACCEPTEDOBLIGATION)) ||
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_LEDGER && (r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT)) ||
+				(r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_SERVE && r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME))
+		if r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_CAPABILITY && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION &&
+			(r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACQUIREREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_BINDREFERENCE || r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RELEASEREFERENCE) {
+			for _, v := range evidence.ContinuationResources {
+				matched = matched || proto.Equal(v, r.Resource)
+			}
+		}
+	} else if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS {
 		matched = r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG && r.Resource.GetId() == ""
 	} else if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION {
 		matched = r.AudienceOwner == api.OwnerEnum_OWNER_ENUM_CAPABILITY && r.Resource.Kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD && r.Resource.GetId() == g.ResourceId

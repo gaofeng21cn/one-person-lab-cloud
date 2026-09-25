@@ -1,0 +1,39 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T20:52:02.672753+00:00",
+  "scope": "Workspace source after absorbing canonical main and exact owner executable packaging",
+  "source_checkpoint": "478c6b5fd3b3de1ef6c22dd5bd7ddbf121ab93c2",
+  "canonical_base": "1758e8fa692cd96055265111a6cfab428d580731",
+  "source_files_sha256": {
+    "Dockerfile": "5428c0c15ea9fb8959165dc6a04cf6eadab5d4fc66674bd3c2726559605c5f0e"
+  },
+  "results": {
+    "publisher_build": "passed: actual linux/arm64 Docker publisher-build compiles Capability, Build, Runtime Control, Workspace, Resource Catalog, Serve, Gateway Integration and Console BFF; image sha256:15117d850052176611b9909dc6c8935e73bd1d038a2139bfa64e6766f476190e",
+    "toolchain_repair": "Observed official Go1.25 image GOTOOLCHAIN=local rejecting Workspace Go1.26 requirement; publisher stage now uses the same already-pinned official Go1.26 image as Fabric.",
+    "post_main_bff": "passed: complete Console BFF module tests",
+    "post_main_browser": "passed: 15 affected Workspace journey and Cloud/legacy route-gate browser tests, zero skips",
+    "workspace_recovery": "passed: full launch and server focused tests on isolated PostgreSQL after closeout repair, zero skips"
+  },
+  "limits": [
+    "Build is local executable packaging only; no image publication, Instance deployment or production access.",
+    "Prior full local verification remains historical evidence for unchanged checks; these are the affected checks after main absorption and final Workspace repair."
+  ],
+  "logs": {
+    "github-ci-workspace-owner-images.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-owner-images.log",
+      "sha256": "2654634da32aea298d309931efabee6d288b15f5e1c67e48f416679d08b88644"
+    },
+    "github-ci-workspace-bff-after-main.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-bff-after-main.log",
+      "sha256": "202890365bf86eec4544b0311741f3e68eef8cf935ad0807fbca6e7619124c5d"
+    },
+    "github-ci-workspace-ui-after-main.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-ui-after-main.log",
+      "sha256": "dc5e39522d360fb81be9783253e54978bfb1f219dce59850d06a6218063a524e"
+    },
+    "github-ci-workspace-owner-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-owner-final.log",
+      "sha256": "54faebd1a10c8b8970bb9755daee89c9eaf949b1294214e2e9df1ae8a6b8b0cc"
+    }
+  }
+}

@@ -209,7 +209,7 @@ func evidenceID(prefix, idempotencyKey string) string {
 }
 
 func validateReceiptInput(input ReceiptInput) error {
-	if input.Type == "package.uploaded.v1" || input.Type == "build.artifact_confirmed.v1" || input.Type == "build.failed.v1" || input.Type == "capability.version_registered.v1" {
+	if input.Type == LocalNoChargeReceiptType || input.Type == "package.uploaded.v1" || input.Type == "build.artifact_confirmed.v1" || input.Type == "build.failed.v1" || input.Type == "capability.version_registered.v1" {
 		return ErrInvalidReceiptInput
 	}
 	if input.Type == "" || input.Status == "" || input.Surface == "" || input.IdempotencyKey == "" || input.WorkspaceID == "" && input.Type != "gateway.wallet_adjustment.v1" {

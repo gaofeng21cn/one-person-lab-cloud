@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
 )
@@ -38,6 +39,8 @@ type Service struct {
 	Build           api.BuildCoordinationClient
 	Usage           api.ClaimUsageReadbackClient
 	Commit          api.OwnerCommitReadbackClient
+	ServeCommit     api.OwnerCommitReadbackClient
+	ServeUsage      api.ClaimUsageReadbackClient
 	BuildInbox      api.DomainInboxClient
 	LedgerInbox     api.DomainInboxClient
 	PublisherSchema *jsonschema.Schema
@@ -91,7 +94,8 @@ func (s *Service) auth(ctx context.Context, c *api.CallContext, action string, k
 	if id != "" {
 		r.Id = &id
 	}
-	if action == "GetCapabilityVersion" && c.GetAcceptedOperationGrantId() != "" {
+	peer, _ := ownerservice.PeerOwner(ctx)
+	if action == "GetCapabilityVersion" && c.GetAcceptedOperationGrantId() != "" && peer == owneridentity.Build.Service() {
 		var buildID string
 		if e := s.DB.QueryRowContext(ctx, `SELECT build_job_id FROM capability.capability_versions WHERE id=$1`, id).Scan(&buildID); e != nil {
 			return dbError(e)

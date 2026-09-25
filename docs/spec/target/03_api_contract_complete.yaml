@@ -9201,6 +9201,7 @@ components:
           - plan_change_failure_compensation
           - supplemental_deletion_refund
           - next_period_plan_settlement
+          - local_no_charge
         owner:
           $ref: '#/components/schemas/Owner'
         sourceSha:

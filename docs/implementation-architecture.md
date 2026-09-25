@@ -18,10 +18,12 @@ owns approved compute/storage plans, versioned price/refund/retention policies
 and the frozen D17 arithmetic in `services/resource-catalog`, reached through the
 Console BFF's authenticated catalog surface
 (`apps/console-bff/internal/httpapi/catalog.go`) under the generated CloudIdentity
-policy and the contract-compiled response status. Its route registration exists
-but the BFF process's shared `Handler` does not yet call it, so a deployed process
-does not serve these paths; its quotes, the Ledger consumer of its policy event,
-and the Workspace/Fabric resource-reference chain are still open. Gateway Integration now implements
+policy and the contract-compiled response status. The BFF process registers the
+Catalog and Workspace routes behind CloudIdentity. A deploy quote freezes its
+approved provider plan; Workspace commits the original accepted order and Fabric
+persists its resource-set, resource and operation references. Resource acceptance
+does not establish provider allocation or a paid subscription. The Ledger
+consumer of the platform-scoped catalog policy event remains open. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
 `services/gateway-integration`, using only the Tenant database. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical
@@ -37,22 +39,42 @@ and the Console BFF's HTTP success status per routed action is compiled from the
 same contract rather than hand-listed. `getWorkspaceAccess` is a Serve-audience
 read because Serve owns the access fact, and each owner fact in a composed BFF
 view is authorized against the owner that reports it. This is not
-completion of all W03 work: `Member.displayName` still needs the authorised
-Gateway identity-directory read (no identity readback RPC or
-`gateway.identity_mappings` migration exists yet), and Tenant
-onboarding/suspend/reenable/delete/restore remain with W21.
+completion of all W03 work: `Member.displayName` uses the authorized Gateway
+identity-directory read, while Tenant onboarding/suspend/reenable/delete/restore
+and retained identity-data migration remain with W21.
 
 Serve implements its read surface in `services/serve/internal/delivery`: the
 owner-local current Deployment, the delivery history and the current Agent's
 access facts are read from `opl_serve`, and Serve refuses to compose another
-owner's fact into its delivery truth. Two of the three reads
-(`ListDeployments`, `GetDeployment`) are admitted by the shared policy table for
-the serve audience; `GetWorkspaceAccess` has no policy row because the canonical
-contract assigns it to the workspace owner while the proto declares it on
-`ServeProductService`, so it fails closed and is unimplemented pending that
-canonical decision. Serve's delivery write path (Reserve/Deploy and access
-switching) is not implemented; the blockers are recorded in
-[status](status.md).
+owner's fact into its delivery truth. All three reads (`ListDeployments`,
+`GetDeployment`, `GetWorkspaceAccess`) use the Serve audience in the shared policy
+table. `Reserve` allocates the deployment, runtime instance and epoch, verifies
+the exact Capability descriptor and binds a Serve-owned reference claim.
+`Deploy` requires Fabric's confirmed execution binding and uses the existing
+Fabric application adapter through a dedicated Serve identity. `ReadRuntime`
+observes the original persisted command; a Workspace-scoped database lock fences
+the observation and active-selection transaction. Access requires the resulting
+ready deployment and a confirmed entry, never a seeded resource reference.
+
+Workspace's `internal/launch` worker resumes the original committed operation
+with stable owner command keys and a bounded CloudIdentity grant. Session expiry
+does not discard that obligation; current membership revocation permits closeout
+reads but refuses new resource or receipt writes. Only an exact
+`local-docker`/`LOCAL_NO_CHARGE` quote with zero-valued lines may receive Ledger's
+typed Local no-charge receipt. Ledger reads the original Catalog acceptance and
+Workspace commit, stores evidence in its existing append-only receipt store and
+exposes the nested evidence only on the authenticated typed coordination path.
+Fabric verifies that evidence before its existing Local adapter dispatches.
+
+On confirmed Local resources, Workspace freezes the Capability descriptor and
+calls Serve Reserve, Deploy and ReadRuntime with the same original operation.
+Provider readiness and Serve readiness remain independent facts; this slice
+does not create paid periods, fabricate subscriptions or activate Workspace
+entitlement. Local dispatch requires a Linux host with the existing project-quota
+preflight; Docker Desktop on a macOS Fabric host does not meet that prerequisite.
+Version replacement, route switching and unresolved required secret/model/config
+injection remain outside this first-delivery slice. Current verification and
+remaining qualification limits are recorded in [status](status.md).
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
