@@ -71,18 +71,23 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   assert.equal(job.environment, undefined);
   assert.deepEqual(workflow.permissions, { contents: "read" });
   const step = (name: string) => job.steps.find((item) => item.name === name);
+  const initialize = step("Initialize Local qualification directory");
   const prepare = step("Prepare project quota filesystem");
   const compile = step("Compile Local qualification executables without privilege");
   const quota = step("Test Linux project quota as privileged capability");
   const deploy = step("Test first Local application deployment with real owners");
   const cleanup = step("Remove project quota filesystem");
   assert.equal(cleanup.if, "${{ always() }}");
+  // Runner paths are unavailable in job-level env expressions. Execute their
+  // initialization on the runner and persist them for later steps instead.
+  assert.equal(job.env.OPL_QUALIFICATION_ROOT, undefined);
+  assert.ok(job.steps.indexOf(initialize) < job.steps.indexOf(prepare));
   assert.ok(job.steps.indexOf(compile) < job.steps.indexOf(quota));
   assert.ok(job.steps.indexOf(quota) < job.steps.indexOf(deploy));
   assert.ok(job.steps.indexOf(deploy) < job.steps.indexOf(cleanup));
   assert.doesNotMatch(compile.run, /\bsudo\b/);
   const run = promisify(execFileCallback);
-  for (const item of [prepare, compile, quota, deploy, cleanup]) await run("bash", ["-n", "-c", item.run]);
+  for (const item of [initialize, prepare, compile, quota, deploy, cleanup]) await run("bash", ["-n", "-c", item.run]);
 
   const temporary = await mkdtemp(join(tmpdir(), "opl-qualification-shell-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
@@ -104,6 +109,11 @@ if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMO
   const root = join(temporary, "opl-local-first-deploy-test-1");
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
     GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1" };
+  const githubEnv = join(temporary, "github-env");
+  const initialEnv = { ...env, GITHUB_ENV: githubEnv };
+  delete initialEnv.OPL_QUALIFICATION_ROOT;
+  await run("bash", ["-c", initialize.run], { env: initialEnv });
+  assert.equal(await readFile(githubEnv, "utf8"), `OPL_QUALIFICATION_ROOT=${root}\n`);
   const commands = async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
   await run("bash", ["-c", prepare.run], { env });
   let calls = await commands();

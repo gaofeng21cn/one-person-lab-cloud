@@ -194,8 +194,13 @@ jobs:
       PGSSLMODE: disable
       OPL_POSTGRES_TESTS: "1"
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
-      OPL_QUALIFICATION_ROOT: ${{ runner.temp }}/opl-local-first-deploy-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Initialize Local qualification directory
+        run: |
+          set -euo pipefail
+          qualification_root="$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'OPL_QUALIFICATION_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
+
       - *checkout
 
       - *setup_node
