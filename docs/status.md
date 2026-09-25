@@ -178,10 +178,17 @@ remains historical evidence for its own source.
 The latest [publisher/Ledger/process-interruption receipt](./evidence/source-checks/2026-09-25-publisher-ledger-worker-local.json)
 adds the actual Console publishing journey through authenticated BFF handlers,
 Capability upload, Build admission and real BuildKit/Registry execution. The
-Workspace page exposes the publisher entry without changing the four primary
-customer navigation tasks. The browser verifies the same ready version after
+CloudIdentity Console build exposes the publisher entry without changing the four
+primary customer navigation tasks. The browser verifies the same ready version after
 reload; CSRF, forged identity and cross-tenant rejection are covered. Public
 HTTP DTOs use the shared canonical API/publisher JSON codec.
+
+The default legacy Console now keeps the Publisher route, Workspace-list entry,
+and Agent delivery panel disabled through the same `VITE_CONSOLE_IDENTITY`
+selection as authentication. The [dual-mode browser evidence](./evidence/source-checks/2026-09-26-legacy-console-gate.json)
+checks rendered navigation, direct URLs and requests: legacy makes no `/api/v2`
+calls, while explicit `cloud` builds retain publisher catalog and delivery reads.
+This is source validation; it does not establish a deployed Instance change.
 
 Ledger now consumes upload, Build confirmation/failure and version-registration
 events through its authenticated gRPC Inbox and existing receipt store. Each
