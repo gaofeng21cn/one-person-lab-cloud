@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "action": "Replace publisher identity and catalog fixtures with CloudIdentity and Capability owner implementations",
+  "recordedAt": "2026-09-25T00:01:19.135351+00:00",
+  "sourceSha": "f2b35ecf34a2969faf22cd3480b44eb277299917",
+  "sourceFilesSha256": {
+    "Dockerfile": "76dec5f73ebf0ab5aef2e06b4bd7567487ae7dec7bb9a98e53e7cb7d07c7343b",
+    "apps/console-bff/bff.go": "57905ad19dd589fbac777a55ab2c6ec8cd6205ee0c742f9f935c1a2a3e56cf0c",
+    "apps/console-bff/internal/clients/auth.go": "1a860c8793bd08d72e1c57134ad74f9c076106f4bcd54ebc728f84463f34cab9",
+    "apps/console-bff/internal/httpapi/auth.go": "cf5dad86cf4995e40563234ef69f325aeed3715c6dfd4b4ccd6f1160e9ce8325",
+    "apps/console-bff/internal/httpapi/publisher.go": "d439a31475f3050606d08e3778c4f3ba154b81148bc6937a9370ed4ff12a55d8",
+    "apps/console-bff/internal/httpapi/publisher_test.go": "e2d24f9749ed6a3bd033c058b96b658808b14d7c1957a97b63c963f2857aec09",
+    "apps/console-bff/internal/httpapi/server.go": "c3e019d255cf8f70de38aaa940706517d8826761d44a89fee3507c05d49f7e51",
+    "apps/console-bff/internal/httpapi/server_test.go": "a56bc0d94005dc2a7647f51a9cc80c4a035b8876cf30de69d178eeb706de95db",
+    "apps/console-bff/internal/httpapi/session.go": "7a2505dec3b688c72f5ac53aa51dc9934836c22cb0417ba1844e2c730d2fda41",
+    "apps/console-ui/src/api/auth-api.ts": "66ea772e143a49a9a6e9e37734c0338fa7e46b995f88aeeca02f6a1c85559596",
+    "packages/contracts/go/api/internal.pb.go": "e3a91d875d5702285b05b19e66b2276fcd0f90c09b4792e7a2ab479763fae2db",
+    "packages/contracts/go/owneridentity/session.go": "7882d16a4904a60813db38cf8df36ad7f602ac1790c9170ff8b173489ac4cf60",
+    "packages/contracts/proto/internal.proto": "31a9067d57c8cf59a0afca95cfa4a2ab9b84f4e6d66b968c680c61c4a88fc3bd",
+    "services/build/go.mod": "0a18aa5fb9a4c480344a1ce0817a2a5391a07568887d27b36f129e7b1b73385b",
+    "services/build/internal/build/browser_live_test.go": "a7a27c4e52fa38994aa2c610ab42fc38aafa0ef8750d1c00b93d1f80704093cf",
+    "services/build/internal/build/identity_live_test.go": "c42915723e06d71abbff35c7cddc2726b3a3ec0f73c4e689a5526997f3a1f70d",
+    "services/build/internal/build/owner_chain_live_test.go": "6a47f9b4a596eeb0bce5a719d51ecb3af5284e20d4d64b6ff94537d293e02558",
+    "services/build/internal/build/publisher_http_live_test.go": "d01ada60475abda1701ca225159b7711fa95f3808c80c2f0e17f522fc206ff46",
+    "services/build/internal/build/runner_live_test.go": "cd716c7e7cb9588b6a0947090c83d8698d6a6a786a5ccebd6e2b12527b346f29",
+    "services/build/internal/build/service.go": "a0507b4133d4aaff9f18391f185496a033d2469775671b3be24ebe4056f44ceb",
+    "services/build/internal/build/upload_live_test.go": "b862e6b4ae24204c3232cda03cef334dbf330d65b2b2f7146bdd9409e5d6d609",
+    "services/build/internal/build/worker_process_live_test.go": "8b5af34dcaba3750a4eacd334366efd5aeb8e71afaffc2170aa0a2b659c54eca",
+    "services/capability/catalog/admission.go": "b8a099cb89de3eb59979154c0fdc07cb822204f1dc11339a988fd8f4f4265e2e",
+    "services/capability/catalog/coordination.go": "bd3ecb12ff8fed44e6868bb2623200d7cf1f70acb185efc7ef3ef5bd9817989e",
+    "services/capability/catalog/service.go": "eaea3cedc922842f5f9720902e49e24b41e5fbfc7a3fe9a43ed4089cfa398025",
+    "services/capability/cmd/server/main.go": "ce064773eea670941f81addbce4e20baaae2bb9ecbdb4588c5066d498f87be7a",
+    "services/gateway-integration/cmd/server/main.go": "0b74779600b8224647741fe3a31af077d4f48988af1c01f02341fe040b1642ee",
+    "services/gateway-integration/go.mod": "7544c9f3744ba1ca37bb5248e3ad6e40e56bdea16894d0bb8cb40e52262df999",
+    "services/gateway-integration/go.sum": "a32def685a42db5471bea45d4fa1f920c057597996c5e9df3007c3b6113e30f3",
+    "services/gateway-integration/identity/authorization.go": "6d63e28c9beb3ee22b12105a25eb37fd0d5b156233d10563664e6f8f0c031b14",
+    "services/gateway-integration/identity/gateway.go": "a98b90462749d66c25271345751dd43a32566963a205c8b2700b1b3e09b9613d",
+    "services/gateway-integration/identity/generate_policy.py": "ceeb78b9b26b33d49ec2e5909108c81bf2c1eee9ac20ab82e80794772a611663",
+    "services/gateway-integration/identity/policy_generated.go": "3933c490160fcc7e7bf9f92c0090727669466761adbed55d18db567c37696a6e",
+    "services/gateway-integration/identity/service.go": "0aa073d415b30b436b41d6810afeed7db0299f10700665bab65fdfbbd8c30098",
+    "services/gateway-integration/identity/service_postgres_test.go": "d0c40392bba82c26a94fd874758c02b8a01abc6c43066b94d5319784b5a7fb04",
+    "services/gateway-integration/migrations/0001_opl_tenant.sql": "69151462c6b789a4abe2a78d30dc50fe30fdae5a2f57c9853baeec3a0e325489",
+    "services/gateway-integration/migrations/embed.go": "6681f9ce33c8d6ef31420b7634bb4e75e469e73b2dbae437e913806670886ada",
+    "services/gateway-integration/migrations/isolation_test.go": "a6e542fb069e54da45b076a48af3fcee444b2f44291c115c3c2064dba7690f40",
+    "tests/live/publisher-browser.ts": "88c7e0943ab540f63e88e102f771f33369f9932bbbc8671663c7ca1deba9ff02",
+    "tests/tools/verify-local.test.ts": "027aa787b2637395cdf2c286c257d10c7e2a42524ce7793a9040fcaa46b4c684",
+    "tools/verify-local.ts": "a55ca6c087ab288c0a27ad90e6bb48cf43e598753035b5c2df633cc16c48232d"
+  },
+  "verification": {
+    "fullLocal": "passed: 228 source tests, 114 browser-suite tests, all required PostgreSQL modules including Gateway Integration with zero skips, and Docker integration",
+    "finalFocused": "After the full baseline, context-ID-preserving introspection, BFF grant denial, effective closeout mode and production server wiring passed the focused Gateway Integration PostgreSQL suite and the complete real publisher/BuildKit/Registry/Ledger/browser/process-interruption chain. Final source, TypeScript and affected Go vet checks passed.",
+    "artifactDigest": "sha256:ca0d864ab396e9f4d7ecf7b5864ca36bbb37273f19402f3c14172ec476d540a1",
+    "identityCases": [
+      "untrusted peer and hashed-session-reference-as-cookie rejected",
+      "cross-tenant, forged actor, wrong audience and platform escalation rejected",
+      "grant issuance reads actual owner commit; conflicting proof and action expansion rejected",
+      "logout preserves original obligation; unrelated resources and browser-originated grant use rejected",
+      "member revocation denies new references and persists closeout-only mode",
+      "identity restart preserves original cleanup grants; expired grant rejected",
+      "no raw browser cookie, password or Gateway token in the Tenant session row"
+    ],
+    "admissionCases": [
+      "real authenticated BFF publisher and WebUI registration",
+      "tenant administrator cannot admit a platform publisher",
+      "third-party namespace cannot overlap an official prefix",
+      "WebUI cannot reference a foreign image repository",
+      "revoked WebUI cannot enter a new Build"
+    ],
+    "localBinaryBuilds": {
+      "publisherBuildStage": "sha256:dc30827898b18c73b4e7ac50f922811298323bbd1bb994dfe33ed900b543150c",
+      "ledgerBuildStage": "sha256:36c25e8451ee34c462cf9ee958887c41560f310bda54358f2277bbf1b7ee8fc1",
+      "scope": "Local linux/arm64 build-stage images, not Candidates or Releases. Seven publisher owner/BFF executables verified present; the Gateway Integration executable correctly refuses missing authentication configuration with networking disabled."
+    },
+    "runnerRecoveryDescriptorDigest": "sha256:fb0c1acd2d847ed72c95e9505a7e6f71c37981f93c63fcd4a150313c69195716"
+  },
+  "logs": [
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-full-final.log",
+      "sha256": "14885f8cc5b41d400be96e44607c73964c0a3a3449499ae0d43c85ad7b7b9714"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-pg-final.log",
+      "sha256": "c636a871ee4bb230a0b916a75530fe770cb88407911c2e5aac711a97e66f7743"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-verified-live.log",
+      "sha256": "1d1efebe95214d1135f3795b41a7939f1e0681a8a356889df5232d70477a38fa"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-source-final.log",
+      "sha256": "bf9efcff55512d31782aaadffd49b148ebd254b45e660095bca9b69e6997a801"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-typecheck-final.log",
+      "sha256": "dcbe7b15b624ff8d63b9542061d9c2ff098e25cb0ddb013fcff28a4b8a93d596"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-vet-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-image-final.log",
+      "sha256": "10654695237b1d0657791489b28eb16a06c38756abb98e0243e4f2e030ce08d5"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-ledger-image.log",
+      "sha256": "2b1bdeb1bcf8ca189587fec244bba8538b0f1a83118e1cf83efe8bc0150e0d16"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-binary-smoke.log",
+      "sha256": "631628390756aa8e697662de7cf6d769c232339fa9767b4a97d62b8954d7e2e1"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-full.log",
+      "sha256": "60f78a2d0029b4da25728e80062b823da19db74677359be6f405f5dd76510245"
+    },
+    {
+      "path": "output/cloud625-identity-admission/cloud-identity-live.log",
+      "sha256": "50fff2dcbe1d5fc036fca2f1a04e0533af93ac7be0480f685122d054bdb4b27b"
+    },
+    {
+      "path": "output/cloud625-identity-admission/desktop.png",
+      "sha256": "9bc9edf0ec3b11d6d8f82840e07c7ba6648d36c79fcc0be3e87bc9890f45df96"
+    },
+    {
+      "path": "output/cloud625-identity-admission/mobile.png",
+      "sha256": "75aa95fdd85f7ff53e259e024fcdb87dcd9e31c26a1da63e524b8eb9c0dbdb44"
+    }
+  ],
+  "limitations": [
+    "External Sub2API login/me HTTP responses are controlled fixtures; known existing test Tenant/member records are seeded. No Cloud session/grant/publisher/WebUI decision is mocked or seeded.",
+    "The publisher browser uses real v2 authentication and commands; unrelated retained-shell read projections use demo data.",
+    "Delegated Gateway access credentials are volatile; identity-process restart requires browser reauthentication. Accepted grants are durable.",
+    "W03 invitation/Tenant lifecycle, retained-account migration and Gateway wallet migration are distinct work packages, not completed by this publisher slice.",
+    "No production deployment, Candidate/Release publication, real account/wallet mutation, provider procurement or Instance qualification.",
+    "Worker SIGKILL covers Registry commit before exporter acknowledgement, not a mid-layer network partition."
+  ]
+}
