@@ -434,6 +434,17 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 ## Workspace Deletion and Hourly Refund
 
+The 2026-09-26 [tag hydration source check](./evidence/source-checks/2026-09-26-compute-tag-hydration-identity.json)
+isolates why the deployed ownership-tag repair still left five retained computes
+without tags: the child create and successful Launch have different provider
+read request IDs. Instance observation `36193121456` confirms one original active
+ownership per allocation, matching stable identities, and only three additional
+Describe request ID differences. Empty-tag hydration now excludes those three
+read metadata keys from its local comparison copies. All other identity checks,
+the original deletion guard, current allocation facts and stored Launch records
+remain unchanged. Focused race/PostgreSQL checks and both Linux builds pass;
+the repaired source still requires Instance adoption and owner readback.
+
 The 2026-09-26 [focused source check](./evidence/source-checks/2026-09-26-compute-launch-ownership-tags.json)
 preserves the original active MachineOwnership tags in successful Tencent Launch
 compute records. Retained empty tag projections recover only from one exact
