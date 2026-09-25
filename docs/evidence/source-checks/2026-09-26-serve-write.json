@@ -1,0 +1,32 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T20:31:44.397794+00:00",
+  "scope": "Serve first-delivery source and owner-boundary implementation",
+  "base": "143d59901efaaadadd5536b9ccc940b5c4d1cc6c",
+  "source_checkpoint": "8d450a90",
+  "results": {
+    "serve_postgres": "passed; all module tests including real owner schema, reservation replay, exact epoch/runtime/descriptor fencing and readback-required activation",
+    "capability_postgres": "passed; Serve deploy-purpose claim replay, claimant peer match, separate Serve commit/usage and active claim release refusal",
+    "fabric_http": "passed; dedicated Serve transport/signature only allows application start/readback; resource procurement/deletion and credentials refused"
+  },
+  "limits": [
+    "Unit boundary authorizers and Capability/provider state fixtures do not prove full Workspace/Identity/Build deployment chain.",
+    "No production deployment, provider resource procurement or customer-money mutation was performed.",
+    "First delivery supports only descriptors with no unresolved required secret, model or configuration bindings; version replacement and route CAS remain unsupported.",
+    "Shared contract and accepted-operation authorization changes are owned by the coordinated Workspace slice."
+  ],
+  "logs": {
+    "serve-write-postgres-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-write-postgres-final.log",
+      "sha256": "d106e9406432a9154d71474c22d3e9239de9c98f076eeea602cff2a6e08208ea"
+    },
+    "serve-capability-claim-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-capability-claim-final.log",
+      "sha256": "bed114a90cba0d42cca461126832ff4dc10e8d440180d55b5ddd387318a8d50d"
+    },
+    "serve-fabric-boundary-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-fabric-boundary-final.log",
+      "sha256": "ef4b7545c9432c4ddbed41f1f37176fa36722d728676efc42ed5c1b798b5e575"
+    }
+  }
+}

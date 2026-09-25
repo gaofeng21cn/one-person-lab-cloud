@@ -161,8 +161,12 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 		t.Fatal("start acknowledgement became ready without readback")
 	}
 	state, err := s.ReadRuntime(ctx, &api.RuntimeReadbackRequest{Context: r.Context, RuntimeInstanceId: out.RuntimeInstanceId, DeploymentId: out.DeploymentId})
-	if err != nil || state.ApplicationAvailable {
-		t.Fatalf("unobserved state=%v %v", state, err)
+	if err == nil {
+		t.Fatalf("unavailable live observation returned persisted success: %v", state)
+	}
+	var persisted string
+	if err = s.DB.QueryRowContext(ctx, `SELECT status FROM serve.agent_runtime_instances WHERE id=$1`, out.RuntimeInstanceId).Scan(&persisted); err != nil || persisted != "pending" {
+		t.Fatalf("start acknowledgement changed state: %s %v", persisted, err)
 	}
 	runtime.observeErr = false
 	state, err = s.Deploy(ctx, command)

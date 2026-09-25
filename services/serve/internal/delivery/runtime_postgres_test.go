@@ -215,9 +215,6 @@ func TestServeRuntimeObservationFencesStaleEpochs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := db.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET execution_epoch=3 WHERE deployment_id='dep-g'`); err != nil {
-		t.Fatal(err)
-	}
 	// An observation from the superseded epoch 2 must be refused and must not
 	// overwrite the epoch-3 fact.
 	_, err = service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-g", "dep-g", 2), delivery.RuntimeObservation{
@@ -225,6 +222,15 @@ func TestServeRuntimeObservationFencesStaleEpochs(t *testing.T) {
 	})
 	if reason := refusedReason(t, err); reason != delivery.ReasonStaleEpoch {
 		t.Fatalf("reason = %q", reason)
+	}
+	// Higher caller-selected epochs are equally invalid: only Reserve allocates one.
+	if _, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-g", "dep-g", 4), runtimeReady(applicationEntry(), "https://forged.example/", "forged")); refusedReason(t, err) != delivery.ReasonStaleEpoch {
+		t.Fatalf("higher epoch accepted: %v", err)
+	}
+	wrong := deployCommand(t, "ws-g", "dep-g", 3)
+	wrong.RuntimeInstanceId = "foreign-runtime"
+	if _, err := service.RecordDeploymentObservation(ctx, wrong, runtimeReady(applicationEntry(), "https://forged.example/", "forged")); refusedReason(t, err) != delivery.ReasonIdentityMismatch {
+		t.Fatalf("foreign runtime accepted: %v", err)
 	}
 	var status string
 	if err := db.QueryRowContext(ctx, `SELECT status FROM serve.agent_runtime_instances WHERE deployment_id='dep-g'`).Scan(&status); err != nil {

@@ -283,9 +283,9 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	if err != nil {
 		return nil, err
 	}
-	b := resources.GetExecutionResources()
-	if resources.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || resources.GetResourceSetId() != r.ResourceSetId || resources.GetWorkspaceId() != r.WorkspaceId || resources.GetAbsenceConfirmed() || b.GetAccountId() == "" || b.GetComputeAllocationId() == "" || b.GetStorageVolumeId() == "" || b.GetDataAttachmentId() != r.DataAttachmentId || b.GetDataAttachmentOperationId() == "" {
-		return nil, status.Error(codes.FailedPrecondition, "Fabric has not confirmed the exact executable resource binding")
+	b, err := confirmedBinding(r, resources)
+	if err != nil {
+		return nil, err
 	}
 	// Start is idempotent at the original provider operation. Its acknowledgement
 	// never proves readiness: a separate live Observe must confirm it.
@@ -398,6 +398,40 @@ func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest
 	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, workspace); err != nil {
 		return nil, err
 	}
+	var raw []byte
+	err := s.DB.QueryRowContext(ctx, `SELECT input_snapshot FROM serve.agent_runtime_actions WHERE command_id=$1`, stableID("start_", r.DeploymentId)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return s.runtimeReadback(ctx, r.RuntimeInstanceId, r.DeploymentId)
+	}
+	if err != nil {
+		return nil, dbError(err)
+	}
+	if s.Runtime == nil || s.Resources == nil {
+		return nil, status.Error(codes.Unavailable, "runtime observation dependencies are unavailable")
+	}
+	command := &api.RuntimeDeployCommand{}
+	if protojson.Unmarshal(raw, command) != nil || command.RuntimeInstanceId != r.RuntimeInstanceId || command.DeploymentId != r.DeploymentId {
+		return nil, status.Error(codes.DataLoss, "invalid original runtime command")
+	}
+	command.Context = r.Context
+	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(r.Context), ResourceSetId: command.ResourceSetId})
+	if err != nil {
+		return nil, err
+	}
+	binding, err := confirmedBinding(command, resources)
+	if err != nil {
+		return nil, err
+	}
+	observation, err := s.Runtime.Observe(ctx, command, binding)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = s.RecordDeploymentObservation(ctx, command, observation); err != nil {
+		return nil, err
+	}
+	if err = s.finishFirstDelivery(ctx, command, observation); err != nil {
+		return nil, err
+	}
 	return s.runtimeReadback(ctx, r.RuntimeInstanceId, r.DeploymentId)
 }
 func (s *Service) runtimeReadback(ctx context.Context, runtimeID, deployment string) (*api.RuntimeReadback, error) {
@@ -418,4 +452,12 @@ func (s *Service) runtimeReadback(ctx context.Context, runtimeID, deployment str
 		out.ApplicationEntry = &api.WorkspaceApplicationEntry{Url: proto.String(url)}
 	}
 	return out, nil
+}
+
+func confirmedBinding(command *api.RuntimeDeployCommand, resources *api.ResourceReadback) (*api.ResourceExecutionBinding, error) {
+	b := resources.GetExecutionResources()
+	if resources.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || resources.GetResourceSetId() != command.ResourceSetId || resources.GetWorkspaceId() != command.WorkspaceId || resources.GetAbsenceConfirmed() || b.GetAccountId() == "" || b.GetComputeAllocationId() == "" || b.GetStorageVolumeId() == "" || b.GetDataAttachmentId() != command.DataAttachmentId || b.GetDataAttachmentOperationId() == "" {
+		return nil, status.Error(codes.FailedPrecondition, "Fabric has not confirmed the exact executable resource binding")
+	}
+	return b, nil
 }
