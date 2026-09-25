@@ -65,6 +65,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		closeCoordination, err := consumer.ConfigureCoordination(config, os.Getenv)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer closeCoordination()
 		server, err := consumer.NewGRPC(config)
 		if err != nil {
 			log.Fatal(err)

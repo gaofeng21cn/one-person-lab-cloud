@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "action": "Persist and read authenticated Local no-charge Workspace receipts in the existing Ledger evidence store",
+  "recordedAt": "2026-09-25T20:37:15.931927+00:00",
+  "baseSha": "609f5749ff567446fcbe6253f7740421ac3889ea",
+  "sourceFilesSha256": {
+    "services/ledger/cmd/ledger/main.go": "1d2e020a3aed061fbaec5d6032f3757147996e3defe624d379c200e73f5d47e6",
+    "services/ledger/eventconsumer/server.go": "50472c9397fa6f4c012a17b46a2485e1139b3213990cf45d840cf99a8c9e3c4f",
+    "services/ledger/eventconsumer/configure.go": "f4480f474b085f4bd9f40df241c28357f865d460c06e7f7fded88229f161e07e",
+    "services/ledger/eventconsumer/coordination.go": "e69162030accfc9f7e14ee567a253e136d5b647e8133e8f53b031ce4161f67d9",
+    "services/ledger/eventconsumer/coordination_postgres_test.go": "e5aeaeb093de57e7063588542902a9a80f572313afab28d625cbfa7ab9d62976",
+    "services/ledger/internal/ledger/local_receipt.go": "b0d6fe68a29231a6155d55cb270432c61ad54c4d3257314504a943ee75b8ca96",
+    "services/ledger/internal/ledger/postgres_store.go": "324ac6c9de6fb300787b6c73c7377651cf80878a9b45840dae027e25c81036eb",
+    "services/ledger/internal/ledger/types.go": "21b3836f251d1da11be685fa7eac699ae3886f154e0e3c71c49978c2e85190c2",
+    "docs/opl-ledger.md": "9e2e59f8ecda729920a024ef388e4cce48a6665a8c7aece83709fe35d4ae2021"
+  },
+  "sharedContractInputs": {
+    "owner": "Resource Catalog / Workspace integration slice",
+    "includedInLedgerCheckpoint": false,
+    "filesSha256": {
+      "packages/contracts/proto/internal.proto": "93a721e7c4c39e077a58d6a6d503f1f70337bb80177769cc1fbf2a98bac85bd2",
+      "packages/contracts/go/api/internal.pb.go": "7f94e17e36b15c60c7179e904effa8bbb3ba90d1fe411e7018dace0846349f2f",
+      "packages/contracts/go/api/internal_grpc.pb.go": "714bec0b880f1153fdc06cffbdac5a2b4d97860a4f28a5d954b567de4b1b6a49"
+    }
+  },
+  "verification": {
+    "command": "cd services/ledger && OPL_POSTGRES_TESTS=1 LEDGER_TEST_DATABASE_URL=<isolated-loopback-postgres> go test ./eventconsumer ./internal/ledger ./internal/http ./cmd/ledger -count=1 -v",
+    "result": "passed",
+    "topLevelTestsPassed": 109,
+    "testsAndSubtestsPassed": 538,
+    "testsSkipped": 0,
+    "testsFailed": 0,
+    "postgres": "PostgreSQL 16 with task-isolated schemas; schemas removed by test cleanup; shared container retained by parent owner",
+    "wire": "Real Ledger gRPC listener and clients; Catalog, Workspace and CloudIdentity return typed test responses over gRPC",
+    "behaviors": [
+      "Accepted zero total and zero line amounts plus Local billing mode required",
+      "Exact accepted Catalog quote and Workspace owner-commit readback required",
+      "Ledger audience and exact Workspace live authorization; foreign actor and tenant reads refused",
+      "Catalog receives a cloned call without another owner authorization context",
+      "Receipt survives store restart and same-order retries return its original identity",
+      "Eight concurrent request keys on the same original order persist one receipt",
+      "Changed immutable payload and caller-key retargeting are rejected",
+      "Generic legacy writer, reader, list and lifecycle mutations cannot access new typed owner evidence",
+      "Legacy HTTP receipt behavior remains compatible; missing typed dependencies fail closed"
+    ]
+  },
+  "logs": [
+    {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/ledger-local-receipts-final.log",
+      "sha256": "e2299f03c0723e33efefe889274d3da523d40d634e1aa15aa26b5a4fd96de967",
+      "retention": "local automation audit artifact"
+    }
+  ],
+  "sideEffects": {
+    "walletWrites": 0,
+    "providerActions": 0,
+    "productionWrites": 0,
+    "schemaMigrationsAdded": 0,
+    "listenerEnabledByDefault": false
+  },
+  "notProven": [
+    "Full real CloudIdentity-Catalog-Workspace-Ledger-Fabric chain; integration owner must run its cross-owner test",
+    "Installed or production runtime adoption",
+    "Provider allocation, payment, charge, refund or deletion"
+  ]
+}

@@ -49,6 +49,41 @@ Gateway remains the spendable-balance owner; Control Plane owns account-total
 billing and settlement policy, and Console presents it. Ledger records immutable evidence about
 money movements and resource charges.
 
+## Local No-Charge Receipts
+
+Workspace may append a `LOCAL_NO_CHARGE` receipt only for a Catalog-accepted
+quote whose total and every line amount are zero and whose frozen resource plan
+selects the `local` provider and `LOCAL_NO_CHARGE` billing mode. Ledger reads
+the accepted quote back from Catalog and the original owner commit back from
+Workspace before persisting the evidence. Both typed readbacks must match the
+submitted evidence exactly. Catalog authorizes its own read from the session or
+accepted operation grant; Ledger does not forward its audience-bound
+authorization context.
+
+The authenticated Workspace peer supplies the original order reference,
+workspace, tenant, actor and owner commitment. Live CloudIdentity authorization
+binds append and read actions to that workspace. Ledger assigns the receipt ID
+and creation time and stores one immutable record in its existing evidence
+store. Replaying the same evidence under the original order returns the same
+receipt, including after restart or when the request key changes. Changing the
+evidence for that order, or reusing a caller key for a different order, fails
+with an idempotency conflict.
+
+Workspace and Fabric read this evidence through `LedgerCoordination` using the
+original Workspace reference. `ReadReceiptByReference` returns the public
+receipt; the internal `ReadLocalNoChargeReceipt` additionally returns the typed
+accepted quote and owner commitment needed for Fabric validation. The legacy
+HTTP receipt writer, reader, listing and retention/privacy mutations cannot
+access this new coordination receipt type. Existing legacy receipt types keep
+their existing behavior.
+
+The typed listener remains opt-in through `OPL_LEDGER_ADDR`. Its owner readbacks
+use the existing CloudIdentity configuration plus `OPL_RESOURCE_CATALOG_URL`
+and `OPL_WORKSPACE_URL` with their corresponding owner tokens and TLS policy.
+Missing owner dependencies refuse the new coordination calls. A no-charge
+receipt records an accepted zero-price obligation; it does not create a wallet
+transaction, prove that resources exist, or authorize a provider action.
+
 ## MVP Boundary
 
 Core Ledger is limited to receipts, reconciliation evidence, idempotency, and
