@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -55,10 +56,11 @@ func (f *fakeReader) Operation(_ context.Context, _ owneridentity.Owner, _ strin
 // decision are configured separately so a test can show that a valid session alone
 // does not authorize an action.
 type fakeIdentity struct {
-	session  *api.Session
-	decision *api.AuthorizationDecision
-	err      error
-	requests []*api.AuthorizationRequest
+	session   *api.Session
+	decision  *api.AuthorizationDecision
+	decisions map[api.AuthorizationActionEnum]*api.AuthorizationDecision
+	err       error
+	requests  []*api.AuthorizationRequest
 }
 
 func (f *fakeIdentity) Session(context.Context, string) (*api.Session, error) {
@@ -67,12 +69,38 @@ func (f *fakeIdentity) Session(context.Context, string) (*api.Session, error) {
 
 func (f *fakeIdentity) Authorize(_ context.Context, request *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	f.requests = append(f.requests, request)
-	return f.decision, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	// A composed route authorizes more than one owner, so a test may pin one action
+	// at a time. Anything not pinned still answers with the single configured
+	// decision, which keeps a denial a denial.
+	if decision, ok := f.decisions[request.GetAction()]; ok {
+		return decision, nil
+	}
+	return f.decision, nil
+}
+
+// allowFor builds an allowed decision for one exact request shape, so a composed
+// route's second owner check can be pinned without weakening the first.
+func allowFor(actor, tenant string, audience api.OwnerEnum, action api.AuthorizationActionEnum, kind api.AuthorizationResourceKind, resourceID string) *api.AuthorizationDecision {
+	return &api.AuthorizationDecision{
+		ActorId: actor, SessionId: ptr(owneridentity.SessionReference("session-1")),
+		Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenant}}},
+		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+		Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED, Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
+		Action: action, AudienceOwner: audience,
+		Resource: &api.AuthorizationResource{Kind: kind, Id: ptr(resourceID)},
+	}
 }
 
 func allowedIdentity() *fakeIdentity {
 	return &fakeIdentity{
 		session: &api.Session{ActorId: "actor-1", TenantId: ptr("tenant-1"), CsrfToken: "csrf-1"},
+		// The delivery view checks a Workspace read and then a Serve access read.
+		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS: allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+		},
 		decision: &api.AuthorizationDecision{
 			ActorId: "actor-1", SessionId: ptr(owneridentity.SessionReference("session-1")),
 			Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
@@ -271,8 +299,8 @@ func TestAuthorizationRequestCarriesTheSessionScope(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if len(identity.requests) != 1 {
-		t.Fatalf("authorization requests = %d, want 1", len(identity.requests))
+	if len(identity.requests) != 2 {
+		t.Fatalf("authorization requests = %d, want 2 (Workspace then Serve)", len(identity.requests))
 	}
 	sent := identity.requests[0]
 	if sent.GetActorId() != "actor-1" {

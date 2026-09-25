@@ -25,6 +25,7 @@ type Server struct {
 	capability api.CapabilityProductServiceClient
 	build      api.BuildProductServiceClient
 	tenant     api.TenantProductServiceClient
+	catalog    api.ResourceCatalogProductServiceClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -49,6 +50,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	}); ok {
 		s.tenant = p.TenantClient()
 	}
+	if p, ok := reader.(interface {
+		CatalogClient() api.ResourceCatalogProductServiceClient
+	}); ok {
+		s.catalog = p.CatalogClient()
+	}
 	return s
 }
 
@@ -58,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerAuthRoutes(mux)
 	s.registerPublisherRoutes(mux)
 	s.registerMemberRoutes(mux)
+	s.registerCatalogRoutes(mux, s.catalog)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
@@ -82,10 +89,21 @@ func (s *Server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
+	requestID := clients.CallContext(ctx).GetRequestId()
 	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
 		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,
 		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
-		clients.CallContext(ctx).GetRequestId()); err != nil {
+		requestID); err != nil {
+		s.writeIdentityError(w, err)
+		return
+	}
+	// The access facts in this view are Serve-owned, so they are authorized
+	// against Serve rather than inherited from the Workspace read above. Each
+	// owner fact is checked by the owner that reports it.
+	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Serve,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
+		requestID); err != nil {
 		s.writeIdentityError(w, err)
 		return
 	}
