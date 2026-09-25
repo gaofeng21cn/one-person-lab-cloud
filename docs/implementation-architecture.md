@@ -34,6 +34,18 @@ Gateway identity-directory read (no identity readback RPC or
 `gateway.identity_mappings` migration exists yet), and Tenant
 onboarding/suspend/reenable/delete/restore remain with W21.
 
+Serve implements its read surface in `services/serve/internal/delivery`: the
+owner-local current Deployment, the delivery history and the current Agent's
+access facts are read from `opl_serve`, and Serve refuses to compose another
+owner's fact into its delivery truth. Two of the three reads
+(`ListDeployments`, `GetDeployment`) are admitted by the shared policy table for
+the serve audience; `GetWorkspaceAccess` has no policy row because the canonical
+contract assigns it to the workspace owner while the proto declares it on
+`ServeProductService`, so it fails closed and is unimplemented pending that
+canonical decision. Serve's delivery write path (Reserve/Deploy and access
+switching) is not implemented; the blockers are recorded in
+[status](status.md).
+
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;
 it must not create a permanent second writer. The existing contracts Go module

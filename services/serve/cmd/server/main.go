@@ -2,10 +2,14 @@
 //
 // It opens this owner's own database, installs this owner's own migrations,
 // registers the shared owner Operation readback group, and reports SERVING only
-// when its declared dependencies and product groups are actually ready. The
-// ServeProductService domain handlers are not implemented yet, so this process reports
-// NOT_SERVING with that exact reason instead of claiming readiness it does not
-// have or exiting.
+// when its declared dependencies and product groups are actually ready.
+//
+// Serve currently implements its own product read surface: the current Agent
+// deployment, the delivery history, and the current Agent's access facts, all
+// read from Serve's own database. The delivery write path (Reserve/Deploy and
+// route switching) is not implemented yet, so its RPCs answer Unimplemented
+// rather than a fabricated deployment; the blocking cross-owner capabilities are
+// recorded in docs/status.md.
 package main
 
 import (
@@ -16,6 +20,7 @@ import (
 	"syscall"
 
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/serve/internal/delivery"
 	"opl-cloud/services/serve/migrations"
 )
 
@@ -34,11 +39,7 @@ func main() {
 	}
 
 	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
-		if err := server.RequireProductGroups("ServeProductService"); err != nil {
-			return err
-		}
-		_ = database
-		return ownerservice.ErrHandlersNotImplemented
+		return delivery.Configure(server, database, config)
 	})
 	if err != nil {
 		log.Fatal(err)

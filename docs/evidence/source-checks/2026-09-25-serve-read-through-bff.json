@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "action": "Complete and verify the three Serve reads (listDeployments, getDeployment, getWorkspaceAccess) end to end through the BFF against the production CloudIdentity authority",
+  "recordedAt": "2026-09-25T09:30:14.905694+00:00",
+  "branch": "codex/serve-first-deployment",
+  "worktree": "/Users/huangrende/.codex/worktrees/892a/one-person-lab-cloud",
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "testedSha": "4218c295f2bfbb16d3b4c09e5b0273cfc164ba2f",
+  "testedTree": "50bba9ead9e7cd0c15df78948865c28ed7643762",
+  "absorbedDependencyShas": {
+    "cloudidentityPolicyWriter_f83f4f03": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+    "cloudidentityContractAndPolicy_c5393772": "c5393772c5c6f1a8e3f1fc8f552bb946c49401ab",
+    "contractCorrection_f7a9e649": "f7a9e649e30d775a6c6c409f9635431731b485e7",
+    "policyRows_413a7d5a": "413a7d5abbc5c209a65ca3cd8ce8695e3cf64147",
+    "policyGeneratedSha256": "fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb"
+  },
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/service.go": "f1c16761462495ee512534b164e4eed322d48a75d31efda8cc56237726671c4e",
+    "services/serve/internal/delivery/runtime.go": "2c716c3e4066082f2ddd002e46cf89bd0877a329d4f266f5e458ad6fb52ee24b",
+    "services/serve/internal/delivery/identity_live_test.go": "fe4f833f9fbc0c5801d06ecda60e4553b42b2c7f239b7612bf4bf2fe19b2b12d",
+    "services/serve/internal/delivery/bff_live_test.go": "1068214a89cb3896077338623544da738d8a0ebd76d78f878cc4409c54fb9c65",
+    "services/serve/internal/delivery/service_postgres_test.go": "bd49e5280f05f5d8f0e30e4bee2ee29a43098ffc196caaf6dfe42a6b285fda4b",
+    "services/serve/internal/delivery/process_postgres_test.go": "069da17a115fe12edd78bbe394915b5a301c3e552e237f5bb12e31d65375a929",
+    "services/serve/internal/delivery/runtime_postgres_test.go": "b41461b0df81950059703b5a151d76f23989a338eb4a0319d2619c1c39550845",
+    "services/serve/cmd/server/main.go": "2b0b8475d6469fefb55c83eb7622836aa42ff7740b4061d03ac1d05d654ca97f",
+    "services/serve/go.mod": "b351f0f1d1c8451425f4349857f62f9acfb1e19b172fda0ba1d175ab52115b33",
+    "services/serve/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "apps/console-bff/serve.go": "b3db72943d8ba8603220b24a71066ee97efbf7c92d5eecbd3ff7aa0fbe61e99a",
+    "apps/console-bff/internal/clients/serve_read.go": "0285665f100ac1caa5991d333fd7c4ce6b0f8b0660d1b28dee75061a5ea7b52f",
+    "apps/console-bff/internal/httpapi/serve_delivery.go": "686ca4a0c0ca824c358b1c5389bbc7d497dd9f36db98cf0a839fc9589f2372f7",
+    "docs/status.md": "4257badc65e8e0e2ba97727b88b7b4001ac840a5f6f0f5c4d1b1c6ac5c05b96d",
+    "docs/roadmap.md": "643e259e77492954655bfd5f483e6c8dcfaa2cba1ea06785e535830fa6857dd9"
+  },
+  "commands": [
+    {
+      "name": "serve focused PostgreSQL (all tests) + owner isolation",
+      "command": "go test ./... -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "21 tests plus subtests PASS, 0 FAIL, 0 skips",
+      "logPath": "tmp/serve-read-bff-receipt/serve-final-all.log",
+      "logSha256": "9efc6a852233ef76d4b0487381e6bd9f24dc98438fbdfedf919d90160170627c"
+    },
+    {
+      "name": "serve livebuild suites (real-identity direct + BFF end-to-end)",
+      "command": "go test -tags=livebuild ./internal/delivery -count=1",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "both livebuild suites pass",
+      "logPath": "tmp/serve-read-bff-receipt/serve-final-live.log",
+      "logSha256": "4f46ea0b64660f7945a71c26555e53219b8a6611f86cda4ea181ec6784a9a4c9"
+    },
+    {
+      "name": "real-identity direct authority + owner reads",
+      "command": "go test -tags=livebuild ./internal/delivery -run TestLiveServeReadChain -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "all three reads admitted; cross-Tenant, session-less and revoked-session refused; empty and non-current history and not-ready access read back correctly",
+      "logPath": "tmp/serve-read-bff-receipt/acc2.log",
+      "logSha256": "3934c96282810e64d390bb057e0b8fccf207b9a11943d5ee5e2273785c31b545"
+    },
+    {
+      "name": "BFF end-to-end read chain",
+      "command": "go test -tags=livebuild ./internal/delivery -run TestLiveServeReadThroughBFF -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "10 subtests PASS through the BFF's own handler",
+      "logPath": "tmp/serve-read-bff-receipt/bff-e2e.log",
+      "logSha256": "8130bbc14df26594c03096ca64c9e0c4d862b1b19d40dad8628ac5ba5a241fa3"
+    },
+    {
+      "name": "repository full gate (frozen source)",
+      "command": "npm run verify:local:full",
+      "cwd": ".",
+      "exitCode": 0,
+      "results": "Local verification passed with PostgreSQL and Docker integration; 11 PostgreSQL groups all 'zero skips', no group reported a skipped package; 228 source tests pass/0 fail; 114 browser-suite tests pass/0 fail; typecheck, lint, console build and every Go module compile passed",
+      "logPath": "tmp/serve-read-bff-receipt/final6-verify-full.log",
+      "logSha256": "5e9c22eae4f83743a9b019f6ffd876dc5a43ff73f8be5296de70daaf9b29ac4b"
+    },
+    {
+      "name": "re-run of the two browser tests that timed out under load",
+      "command": "node --test tests/ui/billing-controller-browser.test.ts; node --test tests/ui/customer-announcement-controller-browser.test.ts",
+      "cwd": ".",
+      "exitCode": 0,
+      "results": "16 pass/0 fail and 8 pass/0 fail; the earlier timeouts were machine-load contention, and the frozen-source full gate above passes them",
+      "logPath": "tmp/serve-read-bff-receipt/retry-billing.log, tmp/serve-read-bff-receipt/retry-ann.log",
+      "logSha256": "36c23c35d8d8503905addfeb6c013c6220769b056c3cca09aa0c643632c0a2f9, 4cc6bd71c2ba71a25dd68399d3c71d9b963dc5c9c85172bf4b8c306dd87097b7"
+    }
+  ],
+  "readbacks": {
+    "authorityAdmitsAllThree": {
+      "realResult": "LISTDEPLOYMENTS, GETDEPLOYMENT and GETWORKSPACEACCESS are all admitted for a serve-audience tenant member; policy table sha256 fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb"
+    },
+    "contractCorrection": "03_api_contract_complete.yaml now has getWorkspaceAccess x-owner=serve, x-tables=[serve.agent_runtime_instances, serve.access_bindings], tag serve; the derived feature map and API inventory were regenerated by the identity writer",
+    "noAuthorityOwnershipFact": "the authority decides audience/action/role/scope and admits a tenant member for a workspace-shaped resource; refusing another Tenant's member for a specific Workspace is Serve's own persisted guard, asserted separately in both harnesses",
+    "bffChain": "real CloudIdentity login -> the BFF's own Serve read handler -> Serve owner process -> Serve's own rows",
+    "crossTenant": "403 through the BFF; PermissionDenied direct",
+    "noSession": "401 through the BFF; Unauthenticated direct",
+    "revokedSession": "refused through the BFF; the authority answers Unauthenticated direct",
+    "emptyHistory": "200 with an empty page for a never-delivered Workspace",
+    "nonCurrentHistory": "the active deployment leads the history and the superseded predecessor is retained",
+    "accessMatchesCurrentDeployment": "the access read reports the active deployment's own observed entry, not the superseded one",
+    "resourceReadyIsNotApplicationReady": "a deployment whose runtime is starting publishes no URL and claims no credentials",
+    "anonymousExposure": "mode anonymous, no application credentials",
+    "errorPropagation": "404 for a missing deployment, 403 across Tenants, 401 without a session",
+    "pageOrder": "the history orders and paginates by the schema list index (created_at DESC, id DESC)"
+  },
+  "failuresAndAttempts": [
+    "Full-gate attempt 3 and 4 failed in the Console browser suite with page.goto timeouts while three parallel full gates from other lanes ran (load average 21-39). Both failing browser tests re-run green in isolation (16/0 and 8/0).",
+    "Full-gate attempt 5 was SIGKILLed (exit 137) during the Go compile stage under memory pressure; its source (228/0) and browser (114/0) stages had already passed.",
+    "Full-gate attempt 6 on the frozen source with no competing gates passed (exit 0). All attempts are recorded rather than only the pass."
+  ],
+  "unprovenOrBlocked": [
+    "The composed GET /api/v2/delivery/{workspaceId} view still needs a WorkspaceProductService implementation, which services/workspace does not provide; that is the workspace owner's open work package.",
+    "Registering the Serve read routes on the shared mux is the identity integrator's one-line wiring; the handler and its guard are implemented and tested here, but the process's own mux does not yet expose them.",
+    "No real Deploy, runtime adapter call, OCI artifact or runtime observation exists. Seeded Serve rows prove the read projection only.",
+    "Mac local verification is not Linux/Instance qualification."
+  ],
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production access, no Instance action, no publication, no real charge and no provider-resource action. No push, PR, Issue or merge."
+}
