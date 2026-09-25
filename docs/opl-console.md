@@ -125,3 +125,9 @@ The proposed product model separates the browser surface from domain authority:
 - Ledger records append-only evidence and opaque provenance; it does not become a lifecycle or Saga writer.
 
 The existing Control Plane remains the migration source until each caller and write path is transferred. This proposal does not claim that the target handler set is already deployed.
+
+The portable Console build defaults to `VITE_CONSOLE_IDENTITY=legacy`, retaining
+the Control Plane login and Workspace APIs. Only a build explicitly selecting
+`cloud` exposes the Publisher route, its Workspace-list entry, and the Agent
+delivery readback panel, together with the CloudIdentity session API. Shipping
+the owner executables in the image does not enable these BFF surfaces.
