@@ -209,6 +209,10 @@ type memberRow struct {
 
 func (m memberRow) message() *api.Member {
 	out := &api.Member{Id: m.id, ActorId: m.actorID, Role: roleEnum(m.role), CreatedAt: timestamppb.New(m.createdAt)}
+	// DisplayName is filled from the authorized Gateway directory read when this
+	// deployment configures one and the subject resolves; otherwise the field is
+	// left empty rather than fabricated.
+
 	if m.revokedAt.Valid {
 		out.Status = api.MemberStatusEnum_MEMBER_STATUS_ENUM_REVOKED
 	} else {
@@ -333,7 +337,31 @@ func (s *Service) ListMembers(ctx context.Context, r *api.ListMembersRpcRequest)
 		last := out.Items[n-1]
 		out.NextCursor = proto.String(cursorOf(last.CreatedAt.AsTime(), last.Id))
 	}
+	if err := s.resolveDisplayNames(ctx, out.Items); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// resolveDisplayNames fills Member.displayName from the authorized Gateway
+// directory read. It resolves nothing when the deployment has no directory
+// identity, and an individual subject that does not resolve stays empty: a name
+// is never guessed from the actor id, and no copy of the directory is kept.
+func (s *Service) resolveDisplayNames(ctx context.Context, members []*api.Member) error {
+	if !s.Gateway.DirectoryConfigured() {
+		return nil
+	}
+	for _, member := range members {
+		name, err := s.Gateway.displayName(ctx, member.GetActorId())
+		if err != nil {
+			// A directory read that fails is not a reason to serve a wrong name, and
+			// not a reason to fail the whole list: the row keeps its identity facts
+			// and the name stays unresolved.
+			continue
+		}
+		member.DisplayName = name
+	}
+	return nil
 }
 
 // ListInvitations returns the Tenant's invitations, newest first.
@@ -412,6 +440,16 @@ func (s *Service) InviteMember(ctx context.Context, r *api.InviteMemberRpcReques
 		}
 		if active {
 			return owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "invitee already belongs to an active tenant"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
+		}
+		// Entry validation: when this deployment can read the Gateway directory,
+		// only a subject the authority actually knows may be invited. The check uses
+		// the service's own directory identity, never the inviter's, and it never
+		// writes anything in the Gateway authority.
+		if s.Gateway.DirectoryConfigured() {
+			identity, e := s.Gateway.directoryIdentity(ctx, invitee)
+			if e != nil || identity.Status != "active" {
+				return owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "invitee is not an active Gateway subject"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
+			}
 		}
 		expires := time.Now().Add(s.InvitationTTL)
 		invitationID := "invite_" + randomID()

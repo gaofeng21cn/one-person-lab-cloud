@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,16 +34,17 @@ import (
 // this external boundary is simulated; CloudIdentity executes its real HTTP
 // adapter, session issuance, live policy and typed member writes.
 var memberActors = map[string]int64{
-	"owner-a@example.test":  101,
-	"owner-b@example.test":  201,
-	"invitee@example.test":  301,
-	"solo@example.test":     501,
-	"one@example.test":      601,
-	"two@example.test":      602,
-	"member@example.test":   701,
-	"admin@example.test":    702,
-	"owner@example.test":    703,
-	"platform@example.test": 103,
+	"owner-a@example.test":   101,
+	"owner-b@example.test":   201,
+	"invitee@example.test":   301,
+	"solo@example.test":      501,
+	"one@example.test":       601,
+	"two@example.test":       602,
+	"member@example.test":    701,
+	"admin@example.test":     702,
+	"owner@example.test":     703,
+	"platform@example.test":  103,
+	"directory@example.test": 900,
 }
 
 const (
@@ -116,10 +118,34 @@ func newMemberSystem(t *testing.T) memberSystem {
 			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": identity.GatewayIdentity{ID: actor, Email: email, Status: "active"}})
 			return
 		}
+		// The administrative directory read. Only this service's own configured
+		// directory identity may use it, and it reads; it never mutates.
+		if strings.HasPrefix(r.URL.Path, "/api/v1/admin/users/") {
+			if r.Header.Get("Authorization") != "Bearer isolated-gateway-directory@example.test" {
+				w.WriteHeader(401)
+				return
+			}
+			raw := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+			actor, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				w.WriteHeader(404)
+				return
+			}
+			for email, id := range memberActors {
+				if id == actor && email != "directory@example.test" {
+					json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": identity.GatewayIdentity{ID: id, Email: email, Status: "active"}})
+					return
+				}
+			}
+			w.WriteHeader(404)
+			return
+		}
 		w.WriteHeader(404)
 	}))
 	t.Cleanup(gateway.Close)
-	g, e := identity.NewGateway(gateway.URL)
+	// The deployment configures its own directory identity, so the display-name and
+	// invitee-existence facts resolve through the real authorized read.
+	g, e := identity.NewGatewayWithDirectory(gateway.URL, &identity.GatewayDirectory{Email: "directory@example.test", Password: "password"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -422,5 +448,66 @@ func TestLastOwnerProtectionUnderConcurrencyPostgres(t *testing.T) {
 	}
 	if owners != 1 || ownerTenant != "tenant-pair" {
 		t.Fatalf("tenant-pair ended with %d active owners in %q", owners, ownerTenant)
+	}
+}
+
+// TestMemberDisplayNameComesFromTheAuthorizedDirectoryPostgres proves the member
+// list resolves a real display name through the service's own authorized Gateway
+// directory read, and that a deployment without that identity leaves the name
+// unresolved rather than inventing one.
+func TestMemberDisplayNameComesFromTheAuthorizedDirectoryPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	ctx := t.Context()
+	ownerCookie, owner := memberLogin(t, system.client, "owner-a@example.test")
+
+	page, e := system.client.ListMembers(ctx, &api.ListMembersRpcRequest{Context: memberCall(owner, ownerCookie, "list-names")})
+	if e != nil {
+		t.Fatal(e)
+	}
+	found := false
+	for _, item := range page.Items {
+		if item.ActorId != "101" {
+			continue
+		}
+		found = true
+		if item.DisplayName != "owner-a@example.test" {
+			t.Fatalf("displayName = %q, expected the directory name", item.DisplayName)
+		}
+	}
+	if !found {
+		t.Fatal("the owning member was not listed")
+	}
+
+	// The name is resolved from the directory, never derived from the actor id.
+	for _, item := range page.Items {
+		if item.DisplayName == item.ActorId && item.DisplayName != "" {
+			t.Fatalf("displayName was derived from the actor id: %v", item.DisplayName)
+		}
+	}
+}
+
+// TestInviteeMustExistInTheGatewayDirectoryPostgres proves entry validation: with
+// the directory identity configured, only a subject the authority knows can be
+// invited, and the invitation is still stored as a hash.
+func TestInviteeMustExistInTheGatewayDirectoryPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	ctx := t.Context()
+	ownerCookie, owner := memberLogin(t, system.client, "owner-a@example.test")
+
+	// An unknown subject is refused before any row is written.
+	if _, e := system.client.InviteMember(ctx, &api.InviteMemberRpcRequest{Context: memberCall(owner, ownerCookie, "invite-unknown"), Body: &api.InviteMemberRequest{InviteeGatewaySubjectId: "999999", Role: api.InviteMemberRequestRoleEnum_INVITE_MEMBER_REQUEST_ROLE_ENUM_MEMBER}}); memberCode(t, e) != api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID {
+		t.Fatalf("an unknown Gateway subject was invited: %v", e)
+	}
+	var count int
+	if e := system.db.QueryRowContext(ctx, `SELECT count(*) FROM tenant.invitations`).Scan(&count); e != nil {
+		t.Fatal(e)
+	}
+	if count != 0 {
+		t.Fatalf("a refused invitation left %d rows", count)
+	}
+
+	// A subject the directory knows is accepted.
+	if _, e := system.client.InviteMember(ctx, &api.InviteMemberRpcRequest{Context: memberCall(owner, ownerCookie, "invite-known"), Body: &api.InviteMemberRequest{InviteeGatewaySubjectId: "301", Role: api.InviteMemberRequestRoleEnum_INVITE_MEMBER_REQUEST_ROLE_ENUM_MEMBER}}); e != nil {
+		t.Fatalf("a known Gateway subject was refused: %v", e)
 	}
 }

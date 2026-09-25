@@ -23,7 +23,15 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	gateway, e := identity.NewGateway(os.Getenv("OPL_SUB2API_URL"))
+	// The Gateway directory identity is optional and all-or-nothing: it is the
+	// service's own administrative read-only identity used to resolve a member's
+	// display name and to confirm an invited subject exists. Without it those two
+	// facts stay unresolved rather than fabricated.
+	var directory *identity.GatewayDirectory
+	if email, password := strings.TrimSpace(os.Getenv("OPL_GATEWAY_DIRECTORY_EMAIL")), os.Getenv("OPL_GATEWAY_DIRECTORY_PASSWORD"); email != "" || password != "" {
+		directory = &identity.GatewayDirectory{Email: email, Password: password}
+	}
+	gateway, e := identity.NewGatewayWithDirectory(os.Getenv("OPL_SUB2API_URL"), directory)
 	if e != nil {
 		log.Fatal(e)
 	}
