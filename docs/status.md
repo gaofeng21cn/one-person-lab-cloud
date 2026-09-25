@@ -144,7 +144,8 @@ projection, the real process wiring (SERVING plus a Console-BFF-identified gRPC
 read over the wire), and the fail-closed readiness case — all against a real
 isolated `opl_serve` installed through Serve's own migration entrypoint.
 The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json)
-binds the exact source and cases; it is not production or Instance evidence.
+and the [Serve process-wiring receipt](./evidence/source-checks/2026-09-25-serve-process-wiring.json)
+bind the exact source and cases; they are not production or Instance evidence.
 
 Serve's delivery **write** path is not implemented and current source cannot
 implement it faithfully yet. A real `Deploy` must send the full

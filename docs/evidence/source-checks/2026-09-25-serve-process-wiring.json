@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "action": "Extract delivery.Configure as Serve's single process product-wiring path and prove process readiness over the wire",
+  "recordedAt": "2026-09-25T04:19:19.837241+00:00",
+  "sourceSha": "e59ed816006cf9e9a998b3ee5afc490d76bc2b1d",
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/service.go": "b53ca9aca53ca819b9ff8e451b38b5fb62c7f80c41aa145305c38597bfa45ea8",
+    "services/serve/internal/delivery/process_postgres_test.go": "1f52603da4265fb2bba7f19b7089d256deb9af8ecfa3ceeeb7fa3301e5cfa3eb",
+    "services/serve/internal/delivery/service_postgres_test.go": "7c1e2775e010758efb21a0b0c6fa23317b7965f897b8129b9593f81722c402ae",
+    "services/serve/cmd/server/main.go": "2b0b8475d6469fefb55c83eb7622836aa42ff7740b4061d03ac1d05d654ca97f"
+  },
+  "verification": {
+    "focusedPostgres": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated postgres> go test ./... -count=1 in services/serve passed all 5 delivery tests and the migration isolation suite with zero skips, against a freshly provisioned isolated opl_serve",
+    "module": "go vet ./... passed in services/serve",
+    "ordinaryGate": "npm run verify:local passed (228 source tests, console browser suite, typecheck, lint, console build, every Go module compile and database-free tests)"
+  },
+  "cases": [
+    "the process registers exactly the ServeProductService group",
+    "Ready(ctx) succeeds with a reachable owner database and a reachable CloudIdentity authority",
+    "a Console-BFF-identified gRPC GetWorkspaceAccess/ListDeployments call returns Serve's owner-local truth through the real identity interceptor",
+    "without CloudIdentity configured the process reports NOT_SERVING naming cloud_identity instead of serving unauthenticated reads"
+  ],
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production, Instance, publication, real charge or provider-resource action."
+}
