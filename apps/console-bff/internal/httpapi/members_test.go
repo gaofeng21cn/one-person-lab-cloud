@@ -117,6 +117,8 @@ func TestMemberCommandsForwardOnlyTheAuthenticatedCaller(t *testing.T) {
 	// A bodyless write still needs the full write guard: accept and revoke carry no
 	// request body but do mutate owner state.
 	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION
+	// The acceptance binds the exact invitation, so the decision must name it too.
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("invite-1")}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, memberWrite("POST", "/api/v2/invitations/invite-1/accept", ""))
 	if response.Code != http.StatusOK {
@@ -127,6 +129,9 @@ func TestMemberCommandsForwardOnlyTheAuthenticatedCaller(t *testing.T) {
 	}
 	if probe.accept.GetContext().GetSessionId() != owneridentity.SessionReference("session-1") {
 		t.Fatal("accept forwarded a non-reference session identity")
+	}
+	if last := identity.requests[len(identity.requests)-1]; last.GetResource().GetId() != "invite-1" {
+		t.Fatalf("accept did not bind the exact invitation: %v", last.GetResource())
 	}
 
 	// Revoke without an idempotency key is refused before any owner call.
@@ -139,6 +144,9 @@ func TestMemberCommandsForwardOnlyTheAuthenticatedCaller(t *testing.T) {
 	}
 
 	// Role change: the target member comes from the path, the role from the body.
+	// Member-targeted commands authorize against the caller's own Tenant resource;
+	// the owner then re-reads the target row and requires it to belong to it.
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
 	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, memberWrite("PUT", "/api/v2/tenant/members/member-9", `{"role":"admin"}`))

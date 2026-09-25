@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -32,19 +33,27 @@ import (
 // this external boundary is simulated; CloudIdentity executes its real HTTP
 // adapter, session issuance, live policy and typed member writes.
 var memberActors = map[string]int64{
-	"owner-a@example.test": 101,
-	"owner-b@example.test": 201,
-	"invitee@example.test": 301,
-	"solo@example.test":    501,
-	"one@example.test":     601,
-	"two@example.test":     602,
+	"owner-a@example.test":  101,
+	"owner-b@example.test":  201,
+	"invitee@example.test":  301,
+	"solo@example.test":     501,
+	"one@example.test":      601,
+	"two@example.test":      602,
+	"member@example.test":   701,
+	"admin@example.test":    702,
+	"owner@example.test":    703,
+	"platform@example.test": 103,
 }
 
-const memberPeerToken = "isolated-member-governance-token-0001"
+const (
+	memberPeerToken     = "isolated-member-governance-token-0001"
+	memberInvitationTTL = time.Hour
+)
 
 type memberSystem struct {
 	db     *sql.DB
 	client api.TenantProductServiceClient
+	auth   api.CloudIdentityAuthorizationClient
 }
 
 func newMemberSystem(t *testing.T) memberSystem {
@@ -114,7 +123,7 @@ func newMemberSystem(t *testing.T) memberSystem {
 	if e != nil {
 		t.Fatal(e)
 	}
-	s, e := identity.New(db, g, bytes.Repeat([]byte("m"), 32), []string{"103"})
+	s, e := identity.New(db, g, bytes.Repeat([]byte("m"), 32), []string{"103"}, memberInvitationTTL)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -137,7 +146,12 @@ func newMemberSystem(t *testing.T) memberSystem {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { conn.Close() })
-	return memberSystem{db: db, client: api.NewTenantProductServiceClient(conn)}
+	authConn, e := grpc.NewClient(l.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.ConsoleBFF, memberPeerToken)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { authConn.Close() })
+	return memberSystem{db: db, client: api.NewTenantProductServiceClient(conn), auth: api.NewCloudIdentityAuthorizationClient(authConn)}
 }
 
 // memberLogin authenticates one Gateway subject through the real login path and
@@ -248,7 +262,13 @@ func TestMemberGovernancePostgres(t *testing.T) {
 	if member.ActorId != "301" || member.Role != api.TenantRoleEnum_TENANT_ROLE_ENUM_MEMBER || member.Status != api.MemberStatusEnum_MEMBER_STATUS_ENUM_ACTIVE {
 		t.Fatalf("unexpected accepted member %v", member)
 	}
-	if _, e = c.AcceptInvitation(ctx, &api.AcceptInvitationRpcRequest{Context: memberCall(invitee, inviteeCookie, "accept-301-again"), InvitationId: invitation.Id}); memberCode(t, e) != api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID {
+	// The BFF re-reads the session on every request, so the repeat attempt carries
+	// the scope the session now has after the accepted membership was bound.
+	live, e := c.GetSession(ctx, &api.GetSessionRpcRequest{Context: &api.CallContext{SessionId: proto.String(inviteeCookie)}})
+	if e != nil || live.GetTenantId() != "tenant-a" {
+		t.Fatalf("accepted membership was not reflected in the live session: %v %v", live.GetTenantId(), e)
+	}
+	if _, e = c.AcceptInvitation(ctx, &api.AcceptInvitationRpcRequest{Context: memberCall(live, inviteeCookie, "accept-301-again"), InvitationId: invitation.Id}); memberCode(t, e) != api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID {
 		t.Fatalf("a consumed invitation was accepted twice: %v", e)
 	}
 	if _, e = c.RevokeInvitation(ctx, &api.RevokeInvitationRpcRequest{Context: memberCall(owner, ownerCookie, "revoke-accepted"), InvitationId: invitation.Id}); memberCode(t, e) != api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID {

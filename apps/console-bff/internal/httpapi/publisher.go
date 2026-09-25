@@ -250,9 +250,11 @@ func (s *Server) registerMemberRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "POST /api/v2/tenant/invitations", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_INVITEMEMBER, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.InviteMemberRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.tenant.InviteMember(r.Context(), &api.InviteMemberRpcRequest{Context: c, Body: body.(*api.InviteMemberRequest)})
 	})
-	// Accept is authorized by the invitee's own live session, so the tenant
-	// resource id is left empty: the invitee has no Tenant scope yet.
-	s.publisherRoute(mux, "POST /api/v2/invitations/{invitationId}/accept", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	// Accept is authorized by the invitee's own live session rather than a Tenant
+	// role: the invitee is not yet a member. The resource is bound to the exact
+	// invitation so the decision cannot be replayed for a different one, and the
+	// owner re-reads the invitation under that same identity.
+	s.publisherRoute(mux, "POST /api/v2/invitations/{invitationId}/accept", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "invitationId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.tenant.AcceptInvitation(r.Context(), &api.AcceptInvitationRpcRequest{Context: c, InvitationId: r.PathValue("invitationId")})
 	})
 	s.publisherRoute(mux, "POST /api/v2/tenant/invitations/{invitationId}/revoke", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {

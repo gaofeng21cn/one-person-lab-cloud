@@ -247,12 +247,31 @@ immutable audit row; a refusal commits that evidence and then reports the
 canonical `ErrorCodeEnum`, including `LAST_OWNER` and `INVITATION_INVALID`.
 Concurrent owner removal was proved to serialize to exactly one success.
 
+The generated permission table now covers the resource catalog and Serve owner
+surfaces as well, because CloudIdentity is the single authorization owner for
+every domain. `getWorkspaceAccess` is deliberately excluded: the canonical
+contract assigns that operation to the `workspace` owner
+(`x-tables: workspace.workspaces`, F09) while the proto declares it on
+`ServeProductService`, so authorizing it under a Serve audience would contradict
+the contract and authorizing it under the workspace owner would enable an owner
+this policy does not serve. That placement/audience contradiction stays open for
+the canonical owner instead of being resolved here.
+
+The invitation validity window is not fixed by the canonical contract, so the
+deployment now supplies it explicitly through `OPL_INVITATION_TTL`; this owner
+refuses to start without a positive value rather than baking a product decision
+into code. Deployments that enable invitations must set it.
+
 The [member governance source receipt](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json)
-records the exact source files, the governed cases and the limitations. Two
-explicit gaps remain: `Member.displayName` still needs the authorised Gateway
-identity-directory read, and Tenant onboarding, suspend/reenable, delete/restore
-and Gateway wallet binding stay separate W03/W21 outcomes. No production,
-Instance or real-account qualification is claimed.
+records the exact source files, the governed cases and the limitations.
+`Member.displayName` still needs the authorised Gateway identity-directory read:
+neither a current identity readback RPC in `packages/contracts/proto` nor a
+`gateway.identity_mappings` migration exists, so no real consumer can resolve the
+name yet and the field stays empty rather than being invented. The member page
+belongs to W13 Console/BFF basic integration, not W14. Tenant onboarding,
+suspend/reenable, delete/restore and Gateway wallet binding stay separate
+W03/W21 outcomes. No production, Instance or real-account qualification is
+claimed.
 
 ## Conclusion
 

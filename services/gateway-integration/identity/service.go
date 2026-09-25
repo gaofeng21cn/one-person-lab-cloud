@@ -38,23 +38,31 @@ type Service struct {
 	store       *ownerstore.Store
 	Gateway     *Gateway
 	BuildCommit api.OwnerCommitReadbackClient
-	signing     []byte
-	admins      map[string]bool
-	mu          sync.Mutex
-	credentials map[string]credential
+	// InvitationTTL is how long a pending invitation may be accepted. The
+	// canonical contract fixes Invitation.expiresAt but names no window, so the
+	// deployment supplies it explicitly here rather than this owner baking a
+	// product decision into code.
+	InvitationTTL time.Duration
+	signing       []byte
+	admins        map[string]bool
+	mu            sync.Mutex
+	credentials   map[string]credential
 }
 
 // Platform administrators are explicit deployment-owned Gateway subject IDs,
 // never inferred from Tenant membership or a browser-supplied role.
-func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string) (*Service, error) {
+func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string, invitationTTL time.Duration) (*Service, error) {
 	if db == nil || gateway == nil || len(signing) < 32 {
 		return nil, fmt.Errorf("tenant DB, Gateway and session signing secret required")
+	}
+	if invitationTTL <= 0 {
+		return nil, fmt.Errorf("an explicit positive invitation validity window is required")
 	}
 	store, e := ownerstore.New(db, "tenant")
 	if e != nil {
 		return nil, e
 	}
-	s := &Service{DB: db, store: store, Gateway: gateway, signing: append([]byte(nil), signing...), admins: map[string]bool{}, credentials: map[string]credential{}}
+	s := &Service{DB: db, store: store, Gateway: gateway, InvitationTTL: invitationTTL, signing: append([]byte(nil), signing...), admins: map[string]bool{}, credentials: map[string]credential{}}
 	for _, a := range admins {
 		n, e := strconv.ParseInt(a, 10, 64)
 		if e != nil || n <= 0 {

@@ -19,10 +19,13 @@ the CloudIdentity publisher session and accepted-Build authorization slice in
 operations are not migrated by this slice; their eventual owner retains a separate
 database and pool inside the same deployment unit. It also serves Tenant member
 and invitation governance (list, invite, accept, revoke, role change and removal,
-with last-owner protection and audit) over the same Tenant database. This is not
+with last-owner protection and audit) over the same Tenant database, and its
+generated permission table is the single authorization policy for the capability,
+build, tenant, runtime control, resource catalog and serve audiences. This is not
 completion of all W03 work: `Member.displayName` still needs the authorised
-Gateway identity-directory read, and Tenant onboarding/suspend/reenable/
-delete/restore remain with W21.
+Gateway identity-directory read (no identity readback RPC or
+`gateway.identity_mappings` migration exists yet), and Tenant
+onboarding/suspend/reenable/delete/restore remain with W21.
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;

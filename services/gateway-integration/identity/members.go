@@ -20,12 +20,6 @@ import (
 	"opl-cloud/services/internal/ownerstore"
 )
 
-// invitationTTL bounds how long a pending invitation can be accepted. The
-// canonical contract fixes the Invitation.expiresAt field but names no window,
-// so this owner owns the concrete value; a longer-lived product policy would
-// change it here and in the generated field map, not in a caller.
-const invitationTTL = 7 * 24 * time.Hour
-
 type auditEvent struct {
 	tenantID     string
 	actorID      string
@@ -70,25 +64,34 @@ func (s *Service) authorize(ctx context.Context, c *api.CallContext, action api.
 
 // authorizeInvitee authorizes acceptInvitation, whose contract permission is
 // `invitee` rather than a Tenant role: the caller is not yet a member of the
-// inviting Tenant. The live session and the invitation's own recorded subject
-// are what authorize it, so this proves the caller holds a non-expired session
-// for that actor; the transaction then requires the invitation to name exactly
-// that actor.
-func (s *Service) authorizeInvitee(ctx context.Context, c *api.CallContext) error {
+// inviting Tenant. It uses the same AuthorizeAction path as every other member
+// command rather than a second session check, so the audience, the inviter's own
+// scope, the exact invitation resource and the original authorization context are
+// all re-verified together and none of them can be widened by the caller. The
+// accepted transaction then re-reads the invitation and requires it to name
+// exactly this actor.
+func (s *Service) authorizeInvitee(ctx context.Context, c *api.CallContext, invitationID string) error {
 	if e := peer(ctx, owneridentity.ConsoleBFF); e != nil {
 		return e
 	}
-	if c == nil || strings.TrimSpace(c.GetActorId()) == "" || strings.TrimSpace(c.GetRequestId()) == "" || c.GetSessionId() == "" {
+	if c == nil || strings.TrimSpace(c.GetActorId()) == "" || strings.TrimSpace(c.GetRequestId()) == "" || c.GetScope() == nil || c.GetSessionId() == "" {
 		return status.Error(codes.Unauthenticated, "authenticated invitee session is required")
 	}
-	session, _, _, e := s.session(ctx, c.GetSessionId())
-	if e != nil {
-		return e
+	request := &api.AuthorizationRequest{
+		Scope:         c.GetScope(),
+		ActorId:       c.GetActorId(),
+		SessionId:     c.SessionId,
+		AudienceOwner: api.OwnerEnum_OWNER_ENUM_TENANT,
+		Action:        api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION,
+		Resource:      &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: &invitationID},
+		RequestId:     c.GetRequestId(),
 	}
-	if session.ActorId != c.ActorId {
-		return denied()
+	if c.GetAuthorizationContextId() != "" {
+		id := c.GetAuthorizationContextId()
+		request.AuthorizationContextId = &id
 	}
-	return nil
+	_, e := s.AuthorizeAction(ctx, request)
+	return e
 }
 
 // recordAudit appends one immutable permission-audit row in the caller's
@@ -410,7 +413,7 @@ func (s *Service) InviteMember(ctx context.Context, r *api.InviteMemberRpcReques
 		if active {
 			return owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "invitee already belongs to an active tenant"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
 		}
-		expires := time.Now().Add(invitationTTL)
+		expires := time.Now().Add(s.InvitationTTL)
 		invitationID := "invite_" + randomID()
 		token := "token_" + randomID() + randomID()
 		if _, e := tx.ExecContext(ctx, `INSERT INTO tenant.invitations(id,tenant_id,invitee_gateway_subject_id,role,token_hash,invited_by,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, invitationID, tid, invitee, role, hash(token), c.ActorId, expires); e != nil {
@@ -436,7 +439,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, r *api.AcceptInvitationR
 	if invitationID == "" {
 		return nil, status.Error(codes.InvalidArgument, "invitation id is required")
 	}
-	if e := s.authorizeInvitee(ctx, c); e != nil {
+	if e := s.authorizeInvitee(ctx, c, invitationID); e != nil {
 		return nil, e
 	}
 	out := &api.Member{}

@@ -1,18 +1,27 @@
 """Compile current permission metadata from the canonical API contract.
 
 The table is the role/delegation policy AuthorizeAction enforces. It is generated
-from the single canonical owner/action/permission source so a role rule cannot be
-hand-maintained twice. Session-only operations (anonymous/authenticated) and the
-invitee-bound acceptInvitation are not role rows: a live session plus the owner's
-own object readback is what authorizes them, so they are handled explicitly and
-never appear as a grantable role.
+wholesale per served owner from the single canonical owner/action/permission
+source, so a role rule can neither be hand-maintained twice nor hand-minimized
+into a second policy. A row is policy, not a capability: authorization still
+requires a live session, the current role and an actual RPC caller, so a row for
+an operation this tree does not yet route is inert rather than an enabled feature.
+
+Session-only operations (anonymous/authenticated) and the invitee-bound
+acceptInvitation are not role rows: a live session together with the owner's own
+object readback is what authorizes them, so they are handled explicitly and never
+appear as a grantable tenant role.
 """
 from pathlib import Path
 import subprocess
 import yaml
 root=Path(__file__).resolve().parents[3]
 api=yaml.safe_load((root/'docs/spec/target/03_api_contract_complete.yaml').read_text())
-owners={'capability':'capability','build':'build','tenant':'tenant'}
+# Owner surfaces served by CloudIdentity's policy: the current owner processes and
+# the ones whose work packages are switching their real callers to this authority.
+owners={'capability','build','tenant','resource_catalog','serve'}
+# Runtime Control policy rows live in this table because CloudIdentity is the one
+# authorization owner; the x-owner below is the audience the decision names.
 runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus','getBuildRuntimePolicy','setBuildRuntimePolicy'}
 session_only={'getLoginContext','login','logout','getSession'}
 subject_bound={'acceptInvitation'}

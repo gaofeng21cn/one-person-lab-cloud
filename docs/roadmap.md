@@ -43,12 +43,14 @@ chain is finished. Open work in dependency order:
    last-owner protection, cross-Tenant refusal, session revocation on removal and
    the audit record are source-verified in
    [member governance evidence](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json).
-   Two obligations stay open there: `Member.displayName` needs the authorised
-   Gateway identity-directory read that the Gateway Integration identity work
-   package owns, and the BFF member surface still needs the Console member page
-   from W14. Tenant onboarding, suspend/reenable, delete/restore and Gateway
-   wallet migration remain separate outcomes; do not infer full W03, W21 or
-   Gateway wallet migration from the implemented publisher or member slices.
+   Open obligations there: `Member.displayName` needs the authorised Gateway
+   identity-directory read that the Gateway Integration identity work package
+   owns, and the member surface still has no Console page. That page belongs to
+   W13 Console/BFF basic integration (F01), not to the W14 agent/upload/build
+   front end; the BFF REST surface is what exists now. Tenant onboarding,
+   suspend/reenable, delete/restore and Gateway wallet migration remain separate
+   outcomes; do not infer full W03, W21 or Gateway wallet migration from the
+   implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.
