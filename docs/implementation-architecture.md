@@ -13,12 +13,18 @@ repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 Capability, Build, Runtime Control, Workspace and Serve have independent owner
-processes and the Console BFF is implemented. Gateway Integration now implements
-the CloudIdentity publisher session and accepted-Build authorization slice in
-`services/gateway-integration`, using only the Tenant database. Gateway/wallet
-operations are not migrated by this slice; their eventual owner retains a separate
-database and pool inside the same deployment unit. This is not completion of all
-W03 invitation/Tenant lifecycle work.
+processes and the Console BFF is implemented. Serve implements its read surface
+in `services/serve/internal/delivery`: the owner-local current Deployment, the
+delivery history and the current Agent's access facts are read from
+`opl_serve`, and Serve refuses to compose another owner's fact into its delivery
+truth. Serve's delivery write path (Reserve/Deploy and access switching) is not
+implemented; the blockers are recorded in [status](status.md). Gateway
+Integration now implements the CloudIdentity publisher session and
+accepted-Build authorization slice in `services/gateway-integration`, using only
+the Tenant database. Gateway/wallet operations are not migrated by this slice;
+their eventual owner retains a separate database and pool inside the same
+deployment unit. This is not completion of all W03 invitation/Tenant lifecycle
+work.
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;

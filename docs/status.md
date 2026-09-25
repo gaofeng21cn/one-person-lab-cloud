@@ -112,6 +112,52 @@ carries authorization and business intent without a deployment pointer or
 cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
 
+### Serve delivery read surface
+
+`services/serve/internal/delivery` implements the `ServeProductService` read
+groups `ListDeployments`, `GetDeployment` and `GetWorkspaceAccess` over Serve's
+own `opl_serve` database. The reads are owner-local truth:
+
+- the tenant of a Workspace is resolved from the Serve Operation that created its
+  delivery, so a tenant-scoped caller whose scope names another tenant is refused
+  before the live CloudIdentity authority is consulted, and a platform-scoped
+  caller is not narrowed;
+- the current Agent is the one `active` deployment; its access vocabulary is
+  projected from that deployment's own descriptor exposure policy, and
+  application credentials are reported available only when the deployment's own
+  runtime instance is `ready` with an observed access URL — a provisioned Fabric
+  resource is never substituted for a ready application;
+- a Workspace Serve has never delivered has no entry, no invented tenant, and no
+  fabricated mode.
+
+Focused PostgreSQL evidence:
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./internal/delivery/ -run TestServe`
+proves the ready/pending/anonymous/undelivered access cases, cross-tenant and
+CloudIdentity-denial rejection, and the deployment-history projection against a
+real isolated `opl_serve` installed through Serve's own migration entrypoint.
+
+Serve's delivery **write** path is not implemented and current source cannot
+implement it faithfully yet. A real `Deploy` must send the full
+`DeploymentDescriptor` to the executing runtime and persist a real readiness and
+access readback, which requires three owner capabilities that do not exist in
+current source:
+
+- Capability `AcquireReference`/`BindReference`/`ReleaseReference` accept only a
+  `BUILD` claimant, so a Serve delivery cannot hold the `capability_version` claim
+  its `agent_deployments.reference_claim_id` requires;
+- `FabricCoordination` (`EnsureResources`, `ReadResources`, `BindSecret`) and its
+  `resource_set`/attachment identities are contract-only: Fabric exposes them
+  over typed HTTP to Control Plane, not as the gRPC coordination surface Serve's
+  `RuntimeDeployCommand` fields (`resource_set_id`, `data_attachment_id`,
+  `secret_binding_id`) name;
+- `ServeRuntimeAdapter` has no implementation, and `RuntimeReadback` carries no
+  access-entry field, so no real `StartRuntime`/`ObserveRuntime` readback can
+  produce `serve.agent_runtime_instances.access_url`.
+
+These are cross-owner decisions, not local Serve gaps. Implementing them by
+writing Serve's own copies of Capability or Fabric facts would create a duplicate
+writer, so Serve claims only what it can answer.
+
 ### Canonical-main local verification and receipt
 
 The canonical-main baseline at `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe`

@@ -43,7 +43,13 @@ chain is finished. Open work in dependency order:
    slice; do not infer full W03 or Gateway wallet migration from #625 evidence.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
-   access readback.
+   access readback. Serve's owner-local read surface
+   (`ListDeployments`/`GetDeployment`/`GetWorkspaceAccess`) is implemented; the
+   delivery write path stays open on three cross-owner capabilities recorded in
+   [status](./status.md#serve-delivery-read-surface): Capability must admit a
+   Serve claimant, Fabric must expose its resource/attachment/Secret coordination
+   surface, and the Serve runtime adapter plus a `RuntimeReadback` access entry
+   must exist before a real `Deploy` can produce a readiness/access readback.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.
