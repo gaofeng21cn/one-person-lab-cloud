@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 2,
+  "action": "Verify the extended member-governance revision: contract-derived BFF success status plus the resource catalog and Serve authorization rows",
+  "recordedAt": "2026-09-25T06:36:22.306276+00:00",
+  "provenance": {
+    "kind": "local",
+    "note": "Local verification only. No CI workflow ran for this revision, so no workflow or run id is claimed. No image was built or published, so no image digest is claimed."
+  },
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "testedSha": "171feba5748d51311635544b2aed3ba33083c4c7",
+  "testedTree": "7612bb4d5a43c236b5e73d5ad6b732693e34b914",
+  "branch": "codex/tenant-member-governance-2",
+  "predecessorReceipt": {
+    "path": "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-verified-local.json",
+    "testedSha": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+    "relation": "This receipt is appended for the next revision. The predecessor is left unmodified because it binds its own source and run."
+  },
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/clients/tenant.go": "cea6644325ffb4db8275dc35c4ec117c16d353aa9b58f5a4857616fbca126d8f",
+    "apps/console-bff/internal/httpapi/members_test.go": "dce062cdd8e79fefbb456d14b1762af925b54aaf059506fc505dc7be4a462c56",
+    "apps/console-bff/internal/httpapi/publisher.go": "dc3d19a99cd0a51e62550812d45695cd0f5f6892661a20d06a0f72def17bf1a0",
+    "apps/console-bff/internal/httpapi/server.go": "b624446b10fdc624363a91780a8ff219568fb66577c050cdc326a7a3abaa2f4d",
+    "apps/console-bff/internal/httpapi/status_generated.go": "66b7470eb195847a1f21fced81b33dacfb6ee7a4b8cd69747ec9705abf40cb06",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json": "6f987a2e1e337bce935b901f8a40a135c650bd45a77537f350c27e4d5e038e78",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-verified-local.json": "86f7c7769df11dd2898989462346a698518ae2769a974bc96186e0cfbd9f80f1",
+    "docs/implementation-architecture.md": "d833f2adec2858b961249a4d32bff35fb7b2c8a7c5a8dad967bd4bee06d028b4",
+    "docs/roadmap.md": "da05132cea617cbe27bcb63cc29aa2f531d68ce197288d204019bb326d6a1b1e",
+    "docs/status.md": "bd7cfca107925c5369afd23b0d041d1551133dd252fc8b3c075652273903a105",
+    "packages/contracts/go/go.mod": "e09768a694bbe0d05f0033eb21c7fc48fb04cd943728afa937518e0f7c25a2ee",
+    "packages/contracts/go/owneridentity/errorcode.go": "0fb371e560db914a166527d27cc8e1d4c25c1a58dc96cf72ad2530dd6cdba07b",
+    "services/build/internal/build/identity_live_test.go": "40072dbe9a42e207bd41dbfbe1b900e70ae4779b0fd434a0e7d133d82ec61d79",
+    "services/gateway-integration/cmd/server/main.go": "e59799050f5945b05de70ad110b75089d1186820638cd87740344db121a81114",
+    "services/gateway-integration/identity/authorization.go": "e43575e4a12c37afdb8c4c1a6cb2147acb331a5e94afd16c21c9ce8312e80309",
+    "services/gateway-integration/identity/generate_policy.py": "941ea63c8fe96dd7d607f6bfb42397ff4b96ab115ff287fcd1602080dff956e2",
+    "services/gateway-integration/identity/members.go": "6ee95266d698d1777b330992e30bfcb651ba4796a6394bbf5f3d93e1303a15b0",
+    "services/gateway-integration/identity/members_postgres_test.go": "a6a50c33bb0a5a4b7c72cc8fd9876cb35e27f1993ef6ebd1007d1ca430425330",
+    "services/gateway-integration/identity/policy_generated.go": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "services/gateway-integration/identity/policy_generated_test.go": "d636af97a52f9a40cadca260f5725c0ea4fb582389a8813073af98a7b7ddecdd",
+    "services/gateway-integration/identity/policy_postgres_test.go": "f409c97ff418752bb36a0e3d0e70dc1b79fc8585a5445c621bdc5b5f629de950",
+    "services/gateway-integration/identity/service.go": "b7e4fed9416d32d8ba2c1411a25a75cc74c4902e4f771ebe388aa26613f6eb7d",
+    "services/gateway-integration/identity/service_postgres_test.go": "5bdfd0e21eb9f43937e8ed574a02e1ab831ee8c2c09dcbb74b684adf09acd210"
+  },
+  "dependencyBoundary": {
+    "goVersion": "go1.26.3 darwin/arm64",
+    "nodeVersion": "v25.3.0",
+    "pythonVersion": "3.9.6",
+    "pyyaml": "6.0.3",
+    "grpc": "v1.83.2",
+    "protobuf": "v1.36.11",
+    "postgresImage": "postgres:16.8-bookworm@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae",
+    "externalSub2Api": "simulated HTTP fixture only; the real Sub2API service was not contacted",
+    "protocGenGo": "not installed on the verifying machine; no generated protobuf binding was regenerated in this revision"
+  },
+  "window": {
+    "startUtc": "2026-09-25T06:21:24Z",
+    "endUtc": "2026-09-25T06:35:05Z"
+  },
+  "commands": [
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated pg> go test ./... -count=1 -v",
+      "cwd": "services/gateway-integration",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-gateway-integration.log",
+      "logSha256": "517ba8272e6a157bbbebd542dcd851568780efb074f29effcff679bfa3caa700",
+      "counts": {
+        "pass": 13,
+        "fail": 0
+      }
+    },
+    {
+      "command": "go test ./... -count=1 -v",
+      "cwd": "apps/console-bff",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-console-bff.log",
+      "logSha256": "eef5bc1513ac7305ec80a004bdd84409d396a3586257b1760fb6a48a8f1a4120",
+      "counts": {
+        "pass": 20,
+        "fail": 0
+      }
+    },
+    {
+      "command": "go test ./... -count=1",
+      "cwd": "packages/contracts/go",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-contracts.log",
+      "logSha256": "2f990c4f6c971e93a548429820b68cf297822ac3227d393936150f85f4f45cd8"
+    },
+    {
+      "command": "go vet -tags=livebuild ./...",
+      "cwd": "services/build",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-build-livebuild-vet.log",
+      "logSha256": "b9abe503a5f4e6565c6b7543c86d986d999cac0b6c0b52f5ad4344b516c928f0"
+    },
+    {
+      "command": "npm run verify:local:full",
+      "cwd": "<repo root>",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/full-verify-local.log",
+      "logSha256": "cdc69745e2a71698d8a7e7f4cd79c810246ab43c4e7318c8ae9d63e1bf683ca7",
+      "capturedWith": "direct redirection of the process and its own exit code, not tail or tee",
+      "counts": {
+        "nodeSourceTests": 228,
+        "nodeSourceFailures": 0,
+        "consoleBrowserTests": 114,
+        "consoleBrowserFailures": 0,
+        "ownerPostgresSuitesZeroSkips": true
+      },
+      "aggregate": "Local verification passed with PostgreSQL and Docker integration."
+    }
+  ],
+  "exitCodeCapture": "Each command wrote its own exit status with an immediately following echo EXIT=$? into the same redirected log. All five logs report EXIT=0 and none contains a FAIL line.",
+  "acceptanceResults": [
+    {
+      "item": "the BFF answers with the success status the canonical contract declares",
+      "result": "pass",
+      "evidence": "apps/console-bff internal/httpapi TestRoutedActionsHaveTheDeclaredSuccessStatus pins every routed status and the table shape; TestMemberAcceptReturnsTheDeclaredStatus proves 200 for accept and 204-without-body for remove"
+    },
+    {
+      "item": "setComputePlanAvailability and setStoragePlanAvailability answer 200, not the write default 201",
+      "result": "pass",
+      "evidence": "the status is compiled from 03_api_contract_complete.yaml; the pinning test asserts both are 200"
+    },
+    {
+      "item": "a route whose action has no declared success status is refused, not defaulted",
+      "result": "pass",
+      "evidence": "publisherRoute returns 500 undeclared_success_status when the action is absent from the generated table"
+    },
+    {
+      "item": "resource catalog and Serve audiences with platform permission, tenant isolation and refusal paths",
+      "result": "pass",
+      "evidence": "TestPolicyPlatformPermissionAndTenantIsolationPostgres, TestGeneratedPolicyCoversAssignedOwners, TestGeneratedPolicyAudienceAndRoles"
+    },
+    {
+      "item": "catalog rows the consumer confirmed include only contract permissions",
+      "result": "pass",
+      "evidence": "the consumer re-ran the generator on its own tree and got a byte-identical table; policy_generated.go sha256 e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e"
+    },
+    {
+      "item": "Member.displayName resolved from an authorized identity readback",
+      "result": "not_proven",
+      "evidence": "unchanged and still open; see unprovenItems"
+    }
+  ],
+  "crossLineConsumerConfirmation": {
+    "resourceCatalogThread": "01a0d635-4d84-7a73-8e4a-e32992afc147",
+    "serveThread": "01a0d635-a164-7282-a8e0-21e314fba796",
+    "confirmed": "The resource catalog line absorbed revision f83f4f03, re-ran the generator on its own tree, obtained a byte-identical policy table, and passed a real CloudIdentity integration for its 14 catalog actions: 10 platform_admin actions allowed on platform scope, 2 member reads allowed on tenant scope, and tenant administrators refused all 10 platform actions."
+  },
+  "unprovenItems": [
+    "Member.displayName has no authorized source yet: no identity readback RPC exists in packages/contracts/proto, no migration creates gateway.identity_mappings, and the Gateway HTTP adapter exposes only the caller's own identity while 02_database_schema_complete.md forbids a Cloud service credential standing in for a member. The field stays empty and the contract was not edited to declare it optional.",
+    "getWorkspaceAccess is authorized by no row: 03_api_contract_complete.yaml assigns it x-owner: workspace (x-tables: workspace.workspaces, F09) while internal.proto declares it on ServeProductService. Resolving that needs a canonical-owner decision; policy_generated_test.go pins the absence.",
+    "The Console BFF catalog routes are not wired. apps/console-bff/internal/httpapi/catalog.go exists only on the resource catalog branch, so adding the call to server.go on this branch would not compile. The field and the single registration line remain a mechanical integration step.",
+    "OPL_INVITATION_TTL is required deployment configuration. Instance-owned manifests and profiles were not edited, so a deployment that enables invitations must set it before adopting this revision.",
+    "A shared public-JSON codec defect is reported but not fixed here; see sharedContractFindings.",
+    "No Console member page exists; only the BFF REST surface is implemented.",
+    "Tenant onboarding, suspend/reenable, delete/restore, retained-identity migration and Gateway wallet binding remain unimplemented.",
+    "No production, Candidate, Release, Instance qualification or real Sub2API account was touched."
+  ],
+  "sharedContractFindings": [
+    {
+      "id": "public-json-usd-property-spelling",
+      "status": "reported, not fixed; outside the identity write set",
+      "summary": "packages/contracts/go/publicjson resolves public property names with protoreflect Fields().ByJSONName, which matches only the protobuf json_name. The canonical contract spells the money properties with an uppercase acronym (computeMonthlyUSDMicros) while protoc derives computeMonthlyUsdMicros, so every money-bearing public DTO fails to decode and encodes under the wrong key.",
+      "reproduced": {
+        "decode": "publicjson.Unmarshal of {\"computeMonthlyUSDMicros\":\"50000000\",...} into CreatePricePolicyRequest returns: unknown publisher property CreatePricePolicyRequest.computeMonthlyUSDMicros",
+        "encode": "publicjson.Marshal of the same message emits the protobuf spelling computeMonthlyUsdMicros",
+        "method": "an isolated module that replaced opl-cloud/packages/contracts/go and called the real codec; no product source was modified to reproduce it"
+      },
+      "scope": "28 divergent money fields across ComputePlan, StoragePlan, PricePolicyVersion, CreatePricePolicyRequest, Model, Quote, QuoteLine, Subscription, Wallet, WalletOperation, Usage, CreditSource, UpgradeProration, NextPeriodPlanQuote, PlanChangeCalculation, PlanChange and SupplementalRefundEvidence.",
+      "currentImpact": "latent. No routed public JSON DTO carries money today (the codec tests and the BFF routes cover only non-money messages), so no live consumer is broken yet. It blocks the resource catalog price-policy wire and will block Quote, Wallet and Usage.",
+      "proposedMinimalFix": "Emit a contract-property to proto-field name mapping from packages/contracts/proto/generate_public_json_shape.py, which already parses 03_api_contract_complete.yaml without protoc, and use it in publicjson.convert in both directions. Aligning the proto json_name instead would need explicit json_name attributes plus a regeneration with the pinned protoc-gen-go and protoc-gen-go-grpc, which are not installed on the verifying machine.",
+      "owner": "shared contracts module. Needs an explicit assignment; no line may change the shared revision in parallel."
+    }
+  ],
+  "failedAttempts": [
+    "A Go test that re-derived the policy table from the YAML contract was abandoned because it would have added a YAML dependency to the gateway-integration Go module. The committed tests assert the per-owner surface and the exact audience/roles without a new dependency.",
+    "The first status-table assertion wrongly required getWorkspaceAccess to be absent, but the table is a status lookup over every contract operation rather than a routing table. The assertion was corrected to pin the four declared codes and the absence of the unspecified action."
+  ],
+  "sharedAuthorizationHandoff": {
+    "policySha": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "generatorSha": "941ea63c8fe96dd7d607f6bfb42397ff4b96ab115ff287fcd1602080dff956e2",
+    "statusTableSha": "66b7470eb195847a1f21fced81b33dacfb6ee7a4b8cd69747ec9705abf40cb06",
+    "regenerationIdempotent": true,
+    "actionCounts": {
+      "capability": 25,
+      "build": 5,
+      "tenant": 18,
+      "runtime_control": 5,
+      "resource_catalog": 14,
+      "serve": 4,
+      "total": 71
+    },
+    "consumersNotified": [
+      "01a0d635-4d84-7a73-8e4a-e32992afc147",
+      "01a0d635-a164-7282-a8e0-21e314fba796"
+    ],
+    "openIntegrationStep": "Add the catalog field and s.registerCatalogRoutes(mux, s.catalog) to apps/console-bff/internal/httpapi/server.go in the change that brings apps/console-bff/internal/httpapi/catalog.go into the same tree. server.go stays with this writer as the serial integrator."
+  }
+}

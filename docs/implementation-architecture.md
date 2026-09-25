@@ -21,7 +21,9 @@ database and pool inside the same deployment unit. It also serves Tenant member
 and invitation governance (list, invite, accept, revoke, role change and removal,
 with last-owner protection and audit) over the same Tenant database, and its
 generated permission table is the single authorization policy for the capability,
-build, tenant, runtime control, resource catalog and serve audiences. This is not
+build, tenant, runtime control, resource catalog and serve audiences, and the
+Console BFF's HTTP success status per routed action is compiled from the same
+contract rather than hand-listed. This is not
 completion of all W03 work: `Member.displayName` still needs the authorised
 Gateway identity-directory read (no identity readback RPC or
 `gateway.identity_mappings` migration exists yet), and Tenant

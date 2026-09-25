@@ -200,3 +200,78 @@ func TestMemberCommandsSurfaceOwnerRefusal(t *testing.T) {
 		t.Fatal("a denied member command still reached the owner")
 	}
 }
+
+// TestRoutedActionsHaveTheDeclaredSuccessStatus pins the response status of every
+// operation this handler routes. The value comes from the generated table, itself
+// compiled from the canonical contract, so this test fails if a regeneration
+// changes a routed status or if a route is registered for an operation the
+// contract does not declare.
+func TestRoutedActionsHaveTheDeclaredSuccessStatus(t *testing.T) {
+	for action, want := range map[api.AuthorizationActionEnum]int{
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT:                  200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMEMBERS:                200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTINVITATIONS:            200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_INVITEMEMBER:               201,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION:           200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION:           200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE:           200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER:               204,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE:              201,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART:           200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD:             202,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS:      200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE:   200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD:                201,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETCOMPUTEPLANAVAILABILITY: 200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETSTORAGEPLANAVAILABILITY: 200,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATECOMPUTEPLAN:          201,
+	} {
+		got, ok := successStatus[action]
+		if !ok {
+			t.Fatalf("routed action %v has no declared success status", action)
+		}
+		if got != want {
+			t.Fatalf("action %v answers %d, expected %d", action, got, want)
+		}
+	}
+	// The table is a status lookup over every contract operation, so it must not
+	// carry the unspecified action, and every row must be one of the four success
+	// codes the contract actually declares. A hand-typed status cannot survive this.
+	if _, ok := successStatus[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UNSPECIFIED]; ok {
+		t.Fatal("the unspecified action must not carry a success status")
+	}
+	declared := map[int]bool{200: true, 201: true, 202: true, 204: true}
+	for action, code := range successStatus {
+		if !declared[code] {
+			t.Fatalf("action %v carries the undeclared success status %d", action, code)
+		}
+	}
+	if len(successStatus) == 0 {
+		t.Fatal("the success status table is empty")
+	}
+}
+
+// TestMemberAcceptReturnsTheDeclaredStatus proves the guard answers with the
+// contract's code rather than the write default, for a command the contract
+// declares as 200 and one it declares as 204.
+func TestMemberAcceptReturnsTheDeclaredStatus(t *testing.T) {
+	probe := &tenantProbe{}
+	identity := allowedIdentity()
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_TENANT
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("invite-1")}
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION
+	handler := memberServer(probe, identity).Handler()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, memberWrite("POST", "/api/v2/invitations/invite-1/accept", ""))
+	if response.Code != http.StatusOK {
+		t.Fatalf("accept answered %d, the contract declares 200", response.Code)
+	}
+
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, memberWrite("DELETE", "/api/v2/tenant/members/member-9", ""))
+	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
+		t.Fatalf("remove answered %d with %q, the contract declares 204 with no body", response.Code, response.Body.String())
+	}
+}

@@ -126,22 +126,13 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
 			return
 		}
-		code := 200
-		if write {
-			code = 201
-			switch action {
-			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART,
-				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS,
-				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE,
-				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION,
-				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION,
-				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE:
-				code = 200
-			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD:
-				code = 202
-			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER:
-				code = 204
-			}
+		// The response code is the one the canonical contract declares for this
+		// operation. A route whose action carries no declared success code is a
+		// programming error, so it is refused rather than answered with a default.
+		code, declared := successStatus[action]
+		if !declared {
+			writePublisherError(w, r, 500, "undeclared_success_status", "this route has no declared success status")
+			return
 		}
 		if op, ok := result.(*api.Operation); ok && op.GetPollAfterSeconds() > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(op.GetPollAfterSeconds())))

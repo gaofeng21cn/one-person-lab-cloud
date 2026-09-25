@@ -1,7 +1,7 @@
 {
-  "result": "failed",
-  "timestamp": "2026-09-24T12:02:35.170560+00:00",
-  "report": "checks/runs/20260924T120235170560Z.json",
+  "result": "passed",
+  "timestamp": "2026-09-25T08:05:15.300310+00:00",
+  "report": "checks/runs/20260925T080515300310Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -26,12 +26,12 @@
     },
     {
       "name": "isolated_postgresql_execution_receipt",
-      "passed": false,
+      "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260924T103303.414116Z.json",
+        "receipt": "checks/runs/cross-domain-20260925T075223.161739Z.json",
         "tests": 101,
         "metadata": {
-          "actualDatabaseFields": 1422,
+          "actualDatabaseFields": 1424,
           "directMappingsTypeAndEnumChecked": 310,
           "optionalWireFieldMeansOmittedNotNull": true,
           "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
@@ -39,7 +39,7 @@
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790245983",
+          "containerName": "opl-spec-semantic-1790322743",
           "containerAbsent": true,
           "stopSucceeded": true,
           "removalReadbackPolls": 2,
@@ -107,8 +107,5 @@
       }
     }
   ],
-  "errors": [
-    "cross-domain executed source hash differs: contracts/schema.sql",
-    "cross-domain executed source hash differs: contracts/db_inventory.json"
-  ]
+  "errors": []
 }

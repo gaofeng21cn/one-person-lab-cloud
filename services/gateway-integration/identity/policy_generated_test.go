@@ -46,14 +46,15 @@ func TestGeneratedPolicyCoversAssignedOwners(t *testing.T) {
 		api.OwnerEnum_OWNER_ENUM_TENANT:           18,
 		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL:  5,
 		api.OwnerEnum_OWNER_ENUM_RESOURCE_CATALOG: 14,
-		api.OwnerEnum_OWNER_ENUM_SERVE:            4,
+		api.OwnerEnum_OWNER_ENUM_SERVE:            5,
+		api.OwnerEnum_OWNER_ENUM_WORKSPACE:        19,
 	} {
 		if counts[owner] != want {
 			t.Fatalf("owner %v has %d policy rows, expected %d", owner, counts[owner], want)
 		}
 	}
-	if len(counts) != 6 {
-		t.Fatalf("the policy names %d owners, expected 6", len(counts))
+	if len(counts) != 7 {
+		t.Fatalf("the policy names %d owners, expected 7", len(counts))
 	}
 }
 
@@ -84,13 +85,37 @@ func TestGeneratedPolicyAudienceAndRoles(t *testing.T) {
 			t.Fatalf("%s is %v/%v, expected the serve member read", action, policy.owner, policy.roles)
 		}
 	}
+	// getWorkspaceAccess reports Serve's access facts, so its audience is Serve even
+	// though the operation routes through the Workspace product path. A workspace
+	// audience must not authorize it, or the fact would be authorized by the wrong
+	// owner.
+	access := policyFor(t, "GETWORKSPACEACCESS")
+	if access.owner != api.OwnerEnum_OWNER_ENUM_SERVE || len(access.roles) != 1 || access.roles[0] != "member" {
+		t.Fatalf("GETWORKSPACEACCESS is %v/%v, expected the serve access owner", access.owner, access.roles)
+	}
 	// The invitee-bound operation is deliberately not a grantable role row.
 	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION"])]; ok {
 		t.Fatal("acceptInvitation must not be a tenant role row")
 	}
-	// getWorkspaceAccess is contract-owned by the workspace owner, which this
-	// policy does not serve, so no row may authorize it here under a serve audience.
-	if _, ok := actions[api.AuthorizationActionEnum(api.AuthorizationActionEnum_value["AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS"])]; ok {
-		t.Fatal("getWorkspaceAccess is not a serve-owned action and must not be rowed here")
+	// The composed BFF read guards the Workspace identity fact, so the workspace
+	// owner needs its own row for that read; the count is pinned by the surface test.
+	if policy := policyFor(t, "GETWORKSPACE"); policy.owner != api.OwnerEnum_OWNER_ENUM_WORKSPACE || policy.roles[0] != "member" {
+		t.Fatalf("GETWORKSPACE is %v/%v, expected the workspace member read", policy.owner, policy.roles)
+	}
+	// A serve-audience row must not exist for a workspace-only action, so the
+	// corrected ownership cannot be read as "serve may do anything workspace may".
+	for action, policy := range actions {
+		if policy.owner != api.OwnerEnum_OWNER_ENUM_SERVE {
+			continue
+		}
+		switch action {
+		case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEWORKSPACEVERSION,
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ROLLBACKWORKSPACE:
+		default:
+			t.Fatalf("unexpected serve audience row: %v", action)
+		}
 	}
 }
