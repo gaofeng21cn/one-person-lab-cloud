@@ -72,9 +72,11 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func fabricServerAuthFromEnv(getenv func(string) string) (fabrichttp.ServerAuthConfig, error) {
 	config := fabrichttp.ServerAuthConfig{
-		ControlPlaneToken: strings.TrimSpace(getenv("OPL_INTERNAL_SERVICE_TOKEN")),
-		RunnerToken:       strings.TrimSpace(getenv("OPL_FABRIC_RUNNER_SERVICE_TOKEN")),
-		CapabilityKey:     strings.TrimSpace(getenv("OPL_FABRIC_CAPABILITY_KEY")),
+		ControlPlaneToken:  strings.TrimSpace(getenv("OPL_INTERNAL_SERVICE_TOKEN")),
+		RunnerToken:        strings.TrimSpace(getenv("OPL_FABRIC_RUNNER_SERVICE_TOKEN")),
+		CapabilityKey:      strings.TrimSpace(getenv("OPL_FABRIC_CAPABILITY_KEY")),
+		ServeToken:         strings.TrimSpace(getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN")),
+		ServeCapabilityKey: strings.TrimSpace(getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")),
 	}
 	configured := 0
 	for _, value := range []string{config.ControlPlaneToken, config.RunnerToken, config.CapabilityKey} {
@@ -99,6 +101,19 @@ func fabricServerAuthFromEnv(getenv func(string) string) (fabrichttp.ServerAuthC
 	}
 	if config.ControlPlaneToken != "" && (config.ControlPlaneToken == config.RunnerToken || config.ControlPlaneToken == config.CapabilityKey || config.RunnerToken == config.CapabilityKey) {
 		return fabrichttp.ServerAuthConfig{}, errors.New("Fabric transport, runner, and capability credentials must be distinct")
+	}
+	if config.ServeToken != "" || config.ServeCapabilityKey != "" {
+		if len(config.ServeToken) < 32 || len(config.ServeCapabilityKey) < 32 {
+			return fabrichttp.ServerAuthConfig{}, errors.New("Serve transport and capability credentials must both contain 32+ characters")
+		}
+		for _, v := range []string{config.ControlPlaneToken, config.RunnerToken, config.CapabilityKey} {
+			if config.ServeToken == v || config.ServeCapabilityKey == v {
+				return fabrichttp.ServerAuthConfig{}, errors.New("Serve credentials must be distinct from other Fabric credentials")
+			}
+		}
+		if config.ServeToken == config.ServeCapabilityKey {
+			return fabrichttp.ServerAuthConfig{}, errors.New("Serve transport and capability credentials must be distinct")
+		}
 	}
 	return config, nil
 }

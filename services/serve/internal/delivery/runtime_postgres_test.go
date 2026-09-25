@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -91,7 +92,7 @@ func TestServeRecordsRuntimeObservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	seedDeployment(t, db, "ws-rt", tenant, "dep-rt", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+	seedObservationDeployment(t, db, "ws-rt", tenant, "dep-rt", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 
 	// A genuinely ready application with its own publishable entry is recorded.
 	record, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-rt", "dep-rt", 1), runtimeReady(applicationEntry(), "https://ws-rt.example/app", "readiness://dep-rt"))
@@ -127,7 +128,7 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("resource_ready_is_not_application_ready", func(t *testing.T) {
-		seedDeployment(t, db, "ws-a", tenant, "dep-a", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-a", tenant, "dep-a", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		// The runtime reports READY, but nothing publishes an entry: a provisioned
 		// resource is not a reachable application.
 		_, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-a", "dep-a", 1), delivery.RuntimeObservation{
@@ -136,13 +137,13 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 		if reason := refusedReason(t, err); reason != delivery.ReasonAppAccessUnavailable {
 			t.Fatalf("reason = %q", reason)
 		}
-		if n := countInstances(t, db, "dep-a"); n != 0 {
+		if n := countInstances(t, db, "dep-a"); n != 1 {
 			t.Fatalf("refused observation wrote %d instances", n)
 		}
 	})
 
 	t.Run("ready_without_readiness_evidence", func(t *testing.T) {
-		seedDeployment(t, db, "ws-b", tenant, "dep-b", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-b", tenant, "dep-b", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		_, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-b", "dep-b", 1), runtimeReady(applicationEntry(), "https://ws-b.example/app", ""))
 		if reason := refusedReason(t, err); reason != delivery.ReasonAppAccessUnavailable {
 			t.Fatalf("reason = %q", reason)
@@ -150,7 +151,7 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 	})
 
 	t.Run("ready_without_publishable_url", func(t *testing.T) {
-		seedDeployment(t, db, "ws-c", tenant, "dep-c", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_CLOUD_PRIVATE)
+		seedObservationDeployment(t, db, "ws-c", tenant, "dep-c", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_CLOUD_PRIVATE)
 		// A cloud_private Agent has no anonymous/public URL to publish.
 		_, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-c", "dep-c", 1), runtimeReady(nil, "", "readiness://dep-c"))
 		if reason := refusedReason(t, err); reason != delivery.ReasonAppAccessUnavailable {
@@ -159,7 +160,7 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 	})
 
 	t.Run("undecidable_state_is_refused", func(t *testing.T) {
-		seedDeployment(t, db, "ws-d", tenant, "dep-d", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-d", tenant, "dep-d", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		_, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-d", "dep-d", 1), delivery.RuntimeObservation{ObservedAt: time.Now().UTC()})
 		if reason := refusedReason(t, err); reason != delivery.ReasonUnknownState {
 			t.Fatalf("reason = %q", reason)
@@ -167,7 +168,7 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 	})
 
 	t.Run("invalid_descriptor_is_refused", func(t *testing.T) {
-		seedDeployment(t, db, "ws-e", tenant, "dep-e", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-e", tenant, "dep-e", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		cmd := deployCommand(t, "ws-e", "dep-e", 1)
 		cmd.DeploymentDescriptorDigest = "sha256:" + strings.Repeat("9", 64)
 		_, err := service.RecordDeploymentObservation(ctx, cmd, runtimeReady(applicationEntry(), "https://ws-e.example/app", "readiness://dep-e"))
@@ -177,7 +178,7 @@ func TestServeRefusesOverstatedObservations(t *testing.T) {
 	})
 
 	t.Run("foreign_workspace_is_refused", func(t *testing.T) {
-		seedDeployment(t, db, "ws-f", tenant, "dep-f", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-f", tenant, "dep-f", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		_, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-other", "dep-f", 1), runtimeReady(applicationEntry(), "https://ws-f.example/app", "readiness://dep-f"))
 		if reason := refusedReason(t, err); reason != delivery.ReasonIdentityMismatch {
 			t.Fatalf("reason = %q", reason)
@@ -201,16 +202,22 @@ func TestServeRuntimeObservationFencesStaleEpochs(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	seedDeployment(t, db, "ws-g", tenant, "dep-g", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+	seedObservationDeployment(t, db, "ws-g", tenant, "dep-g", "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 
 	// The deployment advances to epoch 3 and records its ready observation.
 	if _, err := db.ExecContext(ctx, `UPDATE serve.agent_deployments SET execution_epoch=3 WHERE id='dep-g'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET execution_epoch=3 WHERE deployment_id='dep-g'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-g", "dep-g", 3), runtimeReady(applicationEntry(), "https://ws-g.example/app", "readiness://dep-g")); err != nil {
 		t.Fatal(err)
 	}
 
+	if _, err := db.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET execution_epoch=3 WHERE deployment_id='dep-g'`); err != nil {
+		t.Fatal(err)
+	}
 	// An observation from the superseded epoch 2 must be refused and must not
 	// overwrite the epoch-3 fact.
 	_, err = service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-g", "dep-g", 2), delivery.RuntimeObservation{
@@ -249,7 +256,7 @@ func TestServeRuntimeStatusVocabulary(t *testing.T) {
 		{api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED, "terminated"},
 	} {
 		deploymentID := "dep-v" + string(rune('a'+i))
-		seedDeployment(t, db, "ws-v", tenant, deploymentID, "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
+		seedObservationDeployment(t, db, "ws-v", tenant, deploymentID, "deploying", "", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 		record, err := service.RecordDeploymentObservation(ctx, deployCommand(t, "ws-v", deploymentID, 1), delivery.RuntimeObservation{State: tc.state, ObservedAt: time.Now().UTC()})
 		if err != nil {
 			t.Fatalf("%s: %v", tc.status, err)
@@ -257,5 +264,19 @@ func TestServeRuntimeStatusVocabulary(t *testing.T) {
 		if record.Status != tc.status || record.ApplicationOpen || record.AccessURL != "" {
 			t.Fatalf("%s mapped to %+v", tc.status, record)
 		}
+	}
+}
+
+func seedObservationDeployment(t *testing.T, db *sql.DB, workspace, tenant, deploymentID, deploymentStatus, runtimeStatus, accessURL string, exposure api.WorkspaceApplicationRevisionExposurePolicyEnum) {
+	t.Helper()
+	seedDeployment(t, db, workspace, tenant, deploymentID, deploymentStatus, "", "", exposure)
+	cmd := deployCommand(t, workspace, deploymentID, 1)
+	descriptor, _ := publicjson.Marshal(cmd.DeploymentDescriptor)
+	attachment, _ := json.Marshal(map[string]string{"attachmentId": cmd.DataAttachmentId})
+	if _, err := db.ExecContext(context.Background(), `UPDATE serve.agent_deployments SET runtime_instance_id=$2 WHERE id=$1`, deploymentID, cmd.RuntimeInstanceId); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO serve.agent_runtime_instances(id,workspace_id,deployment_id,artifact_digest,fabric_resource_set_id,status,data_attachment_contract,execution_epoch,deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref) VALUES($1,$2,$3,$4,$5,'pending',$6,1,$7,$8,$9)`, cmd.RuntimeInstanceId, workspace, deploymentID, artifactDigest, cmd.ResourceSetId, attachment, descriptor, cmd.DeploymentDescriptorDigest, cmd.DeploymentDescriptorObjectRef); err != nil {
+		t.Fatal(err)
 	}
 }

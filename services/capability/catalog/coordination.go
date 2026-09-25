@@ -101,14 +101,25 @@ func (s *Service) AcquireReference(ctx context.Context, r *api.ReferenceClaimReq
 	if e != nil {
 		return nil, e
 	}
-	if r.GetClaimantResourceId() == "" || r.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_BUILD {
-		return nil, status.Error(codes.InvalidArgument, "Build claimant identity is required")
+	purpose := "build"
+	peer, verified := ownerservice.PeerOwner(ctx)
+	if r.GetClaimantResourceId() == "" || !verified || (r.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_BUILD && r.GetClaimantOwner() != api.OwnerEnum_OWNER_ENUM_SERVE) {
+		return nil, status.Error(codes.InvalidArgument, "Build or Serve claimant identity is required")
+	}
+	if r.GetClaimantOwner() == api.OwnerEnum_OWNER_ENUM_SERVE {
+		if kind != "capability_version" {
+			return nil, status.Error(codes.InvalidArgument, "Serve may only claim a CapabilityVersion")
+		}
+		purpose = "deploy"
+	}
+	if owneridentity.Service(ownerName(r.GetClaimantOwner())) != peer {
+		return nil, status.Error(codes.PermissionDenied, "claimant differs from authenticated peer")
 	}
 	if e = s.authorizeReference(ctx, r.GetContext(), "AcquireReference", kind, target); e != nil {
 		return nil, e
 	}
 	claim := &api.ReferenceClaim{Id: id("claim"), Target: r.Target, ClaimantOwner: r.ClaimantOwner, ClaimantResourceId: r.ClaimantResourceId, State: api.ReferenceClaimState_REFERENCE_CLAIM_STATE_ACQUIRED, AcquiredAt: timestamppb.Now()}
-	_, e = s.DB.ExecContext(ctx, `INSERT INTO capability.reference_claims(id,target_type,package_version_id,capability_version_id,runtime_version_id,webui_version_id,claimant_owner,claimant_resource_id,purpose,request_id) VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,$8,'build',$9) ON CONFLICT DO NOTHING`, claim.Id, kind, func() string {
+	_, e = s.DB.ExecContext(ctx, `INSERT INTO capability.reference_claims(id,target_type,package_version_id,capability_version_id,runtime_version_id,webui_version_id,claimant_owner,claimant_resource_id,purpose,request_id) VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,$8,$9,$10) ON CONFLICT DO NOTHING`, claim.Id, kind, func() string {
 		if kind == "package_version" {
 			return target
 		}
@@ -128,14 +139,14 @@ func (s *Service) AcquireReference(ctx context.Context, r *api.ReferenceClaimReq
 			return target
 		}
 		return ""
-	}(), ownerName(r.ClaimantOwner), r.ClaimantResourceId, r.GetContext().GetRequestId())
+	}(), ownerName(r.ClaimantOwner), r.ClaimantResourceId, purpose, r.GetContext().GetRequestId())
 	if e != nil {
 		return nil, dbError(e)
 	}
 	var existingID string
 	var existingBound, existingReleased sql.NullTime
 	var existingOperation, existingDigest sql.NullString
-	err := s.DB.QueryRowContext(ctx, `SELECT id,bound_at,bound_operation_id,bound_input_digest,released_at FROM capability.reference_claims WHERE target_type=$1 AND COALESCE(package_version_id,capability_version_id,runtime_version_id,webui_version_id)=$2 AND claimant_owner=$3 AND claimant_resource_id=$4 AND purpose='build' AND released_at IS NULL`, kind, target, ownerName(r.ClaimantOwner), r.GetClaimantResourceId()).Scan(&existingID, &existingBound, &existingOperation, &existingDigest, &existingReleased)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,bound_at,bound_operation_id,bound_input_digest,released_at FROM capability.reference_claims WHERE target_type=$1 AND COALESCE(package_version_id,capability_version_id,runtime_version_id,webui_version_id)=$2 AND claimant_owner=$3 AND claimant_resource_id=$4 AND purpose=$5 AND released_at IS NULL`, kind, target, ownerName(r.ClaimantOwner), r.GetClaimantResourceId(), purpose).Scan(&existingID, &existingBound, &existingOperation, &existingDigest, &existingReleased)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -168,13 +179,21 @@ func (s *Service) BindReference(ctx context.Context, r *api.BindReferenceRequest
 	if e := s.authorizeReference(ctx, r.GetContext(), "BindReference", kind, target); e != nil {
 		return nil, e
 	}
+	peer, _ := ownerservice.PeerOwner(ctx)
+	if owner != string(peer) {
+		return nil, status.Error(codes.PermissionDenied, "only original claimant may bind a reference")
+	}
 	if owner != ownerName(r.GetOwnerCommitEvidence().GetOwner()) || r.GetOwnerCommitEvidence().GetResourceId() != claim.ClaimantResourceId || r.GetOwnerCommitEvidence().GetOperationId() == "" || r.GetOwnerCommitEvidence().GetAcceptedInputDigest() == "" {
 		return nil, status.Error(codes.FailedPrecondition, "owner commit evidence does not match claim")
 	}
-	if s.Commit == nil {
-		return nil, status.Error(codes.Unavailable, "Build commit readback unavailable")
+	commit := s.Commit
+	if owner == "serve" {
+		commit = s.ServeCommit
 	}
-	actual, e := s.Commit.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: r.OwnerCommitEvidence.Owner, OperationId: r.OwnerCommitEvidence.OperationId, ResourceId: r.OwnerCommitEvidence.ResourceId})
+	if commit == nil {
+		return nil, status.Error(codes.Unavailable, "claimant owner commit readback unavailable")
+	}
+	actual, e := commit.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: r.OwnerCommitEvidence.Owner, OperationId: r.OwnerCommitEvidence.OperationId, ResourceId: r.OwnerCommitEvidence.ResourceId})
 	if e != nil {
 		return nil, e
 	}
@@ -228,16 +247,24 @@ func (s *Service) ReleaseReference(ctx context.Context, r *api.ReleaseReferenceR
 	if err := s.authorizeReference(ctx, r.GetContext(), "ReleaseReference", targetType, targetID); err != nil {
 		return nil, err
 	}
+	peer, _ := ownerservice.PeerOwner(ctx)
+	if claimantOwner != string(peer) {
+		return nil, status.Error(codes.PermissionDenied, "only original claimant may release a reference")
+	}
 	if releasedAt.Valid {
 		return nil, status.Error(codes.FailedPrecondition, "reference claim is already released")
 	}
 	if !boundAt.Valid || claimantOwner != ownerName(evidence.GetOwner()) || claimantResource != evidence.GetResourceId() || boundOperation.String != evidence.GetOperationId() {
 		return nil, status.Error(codes.FailedPrecondition, "release evidence does not match claim")
 	}
-	if s.Usage == nil {
+	usageClient := s.Usage
+	if claimantOwner == "serve" {
+		usageClient = s.ServeUsage
+	}
+	if usageClient == nil {
 		return nil, status.Error(codes.Unavailable, "claim usage readback is unavailable")
 	}
-	usage, err := s.Usage.ReadClaimUsage(ctx, &api.ReadClaimUsageRequest{Context: r.GetContext(), ClaimId: r.GetClaimId(), ClaimantResourceId: evidence.GetResourceId(), ClaimantOperationId: evidence.GetOperationId()})
+	usage, err := usageClient.ReadClaimUsage(ctx, &api.ReadClaimUsageRequest{Context: r.GetContext(), ClaimId: r.GetClaimId(), ClaimantResourceId: evidence.GetResourceId(), ClaimantOperationId: evidence.GetOperationId()})
 	if err != nil {
 		return nil, err
 	}
@@ -362,8 +389,11 @@ func jsonBytesList(v []*api.ModelRequirement) []byte {
 
 func (s *Service) authorizeReference(ctx context.Context, c *api.CallContext, action, kind, target string) error {
 	peer, ok := ownerservice.PeerOwner(ctx)
-	if !ok || peer != owneridentity.Build.Service() {
-		return status.Error(codes.PermissionDenied, "Build reference peer required")
+	if !ok || (peer != owneridentity.Build.Service() && peer != owneridentity.Serve.Service()) {
+		return status.Error(codes.PermissionDenied, "Build or Serve reference peer required")
+	}
+	if peer == owneridentity.Serve.Service() && kind != "capability_version" {
+		return status.Error(codes.PermissionDenied, "Serve may only reference CapabilityVersion")
 	}
 	if kind == "package_version" || kind == "capability_version" {
 		return s.auth(ctx, c, action, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, target)

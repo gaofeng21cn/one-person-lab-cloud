@@ -4,12 +4,11 @@
 // registers the shared owner Operation readback group, and reports SERVING only
 // when its declared dependencies and product groups are actually ready.
 //
-// Serve currently implements its own product read surface: the current Agent
-// deployment, the delivery history, and the current Agent's access facts, all
-// read from Serve's own database. The delivery write path (Reserve/Deploy and
-// route switching) is not implemented yet, so its RPCs answer Unimplemented
-// rather than a fabricated deployment; the blocking cross-owner capabilities are
-// recorded in docs/status.md.
+// Serve reserves first-delivery identities in its own database and deploys only
+// after Capability and Fabric confirm the original descriptor and resource
+// binding. The existing Fabric application engine returns live observations;
+// route switching, protected input configuration and retirement remain explicit
+// unsupported capabilities rather than fabricated successes.
 package main
 
 import (

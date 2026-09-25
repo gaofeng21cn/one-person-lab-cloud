@@ -13,9 +13,8 @@
 //   - an access URL is reported only for the current Agent whose own runtime
 //     instance is ready, never composed from history.
 //
-// The delivery write path (Reserve/Deploy/route switching) is not implemented
-// in this package. It still needs cross-owner capabilities that current source
-// does not provide; see docs/status.md and docs/roadmap.md.
+// Reserve and Deploy retain original delivery identity and require live owner
+// readbacks; version switching and external route CAS remain separate actions.
 package delivery
 
 import (
@@ -23,6 +22,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -46,9 +46,16 @@ type AuthorizeFunc func(context.Context, *api.CallContext, api.AuthorizationActi
 // store.
 type Service struct {
 	api.UnimplementedServeProductServiceServer
-	DB        *sql.DB
-	Store     *ownerstore.Store
-	Authorize AuthorizeFunc
+	api.UnimplementedServeAgentCoordinationServer
+	api.UnimplementedOwnerCommitReadbackServer
+	api.UnimplementedClaimUsageReadbackServer
+	DB         *sql.DB
+	Store      *ownerstore.Store
+	Authorize  AuthorizeFunc
+	Capability api.CapabilityProductServiceClient
+	References api.CapabilityCoordinationClient
+	Resources  api.FabricCoordinationClient
+	Runtime    RuntimeAdapter
 }
 
 // New binds the read surface to Serve's own database and the live authorizer.
@@ -68,6 +75,9 @@ func New(db *sql.DB, authorize AuthorizeFunc) (*Service, error) {
 func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("ServeProductService", func(g *grpc.Server) {
 		api.RegisterServeProductServiceServer(g, s)
+		api.RegisterServeAgentCoordinationServer(g, s)
+		api.RegisterOwnerCommitReadbackServer(g, s)
+		api.RegisterClaimUsageReadbackServer(g, s)
 	})
 }
 
@@ -95,6 +105,38 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	service, err := New(database.DB(), authorizer.Authorize)
 	if err != nil {
 		return err
+	}
+	if address := os.Getenv("OPL_CAPABILITY_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Capability.Service(), os.Getenv("OPL_CAPABILITY_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.Capability = api.NewCapabilityProductServiceClient(conn)
+		service.References = api.NewCapabilityCoordinationClient(conn)
+	}
+	if address := os.Getenv("OPL_FABRIC_COORDINATION_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Fabric.Service(), os.Getenv("OPL_FABRIC_COORDINATION_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.Resources = api.NewFabricCoordinationClient(conn)
+	}
+	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
+		service.Runtime = &FabricApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")}
 	}
 	return service.Register(server)
 }

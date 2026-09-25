@@ -18,13 +18,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	contracts "opl-cloud/packages/contracts/go"
 	api "opl-cloud/packages/contracts/go/api"
@@ -116,97 +115,45 @@ func (s *Service) RecordDeploymentObservation(ctx context.Context, cmd *api.Runt
 	if err != nil || digest != cmd.GetDeploymentDescriptorDigest() {
 		return nil, refuse(ReasonInvalidDescriptor)
 	}
-	descriptorRaw, err := publicjson.Marshal(cmd.GetDeploymentDescriptor())
-	if err != nil {
-		return nil, refuse(ReasonInvalidDescriptor)
-	}
-
-	// Serve's own deployment row is the authority for the workspace, artifact and
-	// current epoch. The command cannot introduce a deployment Serve never wrote.
-	var (
-		deploymentWorkspace string
-		artifactDigest      string
-		deploymentEpoch     int64
-	)
-	err = s.DB.QueryRowContext(ctx, `
-		SELECT workspace_id, artifact_digest, execution_epoch
-		FROM serve.agent_deployments WHERE id = $1`, cmd.GetDeploymentId()).
-		Scan(&deploymentWorkspace, &artifactDigest, &deploymentEpoch)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, status.Errorf(codes.NotFound, "Serve has no deployment %s", cmd.GetDeploymentId())
-	}
-	if err != nil {
-		return nil, dbError(err)
-	}
-	if deploymentWorkspace != cmd.GetWorkspaceId() {
-		return nil, refuse(ReasonIdentityMismatch)
-	}
-	if artifactDigest != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() {
-		return nil, refuse(ReasonIdentityMismatch)
-	}
-	if cmd.GetExecutionEpoch() < deploymentEpoch {
-		return nil, refuse(ReasonStaleEpoch)
-	}
 
 	state, accessURL, readinessRef, observedAt, err := resolveObservationState(observation)
 	if err != nil {
 		return nil, err
 	}
-
-	// Fencing: a row for this deployment at a newer epoch is never regressed, and a
-	// same-epoch replay converges on the latest report instead of creating a
-	// second instance.
-	var existingEpoch sql.NullInt64
-	var existingID string
-	err = s.DB.QueryRowContext(ctx, `SELECT id, execution_epoch FROM serve.agent_runtime_instances WHERE deployment_id = $1`, cmd.GetDeploymentId()).Scan(&existingID, &existingEpoch)
-	switch {
-	case err == nil && existingEpoch.Int64 > cmd.GetExecutionEpoch():
-		return nil, refuse(ReasonStaleEpoch)
-	case err != nil && !errors.Is(err, sql.ErrNoRows):
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
 		return nil, dbError(err)
 	}
-
-	id := existingID
-	if id == "" {
-		id = "rti_" + cmd.GetDeploymentId()
+	defer tx.Rollback()
+	if err = lockWorkspace(ctx, tx, cmd.GetWorkspaceId()); err != nil {
+		return nil, dbError(err)
 	}
-	var url, ref, observed any
+	if err = validateReserved(ctx, tx, cmd); err != nil {
+		return nil, err
+	}
+	var previous sql.NullTime
+	if err = tx.QueryRowContext(ctx, `SELECT observed_at FROM serve.agent_runtime_instances WHERE id=$1 FOR UPDATE`, cmd.GetRuntimeInstanceId()).Scan(&previous); err != nil {
+		return nil, dbError(err)
+	}
+	if previous.Valid && observedAt.Before(previous.Time) {
+		return nil, refuse(ReasonStaleEpoch)
+	}
+	var url, ref any
 	if accessURL != "" {
 		url = accessURL
 	}
 	if readinessRef != "" {
 		ref = readinessRef
 	}
-	if !observedAt.IsZero() {
-		observed = observedAt.UTC()
-	}
-	// data_attachment_contract is Serve's own column and 02 declares no source
-	// shape for it, so Serve records exactly what it was given: the opaque
-	// attachment identity. It is not a second contract for another owner's fact.
-	attachmentContract, err := json.Marshal(map[string]string{"attachmentId": cmd.GetDataAttachmentId()})
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), cmd.GetModelConfigurationVersion())
 	if err != nil {
 		return nil, dbError(err)
 	}
-	_, err = s.DB.ExecContext(ctx, `
-		INSERT INTO serve.agent_runtime_instances
-			(id, workspace_id, deployment_id, artifact_digest, fabric_resource_set_id, status, access_url,
-			 data_attachment_contract, readiness_evidence_ref, observed_at, execution_epoch,
-			 deployment_descriptor, deployment_descriptor_digest, deployment_descriptor_object_ref)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-		ON CONFLICT (deployment_id) DO UPDATE SET
-			status = EXCLUDED.status, access_url = EXCLUDED.access_url,
-			readiness_evidence_ref = EXCLUDED.readiness_evidence_ref, observed_at = EXCLUDED.observed_at,
-			execution_epoch = EXCLUDED.execution_epoch, fabric_resource_set_id = EXCLUDED.fabric_resource_set_id,
-			deployment_descriptor = EXCLUDED.deployment_descriptor,
-			deployment_descriptor_digest = EXCLUDED.deployment_descriptor_digest,
-			deployment_descriptor_object_ref = EXCLUDED.deployment_descriptor_object_ref,
-			updated_at = now()`,
-		id, cmd.GetWorkspaceId(), cmd.GetDeploymentId(), artifactDigest, cmd.GetResourceSetId(), state, url,
-		attachmentContract, ref, observed, cmd.GetExecutionEpoch(),
-		descriptorRaw, digest, cmd.GetDeploymentDescriptorObjectRef())
-	if err != nil {
+	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
 	}
+	id := cmd.GetRuntimeInstanceId()
+
 	return &RuntimeRecord{
 		ID: id, WorkspaceID: cmd.GetWorkspaceId(), DeploymentID: cmd.GetDeploymentId(),
 		RuntimeID: cmd.GetRuntimeInstanceId(), Status: state, AccessURL: accessURL,
@@ -260,4 +207,41 @@ func resolveObservationState(observation RuntimeObservation) (state, accessURL, 
 	default:
 		return "", "", "", time.Time{}, refuse(ReasonUnknownState)
 	}
+}
+
+// validateReserved is called with the workspace lock held. Only Reserve may
+// allocate an epoch or runtime identity; runtime observations cannot advance it.
+func validateReserved(ctx context.Context, tx *sql.Tx, cmd *api.RuntimeDeployCommand) error {
+	var workspace, capability, artifact, runtime string
+	var epoch, maxEpoch int64
+	err := tx.QueryRowContext(ctx, `SELECT workspace_id,capability_version_id,artifact_digest,COALESCE(runtime_instance_id,''),execution_epoch FROM serve.agent_deployments WHERE id=$1 FOR UPDATE`, cmd.GetDeploymentId()).Scan(&workspace, &capability, &artifact, &runtime, &epoch)
+	if err != nil {
+		return dbError(err)
+	}
+	if workspace != cmd.GetWorkspaceId() || capability != cmd.GetCapabilityVersionId() || artifact != cmd.GetDeploymentDescriptor().GetArtifact().GetDigest() || runtime != cmd.GetRuntimeInstanceId() {
+		return refuse(ReasonIdentityMismatch)
+	}
+	if epoch != cmd.GetExecutionEpoch() {
+		return refuse(ReasonStaleEpoch)
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT max(execution_epoch) FROM serve.agent_deployments WHERE workspace_id=$1`, workspace).Scan(&maxEpoch); err != nil {
+		return dbError(err)
+	}
+	if maxEpoch != epoch {
+		return refuse(ReasonStaleEpoch)
+	}
+	var resourceSet, attachment, digest, ref string
+	var storedDescriptor []byte
+	err = tx.QueryRowContext(ctx, `SELECT fabric_resource_set_id,COALESCE(data_attachment_contract->>'attachmentId',''),deployment_descriptor_digest,deployment_descriptor_object_ref,deployment_descriptor FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2 AND workspace_id=$3 AND execution_epoch=$4 FOR UPDATE`, runtime, cmd.GetDeploymentId(), workspace, epoch).Scan(&resourceSet, &attachment, &digest, &ref, &storedDescriptor)
+	if err != nil {
+		return dbError(err)
+	}
+	descriptor := &api.DeploymentDescriptor{}
+	if publicjson.Unmarshal(storedDescriptor, descriptor) != nil {
+		return status.Error(codes.DataLoss, "persisted descriptor is invalid")
+	}
+	if resourceSet != cmd.GetResourceSetId() || attachment != cmd.GetDataAttachmentId() || digest != cmd.GetDeploymentDescriptorDigest() || ref != cmd.GetDeploymentDescriptorObjectRef() || !proto.Equal(descriptor, cmd.GetDeploymentDescriptor()) {
+		return refuse(ReasonIdentityMismatch)
+	}
+	return nil
 }
