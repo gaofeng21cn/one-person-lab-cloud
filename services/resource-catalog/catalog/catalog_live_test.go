@@ -106,12 +106,13 @@ func liveDial(t *testing.T, address string, caller, target owneridentity.Owner, 
 
 // liveSystem is the composed real loop.
 type liveSystem struct {
-	base           string
-	catalogAddress string
-	identity       *cloudidentity.Service
-	db             *sql.DB
-	cookies        map[string]string
-	csrf           map[string]string
+	base            string
+	catalogAddress  string
+	identityAddress string
+	identity        *cloudidentity.Service
+	db              *sql.DB
+	cookies         map[string]string
+	csrf            map[string]string
 }
 
 func liveGatewayFixture(t *testing.T) string {
@@ -191,7 +192,7 @@ func newLiveSystem(t *testing.T) *liveSystem {
 	}
 	// The platform administrator is the deployment-owned Gateway subject allowlist,
 	// never a Tenant membership.
-	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"})
+	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"}, 168*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +225,7 @@ func newLiveSystem(t *testing.T) *liveSystem {
 	front := httptest.NewServer(handler)
 	t.Cleanup(front.Close)
 
-	system := &liveSystem{base: front.URL, catalogAddress: catalogAddress, identity: identityService, db: catalogDB, cookies: map[string]string{}, csrf: map[string]string{}}
+	system := &liveSystem{base: front.URL, catalogAddress: catalogAddress, identityAddress: identityAddress, identity: identityService, db: catalogDB, cookies: map[string]string{}, csrf: map[string]string{}}
 	for _, email := range []string{"platform-admin@example.test", "tenant-admin@example.test", "member@example.test"} {
 		_, challenge, err := identityClient.LoginContext(ctx)
 		if err != nil {
@@ -312,15 +313,25 @@ func TestLiveCatalogPlatformAdminLoop(t *testing.T) {
 	status, refund := system.do(t, ctx, admin, http.MethodPost, "/api/v2/admin/catalog/refund-policies", "live-refund-1",
 		`{"versionLabel":"refund-1","algorithm":"workspace-delete-refund-v1","retentionPolicyVersionId":"`+retentionID+`","customerTerms":"720-hour policy","validFrom":"`+validFrom+`"}`)
 	mustStatus(t, status, http.StatusCreated, refund, "platform admin creates refund policy")
-	// A price policy version is deliberately NOT exercised over this wire yet. The
-	// canonical public vocabulary spells its amounts computeMonthlyUSDMicros /
-	// storageMonthlyUSDMicros / productMonthlyUSDMicros, while the shared public
-	// JSON codec resolves incoming properties by the protobuf JSON name
-	// (computeMonthlyUsdMicros / ...). The shared codec therefore rejects the
-	// contract-shaped body, so no authenticated caller can send or read a
-	// money-bearing policy version. The owner's own handling of that command is
-	// verified at its typed boundary in service_postgres_test.go instead; the
-	// exact gap is recorded in the receipt and handed to the shared contract owner.
+	// A money-bearing price policy version travels the wire. The canonical amounts
+	// are decimal strings under the contract's own spelling, and the shared codec
+	// resolves both from the contract, so this asserts the exact round-trip the
+	// policy version requires rather than only that the command was accepted.
+	status, price := system.do(t, ctx, admin, http.MethodPost, "/api/v2/admin/catalog/price-policies", "live-price-1",
+		`{"versionLabel":"2026-09","periodMonths":1,"computeMonthlyUSDMicros":"0","storageMonthlyUSDMicros":"0","productMonthlyUSDMicros":"1","validFrom":"`+validFrom+`","computePlanId":"`+computePlanID+`","storagePlanId":"`+storagePlanID+`","renewalPolicy":{"version":"renewal-policy/v1","trigger":"manual_or_explicitly_consented_automatic","effectiveStart":"previous_paid_through","months":1,"usesAcceptedPriceSnapshot":true},"planChangePolicyVersion":"workspace-plan-change-v1"}`)
+	mustStatus(t, status, http.StatusCreated, price, "platform admin creates a money-bearing price policy")
+	pricePolicyID, _ := price["id"].(string)
+	if price["productMonthlyUSDMicros"] != "1" {
+		t.Fatalf("price policy did not round-trip the contract's decimal string amount: %v", price)
+	}
+	// The owner's own row carries the amount, so the readback is the owner's fact.
+	var storedProduct int64
+	if err := system.db.QueryRowContext(ctx, `SELECT product_monthly_usd_micros FROM resource_catalog.price_policy_versions WHERE id=$1`, pricePolicyID).Scan(&storedProduct); err != nil {
+		t.Fatal(err)
+	}
+	if storedProduct != 1 {
+		t.Fatalf("owner product amount = %d, want 1", storedProduct)
+	}
 
 	// 4. A tenant administrator cannot perform a platform-administrator action.
 	status, denied := system.do(t, ctx, "tenant-admin@example.test", http.MethodPost, "/api/v2/admin/catalog/compute-plans", "live-denied-1",
@@ -354,16 +365,11 @@ func TestLiveCatalogPlatformAdminLoop(t *testing.T) {
 
 	// 7. A retired plan cannot be priced again, and the customer list shows the
 	// retirement instead of silently dropping the plan.
-	// The contract declares 200 for this action. The shared authenticated route
-	// boundary currently returns 201 for any write whose action is not in its
-	// explicit 200 exemption list, so this asserts the accepted outcome and the
-	// owner effect; the exact status is a one-line shared-boundary handoff recorded
-	// in the receipt.
+	// The contract declares 200 for this action, and the shared boundary answers
+	// with the status the contract declares, so the exact code is asserted.
 	status, retired := system.do(t, ctx, admin, http.MethodPut, "/api/v2/admin/catalog/storage-plans/"+storagePlanID+"/availability", "live-retire-1",
 		`{"availability":"retired","reason":"end of life"}`)
-	if status < 200 || status > 299 {
-		t.Fatalf("platform admin retires a storage plan: status = %d (%v)", status, retired)
-	}
+	mustStatus(t, status, http.StatusOK, retired, "platform admin retires a storage plan")
 	if retired["availability"] != "retired" {
 		t.Fatalf("retire did not project the plan as retired: %v", retired)
 	}
@@ -477,7 +483,7 @@ func TestLiveCatalogCloudIdentityDecisionCoversCatalogActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"})
+	identityService, err := cloudidentity.New(tenantDB, gateway, bytes.Repeat([]byte("k"), 32), []string{"103"}, 168*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

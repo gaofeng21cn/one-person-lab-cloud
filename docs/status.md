@@ -124,27 +124,31 @@ the frozen refund and retention policy versions. The customer-facing availabilit
 projection, the D17 upgrade/supplement arithmetic and the
 `catalog.policy_changed.v1` Outbox event all live in this owner.
 
-The Cloud-local catalog capability now has a real caller and a real
-authorization boundary. The Console BFF registers the catalog REST surface on its
-authenticated boundary (browser session, CSRF, same-origin, idempotency key and a
-CloudIdentity decision), and CloudIdentity's generated policy carries the 14
-`resource_catalog` actions with the contract's audiences and roles, so a platform
-administrator is admitted for the admin actions, a member for the customer reads,
-and a tenant administrator is refused the platform actions. A focused live check
-composes the real CloudIdentity process, the real BFF handler and the real owner
-over one isolated PostgreSQL server; only the external Sub2API Gateway is a
-fixture. The [source-check
-receipt](./evidence/source-checks/2026-09-25-resource-catalog-authenticated-caller-local.json)
-binds the exact source and dependency digests, commands, exit codes and logs.
+The catalog now has a real caller and a real authorization boundary. The Console
+BFF carries the catalog REST surface on its authenticated boundary (browser
+session, CSRF, same-origin, idempotency key and a CloudIdentity decision), the
+generated policy carries the 14 `resource_catalog` actions with the contract's
+audiences and roles, and the response status is compiled from the same contract,
+so a platform administrator is admitted for the administrator actions, a member
+for the customer reads, a tenant administrator is refused the administrator
+actions, and an availability update answers with the declared `200`. A focused
+live check drives the real CloudIdentity process, the real BFF route functions and
+the real owner over one isolated PostgreSQL server, and a money-bearing price
+policy version round-trips the contract's `...USDMicros` decimal-string spelling
+in both directions; only the external Sub2API Gateway is a fixture. The
+[source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json)
+binds the source and dependency digests, commands, exit codes and logs.
 
-Catalog availability is **not** the same as quoting or deployment. `CreateQuote`,
-`GetQuote` and the Workspace-facing `AcceptQuote` remain unimplemented, so nothing
-prices a deploy, resize or renew request and no Local deployment loop exists. A
-price policy version is verified at the owner's typed boundary but deliberately
-not over the BFF wire: the shared public JSON codec resolves properties by
-protobuf JSON name while the canonical contract spells those amounts
-`...USDMicros`, so a money-bearing policy version cannot round-trip. The Ledger
-`DomainInbox` accepts only tenant-scoped build/capability producers, so the
+Catalog availability is **not** the same as quoting or deployment, and two
+boundaries remain. First, the Console BFF **process** does not yet route the
+catalog surface: the route registration is implemented and the process-level
+acceptance check passes against it, but the one wiring line in the BFF's shared
+`Handler` belongs to the identity and BFF integrator, so a deployed process still
+answers 404 for these paths. Second, `CreateQuote`, `GetQuote` and the
+Workspace-facing `AcceptQuote` are unimplemented, so nothing prices a deploy,
+resize or renew request and no Local deployment loop exists. The Ledger
+`DomainInbox` accepts only tenant-scoped build and capability producers, so the
 platform-scoped catalog policy event is recorded and retried while its consumer
 delivery stays pending; extending that consumer is Ledger's write set.
 

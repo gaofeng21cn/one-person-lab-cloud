@@ -18,8 +18,10 @@ owns approved compute/storage plans, versioned price/refund/retention policies
 and the frozen D17 arithmetic in `services/resource-catalog`, reached through the
 Console BFF's authenticated catalog surface
 (`apps/console-bff/internal/httpapi/catalog.go`) under the generated CloudIdentity
-policy; its quotes, the Ledger consumer of its policy event and the shared public
-JSON money vocabulary for a money-bearing policy version are still open. Gateway Integration now implements
+policy and the contract-compiled response status. Its route registration exists
+but the BFF process's shared `Handler` does not yet call it, so a deployed process
+does not serve these paths; its quotes, the Ledger consumer of its policy event,
+and the Workspace/Fabric resource-reference chain are still open. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
 `services/gateway-integration`, using only the Tenant database. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical
