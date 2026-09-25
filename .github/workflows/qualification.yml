@@ -232,12 +232,11 @@ jobs:
           go -C services/workspace test -c -tags=livebuild -o "$OPL_QUALIFICATION_ROOT/first-deploy.test" ./internal/launch
           "$OPL_QUALIFICATION_ROOT/project-quota.test" -test.list '^TestLinuxLocalDockerProjectQuotaEnforcesHardLimit$' | grep -Fx 'TestLinuxLocalDockerProjectQuotaEnforcesHardLimit'
           "$OPL_QUALIFICATION_ROOT/first-deploy.test" -test.list '^TestLocalFirstApplicationDeploymentQualification$' | grep -Fx 'TestLocalFirstApplicationDeploymentQualification'
-          # Pull once as the ordinary runner. The privileged test uses only the
-          # daemon's cached base image and its own throwaway registry.
+          # Pull the immutable application image once as the ordinary runner.
+          # The privileged test reuses the daemon's cached digest.
           base_image="$(awk 'toupper($1) == "FROM" { print $2; exit }' deploy/portable/qualification-workspace.Dockerfile)"
           [[ "$base_image" =~ @sha256:[a-f0-9]{64}$ ]]
           docker pull "$base_image"
-          docker pull registry:2
 
       - name: Test Fabric
         working-directory: services/fabric
