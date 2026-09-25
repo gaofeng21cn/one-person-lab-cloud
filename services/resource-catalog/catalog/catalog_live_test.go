@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +92,22 @@ func liveOwnerServer(t *testing.T, owner owneridentity.Owner, peers []ownerident
 
 // liveDial opens a typed gRPC connection that presents the caller's real service
 // identity and token on every call.
+// liveDialService opens a connection that presents an explicit service identity,
+// which is what a caller outside the ten data owners (the Console BFF) uses.
+func liveDialService(t *testing.T, address string, caller, target owneridentity.Service, token string) *grpc.ClientConn {
+	t.Helper()
+	options, err := owneridentity.TLSConfig{AllowInsecureLocal: true}.DialOptions(caller, target, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := grpc.NewClient(address, options...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
 func liveDial(t *testing.T, address string, caller, target owneridentity.Owner, token string) *grpc.ClientConn {
 	t.Helper()
 	options, err := owneridentity.TLSConfig{AllowInsecureLocal: true}.DialOptions(caller.Service(), target.Service(), token)
@@ -216,12 +234,11 @@ func newLiveSystem(t *testing.T) *liveSystem {
 		t.Fatal(err)
 	}
 	t.Cleanup(identityClient.Close)
-	catalogClient, err := bff.DialResourceCatalog(catalogAddress, livePeerToken, owneridentity.TLSConfig{AllowInsecureLocal: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(catalogClient.Close)
-	handler := bff.NewCatalogHandler(catalogClient.ResourceCatalogProductServiceClient, identityClient)
+	// The Console BFF calls the catalog under its own service identity, so the
+	// isolated composition dials with the same caller identity the process uses.
+	catalogClient := api.NewResourceCatalogProductServiceClient(
+		liveDialService(t, catalogAddress, owneridentity.ConsoleBFF, owneridentity.ResourceCatalog.Service(), livePeerToken))
+	handler := bff.NewCatalogHandler(catalogClient, identityClient)
 	front := httptest.NewServer(handler)
 	t.Cleanup(front.Close)
 
@@ -601,3 +618,220 @@ var (
 	_ = status.Error
 	_ = timestamppb.Now
 )
+
+// realBFFProcess builds and runs the actual Console BFF process — the same
+// executable the product ships — and returns its base URL and a log path.
+//
+// The point of running the binary rather than constructing a handler in the test
+// is that the catalog routes must be reachable from the process the product
+// starts, through the process's own configuration and routing, not only from a
+// handler assembled by the test.
+func realBFFProcess(t *testing.T, ctx context.Context, system *liveSystem, logPath string) string {
+	t.Helper()
+	repo, err := filepath.Abs("../../../")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "opl-console-bff")
+	build := exec.CommandContext(ctx, "go", "build", "-o", binary, "./cmd/server")
+	build.Dir = filepath.Join(repo, "apps", "console-bff")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the real BFF process: %v\n%s", err, output)
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	_ = listener.Close()
+
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	process := exec.CommandContext(ctx, binary)
+	process.Dir = filepath.Join(repo, "apps", "console-bff")
+	process.Env = append(os.Environ(),
+		"NODE_ENV=test",
+		"OPL_GRPC_INSECURE_LOCAL=1",
+		"OPL_BFF_ADDR="+address,
+		"OPL_CLOUD_IDENTITY_URL="+system.identityAddress,
+		"OPL_CLOUD_IDENTITY_TOKEN="+livePeerToken,
+		"OPL_RESOURCE_CATALOG_URL="+system.catalogAddress,
+		"OPL_RESOURCE_CATALOG_TOKEN="+livePeerToken,
+	)
+	process.Stdout = logFile
+	process.Stderr = logFile
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if process.Process != nil {
+			_ = process.Process.Kill()
+		}
+		_, _ = process.Process.Wait()
+	})
+
+	base := "http://" + address
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := http.Get(base + "/healthz")
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				return base
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	t.Fatal("the real BFF process did not become healthy within 30s")
+	return ""
+}
+
+// doProcess performs one same-origin browser request against the real BFF process.
+func (s *liveSystem) doProcess(t *testing.T, ctx context.Context, base, email, method, path, idempotencyKey, body string) (int, map[string]any) {
+	t.Helper()
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, base+path, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: s.cookies[email]})
+	request.Header.Set("x-opl-request-id", "req-process-"+idempotencyKey)
+	if body != "" {
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-CSRF-Token", s.csrf[email])
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	raw, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &decoded)
+	}
+	return response.StatusCode, decoded
+}
+
+// TestLiveCatalogThroughRealBFFProcess is the phase acceptance for the directory
+// loop: the real Console BFF process, configured through its own environment,
+// serves the catalog commands to a real platform administrator session, the owner
+// persists to its own database, and the same owner reads back. Anonymous callers
+// and non-administrators are refused.
+func TestLiveCatalogThroughRealBFFProcess(t *testing.T) {
+	system := newLiveSystem(t)
+	ctx := t.Context()
+	logPath := os.Getenv("OPL_LIVE_BFF_LOG")
+	if logPath == "" {
+		logPath = filepath.Join(t.TempDir(), "opl-console-bff.log")
+	}
+	base := realBFFProcess(t, ctx, system, logPath)
+
+	admin := "platform-admin@example.test"
+	validFrom := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+
+	// The catalog surface is served by the running process, so an anonymous request
+	// is refused by the process's own session guard rather than a missing route.
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v2/catalog/compute-plans", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymousResponse, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anonymousResponse.Body.Close()
+	if anonymousResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anonymous read from the real process = %d, want 401", anonymousResponse.StatusCode)
+	}
+
+	// A real platform administrator creates the approved plans through the process.
+	status, compute := system.doProcess(t, ctx, base, admin, http.MethodPost, "/api/v2/admin/catalog/compute-plans", "proc-compute-1",
+		`{"name":"basic","vcpus":2,"memoryMiB":4096,"providerProfileId":"local/profile","providerSkuId":"local-basic","providerCapabilityVersion":"provider/v1","validFrom":"`+validFrom+`"}`)
+	mustStatus(t, status, http.StatusCreated, compute, "process: platform admin creates compute plan")
+	computePlanID, _ := compute["id"].(string)
+	if computePlanID == "" {
+		t.Fatalf("process returned no compute plan id: %v", compute)
+	}
+	status, storage := system.doProcess(t, ctx, base, admin, http.MethodPost, "/api/v2/admin/catalog/storage-plans", "proc-storage-1",
+		`{"name":"standard","capacityGiB":10,"providerProfileId":"local/profile","providerSkuId":"local-storage","shrinkSupported":true,"validFrom":"`+validFrom+`"}`)
+	mustStatus(t, status, http.StatusCreated, storage, "process: platform admin creates storage plan")
+	storagePlanID, _ := storage["id"].(string)
+
+	// The plan is read back from the owner through the process. The customer list
+	// action is granted to `member` by the canonical contract, and a platform
+	// administrator's session carries no tenant, so the readback is performed by a
+	// Tenant member; the platform administrator's own readback follows below on the
+	// administrator surface.
+	status, listed := system.doProcess(t, ctx, base, "member@example.test", http.MethodGet, "/api/v2/catalog/compute-plans", "", "")
+	mustStatus(t, status, http.StatusOK, listed, "process: member lists compute plans")
+	if !pageContainsID(listed, computePlanID) {
+		t.Fatalf("process readback did not contain the created plan: %v", listed)
+	}
+
+	// The owner's own row is the source of the readback, not a process projection.
+	var stored string
+	if err := system.db.QueryRowContext(ctx, `SELECT name FROM resource_catalog.compute_plans WHERE id=$1`, computePlanID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "basic" {
+		t.Fatalf("owner row name = %q, want basic", stored)
+	}
+
+	// Availability answers with the contract's declared status through the process.
+	status, retired := system.doProcess(t, ctx, base, admin, http.MethodPut, "/api/v2/admin/catalog/storage-plans/"+storagePlanID+"/availability", "proc-retire-1",
+		`{"availability":"retired","reason":"end of life"}`)
+	mustStatus(t, status, http.StatusOK, retired, "process: platform admin retires a storage plan")
+	if retired["availability"] != "retired" {
+		t.Fatalf("process retire did not project the plan as retired: %v", retired)
+	}
+
+	// A tenant administrator is refused by the process and writes nothing.
+	status, denied := system.doProcess(t, ctx, base, "tenant-admin@example.test", http.MethodPost, "/api/v2/admin/catalog/compute-plans", "proc-denied-1",
+		`{"name":"forbidden","vcpus":2,"memoryMiB":4096,"providerProfileId":"p","providerSkuId":"s","providerCapabilityVersion":"provider/v1","validFrom":"`+validFrom+`"}`)
+	mustStatus(t, status, http.StatusForbidden, denied, "process: tenant admin is refused")
+	var forbidden int
+	if err := system.db.QueryRowContext(ctx, `SELECT count(*) FROM resource_catalog.compute_plans WHERE name='forbidden'`).Scan(&forbidden); err != nil {
+		t.Fatal(err)
+	}
+	if forbidden != 0 {
+		t.Fatal("a refused command through the process still wrote a row")
+	}
+
+	// A member is refused the administrator policy surface.
+	status, memberDenied := system.doProcess(t, ctx, base, "member@example.test", http.MethodGet, "/api/v2/admin/catalog/price-policies", "", "")
+	mustStatus(t, status, http.StatusForbidden, memberDenied, "process: member is refused the administrator list")
+
+	// The platform administrator reads the administrator policy surface through the
+	// process. The page is empty here because no money-bearing policy version can
+	// round-trip yet (see the shared public-JSON note above), so this proves the
+	// administrator route and its status without asserting an amount.
+	status, policies := system.doProcess(t, ctx, base, admin, http.MethodGet, "/api/v2/admin/catalog/price-policies", "", "")
+	mustStatus(t, status, http.StatusOK, policies, "process: platform admin reads the administrator policy surface")
+
+	// The owner is the authority for what the process served: the retired plan is
+	// retired in its own row, and the refused command left no row behind.
+	var storedStatus string
+	if err := system.db.QueryRowContext(ctx, `SELECT status FROM resource_catalog.storage_plans WHERE id=$1`, storagePlanID).Scan(&storedStatus); err != nil {
+		t.Fatal(err)
+	}
+	if storedStatus != "revoked" {
+		t.Fatalf("owner storage plan status = %q, want the retired status the process reported", storedStatus)
+	}
+}
