@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -275,3 +276,172 @@ func TestAvailabilityProjection(t *testing.T) {
 }
 
 var _ = sql.ErrNoRows
+
+// quoteFixture creates an approved plan pair with an effective price, refund and
+// retention version, which is the precondition for any quote.
+func quoteFixture(t *testing.T, service *Service) (compute, storage string) {
+	t.Helper()
+	ctx := peerContext(t)
+	now := time.Now().Add(-time.Hour)
+	computePlan, err := service.CreateComputePlan(ctx, &api.CreateComputePlanRpcRequest{Context: platformCall("admin", "q-compute", "q-compute"), Body: &api.CreateComputePlanRequest{Name: "basic", Vcpus: 2, MemoryMiB: 4096, ProviderProfileId: "p", ProviderSkuId: "s", ProviderCapabilityVersion: "provider/v1", ValidFrom: timestamppb.New(now)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storagePlan, err := service.CreateStoragePlan(ctx, &api.CreateStoragePlanRpcRequest{Context: platformCall("admin", "q-storage", "q-storage"), Body: &api.CreateStoragePlanRequest{Name: "standard", CapacityGiB: 10, ProviderProfileId: "p", ProviderSkuId: "s", ShrinkSupported: true, ValidFrom: timestamppb.New(now)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retention, err := service.CreateRetentionPolicyVersion(ctx, &api.CreateRetentionPolicyVersionRpcRequest{Context: platformCall("admin", "q-retention", "q-retention"), Body: &api.CreateRetentionPolicyRequest{VersionLabel: "retention-q", CustomerTerms: "data destroyed after confirmed deletion"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateRefundPolicyVersion(ctx, &api.CreateRefundPolicyVersionRpcRequest{Context: platformCall("admin", "q-refund", "q-refund"), Body: &api.CreateRefundPolicyRequest{VersionLabel: "refund-q", Algorithm: api.CreateRefundPolicyRequestAlgorithmEnum_CREATE_REFUND_POLICY_REQUEST_ALGORITHM_ENUM_WORKSPACE_DELETE_REFUND_V1, RetentionPolicyVersionId: retention.Id, CustomerTerms: "720-hour policy", ValidFrom: timestamppb.New(now)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreatePricePolicyVersion(ctx, &api.CreatePricePolicyVersionRpcRequest{Context: platformCall("admin", "q-price", "q-price"), Body: &api.CreatePricePolicyRequest{VersionLabel: "2026-09", PeriodMonths: 1, ComputeMonthlyUsdMicros: 50_000_000, StorageMonthlyUsdMicros: 2_580_000, ProductMonthlyUsdMicros: 1, ValidFrom: timestamppb.New(now), ComputePlanId: computePlan.Id, StoragePlanId: storagePlan.Id, RenewalPolicy: renewalPolicy(), PlanChangePolicyVersion: api.CreatePricePolicyRequestPlanChangePolicyVersionEnum_CREATE_PRICE_POLICY_REQUEST_PLAN_CHANGE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1}}); err != nil {
+		t.Fatal(err)
+	}
+	return computePlan.Id, storagePlan.Id
+}
+
+// TestQuoteMoneyRuleIsNotSecondMultiplied proves the contract money rule: total is
+// the sum of the charge lines minus the credits, quantity is explanatory only, and
+// a credit larger than its charges is refused rather than stored as a negative
+// total.
+func TestQuoteMoneyRuleIsNotSecondMultiplied(t *testing.T) {
+	lines := []*api.QuoteLine{
+		{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, Quantity: 3, AmountUsdMicros: 100},
+		{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_STORAGE, Quantity: 2, AmountUsdMicros: 20},
+		{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT, Quantity: 5, AmountUsdMicros: 10},
+	}
+	total, err := sumQuoteLines(lines)
+	if err != nil || total != 110 {
+		t.Fatalf("total = %d (err %v), want 110: quantity must not multiply the amount", total, err)
+	}
+	if _, err := sumQuoteLines([]*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, AmountUsdMicros: 1}, {Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_ADJUSTMENT_CREDIT, AmountUsdMicros: 10}}); err == nil {
+		t.Fatal("a credit larger than its charges was accepted")
+	}
+	if _, err := sumQuoteLines([]*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, AmountUsdMicros: -1}}); err == nil {
+		t.Fatal("a negative line amount was accepted")
+	}
+	if _, err := sumQuoteLines([]*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, AmountUsdMicros: math.MaxInt64}, {Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_PRODUCT, AmountUsdMicros: 1}}); err == nil {
+		t.Fatal("an overflowing line sum was accepted")
+	}
+}
+
+// TestDeployQuoteLifecycle proves a deploy quote prices the exact effective policy
+// versions, is read back by the same tenant, and reports expiry without rewriting
+// the stored row.
+func TestDeployQuoteLifecycle(t *testing.T) {
+	service, _ := system(t)
+	ctx := peerContext(t)
+	computePlanID, storagePlanID := quoteFixture(t, service)
+	member := tenantCall("101", "tenant-test", "q-create", "q-create")
+
+	quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("cv-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatalf("create quote: %v", err)
+	}
+	if quote.GetTotalUsdMicros() != 52_580_001 {
+		t.Fatalf("total = %d, want 52580001", quote.GetTotalUsdMicros())
+	}
+	if quote.GetPricePolicyVersionId() == "" || quote.GetRefundPolicyVersionId() == "" || quote.GetRetentionPolicyVersionId() == "" {
+		t.Fatalf("quote did not bind the policy versions: %+v", quote)
+	}
+	if quote.GetRuntimeReadbackRequirement() != api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED {
+		t.Fatalf("a deploy quote naming a capability version must require a runtime readback")
+	}
+	read, err := service.GetQuote(ctx, &api.GetQuoteRpcRequest{Context: member, QuoteId: quote.GetId()})
+	if err != nil {
+		t.Fatalf("read quote: %v", err)
+	}
+	if read.GetId() != quote.GetId() || read.GetTotalUsdMicros() != quote.GetTotalUsdMicros() || len(read.GetLineItems()) != len(quote.GetLineItems()) {
+		t.Fatalf("readback differs from the created quote: %+v", read)
+	}
+
+	// Another tenant cannot read it: the offer is simply absent here.
+	if _, err := service.GetQuote(ctx, &api.GetQuoteRpcRequest{Context: tenantCall("102", "another-tenant", "q-other", "q-other"), QuoteId: quote.GetId()}); status.Code(err) != codes.NotFound {
+		t.Fatalf("cross-tenant read code = %v, want NotFound", status.Code(err))
+	}
+
+	// A resize or renew request is refused with the gap named, not answered with a
+	// deploy-shaped offer.
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_RENEW, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("renew quote code = %v, want Unimplemented", status.Code(err))
+	}
+	// A deploy quote is not bound to an existing workspace.
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, WorkspaceId: proto.String("ws-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("deploy-with-workspace code = %v, want InvalidArgument", status.Code(err))
+	}
+	// A multi-month new purchase is refused.
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 2}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("multi-month code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+// TestQuoteAcceptanceBindsOneOperation proves the acceptance edge: one quote binds
+// exactly one obligation, a replay returns the identical acceptance, and a second
+// obligation cannot inherit it. The stale-offer case is exercised by expiring the
+// offer directly, because the catalogue's own validity window is thirty minutes.
+func TestQuoteAcceptanceBindsOneOperation(t *testing.T) {
+	service, _ := system(t)
+	ctx := peerContext(t)
+	computePlanID, storagePlanID := quoteFixture(t, service)
+	member := tenantCall("101", "tenant-test", "a-create", "a-create")
+	quote, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("cv-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the verified Workspace owner may accept.
+	if _, err := service.AcceptQuote(ctx, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-1"}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("catalog-peer acceptance code = %v, want Unauthenticated", status.Code(err))
+	}
+	workspace := ownerservice.WithPeerOwner(context.Background(), ownerservice.OwnerWorkspace.Service())
+	accept := func(obligation string) (*api.QuoteAcceptance, error) {
+		return service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: obligation})
+	}
+	first, err := accept("obl-1")
+	if err != nil {
+		t.Fatalf("accept quote: %v", err)
+	}
+	if first.GetAcceptanceId() == "" || first.GetSnapshotDigest() == "" || first.GetQuote().GetStatus() != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED {
+		t.Fatalf("acceptance is incomplete: %+v", first)
+	}
+	// The same obligation replays the identical acceptance.
+	replay, err := accept("obl-1")
+	if err != nil {
+		t.Fatalf("replay acceptance: %v", err)
+	}
+	if replay.GetAcceptanceId() != first.GetAcceptanceId() || replay.GetSnapshotDigest() != first.GetSnapshotDigest() {
+		t.Fatalf("a replay produced a different acceptance: %+v vs %+v", replay, first)
+	}
+	// A different obligation cannot inherit the binding.
+	if _, err := accept("obl-2"); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("second obligation code = %v, want AlreadyExists", status.Code(err))
+	}
+	// A plan-change acceptance is refused with the gap named.
+	if _, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: quote.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-3", PlanChangeId: proto.String("pc-1")}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("plan-change acceptance code = %v, want Unimplemented", status.Code(err))
+	}
+
+	// An offer past its expiry is refused rather than accepted.
+	second, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: tenantCall("101", "tenant-test", "a-create-2", "a-create-2"), Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("cv-1"), ComputePlanId: computePlanID, StoragePlanId: storagePlanID, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.DB.ExecContext(ctx, `UPDATE resource_catalog.quotes SET expires_at=now()-interval '1 minute' WHERE id=$1`, second.GetId()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: second.GetId(), WorkspaceId: "ws-1", ObligationId: "obl-expired"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expired acceptance code = %v, want FailedPrecondition", status.Code(err))
+	}
+	// An unknown quote is absent, not a generic failure.
+	if _, err := service.AcceptQuote(workspace, &api.AcceptQuoteRequest{Context: member, QuoteId: "quote-does-not-exist", WorkspaceId: "ws-1", ObligationId: "obl-x"}); status.Code(err) != codes.NotFound {
+		t.Fatalf("unknown quote code = %v, want NotFound", status.Code(err))
+	}
+
+	// No price version means no quote: the owner refuses instead of inventing one.
+	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: member, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("cv-1"), ComputePlanId: computePlanID, StoragePlanId: "storage-unknown", PeriodMonths: 1}}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("unpriced pair code = %v, want FailedPrecondition", status.Code(err))
+	}
+}

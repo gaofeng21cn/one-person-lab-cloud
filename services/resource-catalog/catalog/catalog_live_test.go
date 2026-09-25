@@ -852,6 +852,44 @@ func TestLiveCatalogThroughRealBFFProcess(t *testing.T) {
 	}
 
 	// Availability answers with the contract's declared status through the process.
+	// The customer pricing surface travels the same process: a platform
+	// administrator publishes a price version, and a Tenant member obtains a priced
+	// quote for that exact pair and reads it back. The quote is priced by the owner,
+	// not by the process, and it is not a charge or a reservation.
+	status, retentionForQuote := system.doProcess(t, ctx, base, admin, http.MethodPost, "/api/v2/admin/catalog/retention-policies", "proc-retention-1",
+		`{"versionLabel":"retention-p1","customerTerms":"data destroyed after confirmed deletion"}`)
+	mustStatus(t, status, http.StatusCreated, retentionForQuote, "process: platform admin creates a retention policy")
+	status, refundForQuote := system.doProcess(t, ctx, base, admin, http.MethodPost, "/api/v2/admin/catalog/refund-policies", "proc-refund-1",
+		`{"versionLabel":"refund-p1","algorithm":"workspace-delete-refund-v1","retentionPolicyVersionId":"`+retentionForQuote["id"].(string)+`","customerTerms":"720-hour policy","validFrom":"`+validFrom+`"}`)
+	mustStatus(t, status, http.StatusCreated, refundForQuote, "process: platform admin creates a refund policy")
+	status, priced := system.doProcess(t, ctx, base, admin, http.MethodPost, "/api/v2/admin/catalog/price-policies", "proc-price-1",
+		`{"versionLabel":"2026-09p","periodMonths":1,"computeMonthlyUSDMicros":"50000000","storageMonthlyUSDMicros":"2580000","productMonthlyUSDMicros":"1","validFrom":"`+validFrom+`","computePlanId":"`+computePlanID+`","storagePlanId":"`+storagePlanID+`","renewalPolicy":{"version":"renewal-policy/v1","trigger":"manual_or_explicitly_consented_automatic","effectiveStart":"previous_paid_through","months":1,"usesAcceptedPriceSnapshot":true},"planChangePolicyVersion":"workspace-plan-change-v1"}`)
+	mustStatus(t, status, http.StatusCreated, priced, "process: platform admin publishes a price version")
+
+	status, quote := system.doProcess(t, ctx, base, "tenant-admin@example.test", http.MethodPost, "/api/v2/quotes", "proc-quote-1",
+		`{"purpose":"deploy","capabilityVersionId":"cv-live","computePlanId":"`+computePlanID+`","storagePlanId":"`+storagePlanID+`","modelSelections":[],"periodMonths":1}`)
+	mustStatus(t, status, http.StatusCreated, quote, "process: a member obtains a priced quote")
+	if quote["totalUSDMicros"] != "52580001" {
+		t.Fatalf("quote total = %v, want the exact sum of the published monthly amounts", quote["totalUSDMicros"])
+	}
+	quoteID, _ := quote["id"].(string)
+	if quoteID == "" {
+		t.Fatalf("quote returned no id: %v", quote)
+	}
+	status, readQuote := system.doProcess(t, ctx, base, "tenant-admin@example.test", http.MethodGet, "/api/v2/quotes/"+quoteID, "", "")
+	mustStatus(t, status, http.StatusOK, readQuote, "process: the same member reads the quote back")
+	if readQuote["totalUSDMicros"] != quote["totalUSDMicros"] {
+		t.Fatalf("quote readback total %v differs from the created %v", readQuote["totalUSDMicros"], quote["totalUSDMicros"])
+	}
+	// The owner's row is the authority for the price the process served.
+	var storedTotal int64
+	if err := system.db.QueryRowContext(ctx, `SELECT total_usd_micros FROM resource_catalog.quotes WHERE id=$1`, quoteID).Scan(&storedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if storedTotal != 52_580_001 {
+		t.Fatalf("owner quote total = %d, want 52580001", storedTotal)
+	}
+
 	status, retired := system.doProcess(t, ctx, base, admin, http.MethodPut, "/api/v2/admin/catalog/storage-plans/"+storagePlanID+"/availability", "proc-retire-1",
 		`{"availability":"retired","reason":"end of life"}`)
 	mustStatus(t, status, http.StatusOK, retired, "process: platform admin retires a storage plan")

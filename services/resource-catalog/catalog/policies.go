@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -59,7 +60,7 @@ func (s *Service) scanPricePolicy(row rowScanner) (*api.PricePolicyVersion, erro
 	if err := publicjson.Unmarshal(rules, v.RenewalPolicy); err != nil {
 		return nil, status.Error(codes.DataLoss, "stored renewal policy is not readable")
 	}
-	v.PlanChangePolicyVersion = api.PricePolicyVersionPlanChangePolicyVersionEnum(api.PricePolicyVersionPlanChangePolicyVersionEnum_value["PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_"+upper(policyName)])
+	v.PlanChangePolicyVersion = planChangePolicyVersionEnum(policyName)
 	// The typed D17 policy is fixed by version, not stored per row: the frozen
 	// policy travels with the version so a reader never re-derives rules.
 	v.PlanChangePolicy = s.Policy.proto()
@@ -166,22 +167,11 @@ func (s *Service) ListRefundPolicyVersions(ctx context.Context, r *api.ListRefun
 	defer rows.Close()
 	out := &api.RefundPolicyVersionPage{}
 	for rows.Next() {
-		var (
-			v                    api.RefundPolicyVersion
-			algorithm            string
-			validFrom, createdAt time.Time
-			validUntil           sql.NullTime
-		)
-		if err := rows.Scan(&v.Id, &v.VersionLabel, &algorithm, &v.RetentionPolicyVersionId, &v.CustomerTerms, &validFrom, &validUntil, &createdAt); err != nil {
+		v, err := scanRefundPolicy(rows)
+		if err != nil {
 			return nil, dbError(err)
 		}
-		v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(api.RefundPolicyVersionAlgorithmEnum_value["REFUND_POLICY_VERSION_ALGORITHM_ENUM_"+upper(algorithm)])
-		v.ValidFrom = timestamppb.New(validFrom.UTC())
-		if validUntil.Valid {
-			v.ValidUntil = timestamppb.New(validUntil.Time.UTC())
-		}
-		v.CreatedAt = timestamppb.New(createdAt.UTC())
-		out.Items = append(out.Items, &v)
+		out.Items = append(out.Items, v)
 	}
 	if len(out.Items) > n {
 		out.Items = out.Items[:n]
@@ -266,19 +256,11 @@ func (s *Service) ListRetentionPolicyVersions(ctx context.Context, r *api.ListRe
 	defer rows.Close()
 	out := &api.RetentionPolicyVersionPage{}
 	for rows.Next() {
-		var (
-			v              api.RetentionPolicyVersion
-			ws, pkg, build string
-			createdAt      time.Time
-		)
-		if err := rows.Scan(&v.Id, &v.VersionLabel, &ws, &pkg, &build, &v.TenantRestoreDays, &v.CustomerTerms, &createdAt); err != nil {
+		v, err := scanRetentionPolicy(rows)
+		if err != nil {
 			return nil, dbError(err)
 		}
-		v.WorkspaceDataDisposition = api.RetentionPolicyVersionWorkspaceDataDispositionEnum(api.RetentionPolicyVersionWorkspaceDataDispositionEnum_value["RETENTION_POLICY_VERSION_WORKSPACE_DATA_DISPOSITION_ENUM_"+upper(ws)])
-		v.PackageHistoryDisposition = api.RetentionPolicyVersionPackageHistoryDispositionEnum(api.RetentionPolicyVersionPackageHistoryDispositionEnum_value["RETENTION_POLICY_VERSION_PACKAGE_HISTORY_DISPOSITION_ENUM_"+upper(pkg)])
-		v.BuildHistoryDisposition = api.RetentionPolicyVersionBuildHistoryDispositionEnum(api.RetentionPolicyVersionBuildHistoryDispositionEnum_value["RETENTION_POLICY_VERSION_BUILD_HISTORY_DISPOSITION_ENUM_"+upper(build)])
-		v.CreatedAt = timestamppb.New(createdAt.UTC())
-		out.Items = append(out.Items, &v)
+		out.Items = append(out.Items, v)
 	}
 	if len(out.Items) > n {
 		out.Items = out.Items[:n]
@@ -322,4 +304,55 @@ func (s *Service) CreateRetentionPolicyVersion(ctx context.Context, r *api.Creat
 		return dbError(err)
 	})
 	return out, err
+}
+
+// scanRefundPolicy reads one refund policy version row in the shape both the list
+// and the quote resolution need.
+func scanRefundPolicy(row rowScanner) (*api.RefundPolicyVersion, error) {
+	var (
+		v                    api.RefundPolicyVersion
+		algorithm            string
+		validFrom, createdAt time.Time
+		validUntil           sql.NullTime
+	)
+	if err := row.Scan(&v.Id, &v.VersionLabel, &algorithm, &v.RetentionPolicyVersionId, &v.CustomerTerms, &validFrom, &validUntil, &createdAt); err != nil {
+		return nil, err
+	}
+	v.Algorithm = api.RefundPolicyVersionAlgorithmEnum(api.RefundPolicyVersionAlgorithmEnum_value["REFUND_POLICY_VERSION_ALGORITHM_ENUM_"+upper(algorithm)])
+	v.ValidFrom = timestamppb.New(validFrom.UTC())
+	if validUntil.Valid {
+		v.ValidUntil = timestamppb.New(validUntil.Time.UTC())
+	}
+	v.CreatedAt = timestamppb.New(createdAt.UTC())
+	return &v, nil
+}
+
+// scanRetentionPolicy reads one retention policy version row.
+func scanRetentionPolicy(row rowScanner) (*api.RetentionPolicyVersion, error) {
+	var (
+		v              api.RetentionPolicyVersion
+		ws, pkg, build string
+		createdAt      time.Time
+	)
+	if err := row.Scan(&v.Id, &v.VersionLabel, &ws, &pkg, &build, &v.TenantRestoreDays, &v.CustomerTerms, &createdAt); err != nil {
+		return nil, err
+	}
+	v.WorkspaceDataDisposition = api.RetentionPolicyVersionWorkspaceDataDispositionEnum(api.RetentionPolicyVersionWorkspaceDataDispositionEnum_value["RETENTION_POLICY_VERSION_WORKSPACE_DATA_DISPOSITION_ENUM_"+upper(ws)])
+	v.PackageHistoryDisposition = api.RetentionPolicyVersionPackageHistoryDispositionEnum(api.RetentionPolicyVersionPackageHistoryDispositionEnum_value["RETENTION_POLICY_VERSION_PACKAGE_HISTORY_DISPOSITION_ENUM_"+upper(pkg)])
+	v.BuildHistoryDisposition = api.RetentionPolicyVersionBuildHistoryDispositionEnum(api.RetentionPolicyVersionBuildHistoryDispositionEnum_value["RETENTION_POLICY_VERSION_BUILD_HISTORY_DISPOSITION_ENUM_"+upper(build)])
+	v.CreatedAt = timestamppb.New(createdAt.UTC())
+	return &v, nil
+}
+
+// planChangePolicyVersionEnum maps the stored policy version, which the contract
+// spells with hyphens, onto the wire enum, whose members are spelled with
+// underscores. Reading the stored value with the wrong separator would silently
+// yield the unspecified member and make every price version unpublishable.
+func planChangePolicyVersionEnum(stored string) api.PricePolicyVersionPlanChangePolicyVersionEnum {
+	name := "PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_" + strings.ToUpper(strings.ReplaceAll(stored, "-", "_"))
+	value, ok := api.PricePolicyVersionPlanChangePolicyVersionEnum_value[name]
+	if !ok {
+		return api.PricePolicyVersionPlanChangePolicyVersionEnum_PRICE_POLICY_VERSION_PLAN_CHANGE_POLICY_VERSION_ENUM_UNSPECIFIED
+	}
+	return api.PricePolicyVersionPlanChangePolicyVersionEnum(value)
 }

@@ -140,17 +140,28 @@ in both directions; only the external Sub2API Gateway is a fixture. The
 receipt](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json)
 binds the source and dependency digests, commands, exit codes and logs.
 
-Catalog availability is **not** the same as quoting or deployment, and two
-boundaries remain. First, the Console BFF **process** does not yet route the
-catalog surface: the route registration is implemented and the process-level
-acceptance check passes against it, but the one wiring line in the BFF's shared
-`Handler` belongs to the identity and BFF integrator, so a deployed process still
-answers 404 for these paths. Second, `CreateQuote`, `GetQuote` and the
-Workspace-facing `AcceptQuote` are unimplemented, so nothing prices a deploy,
-resize or renew request and no Local deployment loop exists. The Ledger
-`DomainInbox` accepts only tenant-scoped build and capability producers, so the
-platform-scoped catalog policy event is recorded and retried while its consumer
-delivery stays pending; extending that consumer is Ledger's write set.
+The deploy quote is priced. A member obtains a quote for an approved plan pair
+through the running BFF process and reads it back: the owner resolves the single
+effective price, refund and retention version, builds the offer lines under the
+contract money rule (total is the sum of the charge lines minus the credits, with
+no second multiplication by quantity) and stores the immutable offer with its
+expiry. `AcceptQuote` binds that offer to exactly one Workspace obligation,
+returns the same acceptance on replay, refuses a second obligation, refuses an
+expired offer and reports an unknown offer as absent. `resize` and `renew` are
+refused with the gap named rather than answered with a deploy-shaped offer,
+because they depend on a Workspace subscription, a paid period and an accepted
+plan change that do not exist yet. The [source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)
+binds the revision, commands, exit codes and logs.
+
+Two boundaries remain. The Workspace owner and the Fabric resource reference do
+not exist, so nothing has accepted a quote, no original order or resource intent
+exists, and there is no Local deployment loop; the Catalog side of that edge is
+implemented and verified against a Workspace peer, but the caller is the next
+slice. The Ledger `DomainInbox` accepts only tenant-scoped build and capability
+producers, so the platform-scoped catalog policy event is recorded and retried
+while its consumer delivery stays pending; extending that consumer is Ledger's
+write set.
 
 ### Canonical-main local verification and receipt
 

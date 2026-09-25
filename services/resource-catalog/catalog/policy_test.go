@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"opl-cloud/packages/contracts/go/publicjson"
 )
 
 // TestUpgradeChargeMatchesD17Vectors replays the contract's independent D17
@@ -116,4 +118,33 @@ func parseMicros(t *testing.T, value string) int64 {
 		t.Fatalf("parse %q: %v", value, err)
 	}
 	return parsed
+}
+
+// TestFrozenPolicyIsPublishable proves the policy this owner attaches to every
+// price version can be encoded in the contract's own public vocabulary. The coders
+// refuse a required property whose value has no published form, so a partially
+// filled frozen policy would make every price version unreadable to a caller even
+// though the owner stored it successfully.
+func TestFrozenPolicyIsPublishable(t *testing.T) {
+	policy := defaultPlanChangePolicy().proto()
+	raw, err := publicjson.Marshal(policy)
+	if err != nil {
+		t.Fatalf("the frozen plan-change policy is not publishable: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 12 {
+		t.Fatalf("published policy has %d properties, want the contract's 12", len(decoded))
+	}
+	for _, required := range []string{"version", "approvalStatus", "upgrade", "downgrade", "classification", "mixedOrIncomparableTransition", "noOpTransition", "storageShrink", "concurrency", "cancelAndReplace", "baseRefundPolicy", "providerExecutionPlan"} {
+		if _, present := decoded[required]; !present {
+			t.Fatalf("published policy is missing the contract property %q", required)
+		}
+	}
+	// The renewal policy the owner stores on the same version must publish too.
+	if _, err := publicjson.Marshal(renewalPolicy()); err != nil {
+		t.Fatalf("the frozen renewal policy is not publishable: %v", err)
+	}
 }

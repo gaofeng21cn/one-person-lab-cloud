@@ -70,6 +70,24 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux, catalog api.ResourceC
 			return catalog.ListStoragePlans(r.Context(), &api.ListStoragePlansRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryComputePlanId: optionalQuery(r, "computePlanId")})
 		})
 
+	// The customer pricing surface. A quote is priced by the owner and is neither a
+	// reservation nor a charge; the caller's own tenant scope is what the owner
+	// authorizes against.
+	s.publisherRoute(mux, "POST /api/v2/quotes", owneridentity.ResourceCatalog, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEQUOTE, catalogKind, "", func() proto.Message { return &api.QuoteRequest{} },
+		func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return catalog.CreateQuote(r.Context(), &api.CreateQuoteRpcRequest{Context: c, Body: body.(*api.QuoteRequest)})
+		})
+	s.publisherRoute(mux, "GET /api/v2/quotes/{quoteId}", owneridentity.ResourceCatalog, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETQUOTE, catalogKind, "", nil,
+		func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+			if err := require(); err != nil {
+				return nil, err
+			}
+			return catalog.GetQuote(r.Context(), &api.GetQuoteRpcRequest{Context: c, QuoteId: r.PathValue("quoteId")})
+		})
+
 	// Administrator plan admission.
 	s.publisherRoute(mux, "POST /api/v2/admin/catalog/compute-plans", owneridentity.ResourceCatalog, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATECOMPUTEPLAN, catalogKind, "", func() proto.Message { return &api.CreateComputePlanRequest{} },
 		func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {

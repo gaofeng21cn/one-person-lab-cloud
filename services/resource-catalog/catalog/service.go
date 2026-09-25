@@ -46,6 +46,7 @@ type Profile struct {
 // Service is the resource catalog owner's typed gRPC surface.
 type Service struct {
 	api.UnimplementedResourceCatalogProductServiceServer
+	api.UnimplementedCatalogCoordinationServer
 
 	DB      *sql.DB
 	Store   *ownerstore.Store
@@ -62,6 +63,9 @@ type Service struct {
 func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("ResourceCatalogProductService", func(g *grpc.Server) {
 		api.RegisterResourceCatalogProductServiceServer(g, s)
+		// CatalogCoordination is this owner's internal surface for the Workspace edge.
+		// It is an API group on the same owner process, not another service.
+		api.RegisterCatalogCoordinationServer(g, s)
 	})
 }
 

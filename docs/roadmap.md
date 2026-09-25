@@ -65,12 +65,16 @@ chain is finished. Open work in dependency order:
    ([caller evidence](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json);
    earlier owner-only evidence in
    [policy-catalog evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json)).
-   Open in this line: the single BFF-process wiring line a deployed process still
-   needs before it routes these paths, quotes
-   (`CreateQuote`/`GetQuote`/`AcceptQuote`) so any request can be priced, the
-   Ledger consumer of `catalog.policy_changed.v1`, and the Workspace/Fabric
-   resource-reference chain. Catalog availability therefore does not mean quoting
-   or Local deployment is complete.
+   The deploy quote is now priced and accepted on the Catalog side, including
+   expiry, single-binding and stale-offer refusals
+   ([quote evidence](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)),
+   while `resize` and `renew` are refused with the gap named. Open in this line:
+   the Workspace owner that accepts a quote and holds the original order and
+   resource intent, the Fabric resource reference and authoritative readback for
+   one first deployment, the Ledger consumer of `catalog.policy_changed.v1`, and
+   the decision point over the platform-administrator read of the customer plan
+   list. Quoting one deploy request therefore does not mean a Local deployment
+   loop is complete.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.
