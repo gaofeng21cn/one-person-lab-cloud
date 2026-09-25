@@ -104,6 +104,12 @@ current Control Plane caller and Fabric implementation consume the same golden
 request-hash vectors. The end-to-end Console-to-local-Workspace gate remains
 separate from this Fabric-owned implementation proof.
 
+Tencent storage deletion checks every remaining PV/PVC against its original
+static binding before mutation. A PV's omitted `storageClassName` is equivalent
+to the manifest's empty string because that Kubernetes field is serialized with
+`omitempty`; the PVC class remains exact. Nonempty, null or mistyped classes and
+all other binding identity differences are rejected.
+
 For Serve, Fabric may prepare an isolated sandbox or worker, inject approved
 secret refs, apply network/egress policy, enforce resource limits and collect
 outputs. The stable public endpoint remains the Serve Agent Edge. Fabric does
