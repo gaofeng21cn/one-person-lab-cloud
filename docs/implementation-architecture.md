@@ -15,15 +15,20 @@ processes. Its canonical directory/deployment-unit map is
 Capability, Build, Runtime Control, Workspace and Serve have independent owner
 processes and the Console BFF is implemented. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
-`services/gateway-integration`, using only the Tenant database. Gateway/wallet
+`services/gateway-integration`, using only the Tenant database. The public JSON
+boundary resolves property names and 64-bit scalar forms from the canonical
+contract, so a published spelling such as `monthlyPriceUSDMicros` and its decimal
+string form are authoritative over protobuf's own derivation. Gateway/wallet
 operations are not migrated by this slice; their eventual owner retains a separate
 database and pool inside the same deployment unit. It also serves Tenant member
 and invitation governance (list, invite, accept, revoke, role change and removal,
 with last-owner protection and audit) over the same Tenant database, and its
 generated permission table is the single authorization policy for the capability,
-build, tenant, runtime control, resource catalog and serve audiences, and the
-Console BFF's HTTP success status per routed action is compiled from the same
-contract rather than hand-listed. This is not
+build, tenant, runtime control, resource catalog, serve and workspace audiences,
+and the Console BFF's HTTP success status per routed action is compiled from the
+same contract rather than hand-listed. `getWorkspaceAccess` is a Serve-audience
+read because Serve owns the access fact, and each owner fact in a composed BFF
+view is authorized against the owner that reports it. This is not
 completion of all W03 work: `Member.displayName` still needs the authorised
 Gateway identity-directory read (no identity readback RPC or
 `gateway.identity_mappings` migration exists yet), and Tenant

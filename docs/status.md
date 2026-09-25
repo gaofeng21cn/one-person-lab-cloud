@@ -247,15 +247,27 @@ immutable audit row; a refusal commits that evidence and then reports the
 canonical `ErrorCodeEnum`, including `LAST_OWNER` and `INVITATION_INVALID`.
 Concurrent owner removal was proved to serialize to exactly one success.
 
-The generated permission table now covers the resource catalog and Serve owner
-surfaces as well, because CloudIdentity is the single authorization owner for
-every domain. `getWorkspaceAccess` is deliberately excluded: the canonical
-contract assigns that operation to the `workspace` owner
-(`x-tables: workspace.workspaces`, F09) while the proto declares it on
-`ServeProductService`, so authorizing it under a Serve audience would contradict
-the contract and authorizing it under the workspace owner would enable an owner
-this policy does not serve. That placement/audience contradiction stays open for
-the canonical owner instead of being resolved here.
+The generated permission table is the single authorization policy for the
+capability, build, tenant, runtime control, resource catalog, serve and workspace
+audiences, each generated wholesale per owner from the canonical contract.
+
+`getWorkspaceAccess` was the one contradiction: the REST contract named the
+`workspace` owner while the wire RPC sits on `ServeProductService`,
+`01_domain_ownership_matrix.md` gives Serve the access-binding facts, and
+`decisions.md` records Serve as the sole delivery/deployment/readiness/access
+owner with Workspace keeping target authorization only. The projection had lagged
+the adopted decision, so the contract now names `serve` and the operation is
+authorized on the Serve audience for the fact it reports. The composed BFF
+delivery view authorizes each owner fact against the owner that reports it: the
+Workspace identity read against Workspace, the access read against Serve.
+
+A CloudIdentity decision now reaches every owner boundary as itself.
+`ownerservice.Authorizer` used to collapse every failure from the authorization
+call into `Unavailable`, so a policy denial, a revoked session and a failed
+precondition were indistinguishable from an authority outage at the Serve,
+Capability, Build, Runtime Control and BFF boundaries. Decision codes are now
+preserved, only a non-decision failure is reported as unavailable, and the
+boundary still fails closed.
 
 The BFF's HTTP success status is now compiled from the same contract into
 `apps/console-bff/internal/httpapi/status_generated.go`, so a routed operation
@@ -271,11 +283,18 @@ into code. Deployments that enable invitations must set it.
 
 The [member governance source receipt](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json)
 records the exact source files, the governed cases and the limitations.
-`Member.displayName` still needs the authorised Gateway identity-directory read:
-neither a current identity readback RPC in `packages/contracts/proto` nor a
-`gateway.identity_mappings` migration exists, so no real consumer can resolve the
-name yet and the field stays empty rather than being invented. The member page
-belongs to W13 Console/BFF basic integration, not W14. Tenant onboarding,
+`Member.displayName` now resolves through CloudIdentity's own authorized,
+read-only Gateway directory identity (`OPL_GATEWAY_DIRECTORY_EMAIL` /
+`OPL_GATEWAY_DIRECTORY_PASSWORD`), which also validates that an invited subject
+exists before any row is written. That identity is the service's own
+administrative credential for a directory read; it never presents a member token
+and never writes in the Gateway authority, so it is not impersonation and no copy
+of the directory is kept. A deployment without it leaves the name empty and skips
+the subject check rather than fabricating either fact.
+
+The member REST surface (BFF) is implemented; the Console member page is not, and
+the two are tracked separately. That page belongs to W13 Console/BFF basic
+integration, not to the W14 agent/upload/build front end. Tenant onboarding,
 suspend/reenable, delete/restore and Gateway wallet binding stay separate
 W03/W21 outcomes. No production, Instance or real-account qualification is
 claimed.
