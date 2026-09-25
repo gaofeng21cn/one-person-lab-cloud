@@ -3,7 +3,7 @@
  "action": "Implement the Resource Catalog owner process: approved compute/storage plans, versioned price/refund/retention policies, the frozen D17 arithmetic, and the catalog.policy_changed.v1 Outbox event",
  "recordedAt": "2026-09-25T04:10:01.285707+00:00",
  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
- "sourceBinding": "codex/resource-catalog-local-loop working tree; file digests bound below because no commit or Candidate is claimed",
+ "sourceBinding": "codex/resource-catalog-local-loop commit 041eacec; the file digests below are the same revision. No Candidate or Product Release is claimed.",
  "sourceFilesSha256": {
   "services/resource-catalog/go.mod": "139729be9cf8add65188e256bfd5f07028002ee135478539bbb562c373ae499c",
   "services/resource-catalog/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
@@ -61,5 +61,7 @@
  ],
  "temporaryResources": "Task-created loopback PostgreSQL container and anonymous volume removed; no production resource was accessed.",
  "productionDeploymentDispatched": false,
- "instanceQualificationPerformed": false
+ "instanceQualificationPerformed": false,
+ "sourceSha": "041eacec2bf6e7eaeff5288809b2c615e1199339",
+ "sourceTree": "d5ae91fff23ab3d324745ffc79e8db34a20a74cc"
 }
