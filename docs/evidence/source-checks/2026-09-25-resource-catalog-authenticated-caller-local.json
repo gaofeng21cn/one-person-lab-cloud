@@ -1,0 +1,197 @@
+{
+ "schemaVersion": 1,
+ "action": "Connect the Resource Catalog owner to a real platform-administrator identity, the authenticated Console BFF command surface and its own persisted accepted plans and policy versions, with same-owner readback",
+ "recordedAt": "2026-09-25T06:36:11.232746+00:00",
+ "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+ "testedSha": "8536beacec51e45b97ecb3df4333e44510e6e18a",
+ "testedTree": "8a343e4663cce9d926aacf1b2d5d6f9a8af62d99",
+ "sourceBinding": "The full gate and the focused runs below were executed on tracked, committed sources at testedSha with a clean tracked worktree; the generated-test and log artifacts under output/ are ignored and are referenced only by digest.",
+ "absorbedDependencies": [
+  {
+   "owner": "CloudIdentity policy writer (identity/permission line)",
+   "sha": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+   "basedOn": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+   "absorbedFiles": {
+    "services/gateway-integration/identity/policy_generated.go": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "services/gateway-integration/identity/generate_policy.py": "1e410ecec2bd3ac661dfb0f5d85dc9e7e6bbdd18d0b81dc370fe65cd32d76abc"
+   },
+   "regenerationCheck": "python3 services/gateway-integration/identity/generate_policy.py in this tree leaves policy_generated.go byte-identical (empty git diff), so the absorbed rows are generated from docs/spec/target/03_api_contract_complete.yaml rather than hand-listed.",
+   "notAbsorbed": "The same commit also changes identity/authorization.go, identity/members.go, identity/service.go, gateway-integration/cmd/server/main.go and member tests. Those are the member-governance work and were deliberately not taken; the authorization-context behavior verified here is the repository's existing identity/authorization.go."
+  }
+ ],
+ "sourceFilesSha256": {
+  "apps/console-bff/catalog.go": "9d3d261115e4e5401bb60731de58ab4513323f34a7b144ce9359744eea1c586a",
+  "apps/console-bff/internal/clients/catalog.go": "c0e19cbde4a0609eef555f70d3b17942f4e0e0f4f1da0926f735ded66ec361c8",
+  "apps/console-bff/internal/httpapi/catalog.go": "30e232064881938eefc7c7054ac4ebfbb5867989be97272b25b43e7f9b1f85bf",
+  "apps/console-bff/internal/httpapi/catalog_test.go": "dbc8143042131ef98449a47998449acf07f4c23cfe41434d40271175b659affe",
+  "services/resource-catalog/catalog/catalog_live_test.go": "2c9e2b3e482f931cdc07bd47e7b2bc4435b616b64fe47b7e6def66294b25a1c6",
+  "services/resource-catalog/catalog/service_postgres_test.go": "4cca5c3b65053d05a6a076729be41c62f5395d3062a08acf2d1625b3d21430b2",
+  "services/resource-catalog/catalog/service.go": "74e0615cee8d8f35c3b1b4f481a5ae4d5837ebf9c44af0f8a33aadeff79e2fe3",
+  "services/resource-catalog/catalog/plans.go": "46e4d0cabef3aa3942039ef83ba9fbaf86f2d76f18779ff11e4134f9febc557b",
+  "services/resource-catalog/catalog/policies.go": "1619434b279f85b16e9a071f91a04729ec2f60367c190d52c5f0048b4eb57d07",
+  "services/resource-catalog/catalog/policy.go": "da4a3b92a6e60b152aa61289db394858deae68759f8996f862c6a42200f3ce20",
+  "services/resource-catalog/catalog/events.go": "33def587e07ae6df1a368968992e0899a4426f7ecb3d0d7fe7f87c3a5d27f4ed",
+  "services/resource-catalog/cmd/server/main.go": "dd61876952a3f9f56fd65a4b9bbd87b126d5ed021c8686602a009f16831dabac",
+  "services/resource-catalog/go.mod": "2ce94514a623f698f96ca5c6f1a6bc313332148d8b2f4e3d7f90f159dd5c1ae5",
+  "services/resource-catalog/migrations/0001_opl_resource_catalog.sql": "87cb984dce76287f704b84f6a5297cbb7aa9b84e28ecf79f6159b2f2a65adc14",
+  "package.json": "4e0ce5788657ed1ac523a46f5a88534520941fee8fb100d12eadfe260c48d293",
+  "tools/verify-local.ts": "d943c251f06dcaec51fc5bbca1f12f315f1dfbcb44796a3c9bd120f504eb66e1",
+  "tests/tools/verify-local.test.ts": "90aa0551e11fa77eb3aa01d592413de9b29363efbb63a4d171cf2171c3af2334",
+  "Dockerfile": "79854c1d95e423c92dd2b9b01a049bbaa99f7838a96cdddebf946694f7a601d5"
+ },
+ "commands": [
+  {
+   "name": "focused owner and live integration tests (live build tag)",
+   "command": "go -C services/resource-catalog test -tags=livebuild ./... -count=1 -v",
+   "environment": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN to one temporary loopback PostgreSQL 16.8 container",
+   "exitCode": 0,
+   "result": "15 tests, 47 subtests, 0 failures, 0 skips",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/focused-live-verbose.log",
+    "sha256": "baf7faf7439f1a69f44a5f65c3b13fe3249288bcc3c8606e019a510ac92e58a8"
+   }
+  },
+  {
+   "name": "focused owner tests without the live tag",
+   "command": "go -C services/resource-catalog test ./... -count=1",
+   "environment": "same temporary PostgreSQL container",
+   "exitCode": 0,
+   "result": "catalog and migrations packages pass",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/focused-no-tags.log",
+    "sha256": "d7d00593db33b00258082804b3efc459ff329aa29f1c33d103d3c8d5d88b546f"
+   }
+  },
+  {
+   "name": "full local gate on the frozen revision",
+   "command": "npm run verify:local:full",
+   "environment": "repository-pinned temporary PostgreSQL and Docker; exit code captured by redirecting the command's own status to a file, not from a pipe",
+   "startedAt": "2026-09-25T06:15:39Z",
+   "endedAt": "2026-09-25T06:31:20Z",
+   "exitCode": 0,
+   "result": "228 source tests, 114 browser tests, typecheck and lint, Console build, every Go module compile, all required PostgreSQL/Docker packages with zero skips including services/resource-catalog, and clean whitespace",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/frozen-verify-local-full.log",
+    "sha256": "daec31266a1d8d45637e151a815080b14067881ef8ddbae2485ba9cf4ba62aff"
+   },
+   "exitFile": {
+    "path": "output/resource-catalog-live-20260925/frozen-verify-local-full.exit",
+    "value": 0
+   }
+  }
+ ],
+ "attemptsAndFailures": [
+  {
+   "what": "First full-gate invocation on this branch",
+   "outcome": "aborted deliberately at step 22 of 54",
+   "reason": "Tracked sources and documentation changed while it ran, so its verdict would not have described one frozen revision. Discarded rather than reported; the recorded gate is the later run on testedSha.",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/verify-local-full.log",
+    "retention": "ignored artifact; superseded"
+   }
+  },
+  {
+   "what": "Live catalog loop, first run before absorbing the CloudIdentity dependency",
+   "outcome": "failed as expected: HTTP 403 action is not authorized for createComputePlan",
+   "reason": "CloudIdentity's generated policy carried no resource_catalog action. This is the evidence that the dependency was genuinely missing and that the check is not a stub.",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/cloudidentity-decision-before-dependency.log",
+    "sha256": "861122a8096238d61bec5601d5ab7bd53ebdb322d30159cb31e6e6cf4427bbb7"
+   }
+  },
+  {
+   "what": "Live catalog loop against the absorbed policy, first attempts",
+   "outcome": "failed three times with distinct real causes, each repaired in source",
+   "reason": "(1) the BFF named the plan id as the authorization resource while the owner named only the catalog kind, so CloudIdentity refused the authorization-context continuation as a different resource — the BFF now names the same resource the owner does; (2) the test driver passed the actor id where the session reference belongs; (3) the cross-owner read assertion expected a neighbour schema in another database.",
+   "logs": [
+    {
+     "path": "output/resource-catalog-live-20260925/attempt-1.log"
+    },
+    {
+     "path": "output/resource-catalog-live-20260925/attempt-2.log"
+    },
+    {
+     "path": "output/resource-catalog-live-20260925/attempt-3.log"
+    },
+    {
+     "path": "output/resource-catalog-live-20260925/attempt-4.log"
+    }
+   ],
+   "retention": "ignored artifacts"
+  },
+  {
+   "what": "Live loop after repair",
+   "outcome": "passed",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/attempt-5.log",
+    "sha256": "eb4d5bed84857a046a0a8565b5835fcc8159bdb9820ce53bb2e6d9711b41f575"
+   }
+  }
+ ],
+ "proven": [
+  "A real platform-administrator session reaches the Console BFF catalog surface and the owner persists an approved compute plan, an approved storage plan, a retention policy version and a refund policy version in the owner's own PostgreSQL database, and the same owner reads the created policy versions back.",
+  "The generated CloudIdentity policy admits the catalog actions for the contract's actors: 10 platform-admin actions with platform scope and 2 member reads with tenant scope return ALLOWED under real session validation; a tenant administrator and a member are refused the platform actions.",
+  "A refused action writes nothing: an administrator-only command from a tenant administrator leaves zero rows.",
+  "A member may read the customer catalog list and is refused the administrator policy list.",
+  "Retiring a storage plan changes the owner's availability projection to retired, and pricing a retired plan pair is refused with FailedPrecondition at the owner boundary.",
+  "Idempotent replay returns the originally stored plan, a conflicting body under the same key is refused with 409, and a lost-response retry converges on the original row instead of creating a second one.",
+  "The owner's runtime login cannot read a neighbour schema in its own database (PostgreSQL permission denied) and does not carry another owner's schema.",
+  "The full local gate passes on the frozen revision with every required PostgreSQL package at zero skips, including the new services/resource-catalog lane."
+ ],
+ "notProven": [
+  "Quoting does not exist: CreateQuote, GetQuote and the Workspace-facing AcceptQuote are unimplemented, so nothing prices a deploy, resize or renew request. This change does not close pricing or a Local deployment loop.",
+  "No money-bearing price policy version travels the BFF wire. The shared public JSON codec resolves properties by protobuf JSON name while the canonical contract spells those amounts computeMonthlyUSDMicros / storageMonthlyUSDMicros / productMonthlyUSDMicros, so a contract-shaped body is rejected (decode: unknown publisher property CreatePricePolicyRequest.productMonthlyUSDMicros) and an encoded version emits the protobuf spelling with a bare number instead of the required decimal string. Observed in this repository, evidence below; the owner command itself is verified at its typed boundary only.",
+  "The contract declares 200 for the two plan-availability actions; the shared authenticated route boundary currently returns 201 because the action is not in its explicit 200 exemption list. Handed to the BFF serial integrator; not claimed as contract-conformant here.",
+  "The shared route boundary's own catalog wiring line (registerCatalogRoutes in apps/console-bff/internal/httpapi/server.go) is the BFF integrator's file and is handed over rather than written here, so no process-served catalog route is claimed.",
+  "The Ledger DomainInbox still accepts only tenant-scoped build and capability producers, so the platform-scoped catalog.policy_changed.v1 delivery stays pending. The producer records and retries it; extending the consumer is Ledger's write set, and the event is not claimed end-to-end.",
+  "No Workspace subscription, original order, provider resource or Local-Docker reference was touched or verified, and no real charge, purchase or provider resource exists.",
+  "No Candidate, Product Release, deployment or Instance qualification was performed, and no production endpoint, database or service was accessed."
+ ],
+ "sharedGapsHandedOver": [
+  {
+   "artifact": "packages/contracts/go/publicjson (shared codec) with docs/spec/target/03_api_contract_complete.yaml and packages/contracts/proto/internal.proto",
+   "symptom": "The codec resolves an incoming or outgoing property by protobuf JSON name, while the canonical contract's public property uses the USD spelling; protoc generates Usd from product_monthly_usd_micros.",
+   "affectedFields": [
+    "CreatePricePolicyRequest.computeMonthlyUSDMicros, storageMonthlyUSDMicros, productMonthlyUSDMicros",
+    "PricePolicyVersion.computeMonthlyUSDMicros, storageMonthlyUSDMicros, productMonthlyUSDMicros",
+    "ComputePlan.monthlyPriceUSDMicros",
+    "StoragePlan.monthlyPriceUSDMicros"
+   ],
+   "nextRoundRisk": "Quote and QuoteLine carry amountUSDMicros, so pricing will meet the same mismatch.",
+   "evidence": {
+    "path": "output/resource-catalog-live-20260925/shared-publicjson-usd-gap.log",
+    "sha256": "31a524bc35be2fbf4e1385934cc9780501ad7eaccac19a20bb3981814f9c57ea"
+   },
+   "owner": "shared contract owner; not this line's write set, and no second contract revision or v226 surface was created."
+  }
+ ],
+ "sharedDocumentConflicts": [
+  {
+   "file": "docs/roadmap.md",
+   "conflict": "Both this line and the identity line edit the numbered open-work list near the top; the hunks share context lines (identity at the first items, this line at item 3), so the region must be reconciled serially."
+  },
+  {
+   "file": "docs/implementation-architecture.md",
+   "conflict": "Both lines rewrite the same Target And Current Evidence paragraph block, so the sentences must be reconciled serially rather than merged by proximity."
+  },
+  {
+   "file": "docs/status.md",
+   "conflict": "No textual overlap: this line edits the owner-process baseline sentence and a new Resource Catalog section near line 96-153, while the identity line edits a region near line 221-279. Same file, so the merge is still serialized."
+  }
+ ],
+ "temporaryResources": "One task-created loopback PostgreSQL container and its anonymous volume per run, removed afterwards. No production resource, credential or customer data was accessed.",
+ "productionDeploymentDispatched": false,
+ "instanceQualificationPerformed": false,
+ "issueOrPullRequestCreated": false,
+ "predecessorReceiptOrdering": {
+  "receipt": "docs/evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json",
+  "sourceSha": "041eacec2bf6e7eaeff5288809b2c615e1199339",
+  "exactOrder": [
+   "2026-09-25T04:09:03Z: the focused owner log was produced from the working tree.",
+   "2026-09-25T04:10:01Z: that receipt's recordedAt, i.e. the moment its evidence was captured.",
+   "2026-09-25T04:35:25Z: commit 041eacec committed the bytes that had been tested.",
+   "2026-09-25T04:35:35Z: commit 5db83f7b bound the receipt's sourceSha and sourceTree to 041eacec."
+  ],
+  "meaning": "The predecessor receipt's recordedAt precedes the commit it names by about 25 minutes, because its evidence was captured from the working tree and its sourceSha was bound in the following commit once those exact bytes were committed. It must not be read as evidence recorded at commit time, and it is not evidence about any other revision. This round's own receipt does not have that ordering: its testedSha was committed first and both the focused runs and the full gate were then executed on that committed revision with a clean tracked worktree, which the two commits on this branch (source, then evidence) reflect."
+ }
+}
