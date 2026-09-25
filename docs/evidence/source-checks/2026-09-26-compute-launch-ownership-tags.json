@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "action": "Persist original Launch compute ownership tags and recover empty retained projections without a new cloud delete",
+  "recordedAt": "2026-09-25T21:03:48.002438+00:00",
+  "baseSourceSha": "1758e8fa692cd96055265111a6cfab428d580731",
+  "sourceFilesSha256": {
+    "services/fabric/internal/fabric/compute_allocation.go": "e4b988cbd7cb720e335ea27ea5befd0a1fd38127013ac3ee9bda8964025afa63",
+    "services/fabric/internal/fabric/operation_replay.go": "cf3dd000c8e26c4a5ac6cacc408717766f96694a0e8503e8ecfc1632996574ba",
+    "services/fabric/internal/fabric/tencent_workspace_launch.go": "ce52b3a8756d75f8612da8d3140a03bd1d5eacff07f6b36ee9b7dd17f9b343d1",
+    "services/fabric/internal/fabric/tencent_workspace_launch_vertical_test.go": "7c167a9f91952902d4d72cfaae4efaa7480350caffe93da11516d25071824996",
+    "services/fabric/internal/fabric/workspace_launch_delete_projection_test.go": "56051d6e089b4e3a541ce75413910d04bfe9f9ff9a7874685563f487f3b15ed0"
+  },
+  "verification": {
+    "result": "passed",
+    "focusedTests": 41,
+    "focusedSubcases": 70,
+    "requiredSkips": 0,
+    "raceDetector": "passed",
+    "postgresqlStoreReopen": "passed",
+    "entryPackages": [
+      "internal/http",
+      "cmd/fabric",
+      "internal/protectedresource"
+    ],
+    "linuxBuilds": [
+      "amd64",
+      "arm64"
+    ],
+    "checks": [
+      "Original source fails new Launch persistence and retained Get, destroy-status and destroy acceptance",
+      "Original externally-deleted dispatch phase fails with zero provider reads; repaired phase converges from one absence read",
+      "Missing, conflicting or uncommitted original ownership and partial tags remain rejected before provider calls",
+      "PostgreSQL reopen and already populated memory recover only tags while preserving immutable original operations and later observations"
+    ],
+    "realProviderMutationCount": 0
+  },
+  "logs": [
+    {
+      "name": "compute-tags-before.log",
+      "sha256": "d27f881e2a2d15dc2193024c8cc9af4375c2a3eeb71e18d7c93df68943b8034e"
+    },
+    {
+      "name": "compute-tags-absence-phase-before.log",
+      "sha256": "663f01f9e8edc1d1eb0ad8662cdff4abc71bce4ae8521b94fe68fb85b326bc17"
+    },
+    {
+      "name": "compute-tags-race-final.log",
+      "sha256": "57805753bbfd2e2d9db926176ea8ec23e5e9cef700dc5f443d4dd3f69b1994a3"
+    },
+    {
+      "name": "compute-tags-entry-checks.log",
+      "sha256": "96fb179b6c2819b12e8e0a618dcfa6183358127b16729d7dd41ae704f351c712"
+    }
+  ],
+  "remainingBoundary": "Source verification with provider stubs and isolated PostgreSQL. No production dispatch, deletion retry, wallet action or deployment was performed."
+}

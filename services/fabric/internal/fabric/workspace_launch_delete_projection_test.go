@@ -3,6 +3,8 @@ package fabric
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"maps"
 	"reflect"
 	"strings"
 	"sync"
@@ -372,6 +374,227 @@ func TestWorkspaceLaunchDeleteHydrationDoesNotOverwriteConcurrentResourceState(t
 		service.volumes[resources.StorageID].ProviderRequestID != concurrentStorage.ProviderRequestID ||
 		service.attachments[resources.AttachmentID].ProviderRequestID != concurrentAttachment.ProviderRequestID {
 		t.Fatalf("hydrate overwrote concurrent state compute=%#v storage=%#v attachment=%#v", service.computes[resources.ComputeAllocationID], service.volumes[resources.StorageID], service.attachments[resources.AttachmentID])
+	}
+}
+
+func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocation, *MachineOwnership)) (*MemoryOperationStore, *TencentProvider, ComputeAllocation, MachineOwnership) {
+	t.Helper()
+	_, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
+	input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{})
+	compute := canonicalTencentComputeDestroyFixture()
+	compute.ID, compute.OperationID = workspaceLaunchComputeID(input.Binding), input.Binding.FabricOperationID
+	compute.ProviderResourceID, compute.ProviderRequestID = compute.InstanceID, "original-compute-read"
+	compute.ChargeType, compute.Zone = "PREPAID", "ap-guangzhou-3"
+	compute.ProviderData["region"], compute.ProviderData["zone"] = "ap-guangzhou", compute.Zone
+	compute.CostTags = nil
+	owner := MachineOwnership{
+		ID: "original-persisted-owner", ResourceID: compute.ID, AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
+		PackageID: compute.PackageID, NodePoolID: compute.NodePoolID, MachineID: compute.MachineName, InstanceID: compute.InstanceID,
+		NodeName: compute.NodeName, Status: "active", ClaimedAt: time.Now().UTC(),
+	}
+	if mutate != nil {
+		mutate(&compute, &owner)
+	}
+	seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation",
+		WorkspaceLaunchResources{}, WorkspaceLaunchResources{ComputeAllocationID: compute.ID, ComputeBindingRef: input.Binding.FabricOperationID},
+		tencentWorkspaceLaunchState{Compute: &compute, Ownership: &owner}, 0)
+	// A real child resource record populates the service map at restart before
+	// canonical Launch hydration. It predates the missing CostTags projection.
+	child := newOperation("tencent_compute_allocation_create", "compute_allocation", compute.ID, compute.AccountID, compute.WorkspaceID, "original-child", "original-hash", time.Now().UTC())
+	child.ID, child.Status, child.FinishedAt = "original-child", "succeeded", time.Now().UTC()
+	fillOperationResource(&child, compute)
+	if err := store.Append(context.Background(), child); err != nil {
+		t.Fatal(err)
+	}
+	return store, provider, compute, owner
+}
+
+func TestRetainedLaunchComputeTagsRecoverForOwnerReadsAndDeletion(t *testing.T) {
+	for _, surface := range []string{"get", "destroy-status", "destroy"} {
+		t.Run(surface, func(t *testing.T) {
+			store, provider, compute, owner := retainedTencentComputeTagsFixture(t, nil)
+			providerReads := atomic.Int32{}
+			provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+				if request.Action != "read_compute_destroy_status" {
+					return provisionerResponse{}, errors.New("test forbids cloud mutations")
+				}
+				providerReads.Add(1)
+				return computeDestroyStatusResponse(request, false, "NOT_FOUND", "NOT_FOUND"), nil
+			}
+			provider.kubectl = func(context.Context, []string, []byte) ([]byte, error) { return nil, nil }
+			service := NewServiceWithOperationStore(provider, store)
+			if len(service.computes[compute.ID].CostTags) != 0 {
+				t.Fatal("fixture did not reproduce restarted child without tags")
+			}
+			// Preserve an observation newer than the original running Launch.
+			current := service.computes[compute.ID]
+			current.Status, current.ProviderRequestID = "external_deleted", "later-observation"
+			service.computes[compute.ID] = current
+			var observed ComputeAllocation
+			var err error
+			switch surface {
+			case "get":
+				var found bool
+				observed, found = service.GetComputeAllocation(context.Background(), compute.ID)
+				if !found {
+					t.Fatal("retained allocation disappeared")
+				}
+			case "destroy-status":
+				observed, err = service.ReadComputeDestroyStatus(context.Background(), compute.ID)
+			case "destroy":
+				observed, err = service.DestroyComputeAllocation(context.Background(), compute.ID)
+				deadline := time.Now().Add(3 * time.Second)
+				for time.Now().Before(deadline) {
+					service.mu.Lock()
+					working := service.destroying[compute.ID]
+					service.mu.Unlock()
+					if !working {
+						break
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			want := oplCostTags(owner.AccountID, owner.WorkspaceID, owner.ResourceID, owner.ID)
+			if err != nil || !maps.Equal(observed.CostTags, want) || observed.Status != "external_deleted" {
+				t.Fatalf("surface=%s tags=%#v status=%s err=%v", surface, observed.CostTags, observed.Status, err)
+			}
+			if surface == "get" && (observed.ProviderRequestID != "later-observation" || providerReads.Load() != 0) {
+				t.Fatal("tag recovery replaced a later observation or queried the provider")
+			}
+			if surface == "destroy-status" && (providerReads.Load() != 1 || !validTencentComputeAbsenceEvidence(observed)) {
+				t.Fatalf("owner absence readback was not exercised: reads=%d", providerReads.Load())
+			}
+			if surface == "destroy" {
+				latest, found, err := service.latestComputeDestroyOperation(context.Background(), compute.ID)
+				if err != nil || !found || latest.Status != "succeeded" || providerReads.Load() != 1 {
+					t.Fatalf("retained deletion did not finish from one absence read: found=%t status=%s reads=%d err=%v", found, latest.Status, providerReads.Load(), err)
+				}
+			}
+		})
+	}
+}
+
+func TestRetainedLaunchComputeTagsRejectConflictingEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		mutate     func(*ComputeAllocation, *MachineOwnership)
+		mutateLive func(*ComputeAllocation)
+	}{
+		{name: "partial tags", mutate: func(c *ComputeAllocation, _ *MachineOwnership) {
+			c.CostTags = map[string]string{"opl_account_id": c.AccountID}
+		}},
+		{name: "wrong resource tag", mutate: func(c *ComputeAllocation, o *MachineOwnership) {
+			c.CostTags = oplCostTags(c.AccountID, c.WorkspaceID, "wrong-resource", o.ID)
+		}},
+		{name: "missing ownership", mutate: func(_ *ComputeAllocation, o *MachineOwnership) { *o = MachineOwnership{} }},
+		{name: "uncommitted ownership", mutate: func(_ *ComputeAllocation, o *MachineOwnership) { o.Status = "claimed" }},
+		{name: "owner machine drift", mutate: func(_ *ComputeAllocation, o *MachineOwnership) { o.MachineID = "another-machine" }},
+		{name: "owner account drift", mutate: func(_ *ComputeAllocation, o *MachineOwnership) { o.AccountID = "another-account" }},
+		{name: "live instance drift", mutateLive: func(c *ComputeAllocation) {
+			c.InstanceID, c.CVMInstanceID, c.ProviderResourceID = "ins-other", "ins-other", "ins-other"
+		}},
+		{name: "live partial tags", mutateLive: func(c *ComputeAllocation) { c.CostTags = map[string]string{"opl_account_id": c.AccountID} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, provider, compute, _ := retainedTencentComputeTagsFixture(t, test.mutate)
+			calls := 0
+			provider.provision = func(context.Context, provisionerRequest) (provisionerResponse, error) {
+				calls++
+				return provisionerResponse{}, errors.New("must not reach provider")
+			}
+			service := NewServiceWithOperationStore(provider, store)
+			if test.mutateLive != nil {
+				current := service.computes[compute.ID]
+				test.mutateLive(&current)
+				service.computes[compute.ID] = current
+			}
+			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
+			if err == nil || err.Error() != "compute_allocation_destroy_identity_required" || calls != 0 {
+				t.Fatalf("conflicting evidence reached provider: err=%v calls=%d", err, calls)
+			}
+		})
+	}
+}
+
+func TestRetainedLaunchComputeTagsRequireUniqueOriginalStage(t *testing.T) {
+	for _, missing := range []bool{true, false} {
+		t.Run(map[bool]string{true: "missing", false: "conflicting"}[missing], func(t *testing.T) {
+			store, provider, compute, _ := retainedTencentComputeTagsFixture(t, nil)
+			for i, operation := range store.operation {
+				if operation.Action != "ensure_compute_allocation" {
+					continue
+				}
+				if missing {
+					store.operation = append(store.operation[:i], store.operation[i+1:]...)
+				} else {
+					conflict := operation
+					conflict.ID = "conflicting-stage"
+					store.operation = append(store.operation, conflict)
+				}
+				break
+			}
+			calls := 0
+			provider.provision = func(context.Context, provisionerRequest) (provisionerResponse, error) {
+				calls++
+				return provisionerResponse{}, errors.New("must not reach provider")
+			}
+			service := NewServiceWithOperationStore(provider, store)
+			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
+			if err == nil || err.Error() != "compute_allocation_destroy_identity_required" || calls != 0 {
+				t.Fatalf("unproven original stage reached provider: err=%v calls=%d", err, calls)
+			}
+		})
+	}
+}
+
+func TestPostgresRetainedLaunchComputeTagsRecoverAfterStoreReopen(t *testing.T) {
+	ctx := context.Background()
+	databaseURL := fabricTestDatabaseURL(t)
+	fixture, provider, compute, owner := retainedTencentComputeTagsFixture(t, nil)
+	first, err := newTestPostgresOperationStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range fixture.operation {
+		if err := first.Append(ctx, operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := first.client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := newTestPostgresOperationStore(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.client.Close()
+	provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+		if request.Action != "read_compute_destroy_status" {
+			return provisionerResponse{}, errors.New("test forbids cloud mutations")
+		}
+		return computeDestroyStatusResponse(request, false, "NOT_FOUND", "NOT_FOUND"), nil
+	}
+	service := NewServiceWithOperationStore(provider, store)
+	if len(service.computes[compute.ID].CostTags) != 0 {
+		t.Fatal("child fixture unexpectedly included tags")
+	}
+	readback, err := service.ReadComputeDestroyStatus(ctx, compute.ID)
+	if err != nil || !validTencentComputeAbsenceEvidence(readback) || !maps.Equal(readback.CostTags, oplCostTags(owner.AccountID, owner.WorkspaceID, owner.ResourceID, owner.ID)) {
+		t.Fatalf("PostgreSQL original ownership recovery failed: tags=%#v err=%v", readback.CostTags, err)
+	}
+	// Recovery is a read projection; the immutable original operation stays intact.
+	operations, err := store.List(ctx)
+	if err != nil || len(operations) != len(fixture.operation) {
+		t.Fatalf("read recovery wrote operations: %v", err)
+	}
+	for _, operation := range operations {
+		if operation.Action == "ensure_compute_allocation" {
+			record, ok := decodeWorkspaceLaunchStageRecord(operation)
+			state, stateErr := decodeTencentWorkspaceLaunchState(record)
+			if !ok || stateErr != nil || state.Compute == nil || len(state.Compute.CostTags) != 0 || state.Ownership.ID != owner.ID {
+				t.Fatal("read recovery rewrote the original Launch evidence")
+			}
+		}
 	}
 }
 

@@ -467,7 +467,7 @@ func (s *Service) ReadComputeDestroyStatus(ctx context.Context, allocationID str
 	s.mu.Lock()
 	existing := cloneComputeAllocation(s.computes[allocationID])
 	s.mu.Unlock()
-	if existing.ID == "" {
+	if existing.ID == "" || existing.Provider == "tencent-tke" && len(existing.CostTags) == 0 {
 		if err := s.hydrateMissingResourceState(ctx); err != nil {
 			return ComputeAllocation{}, err
 		}
@@ -513,7 +513,7 @@ func (s *Service) GetComputeAllocation(ctx context.Context, allocationID string)
 	s.mu.Lock()
 	allocation, ok := s.computes[allocationID]
 	s.mu.Unlock()
-	if !ok {
+	if !ok || allocation.Provider == "tencent-tke" && len(allocation.CostTags) == 0 {
 		if err := s.hydrateMissingResourceState(ctx); err != nil {
 			return ComputeAllocation{}, false
 		}
@@ -676,7 +676,7 @@ func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID str
 	s.mu.Lock()
 	existing := s.computes[allocationID]
 	s.mu.Unlock()
-	if existing.ID == "" {
+	if existing.ID == "" || existing.Provider == "tencent-tke" && len(existing.CostTags) == 0 {
 		if err := s.hydrateMissingResourceState(ctx); err != nil {
 			return ComputeAllocation{}, err
 		}
@@ -723,9 +723,11 @@ func (s *Service) DestroyComputeAllocation(ctx context.Context, allocationID str
 			if !validTencentComputeDestroyStableIdentity(allocation) {
 				return fmt.Errorf("compute_allocation_destroy_identity_required")
 			}
-			allocation.ProviderData = maps.Clone(allocation.ProviderData)
-			allocation.ProviderData[tencentComputeDestroyPhaseKey] = tencentComputeDestroyPhaseDispatchAuthorized
-			dispatchAuthorized = true
+			if !isExternallyDeletedComputeStatus(allocation.Status) {
+				allocation.ProviderData = maps.Clone(allocation.ProviderData)
+				allocation.ProviderData[tencentComputeDestroyPhaseKey] = tencentComputeDestroyPhaseDispatchAuthorized
+				dispatchAuthorized = true
+			}
 		}
 		if err := s.recordOperation(lockCtx, operation, "started", allocation, nil); err != nil {
 			return err
