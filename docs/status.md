@@ -243,6 +243,59 @@ must not be reported as one:
 Writing Serve's own copies of Capability or Fabric facts would create a duplicate
 writer, so Serve claims only what it can answer.
 
+#### What Serve now implements of the write path
+
+`services/serve/internal/delivery/runtime.go` implements the one write-path step
+that is fully Serve's own and fully determined: recording an executing runtime's
+observation as Serve's own runtime-instance fact, driven by the contract's
+`RuntimeDeployCommand`. It is deliberately fail-closed:
+
+- a provisioned resource is never application readiness: only a report that says
+  the application is available, carries an entry, a publishable URL and readiness
+  evidence can reach `ready`;
+- an application that runs but has no publishable entry is refused with
+  `app_access_unavailable` rather than recorded as ready, because
+  `serve.agent_runtime_instances` binds `ready` to a non-null access URL;
+- an undecidable provider state, a descriptor whose bytes do not reproduce its
+  declared digest, a foreign workspace, a mismatched artifact, an unknown
+  deployment and a superseded `execution_epoch` are all refused, and a stale-epoch
+  observation can neither create nor overwrite a record;
+- Serve does not derive an access origin of its own: the adapter supplies the
+  publishable URL, because the installation decides which hostname publishes an
+  Agent.
+
+Focused PostgreSQL evidence:
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1` in
+`services/serve` passes 21 tests plus subtests with zero failures, covering the
+ready record, same-epoch replay convergence, every non-ready state mapping, and
+each refusal above.
+
+#### W17 prerequisites that must be decided before a real Deploy can run
+
+Two blockers are now verified against current source rather than assumed, and
+neither is a Serve-local choice:
+
+1. `RuntimeReservationCommand` cannot populate the row it is specified to write.
+   `06_data_fsm` step F08-3 says `ServeAgentCoordination.Reserve` writes
+   `serve.agent_runtime_instances`, but that table requires
+   `fabric_resource_set_id`, `data_attachment_contract` and the full
+   `deployment_descriptor` (with digest and object ref), while the command carries
+   only the capability version, artifact, and descriptor digest/object ref. The
+   reserved instance therefore cannot be inserted from the declared command, so
+   `Reserve` stays unimplemented instead of writing an invalid or fabricated row.
+   Deciding whether Reserve grows those fields, or whether the reserved identity
+   lives somewhere else, is a contract question for the owner of `02`/proto.
+2. Whether Serve is the claimant of the `capability_version` reference claim is
+   unresolved. `02` says `reference_claims` covers F08/F10 and allows a
+   `capability_version` target, and F10 step 3 says Serve acquires the new
+   version's claim and releases it in step 7. Current Capability source accepts
+   only a `BUILD` claimant (`services/capability/catalog/coordination.go`: the peer
+   gate requires the Build service and the purpose is hardcoded `build`), and its
+   `Bind`/`Release` read owner commit and claim usage through Build-specific
+   clients. Serving a claim therefore needs either that decision recorded or a
+   Serve-owned commit/usage readback surface; Serve does not widen the claim
+   protocol on its own.
+
 ### Canonical-main local verification and receipt
 
 The canonical-main baseline at `4e78b6fb96d0f4474a9b6ba885ef6f7c879f05fe`

@@ -63,7 +63,13 @@ chain is finished. Open work in dependency order:
    workspace-audience `GETWORKSPACE` row, which the workspace owner's own switch
    provides. [Status](./status.md#serve-delivery-read-surface) separates these from
    Serve's own unfinished `ServeRuntimeAdapter` and from Capability's claimant rule
-   and Fabric's coordination surface. The first real deployment remains incomplete.
+   and Fabric's coordination surface. Serve now implements the write-path step it
+   fully owns — recording an executing runtime's observation as its own
+   runtime-instance fact, fail-closed and epoch-fenced — while two verified
+   prerequisites block a real `Deploy`: `RuntimeReservationCommand` cannot populate
+   the row `Reserve` is specified to write, and whether Serve is the
+   `capability_version` claim's claimant is undecided. The first real deployment
+   remains incomplete.
 
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
