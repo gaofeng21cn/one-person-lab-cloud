@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "action": "Expose canonical Workspace create/list/get through authenticated production BFF routes",
+  "recordedAt": "2026-09-25T20:13:53.825187+00:00",
+  "baseSourceSha": "609f5749ff567446fcbe6253f7740421ac3889ea",
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/httpapi/server.go": "788db19a38dd0f023592005010d317b4c7b441a0883399e11225969e3586895a",
+    "apps/console-bff/internal/httpapi/workspace.go": "7217ab8007e169ac6508308cec19cd368c13585c327ddd4f536270130b5f0f1c",
+    "apps/console-bff/internal/httpapi/workspace_test.go": "91aef4f3121f4dd2b11b91ebf80c24e6bf45cca503872d9b7abd127bf7efefd8",
+    "apps/console-bff/internal/clients/workspace_client.go": "6332ce630489e9575b4375d2b3c289974cbd78047cba00f312c325a53345a0c9",
+    "apps/console-bff/workspace.go": "518a88e7f5eeaf2445eaa8ac8dea0835fcf21af20ff27f66ac4bfe03be56da74"
+  },
+  "verification": {
+    "moduleCommand": "go -C apps/console-bff test ./...",
+    "result": "passed",
+    "focusedCases": [
+      "TestWorkspaceProcessRoutePreservesAcceptedOwnerResponse",
+      "TestWorkspaceWriteGuardsNeverReachOwner/no_session",
+      "TestWorkspaceWriteGuardsNeverReachOwner/csrf",
+      "TestWorkspaceWriteGuardsNeverReachOwner/idempotency",
+      "TestWorkspaceWriteGuardsNeverReachOwner/cross_origin",
+      "TestWorkspaceWriteGuardsNeverReachOwner/denied",
+      "TestWorkspaceWriteGuardsNeverReachOwner/forged_body",
+      "TestWorkspaceWriteGuardsNeverReachOwner",
+      "TestWorkspaceReadPaginationAndFailure/limit=",
+      "TestWorkspaceReadPaginationAndFailure/limit=1",
+      "TestWorkspaceReadPaginationAndFailure/limit=100",
+      "TestWorkspaceReadPaginationAndFailure/limit=0",
+      "TestWorkspaceReadPaginationAndFailure/limit=101",
+      "TestWorkspaceReadPaginationAndFailure/limit=bad",
+      "TestWorkspaceReadPaginationAndFailure/limit=1.5",
+      "TestWorkspaceReadPaginationAndFailure"
+    ],
+    "checks": [
+      "real process registration reaches typed Workspace client",
+      "original actor tenant authorization-context and idempotency survive; forged body rejected",
+      "accepted operation remains HTTP202 with Retry-After",
+      "CSRF session idempotency same-origin and permission refusals write nothing",
+      "cursor and bounded page size reach owner; malformed limit never reaches owner",
+      "owner NotFound preserved"
+    ]
+  },
+  "remainingBoundary": "Typed owner probes establish transport only. Real Workspace/Catalog/Fabric persistence and funding/deployment are verified in the owning integration slice."
+}
