@@ -38,9 +38,17 @@ chain is finished. Open work in dependency order:
    production qualification boundary; earlier identity/catalog fixture gaps no
    longer describe current Cloud source.
 2. Continue the remaining canonical Gateway Integration/CloudIdentity work
-   package for Tenant onboarding/invitations/lifecycle and retained identity-data
-   migration. These are distinct from the implemented publisher session/grant
-   slice; do not infer full W03 or Gateway wallet migration from #625 evidence.
+   package for Tenant onboarding/lifecycle and retained identity-data migration.
+   The member slice is now implemented: invitations, acceptance, role changes,
+   last-owner protection, cross-Tenant refusal, session revocation on removal and
+   the audit record are source-verified in
+   [member governance evidence](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json).
+   Two obligations stay open there: `Member.displayName` needs the authorised
+   Gateway identity-directory read that the Gateway Integration identity work
+   package owns, and the BFF member surface still needs the Console member page
+   from W14. Tenant onboarding, suspend/reenable, delete/restore and Gateway
+   wallet migration remain separate outcomes; do not infer full W03, W21 or
+   Gateway wallet migration from the implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.

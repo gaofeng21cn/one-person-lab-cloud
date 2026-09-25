@@ -221,11 +221,38 @@ with an explicit build configuration; no production migration is implied.
 The [identity/admission source receipt](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
 records the actual verification and limitations. The preceding receipts are
 historical, exact-source evidence. This implements the #625 publisher identity
-and admission prerequisites; the rest of W03/Tenant invitation/lifecycle and
-Gateway wallet migration remain separate outcomes. No production, Instance or
-real Sub2API-account qualification is claimed.
+and admission prerequisites; the Tenant member and invitation slice is recorded
+separately below, and Tenant lifecycle plus Gateway wallet migration remain
+separate outcomes. No production, Instance or real Sub2API-account qualification
+is claimed.
 [Reproduction and configuration](./runtime/package-buildkit-local.md) gives the
 local command and process settings, including restart reauthentication.
+
+### Tenant member and invitation governance
+
+`services/gateway-integration` now also serves CloudIdentity's Tenant member
+surface: `getTenant`, `listMembers`, `listInvitations`, `inviteMember`,
+`acceptInvitation`, `revokeInvitation`, `updateMemberRole` and `removeMember`,
+reached through the Console BFF. The role decision comes from the canonical API
+permissions, now generated for the tenant owner instead of only Capability and
+Build. `acceptInvitation` is bound to the invitee's own live session and the
+recorded invitation subject, because an invitee is not yet a member of the
+inviting Tenant.
+
+Membership changes lock the Tenant row, refuse to demote or remove the last
+owner, advance `permission_version`, and revoke a removed member's sessions, so
+losing access takes effect on the next request rather than at session expiry.
+Invitations keep only a token hash, and each governance decision writes an
+immutable audit row; a refusal commits that evidence and then reports the
+canonical `ErrorCodeEnum`, including `LAST_OWNER` and `INVITATION_INVALID`.
+Concurrent owner removal was proved to serialize to exactly one success.
+
+The [member governance source receipt](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json)
+records the exact source files, the governed cases and the limitations. Two
+explicit gaps remain: `Member.displayName` still needs the authorised Gateway
+identity-directory read, and Tenant onboarding, suspend/reenable, delete/restore
+and Gateway wallet binding stay separate W03/W21 outcomes. No production,
+Instance or real-account qualification is claimed.
 
 ## Conclusion
 
