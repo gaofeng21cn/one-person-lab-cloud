@@ -2049,14 +2049,15 @@ paths:
       operationId: getWorkspaceAccess
       summary: getWorkspaceAccess
       tags:
-      - workspace
+      - serve
       x-feature-id:
       - F09
-      x-owner: workspace
+      x-owner: serve
       x-permission:
       - member
       x-tables:
-      - workspace.workspaces
+      - serve.agent_runtime_instances
+      - serve.access_bindings
       responses:
         '200':
           description: 成功。

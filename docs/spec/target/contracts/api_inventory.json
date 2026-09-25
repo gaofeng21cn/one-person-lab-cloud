@@ -846,7 +846,7 @@
       "features": [
         "F09"
       ],
-      "owner": "workspace",
+      "owner": "serve",
       "request": null,
       "response": "WorkspaceAccess",
       "status": 200,
@@ -854,7 +854,8 @@
         "member"
       ],
       "tables": [
-        "workspace.workspaces"
+        "serve.agent_runtime_instances",
+        "serve.access_bindings"
       ],
       "operationKind": null
     },
