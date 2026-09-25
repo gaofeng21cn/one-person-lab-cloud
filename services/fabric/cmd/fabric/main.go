@@ -1,20 +1,26 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
+	"opl-cloud/services/fabric/coordination"
 	"opl-cloud/services/fabric/internal/fabric"
 	fabrichttp "opl-cloud/services/fabric/internal/http"
 	"opl-cloud/services/internal/postgresmigrate"
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	addr := os.Getenv("FABRIC_ADDR")
 	if addr == "" {
 		addr = ":8082"
@@ -40,9 +46,38 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler := fabrichttp.NewServerWithAuth(fabric.NewServiceWithOperationStore(provider, operationStore), authConfig)
+	fabricService := fabric.NewServiceWithOperationStore(provider, operationStore)
+	handler := fabrichttp.NewServerWithAuth(fabricService, authConfig)
+	var dispatcher coordination.LocalResourceDispatcher
+	if local, ok := provider.(*fabric.LocalDockerProvider); ok && databaseURL != "" {
+		dispatcher = coordination.NewLocalDispatcher(fabricService, local)
+	}
+	owner, err := coordination.Start(ctx, os.Getenv, dispatcher)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if owner != nil {
+		defer owner.Close()
+		go func() {
+			<-ctx.Done()
+			owner.Server.Stop()
+		}()
+		go func() {
+			if err := owner.Server.Serve(); err != nil && ctx.Err() == nil {
+				log.Printf("Fabric coordination stopped: %v", err)
+				stop()
+			}
+		}()
+	}
+	httpServer := newHTTPServer(addr, handler)
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(shutdown)
+	}()
 	log.Printf("fabric listening on %s", addr)
-	if err := newHTTPServer(addr, handler).ListenAndServe(); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }

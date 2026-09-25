@@ -13,6 +13,8 @@ require (
 	k8s.io/apimachinery v0.37.0
 	k8s.io/cri-api v0.37.0
 	opl-cloud/packages/contracts/go v0.0.0
+	opl-cloud/services/internal/ownerservice v0.0.0
+	opl-cloud/services/internal/ownerstore v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0
 )
 
@@ -35,6 +37,10 @@ require (
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
 
 replace opl-cloud/packages/contracts/go => ../../packages/contracts/go
+
+replace opl-cloud/services/internal/ownerservice => ../internal/ownerservice
+
+replace opl-cloud/services/internal/ownerstore => ../internal/ownerstore
 
 require (
 	ariga.io/atlas v0.36.2-0.20250730182955-2c6300d0a3e1 // indirect

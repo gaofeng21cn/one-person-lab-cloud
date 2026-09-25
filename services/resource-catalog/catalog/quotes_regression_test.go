@@ -11,6 +11,7 @@ import (
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"opl-cloud/services/internal/ownerservice"
 )
 
 func TestDeployQuoteRequiresCapabilityVersion(t *testing.T) {
@@ -125,5 +126,43 @@ func TestDeployQuoteRejectsUnavailablePlanWindows(t *testing.T) {
 	}
 	if _, err := service.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: tenantCall("101", "tenant-test", "available", "available"), Body: request}); err != nil {
 		t.Fatalf("quote with both plans available: %v", err)
+	}
+}
+
+// The exact resource plan is part of the offer, so edits/retirement after quote
+// creation cannot silently change the provider request accepted by Workspace.
+func TestQuoteResourcePlanFrozenAndBoundToWorkspace(t *testing.T) {
+	s, _ := system(t)
+	ctx := peerContext(t)
+	compute, storage := quoteFixture(t, s)
+	call := tenantCall("101", "tenant-test", "freeze", "freeze")
+	q, err := s.CreateQuote(ctx, &api.CreateQuoteRpcRequest{Context: call, Body: &api.QuoteRequest{Purpose: api.QuoteRequestPurposeEnum_QUOTE_REQUEST_PURPOSE_ENUM_DEPLOY, CapabilityVersionId: proto.String("cap"), ComputePlanId: compute, StoragePlanId: storage, PeriodMonths: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := ownerservice.WithPeerOwner(t.Context(), ownerservice.OwnerWorkspace.Service())
+	before, err := s.ReadQuoteResourcePlan(peer, &api.QuoteResourcePlanRequest{Context: call, QuoteId: q.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.ResourcePlan.GetProviderComputeSkuId() != "s" || before.ResourcePlan.GetVcpus() != 2 {
+		t.Fatalf("unfrozen plan %v", before.ResourcePlan)
+	}
+	if _, err = s.DB.ExecContext(ctx, `UPDATE resource_catalog.compute_plans SET vcpus=8,status='revoked',provider_specification='{"providerProfileId":"p","providerSkuId":"different"}' WHERE id=$1`, compute); err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := s.AcceptQuote(peer, &api.AcceptQuoteRequest{Context: call, QuoteId: q.Id, WorkspaceId: "workspace-original", ObligationId: "order-original"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(before.ResourcePlan, accepted.ResourcePlan) || accepted.WorkspaceId != "workspace-original" {
+		t.Fatalf("acceptance repriced resource plan %v", accepted)
+	}
+	if _, err = s.AcceptQuote(peer, &api.AcceptQuoteRequest{Context: call, QuoteId: q.Id, WorkspaceId: "workspace-other", ObligationId: "order-original"}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("same order rebound workspace: %v", err)
+	}
+	read, err := s.ReadQuoteResourcePlan(peer, &api.QuoteResourcePlanRequest{Context: call, QuoteId: q.Id})
+	if err != nil || !proto.Equal(read, accepted) {
+		t.Fatalf("acceptance readback differs: %v %v", read, err)
 	}
 }

@@ -1,0 +1,98 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T20:49:35.219689+00:00",
+  "scope": "Workspace accepted quote, original order, persistent Fabric resource references and bounded Local first-delivery source",
+  "base_source_sha": "1758e8fa692cd96055265111a6cfab428d580731",
+  "source_checkpoint": "b179107843f8dc13ced1d3b8f3955259233df97d",
+  "source_files_sha256": {
+    "Dockerfile": "971a97d7e9be0f18374d129a6317be36d4252008ef1c0aef8631bdc7c0c0e514",
+    "packages/contracts/go/api/internal.pb.go": "7f94e17e36b15c60c7179e904effa8bbb3ba90d1fe411e7018dace0846349f2f",
+    "packages/contracts/go/api/internal_grpc.pb.go": "714bec0b880f1153fdc06cffbdac5a2b4d97860a4f28a5d954b567de4b1b6a49",
+    "packages/contracts/go/publicjson/shape_generated.go": "2b05e381015d303f23c085659c7255159cb114de5fcbe074936efa8706877856",
+    "packages/contracts/proto/internal.proto": "93a721e7c4c39e077a58d6a6d503f1f70337bb80177769cc1fbf2a98bac85bd2",
+    "services/fabric/cmd/fabric/main.go": "08bd94745a8179a8e9914cc41e7534aa59489cc9e5d59867426be6280961e2f6",
+    "services/fabric/coordination/local_dispatch.go": "da6375e50e197c4f6538a8a2f078c985f85767fcd4b6a2b068576162d11709ef",
+    "services/fabric/coordination/local_dispatch_host_test.go": "d1834367c95397ffedc54b1699d9fdca3b0715a19530f78254d6245f27607264",
+    "services/fabric/coordination/process.go": "a1ae10dcabf2085beedd03408b18dfa828afc3170d6df2250c3703fa41a71787",
+    "services/fabric/coordination/process_postgres_test.go": "4cde5adc3143073c1c4f62bf995d44b0e77ddf52620f68413906254d07c260a1",
+    "services/fabric/coordination/process_test.go": "ae55cd9ed7460f60a5a097f200fdc2d01d6883719ab22256f8469d8f65e4d0fe",
+    "services/fabric/coordination/read.go": "ad31f47a980f3d076167a2665c81228ba70ae902055393a95c4d37a6ef91ddbe",
+    "services/fabric/coordination/service.go": "c1fc16b497a3e249ea6a444ce5e0da8542b6c47aeb0d7dd98efe66b72af930f5",
+    "services/fabric/coordination/service_postgres_test.go": "68ddf8d5ae5cc387ec78dd57a42ced38bd41ae8947e8028028723542ab2a30c7",
+    "services/fabric/go.mod": "400b35005e0dc3e5cbff19b174f3b3aca18b50279b7155a983686fda964a8591",
+    "services/fabric/internal/fabric/local_docker_accepted_plan.go": "d8aa0637a2f101612908d79ba90560a76f9c20200b0ec439b5c3041655501e31",
+    "services/fabric/internal/fabric/local_docker_accepted_plan_test.go": "a59086021479ec0df360a3df3f5040d148281f2cfc738225ce29229685a885ef",
+    "services/fabric/internal/fabric/local_docker_provider.go": "63e856a602a0a3bf5e0f1170bff0ab14912b396a9dd7b1cc8bf2f4ed3416f1c7",
+    "services/fabric/ownermigrations/0001_opl_fabric.sql": "7328a346061cf4e940fa16b8326a055f2631cd4ea7f6dd91fa8c0c43542d06cf",
+    "services/fabric/ownermigrations/embed.go": "271d4a499a7010a5bcbc8556b637da5a8d13005122510cdb2f074d29ea2836c9",
+    "services/fabric/ownermigrations/isolation_test.go": "ba9c0324b5cb7df2fe0a83918d872167126bbc4fd1ed3375d45a33f019d2c497",
+    "services/gateway-integration/cmd/server/main.go": "87cdd614c3bedd5770cc15aea59c80a48c87518565f476b811d28399c139112c",
+    "services/gateway-integration/identity/authorization.go": "82773572c2ea094f71b44d4348ad8c1d25b923c3db304d0c08a6ff3f59802461",
+    "services/gateway-integration/identity/service.go": "5c4e036c6a47354df379c181a813e1e186306e632d0d6c4f6fd01307be94c840",
+    "services/gateway-integration/identity/workspace_grants_postgres_test.go": "f554eb19ea9068ef77a014a305303d43414f417a08d657dde6c97cec711a52c3",
+    "services/resource-catalog/catalog/accept.go": "a3a80d353b642eaa4a77ab78e4ec5c5aeb7aaa520ada6e7efa5f73715f0764bd",
+    "services/resource-catalog/catalog/quotes.go": "a1dfd55d3477ba35cc67c2dc279cd48a26ada79d47f6f1b20a014b0b3b407a07",
+    "services/resource-catalog/catalog/quotes_regression_test.go": "522b4cff7607b478a2a039268c4262335901173492b005e0f7289d231a66947c",
+    "services/workspace/cmd/server/main.go": "1e17fed72fb36bb13c6b4ba587dd87d54cd7331058e9e8f8a43ed6031cc1b619",
+    "services/workspace/go.mod": "0254082bd102eec2c29152e21ae3ecc8fb21639d5dae469e52d70935b7b06d1c",
+    "services/workspace/go.sum": "324f180703d3c0c8eac386b950d5903a97e217f1519616f058fa585fd783aa08",
+    "services/workspace/internal/launch/launch_live_test.go": "e804c6730ac3bda5b516af8b30792dbe8b08f187a03c9296125b8c77a06b8eef",
+    "services/workspace/internal/launch/reads.go": "217cecc364a9451b86b9ec902fca5ccf34f06eba752a70be1c3fe76ee58c1dda",
+    "services/workspace/internal/launch/recovery.go": "5bcd395d5226bcfb72280ab961f2dbd971ebdb78709f5c221fdd200fd9c99065",
+    "services/workspace/internal/launch/recovery_test.go": "2a530918210607cd7ad8f6b35af148ab06afdcd8e183d26919fea2d950f7666b",
+    "services/workspace/internal/launch/runtime.go": "f6c2d67b0bc987a739f7645dbc8625fb845181fb6ac96795d242596f0001e9fd",
+    "services/workspace/internal/launch/runtime_test.go": "8670dd697206c3fcb34085991b42ef5d9451730210dbb00c72c0d803bf1d1154",
+    "services/workspace/internal/launch/service.go": "6002c710af15cd34b7430f994e8af7ad28fa3621517e4f86a8ed98b2e1338c1a",
+    "tests/contracts/module-physical-boundaries.test.ts": "27431f702cd5cbc701d6acee947966e997e2577c083790a7f646f7930def8edc"
+  },
+  "results": {
+    "accepted_order_with_ledger": "passed: production CloudIdentity, Catalog, Workspace, Fabric and Ledger implementations over actual gRPC and isolated per-owner PostgreSQL, called through BFF HTTP; original IDs and one exact zero-charge receipt survive lost reply, logout and owner restart",
+    "authority_closeout": "passed: queued revoked create writes no Workspace; membership revocation denies procurement and leaves original order needs_attention/FORBIDDEN while its original resources and receipt remain readable; cross-tenant read refused",
+    "runtime_recovery": "passed: real PostgreSQL with controlled typed Capability/Serve clients; Reserve reply loss, completed Deploy reply loss and dispatch interruption retain exact original descriptor, resource binding, reservation, command and epoch; 8 top-level tests and 46 subcases, zero skips",
+    "full_local": "passed: 228 source tests, 114 browser tests, typecheck, lint, Console build, every Go module compile, all required PostgreSQL packages with zero skips, and retained Docker integration",
+    "fabric_container_build": "passed: actual Docker fabric-build target for linux/arm64 after packaging its shared owner dependencies; image sha256:59a20fc44c6aed4c7019937d6089cf198d14879f51bb0ca88bace4511c0797cc",
+    "specification": "passed: 101 cross-domain executable cases, 10 specification groups and 32-work-package/174-internal-RPC development plan"
+  },
+  "limits": [
+    "External Sub2API identity is an isolated fixture; this is not production authentication or Instance qualification.",
+    "The accepted-order chain creates no provider resource and no customer charge; provider reference and Workspace subscription assertions remain empty.",
+    "Runtime recovery tests use typed owner clients as controlled boundaries; they are not a qualified application deployment.",
+    "The inspected Fabric host is macOS and fails the existing Linux project-quota preflight before compute creation. No configured SSH WSL alias was found in the bounded existing-entry check; no qualified Linux host was established.",
+    "No Tencent resources, production network, customer funds, deployment or release were accessed.",
+    "Gateway activation, paid periods, entitlement activation, version replacement and unresolved required secret/model/config injection remain outside this slice."
+  ],
+  "logs": {
+    "accepted_order_with_ledger": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-ledger-live.log",
+      "sha256": "c3c7020c25d535263026cb3e3902dc062af6f2204f17d5f0369a1719fbfbbe19"
+    },
+    "full_local": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-full.log",
+      "sha256": "8d41f40351fec8bf03b94dd47b551984474a129224af3a7ec910a4cb776b90ab"
+    },
+    "fabric_container_build": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-fabric-image.log",
+      "sha256": "81b65a9dd3d291e85a94825ba9e913138aefd59ceb879fe5f96680e5bfbcb26b"
+    },
+    "module_boundaries": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-boundaries.log",
+      "sha256": "6234643631bf3d5ff6810f541ba7102285ade134be8bb517e8ab292d29c69dda"
+    },
+    "cross_domain_spec": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-cross-domain.log",
+      "sha256": "3d9d61604bc6012546736baba8e41ba9347fb5137d87fa9638f7400321bad3de"
+    },
+    "specification": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-validate-spec.log",
+      "sha256": "8779174ec81ce089e30eaa01ba912c011e8859a41678f9e6f57675823ef5d719"
+    },
+    "development_plan": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/github-ci-workspace-development-plan.log",
+      "sha256": "87213b4ad576ad3f0be3030d74549bd3adc5c7e0da346b4ec6c79ae5befc8de9"
+    },
+    "runtime_recovery": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/workspace-runtime-closeout-focused-final.log",
+      "sha256": "6aa58268d038aadc2f0f3256eaf2582be8be3014e450779eb5baef2622fc3828"
+    }
+  }
+}

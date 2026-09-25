@@ -2342,8 +2342,11 @@ service CloudIdentityAuthorization {
 message AdmissionRequest { CallContext context = 1; string workspace_id = 2; string capability_version_id = 3; string compute_plan_id = 4; string storage_plan_id = 5; repeated ModelSelection model_selections = 6; string purpose = 7; }
 message AdmissionResult { Observation outcome = 1; string admission_id = 2; string capability_snapshot_digest = 3; string provider_capability_version = 4; string policy_version_id = 5; string error_code = 6; google.protobuf.Timestamp expires_at = 7; string expected_interruption = 8; }
 message AcceptQuoteRequest { CallContext context = 1; string quote_id = 2; string workspace_id = 3; string obligation_id = 4; string admission_id = 5; optional string plan_change_id = 6; optional int64 source_subscription_version = 7; optional string subscription_period_obligation_id = 8; }
-message QuoteAcceptance { Quote quote = 1; string obligation_id = 2; string acceptance_id = 3; string snapshot_digest = 4; optional bytes source_financial_snapshot_bytes = 5; optional string source_financial_snapshot_digest = 6; }
-service CatalogCoordination { rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteAcceptance); }
+message QuoteAcceptance { Quote quote = 1; string obligation_id = 2; string acceptance_id = 3; string snapshot_digest = 4; optional bytes source_financial_snapshot_bytes = 5; optional string source_financial_snapshot_digest = 6; ResourcePlanSnapshot resource_plan = 7; string workspace_id = 8; }
+message QuoteResourcePlanRequest { CallContext context = 1; string quote_id = 2; }
+// Reads the immutable plan frozen when this offer was priced. Accepted results
+// carry the exact Workspace and obligation binding; this call makes no writes.
+service CatalogCoordination { rpc AcceptQuote(AcceptQuoteRequest) returns (QuoteAcceptance); rpc ReadQuoteResourcePlan(QuoteResourcePlanRequest) returns (QuoteAcceptance); }
 service WorkspaceAdmission { rpc CheckAdmission(AdmissionRequest) returns (AdmissionResult); }
 message WalletBindingCommand { CallContext context = 1; string target_tenant_id = 2; string billing_sub2api_user_id = 3; int64 expected_binding_version = 4; string authorization_receipt_id = 5; }
 message WalletBindingReadback { string tenant_id = 1; string billing_sub2api_user_id = 2; int64 binding_version = 3; Observation outcome = 4; string authorization_receipt_id = 5; }
@@ -2361,15 +2364,17 @@ service GatewayCoordination {
  rpc CreateManagedKey(ManagedKeyCommand) returns (ManagedKeyBinding);
  rpc RevokeManagedKey(ManagedKeyRevoke) returns (Operation);
 }
-message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; }
+message ResourcePlanSnapshot { string compute_plan_id = 1; string storage_plan_id = 2; string provider_profile_id = 3; string provider_compute_sku_id = 4; string provider_storage_sku_id = 5; int32 vcpus = 6; int32 memory_mib = 7; int32 capacity_gib = 8; int32 prepaid_months = 9; string provider_capability_version = 10; bool conditional_route_revision_supported = 11; string provider = 12; string region = 13; string billing_mode = 14; }
 message ResourceAdmissionRequest { CallContext context = 1; ResourcePlanSnapshot plan = 2; string workspace_id = 3; string existing_resource_set_id = 4; string purpose = 5; }
-message EnsureResourcesCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; ResourcePlanSnapshot plan = 4; string confirmed_charge_receipt_id = 5; string instance_authorization_reference = 6; }
+message EnsureResourcesCommand { CallContext context = 1; string workspace_id = 2; string obligation_id = 3; ResourcePlanSnapshot plan = 4; string confirmed_charge_receipt_id = 5; string instance_authorization_reference = 6; QuoteAcceptance quote_acceptance = 7; }
 message MutateResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; string instance_authorization_reference = 5; }
 message ResizeResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string expected_resource_version = 4; ResourcePlanSnapshot target = 5; string quote_acceptance_id = 6; PlanChangeFundingEvidence funding_evidence = 7; string instance_authorization_reference = 8; string plan_change_id = 9; string transition_id = 10; int64 execution_epoch = 11; ProviderPlanChangeExecutionPlanReference execution_plan = 12; }
 message RenewResourcesCommand { CallContext context = 1; string workspace_id = 2; string resource_set_id = 3; string subscription_period_id = 4; int32 prepaid_months = 5; string confirmed_charge_receipt_id = 6; string instance_authorization_reference = 7; }
 message ResourceReadbackRequest { CallContext context = 1; string resource_set_id = 2; string resource_action_id = 3; }
 message ResourceFact { string id = 1; string kind = 2; string opaque_provider_reference = 3; string state = 4; string receipt_id = 5; }
-message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; }
+// Execution bindings exist only after the Fabric adapter confirms actual resources.
+message ResourceExecutionBinding { string compute_allocation_id = 1; string storage_volume_id = 2; string data_attachment_id = 3; string data_attachment_operation_id = 4; string account_id = 5; }
+message ResourceReadback { string resource_set_id = 1; string workspace_id = 2; string resource_version = 3; Observation outcome = 4; repeated ResourceFact resources = 5; bool absence_confirmed = 6; string deletion_receipt_id = 7; google.protobuf.Timestamp observed_at = 8; string error_code = 9; ResourceExecutionBinding execution_resources = 10; }
 message SecretBindingCommand { CallContext context = 1; string workspace_id = 2; string runtime_instance_id = 3; string key_binding_id = 4; string secret_delivery_reference = 5; string target_slot = 6; }
 message SecretBindingReadback { string secret_binding_id = 1; string runtime_instance_id = 2; string fingerprint = 3; Observation outcome = 4; string receipt_id = 5; }
 service FabricCoordination {
@@ -2383,12 +2388,12 @@ service FabricCoordination {
  rpc ReadResources(ResourceReadbackRequest) returns (ResourceReadback);
  rpc BindSecret(SecretBindingCommand) returns (SecretBindingReadback);
 }
-message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; }
-message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; }
+message RuntimeReservationCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; ArtifactReference artifact = 5; string deployment_descriptor_digest = 6; string deployment_descriptor_object_ref = 7; DeploymentDescriptor deployment_descriptor = 8; string resource_set_id = 9; string data_attachment_id = 10; }
+message RuntimeReservation { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; ArtifactReference artifact = 4; string deployment_descriptor_digest = 5; string deployment_descriptor_object_ref = 6; int64 execution_epoch = 7; string operation_id = 8; }
 enum AgentRuntimeObservationState { RUNTIME_INSTANCE_STATE_UNSPECIFIED = 0; RUNTIME_INSTANCE_STATE_PENDING = 1; RUNTIME_INSTANCE_STATE_STARTING = 2; RUNTIME_INSTANCE_STATE_READY = 3; RUNTIME_INSTANCE_STATE_STOPPED = 4; RUNTIME_INSTANCE_STATE_FAILED = 5; RUNTIME_INSTANCE_STATE_TERMINATING = 6; RUNTIME_INSTANCE_STATE_TERMINATED = 7; }
 message RuntimeDeployCommand { CallContext context = 1; string workspace_id = 2; string deployment_id = 3; string capability_version_id = 4; DeploymentDescriptor deployment_descriptor = 5; string resource_set_id = 6; string data_attachment_id = 7; string secret_binding_id = 8; int64 model_configuration_version = 9; repeated ModelSelection model_selections = 10; DataCompatibility data_compatibility = 11; string runtime_instance_id = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
 message RuntimeReadbackRequest { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; }
-message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; }
+message RuntimeReadback { string runtime_instance_id = 1; string workspace_id = 2; string deployment_id = 3; AgentRuntimeObservationState state = 4; bool process_ready = 5; bool application_available = 6; bool credential_injection_verified = 7; ArtifactReference artifact = 8; int64 applied_model_configuration_version = 9; string readiness_receipt_id = 10; Observation outcome = 11; google.protobuf.Timestamp observed_at = 12; string deployment_descriptor_digest = 13; int64 execution_epoch = 14; string deployment_descriptor_object_ref = 15; WorkspaceApplicationEntry application_entry = 16; string access_url = 17; }
 message RuntimeReloadCommand { CallContext context = 1; string runtime_instance_id = 2; int64 expected_applied_version = 3; int64 target_version = 4; repeated ModelSelection selections = 5; }
 message RuntimeStopCommand { CallContext context = 1; string runtime_instance_id = 2; string deployment_id = 3; string retained_data_attachment_id = 4; }
 service ServeAgentCoordination {
@@ -2449,11 +2454,13 @@ service TenantWorkspaceCoordination {
  rpc DeleteTenantWorkspaces(TenantWorkspaceLifecycleCommand) returns (TenantWorkspaceLifecycleReadback);
  rpc ResumeTenantWorkspaces(ResumeTenantWorkspacesRequest) returns (TenantWorkspaceLifecycleReadback);
 }
-message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; }
+message AppendReceiptRequest { CallContext context = 1; Receipt receipt = 2; string evidence_digest = 3; string owner_evidence_reference = 4; QuoteAcceptance quote_acceptance = 5; OwnerCommitEvidence owner_commit_evidence = 6; }
 message GetReceiptByReferenceRequest { CallContext context = 1; string owner = 2; string owner_evidence_reference = 3; }
+message LocalNoChargeReceiptEvidence { Receipt receipt = 1; QuoteAcceptance quote_acceptance = 2; OwnerCommitEvidence owner_commit_evidence = 3; string evidence_digest = 4; }
 service LedgerCoordination {
  rpc AppendReceipt(AppendReceiptRequest) returns (Receipt);
  rpc ReadReceiptByReference(GetReceiptByReferenceRequest) returns (Receipt);
+ rpc ReadLocalNoChargeReceipt(GetReceiptByReferenceRequest) returns (LocalNoChargeReceiptEvidence);
 }
 
 // D17: fixed approved policy-v1. RPC groups below live in the existing Workspace,
@@ -3636,6 +3643,7 @@ enum ReceiptKindEnum {
  RECEIPT_KIND_ENUM_PLAN_CHANGE_FAILURE_COMPENSATION = 11;
  RECEIPT_KIND_ENUM_SUPPLEMENTAL_DELETION_REFUND = 12;
  RECEIPT_KIND_ENUM_NEXT_PERIOD_PLAN_SETTLEMENT = 13;
+ RECEIPT_KIND_ENUM_LOCAL_NO_CHARGE = 14;
 }
 
 enum ReceiptOutcomeEnum {

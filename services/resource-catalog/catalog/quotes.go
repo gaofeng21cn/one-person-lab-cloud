@@ -79,13 +79,15 @@ func (s *Service) effectiveRetentionPolicy(ctx context.Context, tx *sql.Tx, at t
 // quoteSnapshot is the immutable basis a quote is bound to. It is stored so a
 // later read explains exactly what was priced without consulting current tables.
 type quoteSnapshot struct {
-	ComputePlanID            string `json:"computePlanId"`
-	StoragePlanID            string `json:"storagePlanId"`
-	PricePolicyVersionID     string `json:"pricePolicyVersionId"`
-	RefundPolicyVersionID    string `json:"refundPolicyVersionId"`
-	RetentionPolicyVersionID string `json:"retentionPolicyVersionId"`
-	PeriodMonths             int32  `json:"periodMonths"`
-	PricingBasisUnixMillis   int64  `json:"pricingBasisUnixMillis"`
+	ComputePlanID            string                    `json:"computePlanId"`
+	StoragePlanID            string                    `json:"storagePlanId"`
+	PricePolicyVersionID     string                    `json:"pricePolicyVersionId"`
+	RefundPolicyVersionID    string                    `json:"refundPolicyVersionId"`
+	RetentionPolicyVersionID string                    `json:"retentionPolicyVersionId"`
+	PeriodMonths             int32                     `json:"periodMonths"`
+	PricingBasisUnixMillis   int64                     `json:"pricingBasisUnixMillis"`
+	ResourcePlan             *api.ResourcePlanSnapshot `json:"resourcePlan,omitempty"`
+	AcceptedWorkspaceID      string                    `json:"acceptedWorkspaceId,omitempty"`
 }
 
 // CreateQuote prices one deploy request exactly once and stores the immutable
@@ -116,6 +118,10 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 		if err := assertAvailablePlanPair(ctx, tx, request.ComputePlanId, request.StoragePlanId, now); err != nil {
 			return err
 		}
+		plan, err := frozenResourcePlan(ctx, tx, request.ComputePlanId, request.StoragePlanId, request.PeriodMonths)
+		if err != nil {
+			return err
+		}
 		periodStart, periodEnd := now.UTC(), now.UTC().AddDate(0, 1, 0)
 		lines, total, err := pricedLineItems(resolution.Price)
 		if err != nil {
@@ -130,6 +136,7 @@ func (s *Service) CreateQuote(ctx context.Context, r *api.CreateQuoteRpcRequest)
 			RetentionPolicyVersionID: resolution.Retention.Id,
 			PeriodMonths:             request.PeriodMonths,
 			PricingBasisUnixMillis:   now.UnixMilli(),
+			ResourcePlan:             plan,
 		})
 		if err != nil {
 			return status.Error(codes.Internal, "encode the quote admission snapshot")

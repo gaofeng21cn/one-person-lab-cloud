@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "status": "plan_only_not_implemented",
-  "sourceSHA": "df89607cf9cbd338ecdc7c70f74d106d5ef78fd0",
+  "sourceSHA": "57a89affd17d970ccb88d736e3e79c92e65536e7",
   "sourceRoots": {
     "cloud": ".",
     "console": "apps/console-ui",
@@ -22,17 +22,17 @@
     "cloud": "existing",
     "console": "existing",
     "bff": "existing",
-    "gateway": "planned_not_created",
+    "gateway": "existing",
     "capability": "existing",
     "build": "existing",
     "workspace": "existing",
     "runtime_control": "existing",
     "serve": "existing",
-    "resource_catalog": "planned_not_created",
+    "resource_catalog": "existing",
     "fabric": "existing",
     "ledger": "existing",
-    "tenant": "planned_not_created",
-    "instance": "existing"
+    "tenant": "existing",
+    "instance": "planned_not_created"
   },
   "assignees": "roles/modules are fixed; human names and calendar dates follow actual staffing, not fabricated",
   "workPackages": [
@@ -602,6 +602,7 @@
         "LedgerProductService.ListQualifications",
         "LedgerCoordination.AppendReceipt",
         "LedgerCoordination.ReadReceiptByReference",
+        "LedgerCoordination.ReadLocalNoChargeReceipt",
         "LedgerPlanChangeEvidence.AppendPlanChangeReceipt",
         "LedgerPlanChangeEvidence.AppendPlanChangeRefundReceipt",
         "DomainInbox.Deliver"
@@ -1492,6 +1493,7 @@
         "WorkspaceProductService.GetWorkspace",
         "ClaimUsageReadback.ReadClaimUsage",
         "CatalogCoordination.AcceptQuote",
+        "CatalogCoordination.ReadQuoteResourcePlan",
         "WorkspaceAdmission.CheckAdmission",
         "DomainInbox.Deliver"
       ],
@@ -3272,6 +3274,9 @@
     "CatalogCoordination.AcceptQuote": [
       "W15"
     ],
+    "CatalogCoordination.ReadQuoteResourcePlan": [
+      "W15"
+    ],
     "WorkspaceAdmission.CheckAdmission": [
       "W15"
     ],
@@ -3384,6 +3389,9 @@
       "W05"
     ],
     "LedgerCoordination.ReadReceiptByReference": [
+      "W05"
+    ],
+    "LedgerCoordination.ReadLocalNoChargeReceipt": [
       "W05"
     ],
     "WorkspacePlanChangeReadback.ReadSubscriptionPlanState": [

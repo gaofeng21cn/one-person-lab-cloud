@@ -35,7 +35,9 @@ function goModulePath(source) {
 }
 
 test("Go services remain physically isolated behind typed owner contracts", async () => {
-  const sharedModulePath = goModulePath(await text("services/internal/postgresmigrate/go.mod"));
+  const sharedModules = ["postgresmigrate", "ownerservice", "ownerstore"];
+  const sharedModulePaths = await Promise.all(sharedModules.map(async (name) =>
+    goModulePath(await text(`services/internal/${name}/go.mod`))));
   const cloudSDKImportPrefixes = ["github.com/tencentcloud/", "k8s.io/"];
   for (const service of ["control-plane", "fabric", "ledger"]) {
     const directory = `services/${service}`;
@@ -49,7 +51,7 @@ test("Go services remain physically isolated behind typed owner contracts", asyn
       for (const imported of goImports(source)) {
         if (imported.startsWith("opl-cloud/services/")) {
           const owned = imported === modulePath || imported.startsWith(`${modulePath}/`);
-          const shared = imported === sharedModulePath || imported.startsWith(`${sharedModulePath}/`) || (service === "ledger" && imported === "opl-cloud/services/internal/ownerservice");
+          const shared = sharedModulePaths.some((path) => imported === path || imported.startsWith(`${path}/`));
           assert.equal(owned || shared, true, `${file} crosses into ${imported}`);
         }
         if (service !== "fabric") {
@@ -59,8 +61,10 @@ test("Go services remain physically isolated behind typed owner contracts", asyn
     }
   }
 
-  for (const file of await filesUnder("services/internal/postgresmigrate", (path) => path.endsWith(".go") || path.endsWith("go.mod"))) {
-    assert.doesNotMatch(await text(file), /opl-cloud\/services\/(?:control-plane|fabric|ledger)/, `${file} must remain domain-neutral`);
+  for (const module of sharedModules) {
+    for (const file of await filesUnder(`services/internal/${module}`, (path) => path.endsWith(".go") || path.endsWith("go.mod"))) {
+      assert.doesNotMatch(await text(file), /opl-cloud\/services\/(?:control-plane|fabric|ledger)/, `${file} must remain domain-neutral`);
+    }
   }
 });
 

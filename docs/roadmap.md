@@ -54,29 +54,31 @@ chain is finished. Open work in dependency order:
    suspend/reenable, delete/restore and Gateway wallet migration remain separate
    outcomes; do not infer full W03, W21 or Gateway wallet migration from the
    implemented publisher or member slices.
-3. Continue Workspace authorization and resource planning, then Fabric resource
-   references/readback and the single Serve Agent deployment with readiness and
-   access readback. Serve's owner-local read surface is **complete and verified
+3. Complete the first Local Serve Agent deployment on a qualified provider host,
+   with readiness and access readback. Workspace accepted-order authorization,
+   frozen Catalog resource planning, Fabric's persistent resource references and
+   the typed Local zero-charge Ledger evidence are implemented and source-verified.
+   Serve's owner-local read surface is **complete and verified
    end to end** against the production CloudIdentity authority: `listDeployments`,
    `getDeployment` and `getWorkspaceAccess` are all admitted for a serve-audience
    member, with cross-Tenant, session-less and revoked-session callers refused; unavailable
    access returns `APP_ACCESS_UNAVAILABLE`, and
    the BFF's own Serve read handler proves the chain from real login through the
    typed owner reads. The composed `GET /api/v2/delivery/{workspaceId}` view still
-   needs a `WorkspaceProductService` implementation from the workspace owner, and
-   the three independent Serve reads are registered on the production BFF mux.
+   uses the Workspace owner's implemented read service, and the three
+   independent Serve reads are registered on the production BFF mux.
 
-   The **first real deployment remains incomplete**. Serve implements the
-   write-path step it fully owns — recording an executing runtime's observation as
-   its own runtime-instance fact, fail-closed and epoch-fenced — while two
-   verified prerequisites block a real `Deploy`:
-   `RuntimeReservationCommand` cannot populate the columns `Reserve` is specified
-   to write, and whether Serve is the `capability_version` claim's claimant is
-   undecided (the identity writer ruled the claim protocol Capability-owned with
-   the protocol unchanged, so that is Capability's decision with a real caller).
-   Fabric's coordination surface and resource/attachment/Secret references come
-   from the resource lane. [Status](./status.md#serve-delivery-read-surface)
-   separates all of this from Serve's own unfinished `ServeRuntimeAdapter`.
+   The **first real deployment remains incomplete**. The source now connects
+   Workspace to Capability and Serve Reserve/Deploy/ReadRuntime; Serve owns the
+   reference claim and delivery identities and uses Fabric's existing application
+   adapter. The remaining acceptance requires a qualified Local Linux
+   project-quota host, exact approved profile/account mapping, actual provider
+   compute/storage/attachment readback and actual application readiness/access.
+   The inspected macOS host refuses quota preflight before allocation; Docker
+   Desktop alone is not qualification. Required secret/model/config injection,
+   version replacement and route switching remain separate unfinished behavior.
+   [Status](./status.md#workspace-original-order-and-local-delivery-boundary)
+   separates source acceptance from these provider and application facts.
 
    The Resource Catalog owner serves approved plans and versioned
    price/refund/retention policies with the frozen D17 arithmetic and has a real
@@ -91,9 +93,7 @@ chain is finished. Open work in dependency order:
    expiry, single-binding and stale-offer refusals
    ([quote evidence](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)),
    while `resize` and `renew` are refused with the gap named. Open in this line:
-   the Workspace owner that accepts a quote and holds the original order and
-   resource intent, the Fabric resource reference and authoritative readback for
-   one first deployment, the Ledger consumer of `catalog.policy_changed.v1`, and
+   the Ledger consumer of `catalog.policy_changed.v1`, and
    the decision point over the platform-administrator read of the customer plan
    list. Quoting one deploy request therefore does not mean a Local deployment
    loop is complete.
