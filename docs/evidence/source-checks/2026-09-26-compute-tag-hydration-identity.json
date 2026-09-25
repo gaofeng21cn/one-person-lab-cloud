@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "action": "Recover original Launch compute tags across independent provider read request IDs",
+  "recordedAt": "2026-09-25T21:49:47.170038+00:00",
+  "baseSourceSha": "2bed3bad543c3b0f181b4155fa12fa249942710f",
+  "sourceFilesSha256": {
+    "services/fabric/internal/fabric/operation_replay.go": "2e2d4d8a212edb1163406c1f92048cb52ec3ce24dfe0a68df4e43d5c70df2417",
+    "services/fabric/internal/fabric/workspace_launch_delete_projection_test.go": "9ba33154b99fc139e6cfebaa45bda967d5cb8f2133a55cf422d55d7c87a81757"
+  },
+  "rootCauseEvidence": {
+    "instanceWorkflowRunId": "36193121456",
+    "observedProductSha": "2bed3bad543c3b0f181b4155fa12fa249942710f",
+    "observationReceiptSha256": "5407f285a4a6e919222cb08ef151337b338dd58503f7eaa84405d848f3bc2e9f",
+    "allocationCount": 5,
+    "eachHasOneSuccessfulComputeStage": true,
+    "eachOriginalOwnershipActiveAndExact": true,
+    "stableFieldMismatchCount": 0,
+    "unlistedProviderDataMismatchCount": 0,
+    "additionalReadMetadataDifferences": [
+      "describeMachinesReadyReqId",
+      "describeSubnetRequestId",
+      "describeTkeInstanceReqId"
+    ],
+    "reproduction": "The real Tencent provider CreateComputeAllocation and DiscoverComputeAllocation methods produce different read request IDs; restarting with the child resource and original parent stage leaves empty CostTags on the base source."
+  },
+  "verification": {
+    "result": "passed",
+    "focusedTests": 36,
+    "focusedSubcases": 111,
+    "requiredSkips": 0,
+    "raceDetector": "passed",
+    "postgresqlStoreReopen": "passed with distinct child and parent request IDs",
+    "entryPackages": [
+      "cmd/fabric",
+      "internal/http",
+      "internal/protectedresource"
+    ],
+    "linuxBuilds": [
+      "amd64",
+      "arm64"
+    ],
+    "checks": [
+      "Final regression tests fail against the unchanged base source for child-create and later-observation recovery",
+      "Restores only CostTags while preserving current observations and immutable original operations",
+      "Rejects partial tags, missing or conflicting ownership, duplicate stages, stable identity drift and every unrecognized provider-data difference",
+      "sameComputeDestroyStableIdentity and sameTencentComputeDeleteProviderData remain byte-identical to the base source"
+    ],
+    "realProviderMutationCount": 0
+  },
+  "logs": [
+    {
+      "name": "compute-tag-identity-final-before.log",
+      "sha256": "78bcabfa013f84c097c34cbdb55f7e8d13900c4a0aa197dc198c0aaf71a8bb9f"
+    },
+    {
+      "name": "compute-tag-identity-verified-focused.log",
+      "sha256": "9502e11d4c27d3b17296e5de53d87329316e0c612ea6997783eba4bdf97fbe74"
+    },
+    {
+      "name": "compute-tag-identity-final-entry.log",
+      "sha256": "23d976ec99b9e09fd7f4ed5859d2c63a31323606898f6460b293787490194cc9"
+    }
+  ],
+  "remainingBoundary": "Source qualification only. No production dispatch, deletion retry, refund or deployment was performed. The exact repaired candidate requires Instance deployment and authoritative readback."
+}

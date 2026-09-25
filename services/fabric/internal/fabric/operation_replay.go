@@ -132,7 +132,7 @@ func (s *Service) hydrateMissingResourceState(ctx context.Context) error {
 			// leave current status, observations and all other identity facts intact.
 			withTags := cloneComputeAllocation(current)
 			withTags.CostTags = compute.CostTags
-			if sameComputeDestroyStableIdentity(withTags, compute) {
+			if sameWorkspaceLaunchComputeTagIdentity(withTags, compute) {
 				s.computes[id] = withTags
 			}
 		}
@@ -148,6 +148,18 @@ func (s *Service) hydrateMissingResourceState(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// The child create and successful Launch perform separate provider reads. Their
+// request IDs are observations, not resource identity. Ignore only those IDs in
+// local comparison copies; keep the deletion guard and both records unchanged.
+func sameWorkspaceLaunchComputeTagIdentity(current, original ComputeAllocation) bool {
+	current, original = cloneComputeAllocation(current), cloneComputeAllocation(original)
+	for _, key := range []string{"describeMachinesReadyReqId", "describeTkeInstanceReqId", "describeSubnetRequestId"} {
+		delete(current.ProviderData, key)
+		delete(original.ProviderData, key)
+	}
+	return sameComputeDestroyStableIdentity(current, original)
 }
 
 type workspaceLaunchDeleteStageCandidate struct {
