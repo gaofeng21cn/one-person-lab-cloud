@@ -153,6 +153,7 @@ type liveIdentityChain struct {
 	client  bff.IdentityClient
 	db      *sql.DB
 	address string
+	service *identity.Service
 	cookies map[string]string
 }
 
@@ -177,7 +178,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 		t.Fatal(err)
 	}
 	config := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{}}
-	for _, peer := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Serve.Service()} {
+	for _, peer := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Serve.Service(), owneridentity.Capability.Service(), owneridentity.Workspace.Service()} {
 		config.Peers[peer] = liveIdentityToken
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -200,7 +201,7 @@ func newLiveIdentityChain(t *testing.T, ctx context.Context, dsn string) *liveId
 	}
 	t.Cleanup(client.Close)
 
-	chain := &liveIdentityChain{client: client, db: db, address: listener.Addr().String(), cookies: map[string]string{}}
+	chain := &liveIdentityChain{client: client, db: db, address: listener.Addr().String(), service: service, cookies: map[string]string{}}
 	for name, email := range map[string]string{"serve": "serve-member@example.test", "other": "other-member@example.test"} {
 		_, challenge, err := client.LoginContext(ctx)
 		if err != nil {

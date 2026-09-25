@@ -19,6 +19,7 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	opl-cloud/apps/console-bff v0.0.0-00010101000000-000000000000
+	opl-cloud/services/capability v0.0.0
 	opl-cloud/services/gateway-integration v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0 // indirect
 )
@@ -34,3 +35,5 @@ replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigra
 replace opl-cloud/apps/console-bff => ../../apps/console-bff
 
 replace opl-cloud/services/gateway-integration => ../gateway-integration
+
+replace opl-cloud/services/capability => ../capability

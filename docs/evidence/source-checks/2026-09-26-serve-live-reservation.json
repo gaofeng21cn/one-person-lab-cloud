@@ -1,0 +1,32 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T21:00:16.963320+00:00",
+  "scope": "bounded real owner authorization and reservation claim integration",
+  "dependency_head": "4c8a6ea960085b131079196469ddb60ee8537304",
+  "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated PostgreSQL> go -C services/serve test -tags=livebuild ./internal/delivery -run TestLiveServe(Reservation|ReadChain) -count=1 -v",
+  "result": "passed",
+  "verified": [
+    "Real CloudIdentity login/session and Workspace accepted-operation grant issuance",
+    "Real Serve Reserve authenticated Workspace inbound peer",
+    "Real Capability GetCapabilityVersion, AcquireReference and BindReference authenticated Serve inbound peer",
+    "Real Capability gRPC readback of the committed Serve operation",
+    "Exactly one deploy-purpose claim and one original reservation on replay",
+    "Foreign Workspace and revoked member denied by real CloudIdentity",
+    "Existing three-read Serve authorization regression suite"
+  ],
+  "fixtures": [
+    "External Gateway identity HTTP fixture",
+    "Workspace OwnerCommitReadback fixture bound to the real original authorization context",
+    "Ready CapabilityVersion/Build provenance seeded as prerequisite in the Capability owner database"
+  ],
+  "not_claimed": [
+    "No BuildKit build or OCI execution",
+    "No provider resource creation or deletion",
+    "No completed Workspace first deployment",
+    "No production or real customer-money mutation"
+  ],
+  "log": {
+    "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-live-reservation-grant.log",
+    "sha256": "bcb0b0a2095163ed6c2bd46515727e28f36a6e923098ce11084c249fedb9070d"
+  }
+}
