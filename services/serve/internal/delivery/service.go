@@ -69,6 +69,34 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	})
 }
 
+// Configure is the Serve owner process's product wiring: it opens the live
+// CloudIdentity authorizer, binds the read surface to Serve's own database and
+// registers the product group. It is the single wiring path the process and its
+// tests both use, so readiness and the served surface cannot drift from what a
+// test proves.
+//
+// A process without its own database has nothing to read and reports
+// handlers-not-implemented, exactly like an owner with no product group.
+func Configure(server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config) error {
+	if database == nil {
+		return ownerservice.ErrHandlersNotImplemented
+	}
+	authorizer, conn, err := ownerservice.AuthorizerFromConfig(config)
+	if err != nil {
+		return err
+	}
+	if conn != nil {
+		if err := server.TrackCloser(conn); err != nil {
+			return err
+		}
+	}
+	service, err := New(database.DB(), authorizer.Authorize)
+	if err != nil {
+		return err
+	}
+	return service.Register(server)
+}
+
 func limit(n int32) int {
 	if n <= 0 {
 		return 50

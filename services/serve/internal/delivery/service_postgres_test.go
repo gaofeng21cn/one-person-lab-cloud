@@ -42,7 +42,7 @@ func denyAll() delivery.AuthorizeFunc {
 // fixture provisions Serve's real isolated database and installs its real
 // migration entrypoint, then inserts the owner-local rows a delivery would have
 // written. It never seeds another owner's facts.
-func fixture(t *testing.T) (*sql.DB, string) {
+func fixture(t *testing.T) (*sql.DB, string, string) {
 	t.Helper()
 	ctx := context.Background()
 	dsn := ownerstoretest.EnsureAdminDSNOrSkip(os.Getenv, t.Skip)
@@ -66,7 +66,7 @@ func fixture(t *testing.T) (*sql.DB, string) {
 		t.Fatalf("open serve database: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return db, "tenant-alpha"
+	return db, "tenant-alpha", h.RuntimeDSN
 }
 
 const artifactDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
@@ -153,7 +153,7 @@ func serveContext() context.Context {
 // Serve's own delivery facts and never substitutes a resource-ready fact for a
 // ready application.
 func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
-	db, tenant := fixture(t)
+	db, tenant, _ := fixture(t)
 	service, err := delivery.New(db, allowAll())
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 // read a Workspace Serve's own records assign to another tenant, even when the
 // live authorizer would allow it.
 func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
-	db, tenant := fixture(t)
+	db, tenant, _ := fixture(t)
 	service, err := delivery.New(db, allowAll())
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
 // TestServeDeploymentHistoryAndAccessMode proves the delivery history and single
 // current deployment are read from Serve's own rows with the contract vocabulary.
 func TestServeDeploymentHistoryAndAccessMode(t *testing.T) {
-	db, tenant := fixture(t)
+	db, tenant, _ := fixture(t)
 	service, err := delivery.New(db, allowAll())
 	if err != nil {
 		t.Fatal(err)

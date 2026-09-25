@@ -7,8 +7,9 @@
 // Serve currently implements its own product read surface: the current Agent
 // deployment, the delivery history, and the current Agent's access facts, all
 // read from Serve's own database. The delivery write path (Reserve/Deploy and
-// route switching) is not implemented yet, so Serve registers only the groups it
-// can actually answer rather than claiming the rest.
+// route switching) is not implemented yet, so its RPCs answer Unimplemented
+// rather than a fabricated deployment; the blocking cross-owner capabilities are
+// recorded in docs/status.md.
 package main
 
 import (
@@ -38,18 +39,7 @@ func main() {
 	}
 
 	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
-		if database == nil {
-			return ownerservice.ErrHandlersNotImplemented
-		}
-		authorizer, _, err := ownerservice.AuthorizerFromConfig(config)
-		if err != nil {
-			return err
-		}
-		service, err := delivery.New(database.DB(), authorizer.Authorize)
-		if err != nil {
-			return err
-		}
-		return service.Register(server)
+		return delivery.Configure(server, database, config)
 	})
 	if err != nil {
 		log.Fatal(err)

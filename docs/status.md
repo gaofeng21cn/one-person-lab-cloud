@@ -130,11 +130,21 @@ own `opl_serve` database. The reads are owner-local truth:
 - a Workspace Serve has never delivered has no entry, no invented tenant, and no
   fabricated mode.
 
+Serve's process wiring is `delivery.Configure`, the same path `cmd/server`
+uses, so readiness cannot drift from what a test proves. The process registers
+exactly the `ServeProductService` group, reports SERVING only with a reachable
+owner database and a reachable CloudIdentity authority, and reports NOT_SERVING
+naming `cloud_identity` when that authority is unconfigured.
+
 Focused PostgreSQL evidence:
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./internal/delivery/ -run TestServe`
-proves the ready/pending/anonymous/undelivered access cases, cross-tenant and
-CloudIdentity-denial rejection, and the deployment-history projection against a
-real isolated `opl_serve` installed through Serve's own migration entrypoint.
+`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1` in
+`services/serve` proves the ready/pending/anonymous/undelivered access cases,
+cross-tenant and CloudIdentity-denial rejection, the deployment-history
+projection, the real process wiring (SERVING plus a Console-BFF-identified gRPC
+read over the wire), and the fail-closed readiness case — all against a real
+isolated `opl_serve` installed through Serve's own migration entrypoint.
+The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json)
+binds the exact source and cases; it is not production or Instance evidence.
 
 Serve's delivery **write** path is not implemented and current source cannot
 implement it faithfully yet. A real `Deploy` must send the full
