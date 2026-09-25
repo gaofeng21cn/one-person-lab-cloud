@@ -71,10 +71,16 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	opl-cloud/packages/contracts/go v0.0.0
+	opl-cloud/services/capability v0.0.0
 	opl-cloud/services/fabric v0.0.0
 	opl-cloud/services/ledger v0.0.0
+	opl-cloud/services/serve v0.0.0
 )
 
 replace opl-cloud/services/fabric => ../fabric
 
 replace opl-cloud/services/ledger => ../ledger
+
+replace opl-cloud/services/capability => ../capability
+
+replace opl-cloud/services/serve => ../serve
