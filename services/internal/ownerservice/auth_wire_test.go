@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -157,4 +158,117 @@ func testCertificates(t *testing.T) func(Service) owneridentity.TLSConfig {
 		cache[service] = c
 		return c
 	}
+}
+
+// denyingIdentity is a CloudIdentity double that refuses with a chosen status, so
+// the owner boundary's propagation can be exercised without a live policy.
+type denyingIdentity struct {
+	api.UnimplementedCloudIdentityAuthorizationServer
+	err error
+}
+
+func (d *denyingIdentity) AuthorizeAction(_ context.Context, _ *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
+	return nil, d.err
+}
+
+// TestOwnerBoundaryPreservesTheAuthorizationOutcome proves an owner boundary keeps
+// a CloudIdentity decision distinct from an authority outage. Collapsing every
+// failure into Unavailable made a legitimate 403 undiagnosable and forced callers
+// to distinguish refusal from outage by guesswork.
+func TestOwnerBoundaryPreservesTheAuthorizationOutcome(t *testing.T) {
+	certs := testCertificates(t)
+	for name, want := range map[string]codes.Code{
+		"policy denial":       codes.PermissionDenied,
+		"revoked session":     codes.Unauthenticated,
+		"failed precondition": codes.FailedPrecondition,
+		"transport outage":    codes.Unavailable,
+		"internal failure":    codes.Unavailable,
+		"deadline":            codes.Unavailable,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var upstream error
+			switch want {
+			case codes.PermissionDenied:
+				upstream = status.Error(codes.PermissionDenied, "CloudIdentity authorization denied")
+			case codes.Unauthenticated:
+				upstream = status.Error(codes.Unauthenticated, "active Cloud session required")
+			case codes.FailedPrecondition:
+				upstream = status.Error(codes.FailedPrecondition, "authorization precondition failed")
+			case codes.Internal, codes.DeadlineExceeded:
+				upstream = status.Error(want, "CloudIdentity authority failed")
+			default:
+				// A transport failure arrives as a non-status gRPC error.
+				upstream = errors.New("connection refused")
+			}
+			identity, err := NewServer(Config{Owner: OwnerTenant, TLS: certs(OwnerTenant.Service()), Peers: map[Service]string{OwnerServe.Service(): wireToken}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = identity.Register(func(s *grpc.Server) {
+				api.RegisterCloudIdentityAuthorizationServer(s, &denyingIdentity{err: upstream})
+			})
+			auth, conn, err := AuthorizerFromConfig(Config{Owner: OwnerServe, TLS: certs(OwnerServe.Service()), CloudIdentityAddr: startWireServer(t, identity), CloudIdentityToken: wireToken})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			session := "session-a"
+			call := &api.CallContext{ActorId: "actor-a", SessionId: &session, RequestId: "request-a", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-a"}}}}
+			id := "resource-a"
+			ctx := WithPeerOwner(context.Background(), OwnerServe.Service())
+			got := auth.Authorize(ctx, call, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION, Id: &id}, ResourceScope{TenantID: "tenant-a"})
+			if got == nil {
+				t.Fatal("a refused authorization returned success")
+			}
+			if code := status.Code(got); code != want {
+				t.Fatalf("authorization outcome = %v, want %v (err: %v)", code, want, got)
+			}
+		})
+	}
+}
+
+// TestAuthorizerRefusesBeforeReachingCloudIdentity keeps the local preconditions
+// fail-closed, so a cross-tenant or actor-mismatched call never becomes the
+// authority's problem.
+func TestAuthorizerRefusesBeforeReachingCloudIdentity(t *testing.T) {
+	var reached int
+	identity, err := NewServer(Config{Owner: OwnerTenant, TLS: testCertificates(t)(OwnerTenant.Service()), Peers: map[Service]string{OwnerServe.Service(): wireToken}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = identity.Register(func(s *grpc.Server) {
+		api.RegisterCloudIdentityAuthorizationServer(s, &countingIdentity{reached: &reached})
+	})
+	auth, conn, err := AuthorizerFromConfig(Config{Owner: OwnerServe, TLS: testCertificates(t)(OwnerServe.Service()), CloudIdentityAddr: startWireServer(t, identity), CloudIdentityToken: wireToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	session := "session-a"
+	id := "resource-a"
+	ctx := WithPeerOwner(context.Background(), OwnerServe.Service())
+	for name, call := range map[string]*api.CallContext{
+		"cross tenant":                       {ActorId: "actor-a", SessionId: &session, RequestId: "r", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-b"}}}},
+		"platform scope for tenant resource": {ActorId: "actor-a", SessionId: &session, RequestId: "r", Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := auth.Authorize(ctx, call, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETOPERATION, &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_OPERATION, Id: &id}, ResourceScope{TenantID: "tenant-a"}); status.Code(err) != codes.PermissionDenied {
+				t.Fatalf("local precondition did not refuse: %v", err)
+			}
+		})
+	}
+	if reached != 0 {
+		t.Fatalf("CloudIdentity was reached %d times for a locally refused call", reached)
+	}
+}
+
+type countingIdentity struct {
+	api.UnimplementedCloudIdentityAuthorizationServer
+	reached *int
+}
+
+func (c *countingIdentity) AuthorizeAction(_ context.Context, _ *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
+	*c.reached++
+	return nil, status.Error(codes.Internal, "should not be reached")
 }

@@ -46,25 +46,28 @@ func ConfigFromEnv(getenv func(string) string) Config {
 	return Config{
 		TLS: owneridentity.TLSFromEnv(getenv),
 		Addresses: map[owneridentity.Owner]string{
-			owneridentity.Capability: strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
-			owneridentity.Build:      strings.TrimSpace(getenv("OPL_BUILD_URL")),
-			owneridentity.Workspace:  strings.TrimSpace(getenv("OPL_WORKSPACE_URL")),
-			owneridentity.Serve:      strings.TrimSpace(getenv("OPL_SERVE_URL")),
+			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
+			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_URL")),
+			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_URL")),
+			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_URL")),
+			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_URL")),
 		},
 		Tokens: map[owneridentity.Owner]string{
-			owneridentity.Capability: strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
-			owneridentity.Build:      strings.TrimSpace(getenv("OPL_BUILD_TOKEN")),
-			owneridentity.Workspace:  strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
-			owneridentity.Serve:      strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
+			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
+			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_TOKEN")),
+			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
+			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
+			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_TOKEN")),
 		},
 		CloudIdentityAddr:  strings.TrimSpace(getenv(CloudIdentityAddressEnv)),
 		CloudIdentityToken: strings.TrimSpace(getenv(CloudIdentityTokenEnv)),
 	}
 }
 
-// ReachableOwners is the finite owner set the BFF can call. It bounds operation
-// routing as the accepted contract requires; there is no global registry or
-// cross-service scan.
+// ReachableOwners is the finite owner set the BFF can call for an Operation. It
+// bounds operation routing as the accepted contract requires; there is no global
+// registry or cross-service scan. An owner reached through a dedicated typed
+// client rather than Operation routing is wired separately below.
 func ReachableOwners() []owneridentity.Owner {
 	return []owneridentity.Owner{
 		owneridentity.Capability,
@@ -82,6 +85,7 @@ type Clients struct {
 	workspace     api.WorkspaceProductServiceClient
 	serve         api.ServeProductServiceClient
 	tenant        api.TenantProductServiceClient
+	catalog       api.ResourceCatalogProductServiceClient
 	authorization api.CloudIdentityAuthorizationClient
 	owner         map[owneridentity.Owner]api.OwnerOperationsClient
 	conns         []*grpc.ClientConn
@@ -118,6 +122,20 @@ func Dial(config Config) (*Clients, error) {
 		case owneridentity.Serve:
 			clients.serve = api.NewServeProductServiceClient(conn)
 		}
+	}
+	if addr := strings.TrimSpace(config.Addresses[owneridentity.ResourceCatalog]); addr != "" {
+		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.ResourceCatalog.Service(), config.Tokens[owneridentity.ResourceCatalog])
+		if err != nil {
+			clients.Close()
+			return nil, err
+		}
+		conn, err := grpc.NewClient(addr, options...)
+		if err != nil {
+			clients.Close()
+			return nil, fmt.Errorf("dial resource_catalog at %s: %w", addr, err)
+		}
+		clients.conns = append(clients.conns, conn)
+		clients.catalog = api.NewResourceCatalogProductServiceClient(conn)
 	}
 	if addr := strings.TrimSpace(config.CloudIdentityAddr); addr != "" {
 		options, err := config.TLS.DialOptions(owneridentity.ConsoleBFF, owneridentity.Service(owneridentity.Tenant), config.CloudIdentityToken)
@@ -173,11 +191,18 @@ func (c *Clients) Workspace(ctx context.Context, workspaceID string) (*api.Works
 }
 
 // Deployments lists the Serve-owned deployment attempts for one Workspace.
-func (c *Clients) Deployments(ctx context.Context, workspaceID string) (*api.DeploymentPage, error) {
+func (c *Clients) Deployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error) {
 	if c.serve == nil {
 		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
 	}
-	return c.serve.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
+	request := &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID}
+	if cursor != "" {
+		request.QueryCursor = &cursor
+	}
+	if limit != 0 {
+		request.QueryLimit = &limit
+	}
+	return c.serve.ListDeployments(ctx, request)
 }
 
 // WorkspaceAccess reads the Serve-owned access facts for one Workspace.

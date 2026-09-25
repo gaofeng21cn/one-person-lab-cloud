@@ -67,6 +67,25 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if session.ActorId != r.ActorId || (r.ExpectedPermissionVersion != nil && r.GetExpectedPermissionVersion() != version) {
 		return nil, denied()
 	}
+	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION {
+		// Accepting an invitation is bound to the invitee's own live session rather
+		// than to a Tenant role, because the invitee is not yet a member of the
+		// inviting Tenant. The scope must still be the one the session itself
+		// carries, and the accepting transaction re-checks the invitation subject.
+		if r.AudienceOwner != api.OwnerEnum_OWNER_ENUM_TENANT || r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT || !scopeMatchesSession(session, r.Scope) {
+			return nil, denied()
+		}
+		// A presented context is verified like any other action, so a decision
+		// issued for a different action or invitation cannot be reused to accept.
+		if r.AuthorizationContextId != nil {
+			original, e := s.verifyOriginalContext(ctx, r, version)
+			if e != nil {
+				return nil, e
+			}
+			return original, nil
+		}
+		return s.saveDecision(ctx, r, version)
+	}
 	tid := r.Scope.GetTenant().GetTenantId()
 	if tid != "" {
 		if session.GetTenantId() != tid && !admin {
@@ -98,13 +117,40 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 			return nil, denied()
 		}
 		if sameAction(original, r) {
-			original.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED
-			original.Issuer = api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY
-			return original, nil
+			return s.verifyOriginalContext(ctx, r, version)
 		}
 	}
 	return s.saveDecision(ctx, r, version)
 }
+
+// verifyOriginalContext revalidates a presented authorization context against the
+// current live facts and returns the original decision only when it is still
+// exactly this actor, session, scope, permission version and action/resource. It
+// is the single place that decides whether an introspected context may be reused,
+// so no action can bypass the binding by minting its own path.
+func (s *Service) verifyOriginalContext(ctx context.Context, r *api.AuthorizationRequest, version int64) (*api.AuthorizationDecision, error) {
+	original, e := s.context(ctx, r.GetAuthorizationContextId())
+	if e != nil {
+		return nil, e
+	}
+	if original.PermissionVersion != version || original.GetActorId() != r.ActorId || original.GetSessionId() != r.GetSessionId() || !proto.Equal(original.Scope, r.Scope) || !original.ExpiresAt.AsTime().After(time.Now()) || !sameAction(original, r) {
+		return nil, denied()
+	}
+	original.Result = api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED
+	original.Issuer = api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY
+	return original, nil
+}
+
+// scopeMatchesSession reports whether the request scope is exactly the scope the
+// live session itself carries: the session's Tenant when it has one, otherwise
+// platform. A caller cannot widen or relocate its own scope.
+func scopeMatchesSession(session *api.Session, scope *api.AuthorizationScope) bool {
+	if session.GetTenantId() == "" {
+		return scope.GetPlatform() != nil
+	}
+	return scope.GetTenant().GetTenantId() == session.GetTenantId()
+}
+
 func sameAction(d *api.AuthorizationDecision, r *api.AuthorizationRequest) bool {
 	return d.Action == r.Action && d.AudienceOwner == r.AudienceOwner && proto.Equal(d.Resource, r.Resource)
 }

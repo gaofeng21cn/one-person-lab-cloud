@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "action": "Implement Serve's fail-closed runtime-observation record (the write-path step Serve fully owns) and re-verify the read slice against the production CloudIdentity authority",
+  "recordedAt": "2026-09-25T07:37:57.877816+00:00",
+  "branch": "codex/serve-first-deployment",
+  "worktree": "/Users/huangrende/.codex/worktrees/892a/one-person-lab-cloud",
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "implementationSha": "1d89ac4891d1f07b765f0fd9a24db067114f31da",
+  "implementationTree": "9b453324ca48373bb0aca3c38cce2ec08e677b02",
+  "absorbedDependencyShas": {
+    "cloudidentityPolicyWriter": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+    "cloudidentityPolicyGeneratedSha256": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "note": "Carried forward unchanged from the previous round; no new identity commit was absorbed this round."
+  },
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/runtime.go": "2c716c3e4066082f2ddd002e46cf89bd0877a329d4f266f5e458ad6fb52ee24b",
+    "services/serve/internal/delivery/runtime_postgres_test.go": "b41461b0df81950059703b5a151d76f23989a338eb4a0319d2619c1c39550845",
+    "services/serve/internal/delivery/service.go": "f1c16761462495ee512534b164e4eed322d48a75d31efda8cc56237726671c4e",
+    "services/serve/internal/delivery/identity_live_test.go": "e00123099df580851b71441f6fb55a9ff3d764b8d12473f6880f684935d5ebac",
+    "services/serve/internal/delivery/service_postgres_test.go": "bd49e5280f05f5d8f0e30e4bee2ee29a43098ffc196caaf6dfe42a6b285fda4b",
+    "services/serve/internal/delivery/process_postgres_test.go": "069da17a115fe12edd78bbe394915b5a301c3e552e237f5bb12e31d65375a929",
+    "services/serve/cmd/server/main.go": "2b0b8475d6469fefb55c83eb7622836aa42ff7740b4061d03ac1d05d654ca97f",
+    "services/serve/go.mod": "b351f0f1d1c8451425f4349857f62f9acfb1e19b172fda0ba1d175ab52115b33",
+    "services/serve/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "docs/status.md": "dd41898da0bd52adf3700f3700ec9fdb4d9d52695ca10e6e2c2c52220ee5842b",
+    "docs/roadmap.md": "f521ee07f04de63034b46df731c69632dea196da24fdd6bb20ad6dae909b20d2"
+  },
+  "commands": [
+    {
+      "name": "serve focused PostgreSQL (all tests incl. runtime observation) + owner isolation",
+      "command": "go test ./... -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "21 tests plus subtests PASS, 0 FAIL, 0 skips",
+      "logPath": "tmp/serve-runtime-receipt/serve-all-pg.log",
+      "logSha256": "129685b98f75a357aeb27830c5c07bba6b4d3e27c0f30a1ad375e64a9a188e93"
+    },
+    {
+      "name": "serve runtime-observation focused run",
+      "command": "go test ./internal/delivery -run 'TestServeRecordsRuntimeObservation|TestServeRefusesOverstatedObservations|TestServeRuntimeObservationFencesStaleEpochs|TestServeRuntimeStatusVocabulary' -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "4 tests + 7 refusals subtests PASS",
+      "logPath": "tmp/serve-runtime-receipt/serve-runtime.log",
+      "logSha256": "f701d22f79b7e224a2c1e64fdfa47a81a459e065e6df4bbc4ad582406f90d4ba"
+    },
+    {
+      "name": "serve real-identity acceptance (livebuild, re-run)",
+      "command": "go test -tags=livebuild ./internal/delivery -run TestLiveServeReadChain -count=1",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "the previously receipted real-identity read chain still passes unchanged",
+      "logPath": "tmp/serve-runtime-receipt/serve-live-rt.log",
+      "logSha256": "65a517e33cd7b4e2276d058c71e5bf29c4183e1954def7ebe7d3e9d2446f066f"
+    },
+    {
+      "name": "repository full gate",
+      "command": "npm run verify:local:full",
+      "cwd": ".",
+      "exitCode": 0,
+      "results": "Local verification passed with PostgreSQL and Docker integration; 11 PostgreSQL groups all reported 'zero skips' and no group reported a skipped package; 228 source tests pass/0 fail; 114 browser-suite tests pass/0 fail; typecheck, lint, console build and every Go module compile passed",
+      "logPath": "tmp/serve-runtime-receipt/final2-verify-full.log",
+      "logSha256": "d7bc1ceef5eabcbc7e04a9db51d99453c9427444aea2c526b4b6f1bb80a518d8"
+    }
+  ],
+  "readbacks": {
+    "runtimeObservationReady": "a report with application available + entry + publishable URL + readiness evidence records status ready with that URL and is open",
+    "sameEpochReplay": "a replay at the same epoch converges on one instance row (no second instance)",
+    "resourceReadyIsNotApplicationReady": "runtime READY with no entry is refused app_access_unavailable and writes no row",
+    "readyWithoutReadinessEvidence": "refused app_access_unavailable",
+    "readyWithoutPublishableURL": "refused app_access_unavailable (cloud_private has no public URL)",
+    "undecidableState": "UNSPECIFIED state refused runtime_observation_unknown_state",
+    "invalidDescriptor": "a descriptor whose bytes do not reproduce its declared digest refused runtime_descriptor_invalid",
+    "foreignWorkspace": "refused runtime_observation_identity_mismatch",
+    "unknownDeployment": "refused NotFound",
+    "staleEpoch": "an epoch below the deployment's refused runtime_observation_stale_epoch and cannot overwrite the newer record",
+    "nonReadyVocabulary": "pending/starting/stopped/failed/terminating/terminated each map to Serve's own status with no access URL and not open",
+    "readSliceStillGreen": "the previously receipted read slice (2 admitted reads, refusals) still passes, including the livebuild real-identity harness"
+  },
+  "defectsAndFindings": [
+    "Finding (verified): RuntimeReservationCommand cannot populate the columns its specified row requires. 06 F08-3 says ServeAgentCoordination.Reserve writes serve.agent_runtime_instances, but that table requires fabric_resource_set_id, data_attachment_contract and a full deployment_descriptor with digest and object ref, while the command carries only capability_version_id, artifact and descriptor digest/object ref. Reserve therefore stays unimplemented rather than writing an invalid row; the fix is a contract decision.",
+    "Finding (verified): whether Serve is the claimant of the capability_version reference claim is unresolved. 02 says reference_claims covers F08/F10 and allows a capability_version target, and F10 step 3 says Serve acquires it, but Capability accepts only a BUILD claimant (peer gate + purpose hardcoded 'build') and reads owner commit/claim usage through Build-specific clients.",
+    "Finding (verified, shared): ownerservice.Authorizer collates every CloudIdentity error into codes.Unavailable, so a policy denial is indistinguishable from an outage at every owner boundary. Fails closed; handed to the shared integrator.",
+    "Scope note: serve.agent_runtime_instances.data_attachment_contract is Serve's own column and 02 declares no source shape, so Serve records the opaque attachment identity it was given as {\"attachmentId\": ...}; it is not a contract for another owner's fact."
+  ],
+  "unprovenOrBlocked": [
+    "No real Deploy: Reserve is unimplemented (gap above), Capability cannot accept a Serve claimant, and FabricCoordination plus the resource refs the resource lane owns are absent, so no runtime adapter call, no OCI artifact and no runtime observation has happened against a real provider.",
+    "getWorkspaceAccess remains unimplemented pending the canonical ownership decision between 03_api_contract_complete.yaml (x-owner: workspace) and the proto placement on ServeProductService; handed to the identity/policy owner.",
+    "The composed BFF delivery route still cannot be reached because the policy table has no workspace-audience row for its GETWORKSPACE guard.",
+    "Seeded Serve rows in tests prove the read/record projections only; they are not deployments. Mac local verification is not Linux/Instance qualification."
+  ],
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production access, no Instance action, no publication, no real charge and no provider-resource action. No push, PR, Issue or merge.",
+  "logDurability": "Logs are kept under the gitignored path tmp/serve-runtime-receipt/ inside this worktree (identical SHA256 to the /tmp capture). They are not yet pushed; a reviewer-visible location must be provided before any PR."
+}

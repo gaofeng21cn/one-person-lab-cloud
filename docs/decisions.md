@@ -152,6 +152,13 @@ previous application's service worker or browser storage cannot act on its
 replacement. A name whose application component no longer matches the current
 binding belonged to a superseded application and is refused rather than served.
 
+The Serve access read returns only a confirmed ready entry. A missing, not-ready,
+or unprotected Cloud-private entry returns `APP_ACCESS_UNAVAILABLE`. Static
+application origins do not expire through a second Cloud session authority;
+`expiresAt` is optional and is reported only when the entry provider supplies an
+actual expiry. This preserves the application's own authentication and does not
+mint an arbitrary access lifetime.
+
 A binding origin belongs entirely to its application. Requests are dispatched to
 the binding before the management route table, so this server's own routes never
 answer on an application host. Only platform credentials are removed from the

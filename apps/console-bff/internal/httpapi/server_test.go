@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -18,20 +20,25 @@ import (
 // fakeReader is a typed owner reader double. Each owner read either returns the
 // configured fact or a configured error, so a missing owner is a real failure.
 type fakeReader struct {
-	workspace   *api.Workspace
-	deployments *api.DeploymentPage
-	access      *api.WorkspaceAccess
-	build       *api.BuildJob
-	version     *api.CapabilityVersion
-	operation   *api.Operation
-	err         error
+	workspace        *api.Workspace
+	deployments      *api.DeploymentPage
+	access           *api.WorkspaceAccess
+	build            *api.BuildJob
+	version          *api.CapabilityVersion
+	operation        *api.Operation
+	err              error
+	deploymentCursor string
+	deploymentLimit  int32
+	deploymentCalls  int
 }
 
 func (f *fakeReader) Workspace(context.Context, string) (*api.Workspace, error) {
 	return f.workspace, f.err
 }
 
-func (f *fakeReader) Deployments(context.Context, string) (*api.DeploymentPage, error) {
+func (f *fakeReader) Deployments(_ context.Context, _ string, cursor string, limit int32) (*api.DeploymentPage, error) {
+	f.deploymentCursor, f.deploymentLimit = cursor, limit
+	f.deploymentCalls++
 	return f.deployments, f.err
 }
 
@@ -55,10 +62,11 @@ func (f *fakeReader) Operation(_ context.Context, _ owneridentity.Owner, _ strin
 // decision are configured separately so a test can show that a valid session alone
 // does not authorize an action.
 type fakeIdentity struct {
-	session  *api.Session
-	decision *api.AuthorizationDecision
-	err      error
-	requests []*api.AuthorizationRequest
+	session   *api.Session
+	decision  *api.AuthorizationDecision
+	decisions map[api.AuthorizationActionEnum]*api.AuthorizationDecision
+	err       error
+	requests  []*api.AuthorizationRequest
 }
 
 func (f *fakeIdentity) Session(context.Context, string) (*api.Session, error) {
@@ -67,12 +75,41 @@ func (f *fakeIdentity) Session(context.Context, string) (*api.Session, error) {
 
 func (f *fakeIdentity) Authorize(_ context.Context, request *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	f.requests = append(f.requests, request)
-	return f.decision, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	// A composed route authorizes more than one owner, so a test may pin one action
+	// at a time. Anything not pinned still answers with the single configured
+	// decision, which keeps a denial a denial.
+	if decision, ok := f.decisions[request.GetAction()]; ok {
+		return decision, nil
+	}
+	return f.decision, nil
+}
+
+// allowFor builds an allowed decision for one exact request shape, so a composed
+// route's second owner check can be pinned without weakening the first.
+func allowFor(actor, tenant string, audience api.OwnerEnum, action api.AuthorizationActionEnum, kind api.AuthorizationResourceKind, resourceID string) *api.AuthorizationDecision {
+	return &api.AuthorizationDecision{
+		ActorId: actor, SessionId: ptr(owneridentity.SessionReference("session-1")),
+		Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: tenant}}},
+		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+		Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED, Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY,
+		Action: action, AudienceOwner: audience,
+		Resource: &api.AuthorizationResource{Kind: kind, Id: ptr(resourceID)},
+	}
 }
 
 func allowedIdentity() *fakeIdentity {
 	return &fakeIdentity{
 		session: &api.Session{ActorId: "actor-1", TenantId: ptr("tenant-1"), CsrfToken: "csrf-1"},
+		// The delivery view checks a Workspace read and then a Serve access read.
+		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS:   allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS:      allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION: allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "cv-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD:             allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_BUILD, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, "build-1"),
+		},
 		decision: &api.AuthorizationDecision{
 			ActorId: "actor-1", SessionId: ptr(owneridentity.SessionReference("session-1")),
 			Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
@@ -271,8 +308,8 @@ func TestAuthorizationRequestCarriesTheSessionScope(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if len(identity.requests) != 1 {
-		t.Fatalf("authorization requests = %d, want 1", len(identity.requests))
+	if len(identity.requests) != 5 {
+		t.Fatalf("authorization requests = %d, want 5 (one decision per owner read)", len(identity.requests))
 	}
 	sent := identity.requests[0]
 	if sent.GetActorId() != "actor-1" {
@@ -283,5 +320,115 @@ func TestAuthorizationRequestCarriesTheSessionScope(t *testing.T) {
 	}
 	if sent.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE {
 		t.Fatalf("authorization audience = %v, want workspace", sent.GetAudienceOwner())
+	}
+}
+
+// strictReadContext verifies the exact authorization context at the caller
+// boundary, where reusing the previous owner's decision would be refused.
+type strictReadContext struct {
+	*fakeReader
+	identity *fakeIdentity
+}
+
+func (f *strictReadContext) check(ctx context.Context, action api.AuthorizationActionEnum) error {
+	call := clients.CallContext(ctx)
+	expected := f.identity.decision
+	if d, ok := f.identity.decisions[action]; ok {
+		expected = d
+	}
+	if call == nil || call.GetAuthorizationContextId() != expected.GetAuthorizationContextId() {
+		return errors.New("wrong action authorization context")
+	}
+	return nil
+}
+func (f *strictReadContext) Workspace(ctx context.Context, id string) (*api.Workspace, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Workspace(ctx, id)
+}
+func (f *strictReadContext) Deployments(ctx context.Context, id, cursor string, limit int32) (*api.DeploymentPage, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Deployments(ctx, id, cursor, limit)
+}
+func (f *strictReadContext) WorkspaceAccess(ctx context.Context, id string) (*api.WorkspaceAccess, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.WorkspaceAccess(ctx, id)
+}
+func (f *strictReadContext) CapabilityVersion(ctx context.Context, id string) (*api.CapabilityVersion, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.CapabilityVersion(ctx, id)
+}
+func (f *strictReadContext) Build(ctx context.Context, id string) (*api.BuildJob, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Build(ctx, id)
+}
+func (f *strictReadContext) Deployment(ctx context.Context, workspace, id string) (*api.Deployment, error) {
+	return f.deployments.Items[0], f.err
+}
+func TestDeliveryBindsEachOwnerReadToItsOwnDecision(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.AuthorizationContextId = ptr("workspace-context")
+	for action, d := range identity.decisions {
+		d.AuthorizationContextId = ptr(action.String())
+	}
+	reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+func TestServeReadsAreRegisteredOnProductMux(t *testing.T) {
+	identity := allowedIdentity()
+	reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deployments"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestServeDeploymentListPassesPagination(t *testing.T) {
+	for _, test := range []struct {
+		name, query, cursor string
+		limit               int32
+		status              int
+	}{
+		{"default", "", "", 25, http.StatusOK},
+		{"second_page", "?cursor=dep-older&limit=1", "dep-older", 1, http.StatusOK},
+		{"maximum", "?limit=100", "", 100, http.StatusOK},
+		{"negative", "?limit=-1", "", 0, http.StatusBadRequest},
+		{"zero", "?limit=0", "", 0, http.StatusBadRequest},
+		{"too_large", "?limit=101", "", 0, http.StatusBadRequest},
+		{"empty", "?limit=", "", 0, http.StatusBadRequest},
+		{"nonnumeric", "?limit=invalid", "", 0, http.StatusBadRequest},
+		{"fraction", "?limit=1.5", "", 0, http.StatusBadRequest},
+		{"overflow", "?limit=2147483648", "", 0, http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			identity := allowedIdentity()
+			reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+			response := httptest.NewRecorder()
+			NewServeDeliveryHandler(reader, identity).ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deployments"+test.query))
+			if response.Code != test.status {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.status == http.StatusOK {
+				if reader.deploymentCalls != 1 || reader.deploymentCursor != test.cursor || reader.deploymentLimit != test.limit {
+					t.Fatalf("owner pagination = calls %d, cursor %q, limit %d", reader.deploymentCalls, reader.deploymentCursor, reader.deploymentLimit)
+				}
+			} else if reader.deploymentCalls != 0 {
+				t.Fatal("invalid limit reached the owner")
+			}
+		})
 	}
 }

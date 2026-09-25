@@ -84,7 +84,7 @@ func system(t *testing.T) (*identity.Service, *sql.DB, api.TenantProductServiceC
 	if e != nil {
 		t.Fatal(e)
 	}
-	s, e := identity.New(db, g, bytes.Repeat([]byte("s"), 32), nil)
+	s, e := identity.New(db, g, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -162,6 +162,32 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 	introspected, e := s.GetAuthorizationContext(ownerservice.WithPeerOwner(ctx, owneridentity.Build.Service()), &api.GetAuthorizationContextRequest{AuthorizationContextId: decision.GetAuthorizationContextId(), ExpectedAudienceOwner: request.AudienceOwner, ExpectedAction: request.Action, ExpectedResource: request.Resource, RequestId: "introspect"})
 	if e != nil || introspected.GetAuthorizationContextId() != decision.GetAuthorizationContextId() {
 		t.Fatal("context introspection changed identity", e)
+	}
+	// Publisher continuations preserve the original session and permission version,
+	// even though the called owner/action is deliberately different.
+	publisher := proto.Clone(request).(*api.AuthorizationRequest)
+	publisher.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
+	publisher.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT
+	publisher.AuthorizationContextId = decision.AuthorizationContextId
+	capabilityContext := ownerservice.WithPeerOwner(ctx, owneridentity.Capability.Service())
+	if _, e = s.AuthorizeAction(capabilityContext, publisher); e != nil {
+		t.Fatal("original publisher continuation was refused", e)
+	}
+	secondCookie, _ := login(t, c)
+	switched := proto.Clone(publisher).(*api.AuthorizationRequest)
+	switched.SessionId = proto.String(owneridentity.SessionReference(secondCookie))
+	if _, e = s.AuthorizeAction(capabilityContext, switched); e == nil {
+		t.Fatal("another session reused the original publisher authorization")
+	}
+	if _, e = db.ExecContext(ctx, `UPDATE tenant.tenants SET permission_version=permission_version+1 WHERE id='tenant-test'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.AuthorizeAction(capabilityContext, publisher); e == nil {
+		t.Fatal("publisher continuation reused a stale permission version")
+	}
+	decision, e = s.AuthorizeAction(peerCtx, request)
+	if e != nil {
+		t.Fatal(e)
 	}
 	for _, mutate := range []func(*api.AuthorizationRequest){
 		func(r *api.AuthorizationRequest) { r.ActorId = "forged" },
@@ -241,7 +267,7 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 	}
 	// Restart drops only volatile delegated credentials; the accepted obligation
 	// remains durable and does not need a browser password/session to close out.
-	restarted, e := identity.New(db, s.Gateway, bytes.Repeat([]byte("s"), 32), nil)
+	restarted, e := identity.New(db, s.Gateway, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
 	if e != nil {
 		t.Fatal(e)
 	}

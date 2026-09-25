@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "action": "Declare platform scope for platform-scoped Serve read callers and exercise reads through the real ownerservice.Authorizer",
+  "recordedAt": "2026-09-25T04:39:00.174730+00:00",
+  "sourceSha": "5c222717ac9efe6f99b58ba58c3a5dd43daf440b",
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/service.go": "3cb4a0a58593eaf7ba8132a254276e04d3cb934c130886c14a754c54a2418da3",
+    "services/serve/internal/delivery/service_postgres_test.go": "b51bfcf32521a53cb10b8b8e4970abd516326d8901ace5490868a78216ad4d50"
+  },
+  "defect": "Reads declared the persisted Workspace tenant as the resource scope for every caller. The shared ownerservice.Authorizer refuses a caller whose own scope does not equal the declared resource scope, so a platform-scoped caller was denied on every existing Workspace. The unit tests did not catch it because they stubbed the authorizer instead of using it.",
+  "verification": {
+    "focusedPostgres": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated postgres> go test ./... -count=1 passed all 5 delivery tests and the isolation suite with zero skips",
+    "assertions": "reads now run through ownerservice.NewAuthorizer(OwnerServe, CloudIdentity) and assert audience=serve, the exact action, and the exact WORKSPACE resource id; a platform caller is asserted to be scoped as a platform resource",
+    "ordinaryGate": "npm run verify:local passed"
+  },
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production, Instance, publication, real charge or provider-resource action."
+}

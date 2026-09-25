@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 2,
+  "action": "Verify the CloudIdentity member/invitation governance slice and extend the one CloudIdentity policy to the resource catalog and Serve surfaces",
+  "recordedAt": "2026-09-25T06:02:46.402684+00:00",
+  "provenance": {
+    "kind": "local",
+    "note": "Local verification only. No CI workflow ran for this revision, so no workflow/run id is claimed. No image was built or published, so no image digest is claimed."
+  },
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "testedSha": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+  "testedTree": "91b4d258007872d8f3ea435467170ad3e5f49f2d",
+  "branch": "codex/tenant-member-governance-2",
+  "supersedes": {
+    "receipt": "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json",
+    "reason": "The prior receipt bound exact source hashes but recorded only a passed description, with no full-run log binding or captured exit code. This receipt keeps that record in place and adds the bound full-run evidence for the extended revision."
+  },
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/clients/tenant.go": "cea6644325ffb4db8275dc35c4ec117c16d353aa9b58f5a4857616fbca126d8f",
+    "apps/console-bff/internal/httpapi/members_test.go": "6455cac1e1861f882b79494cc2b26405e04d39d74b7566553bbeff38fe4c4809",
+    "apps/console-bff/internal/httpapi/publisher.go": "44c37dee985735a2c0430eb7f65cc0e9cc9ba2d6a9579d60abfbb8816dc7f8d9",
+    "apps/console-bff/internal/httpapi/server.go": "b624446b10fdc624363a91780a8ff219568fb66577c050cdc326a7a3abaa2f4d",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json": "6f987a2e1e337bce935b901f8a40a135c650bd45a77537f350c27e4d5e038e78",
+    "docs/implementation-architecture.md": "5777419d1d9e0f7d9fa2219524e0db7f73e267cc2b18b42b27d309158fc69c82",
+    "docs/roadmap.md": "da05132cea617cbe27bcb63cc29aa2f531d68ce197288d204019bb326d6a1b1e",
+    "docs/status.md": "9e9b79afe966b2a1dfefd106efc924be2a36e1c1973a30a08e4413c9a1525604",
+    "packages/contracts/go/go.mod": "e09768a694bbe0d05f0033eb21c7fc48fb04cd943728afa937518e0f7c25a2ee",
+    "packages/contracts/go/owneridentity/errorcode.go": "0fb371e560db914a166527d27cc8e1d4c25c1a58dc96cf72ad2530dd6cdba07b",
+    "services/build/internal/build/identity_live_test.go": "40072dbe9a42e207bd41dbfbe1b900e70ae4779b0fd434a0e7d133d82ec61d79",
+    "services/gateway-integration/cmd/server/main.go": "e59799050f5945b05de70ad110b75089d1186820638cd87740344db121a81114",
+    "services/gateway-integration/identity/authorization.go": "e43575e4a12c37afdb8c4c1a6cb2147acb331a5e94afd16c21c9ce8312e80309",
+    "services/gateway-integration/identity/generate_policy.py": "1e410ecec2bd3ac661dfb0f5d85dc9e7e6bbdd18d0b81dc370fe65cd32d76abc",
+    "services/gateway-integration/identity/members.go": "6ee95266d698d1777b330992e30bfcb651ba4796a6394bbf5f3d93e1303a15b0",
+    "services/gateway-integration/identity/members_postgres_test.go": "a6a50c33bb0a5a4b7c72cc8fd9876cb35e27f1993ef6ebd1007d1ca430425330",
+    "services/gateway-integration/identity/policy_generated.go": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "services/gateway-integration/identity/policy_generated_test.go": "d636af97a52f9a40cadca260f5725c0ea4fb582389a8813073af98a7b7ddecdd",
+    "services/gateway-integration/identity/policy_postgres_test.go": "f409c97ff418752bb36a0e3d0e70dc1b79fc8585a5445c621bdc5b5f629de950",
+    "services/gateway-integration/identity/service.go": "b7e4fed9416d32d8ba2c1411a25a75cc74c4902e4f771ebe388aa26613f6eb7d",
+    "services/gateway-integration/identity/service_postgres_test.go": "5bdfd0e21eb9f43937e8ed574a02e1ab831ee8c2c09dcbb74b684adf09acd210"
+  },
+  "dependencyBoundary": {
+    "goVersion": "go1.26.3 darwin/arm64",
+    "nodeVersion": "v25.3.0",
+    "pythonVersion": "3.9.6",
+    "pyyaml": "6.0.3",
+    "grpc": "v1.83.2",
+    "protobuf": "v1.36.11",
+    "postgresImage": "postgres:16.8-bookworm@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae",
+    "externalSub2Api": "simulated HTTP fixture only; the real Sub2API service was not contacted"
+  },
+  "window": {
+    "startUtc": "2026-09-25T05:46:00Z",
+    "endUtc": "2026-09-25T06:00:39Z"
+  },
+  "commands": [
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated pg> go test ./... -count=1 -v",
+      "cwd": "services/gateway-integration",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-gateway-integration.log",
+      "logSha256": "efb8471c986adb4b639f45243f9a3c45350828188aee93123c0c2e6508217f8f",
+      "counts": {
+        "pass": 13,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "command": "go test ./... -count=1 -v",
+      "cwd": "apps/console-bff",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-console-bff.log",
+      "logSha256": "10cde54be687c671f90b31f9d357cb699a53897a964c08798c0d21eef419a42e",
+      "counts": {
+        "pass": 18,
+        "fail": 0
+      }
+    },
+    {
+      "command": "go test ./... -count=1",
+      "cwd": "packages/contracts/go",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-contracts.log",
+      "logSha256": "d53c89c21d638645378aaa60ce21b995efadcca11ac9ff38655c63040ba10d03"
+    },
+    {
+      "command": "go vet -tags=livebuild ./...",
+      "cwd": "services/build",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/focused-build-livebuild-vet.log",
+      "logSha256": "fc8e93fd1819aaa0af8e87fc4b7d8d8477449f4201adb7ce07e2f16298932d08",
+      "note": "compile-only check of the live identity suite after the New(...) signature change"
+    },
+    {
+      "command": "npm run verify:local:full",
+      "cwd": "<repo root>",
+      "exitCode": 0,
+      "log": "output/cloud-member-governance/full-verify-local.log",
+      "logSha256": "76e33765dde178ed8d50bf184c922cf928a26333817f7a5f522d1146619fe52b",
+      "capturedWith": "set -o pipefail; direct redirection of the process and its exit code (not tail/tee)",
+      "counts": {
+        "nodeSourceTests": 228,
+        "nodeSourceFailures": 0,
+        "consoleBrowserTests": 114,
+        "consoleBrowserFailures": 0,
+        "ownerPostgresSuitesZeroSkips": true
+      },
+      "aggregate": "Local verification passed with PostgreSQL and Docker integration."
+    }
+  ],
+  "exitCodeCapture": "Each command's own exit status was written by an immediately following `echo EXIT=$?` into the same redirected log; the full-run exit code is 0 and no FAIL line appears in any log.",
+  "acceptanceResults": [
+    {
+      "item": "real identity login then authorized BFF member/invitation/role commands",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres and apps/console-bff TestMemberCommandsForwardOnlyTheAuthenticatedCaller"
+    },
+    {
+      "item": "CloudIdentity writes its own database and audit record, read back by the same owner",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres asserts tenant.tenant_members/tenant.invitations/tenant.audit_events rows and then reads members and invitations back through ListMembers/ListInvitations"
+    },
+    {
+      "item": "cross-Tenant refusal including foreign-object 404 rather than 403",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres: cross-Tenant revoke returns NotFound; cross-Tenant accept/remove/role are refused; the member list does not leak another Tenant's member"
+    },
+    {
+      "item": "forged identity refusal",
+      "result": "pass",
+      "evidence": "TestMemberCommandsRequireTheWriteGuard forged actor/tenant headers; TestPublisherSessionAndGrantPostgres forged authority cases"
+    },
+    {
+      "item": "last-owner protection",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres demote and remove both return LAST_OWNER"
+    },
+    {
+      "item": "concurrent last-owner protection",
+      "result": "pass",
+      "evidence": "TestLastOwnerProtectionUnderConcurrencyPostgres: exactly one concurrent removal succeeds and one is refused with LAST_OWNER, leaving one active owner"
+    },
+    {
+      "item": "new requests refused after de-authorization",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres: the removed member's session read is Unauthenticated and its Tenant read is refused; TestPolicyPlatformPermissionAndTenantIsolationPostgres: a revoked member loses the catalog read"
+    },
+    {
+      "item": "idempotency and lost-response replay",
+      "result": "pass",
+      "evidence": "TestMemberGovernancePostgres: an inviteMember replay returns the original invitation id and one persisted row; TestInvitationExpiryBoundaryPostgres covers the invitation window boundary"
+    },
+    {
+      "item": "the invitee entry reuses AuthorizeAction and cannot widen the original authorization",
+      "result": "pass",
+      "evidence": "TestAcceptInvitationBindsTheOriginalAuthorizationPostgres: a decision issued for the exact invitation is reused; a LISTMEMBERS decision cannot accept; a forged context is refused"
+    },
+    {
+      "item": "resource catalog and Serve audiences with platform permission, tenant isolation and refusal paths",
+      "result": "pass",
+      "evidence": "TestGeneratedPolicyCoversAssignedOwners, TestGeneratedPolicyAudienceAndRoles and TestPolicyPlatformPermissionAndTenantIsolationPostgres"
+    },
+    {
+      "item": "Member.displayName resolved from an authorized identity readback",
+      "result": "not_proven",
+      "evidence": "kept open; see unprovenItems"
+    }
+  ],
+  "correctedFindings": [
+    {
+      "finding": "Member.displayName was empty against the canonical field map",
+      "outcome": "still open with precise evidence",
+      "detail": "The field map sources the name from gateway.identity_mappings through an authorized Gateway identity read. No identity readback RPC exists in packages/contracts/proto/internal.proto, and no migration in this repository creates gateway.identity_mappings (services/gateway-integration/migrations/0001_opl_tenant.sql creates only the tenant schema). The Gateway HTTP adapter exposes only the caller's own /api/v1/auth/login and /api/v1/auth/me; the Sub2API admin user lookup requires a Cloud service credential, which 02_database_schema_complete.md forbids using to act as a member (\"不用Cloud服务令牌冒充成员\"). The field therefore stays empty rather than being invented, and the contract was not edited to declare it optional."
+    },
+    {
+      "finding": "the invitee owner entry was described as reusing AuthorizeAction while it checked the session directly",
+      "outcome": "real defect, fixed",
+      "detail": "Two defects. (1) authorizeInvitee performed its own session check instead of the shared path; it now builds the same typed request and calls AuthorizeAction. (2) The ACCEPTINVITATION branch in AuthorizeAction returned early and ignored any authorization context the caller presented, so a context issued for another action was silently discarded rather than verified. Context verification is now one shared routine (verifyOriginalContext) used by both the invitee branch and every other action, so a present context must match actor, session, scope, permission version, expiry, action and resource or the request is denied."
+    },
+    {
+      "finding": "the seven-day invitation window was an implementation choice presented as if it were spec",
+      "outcome": "corrected",
+      "detail": "No canonical value exists anywhere in docs/spec/target: 02_database_schema_complete.md only derives the invitation status from expires_at. The hardcoded constant was removed; the owner now takes the window as explicit configuration (OPL_INVITATION_TTL) and refuses to start without a positive value, following the instance-approved UploadPolicy precedent rather than inventing product policy. The persisted expiresAt is the configured window, and the expiry boundary is proven by TestInvitationExpiryBoundaryPostgres."
+    },
+    {
+      "finding": "the member front end was attributed to W14",
+      "outcome": "corrected",
+      "detail": "W13 (Console/BFF basic integration, F01) owns the login/member surface; W14 is the agent/upload/build front end (F02-F06). docs/roadmap.md and docs/status.md no longer claim W14 for the member page."
+    }
+  ],
+  "unprovenItems": [
+    "Member.displayName has no authorized source yet; the field is emitted empty and the item stays open.",
+    "getWorkspaceAccess is not authorized at all: 03_api_contract_complete.yaml assigns it x-owner: workspace (x-tables: workspace.workspaces, F09) while internal.proto declares it on ServeProductService. A serve-audience row would contradict the contract and a workspace-audience row would serve an owner this policy does not cover, so no row exists and policy_generated_test.go pins that absence. Resolving it needs a canonical-owner decision.",
+    "OPL_INVITATION_TTL is a new required deployment configuration value. The deploy manifests and the instance profile were not edited (instance-owned), so an existing deployment that enables invitations must add it before this revision would start.",
+    "No Console member page exists; only the BFF REST surface is implemented.",
+    "Tenant onboarding, suspend/reenable, delete/restore, retained-identity migration and Gateway wallet binding remain unimplemented.",
+    "No production, Candidate, Release, Instance qualification or real Sub2API account was touched."
+  ],
+  "failedAttempts": [
+    "Three focused test failures surfaced during this round and were resolved rather than worked around: a platform administrator acting on an explicit tenant scope was wrongly expected to be denied (SSOT 02_database_schema_complete.md:143 permits it, so the test expectation was corrected); a second invitation was issued to a subject that already owned a Tenant (test data corrected); and the repeat-acceptance case reused a pre-acceptance session struct instead of re-reading the live session the way the BFF does.",
+    "A contract-consistency Go test that re-derived the table from the YAML contract was abandoned because it would have required adding a YAML dependency to the gateway-integration Go module; the committed tests assert the per-owner surface and the exact audience/roles instead, without a new dependency."
+  ],
+  "sharedAuthorizationHandoff": {
+    "sha": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+    "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+    "policyFile": "services/gateway-integration/identity/policy_generated.go",
+    "policyFileSha256": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "generator": "services/gateway-integration/identity/generate_policy.py",
+    "generatorSha256": "1e410ecec2bd3ac661dfb0f5d85dc9e7e6bbdd18d0b81dc370fe65cd32d76abc",
+    "regenerationIdempotent": true,
+    "actionCounts": {
+      "capability": 25,
+      "build": 5,
+      "tenant": 18,
+      "runtime_control": 5,
+      "resource_catalog": 14,
+      "serve": 4,
+      "total": 71
+    },
+    "consumersNotified": [
+      "01a0d635-4d84-7a73-8e4a-e32992afc147 (resource catalog)",
+      "01a0d635-a164-7282-a8e0-21e314fba796 (serve)"
+    ],
+    "bffWiringOpen": "s.registerCatalogRoutes(mux) is not wired: apps/console-bff/internal/httpapi/catalog.go does not exist yet. server.go remains with this writer as the serial integrator and the line will be added when that file lands."
+  },
+  "logAvailability": {
+    "path": "output/cloud-member-governance/ (repository-relative on the verifying machine)",
+    "committed": false,
+    "note": "output/ is listed in .gitignore, so these logs are local-only artifacts rather than checked-in files. The sha256 values above bind them; an independent verifier reproduces them by re-running the same commands on this SHA with an isolated PostgreSQL admin DSN. The logs contain no credential: the isolated admin DSN is written only as a placeholder, and no browser cookie, password, Gateway token or invitation token is printed."
+  }
+}

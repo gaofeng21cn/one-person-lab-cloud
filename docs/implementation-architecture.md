@@ -12,13 +12,47 @@ migration. The adopted target keeps all Cloud product code in one GitHub
 repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
-Capability, Build, Runtime Control, Workspace and Serve have independent owner
-processes and the Console BFF is implemented. Gateway Integration now implements
+Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
+independent owner processes and the Console BFF is implemented. Resource Catalog
+owns approved compute/storage plans, versioned price/refund/retention policies
+and the frozen D17 arithmetic in `services/resource-catalog`, reached through the
+Console BFF's authenticated catalog surface
+(`apps/console-bff/internal/httpapi/catalog.go`) under the generated CloudIdentity
+policy and the contract-compiled response status. Its route registration exists
+but the BFF process's shared `Handler` does not yet call it, so a deployed process
+does not serve these paths; its quotes, the Ledger consumer of its policy event,
+and the Workspace/Fabric resource-reference chain are still open. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
-`services/gateway-integration`, using only the Tenant database. Gateway/wallet
+`services/gateway-integration`, using only the Tenant database. The public JSON
+boundary resolves property names and 64-bit scalar forms from the canonical
+contract, so a published spelling such as `monthlyPriceUSDMicros` and its decimal
+string form are authoritative over protobuf's own derivation. Gateway/wallet
 operations are not migrated by this slice; their eventual owner retains a separate
-database and pool inside the same deployment unit. This is not completion of all
-W03 invitation/Tenant lifecycle work.
+database and pool inside the same deployment unit. It also serves Tenant member
+and invitation governance (list, invite, accept, revoke, role change and removal,
+with last-owner protection and audit) over the same Tenant database, and its
+generated permission table is the single authorization policy for the capability,
+build, tenant, runtime control, resource catalog, serve and workspace audiences,
+and the Console BFF's HTTP success status per routed action is compiled from the
+same contract rather than hand-listed. `getWorkspaceAccess` is a Serve-audience
+read because Serve owns the access fact, and each owner fact in a composed BFF
+view is authorized against the owner that reports it. This is not
+completion of all W03 work: `Member.displayName` still needs the authorised
+Gateway identity-directory read (no identity readback RPC or
+`gateway.identity_mappings` migration exists yet), and Tenant
+onboarding/suspend/reenable/delete/restore remain with W21.
+
+Serve implements its read surface in `services/serve/internal/delivery`: the
+owner-local current Deployment, the delivery history and the current Agent's
+access facts are read from `opl_serve`, and Serve refuses to compose another
+owner's fact into its delivery truth. Two of the three reads
+(`ListDeployments`, `GetDeployment`) are admitted by the shared policy table for
+the serve audience; `GetWorkspaceAccess` has no policy row because the canonical
+contract assigns it to the workspace owner while the proto declares it on
+`ServeProductService`, so it fails closed and is unimplemented pending that
+canonical decision. Serve's delivery write path (Reserve/Deploy and access
+switching) is not implemented; the blockers are recorded in
+[status](status.md).
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;

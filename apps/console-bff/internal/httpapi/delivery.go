@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -32,7 +33,7 @@ type OwnerFact struct {
 // DeliveryReader reads the typed owner facts the delivery view composes.
 type DeliveryReader interface {
 	Workspace(ctx context.Context, workspaceID string) (*api.Workspace, error)
-	Deployments(ctx context.Context, workspaceID string) (*api.DeploymentPage, error)
+	Deployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error)
 	WorkspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error)
 	Build(ctx context.Context, buildID string) (*api.BuildJob, error)
 	CapabilityVersion(ctx context.Context, capabilityVersionID string) (*api.CapabilityVersion, error)
@@ -43,7 +44,7 @@ type DeliveryReader interface {
 // current deployment and access come from Serve, the pinned version from
 // Capability, the build input/output from Build, and the Workspace identity and
 // plan from Workspace.
-func (s *Server) deliveryView(ctx context.Context, workspaceID string) (DeliveryView, error) {
+func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID string) (DeliveryView, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return DeliveryView{}, fmt.Errorf("workspace id is required")
@@ -54,6 +55,16 @@ func (s *Server) deliveryView(ctx context.Context, workspaceID string) (Delivery
 	reader := s.reader
 
 	view := DeliveryView{WorkspaceID: workspaceID}
+	// Each decision is bound to its own action, audience and resource. A composed
+	// view must obtain the corresponding context immediately before each owner call.
+	authorize := func(owner owneridentity.Owner, action api.AuthorizationActionEnum, kind api.AuthorizationResourceKind, id string) error {
+		call := clients.CallContext(ctx)
+		call.AuthorizationContextId = ""
+		return RequireAuthorizedAction(ctx, s.identity, caller, owner, action, &api.AuthorizationResource{Kind: kind, Id: &id}, call.GetRequestId())
+	}
+	if err := authorize(owneridentity.Workspace, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
+		return DeliveryView{}, err
+	}
 
 	workspace, err := reader.Workspace(ctx, workspaceID)
 	if err != nil {
@@ -70,7 +81,10 @@ func (s *Server) deliveryView(ctx context.Context, workspaceID string) (Delivery
 		},
 	}
 
-	deployments, err := reader.Deployments(ctx, workspaceID)
+	if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
+		return DeliveryView{}, err
+	}
+	deployments, err := reader.Deployments(ctx, workspaceID, "", 0)
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("serve deployments: %w", err)
 	}
@@ -87,6 +101,9 @@ func (s *Server) deliveryView(ctx context.Context, workspaceID string) (Delivery
 		},
 	}
 
+	if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
+		return DeliveryView{}, err
+	}
 	access, err := reader.WorkspaceAccess(ctx, workspaceID)
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("serve access: %w", err)
@@ -101,6 +118,9 @@ func (s *Server) deliveryView(ctx context.Context, workspaceID string) (Delivery
 	}
 	if capabilityVersionID == "" {
 		return DeliveryView{}, fmt.Errorf("serve: deployment %s names no capability version", current.GetId())
+	}
+	if err := authorize(owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, capabilityVersionID); err != nil {
+		return DeliveryView{}, err
 	}
 	version, err := reader.CapabilityVersion(ctx, capabilityVersionID)
 	if err != nil {
@@ -119,6 +139,9 @@ func (s *Server) deliveryView(ctx context.Context, workspaceID string) (Delivery
 	}
 
 	if buildID := version.GetBuildJobId(); buildID != "" {
+		if err := authorize(owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, buildID); err != nil {
+			return DeliveryView{}, err
+		}
 		job, err := reader.Build(ctx, buildID)
 		if err != nil {
 			return DeliveryView{}, fmt.Errorf("build: %w", err)

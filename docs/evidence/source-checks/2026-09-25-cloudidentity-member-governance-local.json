@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "action": "Implement CloudIdentity Tenant member, invitation and role governance",
+  "recordedAt": "2026-09-25T04:47:54.510797+00:00",
+  "sourceSha": "e90090f0bdeb45c30b117c158d5e854a49bd4756",
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/clients/tenant.go": "cea6644325ffb4db8275dc35c4ec117c16d353aa9b58f5a4857616fbca126d8f",
+    "apps/console-bff/internal/httpapi/members_test.go": "990bbcdf715014ef2bbec8b09c8233aa9ecc0de9b8e101b3c2df52b3ceb7a8e3",
+    "apps/console-bff/internal/httpapi/publisher.go": "ac6920ed7cd6d6e8901bbd044b6f90059792b7516fd7aef9511e7a632b7f269f",
+    "apps/console-bff/internal/httpapi/server.go": "b624446b10fdc624363a91780a8ff219568fb66577c050cdc326a7a3abaa2f4d",
+    "packages/contracts/go/go.mod": "e09768a694bbe0d05f0033eb21c7fc48fb04cd943728afa937518e0f7c25a2ee",
+    "packages/contracts/go/owneridentity/errorcode.go": "0fb371e560db914a166527d27cc8e1d4c25c1a58dc96cf72ad2530dd6cdba07b",
+    "services/gateway-integration/identity/authorization.go": "abedd4311d85c8eacf08353435e8dcb7882c0268b8f8654a2d98762a2c9abfd0",
+    "services/gateway-integration/identity/generate_policy.py": "6170770f19a6500dee4bf37ee76ee5e1a2354cb81e7f01a416d1329887496a81",
+    "services/gateway-integration/identity/members.go": "ecd4d35aa603ed2a1e3b8d793feb6e3bf31efe7d03d66e7ce6028c06b4c9ef1c",
+    "services/gateway-integration/identity/members_postgres_test.go": "caefa4109b4dc72151eea355e03174ad9ee4e4ec694ff57a550b97e186a673b7",
+    "services/gateway-integration/identity/policy_generated.go": "c89d89f858bc4dead917023d1c6477be164afa5a8b64f6a26e4afd35b8890d9e",
+    "services/gateway-integration/identity/service.go": "48968432e601a15dc59a0f0e2d9f297fcd21807b91e3f930a3e2f15d8e6b1c49"
+  },
+  "verification": {
+    "fullLocalGate": "npm run verify:local:full passed: source tests, Console browser suite, TypeScript typecheck/lint/build, every Cloud Go module compile, the database-free owner suites, and every PostgreSQL owner suite with zero skips plus Docker integration.",
+    "focusedChecks": [
+      "services/gateway-integration go test ./... passed against real PostgreSQL, including TestMemberGovernancePostgres and TestLastOwnerProtectionUnderConcurrencyPostgres",
+      "apps/console-bff go test ./... passed, including the write-guard, caller-propagation, 204 and owner-refusal member cases",
+      "packages/contracts/go go test ./... passed with the new typed error-code detail",
+      "go vet ./... passed for every Cloud Go module, and -tags=livebuild ./... for services/build"
+    ],
+    "governedCases": [
+      "cross-Tenant invitation revoke and member removal are refused; a foreign object is reported as absent, not as forbidden",
+      "member removal revokes the member's live sessions and its later Tenant read is unauthenticated or denied",
+      "the last owner can neither be demoted nor removed, under a locked Tenant row",
+      "two concurrent owner removals serialize: exactly one succeeds and one is refused with LAST_OWNER, leaving one active owner",
+      "inviteMember replay returns the original invitation; a consumed invitation cannot be accepted or revoked twice",
+      "acceptance advances Tenant permission_version and binds the invitee's own session to the Tenant",
+      "every governance decision writes an immutable audit row, including refused outcomes",
+      "no browser cookie, password, Gateway token or raw invitation token is persisted; invitations store only a token hash"
+    ]
+  },
+  "limitations": [
+    "Member.displayName is not yet resolved. The canonical field map sources it from gateway.identity_mappings through an authorised Gateway identity read, which the Gateway Integration identity-directory work package owns; the field is therefore currently emitted empty.",
+    "The remaining W03/W21 scope is unchanged: Tenant onboarding, suspend/reenable, delete/restore, retained-identity migration and Gateway wallet binding are separate outcomes.",
+    "The invitation validity window is a CloudIdentity owner constant (seven days); the canonical contract fixes only the expiresAt field, not the window.",
+    "External Sub2API authentication and the known test Tenant/member records remain declared local isolation prerequisites. No Cloud session, member or invitation decision is mocked.",
+    "No production deployment, Candidate or Release publication, Instance qualification, or real account/wallet mutation."
+  ],
+  "remainingBoundary": "The browser member page in the retained Console shell is not part of this slice; the BFF REST surface for the implemented operations is. Gateway identity-directory display-name resolution stays with the Gateway Integration identity work package."
+}
