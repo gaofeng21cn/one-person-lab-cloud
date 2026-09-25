@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "action": "Accept only omitted empty PV storageClassName during exact storage deletion binding readback",
+  "recordedAt": "2026-09-25T19:44:48.153003+00:00",
+  "baseSourceSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "sourceFilesSha256": {
+    "services/fabric/internal/fabric/tencent_provider_storage.go": "19a10d19011800622c4f47934ab0503d3a951aacf6fcc247a2666bf129b698a3",
+    "services/fabric/internal/fabric/tencent_provider_test.go": "596e05da710456b696f757f5420e69eadbca58c1eab8d2af13a79b99091d9d04"
+  },
+  "verification": {
+    "result": "passed",
+    "focusedTests": 8,
+    "storageClassSubcases": 9,
+    "checks": [
+      "PV empty class is accepted both explicitly and omitted; PV null, nonstring and nonempty classes are rejected",
+      "PVC empty class stays exact; omission, null and nonempty are rejected",
+      "Existing owner identity and binding conflict checks reject before mutation",
+      "Existing delete readback absence and manual notification checks pass"
+    ],
+    "providerMutationCount": 0
+  },
+  "logs": [
+    {
+      "name": "storage-delete-empty-class-fixed.log",
+      "sha256": "4e4aad842747447d26ba9b7213b2cb32b598da47e229a0e68ff9e04bd9cb3b9f"
+    },
+    {
+      "name": "storage-delete-readback-fixed.log",
+      "sha256": "890d85fd603f7284152b7959f8eff0b81bdcf076aab6a5304e5abbfbbdf1edbb"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with provider stubs. No production dispatch, deletion retry, deployment or confirmation of the affected live binding."
+}

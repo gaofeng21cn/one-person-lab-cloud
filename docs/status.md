@@ -242,6 +242,14 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 ## Workspace Deletion and Hourly Refund
 
+The 2026-09-26 [focused source check](./evidence/source-checks/2026-09-26-pv-storage-class-delete-binding.json)
+fixes a false `launch_stage_binding_conflict` when Kubernetes omits an empty PV
+`storageClassName`. Only that PV omission is accepted; PVC omissions, null and
+nonempty classes, and other identity differences still fail. Eight focused Go
+tests pass, including nine class cases and existing owner/binding rejection and
+readback checks. This is source evidence; the affected production deletion has
+not been rerun or confirmed by this change.
+
 The Control Plane persists each deletion stage's exact resource identity, result,
 observation time and readback reference with its progress. Fabric confirms
 storage absence through a fresh read after destruction and accepts multiple

@@ -5125,6 +5125,58 @@ func TestTencentProviderDestroyStorageRequiresExactLiveBindingBeforeMutation(t *
 	}
 }
 
+func TestTencentProviderReadStorageDeleteBindingsStorageClass(t *testing.T) {
+	volume := canonicalTencentStorageDestroyFixture()
+	for _, testCase := range []struct {
+		name    string
+		item    int
+		omit    bool
+		value   any
+		wantErr bool
+	}{
+		{name: "explicit empty PV class", value: ""},
+		{name: "omitted empty PV class", omit: true},
+		{name: "nonempty PV class", value: "foreign-class", wantErr: true},
+		{name: "null PV class", value: nil, wantErr: true},
+		{name: "nonstring PV class", value: false, wantErr: true},
+		{name: "explicit empty PVC class", item: 1, value: ""},
+		{name: "omitted PVC class", item: 1, omit: true, wantErr: true},
+		{name: "nonempty PVC class", item: 1, value: "foreign-class", wantErr: true},
+		{name: "null PVC class", item: 1, value: nil, wantErr: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			manifest := canonicalTencentStorageBindingObjects(t, volume)
+			item := manifest["items"].([]any)[testCase.item].(map[string]any)
+			spec := item["spec"].(map[string]any)
+			if testCase.omit {
+				delete(spec, "storageClassName")
+			} else {
+				spec["storageClassName"] = testCase.value
+			}
+			provider := NewTencentProvider()
+			readCalls := 0
+			provider.kubectl = func(_ context.Context, args []string, _ []byte) ([]byte, error) {
+				if len(args) == 0 || args[0] != "get" {
+					t.Fatalf("unexpected mutation or call: %v", args)
+				}
+				readCalls++
+				return mustJSON(manifest), nil
+			}
+			items, err := provider.readStorageDeleteBindings(context.Background(), volume)
+			if readCalls != 1 {
+				t.Fatalf("read calls = %d, want 1", readCalls)
+			}
+			if testCase.wantErr {
+				if !errors.Is(err, ErrLaunchStageBindingConflict) {
+					t.Fatalf("storage class drift accepted: items=%#v err=%v", items, err)
+				}
+			} else if err != nil || len(items) != 2 {
+				t.Fatalf("canonical binding rejected: items=%#v err=%v", items, err)
+			}
+		})
+	}
+}
+
 func TestTencentProviderStorageReadbackRejectsRegionDriftWithoutRewritingIdentity(t *testing.T) {
 	provider := NewTencentProvider()
 	input := canonicalTencentStorageDestroyFixture()
