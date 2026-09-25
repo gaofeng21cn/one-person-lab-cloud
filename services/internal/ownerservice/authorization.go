@@ -70,12 +70,32 @@ func (a *Authorizer) Authorize(ctx context.Context, call *api.CallContext, actio
 	}
 	decision, err := a.client.AuthorizeAction(ctx, request)
 	if err != nil {
-		return status.Error(codes.Unavailable, "CloudIdentity authorization is unavailable")
+		return authorizationError(err)
 	}
 	if err := owneridentity.ValidateDecision(request, decision, time.Now()); err != nil {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}
 	return nil
+}
+
+// authorizationError preserves the distinction between a policy refusal and an
+// unavailable authority. CloudIdentity denies with PermissionDenied,
+// Unauthenticated or FailedPrecondition; those are decisions and must reach the
+// caller as themselves, or an owner cannot tell a legitimate refusal from an
+// outage. A transport or availability failure is reported as unavailable, and an
+// unrecognised status is never turned into an allow: an owner boundary that cannot
+// explain a failure refuses the call.
+func authorizationError(err error) error {
+	switch status.Code(err) {
+	case codes.PermissionDenied, codes.Unauthenticated, codes.FailedPrecondition:
+		return err
+	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists, codes.Aborted, codes.OutOfRange, codes.ResourceExhausted:
+		// A malformed or refused authorization request is a caller error, not an
+		// authority outage; passing it through keeps the cause visible.
+		return err
+	default:
+		return status.Error(codes.Unavailable, "CloudIdentity authorization is unavailable")
+	}
 }
 
 // ValidateCallContext rejects missing caller context before a resource is read.
