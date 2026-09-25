@@ -123,8 +123,18 @@ func (s *Service) hydrateMissingResourceState(ctx context.Context) error {
 		s.attachments = map[string]StorageAttachment{}
 	}
 	for id, compute := range computes {
-		if s.computes[id].ID == "" {
+		current := s.computes[id]
+		if current.ID == "" {
 			s.computes[id] = cloneComputeAllocation(compute)
+		} else if current.Provider == "tencent-tke" && len(current.CostTags) == 0 && len(compute.CostTags) != 0 {
+			// A child creation record can already populate this map before its
+			// successful Launch is replayed. Merge only the exact original tags;
+			// leave current status, observations and all other identity facts intact.
+			withTags := cloneComputeAllocation(current)
+			withTags.CostTags = compute.CostTags
+			if sameComputeDestroyStableIdentity(withTags, compute) {
+				s.computes[id] = withTags
+			}
 		}
 	}
 	for id, volume := range volumes {
@@ -296,7 +306,16 @@ func canonicalWorkspaceLaunchDeleteStage(operation FabricOperation, stage string
 	switch stage {
 	case "ensure_compute_allocation":
 		candidate.compute = firstNonNilWorkspaceLaunchDeleteCompute(state.Compute)
-		return candidate, workspaceID, resourceID, true, validWorkspaceLaunchDeleteCompute(candidate, state)
+		valid := validWorkspaceLaunchDeleteCompute(candidate, state)
+		if valid && candidate.compute.Provider == "tencent-tke" && len(candidate.compute.CostTags) == 0 {
+			var ownership struct {
+				Ownership *MachineOwnership `json:"ownership,omitempty"`
+			}
+			if json.Unmarshal(record.ProviderState, &ownership) == nil {
+				candidate.compute, _ = workspaceLaunchComputeCostTags(candidate.compute, ownership.Ownership)
+			}
+		}
+		return candidate, workspaceID, resourceID, true, valid
 	case "storage":
 		candidate.volume = firstNonNilWorkspaceLaunchDeleteStorage(state.Storage)
 		return candidate, workspaceID, resourceID, true, validWorkspaceLaunchDeleteStorage(candidate, state)
