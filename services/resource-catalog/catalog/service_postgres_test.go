@@ -190,6 +190,31 @@ func TestPricePolicyRequiresExactApprovedPair(t *testing.T) {
 	}
 }
 
+// TestPricePolicyRefusesRetiredPlan proves the owner will not price a plan pair
+// once either side is retired: an approved-plan requirement is re-read at the
+// moment of pricing, so a retirement cannot be outrun by a concurrent price
+// version. This is the owner-boundary coverage for the pricing rule.
+func TestPricePolicyRefusesRetiredPlan(t *testing.T) {
+	service, call := system(t)
+	ctx := peerContext(t)
+	now := time.Now().Add(-time.Hour)
+	compute, err := service.CreateComputePlan(ctx, &api.CreateComputePlanRpcRequest{Context: call, Body: &api.CreateComputePlanRequest{Name: "basic", Vcpus: 2, MemoryMiB: 4096, ProviderProfileId: "p", ProviderSkuId: "s", ProviderCapabilityVersion: "provider/v1", ValidFrom: timestamppb.New(now)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage, err := service.CreateStoragePlan(ctx, &api.CreateStoragePlanRpcRequest{Context: platformCall("admin", "req-s", "idem-s"), Body: &api.CreateStoragePlanRequest{Name: "standard", CapacityGiB: 10, ProviderProfileId: "p", ProviderSkuId: "s", ShrinkSupported: true, ValidFrom: timestamppb.New(now)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetStoragePlanAvailability(ctx, &api.SetStoragePlanAvailabilityRpcRequest{Context: platformCall("admin", "req-retire", "idem-retire"), PlanId: storage.Id, Body: &api.PlanAvailabilityRequest{Availability: api.PlanAvailabilityRequestAvailabilityEnum_PLAN_AVAILABILITY_REQUEST_AVAILABILITY_ENUM_RETIRED, Reason: "end of life"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.CreatePricePolicyVersion(ctx, &api.CreatePricePolicyVersionRpcRequest{Context: platformCall("admin", "req-price-retired", "idem-price-retired"), Body: &api.CreatePricePolicyRequest{VersionLabel: "2026-10", PeriodMonths: 1, ValidFrom: timestamppb.New(now), ComputePlanId: compute.Id, StoragePlanId: storage.Id, RenewalPolicy: renewalPolicy(), PlanChangePolicyVersion: api.CreatePricePolicyRequestPlanChangePolicyVersionEnum_CREATE_PRICE_POLICY_REQUEST_PLAN_CHANGE_POLICY_VERSION_ENUM_WORKSPACE_PLAN_CHANGE_V1}})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("pricing a retired plan pair code = %v, want FailedPrecondition", status.Code(err))
+	}
+}
+
 // TestRetentionAndRefundPolicyLifecycle proves the frozen retention/refund facts
 // are recorded and bound, and that a refund policy referencing an unknown
 // retention version is refused.

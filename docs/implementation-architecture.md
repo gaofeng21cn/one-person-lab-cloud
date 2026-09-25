@@ -15,8 +15,11 @@ processes. Its canonical directory/deployment-unit map is
 Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
 independent owner processes and the Console BFF is implemented. Resource Catalog
 owns approved compute/storage plans, versioned price/refund/retention policies
-and the frozen D17 arithmetic in `services/resource-catalog`; its quotes and the
-Ledger consumer of its policy event are still open. Gateway Integration now implements
+and the frozen D17 arithmetic in `services/resource-catalog`, reached through the
+Console BFF's authenticated catalog surface
+(`apps/console-bff/internal/httpapi/catalog.go`) under the generated CloudIdentity
+policy; its quotes, the Ledger consumer of its policy event and the shared public
+JSON money vocabulary for a money-bearing policy version are still open. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
 `services/gateway-integration`, using only the Tenant database. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical

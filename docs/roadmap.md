@@ -56,11 +56,19 @@ chain is finished. Open work in dependency order:
    implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
-   access readback. The Resource Catalog owner now serves approved plans and
-   versioned price/refund/retention policies with the frozen D17 arithmetic
-   ([source evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json));
-   its quotes (`CreateQuote`/`GetQuote`/`AcceptQuote`) and the Ledger consumer of
-   `catalog.policy_changed.v1` remain open, so no request is priced yet.
+   access readback. The Resource Catalog owner serves approved plans and versioned
+   price/refund/retention policies with the frozen D17 arithmetic, and now has a
+   real authenticated caller: the Console BFF catalog surface plus the generated
+   CloudIdentity policy admit a platform administrator and a member and refuse a
+   tenant administrator
+   ([authenticated-caller evidence](./evidence/source-checks/2026-09-25-resource-catalog-authenticated-caller-local.json);
+   earlier owner-only evidence in
+   [policy-catalog evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json)).
+   Open in this line: quotes (`CreateQuote`/`GetQuote`/`AcceptQuote`) so any request
+   can be priced, the Ledger consumer of `catalog.policy_changed.v1`, and the shared
+   public JSON money vocabulary that currently blocks a money-bearing policy
+   version over the BFF wire. Catalog availability therefore does not mean quoting
+   or Local deployment is complete.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.

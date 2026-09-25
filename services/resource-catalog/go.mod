@@ -6,7 +6,9 @@ require (
 	github.com/lib/pq v1.12.3
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
+	opl-cloud/apps/console-bff v0.0.0-00010101000000-000000000000
 	opl-cloud/packages/contracts/go v0.0.0
+	opl-cloud/services/gateway-integration v0.0.0
 	opl-cloud/services/internal/ownerservice v0.0.0
 	opl-cloud/services/internal/ownerstore v0.0.0-00010101000000-000000000000
 )
@@ -28,3 +30,7 @@ replace opl-cloud/services/internal/ownerservice => ../internal/ownerservice
 replace opl-cloud/services/internal/ownerstore => ../internal/ownerstore
 
 replace opl-cloud/services/internal/postgresmigrate => ../internal/postgresmigrate
+
+replace opl-cloud/apps/console-bff => ../../apps/console-bff
+
+replace opl-cloud/services/gateway-integration => ../gateway-integration
