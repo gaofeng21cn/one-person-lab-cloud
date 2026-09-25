@@ -338,3 +338,92 @@ var required = map[protoreflect.Name]map[string]bool{
 	"PlanChangeEvidence":                        {"schemaVersion": true, "planChangeId": true, "workspaceId": true, "kind": true, "policyVersion": true, "quoteId": true, "sourceSubscriptionId": true, "sourceSubscriptionVersion": true, "sourcePeriodId": true, "sourceComputePlanId": true, "sourceStoragePlanId": true, "targetComputePlanId": true, "targetStoragePlanId": true, "sourcePricePolicyVersionId": true, "targetPricePolicyVersionId": true, "quoteAt": true, "periodStart": true, "periodEnd": true, "chargeUSDMicros": true, "outcome": true, "retainedIrreversibleResources": true, "deliveryOutcome": true, "resourceOutcome": true, "runtimeReadbackRequirement": true, "quoteAtMilliseconds": true, "periodStartMilliseconds": true, "periodEndMilliseconds": true, "sourceFinancialSnapshotDigest": true},
 	"SupplementalRefundEvidence":                {"schemaVersion": true, "purpose": true, "workspaceId": true, "planChangeId": true, "originalChargeOperationId": true, "originalChargeReceiptId": true, "originalConfirmedUSDMicros": true, "requestedRefundUSDMicros": true, "policyVersion": true, "coverageStart": true, "coverageEnd": true, "coverageStartMilliseconds": true, "coverageEndMilliseconds": true},
 }
+
+// publicToField resolves a public property name to its wire field name where
+// protobuf's own JSON name differs from the spelling the contract publishes.
+// The public contract spelling is authoritative at this boundary.
+var publicToField = map[protoreflect.Name]map[string]string{
+	"ComputePlan":                   {"monthlyPriceUSDMicros": "monthly_price_usd_micros"},
+	"CreatePricePolicyRequest":      {"computeMonthlyUSDMicros": "compute_monthly_usd_micros", "productMonthlyUSDMicros": "product_monthly_usd_micros", "storageMonthlyUSDMicros": "storage_monthly_usd_micros"},
+	"CreditSource":                  {"amountUSDMicros": "amount_usd_micros"},
+	"Model":                         {"inputPricePerMillionTokensUSDMicros": "input_price_per_million_tokens_usd_micros", "outputPricePerMillionTokensUSDMicros": "output_price_per_million_tokens_usd_micros"},
+	"NextPeriodPlanQuote":           {"totalUSDMicros": "total_usd_micros"},
+	"PlanChange":                    {"chargeUSDMicros": "charge_usd_micros", "nextPeriodChargeUSDMicros": "next_period_charge_usd_micros", "sourceMonthlyUSDMicros": "source_monthly_usd_micros", "targetMonthlyUSDMicros": "target_monthly_usd_micros"},
+	"PlanChangeCalculation":         {"chargeUSDMicros": "charge_usd_micros", "sourceMonthlyUSDMicros": "source_monthly_usd_micros", "targetMonthlyUSDMicros": "target_monthly_usd_micros"},
+	"PlanChangeEvidence":            {"chargeUSDMicros": "charge_usd_micros"},
+	"PricePolicyVersion":            {"computeMonthlyUSDMicros": "compute_monthly_usd_micros", "productMonthlyUSDMicros": "product_monthly_usd_micros", "storageMonthlyUSDMicros": "storage_monthly_usd_micros"},
+	"Quote":                         {"totalUSDMicros": "total_usd_micros"},
+	"QuoteLine":                     {"amountUSDMicros": "amount_usd_micros"},
+	"RollbackWorkspaceRequest":      {"expectedCurrentDeploymentId": "expected_current_agent_deployment_id"},
+	"StoragePlan":                   {"monthlyPriceUSDMicros": "monthly_price_usd_micros"},
+	"Subscription":                  {"currentMonthlyUSDMicros": "current_monthly_usd_micros"},
+	"SupplementalRefundEvidence":    {"originalConfirmedUSDMicros": "original_confirmed_usd_micros", "requestedRefundUSDMicros": "requested_refund_usd_micros"},
+	"UpdateWorkspaceVersionRequest": {"expectedCurrentDeploymentId": "expected_current_agent_deployment_id"},
+	"UpgradeProration":              {"priceDeltaUSDMicros": "price_delta_usd_micros"},
+	"Usage":                         {"costUSDMicros": "cost_usd_micros"},
+	"Wallet":                        {"balanceUSDMicros": "balance_usd_micros"},
+	"WalletOperation":               {"amountUSDMicros": "amount_usd_micros"},
+}
+
+// fieldToPublic is the same mapping read the other way, so an encoded response
+// carries the contract property name rather than the protobuf JSON name.
+var fieldToPublic = map[protoreflect.Name]map[string]string{
+	"ComputePlan":                   {"monthly_price_usd_micros": "monthlyPriceUSDMicros"},
+	"CreatePricePolicyRequest":      {"compute_monthly_usd_micros": "computeMonthlyUSDMicros", "product_monthly_usd_micros": "productMonthlyUSDMicros", "storage_monthly_usd_micros": "storageMonthlyUSDMicros"},
+	"CreditSource":                  {"amount_usd_micros": "amountUSDMicros"},
+	"Model":                         {"input_price_per_million_tokens_usd_micros": "inputPricePerMillionTokensUSDMicros", "output_price_per_million_tokens_usd_micros": "outputPricePerMillionTokensUSDMicros"},
+	"NextPeriodPlanQuote":           {"total_usd_micros": "totalUSDMicros"},
+	"PlanChange":                    {"charge_usd_micros": "chargeUSDMicros", "next_period_charge_usd_micros": "nextPeriodChargeUSDMicros", "source_monthly_usd_micros": "sourceMonthlyUSDMicros", "target_monthly_usd_micros": "targetMonthlyUSDMicros"},
+	"PlanChangeCalculation":         {"charge_usd_micros": "chargeUSDMicros", "source_monthly_usd_micros": "sourceMonthlyUSDMicros", "target_monthly_usd_micros": "targetMonthlyUSDMicros"},
+	"PlanChangeEvidence":            {"charge_usd_micros": "chargeUSDMicros"},
+	"PricePolicyVersion":            {"compute_monthly_usd_micros": "computeMonthlyUSDMicros", "product_monthly_usd_micros": "productMonthlyUSDMicros", "storage_monthly_usd_micros": "storageMonthlyUSDMicros"},
+	"Quote":                         {"total_usd_micros": "totalUSDMicros"},
+	"QuoteLine":                     {"amount_usd_micros": "amountUSDMicros"},
+	"RollbackWorkspaceRequest":      {"expected_current_agent_deployment_id": "expectedCurrentDeploymentId"},
+	"StoragePlan":                   {"monthly_price_usd_micros": "monthlyPriceUSDMicros"},
+	"Subscription":                  {"current_monthly_usd_micros": "currentMonthlyUSDMicros"},
+	"SupplementalRefundEvidence":    {"original_confirmed_usd_micros": "originalConfirmedUSDMicros", "requested_refund_usd_micros": "requestedRefundUSDMicros"},
+	"UpdateWorkspaceVersionRequest": {"expected_current_agent_deployment_id": "expectedCurrentDeploymentId"},
+	"UpgradeProration":              {"price_delta_usd_micros": "priceDeltaUSDMicros"},
+	"Usage":                         {"cost_usd_micros": "costUSDMicros"},
+	"Wallet":                        {"balance_usd_micros": "balanceUSDMicros"},
+	"WalletOperation":               {"amount_usd_micros": "amountUSDMicros"},
+}
+
+// stringScalars marks 64-bit integer fields the contract types as a JSON decimal
+// string. Any other 64-bit integer field keeps the numeric JSON form.
+var stringScalars = map[protoreflect.Name]map[string]bool{
+	"AdoptWorkspaceRequest":        {"expected_workspace_version": true},
+	"AssetCustody":                 {"build_count": true, "package_count": true},
+	"BindTenantWalletRequest":      {"expected_binding_version": true},
+	"BuildLog":                     {"sequence": true},
+	"CancelPlanChangeRequest":      {"expected_schedule_version": true},
+	"CapabilityVersion":            {"reference_count": true},
+	"ComputePlan":                  {"monthly_price_usd_micros": true},
+	"CreatePricePolicyRequest":     {"compute_monthly_usd_micros": true, "product_monthly_usd_micros": true, "storage_monthly_usd_micros": true},
+	"CreateUploadPartRequest":      {"size_bytes": true},
+	"CreateUploadRequest":          {"size_bytes": true},
+	"CreditSource":                 {"amount_usd_micros": true},
+	"Model":                        {"input_price_per_million_tokens_usd_micros": true, "output_price_per_million_tokens_usd_micros": true},
+	"ModelConfiguration":           {"applied_version": true, "version": true},
+	"NextPeriodPlanQuote":          {"total_usd_micros": true},
+	"PackageVersion":               {"size_bytes": true},
+	"PlanChange":                   {"charge_usd_micros": true, "next_period_charge_usd_micros": true, "period_end_milliseconds": true, "period_start_milliseconds": true, "quote_at_milliseconds": true, "schedule_version": true, "source_monthly_usd_micros": true, "source_subscription_version": true, "target_monthly_usd_micros": true},
+	"PlanChangeCalculation":        {"charge_usd_micros": true, "period_end_milliseconds": true, "period_start_milliseconds": true, "quote_at_milliseconds": true, "source_monthly_usd_micros": true, "source_subscription_version": true, "target_monthly_usd_micros": true},
+	"PlanChangeEvidence":           {"charge_usd_micros": true, "execution_epoch": true, "period_end_milliseconds": true, "period_start_milliseconds": true, "quote_at_milliseconds": true, "source_subscription_version": true},
+	"PricePolicyVersion":           {"compute_monthly_usd_micros": true, "product_monthly_usd_micros": true, "storage_monthly_usd_micros": true},
+	"Quote":                        {"source_subscription_version": true, "total_usd_micros": true},
+	"QuoteLine":                    {"amount_usd_micros": true},
+	"StoragePlan":                  {"monthly_price_usd_micros": true},
+	"Subscription":                 {"current_monthly_usd_micros": true, "renewal_settings_version": true, "version": true},
+	"SupplementalRefundEvidence":   {"coverage_end_milliseconds": true, "coverage_start_milliseconds": true, "delete_confirmed_at_milliseconds": true, "original_confirmed_usd_micros": true, "requested_refund_usd_micros": true},
+	"UpdateRenewalSettingsRequest": {"expected_renewal_settings_version": true},
+	"UpdateWorkspaceModelsRequest": {"expected_version": true},
+	"UpgradeProration":             {"period_milliseconds": true, "price_delta_usd_micros": true, "remaining_milliseconds": true},
+	"UploadPart":                   {"size_bytes": true},
+	"UploadSession":                {"part_size_bytes": true, "size_bytes": true},
+	"Usage":                        {"cost_usd_micros": true, "input_tokens": true, "output_tokens": true},
+	"Wallet":                       {"balance_usd_micros": true},
+	"WalletOperation":              {"amount_usd_micros": true, "coverage_end_milliseconds": true, "coverage_start_milliseconds": true},
+	"Workspace":                    {"model_configuration_version": true, "version": true},
+}
