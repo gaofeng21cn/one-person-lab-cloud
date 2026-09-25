@@ -37,20 +37,25 @@ jobs:
       - name: Test Node
         run: |
           set -o pipefail
-          # shellcheck disable=SC2016
-          node --test --test-reporter=tap "tests/**/*.test.ts" | node -e '
-            let output = "";
-            process.stdin.setEncoding("utf8");
-            process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });
-            process.stdin.on("end", () => {
-              const failed = [...output.matchAll(/^# fail (\d+)$/gm)];
-              const skipped = [...output.matchAll(/^# skipped (\d+)$/gm)];
-              if (failed.length !== 1 || skipped.length !== 1 || Number(failed[0][1]) !== 0 || Number(skipped[0][1]) !== 0) {
-                console.error(`Node FAIL ${failed[0]?.[1] ?? "missing"} SKIP ${skipped[0]?.[1] ?? "missing"}; Node SKIP result missing or nonzero`);
-                process.exit(1);
-              }
-            });
-          '
+          run_node_suite() {
+            shift
+            # shellcheck disable=SC2016
+            "$@" | node -e '
+              let output = "";
+              process.stdin.setEncoding("utf8");
+              process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });
+              process.stdin.on("end", () => {
+                const failed = [...output.matchAll(/^(?:#|ℹ) fail (\d+)$/gm)];
+                const skipped = [...output.matchAll(/^(?:#|ℹ) skipped (\d+)$/gm)];
+                if (failed.length !== 1 || skipped.length !== 1 || Number(failed[0][1]) !== 0 || Number(skipped[0][1]) !== 0) {
+                  console.error(`Node ${process.env.NODE_SUITE_NAME} FAIL ${failed[0]?.[1] ?? "missing"} SKIP ${skipped[0]?.[1] ?? "missing"}; Node SKIP result missing or nonzero`);
+                  process.exit(1);
+                }
+              });
+            '
+          }
+          NODE_SUITE_NAME=source run_node_suite source npm run test:source
+          NODE_SUITE_NAME=browser run_node_suite browser npm run test:browser:suite
 
       - name: Build
         run: npm run build
@@ -71,7 +76,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.22.x"
+          go-version-file: packages/contracts/go/go.mod
           cache: false
 
       - name: Test Go contracts
@@ -194,8 +199,13 @@ jobs:
       PGSSLMODE: disable
       OPL_POSTGRES_TESTS: "1"
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
-      OPL_QUALIFICATION_ROOT: ${{ runner.temp }}/opl-local-first-deploy-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Initialize Local qualification directory
+        run: |
+          set -euo pipefail
+          qualification_root="$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'OPL_QUALIFICATION_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
+
       - *checkout
 
       - *setup_node
@@ -205,6 +215,29 @@ jobs:
         with:
           go-version: "1.26.x"
           cache-dependency-path: services/fabric/go.sum
+
+      - name: Load runner project quota support
+        run: |
+          set -euo pipefail
+          kernel_release="$(uname -r)"
+          uname -a
+          kernel_config="/boot/config-$kernel_release"
+          if test -r "$kernel_config"; then
+            grep -E '^(CONFIG_QUOTA|CONFIG_QUOTACTL|CONFIG_QFMT|CONFIG_EXT4_FS)' "$kernel_config" || true
+          fi
+          modinfo -k "$kernel_release" quota_v2 || true
+          if ! sudo modprobe -v quota_v2; then
+            # A present module that cannot load is a different host error. Only
+            # missing modules justify installing the matching Ubuntu package.
+            if modinfo -k "$kernel_release" quota_v2; then
+              exit 1
+            fi
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y "linux-modules-extra-$kernel_release"
+            sudo depmod -a "$kernel_release"
+            modinfo -k "$kernel_release" quota_v2
+            sudo modprobe -v quota_v2
+          fi
 
       - name: Prepare project quota filesystem
         run: |
@@ -241,6 +274,7 @@ jobs:
       - name: Test Fabric
         working-directory: services/fabric
         env:
+          OPL_OWNER_MIGRATION_TEST_ADMIN_DSN: postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
           GO_TEST_ARGS: "-count=1"
         run: *go_test
 

@@ -52,7 +52,10 @@ test("Qualification executes the independent Go contracts module", async () => {
   const qualification = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
   const contractJob = qualification.jobs.go_contracts;
   assert.equal(contractJob.name, "go-contracts");
-  assert.equal(contractJob.steps.find((step) => step.name === "Set up Go").with.cache, false);
+  const setup = contractJob.steps.find((step) => step.name === "Set up Go").with;
+  assert.equal(setup.cache, false);
+  assert.equal(setup["go-version"], undefined);
+  assert.equal(setup["go-version-file"], "packages/contracts/go/go.mod");
   assert.ok(contractJob.steps.some((step) => step["working-directory"] === "packages/contracts/go"
     && step.run === "go test -count=1 ./..."));
   assert.ok(qualification.jobs.validate.needs.includes("go_contracts"));
@@ -66,23 +69,41 @@ test("Qualification executes the independent Go contracts module", async () => {
 
 test("Local qualification uses one bounded runner filesystem and explicit privileged inputs", async (t) => {
   const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
+  const nodeStep = workflow.jobs.node_console.steps.find((item) => item.name === "Test Node");
+  const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
+  const browserConcurrency = packageScripts["test:browser:suite"].match(/--test-concurrency=\d+/)?.[0];
+  assert.ok(browserConcurrency);
+  assert.ok(nodeStep.run.includes("npm run test:source"));
+  assert.ok(nodeStep.run.includes("npm run test:browser:suite"));
+  assert.ok(nodeStep.run.includes("Node SKIP result missing or nonzero"));
+  assert.ok(nodeStep.run.includes("(?:#|ℹ) fail"));
+  assert.ok(nodeStep.run.includes("(?:#|ℹ) skipped"));
   const job = workflow.jobs.fabric;
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
   assert.deepEqual(workflow.permissions, { contents: "read" });
   const step = (name: string) => job.steps.find((item) => item.name === name);
+  const initialize = step("Initialize Local qualification directory");
+  const quotaSupport = step("Load runner project quota support");
   const prepare = step("Prepare project quota filesystem");
   const compile = step("Compile Local qualification executables without privilege");
+  const fabric = step("Test Fabric");
+  assert.equal(fabric.env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN, "postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable");
   const quota = step("Test Linux project quota as privileged capability");
   const deploy = step("Test first Local application deployment with real owners");
   const cleanup = step("Remove project quota filesystem");
   assert.equal(cleanup.if, "${{ always() }}");
+  // Runner paths are unavailable in job-level env expressions. Execute their
+  // initialization on the runner and persist them for later steps instead.
+  assert.equal(job.env.OPL_QUALIFICATION_ROOT, undefined);
+  assert.ok(job.steps.indexOf(initialize) < job.steps.indexOf(quotaSupport));
+  assert.ok(job.steps.indexOf(quotaSupport) < job.steps.indexOf(prepare));
   assert.ok(job.steps.indexOf(compile) < job.steps.indexOf(quota));
   assert.ok(job.steps.indexOf(quota) < job.steps.indexOf(deploy));
   assert.ok(job.steps.indexOf(deploy) < job.steps.indexOf(cleanup));
   assert.doesNotMatch(compile.run, /\bsudo\b/);
   const run = promisify(execFileCallback);
-  for (const item of [prepare, compile, quota, deploy, cleanup]) await run("bash", ["-n", "-c", item.run]);
+  for (const item of [initialize, quotaSupport, prepare, compile, quota, deploy, cleanup]) await run("bash", ["-n", "-c", item.run]);
 
   const temporary = await mkdtemp(join(tmpdir(), "opl-qualification-shell-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
@@ -93,20 +114,39 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   const mock = `#!${process.execPath}\nconst fs = require('node:fs'); const path = require('node:path');
 const command = path.basename(process.argv[1]), args = process.argv.slice(2);
 fs.appendFileSync(process.env.QUALIFICATION_COMMAND_LOG, JSON.stringify({command,args})+'\\n');
+if (command === 'uname') process.stdout.write('qualification-test-kernel\\n');
+if (command === 'modinfo' && !fs.existsSync(process.env.QUALIFICATION_MODULE_MARKER)) process.exit(1);
+if (command === 'sudo' && args[0] === 'modprobe' && (!fs.existsSync(process.env.QUALIFICATION_MODULE_MARKER) || process.env.QUALIFICATION_MODULE_LOAD_FAIL === '1')) process.exit(1);
+if (command === 'sudo' && args[0] === 'apt-get' && args[1] === 'install') fs.writeFileSync(process.env.QUALIFICATION_MODULE_MARKER, 'present');
 if (command === 'df') process.stdout.write('Avail\\n'+process.env.QUALIFICATION_AVAILABLE_BYTES+'\\n');
 if (command === 'mountpoint') process.exit(process.env.QUALIFICATION_MOUNTED === '1' ? 0 : 1);
 if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMOUNT_FAIL === '1') process.exit(1);
 `;
-  for (const command of ["df", "truncate", "mkfs.ext4", "sudo", "mountpoint"]) {
+  for (const command of ["df", "truncate", "mkfs.ext4", "sudo", "mountpoint", "uname", "modinfo"]) {
     const path = join(bin, command);
     await writeFile(path, mock); await chmod(path, 0o755);
   }
   const root = join(temporary, "opl-local-first-deploy-test-1");
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
-    GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1" };
+    GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1", QUALIFICATION_MODULE_MARKER: join(temporary, "quota-module-present") };
+  const githubEnv = join(temporary, "github-env");
+  const initialEnv = { ...env, GITHUB_ENV: githubEnv };
+  delete initialEnv.OPL_QUALIFICATION_ROOT;
+  await run("bash", ["-c", initialize.run], { env: initialEnv });
+  assert.equal(await readFile(githubEnv, "utf8"), `OPL_QUALIFICATION_ROOT=${root}\n`);
   const commands = async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-  await run("bash", ["-c", prepare.run], { env });
+  await run("bash", ["-c", quotaSupport.run], { env });
   let calls = await commands();
+  assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === "apt-get install --no-install-recommends -y linux-modules-extra-qualification-test-kernel"));
+  await writeFile(log, "");
+  await run("bash", ["-c", quotaSupport.run], { env });
+  assert.ok(!(await commands()).some((call) => call.command === "sudo" && call.args[0] === "apt-get"));
+  await writeFile(log, "");
+  await assert.rejects(run("bash", ["-c", quotaSupport.run], { env: { ...env, QUALIFICATION_MODULE_LOAD_FAIL: "1" } }));
+  assert.ok(!(await commands()).some((call) => call.command === "sudo" && call.args[0] === "apt-get"));
+  await writeFile(log, "");
+  await run("bash", ["-c", prepare.run], { env });
+  calls = await commands();
   assert.ok(calls.some((call) => call.command === "truncate" && call.args.join(" ") === `-s 12G ${root}/quota.img`));
   const format = calls.find((call) => call.command === "mkfs.ext4");
   assert.ok(format.args.includes("project,quota") && format.args.includes("quotatype=prjquota"));
