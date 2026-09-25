@@ -49,6 +49,7 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 // Handler returns the BFF's same-origin REST handler.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.registerAuthRoutes(mux)
 	s.registerPublisherRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})

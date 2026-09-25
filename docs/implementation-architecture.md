@@ -12,9 +12,13 @@ migration. The adopted target keeps all Cloud product code in one GitHub
 repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
-New target service modules and the Console BFF are planned; this documentation
-change does not claim W01 or W02 complete. CloudIdentity and Gateway Integration
-share one target service module/deployment unit but retain separate data owners.
+Capability, Build, Runtime Control, Workspace and Serve have independent owner
+processes and the Console BFF is implemented. Gateway Integration now implements
+the CloudIdentity publisher session and accepted-Build authorization slice in
+`services/gateway-integration`, using only the Tenant database. Gateway/wallet
+operations are not migrated by this slice; their eventual owner retains a separate
+database and pool inside the same deployment unit. This is not completion of all
+W03 invitation/Tenant lifecycle work.
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;

@@ -1,11 +1,11 @@
 // Invoked by the livebuild Go harness with real disposable owner endpoints.
-// Only the existing shell login and CloudIdentity decisions are fixtures.
+// V2 login and publisher authority are real; unrelated retained-shell reads use a demo projection.
 import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { chromium } from "playwright";
-import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/start-console-demo.ts";
+import { startConsoleDemoServer } from "../../tools/start-console-demo.ts";
 
 const bff = process.env.OPL_PUBLISHER_BFF_URL!;
 const zip = process.env.OPL_PUBLISHER_TEST_ZIP!;
@@ -37,13 +37,12 @@ const origin = `http://127.0.0.1:${address.port}`;
 const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
-  await context.addCookies([{ name: "opl_session", value: "isolated-publisher", url: origin }]);
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`${origin}/login`, { waitUntil: "networkidle" });
-  await page.getByLabel("邮箱").fill(CONSOLE_DEMO_CREDENTIALS.customer.email);
-  await page.getByLabel("密码").fill(CONSOLE_DEMO_CREDENTIALS.customer.password);
+  await page.getByLabel("邮箱").fill("publisher@example.test");
+  await page.getByLabel("密码").fill("isolated-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.waitForURL(/\/console\/overview$/);
   await page.goto(`${origin}/console/workspaces`, { waitUntil: "networkidle" });

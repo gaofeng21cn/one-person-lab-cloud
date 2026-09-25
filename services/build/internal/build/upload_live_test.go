@@ -30,10 +30,11 @@ import (
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
 
-// Only CloudIdentity and the external publisher are fixtures. Capability's
-// upload commands, signed data plane, persistence and ZIP verification are real.
-func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, *catalog.Service, string) {
+// CloudIdentity and Capability run their real handlers and restricted stores.
+// Only external Sub2API identity and existing test membership are fixtures.
+func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byte) (*api.SourceObjectReference, string, string, string, string, *catalog.Service, string, *liveIdentity) {
 	t.Helper()
+	identity := newLiveIdentity(t, ctx, dsn)
 	h, err := ownerstoretest.Setup(ctx, ownerstoretest.Config{AdminDSN: dsn, Owner: "capability", Database: "opl_capability", SchemaOwnerRole: "opl_capability_owner", WriterRole: "opl_capability_writer", RuntimeRole: "opl_capability_runtime"})
 	if err != nil {
 		t.Fatal(err)
@@ -61,12 +62,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := catalog.New(db, func(_ context.Context, c *api.CallContext, _ api.AuthorizationActionEnum, _ *api.AuthorizationResource, scope ownerservice.ResourceScope) error {
-		if (c.GetSessionId() != "isolated-publisher" && c.GetAcceptedOperationGrantId() != "isolated-grant") || c.GetScope().GetTenant().GetTenantId() != scope.TenantID {
-			return status.Error(codes.PermissionDenied, "fixture identity denied")
-		}
-		return nil
-	}, objects)
+	service, err := catalog.New(db, ownerservice.NewAuthorizer(owneridentity.Capability, identity.auth(t, owneridentity.Capability)).Authorize, objects)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +95,9 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	client := &publisherCapabilityClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(conn), nil)}
-	call := func(key string) *api.CallContext {
-		return &api.CallContext{ActorId: "publisher", SessionId: proto.String("isolated-publisher"), RequestId: key, IdempotencyKey: key, Scope: &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-live"}}}}
-	}
+	client := &publisherCapabilityClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(conn), nil, identity), identity: identity}
+	call := func(key string) *api.CallContext { return identity.call(key, "tenant-live") }
+
 	ns, err := client.CreateNamespace(ctx, &api.CreateNamespaceRpcRequest{Context: call("namespace"), Body: &api.NamespaceWriteRequest{Name: "live-package"}})
 	if err != nil {
 		t.Fatal(err)
@@ -202,5 +197,5 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal("confirmed object bytes differ")
 	}
 	t.Logf("Capability wire upload complete: %d replayed parts, idempotent completion, corrupt bytes and cross-tenant reads rejected", len(parts))
-	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id, service, listener.Addr().String()
+	return &api.SourceObjectReference{StorageObjectId: version.Sha256, VersionId: version.Sha256, Sha256: version.Sha256, SizeBytes: version.SizeBytes}, httpURL, token, pkg.Id, version.Id, service, listener.Addr().String(), identity
 }

@@ -74,7 +74,7 @@ func allowedIdentity() *fakeIdentity {
 	return &fakeIdentity{
 		session: &api.Session{ActorId: "actor-1", TenantId: ptr("tenant-1"), CsrfToken: "csrf-1"},
 		decision: &api.AuthorizationDecision{
-			ActorId: "actor-1", SessionId: ptr("session-1"),
+			ActorId: "actor-1", SessionId: ptr(owneridentity.SessionReference("session-1")),
 			Scope:             &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-1"}}},
 			PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Minute)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
 			Result:        api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,

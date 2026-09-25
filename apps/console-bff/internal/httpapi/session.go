@@ -64,7 +64,7 @@ func RequireSession(ctx context.Context, identity IdentityReader, request *http.
 	if strings.TrimSpace(session.GetActorId()) == "" {
 		return Caller{}, fmt.Errorf("CloudIdentity session carries no actor: %w", ErrSessionRequired)
 	}
-	return Caller{Session: session, SessionID: sessionID}, nil
+	return Caller{Session: session, SessionID: owneridentity.SessionReference(sessionID)}, nil
 }
 
 // RequireAuthorizedAction asks CloudIdentity whether this caller may perform the

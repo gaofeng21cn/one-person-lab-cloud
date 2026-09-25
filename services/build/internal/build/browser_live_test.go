@@ -55,6 +55,7 @@ func verifyPublisherBrowser(t *testing.T, ctx context.Context, base string, serv
 	}()
 	compile := exec.CommandContext(ctx, "npm", "run", "build")
 	compile.Dir = "../../../.."
+	compile.Env = append(os.Environ(), "VITE_CONSOLE_IDENTITY=cloud")
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("Console build: %v\n%s", err, out)
 	}

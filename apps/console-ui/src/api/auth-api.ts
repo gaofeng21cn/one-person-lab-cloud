@@ -1,6 +1,6 @@
 import { decodeDto, decodeSource } from "./dtos.ts";
 import type { AuthIdentity, AuthMeData, AuthSession, LoginRequest, SourceEnvelope } from "./dtos.ts";
-import { postJson } from "./console-api.ts";
+import { getJson, postJson } from "./console-api.ts";
 
 function identityFromLogin(value: unknown): AuthIdentity {
   const user = decodeDto<Record<string, unknown>>(value);
@@ -44,7 +44,20 @@ function sessionFromAuthMe(value: unknown, csrfToken: string): AuthSession {
   return { user, isOperator: data.role === "admin", csrfToken };
 }
 
+const cloudIdentity = import.meta.env?.VITE_CONSOLE_IDENTITY === "cloud";
+type CloudSession = { actorId: string; displayName: string; tenantId?: string; role?: string; permissions: string[]; csrfToken: string; expiresAt: string };
+function fromCloudSession(value: CloudSession): AuthSession {
+  if (!value.actorId || !value.csrfToken) throw new Error("session_check_failed");
+  return { user: { id: value.actorId, accountId: value.tenantId || "", email: value.displayName, role: value.role || "", status: "active" }, isOperator: value.permissions.includes("createPublisherNamespace"), csrfToken: value.csrfToken, expiresAt: value.expiresAt };
+}
+
 export async function currentSession(): Promise<AuthSession | null> {
+  if (cloudIdentity) {
+    const response = await fetch("/api/v2/auth/session", { signal: AbortSignal.timeout(10_000) });
+    if (response.status === 401) return null;
+    if (!response.ok) throw new Error("session_check_failed");
+    return fromCloudSession(await response.json() as CloudSession);
+  }
   const response = await fetch("/api/auth/me", { signal: AbortSignal.timeout(3_000) });
   const payload = await response.json().catch(() => null);
   if (response.status === 401) {
@@ -61,12 +74,16 @@ export async function currentSession(): Promise<AuthSession | null> {
   }
 }
 
-export function login(credentials: LoginRequest, signal?: AbortSignal): Promise<AuthSession> {
+export async function login(credentials: LoginRequest, signal?: AbortSignal): Promise<AuthSession> {
+  if (cloudIdentity) {
+    const context = await getJson<{ csrfToken: string }>("/api/v2/auth/context", { signal });
+    return fromCloudSession(await postJson<CloudSession>("/api/v2/auth/login", { username: credentials.email, password: credentials.password }, context.csrfToken, crypto.randomUUID(), 10_000, signal));
+  }
   return postJson<unknown>("/api/auth/login", credentials, "", "", 10_000, signal).then(sessionFromLogin);
 }
 
 export function logout(csrfToken: string): Promise<unknown> {
-  return postJson("/api/auth/logout", {}, csrfToken);
+  return postJson(cloudIdentity ? "/api/v2/auth/logout" : "/api/auth/logout", {}, csrfToken, crypto.randomUUID());
 }
 
 export type LogoutConfirmation =

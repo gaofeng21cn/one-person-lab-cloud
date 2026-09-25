@@ -200,14 +200,32 @@ all required PostgreSQL modules with zero skips, and Docker integration. The
 additional real browser/owner-chain test passed with inspected desktop/mobile
 screenshots. A final [HTTP contract-alignment receipt](./evidence/source-checks/2026-09-25-publisher-public-api-alignment.json) records focused rechecks for the canonical session path, CSRF header, response codes and Error shape. Earlier receipts remain bound to their historical source.
 
-CloudIdentity decisions and the publisher/WebUI prerequisites are still explicit
-fixtures. The canonical `services/gateway-integration` CloudIdentity module is
-planned but not implemented here, so real session/grant issuance remains a Cloud
-implementation obligation, not an external blocker. The BFF and owner handlers
-fail closed when that authority is unavailable. Issue #625 remains open for this
-unqualified identity/admission boundary; no production or Instance qualification
-is claimed. [Reproduction and configuration](./runtime/package-buildkit-local.md)
-describes the local proof and required process settings.
+### Publisher identity and admission
+
+`services/gateway-integration` now owns real Cloud session issuance, live
+Tenant/member authorization, context introspection and accepted-Build grants.
+The BFF forwards non-bearer session references; raw browser credentials no longer
+enter persisted Build call contexts. OwnerCommitReadback binds the original
+context, actor, scope, action/resource and immutable continuation inputs before a
+grant can be issued. Grants are idempotent and do not disappear on logout.
+
+Capability now admits publisher namespaces and complete immutable WebUI contracts
+through platform-authorized APIs, rejects overlapping/foreign repository scopes,
+and enforces revocation on new Builds. The live browser logs in through the real
+issuer and these catalog records are created through BFF/owner commands. The
+external Sub2API authentication server and known test Tenant membership remain
+explicit isolation prerequisites; Cloud session/grant/catalog decisions are no
+longer fixtures. The retained Console selects the successor identity path only
+with an explicit build configuration; no production migration is implied.
+
+The [identity/admission source receipt](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
+records the actual verification and limitations. The preceding receipts are
+historical, exact-source evidence. This implements the #625 publisher identity
+and admission prerequisites; the rest of W03/Tenant invitation/lifecycle and
+Gateway wallet migration remain separate outcomes. No production, Instance or
+real Sub2API-account qualification is claimed.
+[Reproduction and configuration](./runtime/package-buildkit-local.md) gives the
+local command and process settings, including restart reauthentication.
 
 ## Conclusion
 

@@ -29,7 +29,7 @@ require (
 )
 
 require (
-	github.com/lib/pq v1.12.3
+	github.com/lib/pq v1.12.3 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
@@ -38,6 +38,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	opl-cloud/packages/contracts/go v0.0.0
 	opl-cloud/services/capability v0.0.0
+	opl-cloud/services/gateway-integration v0.0.0
 	opl-cloud/services/internal/postgresmigrate v0.0.0 // indirect
 	opl-cloud/services/runtime-control v0.0.0
 )
@@ -57,3 +58,5 @@ replace opl-cloud/services/runtime-control => ../runtime-control
 replace opl-cloud/apps/console-bff => ../../apps/console-bff
 
 replace opl-cloud/services/ledger => ../ledger
+
+replace opl-cloud/services/gateway-integration => ../gateway-integration

@@ -84,6 +84,9 @@ func main() {
 		if err := server.TrackCloser(ledgerConn); err != nil {
 			return err
 		}
+		if err := service.ConfigurePublisherSchema(os.Getenv("OPL_PUBLISHER_SCHEMA_PATH"), os.Getenv("OPL_PUBLISHER_SCHEMA_DIGEST")); err != nil {
+			return err
+		}
 		service.LedgerInbox = api.NewDomainInboxClient(ledgerConn)
 		service.Runtime = api.NewRuntimeControlProductServiceClient(runtimeConn)
 		service.Build = api.NewBuildCoordinationClient(buildConn)

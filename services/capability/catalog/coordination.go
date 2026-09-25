@@ -80,6 +80,15 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 	if contract == nil || contract.GetImage() == nil || contract.GetBuildRecipe() == nil {
 		return nil, status.Error(codes.DataLoss, "Runtime publisher contract is incomplete")
 	}
+	for _, publisherID := range []string{webui.PublisherNamespaceId, contract.PublisherNamespaceId} {
+		var admitted bool
+		if e := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM capability.publisher_namespaces WHERE id=$1 AND status='approved')`, publisherID).Scan(&admitted); e != nil {
+			return nil, dbError(e)
+		}
+		if !admitted {
+			return nil, status.Error(codes.FailedPrecondition, "input publisher is no longer approved")
+		}
+	}
 	runtimeRef := &api.PublisherContractReference{PublisherNamespaceId: runtime.GetPublisherNamespaceId(), VersionId: runtime.GetId(), Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME, DescriptorDigest: runtime.GetPublisherContractDigest(), DescriptorObjectRef: "runtime-contract:" + runtime.GetId() + "@" + runtime.GetPublisherContractDigest()}
 	in := &api.BuildInputSnapshot{PackageId: packageID, PackageVersionId: r.GetPackageVersionId(), PackageObject: &api.SourceObjectReference{StorageObjectId: objectRef, VersionId: objectRef, Sha256: sha, SizeBytes: size}, RuntimeVersionId: runtime.GetId(), RuntimeArtifact: contract.GetImage(), WebuiVersionId: r.GetWebuiVersionId(), WebuiArtifact: webui.GetImage(), RuntimeContract: contract, WebuiContract: &webui, RuntimeContractReference: runtimeRef, WebuiContractReference: &webuiRef}
 	b, _ := protojson.Marshal(in)

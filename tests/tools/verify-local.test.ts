@@ -89,6 +89,7 @@ test("full local gate covers every PostgreSQL owner with the CI-only extensions"
     "services/internal/postgresmigrate",
     "services/internal/ownerservice",
     "services/capability",
+    "services/gateway-integration",
     "services/build",
     "services/runtime-control",
     "services/workspace",

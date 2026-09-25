@@ -29,17 +29,18 @@ The owner-process implementation is present on canonical `main` through PR
 This is a partial foundation, not a claim that the complete product delivery
 chain is finished. Open work in dependency order:
 
-1. Cloud-local publisher delivery now covers the Console/BFF interaction,
-   Capability multipart upload, Runtime API selection, immutable Build admission,
-   three bound claims, BuildKit/Registry, ready CapabilityVersion and Ledger event
-   consumption. Duplicate/lost acknowledgements and an actual worker killed at
-   the post-commit push-acknowledgement boundary are proven in the
-   [current source receipt](./evidence/source-checks/2026-09-25-publisher-ledger-worker-local.json).
-2. Implement the canonical Gateway Integration / CloudIdentity owner and qualify
-   real session/accepted-grant issuance, plus publisher namespace/WebUI admission.
-   These are Cloud obligations; the local identity and approved WebUI fixtures
-   are explicit prerequisites, not evidence that those owners are implemented.
-   No second identity issuer or permissive fallback belongs in BFF or Build.
+1. The complete Cloud-local publisher path now has real CloudIdentity session and
+   accepted-Build-grant issuance, platform-authorized publisher/WebUI admission,
+   Console/BFF upload, exact Runtime selection, three bound claims,
+   BuildKit/Registry, ready CapabilityVersion and Ledger consumption. Current
+   [source evidence](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
+   names the external Sub2API fixture, existing test membership and remaining
+   production qualification boundary; earlier identity/catalog fixture gaps no
+   longer describe current Cloud source.
+2. Continue the remaining canonical Gateway Integration/CloudIdentity work
+   package for Tenant onboarding/invitations/lifecycle and retained identity-data
+   migration. These are distinct from the implemented publisher session/grant
+   slice; do not infer full W03 or Gateway wallet migration from #625 evidence.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
    access readback.

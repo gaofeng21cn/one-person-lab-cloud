@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/lib/pq"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,16 +31,17 @@ type Service struct {
 	api.UnimplementedCapabilityProductServiceServer
 	api.UnimplementedCapabilityCoordinationServer
 	api.UnimplementedDomainInboxServer
-	DB          *sql.DB
-	Store       *ownerstore.Store
-	Authorize   AuthorizeFunc
-	Runtime     api.RuntimeControlProductServiceClient
-	Build       api.BuildCoordinationClient
-	Usage       api.ClaimUsageReadbackClient
-	Commit      api.OwnerCommitReadbackClient
-	BuildInbox  api.DomainInboxClient
-	LedgerInbox api.DomainInboxClient
-	Objects     *Objects
+	DB              *sql.DB
+	Store           *ownerstore.Store
+	Authorize       AuthorizeFunc
+	Runtime         api.RuntimeControlProductServiceClient
+	Build           api.BuildCoordinationClient
+	Usage           api.ClaimUsageReadbackClient
+	Commit          api.OwnerCommitReadbackClient
+	BuildInbox      api.DomainInboxClient
+	LedgerInbox     api.DomainInboxClient
+	PublisherSchema *jsonschema.Schema
+	Objects         *Objects
 }
 
 // Register exposes the complete Capability owner surface behind the shared
@@ -88,6 +90,13 @@ func (s *Service) auth(ctx context.Context, c *api.CallContext, action string, k
 	r := &api.AuthorizationResource{Kind: kind}
 	if id != "" {
 		r.Id = &id
+	}
+	if action == "GetCapabilityVersion" && c.GetAcceptedOperationGrantId() != "" {
+		var buildID string
+		if e := s.DB.QueryRowContext(ctx, `SELECT build_job_id FROM capability.capability_versions WHERE id=$1`, id).Scan(&buildID); e != nil {
+			return dbError(e)
+		}
+		r = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, Id: &buildID}
 	}
 	return s.Authorize(ctx, c, api.AuthorizationActionEnum(v), r, scope)
 }

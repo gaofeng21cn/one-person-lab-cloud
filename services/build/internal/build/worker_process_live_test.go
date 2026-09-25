@@ -23,8 +23,8 @@ import (
 )
 
 type workerProcessConfig struct {
-	DSN, CapabilityAddress string
-	Runner                 *Runner
+	DSN, CapabilityAddress, IdentityAddress string
+	Runner                                  *Runner
 }
 
 // This entrypoint runs the actual worker in a different OS process. Its config
@@ -53,7 +53,7 @@ func TestLiveWorkerProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn := liveConn(t, config.CapabilityAddress, owneridentity.Build.Service())
-	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, fixtureIdentity{}), api.NewCapabilityCoordinationClient(conn), api.NewCapabilityProductServiceClient(conn), nil, fixtureIdentity{}, config.Runner)
+	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, api.NewCloudIdentityAuthorizationClient(identityConn(t, config.IdentityAddress, owneridentity.Build.Service()))), api.NewCapabilityCoordinationClient(conn), api.NewCapabilityProductServiceClient(conn), nil, api.NewCloudIdentityAuthorizationClient(identityConn(t, config.IdentityAddress, owneridentity.Build.Service())), config.Runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestLiveWorkerProcess(t *testing.T) {
 	}
 }
 
-func verifyInterruptedWorker(t *testing.T, ctx context.Context, dsn, capAddr string, client api.BuildProductServiceClient, service *Service, capability *capabilitycatalog.Service, runner *Runner, original *api.CreateBuildRpcRequest) {
+func verifyInterruptedWorker(t *testing.T, ctx context.Context, dsn, capAddr string, client *publisherBuildClient, service *Service, capability *capabilitycatalog.Service, runner *Runner, original *api.CreateBuildRpcRequest) {
 	t.Helper()
 	req := proto.Clone(original).(*api.CreateBuildRpcRequest)
 	req.Context.IdempotencyKey = "interrupt-real-worker"
@@ -90,7 +90,7 @@ func verifyInterruptedWorker(t *testing.T, ctx context.Context, dsn, capAddr str
 	configPath := filepath.Join(root, "worker.json")
 	writeConfig := func(r *Runner) {
 		t.Helper()
-		b, err := json.Marshal(workerProcessConfig{DSN: dsn, CapabilityAddress: capAddr, Runner: r})
+		b, err := json.Marshal(workerProcessConfig{DSN: dsn, CapabilityAddress: capAddr, IdentityAddress: client.identity.address, Runner: r})
 		if err != nil {
 			t.Fatal(err)
 		}

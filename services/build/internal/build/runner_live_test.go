@@ -130,7 +130,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	pkg := packageZIP(t, zipEntry{"manifest.json", `{"name":"live-package"}`, 0644}, zipEntry{"src/payload.txt", "immutable package payload\n", 0644})
 	dsn := startLivePostgres(t, ctx)
-	object, storageURL, storageToken, packageID, packageVersionID, capability, capabilityAddr := uploadLivePackage(t, ctx, dsn, pkg)
+	object, storageURL, storageToken, packageID, packageVersionID, capability, capabilityAddr, identity := uploadLivePackage(t, ctx, dsn, pkg)
 	input.PackageObject = object
 	r.StorageURL = storageURL
 	r.StorageToken = storageToken
@@ -172,7 +172,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input)
+	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
 	jobID := "build_" + strings.Repeat("2", 32)
 	repository := r.Repository("tenant-live", input.PackageId)
 	t.Log("executing production Runner against isolated BuildKit and registry")

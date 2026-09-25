@@ -27,6 +27,7 @@ export const goModules = Object.freeze([
   "services/internal/ownerstore",
   "services/internal/ownerservice",
   "services/capability",
+  "services/gateway-integration",
   "services/build",
   "services/runtime-control",
   "services/workspace",
@@ -78,6 +79,7 @@ export const postgresVerificationSpecs = Object.freeze([
   // its runtime unable to reach another owner's schema.
   { cwd: "services/internal/ownerservice" },
   { cwd: "services/capability" },
+  { cwd: "services/gateway-integration" },
   { cwd: "services/build" },
   { cwd: "services/runtime-control" },
   { cwd: "services/workspace" },

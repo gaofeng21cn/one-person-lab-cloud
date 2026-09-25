@@ -351,7 +351,7 @@ func (s *Service) ReadOwnerCommit(ctx context.Context, req *api.ReadOwnerCommitR
 	return evidence(r), nil
 }
 func evidence(r *record) *api.OwnerCommitEvidence {
-	return &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_BUILD, OperationId: r.Job.OperationId, ResourceId: r.Job.Id, AcceptedInputDigest: r.Input.SnapshotDigest, CommittedVersion: 1, AcceptedAt: r.Job.CreatedAt}
+	return &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_BUILD, OperationId: r.Job.OperationId, ResourceId: r.Job.Id, AcceptedInputDigest: r.Input.SnapshotDigest, CommittedVersion: 1, AcceptedAt: r.Job.CreatedAt, AuthorizationContextId: r.Call.AuthorizationContextId, ActorId: r.Actor, Scope: r.Call.Scope, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, AuthorizationResource: resource(api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, r.Input.PackageVersionId), ContinuationResources: []*api.AuthorizationResource{resource(api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, r.Input.PackageVersionId), resource(api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, r.Input.RuntimeVersionId), resource(api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, r.Input.WebuiVersionId)}}
 }
 func (s *Service) ReadClaimUsage(ctx context.Context, req *api.ReadClaimUsageRequest) (*api.ClaimUsageEvidence, error) {
 	if err := requirePeer(ctx, owneridentity.Capability); err != nil {
