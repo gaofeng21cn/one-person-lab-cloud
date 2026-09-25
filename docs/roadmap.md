@@ -45,11 +45,12 @@ chain is finished. Open work in dependency order:
    references/readback and the single Serve Agent deployment with readiness and
    access readback. Serve's owner-local read surface
    (`ListDeployments`/`GetDeployment`/`GetWorkspaceAccess`) is implemented; the
-   delivery write path stays open on three cross-owner capabilities recorded in
-   [status](./status.md#serve-delivery-read-surface): Capability must admit a
-   Serve claimant, Fabric must expose its resource/attachment/Secret coordination
-   surface, and the Serve runtime adapter plus a `RuntimeReadback` access entry
-   must exist before a real `Deploy` can produce a readiness/access readback.
+   delivery write path stays open, and so does the read slice's real-identity
+   acceptance: the production CloudIdentity refuses every Serve read because the
+   shared policy table has no serve-audience read row, which is the identity
+   owner's work. [Status](./status.md#serve-delivery-read-surface) separates that
+   contract-policy dependency from Serve's own unfinished `ServeRuntimeAdapter`
+   and from Capability's claimant rule and Fabric's coordination surface.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.

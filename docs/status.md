@@ -120,8 +120,8 @@ own `opl_serve` database. The reads are owner-local truth:
 
 - the tenant of a Workspace is resolved from the Serve Operation that created its
   delivery, so a tenant-scoped caller whose scope names another tenant is refused
-  before the live CloudIdentity authority is consulted, and a platform-scoped
-  caller is not narrowed;
+  before any authority is consulted, and a platform-scoped caller is declared as
+  a platform resource rather than forced into the Workspace's tenant;
 - the current Agent is the one `active` deployment; its access vocabulary is
   projected from that deployment's own descriptor exposure policy, and
   application credentials are reported available only when the deployment's own
@@ -130,51 +130,104 @@ own `opl_serve` database. The reads are owner-local truth:
 - a Workspace Serve has never delivered has no entry, no invented tenant, and no
   fabricated mode.
 
-Serve's process wiring is `delivery.Configure`, the same path `cmd/server`
-uses, so readiness cannot drift from what a test proves. The process registers
-exactly the `ServeProductService` group, reports SERVING only with a reachable
-owner database and a reachable CloudIdentity authority, and reports NOT_SERVING
-naming `cloud_identity` when that authority is unconfigured.
+Serve's process wiring is `delivery.Configure`, the same path `cmd/server` uses,
+so readiness cannot drift from what a test proves. The process registers exactly
+the `ServeProductService` group and reports NOT_SERVING naming `cloud_identity`
+when its authority is unconfigured.
 
-Focused PostgreSQL evidence:
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1` in
-`services/serve` proves the ready/pending/anonymous/undelivered access cases,
-cross-tenant and CloudIdentity-denial rejection, the deployment-history
-projection, the real process wiring (SERVING plus a Console-BFF-identified gRPC
-read over the wire), and the fail-closed readiness case — all against a real
-isolated `opl_serve` installed through Serve's own migration entrypoint.
-Serve reads are authorized through the real `ownerservice.Authorizer`: a
-tenant-scoped caller whose scope names another tenant is refused before the live
-decision, and a platform-scoped caller is declared as a platform resource rather
-than forced into the Workspace's tenant, because the shared authorizer refuses
-any caller whose own scope does not match the declared resource scope. Tests
-assert Serve asks its own audience for the exact action and resource.
+#### Evidence layers (which authority each test actually exercises)
+
+The owner unit tests (`service_postgres_test.go`, `process_postgres_test.go`)
+run Serve's real authorizer and real process wiring against a CloudIdentity
+**decision stub** (`stubCloudIdentityServer`). They prove Serve's request shape,
+its scope guard, its decision validation, its readiness gating and its read
+projection. They prove nothing about whether the production authority admits a
+Serve read; an earlier revision of this section described that stub as a "live
+authority", which was wrong.
+
+The real-identity acceptance harness (`identity_live_test.go`, `-tags=livebuild`,
+opt-in and outside `verify:local`/`verify:local:full`) runs the production
+CloudIdentity implementation from `services/gateway-integration` over real gRPC
+with its real policy table and a real isolated `opl_tenant`, issuing sessions
+through the real BFF login transport. Only the external Sub2API/Gateway HTTP
+boundary is simulated. Seeded Serve rows in that harness prove the read
+projection only; they are not a real Deploy and no Runtime observation is
+claimed.
 
 The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json),
 the [Serve process-wiring receipt](./evidence/source-checks/2026-09-25-serve-process-wiring.json)
 and the [Serve authorization-scope receipt](./evidence/source-checks/2026-09-25-serve-authorization-scope.json)
-bind the exact source and cases; they are not production or Instance evidence.
+bind the earlier ownership evidence; their "live authority" wording is corrected
+by this section. None of them is production or Instance evidence.
 
-Serve's delivery **write** path is not implemented and current source cannot
-implement it faithfully yet. A real `Deploy` must send the full
-`DeploymentDescriptor` to the executing runtime and persist a real readiness and
-access readback, which requires three owner capabilities that do not exist in
-current source:
+#### Real-identity result and the read slice's open dependency
 
-- Capability `AcquireReference`/`BindReference`/`ReleaseReference` accept only a
-  `BUILD` claimant, so a Serve delivery cannot hold the `capability_version` claim
-  its `agent_deployments.reference_claim_id` requires;
-- `FabricCoordination` (`EnsureResources`, `ReadResources`, `BindSecret`) and its
-  `resource_set`/attachment identities are contract-only: Fabric exposes them
-  over typed HTTP to Control Plane, not as the gRPC coordination surface Serve's
-  `RuntimeDeployCommand` fields (`resource_set_id`, `data_attachment_id`,
-  `secret_binding_id`) name;
-- `ServeRuntimeAdapter` has no implementation, and `RuntimeReadback` carries no
-  access-entry field, so no real `StartRuntime`/`ObserveRuntime` readback can
-  produce `serve.agent_runtime_instances.access_url`.
+Against the production authority, on 2026-09-25, the exact request Serve sends is
+refused:
 
-These are cross-owner decisions, not local Serve gaps. Implementing them by
-writing Serve's own copies of Capability or Fabric facts would create a duplicate
+```text
+rpc error: code = PermissionDenied desc = CloudIdentity authorization denied
+  (audience=serve action=LISTDEPLOYMENTS resource=WORKSPACE)
+```
+
+`services/gateway-integration/identity/policy_generated.go` has no admitted row
+for a serve-audience read, so **every** Serve read is refused through the real
+authority. The enforced refusals that do hold (a cross-Tenant member, a
+session-less caller) come from Serve's own guards, not from the authority. The
+read slice is therefore **not complete**, and this section is not a completion
+claim.
+
+Required identity handoff (the identity owner is the sole writer of the shared
+policy generator):
+
+- `listDeployments` and `getDeployment` are `x-owner=serve` in
+  `docs/spec/target/03_api_contract_complete.yaml`, so they need admitted rows for
+  `audience=serve` on a workspace resource;
+- `getWorkspaceAccess` is `x-owner=workspace` in that contract while
+  `ServeProductService` serves it and the Console BFF calls it on Serve. The
+  authority requires `caller == console_bff || caller == audience`, and Serve
+  calls as `serve`, so an `audience=workspace` row cannot authorize Serve's own
+  call. Whether this read moves to the Workspace owner or its contract owner is
+  corrected to `serve` is a cross-owner contract decision, not a Serve choice;
+- the Console BFF's delivery guard authorizes `getWorkspace` as
+  `audience=workspace`, and no workspace-owned row exists at all today, so the
+  composed delivery read is refused before Serve is reached.
+
+A second finding is in shared infrastructure, not in Serve: the shared authorizer
+(`services/internal/ownerservice/authorization.go`) collates **every** error from
+the CloudIdentity client into `codes.Unavailable`. A policy denial is therefore
+indistinguishable from an authority outage at every owner boundary. It still
+fails closed; the denial code is only observable by asking the authority
+directly, which is what the harness does.
+
+#### Delivery write path: separate SSOT-required-but-unimplemented from contract changes
+
+The write path is not implemented. Its blockers are three different kinds, and
+they must not be reported as one:
+
+1. Already required by the SSOT, not yet implemented — Serve's own work:
+   `ServeRuntimeAdapter` has no implementation, and the access URL path between
+   the executing runtime and `serve.agent_runtime_instances.access_url` does not
+   exist yet. The SSOT does name the source: `WorkspaceAccess.url` is "严格来自
+   canonical revision.exposurePolicy/`WorkspaceApplicationEntry`", and Fabric
+   already produces that entry in `WorkspaceApplicationRuntimeObservation.Entry`.
+   What is missing is the typed path into Serve's own observation, so this is not
+   a missing specification.
+2. Cross-owner contract change genuinely needed: the Serve↔runtime port
+   `RuntimeReadback` carries no entry/access field, and
+   `packages/contracts/proto/internal.proto` is shared. Adding that field, or
+   reusing the existing Fabric observation shape through a typed port, is a
+   shared-contract decision for the contract owner with the exact consumers named
+   here — Serve does not add a parallel contract unilaterally.
+3. Other owners' work, not Serve's: Capability
+   `AcquireReference`/`BindReference`/`ReleaseReference` accept only a `BUILD`
+   claimant, so a Serve delivery cannot hold the `capability_version` claim its
+   `agent_deployments.reference_claim_id` requires; and `FabricCoordination`
+   (`EnsureResources`/`ReadResources`/`BindSecret`) plus its `resource_set`
+   and attachment identities exist only as a typed-HTTP Control Plane surface, not
+   as the gRPC coordination fields `RuntimeDeployCommand` names.
+
+Writing Serve's own copies of Capability or Fabric facts would create a duplicate
 writer, so Serve claims only what it can answer.
 
 ### Canonical-main local verification and receipt

@@ -52,14 +52,22 @@ const (
 	serveToken    = "fedcba9876543210fedcba9876543210"
 )
 
-// liveCloudIdentity is the minimum real CloudIdentity authority: it issues a
-// decision bound to the exact request Serve sent, so Serve's own decision
-// validation is exercised rather than bypassed.
-type liveCloudIdentity struct {
+// stubCloudIdentityServer is a decision STUB, not the CloudIdentity product
+// implementation. It issues an ALLOW bound to the exact request Serve sent, so
+// this package can prove Serve's own request shape, decision validation, scope
+// guard and read projection in isolation.
+//
+// It deliberately does NOT model the real authorization policy: the production
+// authority is services/gateway-integration/identity, whose policy table decides
+// whether an audience/action pair is admitted at all. That real implementation,
+// including the denial paths, is exercised only by the opt-in livebuild test
+// (identity_live_test.go). A test that uses this stub proves Serve's owner
+// behaviour, never that CloudIdentity admits the read.
+type stubCloudIdentityServer struct {
 	api.UnimplementedCloudIdentityAuthorizationServer
 }
 
-func (*liveCloudIdentity) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
+func (*stubCloudIdentityServer) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	return &api.AuthorizationDecision{
 		Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
 		ActorId: r.GetActorId(), Scope: r.GetScope(), SessionId: r.SessionId, AcceptedOperationGrantId: r.AcceptedOperationGrantId,
@@ -68,14 +76,17 @@ func (*liveCloudIdentity) AuthorizeAction(_ context.Context, r *api.Authorizatio
 	}, nil
 }
 
-func startCloudIdentity(t *testing.T) string {
+// startStubCloudIdentity serves the stub decision above over a real gRPC
+// listener, so the Serve process's real identity interceptor and its real typed
+// client are both exercised.
+func startStubCloudIdentity(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	api.RegisterCloudIdentityAuthorizationServer(server, &liveCloudIdentity{})
+	api.RegisterCloudIdentityAuthorizationServer(server, &stubCloudIdentityServer{})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 	return listener.Addr().String()
@@ -117,14 +128,19 @@ func consoleBFFConn(t *testing.T, address string) *grpc.ClientConn {
 
 // TestServeProcessServesOwnerTruthOverTheWire proves the real Serve process
 // wiring: it reports SERVING with a reachable database and a reachable
-// CloudIdentity, and the Console BFF's own typed call reaches Serve's
+// CloudIdentity boundary, and the Console BFF's own typed call reaches Serve's
 // owner-local truth instead of a scaffold.
+//
+// The CloudIdentity side is the decision stub above, so this proves the process
+// wiring, the identity interceptor, the typed client and the read projection. It
+// does NOT prove that the real authority admits a Serve read; that is the
+// livebuild identity integration test's job.
 func TestServeProcessServesOwnerTruthOverTheWire(t *testing.T) {
 	db, tenant, runtimeDSN := fixture(t)
 	ctx := context.Background()
 	seedDeployment(t, db, "ws-wire", tenant, "dep-wire", "active", "ready", "https://ws-wire.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 
-	config := serveConfig(startCloudIdentity(t))
+	config := serveConfig(startStubCloudIdentity(t))
 	bootstrap, err := ownerservice.StartWithDatabase(ctx, serveDatabase(t, runtimeDSN), config, noMigrations{}, configure(config))
 	if err != nil {
 		t.Fatalf("start serve process: %v", err)
@@ -164,7 +180,7 @@ func TestServeProcessServesOwnerTruthOverTheWire(t *testing.T) {
 }
 
 // TestServeProcessRefusesReadinessWithoutCloudIdentity proves Serve fails closed:
-// a process whose CloudIdentity authority is unconfigured reports NOT_SERVING and
+// a process whose CloudIdentity boundary is unconfigured reports NOT_SERVING and
 // names the missing dependency instead of serving unauthenticated reads.
 func TestServeProcessRefusesReadinessWithoutCloudIdentity(t *testing.T) {
 	_, _, runtimeDSN := fixture(t)
