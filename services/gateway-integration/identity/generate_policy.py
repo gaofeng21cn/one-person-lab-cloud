@@ -75,5 +75,10 @@ for methods in api['paths'].values():
   enum='api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_'+action.upper()
   status.append(f'{enum}: {min(codes)},')
 status+=['}']
+status+=['', '// errorStatus is the canonical public status for an owner-supplied business error.', 'var errorStatus = map[api.ErrorCodeEnum]int{']
+for code, definition in api['x-error-http-status'].items():
+ if definition['httpStatus'] is None: continue
+ status.append(f'api.ErrorCodeEnum_ERROR_CODE_ENUM_{code}: {definition["httpStatus"]},')
+status+=['}']
 bff.write_text('\n'.join(status)+'\n')
 subprocess.run(['gofmt','-w',str(bff)],check=True)

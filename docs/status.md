@@ -96,8 +96,9 @@ not a qualified production release.
 
 ## Agent Delivery Chain Owner-Process Baseline
 
-Capability, Build, Runtime Control, Workspace, and Serve each have an owner
-process, migration set, readiness surface, and owner-local Operation readback.
+Capability, Build, Runtime Control, Workspace, Resource Catalog, and Serve each
+have an owner process, migration set, readiness surface, and owner-local
+Operation readback.
 The Console BFF carries the authenticated `CallContext` and `console_bff` mTLS
 identity to owner boundaries, where tenant and actor authorization is checked
 again. Capability Package upload/reference claims, Runtime Release catalog
@@ -114,218 +115,80 @@ cross-database selection transaction. Build persistence includes the exact
 
 ### Serve delivery read surface
 
-`services/serve/internal/delivery` implements the `ServeProductService` read
-groups `ListDeployments`, `GetDeployment` and `GetWorkspaceAccess` over Serve's
-own `opl_serve` database. The reads are owner-local truth:
+The Serve process exposes `ListDeployments`, `GetDeployment` and
+`GetWorkspaceAccess` through the production BFF mux and the live CloudIdentity
+boundary. Deployment history is ordered by `(created_at DESC, id DESC)`;
+Serve enforces the persisted Workspace tenant before returning owner-local facts.
+Every composed BFF read carries the decision for its own owner/action/resource.
+The public API uses the canonical JSON field and enum vocabulary, the common
+session/CSRF/idempotency guard, typed owner errors and `Cache-Control: no-store`.
 
-- the tenant of a Workspace is resolved from the Serve Operation that created its
-  delivery, so a tenant-scoped caller whose scope names another tenant is refused
-  before any authority is consulted, and a platform-scoped caller is declared as
-  a platform resource rather than forced into the Workspace's tenant;
-- the current Agent is the one `active` deployment; its access vocabulary is
-  projected from that deployment's own descriptor exposure policy, and
-  application credentials are reported available only when the deployment's own
-  runtime instance is `ready` with an observed access URL — a provisioned Fabric
-  resource is never substituted for a ready application;
-- a Workspace Serve has never delivered has no entry, no invented tenant, and no
-  fabricated mode;
-- the delivery page is ordered by the schema's own list index
-  (`created_at DESC, id DESC`) and paginated by that pair, so the history's newest
-  delivery is the same row the current-Agent selection uses. Ordering by id alone
-  was a real defect found by the real-identity harness below and is now fixed.
+Access succeeds only for an active, ready deployment with a confirmed HTTP(S)
+entry and a supported exposure mode. Pending, absent, invalid-entry and
+unconfirmed Cloud-private access return `APP_ACCESS_UNAVAILABLE` rather than an
+invalid successful access object. Application login remains application-owned;
+no arbitrary expiry or second application session is created. The optional
+`expiresAt` is omitted when the entry provider supplies no expiry.
 
-Serve's process wiring is `delivery.Configure`, the same path `cmd/server` uses,
-so readiness cannot drift from what a test proves. The process registers exactly
-the `ServeProductService` group and reports NOT_SERVING naming `cloud_identity`
-when its authority is unconfigured.
+Runtime observations are persisted in Serve's own database. Seeded deployment
+rows in the read tests prove authorization and projection, not a real deployment.
+The real-identity tests use production CloudIdentity, gRPC, isolated PostgreSQL
+and the BFF; only the external Gateway identity response is simulated.
 
-#### Evidence layers (which authority each test actually exercises)
+The first real deployment remains open in the canonical roadmap: Workspace
+product commands, Capability reference-claim consumer support, Fabric resource
+references, Reserve inputs and the Serve runtime adapter are not completed by
+this read slice. Historical source receipts remain under `docs/evidence/source-checks/`.
 
-The owner unit tests (`service_postgres_test.go`, `process_postgres_test.go`)
-run Serve's real authorizer and real process wiring against a CloudIdentity
-**decision stub** (`stubCloudIdentityServer`). They prove Serve's request shape,
-its scope guard, its decision validation, its readiness gating, its page order and
-its projection. They prove nothing about whether the production authority admits
-a Serve read; an earlier revision of this section described that stub as a "live
-authority", which was wrong and is corrected here.
+### Resource Catalog approved plans and policy versions
 
-The real-identity acceptance harness (`identity_live_test.go`, `-tags=livebuild`,
-opt-in and outside `verify:local`/`verify:local:full`) runs the production
-CloudIdentity implementation from `services/gateway-integration` over real gRPC
-with its real policy table and a real isolated `opl_tenant`, issuing sessions
-through the real BFF login transport. Only the external Sub2API/Gateway HTTP
-boundary is simulated. Seeded Serve rows in that harness prove the read
-projection only; they are not a real Deploy and no Runtime observation is claimed.
+The Resource Catalog owner is its own Go module, process, migration set and
+database role, and serves `ResourceCatalogProductService` behind the shared owner
+identity boundary. An administrator can create approved compute and storage plans
+inside the instance-declared provider/region/billing profile, create price policy
+versions that bind an exact approved plan pair to one-month amounts, and create
+the frozen refund and retention policy versions. The customer-facing availability
+projection, the D17 upgrade/supplement arithmetic and the
+`catalog.policy_changed.v1` Outbox event all live in this owner.
 
-#### Read-slice result against the production authority
+The catalog now has a real caller and a real authorization boundary. The Console
+BFF carries the catalog REST surface on its authenticated boundary (browser
+session, CSRF, same-origin, idempotency key and a CloudIdentity decision), the
+generated policy carries the 14 `resource_catalog` actions with the contract's
+audiences and roles, and the response status is compiled from the same contract,
+so a platform administrator is admitted for the administrator actions, a member
+for the customer reads, a tenant administrator is refused the administrator
+actions, and an availability update answers with the declared `200`. A focused
+live check drives the real CloudIdentity process, the real BFF route functions and
+the real owner over one isolated PostgreSQL server, and a money-bearing price
+policy version round-trips the contract's `...USDMicros` decimal-string spelling
+in both directions; only the external Sub2API Gateway is a fixture. The
+[source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json)
+binds the source and dependency digests, commands, exit codes and logs.
 
-Absorbed identity dependencies: `f83f4f03` (policy table), then `c5393772` on
-`codex/tenant-member-governance-2`, which includes `f7a9e649` (contract
-correction) and `413a7d5a` (policy rows). Current policy table sha256
-`fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb`.
+The deploy quote is priced. A member obtains a quote for an approved plan pair
+through the running BFF process and reads it back: the owner resolves the single
+effective price, refund and retention version, builds the offer lines under the
+contract money rule (total is the sum of the charge lines minus the credits, with
+no second multiplication by quantity) and stores the immutable offer with its
+expiry. `AcceptQuote` binds that offer to exactly one Workspace obligation,
+returns the same acceptance on replay, refuses a second obligation, refuses an
+expired offer and reports an unknown offer as absent. `resize` and `renew` are
+refused with the gap named rather than answered with a deploy-shaped offer,
+because they depend on a Workspace subscription, a paid period and an accepted
+plan change that do not exist yet. The [source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)
+binds the revision, commands, exit codes and logs.
 
-All **three** reads are now admitted by the production authority, and the read
-slice is verified end to end:
-
-| Read | Audience Serve policy row | Real result |
-| --- | --- | --- |
-| `listDeployments` | `member` | admitted; the owning Tenant's live member reads Serve's own history |
-| `getDeployment` | `member` | admitted; the current deployment is read back with its runtime instance |
-| `getWorkspaceAccess` | `member` | admitted; reports the current Agent's own access state |
-
-`getWorkspaceAccess` was previously refused because
-`03_api_contract_complete.yaml` carried a lagging `x-owner: workspace` while
-`decisions.md` (Serve is the sole Agent delivery/deployment/readiness/**access**
-owner), `01`, `02` and the proto placement all said Serve owns the access fact.
-The canonical owner corrected the contract (`f7a9e649`: `x-owner: serve`,
-`x-tables: serve.agent_runtime_instances + serve.access_bindings`), the derived
-feature map and API inventory were regenerated, and the policy writer then
-generated the serve-audience row (`413a7d5a`). No exception was added to
-`authorization.go`; Serve's own request (`audience=serve`, action
-`GETWORKSPACEACCESS`, resource `{kind: WORKSPACE, id: workspaceId}`, caller's own
-scope) is what now matches.
-
-The authority decides audience, action and the caller's own role and scope; it
-holds no Workspace-ownership fact, so a tenant member is admitted for a
-workspace-shaped resource, and refusing another Tenant's member for a specific
-Workspace is Serve's own persisted-authority guard. Both halves are asserted
-separately so neither is "fixed" by giving the authority a second copy of Serve's
-ownership data.
-
-Two harnesses bind this, both `-tags=livebuild` (opt-in, outside
-`verify:local`/`verify:local:full`), running the production CloudIdentity
-implementation from `services/gateway-integration` over real gRPC with its real
-policy table and a real isolated `opl_tenant`, issuing sessions through the real
-BFF login transport. Only the external Sub2API/Gateway HTTP boundary is
-simulated. Seeded Serve rows exercise the read projection only; they are not a
-deployment and no runtime observation is claimed.
-
-- `identity_live_test.go` asks the authority directly for each read, then drives
-  Serve's owner process over typed gRPC: all three admitted; cross-Tenant,
-  session-less and revoked-session callers refused; empty history, non-current
-  history and not-ready access state all read back correctly.
-- `bff_live_test.go` drives the whole chain through the **BFF's own handler**
-  (`bff.NewServeDeliveryHandler`, the same code the process serves), covering
-  real login to history, one deployment, access-state consistency with the
-  current deployment, anonymous exposure, resource-ready-is-not-application-ready,
-  empty history, 404 for a missing deployment, 403 across Tenants, 401 without a
-  session, and a revoked session refused.
-
-`services/serve` passes 21 tests plus subtests with zero failures against a real
-isolated PostgreSQL, and both livebuild suites pass. The
-[read-slice receipt](./evidence/source-checks/2026-09-25-serve-read-slice-real-identity.json)
-and the [BFF end-to-end receipt](./evidence/source-checks/2026-09-25-serve-read-through-bff.json)
-bind the exact source, cases and gate logs.
-
-#### Serve read routes in the BFF
-
-`apps/console-bff/internal/clients/serve_read.go`,
-`apps/console-bff/internal/httpapi/serve_delivery.go` and
-`apps/console-bff/serve.go` add the BFF's Serve read surface: the deployment
-history, one deployment, and the current Agent's access state, each behind the
-session guard plus a CloudIdentity decision for the exact Serve action and
-Workspace resource. They compose nothing from another owner, so they do not
-depend on the Workspace read.
-
-The composed `GET /api/v2/delivery/{workspaceId}` view still needs a
-`WorkspaceProductService` implementation, which `services/workspace` does not yet
-provide; that is a pre-existing gap in the workspace owner's work package, not
-something these routes introduce. Registering the Serve read routes on the
-shared mux is the identity integrator's one-line wiring, because the route table
-and guard live in the shared server file.
-
-#### Read-slice terminal state
-
-This read slice is **complete for the three Serve reads** (history, deployment,
-access state) and their refusals. It is **not** a deployment claim: the first real
-Serve Agent deployment remains incomplete, and the delivery write path below is
-still blocked.
-
-#### Delivery write path: separate SSOT-required-but-unimplemented from contract changes
-
-The write path is not implemented. Its blockers are three different kinds and
-must not be reported as one:
-
-1. Already required by the SSOT, not yet implemented — Serve's own work:
-   `ServeRuntimeAdapter` has no implementation, and the access-URL path from the
-   executing runtime into `serve.agent_runtime_instances.access_url` does not
-   exist. The SSOT does name the source: `WorkspaceAccess.url` is "严格来自
-   canonical revision.exposurePolicy/`WorkspaceApplicationEntry`", and Fabric
-   already produces that entry in
-   `WorkspaceApplicationRuntimeObservation.Entry`. What is missing is the typed
-   path into Serve's own observation, so this is not a missing specification.
-2. Cross-owner contract change genuinely needed: the Serve↔runtime port
-   `RuntimeReadback` carries no entry/access field and
-   `packages/contracts/proto/internal.proto` is shared. Adding that field, or
-   reusing the existing Fabric observation shape through a typed port, is a
-   shared-contract decision for the contract owner with the consumers named here.
-   Serve does not add a parallel contract unilaterally.
-3. Other owners' work, not Serve's: Capability
-   `AcquireReference`/`BindReference`/`ReleaseReference` accept only a `BUILD`
-   claimant, so a Serve delivery cannot hold the `capability_version` claim its
-   `agent_deployments.reference_claim_id` requires; and `FabricCoordination`
-   (`EnsureResources`/`ReadResources`/`BindSecret`) plus its `resource_set` and
-   attachment identities exist only as a typed-HTTP Control Plane surface, not as
-   the gRPC coordination fields `RuntimeDeployCommand` names.
-
-Writing Serve's own copies of Capability or Fabric facts would create a duplicate
-writer, so Serve claims only what it can answer.
-
-#### What Serve now implements of the write path
-
-`services/serve/internal/delivery/runtime.go` implements the one write-path step
-that is fully Serve's own and fully determined: recording an executing runtime's
-observation as Serve's own runtime-instance fact, driven by the contract's
-`RuntimeDeployCommand`. It is deliberately fail-closed:
-
-- a provisioned resource is never application readiness: only a report that says
-  the application is available, carries an entry, a publishable URL and readiness
-  evidence can reach `ready`;
-- an application that runs but has no publishable entry is refused with
-  `app_access_unavailable` rather than recorded as ready, because
-  `serve.agent_runtime_instances` binds `ready` to a non-null access URL;
-- an undecidable provider state, a descriptor whose bytes do not reproduce its
-  declared digest, a foreign workspace, a mismatched artifact, an unknown
-  deployment and a superseded `execution_epoch` are all refused, and a stale-epoch
-  observation can neither create nor overwrite a record;
-- Serve does not derive an access origin of its own: the adapter supplies the
-  publishable URL, because the installation decides which hostname publishes an
-  Agent.
-
-Focused PostgreSQL evidence:
-`OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1` in
-`services/serve` passes 21 tests plus subtests with zero failures, covering the
-ready record, same-epoch replay convergence, every non-ready state mapping, and
-each refusal above. The
-[runtime-observation receipt](./evidence/source-checks/2026-09-25-serve-runtime-observation-record.json)
-binds the tested SHA/tree, every command with its exit code and log digest, and
-the per-case readback.
-
-#### W17 prerequisites that must be decided before a real Deploy can run
-
-Two blockers are now verified against current source rather than assumed, and
-neither is a Serve-local choice:
-
-1. `RuntimeReservationCommand` cannot populate the row it is specified to write.
-   `06_data_fsm` step F08-3 says `ServeAgentCoordination.Reserve` writes
-   `serve.agent_runtime_instances`, but that table requires
-   `fabric_resource_set_id`, `data_attachment_contract` and the full
-   `deployment_descriptor` (with digest and object ref), while the command carries
-   only the capability version, artifact, and descriptor digest/object ref. The
-   reserved instance therefore cannot be inserted from the declared command, so
-   `Reserve` stays unimplemented instead of writing an invalid or fabricated row.
-   Deciding whether Reserve grows those fields, or whether the reserved identity
-   lives somewhere else, is a contract question for the owner of `02`/proto.
-2. Whether Serve is the claimant of the `capability_version` reference claim is
-   unresolved. `02` says `reference_claims` covers F08/F10 and allows a
-   `capability_version` target, and F10 step 3 says Serve acquires the new
-   version's claim and releases it in step 7. Current Capability source accepts
-   only a `BUILD` claimant (`services/capability/catalog/coordination.go`: the peer
-   gate requires the Build service and the purpose is hardcoded `build`), and its
-   `Bind`/`Release` read owner commit and claim usage through Build-specific
-   clients. Serving a claim therefore needs either that decision recorded or a
-   Serve-owned commit/usage readback surface; Serve does not widen the claim
-   protocol on its own.
+Two boundaries remain. The Workspace owner and the Fabric resource reference do
+not exist, so nothing has accepted a quote, no original order or resource intent
+exists, and there is no Local deployment loop; the Catalog side of that edge is
+implemented and verified against a Workspace peer, but the caller is the next
+slice. The Ledger `DomainInbox` accepts only tenant-scoped build and capability
+producers, so the platform-scoped catalog policy event is recorded and retried
+while its consumer delivery stays pending; extending that consumer is Ledger's
+write set.
 
 ### Canonical-main local verification and receipt
 

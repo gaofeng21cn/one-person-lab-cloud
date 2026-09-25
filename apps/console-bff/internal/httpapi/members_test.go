@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -19,12 +21,13 @@ import (
 // identity, never a browser-supplied actor or Tenant.
 type tenantProbe struct {
 	api.TenantProductServiceClient
-	invite *api.InviteMemberRpcRequest
-	remove *api.RemoveMemberRpcRequest
-	accept *api.AcceptInvitationRpcRequest
-	update *api.UpdateMemberRoleRpcRequest
-	list   *api.ListMembersRpcRequest
-	tenant *api.GetTenantRpcRequest
+	invite  *api.InviteMemberRpcRequest
+	remove  *api.RemoveMemberRpcRequest
+	accept  *api.AcceptInvitationRpcRequest
+	update  *api.UpdateMemberRoleRpcRequest
+	list    *api.ListMembersRpcRequest
+	tenant  *api.GetTenantRpcRequest
+	refusal error
 }
 
 func (p *tenantProbe) InviteMember(_ context.Context, r *api.InviteMemberRpcRequest, _ ...grpc.CallOption) (*api.Invitation, error) {
@@ -33,6 +36,9 @@ func (p *tenantProbe) InviteMember(_ context.Context, r *api.InviteMemberRpcRequ
 }
 func (p *tenantProbe) RemoveMember(_ context.Context, r *api.RemoveMemberRpcRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	p.remove = r
+	if p.refusal != nil {
+		return nil, p.refusal
+	}
 	return &emptypb.Empty{}, nil
 }
 func (p *tenantProbe) AcceptInvitation(_ context.Context, r *api.AcceptInvitationRpcRequest, _ ...grpc.CallOption) (*api.Member, error) {
@@ -198,6 +204,35 @@ func TestMemberCommandsSurfaceOwnerRefusal(t *testing.T) {
 	}
 	if probe.invite != nil {
 		t.Fatal("a denied member command still reached the owner")
+	}
+}
+
+func TestMemberCommandsPreserveTypedOwnerFailure(t *testing.T) {
+	for _, test := range []struct {
+		code       api.ErrorCodeEnum
+		wantStatus int
+		wantCode   string
+	}{
+		{api.ErrorCodeEnum_ERROR_CODE_ENUM_LAST_OWNER, http.StatusConflict, "LAST_OWNER"},
+		{api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID, http.StatusConflict, "INVITATION_INVALID"},
+		{api.ErrorCodeEnum_ERROR_CODE_ENUM_TENANT_INACTIVE, http.StatusForbidden, "TENANT_INACTIVE"},
+		{api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND, http.StatusNotFound, "NOT_FOUND"},
+	} {
+		t.Run(test.wantCode, func(t *testing.T) {
+			probe := &tenantProbe{refusal: owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "owner-only detail"), test.code)}
+			identity := allowedIdentity()
+			identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER
+			identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_TENANT
+			identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: ptr("tenant-1")}
+			response := httptest.NewRecorder()
+			memberServer(probe, identity).Handler().ServeHTTP(response, memberWrite("DELETE", "/api/v2/tenant/members/member-9", ""))
+			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), `"code":"`+test.wantCode+`"`) {
+				t.Fatalf("owner decision changed at the BFF: %d %s", response.Code, response.Body.String())
+			}
+			if strings.Contains(response.Body.String(), "owner-only detail") {
+				t.Fatal("owner diagnostic leaked into the public response")
+			}
+		})
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore"
@@ -249,10 +251,9 @@ func (s *Service) GetDeployment(ctx context.Context, r *api.GetDeploymentRpcRequ
 //
 // The authentication mode is projected from the deployment descriptor's declared
 // exposure policy, and credentials are reported as available only when the
-// current Agent's own runtime instance is ready. A pending or failed runtime, or
-// a Workspace whose Agent Serve has not activated, reports no application
-// credentials: a provisioned resource is never substituted for a ready
-// application.
+// current Agent's own runtime instance is ready. Missing or unsupported entry
+// facts are refused; a provisioned resource is never a ready application. No
+// access expiry is invented when the provider has supplied none.
 func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAccessRpcRequest) (*api.WorkspaceAccess, error) {
 	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, r.GetWorkspaceId()); err != nil {
 		return nil, err
@@ -262,16 +263,18 @@ func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAcc
 	if err != nil {
 		return nil, err
 	}
-	access.AuthenticationMode = mode
-	if !ready {
-		return access, nil
+	if !ready || (mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN && mode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS) {
+		return nil, appAccessUnavailable()
 	}
+	access.AuthenticationMode = mode
 	available := mode == api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN
 	access.ApplicationCredentialsAvailable = &available
-	if url != "" {
-		access.Url = url
-	}
+	access.Url = url
 	return access, nil
+}
+
+func appAccessUnavailable() error {
+	return owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "the current application has no confirmed supported access entry"), api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE)
 }
 
 // currentAgentAccess reads the current active deployment and its own runtime
@@ -279,7 +282,7 @@ func (s *Service) GetWorkspaceAccess(ctx context.Context, r *api.GetWorkspaceAcc
 // a Fabric resource fact never appears here.
 func (s *Service) currentAgentAccess(ctx context.Context, workspaceID string) (api.WorkspaceAccessAuthenticationModeEnum, bool, string, error) {
 	var descriptorRaw []byte
-	var url sql.NullString
+	var accessURL sql.NullString
 	var statusText string
 	err := s.DB.QueryRowContext(ctx, `
 		SELECT i.deployment_descriptor, i.access_url, i.status
@@ -287,7 +290,7 @@ func (s *Service) currentAgentAccess(ctx context.Context, workspaceID string) (a
 		JOIN serve.agent_runtime_instances i ON i.deployment_id = d.id
 		WHERE d.workspace_id = $1 AND d.status = 'active'
 		ORDER BY d.created_at DESC, d.id DESC
-		LIMIT 1`, workspaceID).Scan(&descriptorRaw, &url, &statusText)
+		LIMIT 1`, workspaceID).Scan(&descriptorRaw, &accessURL, &statusText)
 	if errors.Is(err, sql.ErrNoRows) {
 		return api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED, false, "", nil
 	}
@@ -296,11 +299,13 @@ func (s *Service) currentAgentAccess(ctx context.Context, workspaceID string) (a
 	}
 	descriptor := &api.DeploymentDescriptor{}
 	if err := publicjson.Unmarshal(descriptorRaw, descriptor); err != nil {
-		return 0, false, "", status.Error(codes.DataLoss, "invalid persisted deployment descriptor")
+		return 0, false, "", appAccessUnavailable()
 	}
 	mode := accessMode(descriptor.GetApplicationRevision().GetExposurePolicy())
-	observedURL := strings.TrimSpace(url.String)
-	ready := statusText == "ready" && url.Valid && observedURL != ""
+	observedURL := strings.TrimSpace(accessURL.String)
+	entry, parseErr := url.Parse(observedURL)
+	validEntry := parseErr == nil && entry.Hostname() != "" && (entry.Scheme == "http" || entry.Scheme == "https") && entry.User == nil
+	ready := statusText == "ready" && accessURL.Valid && validEntry
 	return mode, ready, observedURL, nil
 }
 

@@ -186,7 +186,7 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ready access: %v", err)
 	}
-	if access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN || !access.GetApplicationCredentialsAvailable() || access.GetUrl() != "https://ws-ready.example/app" {
+	if access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN || !access.GetApplicationCredentialsAvailable() || access.GetUrl() != "https://ws-ready.example/app" || access.GetExpiresAt() != nil {
 		t.Fatalf("ready workspace reported %+v", access)
 	}
 	// Serve asked its own audience for the exact action and resource.
@@ -202,12 +202,7 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 	// no credentials are claimed and no URL is published.
 	seedDeployment(t, db, "ws-pending", tenant, "dep-pending", "active", "starting", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION)
 	pending, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-pending"})
-	if err != nil {
-		t.Fatalf("pending access: %v", err)
-	}
-	if pending.GetApplicationCredentialsAvailable() || pending.GetUrl() != "" {
-		t.Fatalf("pending workspace claimed availability: %+v", pending)
-	}
+	assertAccessUnavailable(t, pending, err)
 
 	// An anonymous exposure policy: no application credentials even when ready.
 	seedDeployment(t, db, "ws-anon", tenant, "dep-anon", "active", "ready", "https://ws-anon.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_ANONYMOUS)
@@ -221,11 +216,47 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 
 	// A Workspace Serve has never delivered has no entry and no fabricated mode.
 	empty, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-unknown"})
+	assertAccessUnavailable(t, empty, err)
+}
+
+func assertAccessUnavailable(t *testing.T, access *api.WorkspaceAccess, err error) {
+	t.Helper()
+	code, present := owneridentity.ErrorCode(err)
+	if access != nil || status.Code(err) != codes.FailedPrecondition || !present || code != api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE {
+		t.Fatalf("unavailable access = %v, error %v (code %v), want typed APP_ACCESS_UNAVAILABLE", access, err, code)
+	}
+}
+
+func TestServeAccessRejectsUnconfirmedEntries(t *testing.T) {
+	db, tenant, _ := fixture(t)
+	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty.GetUrl() != "" || empty.GetApplicationCredentialsAvailable() {
-		t.Fatalf("undelivered workspace fabricated access: %+v", empty)
+	for _, test := range []struct {
+		name, entry string
+		exposure    api.WorkspaceApplicationRevisionExposurePolicyEnum
+	}{
+		{"empty", "", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+		{"relative", "/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+		{"invalid", "https://%zz/", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+		{"script", "javascript:alert(1)", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+		{"credentials", "https://user:password@app.example/", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+		{"private", "https://private.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_CLOUD_PRIVATE},
+		{"unknown", "https://unknown.example/app", api.WorkspaceApplicationRevisionExposurePolicyEnum_WORKSPACE_APPLICATION_REVISION_EXPOSURE_POLICY_ENUM_APPLICATION},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := "ws-" + test.name
+			seedDeployment(t, db, workspace, tenant, "dep-"+test.name, "active", "ready", test.entry, test.exposure)
+			if test.name == "unknown" {
+				// Missing exposure in a persisted descriptor cannot manufacture a mode.
+				if _, err := db.ExecContext(context.Background(), `UPDATE serve.agent_runtime_instances SET deployment_descriptor=deployment_descriptor #- '{applicationRevision,exposurePolicy}' WHERE workspace_id=$1`, workspace); err != nil {
+					t.Fatal(err)
+				}
+			}
+			access, err := service.GetWorkspaceAccess(serveContext(), &api.GetWorkspaceAccessRpcRequest{Context: call(tenant, false), WorkspaceId: workspace})
+			assertAccessUnavailable(t, access, err)
+		})
 	}
 }
 

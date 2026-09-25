@@ -23,6 +23,7 @@ package delivery_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -30,9 +31,11 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 	bff "opl-cloud/apps/console-bff"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
+	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/internal/ownerservice"
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
@@ -78,36 +81,9 @@ func startServeProcess(ctx context.Context, t *testing.T, runtimeDSN string, con
 
 var _ = grpc.NewClient
 
-// bffDeploymentPage mirrors the deployment page shape the BFF serializes.
-type bffDeploymentPage struct {
-	Items []struct {
-		ID                   string `json:"id"`
-		WorkspaceID          string `json:"workspace_id"`
-		CapabilityVersionID  string `json:"capability_version_id"`
-		RuntimeInstanceID    string `json:"runtime_instance_id"`
-		Status               int32  `json:"status"`
-		PreviousDeploymentID string `json:"previous_deployment_id"`
-	} `json:"items"`
-	NextCursor string `json:"next_cursor"`
-}
-
-type bffDeployment struct {
-	ID                string `json:"id"`
-	WorkspaceID       string `json:"workspace_id"`
-	Status            int32  `json:"status"`
-	RuntimeInstanceID string `json:"runtime_instance_id"`
-}
-
-type bffWorkspaceAccess struct {
-	WorkspaceID                     string `json:"workspace_id"`
-	URL                             string `json:"url"`
-	AuthenticationMode              int32  `json:"authentication_mode"`
-	ApplicationCredentialsAvailable bool   `json:"application_credentials_available"`
-}
-
 // bffRequest issues one authenticated read against the BFF handler with the real
 // session cookie the production authority issued.
-func bffRequest(t *testing.T, base, method, path, cookie string) *http.Response {
+func bffRequest(t *testing.T, base, method, path, cookie string, headers ...http.Header) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest(method, base+path, nil)
 	if err != nil {
@@ -117,6 +93,13 @@ func bffRequest(t *testing.T, base, method, path, cookie string) *http.Response 
 		req.AddCookie(&http.Cookie{Name: "opl_session", Value: cookie})
 	}
 	req.Header.Set(requestHeaderName, "live-bff-read")
+	for _, values := range headers {
+		for name, entries := range values {
+			for _, value := range entries {
+				req.Header.Add(name, value)
+			}
+		}
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -126,11 +109,35 @@ func bffRequest(t *testing.T, base, method, path, cookie string) *http.Response 
 
 const requestHeaderName = "x-opl-request-id"
 
-func decodeInto(t *testing.T, resp *http.Response, out any) {
+func decodeInto(t *testing.T, resp *http.Response, out proto.Message) map[string]json.RawMessage {
 	t.Helper()
 	defer resp.Body.Close()
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		t.Fatalf("decode response: %v", err)
+	if resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("response cache policy = %q, want no-store", resp.Header.Get("Cache-Control"))
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publicjson.Unmarshal(raw, out); err != nil {
+		t.Fatalf("decode public response: %v; body: %s", err, raw)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	return fields
+}
+
+func assertBFFError(t *testing.T, resp *http.Response, code api.ErrorCodeEnum) {
+	t.Helper()
+	var failure api.Error
+	fields := decodeInto(t, resp, &failure)
+	if failure.GetCode() != code || failure.GetMessage() == "" || failure.GetRequestId() != "live-bff-read" {
+		t.Fatalf("public error = %v", &failure)
+	}
+	if len(fields) != 3 {
+		t.Fatalf("public error fields = %v, want code, message and requestId", fields)
 	}
 }
 
@@ -166,25 +173,34 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 
 	tenantCookie := chain.cookies["serve"]
 	foreignCookie := chain.cookies["other"]
+	session, err := chain.client.Session(ctx, tenantCookie)
+	if err != nil || session.GetCsrfToken() == "" {
+		t.Fatalf("read the real session CSRF token: %v", err)
+	}
+	accessHeaders := http.Header{
+		"X-Csrf-Token":    {session.GetCsrfToken()},
+		"Idempotency-Key": {"live-bff-access"},
+		"Origin":          {server.URL},
+	}
 
 	t.Run("history_through_bff", func(t *testing.T) {
 		resp := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments", tenantCookie)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
-		var page bffDeploymentPage
+		var page api.DeploymentPage
 		decodeInto(t, resp, &page)
 		if len(page.Items) != 2 {
 			t.Fatalf("history = %+v", page.Items)
 		}
 		// Newest first: the current Agent leads the history, the predecessor stays.
-		if page.Items[0].ID != "dep-active" || page.Items[0].Status != int32(api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE) {
+		if page.Items[0].Id != "dep-active" || page.Items[0].Status != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
 			t.Fatalf("current deployment is not first: %+v", page.Items[0])
 		}
-		if page.Items[1].ID != "dep-old" || page.Items[1].Status != int32(api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_SUPERSEDED) {
+		if page.Items[1].Id != "dep-old" || page.Items[1].Status != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_SUPERSEDED {
 			t.Fatalf("history did not retain the superseded deployment: %+v", page.Items[1])
 		}
-		if page.Items[0].WorkspaceID != "ws-served" {
+		if page.Items[0].WorkspaceId != "ws-served" {
 			t.Fatalf("deployment named another workspace: %+v", page.Items[0])
 		}
 	})
@@ -194,50 +210,89 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
-		var deployment bffDeployment
-		decodeInto(t, resp, &deployment)
-		if deployment.ID != "dep-active" || deployment.RuntimeInstanceID != "rt_dep-active" || deployment.Status != int32(api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE) {
+		var deployment api.Deployment
+		fields := decodeInto(t, resp, &deployment)
+		if string(fields["status"]) != `"active"` || string(fields["workspaceId"]) != `"ws-served"` {
+			t.Fatalf("deployment public vocabulary = %v", fields)
+		}
+		if deployment.GetCreatedAt() == nil || deployment.GetUpdatedAt() == nil || deployment.GetDataCompatibility() == nil {
+			t.Fatalf("deployment omitted required owner facts: %v", &deployment)
+		}
+		if deployment.Id != "dep-active" || deployment.GetRuntimeInstanceId() != "rt_dep-active" || deployment.Status != api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_ACTIVE {
 			t.Fatalf("deployment = %+v", deployment)
 		}
 	})
 
+	for _, test := range []struct {
+		name   string
+		mutate func(http.Header)
+		status int
+		code   api.ErrorCodeEnum
+	}{
+		{"missing_csrf", func(h http.Header) { h.Del("X-CSRF-Token") }, http.StatusForbidden, api.ErrorCodeEnum_ERROR_CODE_ENUM_CSRF_INVALID},
+		{"missing_idempotency_key", func(h http.Header) { h.Del("Idempotency-Key") }, http.StatusBadRequest, api.ErrorCodeEnum_ERROR_CODE_ENUM_IDEMPOTENCY_REQUIRED},
+		{"foreign_origin", func(h http.Header) { h.Set("Origin", "https://other.example") }, http.StatusForbidden, api.ErrorCodeEnum_ERROR_CODE_ENUM_ORIGIN_REJECTED},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			headers := accessHeaders.Clone()
+			test.mutate(headers)
+			resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-served/access", tenantCookie, headers)
+			if resp.StatusCode != test.status {
+				resp.Body.Close()
+				t.Fatalf("status = %d, want %d", resp.StatusCode, test.status)
+			}
+			assertBFFError(t, resp, test.code)
+		})
+	}
+
+	t.Run("unconfigured_owner_is_unavailable", func(t *testing.T) {
+		unconfigured := httptest.NewServer(bff.NewServeDeliveryHandler(nil, chain.client))
+		defer unconfigured.Close()
+		resp := bffRequest(t, unconfigured.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments", tenantCookie)
+		if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+			resp.Body.Close()
+			t.Fatalf("unconfigured owner status = %d, want 503 with retry guidance", resp.StatusCode)
+		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_DEPENDENCY_UNAVAILABLE)
+	})
+
 	t.Run("access_through_bff_matches_current_deployment", func(t *testing.T) {
-		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-served/access", tenantCookie)
+		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-served/access", tenantCookie, accessHeaders)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
-		var access bffWorkspaceAccess
-		decodeInto(t, resp, &access)
-		if access.WorkspaceID != "ws-served" || access.URL != "https://ws-served.example/app" || !access.ApplicationCredentialsAvailable {
+		var access api.WorkspaceAccess
+		fields := decodeInto(t, resp, &access)
+		if _, invented := fields["expiresAt"]; invented || access.GetExpiresAt() != nil {
+			t.Fatal("access invented a provider expiry")
+		}
+		if access.WorkspaceId != "ws-served" || access.Url != "https://ws-served.example/app" || !access.GetApplicationCredentialsAvailable() {
 			t.Fatalf("access = %+v", access)
 		}
-		if access.AuthenticationMode != int32(api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN) {
+		if access.AuthenticationMode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN {
 			t.Fatalf("access mode = %d", access.AuthenticationMode)
 		}
 	})
 
 	t.Run("anonymous_exposure_reports_no_credentials", func(t *testing.T) {
-		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-anon/access", tenantCookie)
+		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-anon/access", tenantCookie, accessHeaders)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
-		var access bffWorkspaceAccess
+		var access api.WorkspaceAccess
 		decodeInto(t, resp, &access)
-		if access.AuthenticationMode != int32(api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS) || access.ApplicationCredentialsAvailable {
+		if access.AuthenticationMode != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_ANONYMOUS || access.GetApplicationCredentialsAvailable() {
 			t.Fatalf("anonymous access = %+v", access)
 		}
 	})
 
 	t.Run("resource_ready_is_not_application_ready_through_bff", func(t *testing.T) {
-		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-pending/access", tenantCookie)
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("status = %d", resp.StatusCode)
+		resp := bffRequest(t, server.URL, http.MethodPost, "/api/v2/workspaces/ws-pending/access", tenantCookie, accessHeaders)
+		if resp.StatusCode != http.StatusConflict {
+			resp.Body.Close()
+			t.Fatalf("status = %d, want 409", resp.StatusCode)
 		}
-		var access bffWorkspaceAccess
-		decodeInto(t, resp, &access)
-		if access.URL != "" || access.ApplicationCredentialsAvailable {
-			t.Fatalf("a starting runtime claimed a ready application: %+v", access)
-		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_APP_ACCESS_UNAVAILABLE)
 	})
 
 	t.Run("empty_history_through_bff", func(t *testing.T) {
@@ -245,8 +300,11 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
-		var page bffDeploymentPage
-		decodeInto(t, resp, &page)
+		var page api.DeploymentPage
+		fields := decodeInto(t, resp, &page)
+		if string(fields["items"]) != "[]" {
+			t.Fatalf("empty history must carry required items as [], got %s", fields["items"])
+		}
 		if len(page.Items) != 0 {
 			t.Fatalf("never-delivered Workspace reported history: %+v", page.Items)
 		}
@@ -254,26 +312,29 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 
 	t.Run("missing_deployment_is_not_found", func(t *testing.T) {
 		resp := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments/dep-missing", tenantCookie)
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusNotFound {
+			resp.Body.Close()
 			t.Fatalf("status = %d, want 404", resp.StatusCode)
 		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND)
 	})
 
 	t.Run("cross_tenant_through_bff_is_forbidden", func(t *testing.T) {
 		resp := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments", foreignCookie)
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
+			resp.Body.Close()
 			t.Fatalf("status = %d, want 403", resp.StatusCode)
 		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
 	})
 
 	t.Run("no_session_through_bff_is_unauthenticated", func(t *testing.T) {
 		resp := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments", "")
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
+			resp.Body.Close()
 			t.Fatalf("status = %d, want 401", resp.StatusCode)
 		}
+		assertBFFError(t, resp, api.ErrorCodeEnum_ERROR_CODE_ENUM_UNAUTHENTICATED)
 	})
 
 	t.Run("revoked_session_through_bff_is_refused", func(t *testing.T) {

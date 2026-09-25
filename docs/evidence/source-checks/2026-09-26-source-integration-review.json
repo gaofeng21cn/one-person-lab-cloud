@@ -1,0 +1,68 @@
+{
+  "schema": "opl-cloud-source-integration-review.v1",
+  "recorded_at": "2026-09-25T19:42:31.715423+00:00",
+  "base": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "heads": {
+    "shared": "3adb7ac38a379f6f2b68100cfd1b1df326c3aea5",
+    "serve": "61f289579a7965c2590a707c6ebdea196d882f4d",
+    "catalog": "9ce4ff1830df45a2f8f3a5f6440fe021bdee4a3a",
+    "quote": "d9a49ed1a32b8c09b8c819fbf1a4c6ca825d173c"
+  },
+  "source_acceptance": "passed_with_recovered_environment_precondition",
+  "full_gate": "All source/browser/static/module/zero-skip PostgreSQL groups passed except one unchanged Docker test missing its pinned Node image; after loading that exact image the sole failing test passed. Full gate initial exit remains 1.",
+  "changes": [
+    "role recheck under tenant lock",
+    "authorization identity/version binding",
+    "typed public errors",
+    "invitation replay and membership rejoin",
+    "quote replay and valid plan windows",
+    "deploy capability required",
+    "Serve production mux and shared HTTP guards",
+    "per-read authorization context",
+    "canonical public JSON and access readiness",
+    "static access expiry optional without invented session authority"
+  ],
+  "production_claims": false,
+  "logs": {
+    "cloud-full-local.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/cloud-full-local.log",
+      "sha256": "337a239c49807f75daaa8cf1bf5ffc416e43bb786b70a23bdda835caca964f74"
+    },
+    "fabric-docker-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/fabric-docker-final.log",
+      "sha256": "ba0fbad67d1af43838c2210452079b480bbd522643bd3ea81cf3434b798025a9"
+    },
+    "catalog-real-bff-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/catalog-real-bff-final.log",
+      "sha256": "8796c3d7ec55a92b2e8a9f8b58a5191572e543db7b0d8201cfc38f17e49dd799"
+    },
+    "bff-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/bff-final.log",
+      "sha256": "222f85f34b6bce1d200606cd52af1daf0e519a4935f2e4ab555dbcab602b24dc"
+    },
+    "spec-validation-final.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/spec-validation-final.log",
+      "sha256": "bf3d7fd54b14ab83bddd3c1444937191daaa5fbdd02f0499c938befcad071ac5"
+    },
+    "spec-cross-domain.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/spec-cross-domain.log",
+      "sha256": "c8ae9b1fbdee375b2ef11e393f3728f7cb05099b0b0bd3262bf810d45ae8eb2a"
+    },
+    "identity-fixed-postgres.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/identity-fixed-postgres.log",
+      "sha256": "aa610a537d836d3f91c21f2336dda24f1f5893218a0b0f477ce34c5b6645d2a3"
+    },
+    "identity-fixed-bff.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/identity-fixed-bff.log",
+      "sha256": "1ee23c9ae5671f491292129f9aee164c20a291a04346d21b2ccc411f70fe6c2b"
+    },
+    "catalog-focused-after.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/catalog-focused-after.log",
+      "sha256": "200c08172666bdb86f6da10d495de4714c4da38a356045f0e0e222d92fd6758c"
+    },
+    "serve-shared-guard-live-after.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-shared-guard-live-after.log",
+      "sha256": "2611b96e06677ffbb06c6d935884b5fc09bd0ffedc967fa5b86bd1e76c72a786"
+    }
+  }
+}

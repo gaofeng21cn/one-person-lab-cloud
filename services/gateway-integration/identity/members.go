@@ -124,7 +124,7 @@ func rejected(err error) error { return rejection{err: err} }
 // command runs one idempotent member-management write. The stored response is a
 // de-identified identity, so a replay returns the original object instead of a
 // second mutation.
-func (s *Service) command(ctx context.Context, c *api.CallContext, name string, request, response proto.Message, run func(*sql.Tx) error) error {
+func (s *Service) command(ctx context.Context, c *api.CallContext, scope, name string, request, response proto.Message, run func(*sql.Tx) error) error {
 	if c.GetIdempotencyKey() == "" {
 		return status.Error(codes.InvalidArgument, "idempotency key is required")
 	}
@@ -133,7 +133,6 @@ func (s *Service) command(ctx context.Context, c *api.CallContext, name string, 
 		return persistence(e)
 	}
 	defer tx.Rollback()
-	scope := tenantOf(c)
 	if scope == "" {
 		scope = "platform"
 	}
@@ -418,18 +417,12 @@ func (s *Service) InviteMember(ctx context.Context, r *api.InviteMemberRpcReques
 	}
 	out := &api.Invitation{}
 	request := &api.InviteMemberRpcRequest{Body: b}
-	e := s.command(ctx, c, "InviteMember", request, out, func(tx *sql.Tx) error {
+	e := s.command(ctx, c, tid, "InviteMember", request, out, func(tx *sql.Tx) error {
 		// The inviter's live role is re-read from the locked Tenant so an admin
 		// cannot grant above their own rank even if the session was cached.
-		var callerRole string
-		if e := tx.QueryRowContext(ctx, `SELECT m.role FROM tenant.tenants t JOIN tenant.tenant_members m ON m.tenant_id=t.id WHERE t.id=$1 AND t.status='active' AND m.actor_id=$2 AND m.revoked_at IS NULL FOR UPDATE OF t`, tid, c.ActorId).Scan(&callerRole); e != nil {
-			// The caller's authority was re-checked before this transaction; losing
-			// the row here means the membership or the Tenant changed in between, so
-			// refuse the command rather than report an expired session.
-			if errors.Is(e, sql.ErrNoRows) {
-				return owneridentity.WithErrorCode(status.Error(codes.PermissionDenied, "the caller no longer manages this tenant"), api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
-			}
-			return persistence(e)
+		callerRole, e := lockMemberAuthorization(ctx, tx, c, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_INVITEMEMBER)
+		if e != nil {
+			return e
 		}
 		if roleRank(role) > roleRank(callerRole) {
 			return owneridentity.WithErrorCode(status.Error(codes.PermissionDenied, "role above the inviter's own grant"), api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
@@ -480,14 +473,24 @@ func (s *Service) AcceptInvitation(ctx context.Context, r *api.AcceptInvitationR
 	if e := s.authorizeInvitee(ctx, c, invitationID); e != nil {
 		return nil, e
 	}
+	// Acceptance changes the live session from platform to Tenant scope. Bind its
+	// idempotency record to the invitation's Tenant from the first attempt, so a
+	// retry after that session change still resolves the original command.
+	var invitationTenant string
+	if e := s.DB.QueryRowContext(ctx, `SELECT tenant_id FROM tenant.invitations WHERE id=$1 AND invitee_gateway_subject_id=$2`, invitationID, c.ActorId).Scan(&invitationTenant); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil, owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND)
+		}
+		return nil, persistence(e)
+	}
 	out := &api.Member{}
 	request := &api.AcceptInvitationRpcRequest{InvitationId: invitationID}
-	e := s.command(ctx, c, "AcceptInvitation", request, out, func(tx *sql.Tx) error {
+	e := s.command(ctx, c, invitationTenant, "AcceptInvitation", request, out, func(tx *sql.Tx) error {
 		var tid, invitee, role string
 		var expires time.Time
 		var accepted, revoked sql.NullTime
 		if e := tx.QueryRowContext(ctx, `SELECT tenant_id,invitee_gateway_subject_id,role,expires_at,accepted_at,revoked_at FROM tenant.invitations WHERE id=$1 FOR UPDATE`, invitationID).Scan(&tid, &invitee, &role, &expires, &accepted, &revoked); e != nil {
-			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
+			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND)
 		}
 		if invitee != c.ActorId || accepted.Valid || revoked.Valid || !expires.After(time.Now()) {
 			return owneridentity.WithErrorCode(status.Error(codes.FailedPrecondition, "invitation is no longer valid for this subject"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
@@ -504,7 +507,11 @@ func (s *Service) AcceptInvitation(ctx context.Context, r *api.AcceptInvitationR
 			return owneridentity.WithErrorCode(status.Error(codes.AlreadyExists, "subject already belongs to an active tenant"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
 		}
 		memberID := "member_" + randomID()
-		if _, e := tx.ExecContext(ctx, `INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES($1,$2,$3,$4)`, memberID, tid, c.ActorId, role); e != nil {
+		var created time.Time
+		// A removed subject retains its membership identity and audit history. A
+		// fresh invitation reactivates that row instead of violating the owner's
+		// unique (tenant_id,actor_id) constraint or inventing a second membership.
+		if e := tx.QueryRowContext(ctx, `INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,actor_id) DO UPDATE SET role=EXCLUDED.role,revoked_at=NULL,updated_at=now() WHERE tenant.tenant_members.revoked_at IS NOT NULL RETURNING id,created_at`, memberID, tid, c.ActorId, role).Scan(&memberID, &created); e != nil {
 			return persistence(e)
 		}
 		if _, e := tx.ExecContext(ctx, `UPDATE tenant.invitations SET accepted_by=$1,accepted_at=now(),updated_at=now() WHERE id=$2`, c.ActorId, invitationID); e != nil {
@@ -518,7 +525,6 @@ func (s *Service) AcceptInvitation(ctx context.Context, r *api.AcceptInvitationR
 		if _, e := tx.ExecContext(ctx, `UPDATE tenant.sessions SET tenant_id=$1,updated_at=now() WHERE actor_id=$2 AND revoked_at IS NULL`, tid, c.ActorId); e != nil {
 			return persistence(e)
 		}
-		created := time.Now()
 		out.Id, out.ActorId, out.Role, out.Status, out.CreatedAt = memberID, c.ActorId, roleEnum(role), api.MemberStatusEnum_MEMBER_STATUS_ENUM_ACTIVE, timestamppb.New(created)
 		return s.recordAudit(ctx, tx, auditEvent{tenantID: tid, actorID: c.ActorId, action: "acceptInvitation", resourceType: "tenant.member", resourceID: memberID, requestID: c.RequestId, details: map[string]any{"invitation": invitationID, "role": role}, outcome: "confirmed"})
 	})
@@ -542,16 +548,19 @@ func (s *Service) RevokeInvitation(ctx context.Context, r *api.RevokeInvitationR
 	}
 	out := &api.Invitation{}
 	request := &api.RevokeInvitationRpcRequest{InvitationId: invitationID}
-	e := s.command(ctx, c, "RevokeInvitation", request, out, func(tx *sql.Tx) error {
+	e := s.command(ctx, c, tid, "RevokeInvitation", request, out, func(tx *sql.Tx) error {
 		var i invitationRow
 		var invTenant string
 		if e := tx.QueryRowContext(ctx, `SELECT tenant_id,id,invitee_gateway_subject_id,role,expires_at,accepted_at,revoked_at,created_at FROM tenant.invitations WHERE id=$1 FOR UPDATE`, invitationID).Scan(&invTenant, &i.id, &i.invitee, &i.role, &i.expiresAt, &i.accepted, &i.revoked, &i.createdAt); e != nil {
-			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
+			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND)
 		}
 		if invTenant != tid {
 			// A cross-Tenant object is reported as absent, never as forbidden, so
 			// another Tenant's invitation ids are not confirmed to exist.
-			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_INVITATION_INVALID)
+			return owneridentity.WithErrorCode(status.Error(codes.NotFound, "invitation is not available"), api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND)
+		}
+		if _, e := lockMemberAuthorization(ctx, tx, c, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION); e != nil {
+			return e
 		}
 		if i.accepted.Valid || i.revoked.Valid {
 			if e := s.recordAudit(ctx, tx, auditEvent{tenantID: tid, actorID: c.ActorId, action: "revokeInvitation", resourceType: "tenant.invitation", resourceID: invitationID, requestID: c.RequestId, details: map[string]any{"reason": "invitation_invalid"}, outcome: "rejected"}); e != nil {
@@ -591,8 +600,8 @@ func (s *Service) UpdateMemberRole(ctx context.Context, r *api.UpdateMemberRoleR
 	}
 	out := &api.Member{}
 	request := &api.UpdateMemberRoleRpcRequest{MemberId: memberID, Body: r.GetBody()}
-	e := s.command(ctx, c, "UpdateMemberRole", request, out, func(tx *sql.Tx) error {
-		if e := lockTenant(ctx, tx, tid); e != nil {
+	e := s.command(ctx, c, tid, "UpdateMemberRole", request, out, func(tx *sql.Tx) error {
+		if _, e := lockMemberAuthorization(ctx, tx, c, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE); e != nil {
 			return e
 		}
 		var m memberRow
@@ -647,8 +656,8 @@ func (s *Service) RemoveMember(ctx context.Context, r *api.RemoveMemberRpcReques
 	}
 	out := &emptypb.Empty{}
 	request := &api.RemoveMemberRpcRequest{MemberId: memberID}
-	e := s.command(ctx, c, "RemoveMember", request, out, func(tx *sql.Tx) error {
-		if e := lockTenant(ctx, tx, tid); e != nil {
+	e := s.command(ctx, c, tid, "RemoveMember", request, out, func(tx *sql.Tx) error {
+		if _, e := lockMemberAuthorization(ctx, tx, c, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER); e != nil {
 			return e
 		}
 		var m memberRow
@@ -683,6 +692,29 @@ func (s *Service) RemoveMember(ctx context.Context, r *api.RemoveMemberRpcReques
 		return nil, e
 	}
 	return out, nil
+}
+
+// lockMemberAuthorization rechecks the same generated policy after acquiring the
+// Tenant lock. A request may have waited behind a role change or removal since its
+// initial authorization; those live facts must still permit the actual write.
+func lockMemberAuthorization(ctx context.Context, tx *sql.Tx, c *api.CallContext, action api.AuthorizationActionEnum) (string, error) {
+	tid := tenantOf(c)
+	if e := lockTenant(ctx, tx, tid); e != nil {
+		return "", e
+	}
+	var role string
+	e := tx.QueryRowContext(ctx, `SELECT m.role FROM tenant.sessions s JOIN tenant.tenants t ON t.id=s.tenant_id JOIN tenant.tenant_members m ON m.tenant_id=t.id AND m.actor_id=s.actor_id WHERE s.id=$1 AND s.actor_id=$2 AND s.tenant_id=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND m.revoked_at IS NULL AND ($4='' OR EXISTS(SELECT 1 FROM tenant.authorization_contexts a WHERE a.id=$4 AND a.permission_version=t.permission_version+1 AND a.revoked_at IS NULL AND a.expires_at>now())) FOR SHARE OF s`, c.GetSessionId(), c.ActorId, tid, c.AuthorizationContextId).Scan(&role)
+	if e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return "", owneridentity.WithErrorCode(denied(), api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
+		}
+		return "", persistence(e)
+	}
+	policy, ok := actions[action]
+	if !ok || policy.owner != api.OwnerEnum_OWNER_ENUM_TENANT || !permitted(policy, role, false) {
+		return "", owneridentity.WithErrorCode(denied(), api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN)
+	}
+	return role, nil
 }
 
 // lockTenant serializes membership changes on the Tenant row, so two concurrent

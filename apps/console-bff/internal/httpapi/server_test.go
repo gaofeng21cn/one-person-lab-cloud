@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"opl-cloud/apps/console-bff/internal/clients"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 )
@@ -99,7 +100,10 @@ func allowedIdentity() *fakeIdentity {
 		session: &api.Session{ActorId: "actor-1", TenantId: ptr("tenant-1"), CsrfToken: "csrf-1"},
 		// The delivery view checks a Workspace read and then a Serve access read.
 		decisions: map[api.AuthorizationActionEnum]*api.AuthorizationDecision{
-			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS: allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS:   allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS:      allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_SERVE, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, "ws-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION: allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_CAPABILITY, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "cv-1"),
+			api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD:             allowFor("actor-1", "tenant-1", api.OwnerEnum_OWNER_ENUM_BUILD, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, "build-1"),
 		},
 		decision: &api.AuthorizationDecision{
 			ActorId: "actor-1", SessionId: ptr(owneridentity.SessionReference("session-1")),
@@ -299,8 +303,8 @@ func TestAuthorizationRequestCarriesTheSessionScope(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if len(identity.requests) != 2 {
-		t.Fatalf("authorization requests = %d, want 2 (Workspace then Serve)", len(identity.requests))
+	if len(identity.requests) != 5 {
+		t.Fatalf("authorization requests = %d, want 5 (one decision per owner read)", len(identity.requests))
 	}
 	sent := identity.requests[0]
 	if sent.GetActorId() != "actor-1" {
@@ -311,5 +315,79 @@ func TestAuthorizationRequestCarriesTheSessionScope(t *testing.T) {
 	}
 	if sent.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE {
 		t.Fatalf("authorization audience = %v, want workspace", sent.GetAudienceOwner())
+	}
+}
+
+// strictReadContext verifies the exact authorization context at the caller
+// boundary, where reusing the previous owner's decision would be refused.
+type strictReadContext struct {
+	*fakeReader
+	identity *fakeIdentity
+}
+
+func (f *strictReadContext) check(ctx context.Context, action api.AuthorizationActionEnum) error {
+	call := clients.CallContext(ctx)
+	expected := f.identity.decision
+	if d, ok := f.identity.decisions[action]; ok {
+		expected = d
+	}
+	if call == nil || call.GetAuthorizationContextId() != expected.GetAuthorizationContextId() {
+		return errors.New("wrong action authorization context")
+	}
+	return nil
+}
+func (f *strictReadContext) Workspace(ctx context.Context, id string) (*api.Workspace, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Workspace(ctx, id)
+}
+func (f *strictReadContext) Deployments(ctx context.Context, id string) (*api.DeploymentPage, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Deployments(ctx, id)
+}
+func (f *strictReadContext) WorkspaceAccess(ctx context.Context, id string) (*api.WorkspaceAccess, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.WorkspaceAccess(ctx, id)
+}
+func (f *strictReadContext) CapabilityVersion(ctx context.Context, id string) (*api.CapabilityVersion, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.CapabilityVersion(ctx, id)
+}
+func (f *strictReadContext) Build(ctx context.Context, id string) (*api.BuildJob, error) {
+	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD); err != nil {
+		return nil, err
+	}
+	return f.fakeReader.Build(ctx, id)
+}
+func (f *strictReadContext) Deployment(ctx context.Context, workspace, id string) (*api.Deployment, error) {
+	return f.deployments.Items[0], f.err
+}
+func TestDeliveryBindsEachOwnerReadToItsOwnDecision(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.AuthorizationContextId = ptr("workspace-context")
+	for action, d := range identity.decisions {
+		d.AuthorizationContextId = ptr(action.String())
+	}
+	reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+func TestServeReadsAreRegisteredOnProductMux(t *testing.T) {
+	identity := allowedIdentity()
+	reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deployments"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

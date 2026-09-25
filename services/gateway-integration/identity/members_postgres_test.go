@@ -255,7 +255,7 @@ func TestMemberGovernancePostgres(t *testing.T) {
 
 	// Cross-Tenant objects are reported as absent, never as forbidden, so another
 	// Tenant's identifiers are not confirmed to exist.
-	if _, e = c.RevokeInvitation(ctx, &api.RevokeInvitationRpcRequest{Context: memberCall(other, otherCookie, "cross-revoke"), InvitationId: invitation.Id}); status.Code(e) != codes.NotFound {
+	if _, e = c.RevokeInvitation(ctx, &api.RevokeInvitationRpcRequest{Context: memberCall(other, otherCookie, "cross-revoke"), InvitationId: invitation.Id}); status.Code(e) != codes.NotFound || memberCode(t, e) != api.ErrorCodeEnum_ERROR_CODE_ENUM_NOT_FOUND {
 		t.Fatalf("cross-Tenant invitation revoke was not refused as absent: %v", e)
 	}
 	if _, e = c.RevokeInvitation(ctx, &api.RevokeInvitationRpcRequest{Context: memberCall(owner, ownerCookie, "own-revoke-foreign"), InvitationId: "invitation-that-does-not-exist"}); status.Code(e) != codes.NotFound {
@@ -432,7 +432,11 @@ func TestLastOwnerProtectionUnderConcurrencyPostgres(t *testing.T) {
 			succeeded++
 			continue
 		}
-		if code, ok := owneridentity.ErrorCode(err); ok && code == api.ErrorCodeEnum_ERROR_CODE_ENUM_LAST_OWNER {
+		if code, ok := owneridentity.ErrorCode(err); ok && (code == api.ErrorCodeEnum_ERROR_CODE_ENUM_LAST_OWNER || code == api.ErrorCodeEnum_ERROR_CODE_ENUM_FORBIDDEN) {
+			refused++
+			continue
+		}
+		if status.Code(err) == codes.PermissionDenied || status.Code(err) == codes.Unauthenticated {
 			refused++
 			continue
 		}
@@ -448,6 +452,104 @@ func TestLastOwnerProtectionUnderConcurrencyPostgres(t *testing.T) {
 	}
 	if owners != 1 || ownerTenant != "tenant-pair" {
 		t.Fatalf("tenant-pair ended with %d active owners in %q", owners, ownerTenant)
+	}
+}
+
+// A queued request must not retain the role it held before acquiring the Tenant
+// lock. The same interleaving arises when another owner demotes it first.
+func TestQueuedRoleChangeRechecksAuthorityPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	system.db.SetMaxOpenConns(5)
+	ctx := t.Context()
+	cookie, owner := memberLogin(t, system.client, "one@example.test")
+	call := memberCall(owner, cookie, "queued-self-promotion")
+	decision, err := system.auth.AuthorizeAction(ctx, &api.AuthorizationRequest{Scope: call.Scope, ActorId: call.ActorId, SessionId: call.SessionId, AudienceOwner: api.OwnerEnum_OWNER_ENUM_TENANT, Action: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE, Resource: &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String("tenant-pair")}, RequestId: call.RequestId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call.AuthorizationContextId = decision.GetAuthorizationContextId()
+	blocker, err := system.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback()
+	if _, err = blocker.ExecContext(ctx, `SELECT id FROM tenant.tenants WHERE id='tenant-pair' FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := system.client.UpdateMemberRole(ctx, &api.UpdateMemberRoleRpcRequest{Context: call, MemberId: "pair-owner-one", Body: &api.UpdateMemberRoleRequest{Role: api.TenantRoleEnum_TENANT_ROLE_ENUM_OWNER}})
+		result <- err
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var blocked bool
+		if err = system.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%tenant.tenants%' AND query LIKE '%FOR UPDATE%')`).Scan(&blocked); err != nil {
+			t.Fatal(err)
+		}
+		if blocked {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("request did not reach the Tenant lock")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, err = blocker.ExecContext(ctx, `UPDATE tenant.tenant_members SET role='member' WHERE id='pair-owner-one'; UPDATE tenant.tenants SET permission_version=permission_version+1 WHERE id='tenant-pair'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = blocker.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-result; status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("a demoted caller executed its queued owner command: %v", err)
+	}
+	var role string
+	if err = system.db.QueryRowContext(ctx, `SELECT role FROM tenant.tenant_members WHERE id='pair-owner-one'`).Scan(&role); err != nil || role != "member" {
+		t.Fatalf("queued command restored revoked authority: role=%q err=%v", role, err)
+	}
+}
+
+func TestInvitationRetryAndRejoinPostgres(t *testing.T) {
+	system := newMemberSystem(t)
+	ctx := t.Context()
+	c := system.client
+	ownerCookie, owner := memberLogin(t, c, "owner-a@example.test")
+	inviteeCookie, invitee := memberLogin(t, c, "invitee@example.test")
+	invitation, err := c.InviteMember(ctx, &api.InviteMemberRpcRequest{Context: memberCall(owner, ownerCookie, "initial-invite"), Body: &api.InviteMemberRequest{InviteeGatewaySubjectId: "301", Role: api.InviteMemberRequestRoleEnum_INVITE_MEMBER_REQUEST_ROLE_ENUM_MEMBER}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := c.AcceptInvitation(ctx, &api.AcceptInvitationRpcRequest{Context: memberCall(invitee, inviteeCookie, "accept-once"), InvitationId: invitation.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := c.GetSession(ctx, &api.GetSessionRpcRequest{Context: &api.CallContext{SessionId: proto.String(inviteeCookie)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := c.AcceptInvitation(ctx, &api.AcceptInvitationRpcRequest{Context: memberCall(live, inviteeCookie, "accept-once"), InvitationId: invitation.Id})
+	if err != nil || !proto.Equal(replayed, member) {
+		t.Fatalf("session scope change lost the original idempotent result: %v %v", replayed, err)
+	}
+	if _, err = c.RemoveMember(ctx, &api.RemoveMemberRpcRequest{Context: memberCall(owner, ownerCookie, "remove-for-rejoin"), MemberId: member.Id}); err != nil {
+		t.Fatal(err)
+	}
+	reinvitation, err := c.InviteMember(ctx, &api.InviteMemberRpcRequest{Context: memberCall(owner, ownerCookie, "reinvite"), Body: &api.InviteMemberRequest{InviteeGatewaySubjectId: "301", Role: api.InviteMemberRequestRoleEnum_INVITE_MEMBER_REQUEST_ROLE_ENUM_ADMIN}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inviteeCookie, invitee = memberLogin(t, c, "invitee@example.test")
+	rejoined, err := c.AcceptInvitation(ctx, &api.AcceptInvitationRpcRequest{Context: memberCall(invitee, inviteeCookie, "accept-reinvite"), InvitationId: reinvitation.Id})
+	if err != nil || rejoined.GetId() != member.Id || rejoined.GetRole() != api.TenantRoleEnum_TENANT_ROLE_ENUM_ADMIN || rejoined.GetStatus() != api.MemberStatusEnum_MEMBER_STATUS_ENUM_ACTIVE {
+		t.Fatalf("a removed member could not rejoin with its original identity: %v %v", rejoined, err)
+	}
+	var count int
+	if err = system.db.QueryRowContext(ctx, `SELECT count(*) FROM tenant.tenant_members WHERE tenant_id='tenant-a' AND actor_id='301'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("rejoin duplicated a membership: %d %v", count, err)
+	}
+	if err = system.db.QueryRowContext(ctx, `SELECT count(*) FROM tenant.audit_events WHERE resource_id=$1 AND action IN ('acceptInvitation','removeMember') AND outcome='confirmed'`, member.Id).Scan(&count); err != nil || count != 3 {
+		t.Fatalf("rejoin lost membership audit history: %d %v", count, err)
 	}
 }
 

@@ -93,6 +93,7 @@ test("full local gate covers every PostgreSQL owner with the CI-only extensions"
     "services/build",
     "services/runtime-control",
     "services/workspace",
+    "services/resource-catalog",
     "services/serve",
     "services/ledger",
     "services/control-plane",

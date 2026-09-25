@@ -235,7 +235,7 @@ var required = map[protoreflect.Name]map[string]bool{
 	"Quote":                                     {"id": true, "purpose": true, "computePlanId": true, "storagePlanId": true, "modelSelections": true, "periodMonths": true, "periodStart": true, "periodEnd": true, "pricePolicyVersionId": true, "refundPolicyVersionId": true, "retentionPolicyVersionId": true, "refundTerms": true, "retentionTerms": true, "expectedInterruption": true, "lineItems": true, "totalUSDMicros": true, "status": true, "expiresAt": true, "createdAt": true, "runtimeReadbackRequirement": true},
 	"Workspace":                                 {"id": true, "name": true, "computePlanId": true, "storagePlanId": true, "status": true, "deliveryModel": true, "resourceReadiness": true, "applicationAvailability": true, "modelConfigurationVersion": true, "createdAt": true, "updatedAt": true, "version": true},
 	"CreateWorkspaceRequest":                    {"name": true, "quoteId": true, "renewalMode": true},
-	"WorkspaceAccess":                           {"workspaceId": true, "url": true, "authenticationMode": true, "expiresAt": true},
+	"WorkspaceAccess":                           {"workspaceId": true, "url": true, "authenticationMode": true},
 	"ModelConfiguration":                        {"workspaceId": true, "version": true, "selections": true, "status": true, "updatedAt": true},
 	"UpdateWorkspaceModelsRequest":              {"expectedVersion": true, "selections": true},
 	"Deployment":                                {"id": true, "workspaceId": true, "capabilityVersionId": true, "status": true, "dataCompatibility": true, "createdAt": true, "updatedAt": true},

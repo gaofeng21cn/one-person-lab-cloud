@@ -31,6 +31,7 @@ export const goModules = Object.freeze([
   "services/build",
   "services/runtime-control",
   "services/workspace",
+  "services/resource-catalog",
   "services/serve",
   "apps/console-bff"
 ]);
@@ -83,6 +84,7 @@ export const postgresVerificationSpecs = Object.freeze([
   { cwd: "services/build" },
   { cwd: "services/runtime-control" },
   { cwd: "services/workspace" },
+  { cwd: "services/resource-catalog" },
   { cwd: "services/serve" },
   { cwd: "services/ledger" },
   { cwd: "services/control-plane", timeout: "15m" },

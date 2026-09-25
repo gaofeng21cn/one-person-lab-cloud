@@ -65,6 +65,9 @@ func (s *Server) Handler() http.Handler {
 	s.registerPublisherRoutes(mux)
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)
+	if reader, ok := s.reader.(ServeDeliveryReader); ok {
+		RegisterServeDeliveryRoutes(mux, reader, s.identity)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
@@ -89,26 +92,12 @@ func (s *Server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
-	requestID := clients.CallContext(ctx).GetRequestId()
-	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Workspace,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACE,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
-		requestID); err != nil {
-		s.writeIdentityError(w, err)
-		return
-	}
-	// The access facts in this view are Serve-owned, so they are authorized
-	// against Serve rather than inherited from the Workspace read above. Each
-	// owner fact is checked by the owner that reports it.
-	if err := RequireAuthorizedAction(ctx, s.identity, caller, owneridentity.Serve,
-		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS,
-		&api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID},
-		requestID); err != nil {
-		s.writeIdentityError(w, err)
-		return
-	}
-	view, err := s.deliveryView(ctx, workspaceID)
+	view, err := s.deliveryView(ctx, caller, workspaceID)
 	if err != nil {
+		if errors.Is(err, ErrAuthorizationRequired) || errors.Is(err, ErrSessionRequired) {
+			s.writeIdentityError(w, err)
+			return
+		}
 		writeError(w, http.StatusBadGateway, "owner_read_failed", err.Error())
 		return
 	}

@@ -420,10 +420,7 @@ func TestLiveServeReadChain(t *testing.T) {
 		// access read must publish no URL and claim no credentials: a provisioned
 		// resource is not a ready application.
 		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-pending"})
-		requireServed(t, err, "GetWorkspaceAccess for a Workspace whose runtime is starting")
-		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() {
-			t.Fatalf("a starting runtime claimed a ready application: %+v", access)
-		}
+		assertAccessUnavailable(t, access, err)
 	})
 
 	t.Run("never_delivered_workspace_has_empty_history", func(t *testing.T) {
@@ -434,10 +431,7 @@ func TestLiveServeReadChain(t *testing.T) {
 			t.Fatalf("never-delivered Workspace reported history: %+v", page.GetItems())
 		}
 		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-never-delivered"})
-		requireServed(t, err, "GetWorkspaceAccess for a never-delivered Workspace")
-		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() || access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_UNSPECIFIED {
-			t.Fatalf("a never-delivered Workspace fabricated access: %+v", access)
-		}
+		assertAccessUnavailable(t, access, err)
 	})
 
 	t.Run("attempt_without_active_agent_publishes_no_entry", func(t *testing.T) {
@@ -448,10 +442,7 @@ func TestLiveServeReadChain(t *testing.T) {
 			t.Fatalf("queued attempt history = %+v", page.GetItems())
 		}
 		access, err := client.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call, WorkspaceId: "ws-attempt"})
-		requireServed(t, err, "GetWorkspaceAccess for a Workspace without an active Agent")
-		if access.GetUrl() != "" || access.GetApplicationCredentialsAvailable() {
-			t.Fatalf("a Workspace without an active Agent published access: %+v", access)
-		}
+		assertAccessUnavailable(t, access, err)
 	})
 
 	t.Run("revoked_session_is_refused", func(t *testing.T) {

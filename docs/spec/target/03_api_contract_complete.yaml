@@ -2090,7 +2090,7 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '503':
           $ref: '#/components/responses/ErrorResponse'
-      description: Workspace可用且session/角色准入后返回短期应用委托；Gateway能力未证实则APP_ACCESS_UNAVAILABLE。
+      description: Workspace可用且session/角色准入后返回Serve已确认的应用入口；应用保留自身登录，不签发第二套应用会话。当前入口不可用或cloud_private保护能力未证实则APP_ACCESS_UNAVAILABLE。
       parameters:
       - name: workspaceId
         in: path
@@ -8486,13 +8486,13 @@ components:
         expiresAt:
           type: string
           format: date-time
+          description: 仅当入口提供方声明真实有效期时返回；静态应用入口不编造期限。
         applicationCredentialsAvailable:
           type: boolean
       required:
       - workspaceId
       - url
       - authenticationMode
-      - expiresAt
       description: 严格来自canonical revision.exposurePolicy/WorkspaceApplicationEntry。application保留应用自身登录；cloud_private仅有当前provider确认受保护入口才可打开，无该能力返回APP_ACCESS_UNAVAILABLE。不新建应用SSO/session权威，不传平台Cookie/Token进应用。
         applicationCredentialsAvailable只表示当前声明/实际能力存在；reveal另做owner授权，普通成员按应用自身身份登录。
     ModelConfiguration:

@@ -54,7 +54,7 @@ WORKDIR /src
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services /src/services
 COPY apps/console-bff /src/apps/console-bff
-RUN for service in capability build runtime-control workspace serve gateway-integration; do \
+RUN for service in capability build runtime-control workspace resource-catalog serve gateway-integration; do \
       CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -o /out/opl-$service ./cmd/server || exit 1; \
     done \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -o /out/opl-console-bff ./cmd/server

@@ -1,7 +1,7 @@
 {
   "result": "passed",
-  "timestamp": "2026-09-25T08:05:15.300310+00:00",
-  "report": "checks/runs/20260925T080515300310Z.json",
+  "timestamp": "2026-09-25T19:41:02.929273+00:00",
+  "report": "checks/runs/20260925T194102929273Z.json",
   "scope": "documentation contracts only; not implementation/runtime/DB execution/Instance qualification",
   "checks": [
     {
@@ -28,21 +28,21 @@
       "name": "isolated_postgresql_execution_receipt",
       "passed": true,
       "details": {
-        "receipt": "checks/runs/cross-domain-20260925T075223.161739Z.json",
+        "receipt": "checks/runs/cross-domain-20260925T193730.077394Z.json",
         "tests": 101,
         "metadata": {
           "actualDatabaseFields": 1424,
           "directMappingsTypeAndEnumChecked": 310,
           "optionalWireFieldMeansOmittedNotNull": true,
           "nonnullableDbMayBeInternalOrDerived": "not inferred from API required alone; legacy cases cover real discriminators",
-          "postgresVersion": "PostgreSQL 16.15 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+          "postgresVersion": "PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"
         },
         "scope": "typed REST/protobuf specification adapters -> isolated PostgreSQL -> exact typed/readback projection; provider router and Storage are explicitly named fixtures, not implemented services",
         "cleanup": {
-          "containerName": "opl-spec-semantic-1790322743",
+          "containerName": "opl-spec-semantic-1790365050",
           "containerAbsent": true,
           "stopSucceeded": true,
-          "removalReadbackPolls": 2,
+          "removalReadbackPolls": 1,
           "storage": "tmpfs only; no host mounts/named volumes",
           "network": "none; no host ports"
         }

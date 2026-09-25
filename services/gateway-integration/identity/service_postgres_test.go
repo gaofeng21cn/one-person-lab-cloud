@@ -163,6 +163,32 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 	if e != nil || introspected.GetAuthorizationContextId() != decision.GetAuthorizationContextId() {
 		t.Fatal("context introspection changed identity", e)
 	}
+	// Publisher continuations preserve the original session and permission version,
+	// even though the called owner/action is deliberately different.
+	publisher := proto.Clone(request).(*api.AuthorizationRequest)
+	publisher.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
+	publisher.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESOLVEBUILDINPUT
+	publisher.AuthorizationContextId = decision.AuthorizationContextId
+	capabilityContext := ownerservice.WithPeerOwner(ctx, owneridentity.Capability.Service())
+	if _, e = s.AuthorizeAction(capabilityContext, publisher); e != nil {
+		t.Fatal("original publisher continuation was refused", e)
+	}
+	secondCookie, _ := login(t, c)
+	switched := proto.Clone(publisher).(*api.AuthorizationRequest)
+	switched.SessionId = proto.String(owneridentity.SessionReference(secondCookie))
+	if _, e = s.AuthorizeAction(capabilityContext, switched); e == nil {
+		t.Fatal("another session reused the original publisher authorization")
+	}
+	if _, e = db.ExecContext(ctx, `UPDATE tenant.tenants SET permission_version=permission_version+1 WHERE id='tenant-test'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.AuthorizeAction(capabilityContext, publisher); e == nil {
+		t.Fatal("publisher continuation reused a stale permission version")
+	}
+	decision, e = s.AuthorizeAction(peerCtx, request)
+	if e != nil {
+		t.Fatal(e)
+	}
 	for _, mutate := range []func(*api.AuthorizationRequest){
 		func(r *api.AuthorizationRequest) { r.ActorId = "forged" },
 		func(r *api.AuthorizationRequest) {

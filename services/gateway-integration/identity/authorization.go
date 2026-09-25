@@ -110,7 +110,7 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 		if e != nil {
 			return nil, e
 		}
-		if !original.ExpiresAt.AsTime().After(time.Now()) {
+		if original.PermissionVersion != version || original.GetActorId() != r.ActorId || original.GetSessionId() != r.GetSessionId() || !proto.Equal(original.Scope, r.Scope) || !original.ExpiresAt.AsTime().After(time.Now()) {
 			return nil, denied()
 		}
 		if !sameAction(original, r) && !publisherContinuation(original, r, caller) {

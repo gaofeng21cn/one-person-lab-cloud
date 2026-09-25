@@ -99,6 +99,17 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 		}
 		result, err := invoke(r.WithContext(ctx), call, input)
 		if err != nil {
+			if ownerCode, ok := owneridentity.ErrorCode(err); ok {
+				if httpStatus, declared := errorStatus[ownerCode]; declared {
+					// Keep the owner's typed decision and the contract's public status;
+					// transport categories cannot distinguish LAST_OWNER from validation.
+					if httpStatus == 429 || httpStatus == 503 {
+						w.Header().Set("Retry-After", "2")
+					}
+					writeJSON(w, httpStatus, map[string]any{"code": strings.TrimPrefix(ownerCode.String(), "ERROR_CODE_ENUM_"), "message": "publisher request could not be completed", "requestId": r.Header.Get(requestIDHeader)})
+					return
+				}
+			}
 			code := 502
 			switch status.Code(err) {
 			case codes.InvalidArgument:
