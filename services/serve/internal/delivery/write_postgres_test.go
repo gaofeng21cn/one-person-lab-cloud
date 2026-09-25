@@ -3,6 +3,7 @@ package delivery_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,6 +178,14 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 	if err != nil || access.GetUrl() != "https://ws.example/app" {
 		t.Fatalf("access=%v %v", access, err)
 	}
+	operations, err := ownerservice.NewOperations(ownerservice.OwnerServe, s.Store, ownerservice.NewAuthorizer(ownerservice.OwnerServe, &fakeIdentity{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := operations.Read(serveContext(), &api.OwnerOperationRequest{Context: r.Context, OperationId: out.OperationId})
+	if err != nil || operation.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_VERIFICATION || operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
+		t.Fatalf("public operation readback=%v %v", operation, err)
+	}
 	for _, change := range []func(*api.RuntimeDeployCommand){func(v *api.RuntimeDeployCommand) { v.ExecutionEpoch++ }, func(v *api.RuntimeDeployCommand) { v.RuntimeInstanceId = "other-runtime" }, func(v *api.RuntimeDeployCommand) { v.ResourceSetId = "other-resource-set" }, func(v *api.RuntimeDeployCommand) { v.DataAttachmentId = "other-attachment" }} {
 		bad := proto.Clone(command).(*api.RuntimeDeployCommand)
 		change(bad)
@@ -189,5 +198,97 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 	old.ObservedAt = time.Now().Add(-time.Hour)
 	if _, err = s.RecordDeploymentObservation(ctx, command, old); err == nil {
 		t.Fatal("older same-epoch observation overwrote ready record")
+	}
+}
+
+type orderedObservationRuntime struct {
+	entered      chan int
+	releaseFirst chan struct{}
+	mu           sync.Mutex
+	calls        int
+}
+
+func (f *orderedObservationRuntime) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+	return delivery.RuntimeObservation{}, nil
+}
+func (f *orderedObservationRuntime) Observe(ctx context.Context, _ *api.RuntimeDeployCommand, _ *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
+	f.mu.Lock()
+	f.calls++
+	n := f.calls
+	f.mu.Unlock()
+	f.entered <- n
+	if n == 1 {
+		select {
+		case <-f.releaseFirst:
+		case <-ctx.Done():
+			return delivery.RuntimeObservation{}, ctx.Err()
+		}
+		return delivery.RuntimeObservation{State: api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_STARTING, ObservedAt: time.Now().UTC()}, nil
+	}
+	return runtimeReady(applicationEntry(), "https://ws.example/app", "ordered-ready"), nil
+}
+
+// Separate Service instances model two processes sharing only the owner database.
+// The first read sampled pending and stalls; the second cannot sample ready until
+// the first observation and selection commit together under the database lock.
+func TestServeSerializesObservationThroughSelectionAcrossInstances(t *testing.T) {
+	s, r, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	reservation, err := s.Reserve(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Resources = &resourcesForServe{confirmed: true}
+	s.Runtime = &runtimeForServe{}
+	command := deployReserved(r, reservation)
+	if _, err = s.Deploy(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	second, err := delivery.New(s.DB, ownerAuthorizer(&fakeIdentity{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := &orderedObservationRuntime{entered: make(chan int, 2), releaseFirst: make(chan struct{})}
+	second.Resources = s.Resources
+	second.Runtime = sequence
+	s.Runtime = sequence
+	request := &api.RuntimeReadbackRequest{Context: r.Context, RuntimeInstanceId: reservation.RuntimeInstanceId, DeploymentId: reservation.DeploymentId}
+	results := make(chan error, 2)
+	go func() { _, err := s.ReadRuntime(ctx, request); results <- err }()
+	select {
+	case n := <-sequence.entered:
+		if n != 1 {
+			t.Fatalf("first observation=%d", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("first observation did not start")
+	}
+	go func() { _, err := second.ReadRuntime(ctx, request); results <- err }()
+	select {
+	case n := <-sequence.entered:
+		close(sequence.releaseFirst)
+		for i := 0; i < 2; i++ {
+			<-results
+		}
+		t.Fatalf("concurrent observation %d bypassed the owner lock", n)
+	case <-time.After(75 * time.Millisecond):
+	}
+	close(sequence.releaseFirst)
+	select {
+	case n := <-sequence.entered:
+		if n != 2 {
+			t.Fatalf("second observation=%d", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second observation did not resume")
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var runtimeState, deploymentState string
+	if err = s.DB.QueryRowContext(ctx, `SELECT i.status,d.status FROM serve.agent_runtime_instances i JOIN serve.agent_deployments d ON d.id=i.deployment_id WHERE i.id=$1`, reservation.RuntimeInstanceId).Scan(&runtimeState, &deploymentState); err != nil || runtimeState != "ready" || deploymentState != "active" {
+		t.Fatalf("final states=%s/%s err=%v", runtimeState, deploymentState, err)
 	}
 }

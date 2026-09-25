@@ -108,6 +108,28 @@ func descriptorDigest(descriptor *api.DeploymentDescriptor) (string, error) {
 // an older epoch, a different workspace/deployment/runtime/descriptor, or an
 // undecidable state never overwrites a recorded fact.
 func (s *Service) RecordDeploymentObservation(ctx context.Context, cmd *api.RuntimeDeployCommand, observation RuntimeObservation) (*RuntimeRecord, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer tx.Rollback()
+	if err = lockWorkspace(ctx, tx, cmd.GetWorkspaceId()); err != nil {
+		return nil, dbError(err)
+	}
+	record, err := recordDeploymentObservation(ctx, tx, cmd, observation)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
+	}
+	return record, nil
+}
+
+// recordDeploymentObservation shares the transaction holding the owner lock with
+// runtime execution and selection. A response-completion timestamp is evidence
+// metadata, not a concurrency fence.
+func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.RuntimeDeployCommand, observation RuntimeObservation) (*RuntimeRecord, error) {
 	if cmd == nil || strings.TrimSpace(cmd.GetWorkspaceId()) == "" || strings.TrimSpace(cmd.GetDeploymentId()) == "" || strings.TrimSpace(cmd.GetRuntimeInstanceId()) == "" || strings.TrimSpace(cmd.GetResourceSetId()) == "" || cmd.GetDeploymentDescriptor() == nil {
 		return nil, status.Error(codes.InvalidArgument, "workspace, deployment, runtime, resource set and deployment descriptor are required")
 	}
@@ -120,19 +142,11 @@ func (s *Service) RecordDeploymentObservation(ctx context.Context, cmd *api.Runt
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, dbError(err)
-	}
-	defer tx.Rollback()
-	if err = lockWorkspace(ctx, tx, cmd.GetWorkspaceId()); err != nil {
-		return nil, dbError(err)
-	}
-	if err = validateReserved(ctx, tx, cmd); err != nil {
+	if err := validateReserved(ctx, tx, cmd); err != nil {
 		return nil, err
 	}
 	var previous sql.NullTime
-	if err = tx.QueryRowContext(ctx, `SELECT observed_at FROM serve.agent_runtime_instances WHERE id=$1 FOR UPDATE`, cmd.GetRuntimeInstanceId()).Scan(&previous); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT observed_at FROM serve.agent_runtime_instances WHERE id=$1 FOR UPDATE`, cmd.GetRuntimeInstanceId()).Scan(&previous); err != nil {
 		return nil, dbError(err)
 	}
 	if previous.Valid && observedAt.Before(previous.Time) {
@@ -147,9 +161,6 @@ func (s *Service) RecordDeploymentObservation(ctx context.Context, cmd *api.Runt
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), cmd.GetModelConfigurationVersion())
 	if err != nil {
-		return nil, dbError(err)
-	}
-	if err = tx.Commit(); err != nil {
 		return nil, dbError(err)
 	}
 	id := cmd.GetRuntimeInstanceId()

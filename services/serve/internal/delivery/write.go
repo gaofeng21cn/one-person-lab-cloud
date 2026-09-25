@@ -279,30 +279,7 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	if _, err := s.bindReservation(ctx, r.Context, &api.RuntimeReservation{DeploymentId: r.DeploymentId}); err != nil {
 		return nil, err
 	}
-	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(r.Context), ResourceSetId: r.ResourceSetId})
-	if err != nil {
-		return nil, err
-	}
-	b, err := confirmedBinding(r, resources)
-	if err != nil {
-		return nil, err
-	}
-	// Start is idempotent at the original provider operation. Its acknowledgement
-	// never proves readiness: a separate live Observe must confirm it.
-	if _, err = s.Runtime.Start(ctx, r, b); err != nil {
-		return nil, err
-	}
-	observed, err := s.Runtime.Observe(ctx, r, b)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = s.RecordDeploymentObservation(ctx, r, observed); err != nil {
-		return nil, err
-	}
-	if err = s.finishFirstDelivery(ctx, r, observed); err != nil {
-		return nil, err
-	}
-	return s.runtimeReadback(ctx, r.RuntimeInstanceId, r.DeploymentId)
+	return s.reconcileRuntime(ctx, r, true)
 }
 
 func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand) error {
@@ -347,18 +324,8 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 	}
 	return dbError(tx.Commit())
 }
-func (s *Service) finishFirstDelivery(ctx context.Context, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return dbError(err)
-	}
-	defer tx.Rollback()
-	if err = lockWorkspace(ctx, tx, r.WorkspaceId); err != nil {
-		return dbError(err)
-	}
-	if err = validateReserved(ctx, tx, r); err != nil {
-		return err
-	}
+func finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
+	var err error
 	var recordedStatus, recordedEvidence string
 	var recordedAt time.Time
 	if err = tx.QueryRowContext(ctx, `SELECT status,COALESCE(readiness_evidence_ref,''),observed_at FROM serve.agent_runtime_instances WHERE id=$1 FOR UPDATE`, r.RuntimeInstanceId).Scan(&recordedStatus, &recordedEvidence, &recordedAt); err != nil {
@@ -380,12 +347,12 @@ func (s *Service) finishFirstDelivery(ctx context.Context, r *api.RuntimeDeployC
 		return dbError(err)
 	}
 	if state == "active" {
-		_, err = tx.ExecContext(ctx, `UPDATE serve.operations SET status='succeeded',stage='verify',observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=(SELECT operation_id FROM serve.agent_deployments WHERE id=$1)`, r.DeploymentId)
+		_, err = tx.ExecContext(ctx, `UPDATE serve.operations SET status='succeeded',stage='verification',observation_result='confirmed',completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=(SELECT operation_id FROM serve.agent_deployments WHERE id=$1)`, r.DeploymentId)
 		if err != nil {
 			return dbError(err)
 		}
 	}
-	return dbError(tx.Commit())
+	return nil
 }
 func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest) (*api.RuntimeReadback, error) {
 	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
@@ -414,35 +381,22 @@ func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest
 		return nil, status.Error(codes.DataLoss, "invalid original runtime command")
 	}
 	command.Context = r.Context
-	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(r.Context), ResourceSetId: command.ResourceSetId})
-	if err != nil {
-		return nil, err
-	}
-	binding, err := confirmedBinding(command, resources)
-	if err != nil {
-		return nil, err
-	}
-	observation, err := s.Runtime.Observe(ctx, command, binding)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = s.RecordDeploymentObservation(ctx, command, observation); err != nil {
-		return nil, err
-	}
-	if err = s.finishFirstDelivery(ctx, command, observation); err != nil {
-		return nil, err
-	}
-	return s.runtimeReadback(ctx, r.RuntimeInstanceId, r.DeploymentId)
+	return s.reconcileRuntime(ctx, command, false)
 }
 func (s *Service) runtimeReadback(ctx context.Context, runtimeID, deployment string) (*api.RuntimeReadback, error) {
-	var st, url, receipt, artifact, repository, digest, ref, workspace string
+	var st, url, receipt, digest, ref, workspace string
+	var descriptorRaw []byte
 	var observed sql.NullTime
 	var epoch, version int64
-	err := s.DB.QueryRowContext(ctx, `SELECT workspace_id,status,COALESCE(access_url,''),COALESCE(readiness_evidence_ref,''),artifact_digest,deployment_descriptor#>>'{artifact,repository}',deployment_descriptor_digest,deployment_descriptor_object_ref,observed_at,execution_epoch,applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, runtimeID, deployment).Scan(&workspace, &st, &url, &receipt, &artifact, &repository, &digest, &ref, &observed, &epoch, &version)
+	err := s.DB.QueryRowContext(ctx, `SELECT workspace_id,status,COALESCE(access_url,''),COALESCE(readiness_evidence_ref,''),deployment_descriptor,deployment_descriptor_digest,deployment_descriptor_object_ref,observed_at,execution_epoch,applied_model_configuration_version FROM serve.agent_runtime_instances WHERE id=$1 AND deployment_id=$2`, runtimeID, deployment).Scan(&workspace, &st, &url, &receipt, &descriptorRaw, &digest, &ref, &observed, &epoch, &version)
 	if err != nil {
 		return nil, dbError(err)
 	}
-	out := &api.RuntimeReadback{RuntimeInstanceId: runtimeID, WorkspaceId: workspace, DeploymentId: deployment, State: api.AgentRuntimeObservationState(api.AgentRuntimeObservationState_value["RUNTIME_INSTANCE_STATE_"+strings.ToUpper(st)]), ProcessReady: st == "ready", ApplicationAvailable: st == "ready", Artifact: &api.ArtifactReference{Repository: repository, Digest: artifact}, AppliedModelConfigurationVersion: version, ReadinessReceiptId: receipt, Outcome: api.Observation_OBSERVATION_UNKNOWN, DeploymentDescriptorDigest: digest, DeploymentDescriptorObjectRef: ref, ExecutionEpoch: epoch}
+	descriptor := &api.DeploymentDescriptor{}
+	if publicjson.Unmarshal(descriptorRaw, descriptor) != nil {
+		return nil, status.Error(codes.DataLoss, "persisted deployment descriptor is invalid")
+	}
+	out := &api.RuntimeReadback{RuntimeInstanceId: runtimeID, WorkspaceId: workspace, DeploymentId: deployment, State: api.AgentRuntimeObservationState(api.AgentRuntimeObservationState_value["RUNTIME_INSTANCE_STATE_"+strings.ToUpper(st)]), ProcessReady: st == "ready", ApplicationAvailable: st == "ready", Artifact: descriptor.GetArtifact(), AppliedModelConfigurationVersion: version, ReadinessReceiptId: receipt, Outcome: api.Observation_OBSERVATION_UNKNOWN, DeploymentDescriptorDigest: digest, DeploymentDescriptorObjectRef: ref, ExecutionEpoch: epoch}
 	if observed.Valid {
 		out.ObservedAt = timestamppb.New(observed.Time)
 		out.Outcome = api.Observation_OBSERVATION_CONFIRMED
@@ -460,4 +414,53 @@ func confirmedBinding(command *api.RuntimeDeployCommand, resources *api.Resource
 		return nil, status.Error(codes.FailedPrecondition, "Fabric has not confirmed the exact executable resource binding")
 	}
 	return b, nil
+}
+
+// reconcileRuntime serializes the complete provider observation and owner commit
+// under the same PostgreSQL workspace lock as Reserve. That lock spans service
+// processes, so a slow earlier HTTP response cannot overwrite a later observation.
+// Holding one owner transaction also makes runtime readiness and selection atomic.
+func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDeployCommand, start bool) (*api.RuntimeReadback, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer tx.Rollback()
+	if err = lockWorkspace(ctx, tx, command.WorkspaceId); err != nil {
+		return nil, dbError(err)
+	}
+	if err = validateReserved(ctx, tx, command); err != nil {
+		return nil, err
+	}
+	if err = s.authorize(ctx, command.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, command.WorkspaceId); err != nil {
+		return nil, err
+	}
+	resources, err := s.Resources.ReadResources(ctx, &api.ResourceReadbackRequest{Context: nextOwnerCall(command.Context), ResourceSetId: command.ResourceSetId})
+	if err != nil {
+		return nil, err
+	}
+	binding, err := confirmedBinding(command, resources)
+	if err != nil {
+		return nil, err
+	}
+	// Start's acknowledgement cannot prove readiness; only the separate read does.
+	if start {
+		if _, err = s.Runtime.Start(ctx, command, binding); err != nil {
+			return nil, err
+		}
+	}
+	observation, err := s.Runtime.Observe(ctx, command, binding)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
+		return nil, err
+	}
+	if err = finishFirstDelivery(ctx, tx, command, observation); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, dbError(err)
+	}
+	return s.runtimeReadback(ctx, command.RuntimeInstanceId, command.DeploymentId)
 }
