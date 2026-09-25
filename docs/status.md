@@ -268,7 +268,10 @@ Focused PostgreSQL evidence:
 `OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./... -count=1` in
 `services/serve` passes 21 tests plus subtests with zero failures, covering the
 ready record, same-epoch replay convergence, every non-ready state mapping, and
-each refusal above.
+each refusal above. The
+[runtime-observation receipt](./evidence/source-checks/2026-09-25-serve-runtime-observation-record.json)
+binds the tested SHA/tree, every command with its exit code and log digest, and
+the per-case readback.
 
 #### W17 prerequisites that must be decided before a real Deploy can run
 
