@@ -143,8 +143,16 @@ cross-tenant and CloudIdentity-denial rejection, the deployment-history
 projection, the real process wiring (SERVING plus a Console-BFF-identified gRPC
 read over the wire), and the fail-closed readiness case — all against a real
 isolated `opl_serve` installed through Serve's own migration entrypoint.
-The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json)
-and the [Serve process-wiring receipt](./evidence/source-checks/2026-09-25-serve-process-wiring.json)
+Serve reads are authorized through the real `ownerservice.Authorizer`: a
+tenant-scoped caller whose scope names another tenant is refused before the live
+decision, and a platform-scoped caller is declared as a platform resource rather
+than forced into the Workspace's tenant, because the shared authorizer refuses
+any caller whose own scope does not match the declared resource scope. Tests
+assert Serve asks its own audience for the exact action and resource.
+
+The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json),
+the [Serve process-wiring receipt](./evidence/source-checks/2026-09-25-serve-process-wiring.json)
+and the [Serve authorization-scope receipt](./evidence/source-checks/2026-09-25-serve-authorization-scope.json)
 bind the exact source and cases; they are not production or Instance evidence.
 
 Serve's delivery **write** path is not implemented and current source cannot
