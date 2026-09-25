@@ -203,6 +203,11 @@ is indistinguishable from an authority outage at every owner boundary. It still
 fails closed; the denial code is only observable by asking the authority
 directly, which is what the harness does.
 
+The [real-identity read-slice receipt](./evidence/source-checks/2026-09-25-serve-read-slice-real-identity.json)
+binds the final tested SHA/tree, the absorbed identity dependency, every command
+with its exit code and log digest, and the per-read readback. Earlier receipts in
+this section are historical.
+
 The read slice is therefore **not complete**, and this section is not a
 completion claim. It delivers two of the three requested reads against the real
 authority, the refusals that must hold (cross-Tenant member, session-less caller,

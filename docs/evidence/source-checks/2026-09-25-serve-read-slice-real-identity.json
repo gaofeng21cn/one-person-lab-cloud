@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "action": "Verify the Serve owner-local read slice against the production CloudIdentity authority and deliver the read receipts",
+  "recordedAt": "2026-09-25T06:52:20.502700+00:00",
+  "startedAtUtc": "2026-09-25T05:40:00+00:00",
+  "finishedAtUtc": "2026-09-25T06:52:20.502827+00:00",
+  "branch": "codex/serve-first-deployment",
+  "worktree": "/Users/huangrende/.codex/worktrees/892a/one-person-lab-cloud",
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "testedSha": "8ae00bbfdd9f1798b2437069b903c2fda33b471a",
+  "testedTree": "200dd7ace2bcb7a8e31da504c880cdd0f2de2cc4",
+  "absorbedDependencyShas": {
+    "cloudidentityPolicyWriter": "f83f4f037d78541958fed12ee5afe65b553a4f0c",
+    "cloudidentityPolicyGeneratedSha256": "e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e",
+    "note": "Absorbed by merge commit 8ae00bbf; the policy table sha256 matches the identity writer's stated value e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e."
+  },
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/service.go": "f1c16761462495ee512534b164e4eed322d48a75d31efda8cc56237726671c4e",
+    "services/serve/internal/delivery/identity_live_test.go": "e00123099df580851b71441f6fb55a9ff3d764b8d12473f6880f684935d5ebac",
+    "services/serve/internal/delivery/service_postgres_test.go": "bd49e5280f05f5d8f0e30e4bee2ee29a43098ffc196caaf6dfe42a6b285fda4b",
+    "services/serve/internal/delivery/process_postgres_test.go": "069da17a115fe12edd78bbe394915b5a301c3e552e237f5bb12e31d65375a929",
+    "services/serve/cmd/server/main.go": "2b0b8475d6469fefb55c83eb7622836aa42ff7740b4061d03ac1d05d654ca97f",
+    "services/serve/go.mod": "b351f0f1d1c8451425f4349857f62f9acfb1e19b172fda0ba1d175ab52115b33",
+    "services/serve/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "docs/status.md": "61315b133eeec756d44279aeff7e69723bfce9c3756572d854d071c21b5bd2c8",
+    "docs/roadmap.md": "2cf1a7ad927282287075ca133f9f927bcff17b9769f222de69843d9d5b285f60",
+    "docs/implementation-architecture.md": "d3ecfe2f699f3b338730c3308ce7b994eaa243f96d6e235d9593ede525b44424"
+  },
+  "commands": [
+    {
+      "name": "serve focused PG + owner isolation",
+      "command": "go test ./... -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "6 top-level PASS including TestServeReadSurfaceIsOwnerTruth, TestServeReadSurfaceRejectsCrossTenant, TestServeDeploymentHistoryAndAccessMode, TestServeProcessServesOwnerTruthOverTheWire, TestServeProcessRefusesReadinessWithoutCloudIdentity and TestOwnerDatabaseIsolation with its 4 subtests; 0 skips",
+      "log": "/tmp/final-serve-pg.log",
+      "logSha256": "39e7f9feecd13dad47397a8d549c3421dcbcd0eba1e07a8634bcfd517596dfbe"
+    },
+    {
+      "name": "serve real-identity acceptance (livebuild)",
+      "command": "go test -tags=livebuild ./internal/delivery -run TestLiveServeReadChain -count=1 -v",
+      "cwd": "services/serve",
+      "env": {
+        "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN": "<isolated temporary PostgreSQL 16>"
+      },
+      "exitCode": 0,
+      "results": "9 PASS: authority_admits_only_the_rowed_reads, cross_tenant_is_refused, no_session_is_unauthenticated, owning_member_reads_owner_truth, pending_runtime_is_not_ready_in_history, never_delivered_workspace_has_empty_history, attempt_without_active_agent_publishes_no_entry, revoked_session_is_refused",
+      "log": "/tmp/final-serve-live.log",
+      "logSha256": "3d0fdaf13cdb6c7526a5d62173dc1a09b1b1ae88d954f626e96dd5dca0ebff7d"
+    },
+    {
+      "name": "serve go vet",
+      "command": "go vet ./...",
+      "cwd": "services/serve",
+      "exitCode": 0,
+      "log": "/tmp/final-serve-vet.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "serve go vet (livebuild)",
+      "command": "go vet -tags=livebuild ./...",
+      "cwd": "services/serve",
+      "exitCode": 0,
+      "log": "/tmp/final-serve-vet-live.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "repository full gate",
+      "command": "npm run verify:local:full",
+      "cwd": ".",
+      "exitCode": 0,
+      "results": "Local verification passed with PostgreSQL and Docker integration; all 11 PostgreSQL spec groups reported 'zero skips' (29 Go packages passed, 0 skipped) including services/serve; source tests 228 pass; Console browser suite, typecheck, lint and build passed",
+      "log": "/tmp/final-verify-full.log",
+      "logSha256": "b2813fbcb00ee26fb37ad4d1543fd831508cb5b26b24c8438300d120034fd1a5"
+    }
+  ],
+  "readbacks": {
+    "listDeployments": {
+      "audience": "serve",
+      "policyRow": "member",
+      "realResult": "admitted; the owning Tenant's live member read Serve's own history (2 rows, current Agent first)",
+      "verifiedBy": "livebuild harness"
+    },
+    "getDeployment": {
+      "audience": "serve",
+      "policyRow": "member",
+      "realResult": "admitted; current deployment read back with runtime_instance_id rt_dep-active",
+      "verifiedBy": "livebuild harness"
+    },
+    "getWorkspaceAccess": {
+      "audience": "serve",
+      "policyRow": "none",
+      "realResult": "denied with PermissionDenied by the production authority; Serve fails closed",
+      "state": "unimplemented"
+    },
+    "crossTenantMember": {
+      "realResult": "refused PermissionDenied; refused by Serve's own persisted-tenant guard, not by the authority",
+      "verifiedBy": "livebuild harness"
+    },
+    "sessionlessCaller": {
+      "realResult": "refused Unauthenticated",
+      "verifiedBy": "livebuild harness"
+    },
+    "revokedSession": {
+      "realResult": "the authority answers Unauthenticated and Serve refuses the read",
+      "verifiedBy": "livebuild harness"
+    },
+    "authorityDivisionOfLabour": {
+      "realResult": "the authority decides audience/action/role/scope only and admits a tenant member for a workspace-shaped resource; Workspace ownership is Serve's own persisted fact",
+      "verifiedBy": "livebuild harness"
+    },
+    "pageOrder": {
+      "realResult": "ListDeployments now orders and paginates by the schema list index (created_at DESC, id DESC) and a focused regression asserts the current Agent leads the history",
+      "verifiedBy": "service_postgres_test.go"
+    }
+  },
+  "defectsFoundAndFixed": [
+    "My ListDeployments ordered by id alone, so the history's newest row could differ from the row the current-Agent selection uses; it now orders/paginates by (created_at DESC, id DESC) with a regression assertion."
+  ],
+  "unprovenOrBlocked": [
+    "getWorkspaceAccess stays unimplemented: 03_api_contract_complete.yaml assigns it x-owner=workspace / x-tables=workspace.workspaces / x-feature-id=F09 while packages/contracts/proto/internal.proto declares rpc GetWorkspaceAccess on service ServeProductService. The authority admits a caller only when caller == console_bff || caller == audience, so an audience=workspace row cannot authorize Serve's own call either. Needs the canonical owner's decision; Serve adds no row and answers no projection.",
+    "The composed BFF delivery route GET /api/v2/delivery/{workspaceId} guards with GETWORKSPACE on audience=workspace and the policy table has no workspace-audience row at all, so the composed read is refused at the BFF before Serve is reached. That guard file is the identity integrator's and the switch is the workspace owner's.",
+    "No real Deploy, Runtime observation, image, Instance or production evidence exists. The harness seeds Serve-owned read rows and says so; it is not a deployment.",
+    "The shared authorizer collates every CloudIdentity client error into codes.Unavailable, so a policy denial is indistinguishable from an authority outage at owner boundaries. Recorded as a shared-infrastructure finding; not changed here."
+  ],
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production access, no Instance action, no publication, no real charge and no provider-resource action. No push, PR, Issue or merge was performed."
+}
