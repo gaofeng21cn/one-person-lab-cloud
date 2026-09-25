@@ -73,7 +73,9 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
   const browserConcurrency = packageScripts["test:browser:suite"].match(/--test-concurrency=\d+/)?.[0];
   assert.ok(browserConcurrency);
-  assert.ok(nodeStep.run.includes(browserConcurrency));
+  assert.ok(nodeStep.run.includes("npm run test:source"));
+  assert.ok(nodeStep.run.includes("npm run test:browser:suite"));
+  assert.ok(nodeStep.run.includes("Node SKIP result missing or nonzero"));
   const job = workflow.jobs.fabric;
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
@@ -83,6 +85,8 @@ test("Local qualification uses one bounded runner filesystem and explicit privil
   const quotaSupport = step("Load runner project quota support");
   const prepare = step("Prepare project quota filesystem");
   const compile = step("Compile Local qualification executables without privilege");
+  const fabric = step("Test Fabric");
+  assert.equal(fabric.env.OPL_OWNER_MIGRATION_TEST_ADMIN_DSN, "postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable");
   const quota = step("Test Linux project quota as privileged capability");
   const deploy = step("Test first Local application deployment with real owners");
   const cleanup = step("Remove project quota filesystem");
