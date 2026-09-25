@@ -1,0 +1,47 @@
+// Code generated from the canonical API permissions; DO NOT EDIT.
+package identity
+
+import api "opl-cloud/packages/contracts/go/api"
+
+type actionPolicy struct {
+	owner api.OwnerEnum
+	roles []string
+}
+
+var actions = map[api.AuthorizationActionEnum]actionPolicy{
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTNAMESPACES:           {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATENAMESPACE:          {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATENAMESPACE:          {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ARCHIVENAMESPACE:         {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPACKAGES:             {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE:            {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPACKAGE:               {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEPACKAGE:            {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ARCHIVEPACKAGE:           {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOAD:             {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUPLOAD:                {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART:         {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD:           {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPACKAGEVERSIONS:      {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPACKAGEVERSION:        {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD:              {api.OwnerEnum_OWNER_ENUM_BUILD, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTBUILDS:               {api.OwnerEnum_OWNER_ENUM_BUILD, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD:                 {api.OwnerEnum_OWNER_ENUM_BUILD, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTBUILDLOGS:            {api.OwnerEnum_OWNER_ENUM_BUILD, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RETRYBUILD:               {api.OwnerEnum_OWNER_ENUM_BUILD, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS:   {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION:     {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_DELETECAPABILITYVERSION:  {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"admin", "owner"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_PUBLISHOFFICIALPACKAGE:   {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS:      {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS:        {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"member"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERRUNTIMEVERSION:   {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETRUNTIMEVERSIONSTATUS:  {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERWEBUIVERSION:     {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS:    {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILDRUNTIMEPOLICY:    {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETBUILDRUNTIMEPOLICY:    {api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPUBLISHERNAMESPACES:  {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE: {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+	api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE: {api.OwnerEnum_OWNER_ENUM_CAPABILITY, []string{"platform_admin"}},
+}

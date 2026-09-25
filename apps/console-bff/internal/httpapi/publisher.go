@@ -38,6 +38,10 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/v2/admin/catalog/") {
+			caller.Session = proto.Clone(caller.Session).(*api.Session)
+			caller.Session.TenantId = nil
+		}
 		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
 		call := clients.CallContext(ctx)
 		var input proto.Message
@@ -69,6 +73,9 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			}
 		}
 		resource := &api.AuthorizationResource{Kind: kind}
+		if kind == api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT && caller.Session.GetTenantId() != "" {
+			resource.Id = proto.String(caller.Session.GetTenantId())
+		}
 		if resourcePath != "" {
 			resource.Id = proto.String(r.PathValue(resourcePath))
 		}
@@ -116,7 +123,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 		code := 200
 		if body != nil {
 			code = 201
-			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART {
+			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE {
 				code = 200
 			}
 			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD {
@@ -148,16 +155,31 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(raw)
 	})
+	s.publisherRoute(mux, "GET /api/v2/admin/catalog/publisher-namespaces", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPUBLISHERNAMESPACES, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.capability.ListPublisherNamespaces(r.Context(), &api.ListPublisherNamespacesRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
+	})
+	s.publisherRoute(mux, "POST /api/v2/admin/catalog/publisher-namespaces", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPUBLISHERNAMESPACE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.CreatePublisherNamespaceRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.capability.CreatePublisherNamespace(r.Context(), &api.CreatePublisherNamespaceRpcRequest{Context: c, Body: body.(*api.CreatePublisherNamespaceRequest)})
+	})
+	s.publisherRoute(mux, "POST /api/v2/admin/catalog/publisher-namespaces/{publisherNamespaceId}/revoke", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "publisherNamespaceId", func() proto.Message { return &api.RevokePublisherNamespaceRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.capability.RevokePublisherNamespace(r.Context(), &api.RevokePublisherNamespaceRpcRequest{Context: c, Body: body.(*api.RevokePublisherNamespaceRequest), PublisherNamespaceId: r.PathValue("publisherNamespaceId")})
+	})
+	s.publisherRoute(mux, "POST /api/v2/admin/catalog/webui-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REGISTERWEBUIVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", func() proto.Message { return &api.RegisterWebuiVersionRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.capability.RegisterWebuiVersion(r.Context(), &api.RegisterWebuiVersionRpcRequest{Context: c, Body: body.(*api.RegisterWebuiVersionRequest)})
+	})
+	s.publisherRoute(mux, "PUT /api/v2/admin/catalog/webui-versions/{versionId}/status", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "versionId", func() proto.Message { return &api.CatalogStatusRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.capability.SetWebuiVersionStatus(r.Context(), &api.SetWebuiVersionStatusRpcRequest{Context: c, Body: body.(*api.CatalogStatusRequest), VersionId: r.PathValue("versionId")})
+	})
 	s.publisherRoute(mux, "GET /api/v2/namespaces", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTNAMESPACES, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.ListNamespaces(r.Context(), &api.ListNamespacesRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
 	})
 	s.publisherRoute(mux, "POST /api/v2/namespaces", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATENAMESPACE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.NamespaceWriteRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.CreateNamespace(r.Context(), &api.CreateNamespaceRpcRequest{Context: c, Body: body.(*api.NamespaceWriteRequest)})
 	})
-	s.publisherRoute(mux, "GET /api/v2/packages", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPACKAGES, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	s.publisherRoute(mux, "GET /api/v2/packages", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTPACKAGES, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.ListPackages(r.Context(), &api.ListPackagesRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor")), QueryNamespaceId: proto.String(r.URL.Query().Get("namespaceId"))})
 	})
-	s.publisherRoute(mux, "POST /api/v2/packages", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.CreatePackageRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	s.publisherRoute(mux, "POST /api/v2/packages", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "", func() proto.Message { return &api.CreatePackageRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.CreatePackage(r.Context(), &api.CreatePackageRpcRequest{Context: c, Body: body.(*api.CreatePackageRequest)})
 	})
 	s.publisherRoute(mux, "GET /api/v2/packages/{packageId}", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETPACKAGE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "packageId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
@@ -166,13 +188,13 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	s.publisherRoute(mux, "POST /api/v2/packages/{packageId}/uploads", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "packageId", func() proto.Message { return &api.CreateUploadRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.CreateUpload(r.Context(), &api.CreateUploadRpcRequest{Context: c, PackageId: r.PathValue("packageId"), Body: body.(*api.CreateUploadRequest)})
 	})
-	s.publisherRoute(mux, "GET /api/v2/uploads/{uploadId}", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "uploadId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	s.publisherRoute(mux, "GET /api/v2/uploads/{uploadId}", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "uploadId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.GetUpload(r.Context(), &api.GetUploadRpcRequest{Context: c, UploadId: r.PathValue("uploadId")})
 	})
-	s.publisherRoute(mux, "POST /api/v2/uploads/{uploadId}/parts", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "uploadId", func() proto.Message { return &api.CreateUploadPartRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	s.publisherRoute(mux, "POST /api/v2/uploads/{uploadId}/parts", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "uploadId", func() proto.Message { return &api.CreateUploadPartRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.CreateUploadPart(r.Context(), &api.CreateUploadPartRpcRequest{Context: c, UploadId: r.PathValue("uploadId"), Body: body.(*api.CreateUploadPartRequest)})
 	})
-	s.publisherRoute(mux, "POST /api/v2/uploads/{uploadId}/complete", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "uploadId", func() proto.Message { return &api.CompleteUploadRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+	s.publisherRoute(mux, "POST /api/v2/uploads/{uploadId}/complete", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "uploadId", func() proto.Message { return &api.CompleteUploadRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.CompleteUpload(r.Context(), &api.CompleteUploadRpcRequest{Context: c, UploadId: r.PathValue("uploadId"), Body: body.(*api.CompleteUploadRequest)})
 	})
 	s.publisherRoute(mux, "GET /api/v2/catalog/webui-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
@@ -202,9 +224,11 @@ func publisherRequestID(r *http.Request) {
 }
 func writePublisherIdentityError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, ErrSessionRequired):
+	case status.Code(err) == codes.ResourceExhausted:
+		writePublisherError(w, r, 429, "RATE_LIMITED", "authentication rate limited")
+	case errors.Is(err, ErrSessionRequired), status.Code(err) == codes.Unauthenticated:
 		writePublisherError(w, r, 401, "UNAUTHENTICATED", "session required")
-	case errors.Is(err, ErrAuthorizationRequired):
+	case errors.Is(err, ErrAuthorizationRequired), status.Code(err) == codes.PermissionDenied:
 		writePublisherError(w, r, 403, "FORBIDDEN", "action is not authorized")
 	default:
 		writePublisherError(w, r, 503, "DEPENDENCY_UNAVAILABLE", "identity authority unavailable")

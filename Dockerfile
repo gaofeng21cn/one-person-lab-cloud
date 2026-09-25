@@ -35,6 +35,8 @@ ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src/services/ledger
+COPY services/internal/ownerservice /src/services/internal/ownerservice
+COPY services/internal/ownerstore /src/services/internal/ownerstore
 COPY services/internal/postgresmigrate /src/services/internal/postgresmigrate
 COPY packages/contracts/go /src/packages/contracts/go
 COPY services/ledger/go.mod services/ledger/go.sum ./
@@ -42,11 +44,28 @@ RUN GOPROXY="$GOPROXY" go mod download
 COPY services/ledger ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/opl-ledger ./cmd/ledger
 
+# The publisher lane is shipped as independent owner executables in the same
+# portable product image. Instance chooses which processes to run.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm@sha256:6359592445455f2dbe2412bed411336035bc019a50017720d77454ffdd6d0f82 AS publisher-build
+ARG TARGETOS
+ARG TARGETARCH
+ARG GOPROXY=https://proxy.golang.org,direct
+WORKDIR /src
+COPY packages/contracts/go /src/packages/contracts/go
+COPY services /src/services
+COPY apps/console-bff /src/apps/console-bff
+RUN for service in capability build runtime-control workspace serve gateway-integration; do \
+      CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C services/$service build -o /out/opl-$service ./cmd/server || exit 1; \
+    done \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY="$GOPROXY" go -C apps/console-bff build -o /out/opl-console-bff ./cmd/server
+
 FROM docker:27.5.1-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c AS docker-cli
 
 FROM --platform=$BUILDPLATFORM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS build
 
 WORKDIR /app
+ARG VITE_CONSOLE_IDENTITY=legacy
+ENV VITE_CONSOLE_IDENTITY=$VITE_CONSOLE_IDENTITY
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY . .
@@ -74,6 +93,8 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY --from=build /app/dist ./dist
+COPY --from=publisher-build /out/ /usr/local/bin/
+COPY docs/spec/target/contracts/publisher-contract.schema.json /app/contracts/publisher-contract.schema.json
 COPY --from=fabric-build /out/opl-tencent-provisioner /usr/local/bin/opl-tencent-provisioner
 COPY --from=control-plane-build /out/opl-control-plane /usr/local/bin/opl-control-plane
 COPY --from=ledger-build /out/opl-ledger /usr/local/bin/opl-ledger

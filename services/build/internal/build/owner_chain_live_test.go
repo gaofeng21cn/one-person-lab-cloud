@@ -11,17 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
-	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/build/migrations"
 	capabilitycatalog "opl-cloud/services/capability/catalog"
 	"opl-cloud/services/internal/ownerservice"
@@ -31,22 +28,6 @@ import (
 	runtimemigrations "opl-cloud/services/runtime-control/migrations"
 )
 
-// CloudIdentity's decisions are fixtures. All tested domain commands below use
-// the real owner handlers, separate writer-role databases and typed gRPC clients.
-type fixtureIdentity struct {
-	api.CloudIdentityAuthorizationClient
-}
-
-func (fixtureIdentity) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest, _ ...grpc.CallOption) (*api.AuthorizationDecision, error) {
-	if r.SessionId == nil && r.GetAcceptedOperationGrantId() != "isolated-grant" {
-		return nil, status.Error(codes.PermissionDenied, "fixture session required")
-	}
-	return &api.AuthorizationDecision{Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED, Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Scope: r.Scope, ActorId: r.ActorId, SessionId: r.SessionId, AcceptedOperationGrantId: r.AcceptedOperationGrantId, AudienceOwner: r.AudienceOwner, Action: r.Action, Resource: r.Resource, PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Second)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}, nil
-}
-func (fixtureIdentity) IssueAcceptedOperationGrant(_ context.Context, r *api.AcceptedOperationGrantRequest, _ ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
-	e := r.OwnerCommitEvidence
-	return &api.AcceptedOperationGrant{Id: "isolated-grant", AcceptedOperationOwner: e.Owner, AcceptedOperationId: e.OperationId, ResourceId: e.ResourceId}, nil
-}
 func liveConn(t *testing.T, address string, peer owneridentity.Service) *grpc.ClientConn {
 	t.Helper()
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -111,20 +92,46 @@ func (c *lostInboxAck) Deliver(ctx context.Context, r *api.DeliverEventRequest, 
 	return ack, err
 }
 
-func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability *capabilitycatalog.Service, capAddr string, runner *Runner, input *api.BuildInputSnapshot) {
+func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability *capabilitycatalog.Service, capAddr string, runner *Runner, input *api.BuildInputSnapshot, identity *liveIdentity) {
 	t.Helper()
-	// The isolated publisher's already-approved namespace and WebUI artifacts are
-	// explicit fixtures. Runtime admission and policy selection use the real API.
-	if _, err := capability.DB.ExecContext(ctx, `INSERT INTO capability.publisher_namespaces(id,name,kind,registry_id,repository_prefix,admission_receipt_id) VALUES($1,'local-publisher','official','local-registry',$2,'isolated-publisher-admission')`, input.RuntimeContract.PublisherNamespaceId, runner.RegistryPrefix[:len(runner.RegistryPrefix)-len("/result")]); err != nil {
-		t.Fatal(err)
-	}
-	webuiBytes, err := publicjson.Marshal(input.WebuiContract)
+	capWire := api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF))
+	capClient := &publisherCapabilityClient{CapabilityProductServiceClient: capWire, t: t, base: newPublisherHTTP(t, capWire, nil, identity), identity: identity}
+	schemaPathForWebui := "../../../../docs/spec/target/contracts/publisher-contract.schema.json"
+	schemaData, err := os.ReadFile(schemaPathForWebui)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = capability.DB.ExecContext(ctx, `INSERT INTO capability.webui_versions(id,name,version_label,artifact_repository,artifact_digest,approved_by,runtime_abi_versions,ui_protocol_version,admission_receipt_id,publisher_namespace_id,publisher_contract_digest,publisher_contract,publisher_contract_object_ref) VALUES($1,'local-webui','v1',$2,$3,'publisher',$4,'opl-webui/v1','local-admission',$5,$6,$7,'local-webui-contract')`, input.WebuiVersionId, input.WebuiArtifact.Repository, input.WebuiArtifact.Digest, pq.Array(input.WebuiContract.RuntimeAbiVersions), input.WebuiContract.PublisherNamespaceId, digest(webuiBytes), webuiBytes); err != nil {
+	if err = capability.ConfigurePublisherSchema(schemaPathForWebui, digest(schemaData)); err != nil {
 		t.Fatal(err)
 	}
+	publisher, err := capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "local-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "local-registry", RepositoryPrefix: runner.RegistryPrefix[:len(runner.RegistryPrefix)-len("/result")], AdmissionReceiptId: "isolated-publisher-admission"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The real registry fixture uses runtime/webui/recipe repositories under one
+	// authority. Admission reserves that exact prefix; no business tables are seeded.
+	input.RuntimeContract.PublisherNamespaceId = publisher.Id
+	input.WebuiContract.PublisherNamespaceId = publisher.Id
+	webui, err := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("webui-admit", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "local-webui", VersionLabel: "v1", PublisherNamespaceId: publisher.Id, PublisherContract: input.WebuiContract, AdmissionReceiptId: "local-webui-admission"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.WebuiVersionId = webui.Id
+	forbidden := &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("tenant-admin-cannot-admit", "tenant-live"), Body: &api.CreatePublisherNamespaceRequest{Name: "forged", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "local-registry", RepositoryPrefix: publisher.RepositoryPrefix + "/forged", AdmissionReceiptId: "not-authority"}}
+	if _, e := capClient.CreatePublisherNamespace(ctx, forbidden); e == nil {
+		t.Fatal("tenant admin admitted a platform publisher")
+	}
+	forbidden.Context = identity.call("overlap-denied", "platform")
+	forbidden.Body.Kind = api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_THIRD_PARTY
+	if _, e := capClient.CreatePublisherNamespace(ctx, forbidden); e == nil {
+		t.Fatal("third-party prefix overlapped official authority")
+	}
+	wrongWebui := proto.Clone(input.WebuiContract).(*api.WebuiPublisherContract)
+	wrongWebui.Image.Repository = "unapproved.example/foreign/image"
+	if _, e := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("foreign-image-denied", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "bad-ui", VersionLabel: "v1", PublisherNamespaceId: publisher.Id, PublisherContract: wrongWebui, AdmissionReceiptId: "not-sufficient"}}); e == nil {
+		t.Fatal("out-of-prefix WebUI admitted")
+	}
+
 	schemaPath := "../../../../docs/spec/target/contracts/publisher-contract.schema.json"
 	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -135,18 +142,18 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		t.Fatal(err)
 	}
 	runtimeDB, _ := liveOwnerDB(t, ctx, dsn, "runtime_control", runtimeSource)
-	runtimeService, err := runtimecatalog.New(runtimeDB, ownerservice.NewAuthorizer(ownerservice.OwnerRuntimeControl, fixtureIdentity{}), api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.RuntimeControl.Service())), schemaPath, digest(schemaBytes))
+	runtimeService, err := runtimecatalog.New(runtimeDB, ownerservice.NewAuthorizer(ownerservice.OwnerRuntimeControl, identity.auth(t, owneridentity.RuntimeControl)), api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.RuntimeControl.Service())), schemaPath, digest(schemaBytes))
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtimeAddr := liveServer(t, func(server *grpc.Server) { api.RegisterRuntimeControlProductServiceServer(server, runtimeService) })
 	runtimeClient := api.NewRuntimeControlProductServiceClient(liveConn(t, runtimeAddr, owneridentity.ConsoleBFF))
 	call := func(key string, platform bool) *api.CallContext {
-		scope := &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-live"}}}
+		tid := "tenant-live"
 		if platform {
-			scope = &api.AuthorizationScope{Scope: &api.AuthorizationScope_Platform{Platform: &api.PlatformScope{}}}
+			tid = "platform"
 		}
-		return &api.CallContext{Scope: scope, ActorId: "publisher", SessionId: proto.String("isolated-publisher"), RequestId: key, IdempotencyKey: key, AuthorizationContextId: "fixture-authorization"}
+		return identity.call(key, tid)
 	}
 	runtime, err := runtimeClient.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: call("runtime-admit", true), Body: &api.RegisterRuntimeVersionRequest{Name: "local-runtime", VersionLabel: "v1", PublisherNamespaceId: input.RuntimeContract.PublisherNamespaceId, PublisherContract: input.RuntimeContract, AdmissionReceiptId: "local-runtime-admission"}})
 	if err != nil {
@@ -169,7 +176,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	capDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(capConn)}
 	ledgerDB, ledgerBuild, ledgerCapability := liveLedger(t, ctx)
 	capability.LedgerInbox = ledgerCapability
-	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, fixtureIdentity{}), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop, "ledger": ledgerBuild}, fixtureIdentity{}, runner)
+	service, err := New(store, ownerservice.NewAuthorizer(ownerservice.OwnerBuild, identity.auth(t, owneridentity.Build)), api.NewCapabilityCoordinationClient(capConn), api.NewCapabilityProductServiceClient(capConn), map[string]api.DomainInboxClient{"capability": capDrop, "ledger": ledgerBuild}, identity.auth(t, owneridentity.Build), runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +193,8 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	capability.Usage = api.NewClaimUsageReadbackClient(buildCapConn)
 	buildDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(buildCapConn)}
 	capability.BuildInbox = buildDrop
-	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)))}
+	identity.service.BuildCommit = api.NewOwnerCommitReadbackClient(liveConn(t, buildAddr, owneridentity.Tenant.Service()))
+	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)), identity), identity: identity}
 	req := &api.CreateBuildRpcRequest{Context: call("create-build", false), Body: &api.CreateBuildRequest{PackageVersionId: input.PackageVersionId, WebuiVersionId: input.WebuiVersionId}}
 	job, err := client.CreateBuild(ctx, req)
 	if err != nil {
@@ -261,5 +269,13 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	verifyLedgerEvidence(t, ctx, ledgerDB, job.Id, ledgerBuild, ledgerCapability)
 	verifyInterruptedWorker(t, ctx, buildDSN, capAddr, client, service, capability, runner, req)
 	verifyPublisherBrowser(t, ctx, client.base, service, capability, runner, input)
+
+	if _, e := capClient.SetWebuiVersionStatus(ctx, &api.SetWebuiVersionStatusRpcRequest{Context: identity.call("revoke-webui", "platform"), VersionId: webui.Id, Body: &api.CatalogStatusRequest{Status: api.CatalogStatusRequestStatusEnum_CATALOG_STATUS_REQUEST_STATUS_ENUM_REVOKED, Reason: "local negative qualification"}}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := client.CreateBuild(ctx, &api.CreateBuildRpcRequest{Context: identity.call("revoked-webui-build", "tenant-live"), Body: req.Body}); e == nil {
+		t.Fatal("new Build admitted revoked WebUI")
+	}
+	t.Log("real publisher/WebUI admission: platform role enforced, third-party prefix overlap and foreign image rejected, revoked WebUI blocks new Build")
 	t.Logf("real owner chain: Runtime API admission, CreateBuild replay, three bound claims, one ready CapabilityVersion; both registration acknowledgements lost and recovered; artifact=%s", version.ArtifactDigest)
 }

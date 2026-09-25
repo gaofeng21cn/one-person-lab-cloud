@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 )
 
 type publisherProbe struct {
@@ -27,7 +28,7 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 	identity := allowedIdentity()
 	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEPACKAGE
 	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
-	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT}
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE}
 	identity.decision.AuthorizationContextId = proto.String("fresh-authority-context")
 	probe := &publisherProbe{}
 	handler := NewPublisherHandler(probe, nil, identity)
@@ -48,7 +49,7 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 		t.Fatalf("write failed: %d %s", response.Code, response.Body.String())
 	}
 	call := probe.received.Context
-	if call.ActorId != "actor-1" || call.GetScope().GetTenant().TenantId != "tenant-1" || call.GetSessionId() != "session-1" || call.IdempotencyKey != "stable-command" || call.AuthorizationContextId != "fresh-authority-context" {
+	if call.ActorId != "actor-1" || call.GetScope().GetTenant().TenantId != "tenant-1" || call.GetSessionId() != owneridentity.SessionReference("session-1") || call.IdempotencyKey != "stable-command" || call.AuthorizationContextId != "fresh-authority-context" {
 		t.Fatalf("incorrect propagated caller: %v", call)
 	}
 	probe.received = nil
