@@ -386,6 +386,7 @@ func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocat
 	compute.ProviderResourceID, compute.ProviderRequestID = compute.InstanceID, "original-compute-read"
 	compute.ChargeType, compute.Zone = "PREPAID", "ap-guangzhou-3"
 	compute.ProviderData["region"], compute.ProviderData["zone"] = "ap-guangzhou", compute.Zone
+	compute.ProviderData["describeTkeInstanceReqId"] = "parent-launch-read"
 	compute.CostTags = nil
 	owner := MachineOwnership{
 		ID: "original-persisted-owner", ResourceID: compute.ID, AccountID: compute.AccountID, WorkspaceID: compute.WorkspaceID,
@@ -402,7 +403,9 @@ func retainedTencentComputeTagsFixture(t *testing.T, mutate func(*ComputeAllocat
 	// canonical Launch hydration. It predates the missing CostTags projection.
 	child := newOperation("tencent_compute_allocation_create", "compute_allocation", compute.ID, compute.AccountID, compute.WorkspaceID, "original-child", "original-hash", time.Now().UTC())
 	child.ID, child.Status, child.FinishedAt = "original-child", "succeeded", time.Now().UTC()
-	fillOperationResource(&child, compute)
+	childCompute := cloneComputeAllocation(compute)
+	childCompute.ProviderData["describeTkeInstanceReqId"] = "child-create-read"
+	fillOperationResource(&child, childCompute)
 	if err := store.Append(context.Background(), child); err != nil {
 		t.Fatal(err)
 	}
@@ -474,6 +477,93 @@ func TestRetainedLaunchComputeTagsRecoverForOwnerReadsAndDeletion(t *testing.T) 
 	}
 }
 
+func TestRetainedLaunchComputeTagsRecoverAcrossProviderReads(t *testing.T) {
+	for _, laterObservation := range []bool{false, true} {
+		t.Run(map[bool]string{false: "child-create", true: "later-observation"}[laterObservation], func(t *testing.T) {
+			ctx := context.Background()
+			service, store, provider, preflight, image, launchHash := newTencentWorkspaceLaunchService(t)
+			input := workspaceLaunchStageFixtureInput(preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation", WorkspaceLaunchResources{})
+			admission, err := service.workspaceLaunchPreflight(ctx, preflight.ProviderBindingRef)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := decodeTencentWorkspacePlanEnvelope(admission.CanonicalProviderPlan, input.PackageID, input.SizeGB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx = withTencentWorkspacePlan(ctx, plan)
+			compute := canonicalTencentComputeDestroyFixture()
+			compute.ID, compute.OperationID = workspaceLaunchComputeID(input.Binding), input.Binding.FabricOperationID
+			compute.CostTags, compute.Zone, compute.ChargeType = nil, plan.Zone, "PREPAID"
+			compute.ProviderData["region"], compute.ProviderData["zone"] = plan.Region, plan.Zone
+			prepared := ComputeAllocationPreparation{PoolID: plan.Compute.ID, PackageID: compute.PackageID, NodePoolID: plan.NodePoolID, InstanceType: compute.InstanceType, Zone: plan.Zone}
+			reads := 0
+			provider.provision = func(_ context.Context, request provisionerRequest) (provisionerResponse, error) {
+				if request.Action != "create_compute_allocation" && request.Action != "read_compute_allocation" {
+					t.Fatalf("unexpected fixture action %q", request.Action)
+				}
+				reads++
+				response := tencentComputeAllocationResponse(compute, request.Action)
+				for key, value := range compute.ProviderData {
+					response.ProviderData[key] = value
+				}
+				// The real provisioner supplies fresh request IDs on each read.
+				for _, key := range []string{"describeMachinesReadyReqId", "describeTkeInstanceReqId", "describeSubnetRequestId"} {
+					response.ProviderData[key] = request.Action + "-" + key
+				}
+				return response, nil
+			}
+			child, err := provider.CreateComputeAllocation(ctx, ComputeAllocationExecution{Allocation: compute, Plan: prepared})
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent, err := provider.DiscoverComputeAllocation(ctx, child, prepared)
+			if err != nil || reads != 2 {
+				t.Fatalf("parent read err=%v reads=%d", err, reads)
+			}
+			owner, err := workspaceLaunchComputeOwnership(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner.Status = "active"
+			seedTencentWorkspaceLaunchStage(t, store, preflight, image, launchHash, "ensure_compute_allocation", "ensure_compute_allocation",
+				WorkspaceLaunchResources{}, WorkspaceLaunchResources{ComputeAllocationID: parent.ID, ComputeBindingRef: input.Binding.FabricOperationID},
+				tencentWorkspaceLaunchState{Compute: &parent, ComputePlan: &prepared, Ownership: &owner}, 0)
+			operation := newOperation("tencent_compute_allocation_create", "compute_allocation", child.ID, child.AccountID, child.WorkspaceID, "original-child", "original-hash", time.Now().UTC())
+			operation.Status, operation.FinishedAt = "succeeded", time.Now().UTC()
+			fillOperationResource(&operation, child)
+			if err := store.Append(ctx, operation); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := store.List(ctx)
+			beforeBytes, _ := json.Marshal(before)
+			service = NewServiceWithOperationStore(provider, store)
+			current := service.computes[child.ID]
+			if laterObservation {
+				current.Status, current.ProviderRequestID = "external_deleted", "latest-observation"
+				current.ObservedAt, current.ReadbackID = "2026-09-25T21:44:10Z", "current-readback"
+				current.ProviderData["describeTkeInstanceReqId"] = "later-sync-read"
+				service.computes[child.ID] = current
+			}
+			provider.provision = func(context.Context, provisionerRequest) (provisionerResponse, error) {
+				t.Fatal("tag hydration must not query or mutate the provider")
+				return provisionerResponse{}, nil
+			}
+			observed, found := service.GetComputeAllocation(ctx, child.ID)
+			expected := cloneComputeAllocation(current)
+			expected.CostTags = oplCostTags(owner.AccountID, owner.WorkspaceID, owner.ResourceID, owner.ID)
+			if !found || !reflect.DeepEqual(observed, expected) {
+				t.Fatalf("retained tags were not restored without replacing current facts: found=%t tags=%v", found, observed.CostTags)
+			}
+			after, _ := store.List(ctx)
+			afterBytes, _ := json.Marshal(after)
+			if string(beforeBytes) != string(afterBytes) {
+				t.Fatal("tag hydration changed original operation evidence")
+			}
+		})
+	}
+}
+
 func TestRetainedLaunchComputeTagsRejectConflictingEvidence(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -511,6 +601,61 @@ func TestRetainedLaunchComputeTagsRejectConflictingEvidence(t *testing.T) {
 			_, err := service.ReadComputeDestroyStatus(context.Background(), compute.ID)
 			if err == nil || err.Error() != "compute_allocation_destroy_identity_required" || calls != 0 {
 				t.Fatalf("conflicting evidence reached provider: err=%v calls=%d", err, calls)
+			}
+		})
+	}
+}
+
+func TestRetainedLaunchComputeTagsRejectStableIdentityDrift(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*ComputeAllocation)
+	}{
+		{"operation", func(c *ComputeAllocation) { c.OperationID += "-other" }},
+		{"account", func(c *ComputeAllocation) { c.AccountID += "-other" }},
+		{"workspace", func(c *ComputeAllocation) { c.WorkspaceID += "-other" }},
+		{"package", func(c *ComputeAllocation) { c.PackageID += "-other" }},
+		{"provider", func(c *ComputeAllocation) { c.Provider = "other" }},
+		{"provider resource", func(c *ComputeAllocation) { c.ProviderResourceID += "-other" }},
+		{"pool", func(c *ComputeAllocation) { c.PoolID += "-other" }},
+		{"node pool", func(c *ComputeAllocation) { c.NodePoolID += "-other" }},
+		{"instance", func(c *ComputeAllocation) { c.InstanceID += "-other" }},
+		{"CVM instance", func(c *ComputeAllocation) { c.CVMInstanceID += "-other" }},
+		{"machine", func(c *ComputeAllocation) { c.MachineName += "-other" }},
+		{"node", func(c *ComputeAllocation) { c.NodeName += "-other" }},
+		{"private address", func(c *ComputeAllocation) { c.PrivateIP = "10.0.0.99" }},
+		{"public address", func(c *ComputeAllocation) { c.PublicIP = "203.0.113.99" }},
+		{"shape", func(c *ComputeAllocation) { c.InstanceType = "other-shape" }},
+		{"zone", func(c *ComputeAllocation) { c.Zone = "other-zone" }},
+		{"charge type", func(c *ComputeAllocation) { c.ChargeType = "other-charge" }},
+		{"creation time", func(c *ComputeAllocation) { c.CreatedAt = c.CreatedAt.Add(time.Second) }},
+		{"renew flag", func(c *ComputeAllocation) { c.RenewFlag = "other-renew" }},
+		{"deadline", func(c *ComputeAllocation) { c.Deadline = "2026-12-01T00:00:00Z" }},
+		{"service", func(c *ComputeAllocation) { c.ServiceName = "other-service" }},
+		{"node selector", func(c *ComputeAllocation) { c.NodeSelector = map[string]any{"kubernetes.io/hostname": "other-node"} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, provider, compute, _ := retainedTencentComputeTagsFixture(t, nil)
+			service := NewServiceWithOperationStore(provider, store)
+			current := cloneComputeAllocation(service.computes[compute.ID])
+			test.mutate(&current)
+			service.computes[compute.ID] = current
+			observed, found := service.GetComputeAllocation(context.Background(), compute.ID)
+			if !found || !reflect.DeepEqual(observed, current) {
+				t.Fatal("tag hydration accepted a different resource identity")
+			}
+		})
+	}
+	for _, key := range []string{"clusterId", "region", "zone", "instanceType", "cpu", "memoryGb", "machineType", "cvmApplicable", "vpcId", "subnetId", "unrecognizedProviderFact"} {
+		t.Run("provider "+key, func(t *testing.T) {
+			store, provider, compute, _ := retainedTencentComputeTagsFixture(t, nil)
+			service := NewServiceWithOperationStore(provider, store)
+			current := cloneComputeAllocation(service.computes[compute.ID])
+			current.ProviderData[key] = "other-provider-scope"
+			service.computes[compute.ID] = current
+			observed, found := service.GetComputeAllocation(context.Background(), compute.ID)
+			if !found || !reflect.DeepEqual(observed, current) {
+				t.Fatal("tag hydration accepted a different provider scope")
 			}
 		})
 	}
