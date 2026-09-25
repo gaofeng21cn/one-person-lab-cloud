@@ -1,6 +1,7 @@
 import { decodeDto, decodeSource } from "./dtos.ts";
 import type { AuthIdentity, AuthMeData, AuthSession, LoginRequest, SourceEnvelope } from "./dtos.ts";
 import { getJson, postJson } from "./console-api.ts";
+import { cloudIdentity } from "../app/console-identity.ts";
 
 function identityFromLogin(value: unknown): AuthIdentity {
   const user = decodeDto<Record<string, unknown>>(value);
@@ -44,7 +45,6 @@ function sessionFromAuthMe(value: unknown, csrfToken: string): AuthSession {
   return { user, isOperator: data.role === "admin", csrfToken };
 }
 
-const cloudIdentity = import.meta.env?.VITE_CONSOLE_IDENTITY === "cloud";
 type CloudSession = { actorId: string; displayName: string; tenantId?: string; role?: string; permissions: string[]; csrfToken: string; expiresAt: string };
 function fromCloudSession(value: CloudSession): AuthSession {
   if (!value.actorId || !value.csrfToken) throw new Error("session_check_failed");

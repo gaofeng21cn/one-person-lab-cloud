@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { cloudIdentity } from "./console-identity.ts";
 
 export type ConsoleRouteSurface = "public" | "customer" | "admin";
 
@@ -189,6 +190,7 @@ function normalizePath(pathname: string) {
 export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
   const path = normalizePath(pathname);
   const canonicalPath = STATIC_ROUTE_ALIASES[path as StaticRouteAliasPath] ?? path;
+  if (canonicalPath === "/console/publisher" && !cloudIdentity) return null;
   const staticDefinition = CANONICAL_STATIC_ROUTE_DEFINITIONS[canonicalPath as CanonicalStaticConsolePath];
   if (staticDefinition) {
     return { ...staticDefinition, path } as StaticConsoleRoute;

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "action": "Keep CloudIdentity-only Publisher and delivery UI out of the legacy Console build",
+  "recordedAt": "2026-09-25T20:06:18.632696+00:00",
+  "baseSourceSha": "6e8c877bf1ceab54cfa04d147a2616580c015b33",
+  "sourceFilesSha256": {
+    "apps/console-ui/src/api/auth-api.ts": "c9cdac7dced7b4b67cb590b6dfe82e123a099c7a6a4000ec4f402b011ff11b2a",
+    "apps/console-ui/src/app/console-identity.ts": "76fd8f042e9a86831b15f92d76039d5b174c0979fb564932267ba3c5483b2376",
+    "apps/console-ui/src/app/console-router.ts": "04f8c6578d00cc697b730a66e18c1220515e6b62968dd7afb35fdf136c3fe14f",
+    "apps/console-ui/src/components/workspaces/WorkspaceListPage.tsx": "60f76fce88824ba7ab3744864af4be09e251c275b07cba2381586196a0fc3c41",
+    "apps/console-ui/src/components/workspaces/WorkspaceDetailPage.tsx": "ffa3405147752964174d7ec3592738e26d5baf256d0c43609e3aec2c3bd56bf2",
+    "tests/ui/workspace-task-experience-browser.test.ts": "b7e1a09bca391adbf9044cf60a90a8a578f8810b34fe11103195b80091727775"
+  },
+  "verification": {
+    "result": "passed",
+    "command": "npm run verify:local",
+    "focusedBrowserTests": 2,
+    "sourceTests": 228,
+    "browserSuiteTests": 116,
+    "typecheck": "passed",
+    "lint": "passed",
+    "consoleBuild": "passed",
+    "goModuleCompilation": "passed",
+    "databaseFreeGoTests": "passed",
+    "checks": [
+      "Legacy rendered Workspace list omits the Publisher entry",
+      "Legacy rendered Workspace detail never mounts AgentDeliveryPanel or requests /api/v2",
+      "Legacy direct Publisher URL including trailing slash resolves to the not-found page",
+      "Explicit cloud identity retains the Publisher entry, direct route, enabled catalog form and Agent delivery readback"
+    ],
+    "apiFixtures": "Local in-memory Workspace fixture and typed BFF browser responses; no production connection"
+  },
+  "log": {
+    "name": "legacy-console-verify.log",
+    "sha256": "5ca7f8c36c73954b3081d68dde851a9c686e7912c4840b46c6b3231502d2ef55"
+  },
+  "remainingBoundary": "Source and real Chromium rendering only; no Candidate build, deployment, provider mutation, billing action or production qualification."
+}

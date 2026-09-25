@@ -126,6 +126,85 @@ async function login(page: Page, origin: string) {
   await page.waitForURL(/\/console\/overview$/);
 }
 
+for (const identity of ["legacy", "cloud"] as const) {
+  test(`${identity} Console exposes only its deployed publisher and delivery routes`, { timeout: 60_000 }, async () => {
+    const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+    process.env.VITE_CONSOLE_IDENTITY = identity;
+    let demo: Awaited<ReturnType<typeof startConsoleDemoServer>>;
+    try {
+      demo = await startConsoleDemoServer({ port: 0, log: false });
+    } finally {
+      if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+      else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+    }
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      const audit = await installBrowserAudit(page, demo.origin);
+      const v2Requests: string[] = [];
+      await page.route("**/api/v2/**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        v2Requests.push(path);
+        if (identity === "legacy") {
+          await route.fulfill({ status: 404, json: { error: "bff_not_deployed" } });
+          return;
+        }
+        const responses: Record<string, unknown> = {
+          "/api/v2/auth/session": { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" },
+          "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
+          "/api/v2/packages": { items: [] },
+          "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
+          "/api/v2/delivery/ws-1": {
+            workspaceId: "ws-1",
+            workspace: { owner: "workspace", state: "active", details: {} },
+            capabilityVersion: { owner: "capability", state: "ready", details: {} },
+            build: { owner: "build", state: "succeeded", details: {} },
+            serve: { owner: "serve", state: "ready", details: {} }
+          }
+        };
+        assert.ok(Object.hasOwn(responses, path), `unexpected BFF request: ${path}`);
+        await route.fulfill({ json: responses[path] });
+      });
+      // The retained Workspace fixture still owns its legacy data API session.
+      const session = await page.request.post(`${demo.origin}/api/auth/login`, { data: CONSOLE_DEMO_CREDENTIALS.customer });
+      assert.equal(session.ok(), true);
+      await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+      await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
+      assert.equal(await page.getByRole("link", { name: "发布 Package", exact: true }).count(), identity === "cloud" ? 1 : 0);
+
+      await page.goto(`${demo.origin}/console/workspaces/ws-1`, { waitUntil: "networkidle" });
+      await page.locator(".workspace-technical-details").waitFor({ state: "visible" });
+      assert.equal(await page.locator("[data-agent-delivery]").count(), identity === "cloud" ? 1 : 0);
+      if (identity === "cloud") {
+        await page.locator(".workspace-technical-details > summary").click();
+        await page.locator("[data-agent-delivery]").getByText("Capability", { exact: true }).waitFor({ state: "visible" });
+        assert.ok(v2Requests.includes("/api/v2/delivery/ws-1"));
+        await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+        await page.getByRole("link", { name: "发布 Package", exact: true }).click();
+        await page.locator(".publisher-page").getByRole("heading", { name: "发布 Package", exact: true }).waitFor({ state: "visible" });
+        await page.waitForFunction(() => (document.querySelector('[aria-label="WebUI"]') as HTMLSelectElement | null)?.value === "webui-1");
+        assert.equal(await page.locator(".publisher-page fieldset").isDisabled(), false);
+        assert.ok(v2Requests.includes("/api/v2/namespaces"));
+      }
+
+      // A direct URL must obey the same build boundary as visible navigation.
+      await page.goto(`${demo.origin}/console/publisher/`, { waitUntil: "networkidle" });
+      if (identity === "legacy") {
+        await page.getByRole("heading", { name: "页面不存在", exact: true }).waitFor({ state: "visible" });
+        assert.equal(await page.locator(".publisher-page").count(), 0);
+        assert.deepEqual(v2Requests, []);
+      } else {
+        await page.locator(".publisher-page").getByRole("heading", { name: "发布 Package", exact: true }).waitFor({ state: "visible" });
+        assert.equal(await page.getByRole("heading", { name: "页面不存在", exact: true }).count(), 0);
+      }
+      assertBrowserAuditClean(audit);
+    } finally {
+      await browser.close();
+      await demo.close();
+    }
+  });
+}
+
 async function assertNoHorizontalOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
     viewportWidth: window.innerWidth,
