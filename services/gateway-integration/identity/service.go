@@ -24,6 +24,7 @@ import (
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/services/internal/ownerservice"
+	"opl-cloud/services/internal/ownerstore"
 )
 
 type credential struct {
@@ -34,6 +35,7 @@ type Service struct {
 	api.UnimplementedTenantProductServiceServer
 	api.UnimplementedCloudIdentityAuthorizationServer
 	DB          *sql.DB
+	store       *ownerstore.Store
 	Gateway     *Gateway
 	BuildCommit api.OwnerCommitReadbackClient
 	signing     []byte
@@ -48,7 +50,11 @@ func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string) (*Servic
 	if db == nil || gateway == nil || len(signing) < 32 {
 		return nil, fmt.Errorf("tenant DB, Gateway and session signing secret required")
 	}
-	s := &Service{DB: db, Gateway: gateway, signing: append([]byte(nil), signing...), admins: map[string]bool{}, credentials: map[string]credential{}}
+	store, e := ownerstore.New(db, "tenant")
+	if e != nil {
+		return nil, e
+	}
+	s := &Service{DB: db, store: store, Gateway: gateway, signing: append([]byte(nil), signing...), admins: map[string]bool{}, credentials: map[string]credential{}}
 	for _, a := range admins {
 		n, e := strconv.ParseInt(a, 10, 64)
 		if e != nil || n <= 0 {

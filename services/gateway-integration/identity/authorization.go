@@ -67,6 +67,16 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	if session.ActorId != r.ActorId || (r.ExpectedPermissionVersion != nil && r.GetExpectedPermissionVersion() != version) {
 		return nil, denied()
 	}
+	if r.Action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION {
+		// Accepting an invitation is bound to the invitee's own live session rather
+		// than to a Tenant role, because the invitee is not yet a member of the
+		// inviting Tenant. The scope must still be the one the session itself
+		// carries, and the accepting transaction re-checks the invitation subject.
+		if r.AudienceOwner != api.OwnerEnum_OWNER_ENUM_TENANT || r.Resource.GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT || !scopeMatchesSession(session, r.Scope) {
+			return nil, denied()
+		}
+		return s.saveDecision(ctx, r, version)
+	}
 	tid := r.Scope.GetTenant().GetTenantId()
 	if tid != "" {
 		if session.GetTenantId() != tid && !admin {
@@ -105,6 +115,17 @@ func (s *Service) AuthorizeAction(ctx context.Context, r *api.AuthorizationReque
 	}
 	return s.saveDecision(ctx, r, version)
 }
+
+// scopeMatchesSession reports whether the request scope is exactly the scope the
+// live session itself carries: the session's Tenant when it has one, otherwise
+// platform. A caller cannot widen or relocate its own scope.
+func scopeMatchesSession(session *api.Session, scope *api.AuthorizationScope) bool {
+	if session.GetTenantId() == "" {
+		return scope.GetPlatform() != nil
+	}
+	return scope.GetTenant().GetTenantId() == session.GetTenantId()
+}
+
 func sameAction(d *api.AuthorizationDecision, r *api.AuthorizationRequest) bool {
 	return d.Action == r.Action && d.AudienceOwner == r.AudienceOwner && proto.Equal(d.Resource, r.Resource)
 }
