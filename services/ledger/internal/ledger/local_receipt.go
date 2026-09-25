@@ -64,9 +64,12 @@ func localReceiptReferenceKey(reference string) string {
 // RecordLocalNoChargeReceipt uses the existing immutable evidence store. Two
 // scoped locks keep the caller key and original owner reference atomic: a changed
 // payload cannot hide behind a new key, and a reused key cannot name a new order.
-func (s *PostgresStore) RecordLocalNoChargeReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*LocalNoChargeRecord, error) {
+func (s *PostgresStore) RecordLocalNoChargeReceipt(ctx context.Context, r *api.AppendReceiptRequest, authorizeInsert func(context.Context) error) (*LocalNoChargeRecord, error) {
 	if err := ValidateLocalNoChargeReceiptInput(r); err != nil {
 		return nil, err
+	}
+	if authorizeInsert == nil {
+		return nil, ErrInvalidReceiptInput
 	}
 	evidence := &api.LocalNoChargeReceiptEvidence{Receipt: proto.Clone(r.Receipt).(*api.Receipt), QuoteAcceptance: proto.Clone(r.QuoteAcceptance).(*api.QuoteAcceptance), OwnerCommitEvidence: proto.Clone(r.OwnerCommitEvidence).(*api.OwnerCommitEvidence), EvidenceDigest: r.EvidenceDigest}
 	raw, err := protojson.Marshal(evidence)
@@ -112,6 +115,12 @@ func (s *PostgresStore) RecordLocalNoChargeReceipt(ctx context.Context, r *api.A
 			return nil, ErrIdempotencyConflict
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
+		// Waiting on either identity lock may outlive the caller's admission.
+		// Re-authorize this insertion while holding both locks; replay still uses
+		// the handler's normal read admission and never changes stored evidence.
+		if err := authorizeInsert(ctx); err != nil {
+			return nil, err
+		}
 		now := s.now()
 		receiptID := "receipt_local_" + strings.TrimPrefix(referenceKey, localReceiptService+":reference:")
 		evidence.Receipt.Id, evidence.Receipt.CreatedAt = receiptID, timestamppb.New(now)

@@ -50,7 +50,11 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 	if !proto.Equal(actualCommit, commit) {
 		return nil, status.Error(codes.FailedPrecondition, "Workspace commit differs from submitted evidence")
 	}
-	stored, err := s.store.RecordLocalNoChargeReceipt(ctx, r)
+	stored, err := s.store.RecordLocalNoChargeReceipt(ctx, r, func(ctx context.Context) error {
+		freshCall := proto.Clone(r.Context).(*api.CallContext)
+		freshCall.AuthorizationContextId = ""
+		return s.authorizeReceipt(ctx, freshCall, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, q.WorkspaceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId)
+	})
 	if err != nil {
 		return nil, receiptError(err)
 	}
@@ -92,6 +96,9 @@ func (s *Server) authorizeReceipt(ctx context.Context, call *api.CallContext, ac
 }
 
 func receiptError(err error) error {
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
 	switch {
 	case errors.Is(err, ledger.ErrInvalidReceiptInput):
 		return status.Error(codes.InvalidArgument, "invalid Local no-charge receipt evidence")

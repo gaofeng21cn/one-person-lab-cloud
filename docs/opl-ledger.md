@@ -67,7 +67,9 @@ and creation time and stores one immutable record in its existing evidence
 store. Replaying the same evidence under the original order returns the same
 receipt, including after restart or when the request key changes. Changing the
 evidence for that order, or reusing a caller key for a different order, fails
-with an idempotency conflict.
+with an idempotency conflict. A new insertion rechecks live authorization after
+acquiring both database locks, so a revoked request cannot write after waiting
+behind another append.
 
 Workspace and Fabric read this evidence through `LedgerCoordination` using the
 original Workspace reference. `ReadReceiptByReference` returns the public

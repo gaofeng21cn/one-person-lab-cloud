@@ -2,7 +2,10 @@ package eventconsumer
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -38,11 +41,13 @@ type coordinationOwners struct {
 	commit                  *api.OwnerCommitEvidence
 	deny                    bool
 	quoteReads, commitReads int
+	authorizations          int
 }
 
 func (o *coordinationOwners) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest) (*api.AuthorizationDecision, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.authorizations++
 	if o.deny {
 		return nil, status.Error(codes.PermissionDenied, "denied")
 	}
@@ -399,5 +404,78 @@ func TestLocalNoChargeReceiptConcurrentSameAndConflictingKeys(t *testing.T) {
 	owners.mu.Unlock()
 	if _, err := client.AppendReceipt(context.Background(), other); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("key retarget=%v", err)
+	}
+}
+
+func TestLocalNoChargeReceiptReauthorizesAfterPostgresLockWait(t *testing.T) {
+	db, _, owners, client, _ := coordinatedService(t)
+	r := coordinationFixtureRequest()
+	r.OwnerCommitEvidence = proto.Clone(owners.commit).(*api.OwnerCommitEvidence)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	blocker, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback()
+	var blockerPID int
+	if err = blocker.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&blockerPID); err != nil {
+		t.Fatal(err)
+	}
+	keyBytes, err := json.Marshal([]string{"ledger.local_no_charge", "workspace", r.OwnerEvidenceReference})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(keyBytes)
+	lockKey := "ledger.local_no_charge:reference:" + hex.EncodeToString(digest[:])
+	if _, err = blocker.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := client.AppendReceipt(ctx, r); result <- err }()
+	for {
+		var waiting bool
+		if err = db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))`, blockerPID).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-result:
+			t.Fatalf("append finished before lock wait: %v", err)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	owners.mu.Lock()
+	owners.deny = true
+	admissions := owners.authorizations
+	owners.mu.Unlock()
+	if admissions != 1 {
+		t.Fatalf("expected one admission before lock wait, got %d", admissions)
+	}
+	if err = blocker.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-result; status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("revoked queued append=%v", err)
+	}
+	var receipts, keys int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM evidence_receipts WHERE receipt_type=$1`, ledger.LocalNoChargeReceiptType).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM idempotency_keys WHERE service='ledger.local_no_charge'`).Scan(&keys); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 0 || keys != 0 {
+		t.Fatalf("revoked request persisted receipts=%d keys=%d", receipts, keys)
+	}
+	owners.mu.Lock()
+	owners.deny = false
+	owners.mu.Unlock()
+	if _, err = client.AppendReceipt(ctx, r); err != nil {
+		t.Fatalf("authorized retry after rollback=%v", err)
 	}
 }
