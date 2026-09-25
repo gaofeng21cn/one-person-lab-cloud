@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 import { parse as parseYAML } from "yaml";
 
@@ -58,6 +62,83 @@ test("Qualification executes the independent Go contracts module", async () => {
     "${{ needs.go_contracts.result }}"
   );
   assert.match(validateStep.run, /"\$GO_CONTRACTS_RESULT" != "success"/);
+});
+
+test("Local qualification uses one bounded runner filesystem and explicit privileged inputs", async (t) => {
+  const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
+  const job = workflow.jobs.fabric;
+  assert.equal(job["runs-on"], "ubuntu-latest");
+  assert.equal(job.environment, undefined);
+  assert.deepEqual(workflow.permissions, { contents: "read" });
+  const step = (name: string) => job.steps.find((item) => item.name === name);
+  const prepare = step("Prepare project quota filesystem");
+  const compile = step("Compile Local qualification executables without privilege");
+  const quota = step("Test Linux project quota as privileged capability");
+  const deploy = step("Test first Local application deployment with real owners");
+  const cleanup = step("Remove project quota filesystem");
+  assert.equal(cleanup.if, "${{ always() }}");
+  assert.ok(job.steps.indexOf(compile) < job.steps.indexOf(quota));
+  assert.ok(job.steps.indexOf(quota) < job.steps.indexOf(deploy));
+  assert.ok(job.steps.indexOf(deploy) < job.steps.indexOf(cleanup));
+  assert.doesNotMatch(compile.run, /\bsudo\b/);
+  const run = promisify(execFileCallback);
+  for (const item of [prepare, compile, quota, deploy, cleanup]) await run("bash", ["-n", "-c", item.run]);
+
+  const temporary = await mkdtemp(join(tmpdir(), "opl-qualification-shell-"));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const bin = join(temporary, "bin"), log = join(temporary, "commands.jsonl");
+  await mkdir(bin);
+  // Mock privileged/system commands, but execute the actual workflow shell.
+  // These mocks never mount, format, truncate or remove a real filesystem.
+  const mock = `#!${process.execPath}\nconst fs = require('node:fs'); const path = require('node:path');
+const command = path.basename(process.argv[1]), args = process.argv.slice(2);
+fs.appendFileSync(process.env.QUALIFICATION_COMMAND_LOG, JSON.stringify({command,args})+'\\n');
+if (command === 'df') process.stdout.write('Avail\\n'+process.env.QUALIFICATION_AVAILABLE_BYTES+'\\n');
+if (command === 'mountpoint') process.exit(process.env.QUALIFICATION_MOUNTED === '1' ? 0 : 1);
+if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMOUNT_FAIL === '1') process.exit(1);
+`;
+  for (const command of ["df", "truncate", "mkfs.ext4", "sudo", "mountpoint"]) {
+    const path = join(bin, command);
+    await writeFile(path, mock); await chmod(path, 0o755);
+  }
+  const root = join(temporary, "opl-local-first-deploy-test-1");
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
+    GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1" };
+  const commands = async () => (await readFile(log, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  await run("bash", ["-c", prepare.run], { env });
+  let calls = await commands();
+  assert.ok(calls.some((call) => call.command === "truncate" && call.args.join(" ") === `-s 12G ${root}/quota.img`));
+  const format = calls.find((call) => call.command === "mkfs.ext4");
+  assert.ok(format.args.includes("project,quota") && format.args.includes("quotatype=prjquota"));
+  assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `mount -o loop,prjquota ${root}/quota.img ${root}/storage`));
+  for (const item of [quota, deploy]) await run("bash", ["-c", item.run], { env });
+  calls = await commands();
+  const executions = calls.filter((call) => call.command === "sudo" && call.args[0] === "env");
+  assert.equal(executions.length, 2);
+  for (const execution of executions) {
+    assert.equal(execution.args[1], "-i");
+    assert.ok(execution.args.includes(`OPL_TEST_PROJECT_QUOTA_ROOT=${root}/storage`));
+    assert.ok(execution.args.includes(`HOME=${root}/home`) && execution.args.includes(`TMPDIR=${root}/tmp`));
+    assert.ok(!execution.args.includes("go"));
+  }
+  assert.ok(executions[1].args.includes(`OPL_QUALIFICATION_FABRIC_BINARY=${root}/fabric`));
+  assert.ok(executions[1].args.includes(`OPL_QUALIFICATION_SERVE_BINARY=${root}/serve`));
+  assert.ok(executions[1].args.includes("OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable"));
+  assert.ok(executions[1].args.includes("^TestLocalFirstApplicationDeploymentQualification$"));
+  await writeFile(log, "");
+  await assert.rejects(run("bash", ["-c", cleanup.run], { env: { ...env, QUALIFICATION_UNMOUNT_FAIL: "1" } }));
+  assert.ok(!(await commands()).some((call) => call.command === "sudo" && call.args[0] === "rm"));
+  await writeFile(log, "");
+  await run("bash", ["-c", cleanup.run], { env });
+  calls = await commands();
+  assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `umount ${root}/storage`));
+  assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `rm -rf --one-file-system -- ${root}`));
+  await writeFile(log, "");
+  await assert.rejects(run("bash", ["-c", prepare.run], { env: { ...env, GITHUB_RUN_ID: "low", GITHUB_RUN_ATTEMPT: "space", OPL_QUALIFICATION_ROOT: join(temporary, "opl-local-first-deploy-low-space"), QUALIFICATION_AVAILABLE_BYTES: "1024" } }));
+  assert.deepEqual((await commands()).map((call) => call.command), ["df"]);
+  await writeFile(log, "");
+  await assert.rejects(run("bash", ["-c", cleanup.run], { env: { ...env, OPL_QUALIFICATION_ROOT: temporary } }));
+  assert.equal((await commands()).length, 0);
 });
 
 test("verify-local reports leaf Go test failures separately from package failures", () => {

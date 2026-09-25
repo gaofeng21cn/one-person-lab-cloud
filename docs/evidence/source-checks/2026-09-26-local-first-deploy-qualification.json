@@ -1,0 +1,58 @@
+{
+  "schema": "opl-cloud-source-check.v1",
+  "recorded_at": "2026-09-25T21:20:51.051469+00:00",
+  "scope": "test-only isolated Linux first Local application qualification harness",
+  "result": "source compiled; hosted Linux execution pending",
+  "local_verified": [
+    "macOS livebuild test package compiles with readonly modules",
+    "Linux amd64 first-deploy test binary cross-compiles",
+    "Fabric and Serve production executables build",
+    "Capability fixture inserts and Serve/Fabric real migrations pass on isolated PostgreSQL",
+    "Existing real Workspace BFF/Identity/Catalog/Ledger original-order test passes",
+    "Workflow static guards and project-quota preparation checked"
+  ],
+  "qualification_entry": {
+    "workflow": ".github/workflows/qualification.yml",
+    "job": "fabric",
+    "test": "TestLocalFirstApplicationDeploymentQualification",
+    "build_tag": "livebuild",
+    "opt_in": "OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION=1",
+    "hosted_run_id": null,
+    "hosted_run_url": null,
+    "hosted_result": "pending"
+  },
+  "planned_live_assertions": [
+    "real Linux project quota admission and real Docker resource provisioning",
+    "immutable OCI image and exact descriptor entrypoint launch real HTTP counter application",
+    "real Workspace accepted grant, Catalog acceptance, Ledger no-charge receipt and Capability claim",
+    "real Serve/Fabric binary Start and Observe return confirmed readiness and actual reachable loopback URL",
+    "real BFF deployment history and getWorkspaceAccess match original deployment/runtime/URL",
+    "docker stop is observed as failure; BFF refuses access without URL",
+    "explicit same-container restart plus Serve process and Workspace service restart recovers original order/resource/deployment/epoch/data with no duplicate receipt or claim"
+  ],
+  "fixtures": [
+    "external Gateway login HTTP backend",
+    "already-ready Capability/Build provenance seeded and bound to actual pinned OCI image plus exact application descriptor",
+    "explicit test host stops and restarts its own container to exercise failure/recovery"
+  ],
+  "not_claimed": [
+    "Linux runtime success before the qualification workflow passes",
+    "BuildKit build or publisher admission flow",
+    "automatic restart product capability",
+    "Gateway activation, paid subscription or production deployment"
+  ],
+  "logs": [
+    {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/first-deploy-local-check.log",
+      "sha256": "0878468462e511df6a8f64401ab89c715095570041aa72f19dacc9a1a9708a77"
+    },
+    {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/first-deploy-final-compile.log",
+      "sha256": "1e9e9c37d109a0c2e15b4c915a3dcff6d76b4f774b7ab5b6c38397a90760b05c"
+    },
+    {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/qualification-workflow-static.log",
+      "sha256": "c5b3924080ceda48c81ceb225c0b78087c0a2159d80839e7a189f17648727f3e"
+    }
+  ]
+}

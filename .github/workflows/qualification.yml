@@ -184,7 +184,7 @@ jobs:
   fabric:
     name: fabric
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services: *postgres_service
     env:
       PGHOST: 127.0.0.1
@@ -194,6 +194,7 @@ jobs:
       PGSSLMODE: disable
       OPL_POSTGRES_TESTS: "1"
       OPL_FABRIC_LOCAL_DOCKER_INTEGRATION: "1"
+      OPL_QUALIFICATION_ROOT: ${{ runner.temp }}/opl-local-first-deploy-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - *checkout
 
@@ -206,16 +207,36 @@ jobs:
           cache-dependency-path: services/fabric/go.sum
 
       - name: Prepare project quota filesystem
-        env:
-          OPL_TEST_PROJECT_QUOTA_ROOT: ${{ runner.temp }}/opl-project-quota
         run: |
           set -euo pipefail
-          quota_image="${RUNNER_TEMP}/opl-project-quota.img"
-          truncate -s 256M "$quota_image"
-          mkfs.ext4 -F -q "$quota_image"
-          sudo mkdir -p "$OPL_TEST_PROJECT_QUOTA_ROOT"
-          sudo mount -o loop,prjquota "$quota_image" "$OPL_TEST_PROJECT_QUOTA_ROOT"
-          sudo chown "$(id -u):$(id -g)" "$OPL_TEST_PROJECT_QUOTA_ROOT"
+          test "$OPL_QUALIFICATION_ROOT" = "$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$OPL_QUALIFICATION_ROOT"
+          # The real Local plan reserves 10 GiB. Keep room for filesystem metadata
+          # and the fixture while refusing to overcommit the runner filesystem.
+          available_bytes="$(df -B1 --output=avail "$RUNNER_TEMP" | tail -n 1 | tr -d ' ')"
+          [[ "$available_bytes" =~ ^[0-9]+$ ]]
+          (( available_bytes >= 14 * 1024 * 1024 * 1024 ))
+          mkdir -p "$OPL_QUALIFICATION_ROOT"/{storage,tmp,home}
+          quota_image="$OPL_QUALIFICATION_ROOT/quota.img"
+          truncate -s 12G "$quota_image"
+          mkfs.ext4 -F -q -O project,quota -E quotatype=prjquota "$quota_image"
+          sudo mount -o loop,prjquota "$quota_image" "$OPL_QUALIFICATION_ROOT/storage"
+          sudo chown "$(id -u):$(id -g)" "$OPL_QUALIFICATION_ROOT/storage"
+
+      - name: Compile Local qualification executables without privilege
+        run: |
+          set -euo pipefail
+          go -C services/fabric build -o "$OPL_QUALIFICATION_ROOT/fabric" ./cmd/fabric
+          go -C services/serve build -o "$OPL_QUALIFICATION_ROOT/serve" ./cmd/server
+          go -C services/fabric test -c -tags=opl_project_quota -o "$OPL_QUALIFICATION_ROOT/project-quota.test" ./internal/fabric
+          go -C services/workspace test -c -tags=livebuild -o "$OPL_QUALIFICATION_ROOT/first-deploy.test" ./internal/launch
+          "$OPL_QUALIFICATION_ROOT/project-quota.test" -test.list '^TestLinuxLocalDockerProjectQuotaEnforcesHardLimit$' | grep -Fx 'TestLinuxLocalDockerProjectQuotaEnforcesHardLimit'
+          "$OPL_QUALIFICATION_ROOT/first-deploy.test" -test.list '^TestLocalFirstApplicationDeploymentQualification$' | grep -Fx 'TestLocalFirstApplicationDeploymentQualification'
+          # Pull the immutable application image once as the ordinary runner.
+          # The privileged test reuses the daemon's cached digest.
+          base_image="$(awk 'toupper($1) == "FROM" { print $2; exit }' deploy/portable/qualification-workspace.Dockerfile)"
+          [[ "$base_image" =~ @sha256:[a-f0-9]{64}$ ]]
+          docker pull "$base_image"
 
       - name: Test Fabric
         working-directory: services/fabric
@@ -225,21 +246,38 @@ jobs:
 
       - name: Test Linux project quota as privileged capability
         working-directory: services/fabric
-        env:
-          OPL_TEST_PROJECT_QUOTA_ROOT: ${{ runner.temp }}/opl-project-quota
         run: |
-          sudo env OPL_TEST_PROJECT_QUOTA_ROOT="$OPL_TEST_PROJECT_QUOTA_ROOT" \
-            go test -tags opl_project_quota -run '^TestLinuxLocalDockerProjectQuotaEnforcesHardLimit$' -count=1 ./internal/fabric
+          set -euo pipefail
+          sudo env -i PATH="$PATH" HOME="$OPL_QUALIFICATION_ROOT/home" TMPDIR="$OPL_QUALIFICATION_ROOT/tmp" \
+            OPL_TEST_PROJECT_QUOTA_ROOT="$OPL_QUALIFICATION_ROOT/storage" \
+            "$OPL_QUALIFICATION_ROOT/project-quota.test" \
+            -test.run '^TestLinuxLocalDockerProjectQuotaEnforcesHardLimit$' -test.count=1 -test.timeout=2m -test.v
+
+      - name: Test first Local application deployment with real owners
+        working-directory: services/workspace
+        run: |
+          set -euo pipefail
+          sudo env -i PATH="$PATH" HOME="$OPL_QUALIFICATION_ROOT/home" TMPDIR="$OPL_QUALIFICATION_ROOT/tmp" \
+            OPL_TEST_PROJECT_QUOTA_ROOT="$OPL_QUALIFICATION_ROOT/storage" \
+            OPL_OWNER_MIGRATION_TEST_ADMIN_DSN="postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable" \
+            OPL_POSTGRES_TESTS=1 OPL_LOCAL_FIRST_DEPLOY_QUALIFICATION=1 PGSSLMODE=disable \
+            OPL_QUALIFICATION_FABRIC_BINARY="$OPL_QUALIFICATION_ROOT/fabric" \
+            OPL_QUALIFICATION_SERVE_BINARY="$OPL_QUALIFICATION_ROOT/serve" \
+            "$OPL_QUALIFICATION_ROOT/first-deploy.test" \
+            -test.run '^TestLocalFirstApplicationDeploymentQualification$' -test.count=1 -test.timeout=15m -test.v
 
       - name: Remove project quota filesystem
         if: ${{ always() }}
-        env:
-          OPL_TEST_PROJECT_QUOTA_ROOT: ${{ runner.temp }}/opl-project-quota
         run: |
-          if mountpoint -q "$OPL_TEST_PROJECT_QUOTA_ROOT"; then
-            sudo umount "$OPL_TEST_PROJECT_QUOTA_ROOT"
+          set -euo pipefail
+          test "$OPL_QUALIFICATION_ROOT" = "$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -L "$OPL_QUALIFICATION_ROOT"
+          if mountpoint -q "$OPL_QUALIFICATION_ROOT/storage"; then
+            sudo umount "$OPL_QUALIFICATION_ROOT/storage"
           fi
-          rm -f "${RUNNER_TEMP}/opl-project-quota.img"
+          if test -d "$OPL_QUALIFICATION_ROOT"; then
+            sudo rm -rf --one-file-system -- "$OPL_QUALIFICATION_ROOT"
+          fi
 
   validate:
     name: validate
