@@ -1,0 +1,250 @@
+{
+ "schemaVersion": 1,
+ "action": "Complete the Resource Catalog directory loop for a real platform administrator: the running Console BFF process, the generated CloudIdentity policy, the contract-derived money and status, the owner's own database, and same-owner readback",
+ "recordedAt": "2026-09-25T09:51:11.144974+00:00",
+ "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+ "testedSha": "970d0fc58a6a3b79a2a3ae49e7f654be7d5837a4",
+ "testedTree": "27245d9fbc253f5f02822a184c4d36a6a08dd9fe",
+ "stackBase": {
+  "sha": "3adb7ac38a379f6f2b68100cfd1b1df326c3aea5",
+  "what": "The shared contract and identity writer's revision. This branch is stacked on it and therefore carries no identity, contract or public-guard code of its own; the dependency below is absorbed by that stacking."
+ },
+ "absorbedDependencies": [
+  {
+   "owner": "shared contract and identity writer",
+   "commits": [
+    "7a8c5d0f",
+    "f7a9e649",
+    "413a7d5a",
+    "c052eeb9",
+    "c5393772",
+    "79de5757",
+    "5507cde0",
+    "503c79c4",
+    "3adb7ac3"
+   ],
+   "sha": "3adb7ac38a379f6f2b68100cfd1b1df326c3aea5",
+   "fileHashesAtHead": {
+    "services/gateway-integration/identity/policy_generated.go": "fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb",
+    "services/gateway-integration/identity/generate_policy.py": "25c8ab743dcb395f95ec578ea3ce4245945c395f0bebc292ce26513f33f32222",
+    "packages/contracts/go/publicjson/codec.go": "54b32be97e644bfdd617348bd508c182807990cdb247ceca39136be6970e48cb",
+    "packages/contracts/go/publicjson/shape_generated.go": "a4254187986d103c011ec46a2d68d269dab644c56cf3315d0acf30b287cc907f",
+    "packages/contracts/proto/generate_public_json_shape.py": "41a36544e8ea46859cfa5a9b638ef570d92c3ab408bec7cb1c36eefcdb222ef9",
+    "apps/console-bff/internal/httpapi/status_generated.go": "66b7470eb195847a1f21fced81b33dacfb6ee7a4b8cd69747ec9705abf40cb06",
+    "apps/console-bff/internal/httpapi/server.go": "f61566fe2f033e3db101e48fa18edca02b378b91a59ac3d22beecdd67e3ffef0",
+    "apps/console-bff/internal/clients/clients.go": "537f32bd6ecbab392b2ae68822ac319da1d91c1d9c6143d573b0f56d971359fc",
+    "services/internal/ownerservice/authorization.go": "0c33f477bd306d7d72df26b7e473ffcd43a2552903aa7216677b6ee18a7d6e59"
+   },
+   "absorptionCheck": "Every absorbed file in this branch is byte-identical to the same path at the stack base (git show <base>:<path> compared to git show HEAD:<path> for all ten files including apps/console-bff/internal/httpapi/catalog.go), so this branch neither re-implements nor diverges from the shared work.",
+   "contributedByThisLine": "apps/console-bff/internal/httpapi/catalog.go (route registration) was authored here and taken verbatim by the shared writer; it is listed under the absorbed files above because the branch now carries the writer's copy.",
+   "removed": "This line's own apps/console-bff/internal/clients/catalog.go was deleted once the shared writer put the catalog in the shared client set, so one process has exactly one dial path and one configuration path to this owner."
+  }
+ ],
+ "sourceFilesSha256": {
+  "services/resource-catalog/go.mod": "2ce94514a623f698f96ca5c6f1a6bc313332148d8b2f4e3d7f90f159dd5c1ae5",
+  "services/resource-catalog/catalog/service.go": "74e0615cee8d8f35c3b1b4f481a5ae4d5837ebf9c44af0f8a33aadeff79e2fe3",
+  "services/resource-catalog/catalog/plans.go": "46e4d0cabef3aa3942039ef83ba9fbaf86f2d76f18779ff11e4134f9febc557b",
+  "services/resource-catalog/catalog/policies.go": "1619434b279f85b16e9a071f91a04729ec2f60367c190d52c5f0048b4eb57d07",
+  "services/resource-catalog/catalog/policy.go": "da4a3b92a6e60b152aa61289db394858deae68759f8996f862c6a42200f3ce20",
+  "services/resource-catalog/catalog/events.go": "33def587e07ae6df1a368968992e0899a4426f7ecb3d0d7fe7f87c3a5d27f4ed",
+  "services/resource-catalog/catalog/policy_test.go": "c7d3f839670e3b665d85e5c03d257077bbfe8530a9cde07cdf7b533c4a258a50",
+  "services/resource-catalog/catalog/service_postgres_test.go": "4cca5c3b65053d05a6a076729be41c62f5395d3062a08acf2d1625b3d21430b2",
+  "services/resource-catalog/catalog/catalog_live_test.go": "c9d97a1cce466ab1324d2bdb170041a5984d7152cb7af1c04930610237f9273f",
+  "services/resource-catalog/cmd/server/main.go": "dd61876952a3f9f56fd65a4b9bbd87b126d5ed021c8686602a009f16831dabac",
+  "services/resource-catalog/migrations/0001_opl_resource_catalog.sql": "87cb984dce76287f704b84f6a5297cbb7aa9b84e28ecf79f6159b2f2a65adc14",
+  "services/resource-catalog/migrations/embed.go": "6681f9ce33c8d6ef31420b7634bb4e75e469e73b2dbae437e913806670886ada",
+  "services/resource-catalog/migrations/isolation_test.go": "45deb85571f1bcf8e62d7ea4a43978c0b577acfc0442662085ef6860ddaf70ed",
+  "apps/console-bff/catalog.go": "e803806912bf253fd58e1c416976ef758108565defbf282fdde3f576b163acdf",
+  "apps/console-bff/internal/httpapi/catalog_test.go": "dbc8143042131ef98449a47998449acf07f4c23cfe41434d40271175b659affe",
+  "package.json": "4e0ce5788657ed1ac523a46f5a88534520941fee8fb100d12eadfe260c48d293",
+  "tools/verify-local.ts": "d943c251f06dcaec51fc5bbca1f12f315f1dfbcb44796a3c9bd120f504eb66e1",
+  "tests/tools/verify-local.test.ts": "90aa0551e11fa77eb3aa01d592413de9b29363efbb63a4d171cf2171c3af2334",
+  "Dockerfile": "79854c1d95e423c92dd2b9b01a049bbaa99f7838a96cdddebf946694f7a601d5"
+ },
+ "commands": [
+  {
+   "name": "focused owner and live integration suites (live build tag)",
+   "command": "go -C services/resource-catalog test -tags=livebuild ./... -count=1 -v",
+   "environment": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN to one temporary loopback PostgreSQL 16.8 container; OPL_LIVE_BFF_LOG to the process log",
+   "exitCode": 0,
+   "result": "17 tests, 47 subtests, 0 failures, 0 skips",
+   "log": {
+    "path": "output/resource-catalog-phase1-20260925/focused-live-verbose.log",
+    "sha256": "d1b555250bd305f3c9b446d8cd7a0ac0f6ce70dccfd3b25da0182eb4d02869b7"
+   }
+  },
+  {
+   "name": "focused process-level acceptance: the real Console BFF binary",
+   "command": "go -C services/resource-catalog test -tags=livebuild ./catalog/ -run TestLiveCatalogThroughRealBFFProcess -count=1 -v",
+   "environment": "the test builds and runs apps/console-bff/cmd/server with its own environment (OPL_BFF_ADDR, OPL_CLOUD_IDENTITY_URL/TOKEN, OPL_RESOURCE_CATALOG_URL/TOKEN, OPL_GRPC_INSECURE_LOCAL=1) against the real CloudIdentity process and the real owner database",
+   "exitCode": 0,
+   "result": "passed in 33.47s",
+   "log": {
+    "path": "output/resource-catalog-phase1-20260925/real-bff-process-final-test.log",
+    "sha256": "bfe0c6f4ad3c4ca3f8ac8fafacec3856452a4e3a72d6a243a54e02328151fe47"
+   },
+   "processLog": {
+    "path": "output/resource-catalog-phase1-20260925/real-bff-process-final.log",
+    "sha256": "958dbc965ac2882a5ce1de167e2ee5f4682d990ab26191b7e170b20bbdba42f4",
+    "firstLine": "2026/09/25 17:50:23 console-bff listening on 127.0.0.1:53179"
+   }
+  },
+  {
+   "name": "focused owner suites without the live tag",
+   "command": "go -C services/resource-catalog test ./... -count=1",
+   "environment": "same temporary PostgreSQL container",
+   "exitCode": 0,
+   "result": "catalog and migrations packages pass",
+   "log": {
+    "path": "output/resource-catalog-phase1-20260925/focused-notag.log",
+    "sha256": "8de353dc7c4540840331167b0b761d5da03eb6cb5e33087e2830282cddfc08d2"
+   }
+  },
+  {
+   "name": "full local gate on the frozen revision",
+   "command": "npm run verify:local:full",
+   "environment": "repository-pinned temporary PostgreSQL and Docker; the command's own exit status is redirected to a file rather than read from a pipe",
+   "startedAt": "2026-09-25T09:32:31Z",
+   "endedAt": "2026-09-25T09:48:38Z",
+   "exitCode": 0,
+   "result": "228 source tests, 114 browser tests, typecheck and lint, Console build, every Go module compile, all required PostgreSQL/Docker packages at zero skips including the services/resource-catalog lane, and clean whitespace",
+   "log": {
+    "path": "output/resource-catalog-phase1-20260925/gate.log",
+    "sha256": "cb8c02a94c60738ee47b34971a606203280ff68dcd60b48f0cca4ec499a18bf8"
+   },
+   "exitFile": {
+    "path": "output/resource-catalog-phase1-20260925/gate.exit",
+    "value": 0
+   },
+   "sourceConsistency": "The tracked worktree was clean before, during and after this run, so the result describes exactly testedSha."
+  }
+ ],
+ "acceptanceReadbacks": [
+  {
+   "ssot": "01_domain_ownership_matrix.md:42 — Resource Catalog owns provider-neutral plans, price versions, availability and quote generation; it does not own resource execution, wallet accounting or the accepted-subscription writer.",
+   "implementation": "services/resource-catalog owns resource_catalog.* only; the owner writes no wallet, no provider resource and no subscription.",
+   "case": "A retired plan cannot be priced; a client that fails authorization writes no row.",
+   "result": "passed"
+  },
+  {
+   "ssot": "14_implementation_work_packages.md W06 acceptance — no double rounding or float and no recomputing milliseconds from PostgreSQL; the administrator catalog never procures a resource.",
+   "implementation": "catalog/policy.go computes the D17 supplement with arbitrary-precision integers and one final ceil, and the deletion refund with one final floor; catalog/plans.go and catalog/policies.go write only catalog tables.",
+   "case": "The contract's seven acceptance vectors replay through the real calculator; the administrator paths perform no provider call.",
+   "result": "passed (7/7 vectors, plus invalid-window, single-ceil, non-negative and floor/cap cases)"
+  },
+  {
+   "ssot": "03_api_contract_complete.yaml — the plan-availability operations declare 200 and the money properties are decimal strings under their published spelling.",
+   "implementation": "the shared writer compiles the response status and the money vocabulary from the same contract this owner reads.",
+   "case": "A money-bearing price policy version round-trips productMonthlyUSDMicros \"1\" through the BFF and the owner row equals 1; the availability update answers exactly 200.",
+   "result": "passed"
+  },
+  {
+   "ssot": "06_data_flow_and_state_machine.md:12 and :60-65 — cross-domain coordination is typed idempotent owner commands with no cross-database transaction, and an accepted quote is not re-priced.",
+   "implementation": "the owner exposes typed idempotent commands keyed on caller scope, actor, operation and idempotency key; it reads no other owner's table.",
+   "case": "Replay returns the original row, a conflicting body is refused, and a lost-response retry converges.",
+   "result": "passed (this slice covers the catalog-side commands; the Workspace-to-Fabric chain is the next slice)"
+  },
+  {
+   "ssot": "01_domain_ownership_matrix.md and decisions.md — each owner has its own database and role and reads no other owner's data.",
+   "implementation": "the owner's migrations install its own schema under its own roles.",
+   "case": "The runtime login cannot read a neighbour schema (permission denied) and does not carry another owner's schema.",
+   "result": "passed"
+  },
+  {
+   "ssot": "CloudIdentityAuthorization — a live session, audience, action and exact resource on every privileged call.",
+   "implementation": "the owner asks the live authority and the BFF guards every route with session, CSRF, same-origin and idempotency.",
+   "case": "A platform administrator is admitted; a tenant administrator, a member attempting an administrator action and an anonymous caller are refused; a refusal arrives as a decision rather than an outage.",
+   "result": "passed"
+  }
+ ],
+ "proven": [
+  "The running Console BFF process serves the catalog surface: the acceptance check builds and starts the actual product binary and reaches the routes through its own configuration, not a test-assembled handler.",
+  "A real platform administrator creates approved compute and storage plans and retires one through that process, and the owner's own rows are the authority for the readback.",
+  "A money-bearing price policy version round-trips the contract's property spelling and decimal-string amount in both directions, and the owner row carries the amount.",
+  "A tenant administrator and a member attempting an administrator action are refused, an anonymous caller is refused, and a refusal leaves no row behind.",
+  "A member reads the customer catalog list and is refused the administrator policy surface.",
+  "Retiring a plan changes the owner's availability projection, and pricing the retired pair is refused at the owner boundary.",
+  "A CloudIdentity refusal reaches the owner as PermissionDenied, an unusable session as Unauthenticated, and only a genuine authority failure as Unavailable; neither refusal writes anything.",
+  "Idempotent replay returns the original row, a conflicting body is refused with 409, and a lost-response retry converges on the original row.",
+  "The owner's runtime cannot read another owner's data, and this branch carries no identity, contract or public-guard code of its own.",
+  "The full local gate passes at zero PostgreSQL skips on the frozen revision with a clean tracked worktree throughout."
+ ],
+ "notProven": [
+  "Quoting does not exist. CreateQuote, GetQuote and the Workspace-facing AcceptQuote are unimplemented, so nothing prices a deploy, resize or renew request, and no Local deployment loop exists. Catalog availability is not quoting.",
+  "No Workspace subscription, original order, resource intent or provider resource was created or verified, and Fabric's resource reference and authoritative readback are untouched by this slice.",
+  "The Ledger DomainInbox still accepts only tenant-scoped build and capability producers, so the platform-scoped catalog.policy_changed.v1 delivery stays pending. The producer records and retries it; the consumer extension is Ledger's write set and the event is not claimed end to end.",
+  "The platform-administrator-versus-member read of the customer plan list remains an unresolved contract decision point: the contract grants listComputePlans/listStoragePlans to member, a platform administrator has no tenant, and 04 lists listComputePlans as an administrator page source. Neither side was changed; the check uses a member for the customer read and the administrator for the administrator surface.",
+  "No Candidate, Product Release, deployment or Instance qualification was performed, and no production endpoint, database or service was accessed.",
+  "The three SIGKILLed gate attempts below mean the recorded pass is the fourth attempt on this revision; the host was under heavy memory pressure from other lanes' concurrent browser suites, not from this change."
+ ],
+ "attemptsAndFailures": [
+  {
+   "what": "The first three full-gate attempts on earlier revisions and on this one",
+   "outcome": "killed by the operating system (exit 137) during the browser suite or the PostgreSQL lane",
+   "reason": "The host was under severe memory pressure from other lanes' concurrent heavy suites (swap fully consumed, load above 30). These are environment failures, not source failures: the same revision later passed when the host was quiet. The staggering was done by waiting for other lanes to finish rather than by stopping any other lane's container.",
+   "retained": "The superseded logs are not cited as evidence; only the recorded pass is."
+  },
+  {
+   "what": "Earlier attempts on this line against the pre-wiring revision",
+   "outcome": "failed as expected with HTTP 403 for createComputePlan",
+   "reason": "CloudIdentity's generated policy carried no resource_catalog action yet. Kept as proof that the dependency was genuinely missing and the check is not a stub.",
+   "log": {
+    "path": "output/resource-catalog-live-20260925/cloudidentity-decision-before-dependency.log",
+    "sha256": "861122a8096238d61bec5601d5ab7bd53ebdb322d30159cb31e6e6cf4427bbb7"
+   }
+  },
+  {
+   "what": "The process-level acceptance check before the shared writer's wiring landed",
+   "outcome": "404 (or a non-2xx) because the process did not route the catalog",
+   "reason": "The route registration existed but the process's Handler did not call it. The check was therefore kept out of the tree until the wiring landed, so no committed revision carried a knowingly failing test.",
+   "retained": "The prepared test is archived at output/resource-catalog-phase1-20260925/prepared-process-acceptance-test.go.txt."
+  }
+ ],
+ "sharedGapsClosedByOthers": [
+  {
+   "gap": "The public JSON codec resolved properties by protobuf JSON name and emitted 64-bit integers as bare numbers, so money-bearing DTOs could not round-trip.",
+   "closedBy": "the shared contract writer (commit 7a8c5d0f), which compiles the property names and the decimal-string fields from the canonical contract and enforces the declared form on decode.",
+   "verifiedHere": "a money-bearing price policy version now round-trips through the BFF and the owner row is the authority."
+  },
+  {
+   "gap": "The BFF success status was a hand-maintained list that already disagreed with the contract for the two plan-availability actions.",
+   "closedBy": "the shared writer (commit 171feba5), which compiles the status from the same contract.",
+   "verifiedHere": "the availability update is asserted at exactly 200."
+  },
+  {
+   "gap": "The BFF process did not route the catalog surface.",
+   "closedBy": "the shared writer (commit c052eeb9), using this line's route file verbatim.",
+   "verifiedHere": "the process-level acceptance check passes against the real binary."
+  },
+  {
+   "gap": "Owner authorization collapsed every failure into Unavailable, so a refusal could not be told from an outage.",
+   "closedBy": "the shared writer (commit 79de5757).",
+   "verifiedHere": "a refusal now reaches the owner as PermissionDenied and an unusable session as Unauthenticated."
+  }
+ ],
+ "governanceProposal": {
+  "status": "Offered to the shared contract writer and declined as a new document, on the correct ground that the repository keeps one current writer per topic.",
+  "ruling": "The proposal's clauses already have canonical owners, and this line cites them instead of opening a second specification surface.",
+  "citations": [
+   "docs/spec/target/06_data_flow_and_state_machine.md:12 (mechanism: typed calls, reference claims, Outbox/Inbox, no cross-database transaction, no global lock, no compensation engine)",
+   "docs/spec/target/01_domain_ownership_matrix.md:165 (Workspace to Catalog edge: immutable quote, AcceptQuote binds one Operation, Catalog does not charge, a quote is not a capacity reservation)",
+   "docs/spec/target/06_data_flow_and_state_machine.md:60-65 (quote and acceptance semantics; Workspace stores only the returned snapshot; a later price change cannot alter the subscription)",
+   "docs/decisions.md:13-15,42,46,48 (authority split: Workspace business-only, Fabric provisions and reads back, Serve owns deployment and readiness, Catalog is not a second writer)",
+   "docs/spec/target/checks/semantics_cases.json executed by docs/spec/target/checks/validate_cross_domain.py (the rejection criteria as executable cases, 101/101 at the shared writer's revision)"
+  ],
+  "selfCheck": "No clause of the proposal was found to be uncovered by those owners; if one is found later it will be reported to the owning writer rather than added here."
+ },
+ "temporaryResources": "One task-created loopback PostgreSQL 16.8 container per run, removed afterwards; two orphaned temporary containers from this line's own killed gate runs were removed. No other lane's container was stopped. No production resource, credential or customer data was accessed.",
+ "productionDeploymentDispatched": false,
+ "instanceQualificationPerformed": false,
+ "issueOrPullRequestCreated": false,
+ "evidenceOrdering": {
+  "order": [
+   "2026-09-25T09:32:31Z: the full local gate started on the committed revision testedSha.",
+   "2026-09-25T09:48:38Z: the gate ended with exit 0.",
+   "The focused live suites and the process-level acceptance check ran on the same committed revision, before this receipt was written.",
+   "This receipt was then committed as a documentation-only follow-up commit on top of testedSha."
+  ],
+  "meaning": "For this receipt the source was committed first and tested after, with a clean tracked worktree throughout, so testedSha is a commit that was verified rather than a working tree that was later committed. Earlier receipts on this branch were captured from a working tree before their commit and bind that commit afterwards; that ordering is stated in the predecessor receipt and is not restated as if it were this one."
+ }
+}
