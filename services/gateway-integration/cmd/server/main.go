@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
 	api "opl-cloud/packages/contracts/go/api"
@@ -39,7 +41,11 @@ func main() {
 		if v := strings.TrimSpace(os.Getenv("OPL_PLATFORM_ADMIN_SUBJECTS")); v != "" {
 			admins = strings.Split(v, ",")
 		}
-		s, e := identity.New(db.DB(), gateway, []byte(os.Getenv("OPL_SESSION_SIGNING_KEY")), admins)
+		invitationTTL, e := time.ParseDuration(strings.TrimSpace(os.Getenv("OPL_INVITATION_TTL")))
+		if e != nil {
+			return fmt.Errorf("OPL_INVITATION_TTL must be an explicit Go duration such as 168h: %w", e)
+		}
+		s, e := identity.New(db.DB(), gateway, []byte(os.Getenv("OPL_SESSION_SIGNING_KEY")), admins, invitationTTL)
 		if e != nil {
 			return e
 		}

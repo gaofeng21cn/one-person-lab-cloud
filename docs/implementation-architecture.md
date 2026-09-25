@@ -13,18 +13,31 @@ repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
 Capability, Build, Runtime Control, Workspace and Serve have independent owner
-processes and the Console BFF is implemented. Serve implements its read surface
-in `services/serve/internal/delivery`: the owner-local current Deployment, the
-delivery history and the current Agent's access facts are read from
-`opl_serve`, and Serve refuses to compose another owner's fact into its delivery
-truth. Serve's delivery write path (Reserve/Deploy and access switching) is not
-implemented; the blockers are recorded in [status](status.md). Gateway
-Integration now implements the CloudIdentity publisher session and
-accepted-Build authorization slice in `services/gateway-integration`, using only
-the Tenant database. Gateway/wallet operations are not migrated by this slice;
-their eventual owner retains a separate database and pool inside the same
-deployment unit. This is not completion of all W03 invitation/Tenant lifecycle
-work.
+processes and the Console BFF is implemented. Gateway Integration now implements
+the CloudIdentity publisher session and accepted-Build authorization slice in
+`services/gateway-integration`, using only the Tenant database. Gateway/wallet
+operations are not migrated by this slice; their eventual owner retains a separate
+database and pool inside the same deployment unit. It also serves Tenant member
+and invitation governance (list, invite, accept, revoke, role change and removal,
+with last-owner protection and audit) over the same Tenant database, and its
+generated permission table is the single authorization policy for the capability,
+build, tenant, runtime control, resource catalog and serve audiences. This is not
+completion of all W03 work: `Member.displayName` still needs the authorised
+Gateway identity-directory read (no identity readback RPC or
+`gateway.identity_mappings` migration exists yet), and Tenant
+onboarding/suspend/reenable/delete/restore remain with W21.
+
+Serve implements its read surface in `services/serve/internal/delivery`: the
+owner-local current Deployment, the delivery history and the current Agent's
+access facts are read from `opl_serve`, and Serve refuses to compose another
+owner's fact into its delivery truth. Two of the three reads
+(`ListDeployments`, `GetDeployment`) are admitted by the shared policy table for
+the serve audience; `GetWorkspaceAccess` has no policy row because the canonical
+contract assigns it to the workspace owner while the proto declares it on
+`ServeProductService`, so it fails closed and is unimplemented pending that
+canonical decision. Serve's delivery write path (Reserve/Deploy and access
+switching) is not implemented; the blockers are recorded in
+[status](status.md).
 
 Control Plane remains the current caller and writer for capabilities not yet
 migrated. Extraction must switch real callers and retire the old write path;

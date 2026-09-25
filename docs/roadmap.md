@@ -38,19 +38,33 @@ chain is finished. Open work in dependency order:
    production qualification boundary; earlier identity/catalog fixture gaps no
    longer describe current Cloud source.
 2. Continue the remaining canonical Gateway Integration/CloudIdentity work
-   package for Tenant onboarding/invitations/lifecycle and retained identity-data
-   migration. These are distinct from the implemented publisher session/grant
-   slice; do not infer full W03 or Gateway wallet migration from #625 evidence.
+   package for Tenant onboarding/lifecycle and retained identity-data migration.
+   The member slice is now implemented: invitations, acceptance, role changes,
+   last-owner protection, cross-Tenant refusal, session revocation on removal and
+   the audit record are source-verified in
+   [member governance evidence](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json).
+   Open obligations there: `Member.displayName` needs the authorised Gateway
+   identity-directory read that the Gateway Integration identity work package
+   owns, and the member surface still has no Console page. That page belongs to
+   W13 Console/BFF basic integration (F01), not to the W14 agent/upload/build
+   front end; the BFF REST surface is what exists now. Tenant onboarding,
+   suspend/reenable, delete/restore and Gateway wallet migration remain separate
+   outcomes; do not infer full W03, W21 or Gateway wallet migration from the
+   implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
-   access readback. Serve's owner-local read surface
-   (`ListDeployments`/`GetDeployment`/`GetWorkspaceAccess`) is implemented; the
-   delivery write path stays open, and so does the read slice's real-identity
-   acceptance: the production CloudIdentity refuses every Serve read because the
-   shared policy table has no serve-audience read row, which is the identity
-   owner's work. [Status](./status.md#serve-delivery-read-surface) separates that
-   contract-policy dependency from Serve's own unfinished `ServeRuntimeAdapter`
-   and from Capability's claimant rule and Fabric's coordination surface.
+   access readback. Serve's owner-local read surface now delivers `listDeployments`
+   and `getDeployment` against the production CloudIdentity authority, with the
+   cross-Tenant, session-less and revoked-session refusals verified end to end. The
+   third read, `getWorkspaceAccess`, is blocked on an SSOT contradiction between
+   `03_api_contract_complete.yaml` (`x-owner: workspace`) and the proto placement on
+   `ServeProductService`; it stays unimplemented rather than faked, and needs the
+   canonical owner's decision. The composed BFF delivery route additionally needs a
+   workspace-audience `GETWORKSPACE` row, which the workspace owner's own switch
+   provides. [Status](./status.md#serve-delivery-read-surface) separates these from
+   Serve's own unfinished `ServeRuntimeAdapter` and from Capability's claimant rule
+   and Fabric's coordination surface. The first real deployment remains incomplete.
+
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.

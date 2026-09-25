@@ -128,7 +128,11 @@ own `opl_serve` database. The reads are owner-local truth:
   runtime instance is `ready` with an observed access URL — a provisioned Fabric
   resource is never substituted for a ready application;
 - a Workspace Serve has never delivered has no entry, no invented tenant, and no
-  fabricated mode.
+  fabricated mode;
+- the delivery page is ordered by the schema's own list index
+  (`created_at DESC, id DESC`) and paginated by that pair, so the history's newest
+  delivery is the same row the current-Agent selection uses. Ordering by id alone
+  was a real defect found by the real-identity harness below and is now fixed.
 
 Serve's process wiring is `delivery.Configure`, the same path `cmd/server` uses,
 so readiness cannot drift from what a test proves. The process registers exactly
@@ -140,10 +144,10 @@ when its authority is unconfigured.
 The owner unit tests (`service_postgres_test.go`, `process_postgres_test.go`)
 run Serve's real authorizer and real process wiring against a CloudIdentity
 **decision stub** (`stubCloudIdentityServer`). They prove Serve's request shape,
-its scope guard, its decision validation, its readiness gating and its read
-projection. They prove nothing about whether the production authority admits a
-Serve read; an earlier revision of this section described that stub as a "live
-authority", which was wrong.
+its scope guard, its decision validation, its readiness gating, its page order and
+its projection. They prove nothing about whether the production authority admits
+a Serve read; an earlier revision of this section described that stub as a "live
+authority", which was wrong and is corrected here.
 
 The real-identity acceptance harness (`identity_live_test.go`, `-tags=livebuild`,
 opt-in and outside `verify:local`/`verify:local:full`) runs the production
@@ -151,81 +155,85 @@ CloudIdentity implementation from `services/gateway-integration` over real gRPC
 with its real policy table and a real isolated `opl_tenant`, issuing sessions
 through the real BFF login transport. Only the external Sub2API/Gateway HTTP
 boundary is simulated. Seeded Serve rows in that harness prove the read
-projection only; they are not a real Deploy and no Runtime observation is
-claimed.
+projection only; they are not a real Deploy and no Runtime observation is claimed.
 
-The [Serve delivery read-surface receipt](./evidence/source-checks/2026-09-25-serve-delivery-read-surface.json),
-the [Serve process-wiring receipt](./evidence/source-checks/2026-09-25-serve-process-wiring.json)
-and the [Serve authorization-scope receipt](./evidence/source-checks/2026-09-25-serve-authorization-scope.json)
-bind the earlier ownership evidence; their "live authority" wording is corrected
-by this section. None of them is production or Instance evidence.
+#### Read-slice result against the production authority
 
-#### Real-identity result and the read slice's open dependency
+Absorbed identity dependency: `f83f4f03` on `codex/tenant-member-governance-2`
+(`policy_generated.go` sha256
+`e1ff67fe238f46c5778eb2312b37702708bfda4af72f5ae94a3ad1b9562fc31e`). With that
+policy the production authority was asked directly, with the exact request Serve
+sends, and the result is per-read:
 
-Against the production authority, on 2026-09-25, the exact request Serve sends is
-refused:
+| Read | Audience Serve policy row | Real result |
+| --- | --- | --- |
+| `listDeployments` | `member` | admitted; the owning Tenant's live member reads Serve's own history |
+| `getDeployment` | `member` | admitted; the current deployment is read back with its runtime instance |
+| `getWorkspaceAccess` | none | **denied** (`PermissionDenied`); Serve fails closed |
 
-```text
-rpc error: code = PermissionDenied desc = CloudIdentity authorization denied
-  (audience=serve action=LISTDEPLOYMENTS resource=WORKSPACE)
-```
+The authority decides audience, action and the caller's own role/scope; it holds
+no Workspace-ownership fact, so a tenant member is admitted for a
+workspace-shaped resource and refusing another Tenant's member for a specific
+Workspace is Serve's own persisted-authority guard. The live harness asserts
+both halves of that split separately so neither is "fixed" by giving the
+authority a second copy of Serve's ownership data.
 
-`services/gateway-integration/identity/policy_generated.go` has no admitted row
-for a serve-audience read, so **every** Serve read is refused through the real
-authority. The enforced refusals that do hold (a cross-Tenant member, a
-session-less caller) come from Serve's own guards, not from the authority. The
-read slice is therefore **not complete**, and this section is not a completion
-claim.
+`getWorkspaceAccess` is **not implemented**: `docs/spec/target/03_api_contract_complete.yaml`
+assigns the operation `x-owner: workspace` / `x-tables: workspace.workspaces` /
+`x-feature-id: F09`, while `packages/contracts/proto/internal.proto` declares
+`rpc GetWorkspaceAccess` on `service ServeProductService`. Serve calls the
+authority as `serve`, and the authority admits a caller only when
+`caller == console_bff || caller == audience`, so an `audience=workspace` row
+could not authorize Serve's own call either. Neither row is correct until the
+canonical owner decides, so Serve does not add one and this read stays refused
+rather than answering from a projection.
 
-Required identity handoff (the identity owner is the sole writer of the shared
-policy generator):
+The composed BFF delivery view (`GET /api/v2/delivery/{workspaceId}`) guards with
+`GETWORKSPACE` on `audience=workspace`, and the policy table has no
+workspace-audience row at all (that owner's operations are switched by
+W15/W16/W18-W20), so the composed read is refused at the BFF before Serve is
+reached. That guard is the identity integrator's file and the workspace owner's
+switch; Serve reuses its own authenticated read path underneath rather than
+duplicating the route.
 
-- `listDeployments` and `getDeployment` are `x-owner=serve` in
-  `docs/spec/target/03_api_contract_complete.yaml`, so they need admitted rows for
-  `audience=serve` on a workspace resource;
-- `getWorkspaceAccess` is `x-owner=workspace` in that contract while
-  `ServeProductService` serves it and the Console BFF calls it on Serve. The
-  authority requires `caller == console_bff || caller == audience`, and Serve
-  calls as `serve`, so an `audience=workspace` row cannot authorize Serve's own
-  call. Whether this read moves to the Workspace owner or its contract owner is
-  corrected to `serve` is a cross-owner contract decision, not a Serve choice;
-- the Console BFF's delivery guard authorizes `getWorkspace` as
-  `audience=workspace`, and no workspace-owned row exists at all today, so the
-  composed delivery read is refused before Serve is reached.
-
-A second finding is in shared infrastructure, not in Serve: the shared authorizer
-(`services/internal/ownerservice/authorization.go`) collates **every** error from
-the CloudIdentity client into `codes.Unavailable`. A policy denial is therefore
-indistinguishable from an authority outage at every owner boundary. It still
+A further finding is in shared infrastructure, not in Serve: the shared
+authorizer (`services/internal/ownerservice/authorization.go`) collates **every**
+error from the CloudIdentity client into `codes.Unavailable`, so a policy denial
+is indistinguishable from an authority outage at every owner boundary. It still
 fails closed; the denial code is only observable by asking the authority
 directly, which is what the harness does.
 
+The read slice is therefore **not complete**, and this section is not a
+completion claim. It delivers two of the three requested reads against the real
+authority, the refusals that must hold (cross-Tenant member, session-less caller,
+revoked session), and a precise statement of what the third read needs.
+
 #### Delivery write path: separate SSOT-required-but-unimplemented from contract changes
 
-The write path is not implemented. Its blockers are three different kinds, and
-they must not be reported as one:
+The write path is not implemented. Its blockers are three different kinds and
+must not be reported as one:
 
 1. Already required by the SSOT, not yet implemented — Serve's own work:
-   `ServeRuntimeAdapter` has no implementation, and the access URL path between
-   the executing runtime and `serve.agent_runtime_instances.access_url` does not
-   exist yet. The SSOT does name the source: `WorkspaceAccess.url` is "严格来自
+   `ServeRuntimeAdapter` has no implementation, and the access-URL path from the
+   executing runtime into `serve.agent_runtime_instances.access_url` does not
+   exist. The SSOT does name the source: `WorkspaceAccess.url` is "严格来自
    canonical revision.exposurePolicy/`WorkspaceApplicationEntry`", and Fabric
-   already produces that entry in `WorkspaceApplicationRuntimeObservation.Entry`.
-   What is missing is the typed path into Serve's own observation, so this is not
-   a missing specification.
+   already produces that entry in
+   `WorkspaceApplicationRuntimeObservation.Entry`. What is missing is the typed
+   path into Serve's own observation, so this is not a missing specification.
 2. Cross-owner contract change genuinely needed: the Serve↔runtime port
-   `RuntimeReadback` carries no entry/access field, and
+   `RuntimeReadback` carries no entry/access field and
    `packages/contracts/proto/internal.proto` is shared. Adding that field, or
    reusing the existing Fabric observation shape through a typed port, is a
-   shared-contract decision for the contract owner with the exact consumers named
-   here — Serve does not add a parallel contract unilaterally.
+   shared-contract decision for the contract owner with the consumers named here.
+   Serve does not add a parallel contract unilaterally.
 3. Other owners' work, not Serve's: Capability
    `AcquireReference`/`BindReference`/`ReleaseReference` accept only a `BUILD`
    claimant, so a Serve delivery cannot hold the `capability_version` claim its
    `agent_deployments.reference_claim_id` requires; and `FabricCoordination`
-   (`EnsureResources`/`ReadResources`/`BindSecret`) plus its `resource_set`
-   and attachment identities exist only as a typed-HTTP Control Plane surface, not
-   as the gRPC coordination fields `RuntimeDeployCommand` names.
+   (`EnsureResources`/`ReadResources`/`BindSecret`) plus its `resource_set` and
+   attachment identities exist only as a typed-HTTP Control Plane surface, not as
+   the gRPC coordination fields `RuntimeDeployCommand` names.
 
 Writing Serve's own copies of Capability or Fabric facts would create a duplicate
 writer, so Serve claims only what it can answer.
@@ -339,11 +347,57 @@ with an explicit build configuration; no production migration is implied.
 The [identity/admission source receipt](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
 records the actual verification and limitations. The preceding receipts are
 historical, exact-source evidence. This implements the #625 publisher identity
-and admission prerequisites; the rest of W03/Tenant invitation/lifecycle and
-Gateway wallet migration remain separate outcomes. No production, Instance or
-real Sub2API-account qualification is claimed.
+and admission prerequisites; the Tenant member and invitation slice is recorded
+separately below, and Tenant lifecycle plus Gateway wallet migration remain
+separate outcomes. No production, Instance or real Sub2API-account qualification
+is claimed.
 [Reproduction and configuration](./runtime/package-buildkit-local.md) gives the
 local command and process settings, including restart reauthentication.
+
+### Tenant member and invitation governance
+
+`services/gateway-integration` now also serves CloudIdentity's Tenant member
+surface: `getTenant`, `listMembers`, `listInvitations`, `inviteMember`,
+`acceptInvitation`, `revokeInvitation`, `updateMemberRole` and `removeMember`,
+reached through the Console BFF. The role decision comes from the canonical API
+permissions, now generated for the tenant owner instead of only Capability and
+Build. `acceptInvitation` is bound to the invitee's own live session and the
+recorded invitation subject, because an invitee is not yet a member of the
+inviting Tenant.
+
+Membership changes lock the Tenant row, refuse to demote or remove the last
+owner, advance `permission_version`, and revoke a removed member's sessions, so
+losing access takes effect on the next request rather than at session expiry.
+Invitations keep only a token hash, and each governance decision writes an
+immutable audit row; a refusal commits that evidence and then reports the
+canonical `ErrorCodeEnum`, including `LAST_OWNER` and `INVITATION_INVALID`.
+Concurrent owner removal was proved to serialize to exactly one success.
+
+The generated permission table now covers the resource catalog and Serve owner
+surfaces as well, because CloudIdentity is the single authorization owner for
+every domain. `getWorkspaceAccess` is deliberately excluded: the canonical
+contract assigns that operation to the `workspace` owner
+(`x-tables: workspace.workspaces`, F09) while the proto declares it on
+`ServeProductService`, so authorizing it under a Serve audience would contradict
+the contract and authorizing it under the workspace owner would enable an owner
+this policy does not serve. That placement/audience contradiction stays open for
+the canonical owner instead of being resolved here.
+
+The invitation validity window is not fixed by the canonical contract, so the
+deployment now supplies it explicitly through `OPL_INVITATION_TTL`; this owner
+refuses to start without a positive value rather than baking a product decision
+into code. Deployments that enable invitations must set it.
+
+The [member governance source receipt](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json)
+records the exact source files, the governed cases and the limitations.
+`Member.displayName` still needs the authorised Gateway identity-directory read:
+neither a current identity readback RPC in `packages/contracts/proto` nor a
+`gateway.identity_mappings` migration exists, so no real consumer can resolve the
+name yet and the field stays empty rather than being invented. The member page
+belongs to W13 Console/BFF basic integration, not W14. Tenant onboarding,
+suspend/reenable, delete/restore and Gateway wallet binding stay separate
+W03/W21 outcomes. No production, Instance or real-account qualification is
+claimed.
 
 ## Conclusion
 

@@ -44,8 +44,12 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 		}
 		ctx := WithCaller(r.Context(), caller, r.Header.Get(requestIDHeader))
 		call := clients.CallContext(ctx)
-		var input proto.Message
-		if body != nil {
+		// Every state-changing method carries the same write guard: a live session
+		// CSRF token, a same-origin request, and an idempotency key. GET is the only
+		// safe method and carries none of them. A command with no request body still
+		// needs the guard, so the discriminator is the method, not the body.
+		write := r.Method != http.MethodGet
+		if write {
 			if caller.Session.GetCsrfToken() == "" || subtle.ConstantTimeCompare([]byte(caller.Session.CsrfToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
 				writePublisherError(w, r, 403, "csrf_required", "session CSRF token required")
 				return
@@ -60,6 +64,9 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 				writePublisherError(w, r, 400, "idempotency_key_required", "Idempotency-Key is required")
 				return
 			}
+		}
+		var input proto.Message
+		if body != nil {
 			media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || media != "application/json" {
 				writePublisherError(w, r, 415, "json_required", "application/json required")
@@ -86,7 +93,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) {
+		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.Tenant && s.tenant == nil) {
 			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
 			return
 		}
@@ -119,20 +126,31 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherError(w, r, 502, "invalid_owner_response", "publisher owner returned an invalid response")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		code := 200
-		if body != nil {
+		if write {
 			code = 201
-			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS || action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE {
+			switch action {
+			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEUPLOADPART,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_SETWEBUIVERSIONSTATUS,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEPUBLISHERNAMESPACE,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION,
+				api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE:
 				code = 200
-			}
-			if action == api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD {
+			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_COMPLETEUPLOAD:
 				code = 202
+			case api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER:
+				code = 204
 			}
 		}
 		if op, ok := result.(*api.Operation); ok && op.GetPollAfterSeconds() > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(int(op.GetPollAfterSeconds())))
 		}
+		if code == 204 {
+			w.WriteHeader(code)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
 		_, _ = w.Write(raw)
 	})
@@ -213,6 +231,41 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		return s.capability.GetPackageVersion(r.Context(), &api.GetPackageVersionRpcRequest{Context: c, PackageVersionId: r.PathValue("packageVersionId")})
 	})
 
+}
+
+// registerMemberRoutes exposes CloudIdentity's Tenant and membership governance
+// commands. The BFF only forwards the authenticated caller context: the actor,
+// scope, role, last-owner protection and permission-version bump are decided by
+// the CloudIdentity owner, never here.
+func (s *Server) registerMemberRoutes(mux *http.ServeMux) {
+	s.publisherRoute(mux, "GET /api/v2/tenant", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETTENANT, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.GetTenant(r.Context(), &api.GetTenantRpcRequest{Context: c})
+	})
+	s.publisherRoute(mux, "GET /api/v2/tenant/members", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMEMBERS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.ListMembers(r.Context(), &api.ListMembersRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
+	})
+	s.publisherRoute(mux, "GET /api/v2/tenant/invitations", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTINVITATIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.ListInvitations(r.Context(), &api.ListInvitationsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
+	})
+	s.publisherRoute(mux, "POST /api/v2/tenant/invitations", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_INVITEMEMBER, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.InviteMemberRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.InviteMember(r.Context(), &api.InviteMemberRpcRequest{Context: c, Body: body.(*api.InviteMemberRequest)})
+	})
+	// Accept is authorized by the invitee's own live session rather than a Tenant
+	// role: the invitee is not yet a member. The resource is bound to the exact
+	// invitation so the decision cannot be replayed for a different one, and the
+	// owner re-reads the invitation under that same identity.
+	s.publisherRoute(mux, "POST /api/v2/invitations/{invitationId}/accept", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_ACCEPTINVITATION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "invitationId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.AcceptInvitation(r.Context(), &api.AcceptInvitationRpcRequest{Context: c, InvitationId: r.PathValue("invitationId")})
+	})
+	s.publisherRoute(mux, "POST /api/v2/tenant/invitations/{invitationId}/revoke", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REVOKEINVITATION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.RevokeInvitation(r.Context(), &api.RevokeInvitationRpcRequest{Context: c, InvitationId: r.PathValue("invitationId")})
+	})
+	s.publisherRoute(mux, "PUT /api/v2/tenant/members/{memberId}", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_UPDATEMEMBERROLE, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", func() proto.Message { return &api.UpdateMemberRoleRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.UpdateMemberRole(r.Context(), &api.UpdateMemberRoleRpcRequest{Context: c, MemberId: r.PathValue("memberId"), Body: body.(*api.UpdateMemberRoleRequest)})
+	})
+	s.publisherRoute(mux, "DELETE /api/v2/tenant/members/{memberId}", owneridentity.Tenant, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_REMOVEMEMBER, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.tenant.RemoveMember(r.Context(), &api.RemoveMemberRpcRequest{Context: c, MemberId: r.PathValue("memberId")})
+	})
 }
 
 func publisherRequestID(r *http.Request) {

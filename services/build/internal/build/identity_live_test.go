@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -116,7 +117,7 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if e != nil {
 		t.Fatal(e)
 	}
-	service, e := cloudidentity.New(db, g, bytes.Repeat([]byte("k"), 32), []string{"103"})
+	service, e := cloudidentity.New(db, g, bytes.Repeat([]byte("k"), 32), []string{"103"}, time.Hour)
 	if e != nil {
 		t.Fatal(e)
 	}

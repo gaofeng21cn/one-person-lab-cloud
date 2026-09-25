@@ -288,6 +288,28 @@ func TestServeDeploymentHistoryAndAccessMode(t *testing.T) {
 	if len(page.GetItems()) != 2 {
 		t.Fatalf("history length = %d, want 2", len(page.GetItems()))
 	}
+	// The page order is the schema's list index (created_at DESC, id DESC), so the
+	// newest delivery leads. Ordering by id alone would let the delivery history
+	// report a different "newest" than the current-Agent selection uses.
+	if page.GetItems()[0].GetId() != "dep-new" || page.GetItems()[1].GetId() != "dep-old" {
+		t.Fatalf("history order = %q,%q, want dep-new,dep-old (created_at DESC)", page.GetItems()[0].GetId(), page.GetItems()[1].GetId())
+	}
+	// The cursor is a keyset over the same pair, so the second page continues
+	// strictly after the first page's last row.
+	first, err := service.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-history", QueryLimit: proto.Int32(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.GetItems()) != 1 || first.GetItems()[0].GetId() != "dep-new" || first.GetNextCursor() != "dep-new" {
+		t.Fatalf("first page = %+v cursor=%q", first.GetItems(), first.GetNextCursor())
+	}
+	second, err := service.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: call(tenant, false), WorkspaceId: "ws-history", QueryLimit: proto.Int32(1), QueryCursor: proto.String(first.GetNextCursor())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.GetItems()) != 1 || second.GetItems()[0].GetId() != "dep-old" {
+		t.Fatalf("second page = %+v", second.GetItems())
+	}
 	for _, item := range page.GetItems() {
 		if item.GetWorkspaceId() != "ws-history" || item.GetCapabilityVersionId() != "cv_1" || item.GetStatus() == api.DeploymentStatusEnum_DEPLOYMENT_STATUS_ENUM_UNSPECIFIED || item.GetDataCompatibility().GetDataSchemaVersion() != "1" || item.GetCreatedAt() == nil {
 			t.Fatalf("deployment row not projected: %+v", item)

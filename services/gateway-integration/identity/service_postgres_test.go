@@ -84,7 +84,7 @@ func system(t *testing.T) (*identity.Service, *sql.DB, api.TenantProductServiceC
 	if e != nil {
 		t.Fatal(e)
 	}
-	s, e := identity.New(db, g, bytes.Repeat([]byte("s"), 32), nil)
+	s, e := identity.New(db, g, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -241,7 +241,7 @@ func TestPublisherSessionAndGrantPostgres(t *testing.T) {
 	}
 	// Restart drops only volatile delegated credentials; the accepted obligation
 	// remains durable and does not need a browser password/session to close out.
-	restarted, e := identity.New(db, s.Gateway, bytes.Repeat([]byte("s"), 32), nil)
+	restarted, e := identity.New(db, s.Gateway, bytes.Repeat([]byte("s"), 32), nil, time.Hour)
 	if e != nil {
 		t.Fatal(e)
 	}

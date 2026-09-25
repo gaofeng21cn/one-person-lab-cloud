@@ -188,12 +188,19 @@ func (s *Service) ListDeployments(ctx context.Context, r *api.ListDeploymentsRpc
 		return nil, err
 	}
 	n := limit(r.GetQueryLimit())
+	// The page order is the schema's own list index: newest delivery first, with
+	// the id breaking ties. The cursor names a row rather than a bare id so the
+	// keyset comparison uses the same (created_at, id) pair the index orders by;
+	// ordering by id alone would report a different "newest" than the current-Agent
+	// selection uses.
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, workspace_id, capability_version_id, runtime_instance_id, previous_deployment_id,
 		       status, data_compatibility, created_at, updated_at
 		FROM serve.agent_deployments
-		WHERE workspace_id = $1 AND ($2 = '' OR id < $2)
-		ORDER BY id DESC
+		WHERE workspace_id = $1 AND ($2 = '' OR (created_at, id) < (
+			SELECT created_at, id FROM serve.agent_deployments WHERE workspace_id = $1 AND id = $2
+		))
+		ORDER BY created_at DESC, id DESC
 		LIMIT $3`, r.GetWorkspaceId(), r.GetQueryCursor(), n+1)
 	if err != nil {
 		return nil, dbError(err)

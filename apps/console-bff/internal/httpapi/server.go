@@ -24,6 +24,7 @@ type Server struct {
 	identity   IdentityReader
 	capability api.CapabilityProductServiceClient
 	build      api.BuildProductServiceClient
+	tenant     api.TenantProductServiceClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -43,6 +44,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 	}); ok {
 		s.capability, s.build = p.PublisherClients()
 	}
+	if p, ok := reader.(interface {
+		TenantClient() api.TenantProductServiceClient
+	}); ok {
+		s.tenant = p.TenantClient()
+	}
 	return s
 }
 
@@ -51,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerAuthRoutes(mux)
 	s.registerPublisherRoutes(mux)
+	s.registerMemberRoutes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
