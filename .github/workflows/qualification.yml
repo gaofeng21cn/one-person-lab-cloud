@@ -38,7 +38,7 @@ jobs:
         run: |
           set -o pipefail
           # shellcheck disable=SC2016
-          node --test --test-reporter=tap "tests/**/*.test.ts" | node -e '
+          node --test --test-concurrency=3 --test-reporter=tap "tests/**/*.test.ts" | node -e '
             let output = "";
             process.stdin.setEncoding("utf8");
             process.stdin.on("data", (chunk) => { process.stdout.write(chunk); output += chunk; });

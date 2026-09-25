@@ -69,6 +69,11 @@ test("Qualification executes the independent Go contracts module", async () => {
 
 test("Local qualification uses one bounded runner filesystem and explicit privileged inputs", async (t) => {
   const workflow = parseYAML(await readFile(".github/workflows/qualification.yml", "utf8"));
+  const nodeStep = workflow.jobs.node_console.steps.find((item) => item.name === "Test Node");
+  const packageScripts = JSON.parse(await readFile("package.json", "utf8")).scripts;
+  const browserConcurrency = packageScripts["test:browser:suite"].match(/--test-concurrency=\d+/)?.[0];
+  assert.ok(browserConcurrency);
+  assert.ok(nodeStep.run.includes(browserConcurrency));
   const job = workflow.jobs.fabric;
   assert.equal(job["runs-on"], "ubuntu-latest");
   assert.equal(job.environment, undefined);
