@@ -37,7 +37,9 @@
       "exitCode": 0,
       "results": "6 top-level PASS including TestServeReadSurfaceIsOwnerTruth, TestServeReadSurfaceRejectsCrossTenant, TestServeDeploymentHistoryAndAccessMode, TestServeProcessServesOwnerTruthOverTheWire, TestServeProcessRefusesReadinessWithoutCloudIdentity and TestOwnerDatabaseIsolation with its 4 subtests; 0 skips",
       "log": "/tmp/final-serve-pg.log",
-      "logSha256": "39e7f9feecd13dad47397a8d549c3421dcbcd0eba1e07a8634bcfd517596dfbe"
+      "logSha256": "39e7f9feecd13dad47397a8d549c3421dcbcd0eba1e07a8634bcfd517596dfbe",
+      "logPath": "tmp/serve-read-slice-receipt/final-serve-pg.log",
+      "logRedaction": "no credentials; only the fixed local test identities (isolated-* constants) appear"
     },
     {
       "name": "serve real-identity acceptance (livebuild)",
@@ -49,7 +51,9 @@
       "exitCode": 0,
       "results": "9 PASS: authority_admits_only_the_rowed_reads, cross_tenant_is_refused, no_session_is_unauthenticated, owning_member_reads_owner_truth, pending_runtime_is_not_ready_in_history, never_delivered_workspace_has_empty_history, attempt_without_active_agent_publishes_no_entry, revoked_session_is_refused",
       "log": "/tmp/final-serve-live.log",
-      "logSha256": "3d0fdaf13cdb6c7526a5d62173dc1a09b1b1ae88d954f626e96dd5dca0ebff7d"
+      "logSha256": "3d0fdaf13cdb6c7526a5d62173dc1a09b1b1ae88d954f626e96dd5dca0ebff7d",
+      "logPath": "tmp/serve-read-slice-receipt/final-serve-live.log",
+      "logRedaction": "no credentials; only the fixed local test identities (isolated-* constants) appear"
     },
     {
       "name": "serve go vet",
@@ -57,7 +61,9 @@
       "cwd": "services/serve",
       "exitCode": 0,
       "log": "/tmp/final-serve-vet.log",
-      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "logPath": "tmp/serve-read-slice-receipt/final-serve-vet.log",
+      "logRedaction": "no credentials; only the fixed local test identities (isolated-* constants) appear"
     },
     {
       "name": "serve go vet (livebuild)",
@@ -65,7 +71,9 @@
       "cwd": "services/serve",
       "exitCode": 0,
       "log": "/tmp/final-serve-vet-live.log",
-      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "logPath": "tmp/serve-read-slice-receipt/final-serve-vet-live.log",
+      "logRedaction": "no credentials; only the fixed local test identities (isolated-* constants) appear"
     },
     {
       "name": "repository full gate",
@@ -74,7 +82,9 @@
       "exitCode": 0,
       "results": "Local verification passed with PostgreSQL and Docker integration; all 11 PostgreSQL spec groups reported 'zero skips' (29 Go packages passed, 0 skipped) including services/serve; source tests 228 pass; Console browser suite, typecheck, lint and build passed",
       "log": "/tmp/final-verify-full.log",
-      "logSha256": "b2813fbcb00ee26fb37ad4d1543fd831508cb5b26b24c8438300d120034fd1a5"
+      "logSha256": "b2813fbcb00ee26fb37ad4d1543fd831508cb5b26b24c8438300d120034fd1a5",
+      "logPath": "tmp/serve-read-slice-receipt/final-verify-full.log",
+      "logRedaction": "no credentials; only the fixed local test identities (isolated-* constants) appear"
     }
   ],
   "readbacks": {
@@ -126,5 +136,6 @@
     "No real Deploy, Runtime observation, image, Instance or production evidence exists. The harness seeds Serve-owned read rows and says so; it is not a deployment.",
     "The shared authorizer collates every CloudIdentity client error into codes.Unavailable, so a policy denial is indistinguishable from an authority outage at owner boundaries. Recorded as a shared-infrastructure finding; not changed here."
   ],
-  "scope": "Cloud source and isolated Local PostgreSQL only. No production access, no Instance action, no publication, no real charge and no provider-resource action. No push, PR, Issue or merge was performed."
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production access, no Instance action, no publication, no real charge and no provider-resource action. No push, PR, Issue or merge was performed.",
+  "logDurability": "Logs are kept under the gitignored path tmp/serve-read-slice-receipt/ inside this worktree, and were also written to /tmp during capture. The /tmp copies have identical SHA256."
 }
