@@ -62,6 +62,13 @@ func TestLinuxLocalDockerProjectQuotaEnforcesHardLimit(t *testing.T) {
 			break
 		}
 	}
+	// Buffered page-cache writes can defer a project quota violation until
+	// writeback. Force that real filesystem boundary before classifying the
+	// hard-limit result; accepting nil here would turn a non-enforced mount into
+	// a false qualification pass.
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
 	if !errors.Is(writeErr, syscall.EDQUOT) {
 		t.Fatalf("write beyond project hard limit err=%v", writeErr)
 	}
