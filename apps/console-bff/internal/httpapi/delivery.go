@@ -33,7 +33,7 @@ type OwnerFact struct {
 // DeliveryReader reads the typed owner facts the delivery view composes.
 type DeliveryReader interface {
 	Workspace(ctx context.Context, workspaceID string) (*api.Workspace, error)
-	Deployments(ctx context.Context, workspaceID string) (*api.DeploymentPage, error)
+	Deployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error)
 	WorkspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error)
 	Build(ctx context.Context, buildID string) (*api.BuildJob, error)
 	CapabilityVersion(ctx context.Context, capabilityVersionID string) (*api.CapabilityVersion, error)
@@ -84,7 +84,7 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	if err := authorize(owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, workspaceID); err != nil {
 		return DeliveryView{}, err
 	}
-	deployments, err := reader.Deployments(ctx, workspaceID)
+	deployments, err := reader.Deployments(ctx, workspaceID, "", 0)
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("serve deployments: %w", err)
 	}

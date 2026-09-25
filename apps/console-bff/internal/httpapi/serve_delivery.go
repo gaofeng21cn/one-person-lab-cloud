@@ -16,7 +16,7 @@ import (
 // ServeDeliveryReader is the typed Serve read surface these routes need. It is
 // satisfied by the BFF's gRPC client set and by a test double.
 type ServeDeliveryReader interface {
-	Deployments(ctx context.Context, workspaceID string) (*api.DeploymentPage, error)
+	Deployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error)
 	Deployment(ctx context.Context, workspaceID, deploymentID string) (*api.Deployment, error)
 	WorkspaceAccess(ctx context.Context, workspaceID string) (*api.WorkspaceAccess, error)
 }
@@ -46,7 +46,15 @@ func RegisterServeDeliveryRoutes(mux *http.ServeMux, reader ServeDeliveryReader,
 			if err := require(); err != nil {
 				return nil, err
 			}
-			return reader.Deployments(r.Context(), r.PathValue("workspaceId"))
+			pageLimit := int32(25)
+			if r.URL.Query().Has("limit") {
+				requested := optionalLimit(r)
+				if requested == nil || *requested < 1 || *requested > 100 {
+					return nil, status.Error(codes.InvalidArgument, "limit must be an integer from 1 to 100")
+				}
+				pageLimit = *requested
+			}
+			return reader.Deployments(r.Context(), r.PathValue("workspaceId"), *optionalQuery(r, "cursor"), pageLimit)
 		})
 
 	s.publisherRoute(mux, "GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}", owneridentity.Serve, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETDEPLOYMENT, workspaceKind, "workspaceId", nil,

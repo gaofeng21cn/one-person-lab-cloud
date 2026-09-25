@@ -191,11 +191,18 @@ func (c *Clients) Workspace(ctx context.Context, workspaceID string) (*api.Works
 }
 
 // Deployments lists the Serve-owned deployment attempts for one Workspace.
-func (c *Clients) Deployments(ctx context.Context, workspaceID string) (*api.DeploymentPage, error) {
+func (c *Clients) Deployments(ctx context.Context, workspaceID, cursor string, limit int32) (*api.DeploymentPage, error) {
 	if c.serve == nil {
 		return nil, fmt.Errorf("serve: %w", ErrUpstreamUnconfigured)
 	}
-	return c.serve.ListDeployments(ctx, &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID})
+	request := &api.ListDeploymentsRpcRequest{Context: CallContext(ctx), WorkspaceId: workspaceID}
+	if cursor != "" {
+		request.QueryCursor = &cursor
+	}
+	if limit != 0 {
+		request.QueryLimit = &limit
+	}
+	return c.serve.ListDeployments(ctx, request)
 }
 
 // WorkspaceAccess reads the Serve-owned access facts for one Workspace.

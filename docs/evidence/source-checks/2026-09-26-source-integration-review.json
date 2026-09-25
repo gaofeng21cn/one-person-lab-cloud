@@ -1,6 +1,6 @@
 {
   "schema": "opl-cloud-source-integration-review.v1",
-  "recorded_at": "2026-09-25T19:42:31.715423+00:00",
+  "recorded_at": "2026-09-25T19:48:24.091805+00:00",
   "base": "d6d49e221d7dc8acd5470bea43521b8663807a92",
   "heads": {
     "shared": "3adb7ac38a379f6f2b68100cfd1b1df326c3aea5",
@@ -20,7 +20,8 @@
     "Serve production mux and shared HTTP guards",
     "per-read authorization context",
     "canonical public JSON and access readiness",
-    "static access expiry optional without invented session authority"
+    "static access expiry optional without invented session authority",
+    "Serve cursor and bounded limit reach the owner; two real pages read back"
   ],
   "production_claims": false,
   "logs": {
@@ -63,6 +64,14 @@
     "serve-shared-guard-live-after.log": {
       "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-shared-guard-live-after.log",
       "sha256": "2611b96e06677ffbb06c6d935884b5fc09bd0ffedc967fa5b86bd1e76c72a786"
+    },
+    "serve-pagination-bff-unit-after.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-pagination-bff-unit-after.log",
+      "sha256": "22eabe480c16ee453e56fc652f828a51dcb4b0abbef56a88c0649b1a6d1255af"
+    },
+    "serve-pagination-live-after.log": {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/serve-pagination-live-after.log",
+      "sha256": "528ca57b15345e12bf4f04273d01250d969342f807357f1d6334d4949d3269ce"
     }
   }
 }

@@ -20,20 +20,25 @@ import (
 // fakeReader is a typed owner reader double. Each owner read either returns the
 // configured fact or a configured error, so a missing owner is a real failure.
 type fakeReader struct {
-	workspace   *api.Workspace
-	deployments *api.DeploymentPage
-	access      *api.WorkspaceAccess
-	build       *api.BuildJob
-	version     *api.CapabilityVersion
-	operation   *api.Operation
-	err         error
+	workspace        *api.Workspace
+	deployments      *api.DeploymentPage
+	access           *api.WorkspaceAccess
+	build            *api.BuildJob
+	version          *api.CapabilityVersion
+	operation        *api.Operation
+	err              error
+	deploymentCursor string
+	deploymentLimit  int32
+	deploymentCalls  int
 }
 
 func (f *fakeReader) Workspace(context.Context, string) (*api.Workspace, error) {
 	return f.workspace, f.err
 }
 
-func (f *fakeReader) Deployments(context.Context, string) (*api.DeploymentPage, error) {
+func (f *fakeReader) Deployments(_ context.Context, _ string, cursor string, limit int32) (*api.DeploymentPage, error) {
+	f.deploymentCursor, f.deploymentLimit = cursor, limit
+	f.deploymentCalls++
 	return f.deployments, f.err
 }
 
@@ -342,11 +347,11 @@ func (f *strictReadContext) Workspace(ctx context.Context, id string) (*api.Work
 	}
 	return f.fakeReader.Workspace(ctx, id)
 }
-func (f *strictReadContext) Deployments(ctx context.Context, id string) (*api.DeploymentPage, error) {
+func (f *strictReadContext) Deployments(ctx context.Context, id, cursor string, limit int32) (*api.DeploymentPage, error) {
 	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTDEPLOYMENTS); err != nil {
 		return nil, err
 	}
-	return f.fakeReader.Deployments(ctx, id)
+	return f.fakeReader.Deployments(ctx, id, cursor, limit)
 }
 func (f *strictReadContext) WorkspaceAccess(ctx context.Context, id string) (*api.WorkspaceAccess, error) {
 	if err := f.check(ctx, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS); err != nil {
@@ -389,5 +394,41 @@ func TestServeReadsAreRegisteredOnProductMux(t *testing.T) {
 	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deployments"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestServeDeploymentListPassesPagination(t *testing.T) {
+	for _, test := range []struct {
+		name, query, cursor string
+		limit               int32
+		status              int
+	}{
+		{"default", "", "", 25, http.StatusOK},
+		{"second_page", "?cursor=dep-older&limit=1", "dep-older", 1, http.StatusOK},
+		{"maximum", "?limit=100", "", 100, http.StatusOK},
+		{"negative", "?limit=-1", "", 0, http.StatusBadRequest},
+		{"zero", "?limit=0", "", 0, http.StatusBadRequest},
+		{"too_large", "?limit=101", "", 0, http.StatusBadRequest},
+		{"empty", "?limit=", "", 0, http.StatusBadRequest},
+		{"nonnumeric", "?limit=invalid", "", 0, http.StatusBadRequest},
+		{"fraction", "?limit=1.5", "", 0, http.StatusBadRequest},
+		{"overflow", "?limit=2147483648", "", 0, http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			identity := allowedIdentity()
+			reader := &strictReadContext{fakeReader: resolvedReader(), identity: identity}
+			response := httptest.NewRecorder()
+			NewServeDeliveryHandler(reader, identity).ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/workspaces/ws-1/deployments"+test.query))
+			if response.Code != test.status {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.status == http.StatusOK {
+				if reader.deploymentCalls != 1 || reader.deploymentCursor != test.cursor || reader.deploymentLimit != test.limit {
+					t.Fatalf("owner pagination = calls %d, cursor %q, limit %d", reader.deploymentCalls, reader.deploymentCursor, reader.deploymentLimit)
+				}
+			} else if reader.deploymentCalls != 0 {
+				t.Fatal("invalid limit reached the owner")
+			}
+		})
 	}
 }

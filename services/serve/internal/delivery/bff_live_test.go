@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
@@ -202,6 +203,29 @@ func TestLiveServeReadThroughBFF(t *testing.T) {
 		}
 		if page.Items[0].WorkspaceId != "ws-served" {
 			t.Fatalf("deployment named another workspace: %+v", page.Items[0])
+		}
+	})
+
+	t.Run("history_pagination_through_bff", func(t *testing.T) {
+		firstResponse := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments?limit=1", tenantCookie)
+		if firstResponse.StatusCode != http.StatusOK {
+			firstResponse.Body.Close()
+			t.Fatalf("first-page status = %d", firstResponse.StatusCode)
+		}
+		var first api.DeploymentPage
+		decodeInto(t, firstResponse, &first)
+		if len(first.Items) != 1 || first.Items[0].GetId() != "dep-active" || first.GetNextCursor() == "" {
+			t.Fatalf("first page = %v", &first)
+		}
+		secondResponse := bffRequest(t, server.URL, http.MethodGet, "/api/v2/workspaces/ws-served/deployments?limit=1&cursor="+url.QueryEscape(first.GetNextCursor()), tenantCookie)
+		if secondResponse.StatusCode != http.StatusOK {
+			secondResponse.Body.Close()
+			t.Fatalf("second-page status = %d", secondResponse.StatusCode)
+		}
+		var second api.DeploymentPage
+		decodeInto(t, secondResponse, &second)
+		if len(second.Items) != 1 || second.Items[0].GetId() != "dep-old" || second.Items[0].GetId() == first.Items[0].GetId() || second.GetNextCursor() != "" {
+			t.Fatalf("second page repeated or failed to terminate: %v", &second)
 		}
 	})
 
