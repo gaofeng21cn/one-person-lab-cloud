@@ -186,6 +186,19 @@ func TestTencentWorkspaceLaunchComputePendingContinuesSameStageToOwnership(t *te
 	if childErr != nil || parentErr != nil || child.Status != "succeeded" || parent.Status != "succeeded" {
 		t.Fatalf("parent=%#v err=%v child=%#v err=%v", parent, parentErr, child, childErr)
 	}
+	record, ok := decodeWorkspaceLaunchStageRecord(parent)
+	if !ok {
+		t.Fatal("successful compute stage is missing")
+	}
+	persisted, err := decodeTencentWorkspaceLaunchState(record)
+	if err != nil || persisted.Compute == nil || !maps.Equal(persisted.Compute.CostTags, oplCostTags(allocation.AccountID, allocation.WorkspaceID, allocation.ID, ownership.ID)) {
+		t.Fatalf("successful Launch did not persist its original ownership tags: state=%#v err=%v", persisted, err)
+	}
+	restarted := NewServiceWithOperationStore(provider, store)
+	retained, found := restarted.GetComputeAllocation(context.Background(), allocation.ID)
+	if !found || !maps.Equal(retained.CostTags, persisted.Compute.CostTags) {
+		t.Fatalf("real child replay lost successful Launch ownership tags: tags=%#v", retained.CostTags)
+	}
 
 	result, err = service.EnsureWorkspaceLaunchStage(context.Background(), input)
 	if err != nil || result.State != "ready" || scaleCalls != 1 || tagCalls != 1 || nodePatchCalls != 1 {

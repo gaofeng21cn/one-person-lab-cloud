@@ -399,6 +399,16 @@ promotion remain open. The only public Product Release is the older `v0.1.7`.
 
 ## Workspace Deletion and Hourly Refund
 
+The 2026-09-26 [focused source check](./evidence/source-checks/2026-09-26-compute-launch-ownership-tags.json)
+preserves the original active MachineOwnership tags in successful Tencent Launch
+compute records. Retained empty tag projections recover only from one exact
+successful Launch stage and its persisted ownership, including after PostgreSQL
+reopen or when a child record already populated memory. Partial tags, conflicting
+stages and changed resource identities remain rejected by the existing destroy
+guard. Already externally deleted allocations enter readback-only convergence,
+without a new cloud delete dispatch. Source tests and Linux builds pass; adoption
+and the affected production deletion still require Instance readback.
+
 The 2026-09-26 [focused source check](./evidence/source-checks/2026-09-26-pv-storage-class-delete-binding.json)
 fixes a false `launch_stage_binding_conflict` when Kubernetes omits an empty PV
 `storageClassName`. Only that PV omission is accepted; PVC omissions, null and

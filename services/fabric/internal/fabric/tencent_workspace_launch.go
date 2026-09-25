@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -100,6 +101,11 @@ func (p *TencentProvider) EnsureWorkspaceLaunchStage(ctx context.Context, reques
 		allocation, err = p.DiscoverComputeAllocation(ctx, allocation, prepared)
 		if err != nil || p.ValidateComputeAllocation(allocation, prepared) != nil || (prepared.Zone != "" && allocation.Zone != prepared.Zone) || !isReadyResourceStatus(allocation.Status) {
 			return WorkspaceLaunchProviderResult{}, firstNonNil(err, ErrWorkspaceLaunchUnavailable)
+		}
+		var tagsConfirmed bool
+		allocation, tagsConfirmed = workspaceLaunchComputeCostTags(allocation, &ownership)
+		if !tagsConfirmed {
+			return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
 		}
 		state.Compute, state.ComputePlan, state.Ownership = &allocation, &prepared, &ownership
 		resources.ComputeAllocationID, resources.ComputeBindingRef = allocation.ID, binding.FabricOperationID
@@ -263,6 +269,11 @@ func (p *TencentProvider) ReadWorkspaceLaunchStage(ctx context.Context, request 
 		}
 		if proof.CVMOwnershipState != "target_owned" || proof.NodeOwnershipState != "target_owned" {
 			return WorkspaceLaunchProviderResult{}, ErrWorkspaceLaunchOwnershipPending
+		}
+		var tagsConfirmed bool
+		readback, tagsConfirmed = workspaceLaunchComputeCostTags(readback, state.Ownership)
+		if !tagsConfirmed {
+			return WorkspaceLaunchProviderResult{}, ErrLaunchStageBindingConflict
 		}
 		state.Compute = &readback
 		resources.ComputeAllocationID, resources.ComputeBindingRef = readback.ID, binding.FabricOperationID
@@ -465,6 +476,24 @@ func workspaceLaunchComputeOwnership(allocation ComputeAllocation) (MachineOwner
 		MachineID: allocation.MachineName, InstanceID: instanceID, NodeName: allocation.NodeName, Status: "claimed",
 		ProviderRequestID: allocation.ProviderRequestID,
 	}, nil
+}
+
+// The ownership persisted by the original successful Launch is the tag authority.
+// Recover only an empty projection; never replace partial or conflicting tags.
+func workspaceLaunchComputeCostTags(compute ComputeAllocation, ownership *MachineOwnership) (ComputeAllocation, bool) {
+	if ownership == nil || ownership.Status != "active" || ownership.ID == "" ||
+		compute.Provider != "tencent-tke" || ownership.ResourceID != compute.ID || ownership.AccountID != compute.AccountID ||
+		ownership.WorkspaceID != compute.WorkspaceID || ownership.PackageID != compute.PackageID || ownership.NodePoolID != compute.NodePoolID ||
+		ownership.MachineID != compute.MachineName || ownership.InstanceID != compute.InstanceID || ownership.InstanceID != compute.CVMInstanceID ||
+		ownership.InstanceID != compute.ProviderResourceID || ownership.NodeName != compute.NodeName {
+		return compute, false
+	}
+	tags := oplCostTags(ownership.AccountID, ownership.WorkspaceID, ownership.ResourceID, ownership.ID)
+	if len(compute.CostTags) != 0 {
+		return compute, reflect.DeepEqual(compute.CostTags, tags)
+	}
+	compute.CostTags = tags
+	return compute, true
 }
 
 func (p *TencentProvider) tencentWorkspaceLaunchComputeStateFromMutation(ctx context.Context, binding WorkspaceLaunchStageBinding, packageID string) (tencentWorkspaceLaunchState, error) {
