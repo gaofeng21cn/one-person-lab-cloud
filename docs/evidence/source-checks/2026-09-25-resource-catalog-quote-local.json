@@ -1,0 +1,147 @@
+{
+ "schemaVersion": 1,
+ "action": "Price a deploy request in the Resource Catalog and bind its acceptance to exactly one operation",
+ "recordedAt": "2026-09-25T10:43:30.498891+00:00",
+ "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+ "stage1Sha": "9ce4ff18",
+ "testedSha": "ebe2440119edc46a5e01451cf4f39680ca7317f2",
+ "testedTree": "fe11bd159828a8122b146a0ae7fe80e5d092eb90",
+ "stack": "This slice is stacked on the stage-1 revision of the same branch (pushed as origin/codex/resource-catalog-local-loop), which is itself stacked on the shared contract and identity writer's revision 3adb7ac3. It therefore carries no identity, contract or public-guard code of its own.",
+ "sourceFilesSha256": {
+  "services/resource-catalog/catalog/quotes.go": "e8118d671163c65bdea7b8f5dac3d60d0f4b38ee2db887186690d71a033cecb4",
+  "services/resource-catalog/catalog/accept.go": "9d1f0215bd709db62ff689dc546624dc6b1625bbf50ebb735e8f108df3304a49",
+  "services/resource-catalog/catalog/policies.go": "745e4670fb5a13a8abbe856c1599ba8abfdac14a765e2dadc991a6b8436b1486",
+  "services/resource-catalog/catalog/policy_test.go": "c2d2ed6ba4f646ccd05e3bf2093554c64e56458be57732322d448efa999e446e",
+  "services/resource-catalog/catalog/service.go": "6b1b6c905480ff917beb8679c9b5c15a4516e8108669983545587a09fed94c0b",
+  "services/resource-catalog/catalog/service_postgres_test.go": "d8f7be829e624b05c0088c3c4eb34401071fdab011467fd25f5b12cc08698882",
+  "services/resource-catalog/catalog/catalog_live_test.go": "adf0086f08e49683f70e63f624f8136e266ed3338f5d4c695847ce9b58e23ef5",
+  "apps/console-bff/internal/httpapi/catalog.go": "e8a9be7629f3e6b0f10eea3366ba2755a9bcb7295b034279af9b0306f90eee7e",
+  "docs/status.md": "dd9d0c79c19efa494d05501770190bb00fa71408143f12424b46e7368ffaa310",
+  "docs/roadmap.md": "8266c77c95c7c8bbf839938e67098bb05e9f9412f986809a396e98012512e8c9"
+ },
+ "commands": [
+  {
+   "name": "focused owner and live suites including the real BFF process",
+   "command": "go -C services/resource-catalog test -tags=livebuild ./... -count=1 -v",
+   "environment": "temporary loopback PostgreSQL 16.8; the check builds and runs apps/console-bff/cmd/server with its own environment against the real CloudIdentity process and the real owner database",
+   "exitCode": 0,
+   "result": "21 tests, 47 subtests, 0 failures, 0 skips",
+   "log": {
+    "path": "output/resource-catalog-phase2-20260925/focused-live.log",
+    "sha256": "45937bbb2cf260a11ed885df6445d50b5377d1f64638126b4ac1bdac206c7760"
+   },
+   "processLog": {
+    "path": "output/resource-catalog-phase2-20260925/real-bff-process.log",
+    "sha256": "c7a966f9a86091caacbb35b08fcda64ca2eac43d1d394dc70516c0a4b3794aff",
+    "firstLine": "2026/09/25 18:23:26 console-bff listening on 127.0.0.1:61253"
+   }
+  },
+  {
+   "name": "focused suites without the live tag",
+   "command": "go -C services/resource-catalog test ./... -count=1",
+   "environment": "same temporary PostgreSQL container",
+   "exitCode": 0,
+   "log": {
+    "path": "output/resource-catalog-phase2-20260925/focused-notag.log",
+    "sha256": "bbffca41e914d22ccb0c222fd809417fa1ebccc0168eb51d2b5ec1cc5b3dded0"
+   }
+  },
+  {
+   "name": "full local gate on the frozen revision",
+   "command": "npm run verify:local:full",
+   "environment": "repository-pinned temporary PostgreSQL and Docker; the command's own exit status is redirected to a file rather than read from a pipe",
+   "startedAt": "2026-09-25T10:25:22Z",
+   "endedAt": "2026-09-25T10:42:49Z",
+   "exitCode": 0,
+   "result": "228 source tests, 114 browser tests, typecheck and lint, Console build, every Go module compile, all required PostgreSQL/Docker packages at zero skips including the services/resource-catalog lane, and clean whitespace",
+   "log": {
+    "path": "output/resource-catalog-phase2-20260925/gate.log",
+    "sha256": "f80f05b26f8cfe7c03b5e13424c1b761243f4574d81e4a0465a8dcdf2b0076e1"
+   },
+   "exitFile": {
+    "path": "output/resource-catalog-phase2-20260925/gate.exit",
+    "value": 0
+   },
+   "sourceConsistency": "The tracked worktree was clean before, during and after the run, so the result describes exactly testedSha."
+  }
+ ],
+ "acceptanceReadbacks": [
+  {
+   "ssot": "03_api_contract_complete.yaml Quote and QuoteLine — amountUSDMicros is the line total, all line amounts are non-negative, and total = sum(compute, storage, product) minus sum(adjustment_credit).",
+   "implementation": "catalog/quotes.go builds the lines from the resolved price version and sumQuoteLines applies the rule with checked additions.",
+   "case": "A quote through the real BFF process for the published pair totals 52580001 micro-dollars; a credit larger than its charges, a negative line and an overflowing sum are refused.",
+   "result": "passed"
+  },
+  {
+   "ssot": "06_data_flow_and_state_machine.md:60-65 — the catalogue generates an immutable quote; a quote is not a capacity reservation and not a charge; acceptance binds exactly one operation and Workspace stores only the returned snapshot.",
+   "implementation": "CreateQuote stores the immutable offer with its policy versions, expiry and admission basis; AcceptQuote locks the row, binds one obligation and returns the acceptance identity and snapshot digest.",
+   "case": "The same obligation replays the identical acceptance; a second obligation is refused; an expired offer is refused; an unknown offer is absent; a resize or renew request is refused with the gap named.",
+   "result": "passed"
+  },
+  {
+   "ssot": "01_domain_ownership_matrix.md — the Resource Catalog owns policy and quote facts only; it does not own resource execution, wallet accounting or the accepted subscription.",
+   "implementation": "the owner writes resource_catalog.quotes and quote_items; it charges nothing, reserves nothing and writes no subscription row.",
+   "case": "The owner-boundary tests assert the money rule and the refusals without any wallet, provider or subscription write.",
+   "result": "passed"
+  },
+  {
+   "ssot": "01_domain_ownership_matrix.md — each owner has its own database and role; cross-owner references are opaque and no owner reads another's tables.",
+   "implementation": "reads are tenant-scoped inside this owner's own database; only the verified Workspace peer may call AcceptQuote.",
+   "case": "Another tenant's quote is absent rather than resolved, and a Catalog peer is refused the acceptance.",
+   "result": "passed"
+  },
+  {
+   "ssot": "The contract's public vocabulary applies to the owner's own policy message, not only to the request.",
+   "implementation": "the frozen plan-change policy this owner attaches to every price version is published in the contract's vocabulary.",
+   "case": "A focused test asserts all twelve declared properties are published, because a required property with no published form would make every stored price version unreadable to a caller.",
+   "result": "passed"
+  }
+ ],
+ "proven": [
+  "A member obtains a priced deploy quote through the running Console BFF process and reads it back; the owner's row is the authority for the total the process served.",
+  "The quote binds the single effective price, refund and retention version for the exact approved plan pair, and no fallback rate is used when the pair is unpriced.",
+  "The money rule is the contract's: quantity is explanatory only, credits reduce the total, and a credit larger than its charges, a negative line or an overflowing sum is refused.",
+  "AcceptQuote binds one offer to exactly one obligation, replays the identical acceptance for the same obligation, refuses a second obligation, refuses an expired offer and reports an unknown offer as absent.",
+  "An expired offer is reported as expired on read without rewriting the stored row.",
+  "resize and renew are refused with the gap named rather than answered with a deploy-shaped offer; the plan-change acceptance path is refused for the same reason.",
+  "The owner's own frozen policy message is publishable in the contract's vocabulary.",
+  "The full local gate passes at zero PostgreSQL skips on the frozen revision with a clean tracked worktree."
+ ],
+ "notProven": [
+  "No Workspace owner exists yet, so nothing has actually accepted a quote: no Workspace, subscription, original order, resource intent or operation exists. The Catalog side of that edge is verified against a Workspace peer identity in the harness, not against a running Workspace process.",
+  "No Fabric resource set, compute, storage, attachment or Secret binding is created or read back, and no Local-Docker resource reference exists. There is no Local deployment loop.",
+  "resize and renew quoting, plan change, renewal and full deletion are out of scope for this slice.",
+  "The Ledger DomainInbox still accepts only tenant-scoped build and capability producers, so the platform-scoped catalog.policy_changed.v1 delivery stays pending.",
+  "The platform-administrator-versus-member read of the customer plan list remains an unresolved contract decision point.",
+  "No Candidate, Product Release, deployment or Instance qualification was performed; no production resource, credential or customer money was touched.",
+  "This branch's dependency stack is not yet on main, so the branch's diff against main still includes the shared writer's commits."
+ ],
+ "defectsFoundAndRepaired": [
+  {
+   "defect": "the quote reads omitted the stored admission snapshot, so every readback failed as unreadable",
+   "evidence": "the process-level check failed with a DataLoss read error until the column was added to the read",
+   "status": "repaired and now covered by the readback assertions"
+  },
+  {
+   "defect": "the stored plan-change policy version was mapped to the wire enum with the wrong separator, silently yielding the unspecified member of a required contract property",
+   "evidence": "the process check failed with 'required property PricePolicyVersion.planChangePolicyVersion has no public value for ...UNSPECIFIED' when a money-bearing price version was listed",
+   "status": "repaired with a focused test that pins the frozen policy's publishability"
+  },
+  {
+   "defect": "the process check initially tried to publish a price for a plan it had already retired, and correctly received 422",
+   "evidence": "the check failed with VALIDATION_FAILED until the ordering was corrected",
+   "status": "this was the owner behaving correctly; the check's ordering was fixed, not the owner"
+  }
+ ],
+ "temporaryResources": "One task-created loopback PostgreSQL 16.8 container per run, removed afterwards. No other lane's container was stopped. No production resource was accessed.",
+ "productionDeploymentDispatched": false,
+ "instanceQualificationPerformed": false,
+ "evidenceOrdering": {
+  "order": [
+   "The source revision was committed as testedSha while the tracked worktree was clean.",
+   "The focused suites and then the full local gate ran against that committed revision.",
+   "This receipt was then committed as a documentation-only follow-up."
+  ],
+  "meaning": "The source was committed first and verified after, so testedSha is a revision that was actually exercised rather than a working tree that was later committed."
+ }
+}

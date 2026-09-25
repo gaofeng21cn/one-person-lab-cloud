@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 2,
+  "action": "Resolve the public JSON money mapping, correct the access-operation owner, authorize the resource catalog and Serve surfaces, preserve decisions at the owner boundary, and resolve member display names",
+  "recordedAt": "2026-09-25T09:09:49.624722+00:00",
+  "provenance": {
+    "kind": "local",
+    "note": "Local verification only. No CI workflow ran for this revision, so no workflow or run id is claimed. No image was built or published, so no image digest is claimed."
+  },
+  "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+  "testedSha": "503c79c4d02ef40c9be087d033ce8060fb69fc75",
+  "testedTree": "26c132963bc1132b11bb443cca5d85db910fc6fa",
+  "branch": "codex/tenant-member-governance-2",
+  "predecessorReceipts": [
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-verified-local.json",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-status-verified-local.json"
+  ],
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/clients/catalog_client.go": "1de01295e0beab62a4eea3c2aa34c0b7ad1145e00703d2368874dd92baa421bb",
+    "apps/console-bff/internal/clients/clients.go": "537f32bd6ecbab392b2ae68822ac319da1d91c1d9c6143d573b0f56d971359fc",
+    "apps/console-bff/internal/clients/tenant.go": "cea6644325ffb4db8275dc35c4ec117c16d353aa9b58f5a4857616fbca126d8f",
+    "apps/console-bff/internal/httpapi/catalog.go": "30e232064881938eefc7c7054ac4ebfbb5867989be97272b25b43e7f9b1f85bf",
+    "apps/console-bff/internal/httpapi/members_test.go": "dce062cdd8e79fefbb456d14b1762af925b54aaf059506fc505dc7be4a462c56",
+    "apps/console-bff/internal/httpapi/publisher.go": "dc3d19a99cd0a51e62550812d45695cd0f5f6892661a20d06a0f72def17bf1a0",
+    "apps/console-bff/internal/httpapi/server.go": "f61566fe2f033e3db101e48fa18edca02b378b91a59ac3d22beecdd67e3ffef0",
+    "apps/console-bff/internal/httpapi/server_test.go": "2c014c2d1390b30510153d9f9e2d968feb0316b852e159ac974e37f3c5e6f6ee",
+    "apps/console-bff/internal/httpapi/status_generated.go": "66b7470eb195847a1f21fced81b33dacfb6ee7a4b8cd69747ec9705abf40cb06",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json": "6f987a2e1e337bce935b901f8a40a135c650bd45a77537f350c27e4d5e038e78",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-status-verified-local.json": "b309bec52517ff6fc04628e35fc477dae34580cbf0fc287befa6b1f3e79ffd90",
+    "docs/evidence/source-checks/2026-09-25-cloudidentity-member-governance-verified-local.json": "86f7c7769df11dd2898989462346a698518ae2769a974bc96186e0cfbd9f80f1",
+    "docs/implementation-architecture.md": "2bce5ec3f118dfc6a73086d0f12b9c56c50ccc8f4bedf5d6bc926cea3f9d5016",
+    "docs/roadmap.md": "eccad9c6b08ec2a0b8711ccb8ba2ebb63c47149a24448caac16b13702aacc24b",
+    "docs/runtime/package-buildkit-local.md": "144aa9705651ef9faa103177da91d836bccc3e10faadc03900216a649f0ab1cf",
+    "docs/spec/target/03_api_contract_complete.yaml": "73a9d82772453cb58c5a60dea8698822eb290bb35e1d1d390f674eea312e1d6f",
+    "docs/spec/target/10_feature_traceability.md": "e7e6a6f0b106a041f7d1fd74d7056af0e32fee66b74703c7204b17828a98403a",
+    "docs/spec/target/checks/runs/20260925T075059270392Z.json": "eb23bb164dbb25761d3bbd467d4340c471a11dd2a6dc38bac4d4dc7c8ce705d0",
+    "docs/spec/target/checks/runs/20260925T080515300310Z.json": "a22fb5f171bcda311e157e20e9de2bd1f80f9ad0c6d748896e2a7e0f60dbfc8d",
+    "docs/spec/target/checks/runs/cross-domain-20260925T075223.161739Z.json": "1205eed22ee287d21887ba3953a66e05972245bea3f8103b78796bfa23324db2",
+    "docs/spec/target/checks/verification.json": "cd0e3c7fea684b483065caac8739f56a22920394e81465e559676602a7dad252",
+    "docs/spec/target/contracts/api_inventory.json": "78c2608c71a6b965e4d28aad2a34f2f7fd1e3591b933aef29c23297d7551b069",
+    "docs/status.md": "84cd71ed181701e0bfd651c701e4cadadd0601734e91085f0465a3dea9e4a86c",
+    "packages/contracts/go/go.mod": "e09768a694bbe0d05f0033eb21c7fc48fb04cd943728afa937518e0f7c25a2ee",
+    "packages/contracts/go/owneridentity/errorcode.go": "0fb371e560db914a166527d27cc8e1d4c25c1a58dc96cf72ad2530dd6cdba07b",
+    "packages/contracts/go/publicjson/codec.go": "54b32be97e644bfdd617348bd508c182807990cdb247ceca39136be6970e48cb",
+    "packages/contracts/go/publicjson/codec_test.go": "fd256ff83a62d422ae5b87fbe59ac7e7c2b224736e30d00dbe0db387a291eeb1",
+    "packages/contracts/go/publicjson/shape_generated.go": "a4254187986d103c011ec46a2d68d269dab644c56cf3315d0acf30b287cc907f",
+    "packages/contracts/proto/generate_public_json_shape.py": "41a36544e8ea46859cfa5a9b638ef570d92c3ab408bec7cb1c36eefcdb222ef9",
+    "services/build/internal/build/identity_live_test.go": "40072dbe9a42e207bd41dbfbe1b900e70ae4779b0fd434a0e7d133d82ec61d79",
+    "services/gateway-integration/cmd/server/main.go": "85aed53b0a20dafb65f83ccfaaf358328878d9af54614b0855ab35efe5cc6f3f",
+    "services/gateway-integration/identity/authorization.go": "e43575e4a12c37afdb8c4c1a6cb2147acb331a5e94afd16c21c9ce8312e80309",
+    "services/gateway-integration/identity/gateway.go": "244d4e7cbff8facba9a0280332a900b9f9325564b1982dd8e9f7e3de51da286a",
+    "services/gateway-integration/identity/generate_policy.py": "25c8ab743dcb395f95ec578ea3ce4245945c395f0bebc292ce26513f33f32222",
+    "services/gateway-integration/identity/members.go": "56f6a3197f484c6abd7c4fffa89151278f9b186acb2a3c95118068c1163bbdfa",
+    "services/gateway-integration/identity/members_postgres_test.go": "7c289376ee7a10a1b130691ccb56dd4f58a7ec7c05688fbcfd3c932dd865ed79",
+    "services/gateway-integration/identity/policy_generated.go": "fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb",
+    "services/gateway-integration/identity/policy_generated_test.go": "87b12a7f1de07439a6f0f65e1011a6cf1da340e9d45158297a386f0b040c7825",
+    "services/gateway-integration/identity/policy_postgres_test.go": "f409c97ff418752bb36a0e3d0e70dc1b79fc8585a5445c621bdc5b5f629de950",
+    "services/gateway-integration/identity/service.go": "b7e4fed9416d32d8ba2c1411a25a75cc74c4902e4f771ebe388aa26613f6eb7d",
+    "services/gateway-integration/identity/service_postgres_test.go": "5bdfd0e21eb9f43937e8ed574a02e1ab831ee8c2c09dcbb74b684adf09acd210",
+    "services/internal/ownerservice/auth_wire_test.go": "c90bbef6972c6b4ce07ecb618fb425ecc36a8e28409e0b6c81ba89e1945c1cb1",
+    "services/internal/ownerservice/authorization.go": "0c33f477bd306d7d72df26b7e473ffcd43a2552903aa7216677b6ee18a7d6e59"
+  },
+  "dependencyBoundary": {
+    "goVersion": "go1.26.3 darwin/arm64",
+    "nodeVersion": "v25.3.0",
+    "pythonVersion": "3.9.6",
+    "pyyaml": "6.0.3",
+    "grpcioTools": "1.80.0 (used by the public JSON shape generator to compile the wire descriptor)",
+    "grpc": "v1.83.2",
+    "protobuf": "v1.36.11",
+    "postgresImage": "postgres:16.8-bookworm@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae",
+    "protocGenGo": "not installed on the verifying machine; no generated protobuf binding was regenerated in this revision",
+    "externalSub2Api": "simulated HTTP fixture only; the real Sub2API service was not contacted"
+  },
+  "window": {
+    "startUtc": "2026-09-25T08:45:32Z",
+    "endUtc": "2026-09-25T09:06:50Z"
+  },
+  "commands": [
+    {
+      "command": "go test ./... -count=1 -v",
+      "cwd": "packages/contracts/go",
+      "exitCode": 0,
+      "counts": {
+        "pass": 119,
+        "fail": 0
+      },
+      "log": "output/cloud-identity-shared/focused-contracts.log",
+      "logSha256": "236f82b1d9d5add0a59b7a1462cbbb6c71fab3c08d1002f5681fef97ccd242ad"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated pg> go test ./... -count=1 -v",
+      "cwd": "services/gateway-integration",
+      "exitCode": 0,
+      "counts": {
+        "pass": 15,
+        "fail": 0
+      },
+      "log": "output/cloud-identity-shared/focused-gateway-integration.log",
+      "logSha256": "0045b845b1c8e716a09b9cd052fd3d6096fd3733c2d76b9c5b018654e75d01c1"
+    },
+    {
+      "command": "go test ./... -count=1 -v",
+      "cwd": "services/internal/ownerservice",
+      "exitCode": 0,
+      "counts": {
+        "pass": 29,
+        "fail": 0
+      },
+      "log": "output/cloud-identity-shared/focused-ownerservice.log",
+      "logSha256": "7cb91d0527b1755e2c60045a6d1e24a17e9d049a5e8ccb6f2424dd66252f615e"
+    },
+    {
+      "command": "go test ./... -count=1 -v",
+      "cwd": "apps/console-bff",
+      "exitCode": 0,
+      "counts": {
+        "pass": 20,
+        "fail": 0
+      },
+      "log": "output/cloud-identity-shared/focused-console-bff.log",
+      "logSha256": "208080b7efdc3e159a163a7d53a90fb900db13f2f71a6641433ba408857ca1a2"
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_spec.py",
+      "cwd": "<repo root>",
+      "exitCode": 0,
+      "result": "errors: []",
+      "log": "docs/spec/target/checks/runs/20260925T080515300310Z.json"
+    },
+    {
+      "command": "python3 docs/spec/target/checks/validate_cross_domain.py",
+      "cwd": "<repo root>",
+      "exitCode": 0,
+      "result": "RESULT True, 101 cases, setupError None",
+      "log": "docs/spec/target/checks/runs/cross-domain-20260925T075223.161739Z.json"
+    },
+    {
+      "command": "npm run verify:local:full",
+      "cwd": "<repo root>",
+      "exitCode": 0,
+      "capturedWith": "direct redirection of the process and its own exit code, not tail or tee",
+      "attempt": 2,
+      "counts": {
+        "nodeSourceTests": 228,
+        "nodeSourceFailures": 0,
+        "consoleBrowserTests": 114,
+        "consoleBrowserFailures": 0,
+        "ownerSuitesReportingZeroSkips": 11
+      },
+      "aggregate": "Local verification passed with PostgreSQL and Docker integration.",
+      "log": "output/cloud-identity-shared/full-verify-local.log",
+      "logSha256": "c53cb1c8244d5e03e6205a6462d7ce9b3d201dbadb25208bff42672b937f1cf1"
+    }
+  ],
+  "exitCodeCapture": "Each command wrote its own exit status with an immediately following echo EXIT=$? into the same redirected log. The final full gate is EXIT=0 with 0 FAIL lines.",
+  "acceptanceResults": [
+    {
+      "item": "public JSON uses the contract money spelling and decimal string form, in both directions",
+      "result": "pass",
+      "evidence": "packages/contracts/go/publicjson codec_test.go: TestMoneyPropertiesUseTheContractSpellingAndScalarForm, TestContractTypedIntegersUseTheirDeclaredForm"
+    },
+    {
+      "item": "the protobuf-only spelling is not an inbound alias; an unknown property and a numeric money value are refused",
+      "result": "pass",
+      "evidence": "same test; and TestPublisherJSONRejectsWrongWireVocabulary"
+    },
+    {
+      "item": "generation cannot silently leave a contract property unresolved",
+      "result": "pass",
+      "evidence": "the generator raises on an unresolved or ambiguous property; TestGeneratedPublicVocabularyMatchesTheContractCounts pins the tables"
+    },
+    {
+      "item": "the access operation is owned by the authority that owns the fact",
+      "result": "pass",
+      "evidence": "03 x-owner=serve with serve tables; regenerate feature map and API inventory; validate_spec errors:[] and the cross-domain executable cases pass"
+    },
+    {
+      "item": "the access read is authorized on the Serve audience and not inherited from the Workspace read",
+      "result": "pass",
+      "evidence": "policy_generated_test.go TestGeneratedPolicyAudienceAndRoles; apps/console-bff TestAuthorizationRequestCarriesTheSessionScope now asserts two owner checks"
+    },
+    {
+      "item": "resource catalog and Serve audiences keep platform permission and tenant isolation with refusal paths",
+      "result": "pass",
+      "evidence": "TestPolicyPlatformPermissionAndTenantIsolationPostgres, TestGeneratedPolicyCoversAssignedOwners"
+    },
+    {
+      "item": "a CloudIdentity decision reaches an owner boundary as itself",
+      "result": "pass",
+      "evidence": "services/internal/ownerservice TestOwnerBoundaryPreservesTheAuthorizationOutcome (six outcomes) and TestAuthorizerRefusesBeforeReachingCloudIdentity"
+    },
+    {
+      "item": "member display name resolves from an authorized directory read; an unknown invitee is refused",
+      "result": "pass",
+      "evidence": "TestMemberDisplayNameComesFromTheAuthorizedDirectoryPostgres, TestInviteeMustExistInTheGatewayDirectoryPostgres"
+    },
+    {
+      "item": "a deployment without the directory identity leaves the name unresolved rather than fabricated",
+      "result": "pass",
+      "evidence": "NewGatewayWithDirectory with no directory returns DirectoryConfigured()==false and ListMembers leaves the field empty; supplying half the identity is refused at construction"
+    },
+    {
+      "item": "resource catalog routes are reachable from the real BFF process",
+      "result": "pass",
+      "evidence": "the consumer line built and ran the real apps/console-bff binary and reported EXIT=0; not re-run in this receipt"
+    }
+  ],
+  "failedAttempts": [
+    {
+      "attempt": "npm run verify:local:full, attempt 1",
+      "outcome": "EXIT=1",
+      "detail": "Two Console browser tests failed with `page.goto` timeouts navigating to the in-process demo server (gateway usage, operator announcement). Proven unrelated to this revision: the browser suite's demo server (tools/start-console-demo.ts) imports only node, vite and the qa helper and touches no changed file; the failing test passes when run alone; and attempt 2 passed with zero failures. Recorded rather than discarded."
+    },
+    {
+      "attempt": "python3 docs/spec/target/checks/validate_spec.py, first run after the contract correction",
+      "outcome": "errors: 2",
+      "detail": "The previously executed cross-domain receipt was bound to the pre-correction contract hash, so the check reported 'cross-domain executed source hash differs'. Re-running validate_cross_domain.py rebound the receipt and the check then reported errors: [] . The failing receipt is retained at docs/spec/target/checks/runs/20260925T075059270392Z.json rather than deleted."
+    },
+    {
+      "attempt": "a Go test that re-derived the policy table from the YAML contract in the owner module",
+      "outcome": "abandoned",
+      "detail": "It would have added a YAML dependency to the service module, so the committed tests assert the per-owner surface and exact audience/roles instead."
+    }
+  ],
+  "unprovenItems": [
+    "getWorkspace: the composed BFF delivery route performs the Workspace identity read, but services/workspace still exposes no WorkspaceProductService implementation, so that route cannot complete end to end yet. Pre-existing gap, not introduced here.",
+    "The Console member page does not exist; only the BFF REST surface is implemented. It belongs to W13 basic Console/BFF integration, not W14.",
+    "A platform administrator cannot read the customer catalog plan list: the contract types listComputePlans/listStoragePlans as member, and a platform administrator session has no tenant. The administrator catalog page and the contract therefore disagree; recorded as a decision point for the contract owner and not changed here.",
+    "OPL_INVITATION_TTL and the Gateway directory identity are new deployment configuration. Instance-owned manifests and profiles were not edited, so a deployment must supply them before adopting this revision; CloudIdentity refuses to start without a positive invitation window.",
+    "Tenant onboarding, suspend/reenable, delete/restore, retained-identity migration and Gateway wallet binding remain unimplemented. No production, Candidate, Release, Instance qualification or real Sub2API account was touched."
+  ],
+  "sharedAuthorizationHandoff": {
+    "sha": "503c79c4d02ef40c9be087d033ce8060fb69fc75",
+    "policyFileSha256": "fc5fc9f4695b7a86b3e9273f4b28c9f8a936e52475a2ed34b9ea476252a332fb",
+    "generatorSha256": "25c8ab743dcb395f95ec578ea3ce4245945c395f0bebc292ce26513f33f32222",
+    "statusTableSha256": "66b7470eb195847a1f21fced81b33dacfb6ee7a4b8cd69747ec9705abf40cb06",
+    "regenerationIdempotent": true,
+    "actionCounts": {
+      "capability": 25,
+      "build": 5,
+      "tenant": 18,
+      "runtime_control": 5,
+      "resource_catalog": 14,
+      "serve": 5,
+      "workspace": 19,
+      "total": 91
+    },
+    "consumersNotified": [
+      "01a0d635-4d84-7a73-8e4a-e32992afc147",
+      "01a0d635-a164-7282-a8e0-21e314fba796"
+    ],
+    "contractCorrection": "getWorkspaceAccess moved from x-owner: workspace to x-owner: serve in 03_api_contract_complete.yaml, with its serve tables regenerated into 10_feature_traceability.md and contracts/api_inventory.json."
+  },
+  "logAccessibility": {
+    "path": "output/cloud-identity-shared/ (repository-relative on the verifying machine)",
+    "committed": false,
+    "note": "output/ is gitignored, so these are local-only artifacts bound by the sha256 values above. An independent verifier reproduces them by running the same commands on this SHA with an isolated PostgreSQL admin DSN. They contain no credential."
+  }
+}

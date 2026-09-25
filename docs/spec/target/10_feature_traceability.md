@@ -496,7 +496,7 @@
 | `getDeployment` | `GET /api/v2/workspaces/{workspaceId}/deployments/{deploymentId}` | — | 200 Deployment | serve |
 | `getOperation` | `GET /api/v2/operations/{owner}/{operationId}` | — | 200 Operation | workspace |
 | `getWorkspace` | `GET /api/v2/workspaces/{workspaceId}` | — | 200 Workspace | workspace |
-| `getWorkspaceAccess` | `POST /api/v2/workspaces/{workspaceId}/access` | — | 200 WorkspaceAccess | workspace |
+| `getWorkspaceAccess` | `POST /api/v2/workspaces/{workspaceId}/access` | — | 200 WorkspaceAccess | serve |
 | `getWorkspaceModels` | `GET /api/v2/workspaces/{workspaceId}/models` | — | 200 ModelConfiguration | workspace |
 | `listModels` | `GET /api/v2/catalog/models` | — | 200 ModelPage | gateway |
 | `listWorkspaces` | `GET /api/v2/workspaces` | — | 200 WorkspacePage | workspace |

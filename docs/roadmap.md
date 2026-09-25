@@ -38,12 +38,65 @@ chain is finished. Open work in dependency order:
    production qualification boundary; earlier identity/catalog fixture gaps no
    longer describe current Cloud source.
 2. Continue the remaining canonical Gateway Integration/CloudIdentity work
-   package for Tenant onboarding/invitations/lifecycle and retained identity-data
-   migration. These are distinct from the implemented publisher session/grant
-   slice; do not infer full W03 or Gateway wallet migration from #625 evidence.
+   package for Tenant onboarding/lifecycle and retained identity-data migration.
+   The member slice is now implemented: invitations, acceptance, role changes,
+   last-owner protection, cross-Tenant refusal, session revocation on removal and
+   the audit record are source-verified in
+   [member governance evidence](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json).
+   `Member.displayName` now resolves through CloudIdentity's own authorized
+   read-only Gateway directory identity, which also validates an invited subject;
+   a deployment without that identity leaves both facts unresolved rather than
+   fabricated. The `getWorkspaceAccess` ownership audit this line performed is
+   closed by the contract correction. Open obligation there: the member surface
+   still has no Console page, which belongs to W13 Console/BFF basic integration
+   (F01), not to the W14 agent/upload/build front end; the BFF REST surface is
+   what exists now. Tenant onboarding,
+   suspend/reenable, delete/restore and Gateway wallet migration remain separate
+   outcomes; do not infer full W03, W21 or Gateway wallet migration from the
+   implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
-   access readback.
+   access readback. Serve's owner-local read surface is **complete and verified
+   end to end** against the production CloudIdentity authority: `listDeployments`,
+   `getDeployment` and `getWorkspaceAccess` are all admitted for a serve-audience
+   member, with cross-Tenant, session-less and revoked-session callers refused; unavailable
+   access returns `APP_ACCESS_UNAVAILABLE`, and
+   the BFF's own Serve read handler proves the chain from real login through the
+   typed owner reads. The composed `GET /api/v2/delivery/{workspaceId}` view still
+   needs a `WorkspaceProductService` implementation from the workspace owner, and
+   the three independent Serve reads are registered on the production BFF mux.
+
+   The **first real deployment remains incomplete**. Serve implements the
+   write-path step it fully owns — recording an executing runtime's observation as
+   its own runtime-instance fact, fail-closed and epoch-fenced — while two
+   verified prerequisites block a real `Deploy`:
+   `RuntimeReservationCommand` cannot populate the columns `Reserve` is specified
+   to write, and whether Serve is the `capability_version` claim's claimant is
+   undecided (the identity writer ruled the claim protocol Capability-owned with
+   the protocol unchanged, so that is Capability's decision with a real caller).
+   Fabric's coordination surface and resource/attachment/Secret references come
+   from the resource lane. [Status](./status.md#serve-delivery-read-surface)
+   separates all of this from Serve's own unfinished `ServeRuntimeAdapter`.
+
+   The Resource Catalog owner serves approved plans and versioned
+   price/refund/retention policies with the frozen D17 arithmetic and has a real
+   authenticated caller: the BFF catalog surface, the generated CloudIdentity
+   policy, the contract-compiled response status and the contract-derived money
+   vocabulary admit a platform administrator and a member, refuse a tenant
+   administrator, and round-trip a money-bearing policy version
+   ([caller evidence](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json);
+   earlier owner-only evidence in
+   [policy-catalog evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json)).
+   The deploy quote is now priced and accepted on the Catalog side, including
+   expiry, single-binding and stale-offer refusals
+   ([quote evidence](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)),
+   while `resize` and `renew` are refused with the gap named. Open in this line:
+   the Workspace owner that accepts a quote and holds the original order and
+   resource intent, the Fabric resource reference and authoritative readback for
+   one first deployment, the Ledger consumer of `catalog.policy_changed.v1`, and
+   the decision point over the platform-administrator read of the customer plan
+   list. Quoting one deploy request therefore does not mean a Local deployment
+   loop is complete.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.

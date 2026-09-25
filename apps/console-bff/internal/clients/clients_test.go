@@ -29,6 +29,10 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 		case api.WorkspaceProductService_GetWorkspace_FullMethodName:
 			return &api.Workspace{}, nil
 		case api.ServeProductService_ListDeployments_FullMethodName:
+			query := request.(*api.ListDeploymentsRpcRequest)
+			if query.GetWorkspaceId() != "workspace-a" || query.GetQueryCursor() != "deployment-cursor" || query.GetQueryLimit() != 1 {
+				t.Errorf("deployment pagination lost: %v", query)
+			}
 			return &api.DeploymentPage{}, nil
 		case api.ServeProductService_GetWorkspaceAccess_FullMethodName:
 			return &api.WorkspaceAccess{}, nil
@@ -65,7 +69,7 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 	if _, err := client.Workspace(ctx, "workspace-a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Deployments(ctx, "workspace-a"); err != nil {
+	if _, err := client.Deployments(ctx, "workspace-a", "deployment-cursor", 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.WorkspaceAccess(ctx, "workspace-a"); err != nil {

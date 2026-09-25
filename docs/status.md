@@ -96,8 +96,9 @@ not a qualified production release.
 
 ## Agent Delivery Chain Owner-Process Baseline
 
-Capability, Build, Runtime Control, Workspace, and Serve each have an owner
-process, migration set, readiness surface, and owner-local Operation readback.
+Capability, Build, Runtime Control, Workspace, Resource Catalog, and Serve each
+have an owner process, migration set, readiness surface, and owner-local
+Operation readback.
 The Console BFF carries the authenticated `CallContext` and `console_bff` mTLS
 identity to owner boundaries, where tenant and actor authorization is checked
 again. Capability Package upload/reference claims, Runtime Release catalog
@@ -111,6 +112,83 @@ current Agent deployment selection and route/readiness/access state; Workspace
 carries authorization and business intent without a deployment pointer or
 cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
+
+### Serve delivery read surface
+
+The Serve process exposes `ListDeployments`, `GetDeployment` and
+`GetWorkspaceAccess` through the production BFF mux and the live CloudIdentity
+boundary. Deployment history is ordered by `(created_at DESC, id DESC)`;
+Serve enforces the persisted Workspace tenant before returning owner-local facts.
+Every composed BFF read carries the decision for its own owner/action/resource.
+The public API uses the canonical JSON field and enum vocabulary, the common
+session/CSRF/idempotency guard, typed owner errors and `Cache-Control: no-store`.
+
+Access succeeds only for an active, ready deployment with a confirmed HTTP(S)
+entry and a supported exposure mode. Pending, absent, invalid-entry and
+unconfirmed Cloud-private access return `APP_ACCESS_UNAVAILABLE` rather than an
+invalid successful access object. Application login remains application-owned;
+no arbitrary expiry or second application session is created. The optional
+`expiresAt` is omitted when the entry provider supplies no expiry.
+
+Runtime observations are persisted in Serve's own database. Seeded deployment
+rows in the read tests prove authorization and projection, not a real deployment.
+The real-identity tests use production CloudIdentity, gRPC, isolated PostgreSQL
+and the BFF; only the external Gateway identity response is simulated.
+
+The first real deployment remains open in the canonical roadmap: Workspace
+product commands, Capability reference-claim consumer support, Fabric resource
+references, Reserve inputs and the Serve runtime adapter are not completed by
+this read slice. Historical source receipts remain under `docs/evidence/source-checks/`.
+
+### Resource Catalog approved plans and policy versions
+
+The Resource Catalog owner is its own Go module, process, migration set and
+database role, and serves `ResourceCatalogProductService` behind the shared owner
+identity boundary. An administrator can create approved compute and storage plans
+inside the instance-declared provider/region/billing profile, create price policy
+versions that bind an exact approved plan pair to one-month amounts, and create
+the frozen refund and retention policy versions. The customer-facing availability
+projection, the D17 upgrade/supplement arithmetic and the
+`catalog.policy_changed.v1` Outbox event all live in this owner.
+
+The catalog now has a real caller and a real authorization boundary. The Console
+BFF carries the catalog REST surface on its authenticated boundary (browser
+session, CSRF, same-origin, idempotency key and a CloudIdentity decision), the
+generated policy carries the 14 `resource_catalog` actions with the contract's
+audiences and roles, and the response status is compiled from the same contract,
+so a platform administrator is admitted for the administrator actions, a member
+for the customer reads, a tenant administrator is refused the administrator
+actions, and an availability update answers with the declared `200`. A focused
+live check drives the real CloudIdentity process, the real BFF route functions and
+the real owner over one isolated PostgreSQL server, and a money-bearing price
+policy version round-trips the contract's `...USDMicros` decimal-string spelling
+in both directions; only the external Sub2API Gateway is a fixture. The
+[source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-owner-caller-local.json)
+binds the source and dependency digests, commands, exit codes and logs.
+
+The deploy quote is priced. A member obtains a quote for an approved plan pair
+through the running BFF process and reads it back: the owner resolves the single
+effective price, refund and retention version, builds the offer lines under the
+contract money rule (total is the sum of the charge lines minus the credits, with
+no second multiplication by quantity) and stores the immutable offer with its
+expiry. `AcceptQuote` binds that offer to exactly one Workspace obligation,
+returns the same acceptance on replay, refuses a second obligation, refuses an
+expired offer and reports an unknown offer as absent. `resize` and `renew` are
+refused with the gap named rather than answered with a deploy-shaped offer,
+because they depend on a Workspace subscription, a paid period and an accepted
+plan change that do not exist yet. The [source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-quote-local.json)
+binds the revision, commands, exit codes and logs.
+
+Two boundaries remain. The Workspace owner and the Fabric resource reference do
+not exist, so nothing has accepted a quote, no original order or resource intent
+exists, and there is no Local deployment loop; the Catalog side of that edge is
+implemented and verified against a Workspace peer, but the caller is the next
+slice. The Ledger `DomainInbox` accepts only tenant-scoped build and capability
+producers, so the platform-scoped catalog policy event is recorded and retried
+while its consumer delivery stays pending; extending that consumer is Ledger's
+write set.
 
 ### Canonical-main local verification and receipt
 
@@ -221,11 +299,83 @@ with an explicit build configuration; no production migration is implied.
 The [identity/admission source receipt](./evidence/source-checks/2026-09-25-publisher-identity-admission-local.json)
 records the actual verification and limitations. The preceding receipts are
 historical, exact-source evidence. This implements the #625 publisher identity
-and admission prerequisites; the rest of W03/Tenant invitation/lifecycle and
-Gateway wallet migration remain separate outcomes. No production, Instance or
-real Sub2API-account qualification is claimed.
+and admission prerequisites; the Tenant member and invitation slice is recorded
+separately below, and Tenant lifecycle plus Gateway wallet migration remain
+separate outcomes. No production, Instance or real Sub2API-account qualification
+is claimed.
 [Reproduction and configuration](./runtime/package-buildkit-local.md) gives the
 local command and process settings, including restart reauthentication.
+
+### Tenant member and invitation governance
+
+`services/gateway-integration` now also serves CloudIdentity's Tenant member
+surface: `getTenant`, `listMembers`, `listInvitations`, `inviteMember`,
+`acceptInvitation`, `revokeInvitation`, `updateMemberRole` and `removeMember`,
+reached through the Console BFF. The role decision comes from the canonical API
+permissions, now generated for the tenant owner instead of only Capability and
+Build. `acceptInvitation` is bound to the invitee's own live session and the
+recorded invitation subject, because an invitee is not yet a member of the
+inviting Tenant.
+
+Membership changes lock the Tenant row, refuse to demote or remove the last
+owner, advance `permission_version`, and revoke a removed member's sessions, so
+losing access takes effect on the next request rather than at session expiry.
+Invitations keep only a token hash, and each governance decision writes an
+immutable audit row; a refusal commits that evidence and then reports the
+canonical `ErrorCodeEnum`, including `LAST_OWNER` and `INVITATION_INVALID`.
+Concurrent owner removal was proved to serialize to exactly one success.
+
+The generated permission table is the single authorization policy for the
+capability, build, tenant, runtime control, resource catalog, serve and workspace
+audiences, each generated wholesale per owner from the canonical contract.
+
+`getWorkspaceAccess` was the one contradiction: the REST contract named the
+`workspace` owner while the wire RPC sits on `ServeProductService`,
+`01_domain_ownership_matrix.md` gives Serve the access-binding facts, and
+`decisions.md` records Serve as the sole delivery/deployment/readiness/access
+owner with Workspace keeping target authorization only. The projection had lagged
+the adopted decision, so the contract now names `serve` and the operation is
+authorized on the Serve audience for the fact it reports. The composed BFF
+delivery view authorizes each owner fact against the owner that reports it: the
+Workspace identity read against Workspace, the access read against Serve.
+
+A CloudIdentity decision now reaches every owner boundary as itself.
+`ownerservice.Authorizer` used to collapse every failure from the authorization
+call into `Unavailable`, so a policy denial, a revoked session and a failed
+precondition were indistinguishable from an authority outage at the Serve,
+Capability, Build, Runtime Control and BFF boundaries. Decision codes are now
+preserved, only a non-decision failure is reported as unavailable, and the
+boundary still fails closed.
+
+The BFF's HTTP success status is now compiled from the same contract into
+`apps/console-bff/internal/httpapi/status_generated.go`, so a routed operation
+answers with the status the contract declares. The previous hand-written switch
+had already drifted: `setComputePlanAvailability` and `setStoragePlanAvailability`
+are declared 200 but would have answered the write default 201. A route whose
+action carries no declared status is refused rather than defaulted.
+
+The invitation validity window is not fixed by the canonical contract, so the
+deployment now supplies it explicitly through `OPL_INVITATION_TTL`; this owner
+refuses to start without a positive value rather than baking a product decision
+into code. Deployments that enable invitations must set it.
+
+The [member governance source receipt](./evidence/source-checks/2026-09-25-cloudidentity-member-governance-local.json)
+records the exact source files, the governed cases and the limitations.
+`Member.displayName` now resolves through CloudIdentity's own authorized,
+read-only Gateway directory identity (`OPL_GATEWAY_DIRECTORY_EMAIL` /
+`OPL_GATEWAY_DIRECTORY_PASSWORD`), which also validates that an invited subject
+exists before any row is written. That identity is the service's own
+administrative credential for a directory read; it never presents a member token
+and never writes in the Gateway authority, so it is not impersonation and no copy
+of the directory is kept. A deployment without it leaves the name empty and skips
+the subject check rather than fabricating either fact.
+
+The member REST surface (BFF) is implemented; the Console member page is not, and
+the two are tracked separately. That page belongs to W13 Console/BFF basic
+integration, not to the W14 agent/upload/build front end. Tenant onboarding,
+suspend/reenable, delete/restore and Gateway wallet binding stay separate
+W03/W21 outcomes. No production, Instance or real-account qualification is
+claimed.
 
 ## Conclusion
 

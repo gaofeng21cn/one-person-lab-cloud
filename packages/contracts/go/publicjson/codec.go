@@ -55,16 +55,71 @@ func Unmarshal(data []byte, m proto.Message) error {
 	return protojson.Unmarshal(raw, m)
 }
 
+// omitted marks a value the public contract does not define, so the property is
+// left out of the public object entirely instead of being emitted under a
+// protobuf-only spelling.
+type omitted struct{}
+
+// fillForUnion resolves a public discriminator object against the oneof's message
+// fields, including a name the protobuf JSON name does not carry.
+func fillForUnion(md protoreflect.MessageDescriptor, key string) protoreflect.FieldDescriptor {
+	for i := 0; i < md.Fields().Len(); i++ {
+		fd := md.Fields().Get(i)
+		if fd.Message() != nil && publicName(md, fd) == key {
+			return fd
+		}
+	}
+	return nil
+}
+
 // The generated oneof wrappers are wire-only. Public access contracts carry a
 // discriminator in the selected object and have no protobuf wrapper property.
 func union(md protoreflect.MessageDescriptor) bool {
 	return md.Oneofs().Len() == 1 && !md.Oneofs().Get(0).IsSynthetic() && md.Oneofs().Get(0).Fields().Len() == md.Fields().Len()
 }
+
+// fieldFor resolves a public property name to its wire field. The canonical
+// contract spelling is authoritative, so a property whose protobuf JSON name
+// differs is resolved through the generated mapping rather than only through the
+// protobuf name. This is how `monthlyPriceUSDMicros` reaches
+// `monthly_price_usd_micros`, which protobuf alone spells `monthlyPriceUsdMicros`.
+func fieldFor(md protoreflect.MessageDescriptor, key string, toPublic bool) protoreflect.FieldDescriptor {
+	// Decoding is strict: the public boundary accepts exactly the contract
+	// vocabulary. Resolving through the protobuf JSON name is only accepted when
+	// that name is itself the published spelling, so the protobuf-only spelling is
+	// not a second inbound alias for the same field.
+	if toPublic {
+		if field, ok := fieldToPublic[md.Name()][key]; ok {
+			return md.Fields().ByName(protoreflect.Name(field))
+		}
+		return md.Fields().ByJSONName(key)
+	}
+	if field, ok := publicToField[md.Name()][key]; ok {
+		return md.Fields().ByName(protoreflect.Name(field))
+	}
+	fd := md.Fields().ByJSONName(key)
+	if fd != nil && publicName(md, fd) != key {
+		return nil
+	}
+	return fd
+}
+
+// publicName is the property name an encoded response carries for a field.
+func publicName(md protoreflect.MessageDescriptor, fd protoreflect.FieldDescriptor) string {
+	if name, ok := fieldToPublic[md.Name()][string(fd.Name())]; ok {
+		return name
+	}
+	return fd.JSONName()
+}
+
 func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool, m protoreflect.Message) (map[string]any, error) {
 	if union(md) {
 		if toPublic {
 			for key, value := range v {
 				fd := md.Fields().ByJSONName(key)
+				if fd == nil {
+					fd = fillForUnion(md, key)
+				}
 				if fd != nil && fd.Message() != nil {
 					return convert(value.(map[string]any), fd.Message(), true, m.Get(fd).Message())
 				}
@@ -78,22 +133,31 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 			}
 			candidate, err := convert(v, fd.Message(), false, nil)
 			if err == nil {
-				return map[string]any{fd.JSONName(): candidate}, nil
+				return map[string]any{publicName(md, fd): candidate}, nil
 			}
 		}
 		return nil, fmt.Errorf("invalid %s variant", md.Name())
 	}
 	out := map[string]any{}
 	for key, value := range v {
-		fd := md.Fields().ByJSONName(key)
+		fd := fieldFor(md, key, toPublic)
 		if fd == nil {
 			return nil, fmt.Errorf("unknown publisher property %s.%s", md.Name(), key)
 		}
-		if toPublic && !m.Has(fd) && !required[md.Name()][key] {
-			continue
+		// Encoding answers with the contract spelling, so a response cannot leak the
+		// protobuf name. Decoding hands protobuf its own JSON name, which is what the
+		// generated message unmarshaller accepts.
+		outKey := key
+		if toPublic {
+			outKey = publicName(md, fd)
+			if !m.Has(fd) && !required[md.Name()][outKey] {
+				continue
+			}
+		} else {
+			outKey = fd.JSONName()
 		}
 		if fd.IsMap() {
-			out[key] = value
+			out[outKey] = value
 			continue
 		}
 		cv := func(x any, child protoreflect.Message) (any, error) {
@@ -114,6 +178,16 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 						return string(ev.Name()), nil
 					}
 				}
+				if toPublic {
+					// The wire value has no published text. A required property would
+					// make the response contract-invalid, so that is an error; an
+					// optional one is simply not part of the public vocabulary and is
+					// omitted rather than emitted under a protobuf spelling.
+					if required[md.Name()][outKey] {
+						return nil, fmt.Errorf("required property %s.%s has no public value for %s", md.Name(), outKey, text)
+					}
+					return omitted{}, nil
+				}
 				return nil, fmt.Errorf("unsupported publisher enum %s: %s", fd.Enum().Name(), text)
 			}
 			if fd.Message() != nil {
@@ -126,12 +200,48 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 				}
 				return convert(obj, fd.Message(), toPublic, child)
 			}
-			if toPublic && (fd.Kind() == protoreflect.Int64Kind || fd.Kind() == protoreflect.Uint64Kind) {
-				if text, ok := x.(string); ok {
+			if fd.Kind() == protoreflect.Int64Kind || fd.Kind() == protoreflect.Uint64Kind {
+				// The scalar form is the contract's, not protobuf's. protojson always
+				// emits a 64-bit integer as a quoted string; the contract quotes only
+				// the fields it types as a decimal string (USDMicros,
+				// NonnegativeInt64), so the rest are emitted as JSON numbers. Decoding
+				// accepts either form, exactly as protojson does.
+				asString := stringScalars[md.Name()][string(fd.Name())]
+				if toPublic {
+					text, ok := x.(string)
+					if !ok {
+						number, isNumber := x.(json.Number)
+						if !isNumber {
+							return nil, fmt.Errorf("invalid %s integer", key)
+						}
+						text = number.String()
+					}
+					if asString {
+						return text, nil
+					}
 					return json.Number(text), nil
 				}
+				// Decoding enforces the declared form as well: the contract quotes a
+				// decimal string, so a bare JSON number is not the published shape, and
+				// a field the contract types numerically is not accepted quoted.
+				switch typed := x.(type) {
+				case string:
+					if !asString {
+						return nil, fmt.Errorf("%s is a decimal string, the contract types it as a number", key)
+					}
+					return json.Number(typed), nil
+				case json.Number:
+					if asString {
+						return nil, fmt.Errorf("%s is a number, the contract types it as a decimal string", key)
+					}
+					return typed, nil
+				}
+				return nil, fmt.Errorf("invalid %s integer", key)
 			}
 			return x, nil
+		}
+		if _, skip := value.(omitted); skip {
+			continue
 		}
 		if fd.IsList() {
 			list, ok := value.([]any)
@@ -148,9 +258,12 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 				if err != nil {
 					return nil, err
 				}
+				if _, skip := y.(omitted); skip {
+					continue
+				}
 				converted = append(converted, y)
 			}
-			out[key] = converted
+			out[outKey] = converted
 		} else {
 			var child protoreflect.Message
 			if toPublic && fd.Message() != nil {
@@ -160,7 +273,10 @@ func convert(v map[string]any, md protoreflect.MessageDescriptor, toPublic bool,
 			if err != nil {
 				return nil, err
 			}
-			out[key] = x
+			if _, skip := x.(omitted); skip {
+				continue
+			}
+			out[outKey] = x
 		}
 	}
 	return out, nil
