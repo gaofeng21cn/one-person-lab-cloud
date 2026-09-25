@@ -96,8 +96,9 @@ not a qualified production release.
 
 ## Agent Delivery Chain Owner-Process Baseline
 
-Capability, Build, Runtime Control, Workspace, and Serve each have an owner
-process, migration set, readiness surface, and owner-local Operation readback.
+Capability, Build, Runtime Control, Workspace, Resource Catalog, and Serve each
+have an owner process, migration set, readiness surface, and owner-local
+Operation readback.
 The Console BFF carries the authenticated `CallContext` and `console_bff` mTLS
 identity to owner boundaries, where tenant and actor authorization is checked
 again. Capability Package upload/reference claims, Runtime Release catalog
@@ -111,6 +112,27 @@ current Agent deployment selection and route/readiness/access state; Workspace
 carries authorization and business intent without a deployment pointer or
 cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
+
+### Resource Catalog approved plans and policy versions
+
+The Resource Catalog owner now exists as its own Go module, process, migration
+set and database role, and serves `ResourceCatalogProductService` behind the
+shared owner identity boundary. An administrator can create approved compute and
+storage plans inside the instance-declared provider/region/billing profile,
+create price policy versions that bind an exact approved plan pair to one-month
+amounts, and create the frozen refund and retention policy versions. The
+customer-facing availability projection, the D17 upgrade/supplement arithmetic
+and the `catalog.policy_changed.v1` Outbox event all live in this owner.
+
+Quotes are not implemented: `CreateQuote`, `GetQuote` and the Workspace-facing
+`AcceptQuote` remain the W15 obligation, so nothing prices a deploy/resize/renew
+request yet. The Ledger `DomainInbox` currently accepts only tenant-scoped
+build/capability producers, so the platform-scoped catalog policy event is
+recorded and retried but its consumer delivery stays pending; extending that
+consumer is Ledger's write set. The [source-check
+receipt](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json)
+binds the exact source digests, the real-PostgreSQL focused run, the replayed
+D17 vectors and the scope limits.
 
 ### Canonical-main local verification and receipt
 

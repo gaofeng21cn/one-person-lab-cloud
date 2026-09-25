@@ -12,8 +12,11 @@ migration. The adopted target keeps all Cloud product code in one GitHub
 repository, `opl-cloud`, while retaining independent service modules and
 processes. Its canonical directory/deployment-unit map is
 [Repository And Instance Topology](architecture.md#repository-and-instance-topology).
-Capability, Build, Runtime Control, Workspace and Serve have independent owner
-processes and the Console BFF is implemented. Gateway Integration now implements
+Capability, Build, Runtime Control, Workspace, Resource Catalog and Serve have
+independent owner processes and the Console BFF is implemented. Resource Catalog
+owns approved compute/storage plans, versioned price/refund/retention policies
+and the frozen D17 arithmetic in `services/resource-catalog`; its quotes and the
+Ledger consumer of its policy event are still open. Gateway Integration now implements
 the CloudIdentity publisher session and accepted-Build authorization slice in
 `services/gateway-integration`, using only the Tenant database. The public JSON
 boundary resolves property names and 64-bit scalar forms from the canonical

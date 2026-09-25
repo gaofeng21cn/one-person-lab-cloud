@@ -1,0 +1,65 @@
+{
+ "schemaVersion": 1,
+ "action": "Implement the Resource Catalog owner process: approved compute/storage plans, versioned price/refund/retention policies, the frozen D17 arithmetic, and the catalog.policy_changed.v1 Outbox event",
+ "recordedAt": "2026-09-25T04:10:01.285707+00:00",
+ "baseSha": "d6d49e221d7dc8acd5470bea43521b8663807a92",
+ "sourceBinding": "codex/resource-catalog-local-loop working tree; file digests bound below because no commit or Candidate is claimed",
+ "sourceFilesSha256": {
+  "services/resource-catalog/go.mod": "139729be9cf8add65188e256bfd5f07028002ee135478539bbb562c373ae499c",
+  "services/resource-catalog/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+  "services/resource-catalog/cmd/server/main.go": "dd61876952a3f9f56fd65a4b9bbd87b126d5ed021c8686602a009f16831dabac",
+  "services/resource-catalog/catalog/service.go": "74e0615cee8d8f35c3b1b4f481a5ae4d5837ebf9c44af0f8a33aadeff79e2fe3",
+  "services/resource-catalog/catalog/plans.go": "46e4d0cabef3aa3942039ef83ba9fbaf86f2d76f18779ff11e4134f9febc557b",
+  "services/resource-catalog/catalog/policies.go": "1619434b279f85b16e9a071f91a04729ec2f60367c190d52c5f0048b4eb57d07",
+  "services/resource-catalog/catalog/policy.go": "da4a3b92a6e60b152aa61289db394858deae68759f8996f862c6a42200f3ce20",
+  "services/resource-catalog/catalog/events.go": "33def587e07ae6df1a368968992e0899a4426f7ecb3d0d7fe7f87c3a5d27f4ed",
+  "services/resource-catalog/catalog/policy_test.go": "c7d3f839670e3b665d85e5c03d257077bbfe8530a9cde07cdf7b533c4a258a50",
+  "services/resource-catalog/catalog/service_postgres_test.go": "f9bd4866af58b2a2b4b062127effec10c3bc45310507e3dd75363f4aa5999b39",
+  "services/resource-catalog/migrations/embed.go": "6681f9ce33c8d6ef31420b7634bb4e75e469e73b2dbae437e913806670886ada",
+  "services/resource-catalog/migrations/isolation_test.go": "45deb85571f1bcf8e62d7ea4a43978c0b577acfc0442662085ef6860ddaf70ed",
+  "services/resource-catalog/migrations/0001_opl_resource_catalog.sql": "87cb984dce76287f704b84f6a5297cbb7aa9b84e28ecf79f6159b2f2a65adc14",
+  "tools/verify-local.ts": "d943c251f06dcaec51fc5bbca1f12f315f1dfbcb44796a3c9bd120f504eb66e1",
+  "tests/tools/verify-local.test.ts": "90aa0551e11fa77eb3aa01d592413de9b29363efbb63a4d171cf2171c3af2334",
+  "Dockerfile": "79854c1d95e423c92dd2b9b01a049bbaa99f7838a96cdddebf946694f7a601d5"
+ },
+ "verification": {
+  "focusedCommand": "go -C services/resource-catalog test ./... -count=1 -v against a temporary PostgreSQL 16.8 container",
+  "focusedResult": "passed: 15 tests plus 4 owner-isolation subtests, zero skips",
+  "focusedLog": {
+   "path": "output/resource-catalog-local-20260925/resource-catalog-owner.log",
+   "sha256": "33d367696f9cc6c6b92e4562ffe7d98643cd4cb0c0a7149c42369fc227cd5d7b",
+   "retention": "local ignored artifact"
+  },
+  "d17Vectors": "docs/spec/target/checks/d17_acceptance_vectors.json replayed through upgradeChargeMicros: 7/7 cases including the 31-day month, sequential upgrade, single final ceil, free increment and the int64-max intermediate",
+  "sourceTests": "npm run test:source passed 228 tests, zero skips, after tools/verify-local.ts and tests/tools/verify-local.test.ts added the new owner to the pinned module list",
+  "productBoundary": "npm run validate:product-boundary passed",
+  "typecheckLint": "npm run typecheck and npm run lint passed",
+  "isolationSuite": "services/resource-catalog/migrations TestOwnerDatabaseIsolation proves the real migration installs its own schema, refuses a differently named database, and leaves the runtime login unable to read another owner's schema",
+  "postgresVersion": "PostgreSQL 16.8 (compose.yaml pinned image)",
+  "fullCommand": "npm run verify:local:full",
+  "fullResult": "passed: 228 source tests, 114 browser tests, typecheck/lint, Console build, every Go module compile, and all required PostgreSQL/Docker packages with zero skips, including the new services/resource-catalog suite",
+  "fullLog": {
+   "path": "output/resource-catalog-local-20260925/verify-local-full.log",
+   "sha256": "dbce214ac5f7d86ab5beed241948f1c0993b508a40b70ac5a6ed914d60d74671",
+   "retention": "local ignored artifact"
+  }
+ },
+ "proven": [
+  "An administrator can create approved compute and storage plans in the instance-declared provider/region/billing profile; a request naming a different provider capability version is refused rather than stored.",
+  "A price policy version binds an exact approved compute/storage plan pair to one-month amounts; a missing pair or a non-approved plan is refused and no fallback rate exists.",
+  "Refund and retention policy versions are recorded with the frozen workspace-delete-refund-v1 algorithm and the 15-day/retain retention facts; a refund version referencing an unknown retention version is refused.",
+  "The single availability projection maps revoked/deprecated status to retired, an approved plan outside its validity window to unavailable, and refuses to store a request whose requested projection it cannot express.",
+  "A new price policy version and its catalog.policy_changed.v1 Outbox row plus one delivery row per contract-declared consumer (ledger, workspace) commit in one transaction.",
+  "Idempotent commands replay the original stored response for the same key and input, and refuse a reused key with different input."
+ ],
+ "notProven": [
+  "No quote exists yet: CreateQuote/GetQuote/AcceptQuote are W15 and remain unimplemented, so the catalog cannot yet price a deploy/resize/renew request.",
+  "The Ledger DomainInbox accepts only tenant-scoped build/capability producers, so the platform-scoped catalog.policy_changed.v1 delivery stays pending. The producer records and retries it; the consumer extension is W05's write set and is not claimed here.",
+  "No workspace or Fabric caller consumes the plan/policy reads yet; those callers are W11/W15.",
+  "Administrator Console/BFF routes for the resource catalog product service are not wired (W13/W14/W23).",
+  "No production deployment, Candidate, publication or Instance qualification was performed, and no real provider resource was bought, charged or destroyed."
+ ],
+ "temporaryResources": "Task-created loopback PostgreSQL container and anonymous volume removed; no production resource was accessed.",
+ "productionDeploymentDispatched": false,
+ "instanceQualificationPerformed": false
+}

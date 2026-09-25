@@ -56,7 +56,11 @@ chain is finished. Open work in dependency order:
    implemented publisher or member slices.
 3. Continue Workspace authorization and resource planning, then Fabric resource
    references/readback and the single Serve Agent deployment with readiness and
-   access readback.
+   access readback. The Resource Catalog owner now serves approved plans and
+   versioned price/refund/retention policies with the frozen D17 arithmetic
+   ([source evidence](./evidence/source-checks/2026-09-25-resource-catalog-policy-catalog-local.json));
+   its quotes (`CreateQuote`/`GetQuote`/`AcceptQuote`) and the Ledger consumer of
+   `catalog.policy_changed.v1` remain open, so no request is priced yet.
 4. Keep Console to the composed owner read only after the relevant owners expose
    real commands; do not treat source scaffolds or documentation checks as
    product execution evidence.
