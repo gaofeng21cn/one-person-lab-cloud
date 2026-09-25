@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"opl-cloud/apps/console-bff"
@@ -586,6 +587,62 @@ func TestLiveCatalogCloudIdentityDecisionCoversCatalogActions(t *testing.T) {
 		})
 	}
 
+}
+
+// TestLiveCatalogOwnerAuthorizationOutcomeIsTheRealDecision proves the owner
+// reports a CloudIdentity decision as itself. A policy refusal must reach the
+// caller as PermissionDenied, not as an outage: an owner that answers Unavailable
+// for a refusal cannot be distinguished from a broken authority, and a retry looks
+// like a transient failure.
+func TestLiveCatalogOwnerAuthorizationOutcomeIsTheRealDecision(t *testing.T) {
+	system := newLiveSystem(t)
+	ctx := t.Context()
+	client := api.NewResourceCatalogProductServiceClient(
+		liveDialService(t, system.catalogAddress, owneridentity.Tenant.Service(), owneridentity.ResourceCatalog.Service(), livePeerToken))
+
+	validFrom := timestamppb.New(time.Now().Add(-time.Hour))
+	call := func(actor, sessionCookie string) *api.CallContext {
+		return &api.CallContext{
+			ActorId: actor, RequestId: "auth-outcome-" + actor, IdempotencyKey: "auth-outcome-" + actor,
+			SessionId: proto.String(owneridentity.SessionReference(sessionCookie)),
+			Scope:     &api.AuthorizationScope{Scope: &api.AuthorizationScope_Tenant{Tenant: &api.TenantScope{TenantId: "tenant-live"}}},
+		}
+	}
+	// A Tenant administrator is a real session, but not a platform administrator, so
+	// CloudIdentity refuses the platform action with a decision.
+	_, err := client.CreateComputePlan(ctx, &api.CreateComputePlanRpcRequest{
+		Context: call("101", system.cookies["tenant-admin@example.test"]),
+		Body: &api.CreateComputePlanRequest{
+			Name: "refused", Vcpus: 2, MemoryMiB: 4096, ProviderProfileId: "p", ProviderSkuId: "s",
+			ProviderCapabilityVersion: "provider/v1", ValidFrom: validFrom,
+		},
+	})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("a refused platform action reached the owner as %v, want PermissionDenied", status.Code(err))
+	}
+
+	// An unusable session is likewise a decision about the caller, not an outage.
+	_, err = client.CreateComputePlan(ctx, &api.CreateComputePlanRpcRequest{
+		Context: call("103", "not-a-session"),
+		Body: &api.CreateComputePlanRequest{
+			Name: "no-session", Vcpus: 2, MemoryMiB: 4096, ProviderProfileId: "p", ProviderSkuId: "s",
+			ProviderCapabilityVersion: "provider/v1", ValidFrom: validFrom,
+		},
+	})
+	switch status.Code(err) {
+	case codes.Unauthenticated, codes.PermissionDenied:
+	default:
+		t.Fatalf("an unusable session reached the owner as %v, want Unauthenticated or PermissionDenied", status.Code(err))
+	}
+
+	// Nothing was written by either refusal.
+	var written int
+	if err := system.db.QueryRowContext(ctx, `SELECT count(*) FROM resource_catalog.compute_plans`).Scan(&written); err != nil {
+		t.Fatal(err)
+	}
+	if written != 0 {
+		t.Fatalf("refused calls wrote %d plans", written)
+	}
 }
 
 func pageContainsID(page map[string]any, id string) bool {
