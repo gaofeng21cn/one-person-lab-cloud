@@ -722,8 +722,15 @@ func (p *TencentProvider) readStorageDeleteBindings(ctx context.Context, volume 
 			}
 		}
 		spec, _ := wanted["spec"].(map[string]any)
+		actualSpec, _ := actual["spec"].(map[string]any)
 		for name, value := range spec {
-			if !reflect.DeepEqual(nested(actual, "spec", name), value) {
+			actualValue, present := actualSpec[name]
+			// PersistentVolumeSpec uses an omitempty string; PVC uses a
+			// pointer, where an omitted class does not mean an explicit empty class.
+			if actual["kind"] == "PersistentVolume" && name == "storageClassName" && value == "" && !present {
+				continue
+			}
+			if !reflect.DeepEqual(actualValue, value) {
 				return nil, ErrLaunchStageBindingConflict
 			}
 		}
