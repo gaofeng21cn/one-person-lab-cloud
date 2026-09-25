@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "action": "Implement Serve's owner-local delivery read surface (ListDeployments/GetDeployment/GetWorkspaceAccess) over opl_serve and record the delivery write-path blockers",
+  "recordedAt": "2026-09-25T03:30:00.574713+00:00",
+  "sourceSha": "bfe253d9271dd222aced41e818f7e4769f8d9c74",
+  "sourceFilesSha256": {
+    "services/serve/internal/delivery/service.go": "dbced4c93605d47716cdb30607d3d228dca26e7c5059087033410718972e7ad3",
+    "services/serve/internal/delivery/service_postgres_test.go": "4bec36066bcb04303be0fab2b38280ad2c03ed4c810669a672f529e740f0fe95",
+    "services/serve/cmd/server/main.go": "6c6348b4323629c2aa6c19833533b4f7f2cdfef706dd498e66ad41f21e4c7a00",
+    "services/serve/go.mod": "b90b1fdb34f8b680b4435149d9881032173f09ea27450e5ba61b96b267b2529c",
+    "services/serve/go.sum": "acf16636e666636994256c2d60167bb37bd7ba2b0b097f5baf10ee544d7e3558",
+    "docs/status.md": "f53bd5cf5059bfd0d16617e9dc56945d45ed8fa5f448fa0a327d491b7f1a422f",
+    "docs/roadmap.md": "7c4df1cf9d3b6c10b4dbe7e112825bb40d8849f9f7716e62309e0aefb357a846",
+    "docs/implementation-architecture.md": "bd0f596bfbb83345c0a0b7f7422407cb20f2c61909ee30ff891856ea3688ffd4"
+  },
+  "verification": {
+    "focusedPostgres": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=<isolated postgres> go test ./internal/delivery/ -run TestServe -count=1 passed against a real isolated opl_serve installed through Serve's own migration entrypoint",
+    "ownerIsolation": "go test ./migrations/ -count=1 passed with the same isolated PostgreSQL administrator DSN",
+    "module": "go vet ./... and go test ./... passed in services/serve",
+    "nodeSource": "npm run test:source passed 228 tests; npm run validate:product-boundary passed"
+  },
+  "cases": [
+    "ready application-exposure deployment reports APPLICATION_LOGIN mode, credentials available, and its observed access URL",
+    "pending runtime with a provisioned resource reports no credentials and no URL (resource-ready != application-ready)",
+    "anonymous exposure policy reports ANONYMOUS mode and no application credentials even when ready",
+    "a Workspace Serve never delivered reports no URL, no credentials and no fabricated mode",
+    "a tenant-scoped caller is refused for another tenant's Workspace before CloudIdentity is consulted; platform scope is not narrowed",
+    "a live CloudIdentity denial is honored and never replaced by an allow",
+    "deployment history and one current active deployment are projected with the contract vocabulary, descriptors decoded through the public JSON codec"
+  ],
+  "blockers": [
+    "capability.reference_claims admits only a BUILD claimant, so Serve cannot hold the capability_version claim agent_deployments.reference_claim_id needs",
+    "FabricCoordination (EnsureResources/ReadResources/BindSecret) plus resource_set/attachment identities exist only as a typed-HTTP Control Plane surface, not the gRPC coordination fields RuntimeDeployCommand names",
+    "ServeRuntimeAdapter has no implementation and RuntimeReadback carries no access-entry field, so no real Deploy can produce a readiness/access readback"
+  ],
+  "scope": "Cloud source and isolated Local PostgreSQL only. No production, Instance, publication, real charge or provider-resource action."
+}
