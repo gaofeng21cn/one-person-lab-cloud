@@ -127,7 +127,7 @@ func coordinationFixtureRequest() *api.AppendReceiptRequest {
 	q := &api.QuoteAcceptance{Quote: &api.Quote{Id: "quote-local", Status: api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED, ComputePlanId: "compute-local", StoragePlanId: "storage-local", TotalUsdMicros: 0,
 		LineItems: []*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, AmountUsdMicros: 0}, {Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_STORAGE, AmountUsdMicros: 0}}},
 		ObligationId: order, AcceptanceId: "accepted-local", SnapshotDigest: "sha256:" + strings.Repeat("a", 64), WorkspaceId: workspace,
-		ResourcePlan: &api.ResourcePlanSnapshot{ComputePlanId: "compute-local", StoragePlanId: "storage-local", Provider: "local", Region: "local", BillingMode: "LOCAL_NO_CHARGE"}}
+		ResourcePlan: &api.ResourcePlanSnapshot{ComputePlanId: "compute-local", StoragePlanId: "storage-local", Provider: "local-docker", Region: "local", BillingMode: "LOCAL_NO_CHARGE"}}
 	commit := &api.OwnerCommitEvidence{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: order, ResourceId: workspace, AcceptedInputDigest: "sha256:" + strings.Repeat("b", 64), CommittedVersion: 1,
 		AcceptedAt: timestamppb.New(time.Now().Add(-time.Minute)), AuthorizationContextId: "accepted-authorization", ActorId: "actor-local", Scope: scope, AcceptedAction: api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEWORKSPACE}
 	return &api.AppendReceiptRequest{Context: &api.CallContext{RequestId: "request-first", IdempotencyKey: "append-first", ActorId: "actor-local", Scope: scope, AcceptedOperationGrantId: proto.String("grant-local")},
@@ -176,7 +176,7 @@ func coordinatedService(t *testing.T) (*sql.DB, *Server, *coordinationOwners, ap
 	peerAddress := startCoordinationWire(t, wire)
 	config := ownerservice.Config{Owner: owneridentity.Ledger, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{owneridentity.Workspace.Service(): coordinationToken, owneridentity.Fabric.Service(): coordinationToken, owneridentity.Build.Service(): coordinationToken}, CloudIdentityAddr: peerAddress, CloudIdentityToken: coordinationToken}
 	close, err := s.ConfigureCoordination(config, func(name string) string {
-		if strings.HasSuffix(name, "_URL") {
+		if strings.HasSuffix(name, "_ADDR") {
 			return peerAddress
 		}
 		if strings.HasSuffix(name, "_TOKEN") {
@@ -299,6 +299,7 @@ func TestLocalNoChargeReceiptRejectsUnverifiedOrForeignEvidence(t *testing.T) {
 		{"paid quote", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.Quote.TotalUsdMicros = 1 }, codes.InvalidArgument},
 		{"nonzero line", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.Quote.LineItems[0].AmountUsdMicros = 1 }, codes.InvalidArgument},
 		{"cloud provider", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.ResourcePlan.Provider = "tencent" }, codes.InvalidArgument},
+		{"noncanonical local provider", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.ResourcePlan.Provider = "local" }, codes.InvalidArgument},
 		{"paid mode", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.ResourcePlan.BillingMode = "PREPAID_MONTHLY" }, codes.InvalidArgument},
 		{"foreign workspace", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.WorkspaceId = "foreign" }, codes.InvalidArgument},
 		{"forged quote", func(r *api.AppendReceiptRequest) { r.QuoteAcceptance.ResourcePlan.Region = "foreign" }, codes.FailedPrecondition},

@@ -29,7 +29,7 @@ func (s *Server) ConfigureCoordination(config ownerservice.Config, getenv func(s
 	s.Authorizer = authorizer
 	for _, owner := range []owneridentity.Owner{owneridentity.ResourceCatalog, owneridentity.Workspace} {
 		prefix := "OPL_" + strings.ToUpper(owner.String())
-		address := strings.TrimSpace(getenv(prefix + "_URL"))
+		address := strings.TrimSpace(getenv(prefix + "_ADDR"))
 		if address == "" {
 			continue
 		}

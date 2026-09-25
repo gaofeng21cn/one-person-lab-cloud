@@ -36,7 +36,7 @@ func ValidateLocalNoChargeReceiptInput(r *api.AppendReceiptRequest) error {
 		!artifactDigest.MatchString(r.GetEvidenceDigest()) || r.GetEvidenceDigest() != q.GetSnapshotDigest() ||
 		q.GetAcceptanceId() == "" || q.GetObligationId() != r.GetOwnerEvidenceReference() || q.GetWorkspaceId() == "" ||
 		q.GetQuote().GetId() == "" || q.GetQuote().GetStatus() != api.QuoteStatusEnum_QUOTE_STATUS_ENUM_ACCEPTED || q.GetQuote().GetTotalUsdMicros() != 0 ||
-		q.GetResourcePlan().GetBillingMode() != "LOCAL_NO_CHARGE" || q.GetResourcePlan().GetProvider() != "local" ||
+		q.GetResourcePlan().GetBillingMode() != "LOCAL_NO_CHARGE" || q.GetResourcePlan().GetProvider() != "local-docker" ||
 		q.GetResourcePlan().GetComputePlanId() == "" || q.GetResourcePlan().GetComputePlanId() != q.GetQuote().GetComputePlanId() ||
 		q.GetResourcePlan().GetStoragePlanId() == "" || q.GetResourcePlan().GetStoragePlanId() != q.GetQuote().GetStoragePlanId() ||
 		c.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || c.GetOperationId() != r.GetOwnerEvidenceReference() || c.GetResourceId() != q.GetWorkspaceId() ||

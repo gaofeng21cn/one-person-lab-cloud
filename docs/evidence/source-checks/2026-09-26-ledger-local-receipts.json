@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
   "action": "Persist and read authenticated Local no-charge Workspace receipts in the existing Ledger evidence store",
-  "recordedAt": "2026-09-25T20:37:15.931927+00:00",
+  "recordedAt": "2026-09-25T20:42:31.911721+00:00",
   "baseSha": "609f5749ff567446fcbe6253f7740421ac3889ea",
   "sourceFilesSha256": {
     "services/ledger/cmd/ledger/main.go": "1d2e020a3aed061fbaec5d6032f3757147996e3defe624d379c200e73f5d47e6",
     "services/ledger/eventconsumer/server.go": "50472c9397fa6f4c012a17b46a2485e1139b3213990cf45d840cf99a8c9e3c4f",
-    "services/ledger/eventconsumer/configure.go": "f4480f474b085f4bd9f40df241c28357f865d460c06e7f7fded88229f161e07e",
+    "services/ledger/eventconsumer/configure.go": "1eaba6030e74187ade34c953ebbd3b4b495b77a89c20b075114d0ed39e96d820",
     "services/ledger/eventconsumer/coordination.go": "e69162030accfc9f7e14ee567a253e136d5b647e8133e8f53b031ce4161f67d9",
-    "services/ledger/eventconsumer/coordination_postgres_test.go": "e5aeaeb093de57e7063588542902a9a80f572313afab28d625cbfa7ab9d62976",
-    "services/ledger/internal/ledger/local_receipt.go": "b0d6fe68a29231a6155d55cb270432c61ad54c4d3257314504a943ee75b8ca96",
+    "services/ledger/eventconsumer/coordination_postgres_test.go": "7b256327a76308316f65fb84efb92f8d8da04fbcb71452f7c40729008de35a0a",
+    "services/ledger/internal/ledger/local_receipt.go": "013393c576da986442fc29d33a0d77f1761b71f5d57c481020b704db7d90959b",
     "services/ledger/internal/ledger/postgres_store.go": "324ac6c9de6fb300787b6c73c7377651cf80878a9b45840dae027e25c81036eb",
     "services/ledger/internal/ledger/types.go": "21b3836f251d1da11be685fa7eac699ae3886f154e0e3c71c49978c2e85190c2",
-    "docs/opl-ledger.md": "9e2e59f8ecda729920a024ef388e4cce48a6665a8c7aece83709fe35d4ae2021"
+    "docs/opl-ledger.md": "c903dcd5e032d5251ae3fd5e9839fb1cf35cf4f6fcc69b6e23aa395d0f4128df"
   },
   "sharedContractInputs": {
     "owner": "Resource Catalog / Workspace integration slice",
@@ -42,12 +42,28 @@
       "Changed immutable payload and caller-key retargeting are rejected",
       "Generic legacy writer, reader, list and lifecycle mutations cannot access new typed owner evidence",
       "Legacy HTTP receipt behavior remains compatible; missing typed dependencies fail closed"
-    ]
+    ],
+    "contractAlignmentRecheck": {
+      "command": "cd services/ledger && OPL_POSTGRES_TESTS=1 LEDGER_TEST_DATABASE_URL=<isolated-loopback-postgres> go test ./eventconsumer -run TestLocalNoChargeReceipt -count=1 -v",
+      "result": "passed",
+      "topLevelTestsPassed": 3,
+      "testsAndSubtestsPassed": 13,
+      "testsSkipped": 0,
+      "changes": [
+        "Require exact canonical local-docker provider; reject local alias",
+        "Use canonical typed-owner OPL_RESOURCE_CATALOG_ADDR and OPL_WORKSPACE_ADDR configuration"
+      ]
+    }
   },
   "logs": [
     {
       "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/ledger-local-receipts-final.log",
       "sha256": "e2299f03c0723e33efefe889274d3da523d40d634e1aa15aa26b5a4fd96de967",
+      "retention": "local automation audit artifact"
+    },
+    {
+      "path": "/Users/gaofeng/.codex/automations/github-ci/audits/20260926T190557Z-account-patrol/ledger-local-receipts-provider-fix.log",
+      "sha256": "e996432385b8363fb14071bdc3469465ea02b44ed7775ceb48db18943de0454d",
       "retention": "local automation audit artifact"
     }
   ],
