@@ -160,21 +160,26 @@ func (s *Service) authorize(ctx context.Context, call *api.CallContext, action a
 	callerTenant := call.GetScope().GetTenant().GetTenantId()
 	platform := call.GetScope().GetPlatform() != nil
 	// Serve's own delivery records are authoritative for the tenant of a Workspace
-	// it has delivered; a caller whose scope names a different tenant is refused
-	// before the live authority is even consulted.
+	// it has delivered; a caller whose own scope names a different tenant is
+	// refused before the live authority is even consulted.
 	if known && !platform && callerTenant != tenant {
 		return status.Error(codes.PermissionDenied, "workspace belongs to another tenant")
 	}
-	// A Workspace Serve has never delivered has no tenant recorded here, so Serve
-	// does not invent one: the live CloudIdentity decision remains the authority
-	// for that workspace, scoped to the caller's own tenant. Serve only supplies
-	// the persisted tenant when it actually knows it.
-	scopeTenant := tenant
-	if !known && !platform {
-		scopeTenant = callerTenant
+	// The declared scope must match the caller's own scope or the shared authorizer
+	// refuses before CloudIdentity is even asked. A platform-scoped caller is
+	// therefore declared as a platform resource; a tenant-scoped caller is declared
+	// with the persisted tenant, or with its own tenant when Serve has no delivery
+	// record and must not invent one — the live decision remains the authority for
+	// that case.
+	scope := ownerservice.ResourceScope{}
+	if !platform {
+		scope.TenantID = tenant
+		if !known {
+			scope.TenantID = callerTenant
+		}
 	}
 	resource := &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE, Id: &workspaceID}
-	return s.Authorize(ctx, call, action, resource, ownerservice.ResourceScope{TenantID: scopeTenant})
+	return s.Authorize(ctx, call, action, resource, scope)
 }
 
 // ListDeployments returns the Serve-owned delivery attempts for one Workspace.

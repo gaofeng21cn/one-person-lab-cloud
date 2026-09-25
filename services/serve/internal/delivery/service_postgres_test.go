@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -20,23 +22,40 @@ import (
 	"opl-cloud/services/serve/migrations"
 )
 
-// allowed records the decisions the fake CloudIdentity issued so a test can
-// assert Serve asked about the resource its own records own.
-type allowed struct {
-	resource string
-	action   api.AuthorizationActionEnum
+// fakeIdentity is a controllable CloudIdentity client. Tests wrap it in the real
+// ownerservice.Authorizer, so Serve's declared resource scope, audience and action
+// are exercised exactly as production would.
+type fakeIdentity struct {
+	deny  bool
+	last  *api.AuthorizationRequest
+	calls int
 }
 
-func allowAll() delivery.AuthorizeFunc {
-	return func(context.Context, *api.CallContext, api.AuthorizationActionEnum, *api.AuthorizationResource, ownerservice.ResourceScope) error {
-		return nil
+func (f *fakeIdentity) AuthorizeAction(_ context.Context, r *api.AuthorizationRequest, _ ...grpc.CallOption) (*api.AuthorizationDecision, error) {
+	f.calls++
+	f.last = r
+	if f.deny {
+		return &api.AuthorizationDecision{Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Result: api.AuthorizationResult_AUTHORIZATION_RESULT_DENIED}, nil
 	}
+	return &api.AuthorizationDecision{
+		Issuer: api.AuthorizationIssuer_AUTHORIZATION_ISSUER_CLOUD_IDENTITY, Result: api.AuthorizationResult_AUTHORIZATION_RESULT_ALLOWED,
+		ActorId: r.GetActorId(), Scope: r.GetScope(), SessionId: r.SessionId, AcceptedOperationGrantId: r.AcceptedOperationGrantId,
+		AudienceOwner: r.GetAudienceOwner(), Action: r.GetAction(), Resource: r.GetResource(),
+		PermissionVersion: 1, IssuedAt: timestamppb.New(time.Now().Add(-time.Second)), ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+	}, nil
 }
 
-func denyAll() delivery.AuthorizeFunc {
-	return func(context.Context, *api.CallContext, api.AuthorizationActionEnum, *api.AuthorizationResource, ownerservice.ResourceScope) error {
-		return status.Error(codes.PermissionDenied, "denied")
-	}
+func (*fakeIdentity) GetAuthorizationContext(context.Context, *api.GetAuthorizationContextRequest, ...grpc.CallOption) (*api.AuthorizationDecision, error) {
+	return nil, status.Error(codes.Unimplemented, "not used")
+}
+
+func (*fakeIdentity) IssueAcceptedOperationGrant(context.Context, *api.AcceptedOperationGrantRequest, ...grpc.CallOption) (*api.AcceptedOperationGrant, error) {
+	return nil, status.Error(codes.Unimplemented, "not used")
+}
+
+// ownerAuthorizer is the real Serve authorizer bound to the fake CloudIdentity.
+func ownerAuthorizer(identity *fakeIdentity) delivery.AuthorizeFunc {
+	return ownerservice.NewAuthorizer(ownerservice.OwnerServe, identity).Authorize
 }
 
 // fixture provisions Serve's real isolated database and installs its real
@@ -154,7 +173,8 @@ func serveContext() context.Context {
 // ready application.
 func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 	db, tenant, _ := fixture(t)
-	service, err := delivery.New(db, allowAll())
+	identity := &fakeIdentity{}
+	service, err := delivery.New(db, ownerAuthorizer(identity))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +188,14 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 	}
 	if access.GetAuthenticationMode() != api.WorkspaceAccessAuthenticationModeEnum_WORKSPACE_ACCESS_AUTHENTICATION_MODE_ENUM_APPLICATION_LOGIN || !access.GetApplicationCredentialsAvailable() || access.GetUrl() != "https://ws-ready.example/app" {
 		t.Fatalf("ready workspace reported %+v", access)
+	}
+	// Serve asked its own audience for the exact action and resource.
+	if identity.last.GetAudienceOwner() != api.OwnerEnum_OWNER_ENUM_SERVE ||
+		identity.last.GetAction() != api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWORKSPACEACCESS ||
+		identity.last.GetResource().GetKind() != api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_WORKSPACE ||
+		identity.last.GetResource().GetId() != "ws-ready" ||
+		identity.last.GetScope().GetTenant().GetTenantId() != tenant {
+		t.Fatalf("serve asked the wrong authority: %+v", identity.last)
 	}
 
 	// A pending runtime: the resource exists but the application is not ready, so
@@ -206,7 +234,8 @@ func TestServeReadSurfaceIsOwnerTruth(t *testing.T) {
 // live authorizer would allow it.
 func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
 	db, tenant, _ := fixture(t)
-	service, err := delivery.New(db, allowAll())
+	identity := &fakeIdentity{}
+	service, err := delivery.New(db, ownerAuthorizer(identity))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,12 +245,22 @@ func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
 	if _, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call("tenant-other", false), WorkspaceId: "ws-alpha"}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("cross-tenant read was not denied: %v", err)
 	}
-	if _, err := service.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call("tenant-other", true), WorkspaceId: "ws-alpha"}); err != nil {
+	// A platform-scoped caller is authorized as a platform resource, not forced
+	// into the Workspace's tenant scope.
+	platformIdentity := &fakeIdentity{}
+	platformService, err := delivery.New(db, ownerAuthorizer(platformIdentity))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := platformService.GetWorkspaceAccess(ctx, &api.GetWorkspaceAccessRpcRequest{Context: call("tenant-other", true), WorkspaceId: "ws-alpha"}); err != nil {
 		t.Fatalf("platform read of an existing workspace failed: %v", err)
+	}
+	if platformIdentity.last.GetScope().GetPlatform() == nil {
+		t.Fatalf("platform caller was scoped as a tenant: %+v", platformIdentity.last.GetScope())
 	}
 
 	// The live CloudIdentity denial is honored: Serve invents no allow.
-	denied, err := delivery.New(db, denyAll())
+	denied, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{deny: true}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +273,7 @@ func TestServeReadSurfaceRejectsCrossTenant(t *testing.T) {
 // current deployment are read from Serve's own rows with the contract vocabulary.
 func TestServeDeploymentHistoryAndAccessMode(t *testing.T) {
 	db, tenant, _ := fixture(t)
-	service, err := delivery.New(db, allowAll())
+	service, err := delivery.New(db, ownerAuthorizer(&fakeIdentity{}))
 	if err != nil {
 		t.Fatal(err)
 	}
