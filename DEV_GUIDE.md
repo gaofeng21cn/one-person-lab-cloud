@@ -102,5 +102,22 @@ runs the PostgreSQL, capacity, and local-Docker integration tests with zero
 skips, and removes the temporary container on exit. Neither gate accesses a
 production network or dispatches an instance deployment.
 
+The manually dispatched [Qualification workflow](.github/workflows/qualification.yml)
+also runs the real Linux quota and first Local application path in its existing
+`fabric` job. Each run owns a 12 GiB sparse ext4 image under the runner temporary
+directory, explicitly enables project quotas, and checks available disk space
+before mounting it. The existing hard-limit test must observe `EDQUOT` before
+the first application test runs.
+
+Fabric, Serve and both test executables are compiled by the ordinary runner.
+Only quota-dependent execution uses `sudo`, with a cleared environment and
+explicit isolated PostgreSQL, storage-root and precompiled-binary inputs. The
+first application test uses real owner processes and Docker resources named and
+cleaned up by that test. The job unmounts the filesystem and removes its temporary
+image and executables on completion or failure. This is Linux source
+qualification; it does not deploy an Instance or establish installed product
+readiness. A Docker Desktop daemon does not qualify a macOS Fabric process's
+filesystem, and fixture quota backends do not prove kernel enforcement.
+
 Whitepaper source or Profile changes additionally run `npm run build:whitepaper`;
 rendering is separate from the ordinary source gate and from publication.
