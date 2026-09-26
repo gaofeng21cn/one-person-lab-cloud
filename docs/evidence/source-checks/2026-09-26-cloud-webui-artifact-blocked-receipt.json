@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_webui_artifact_receipt",
+  "action": "Design the independent Cloud WebUI artifact manifest and receipt boundary without fabricating an OCI artifact",
+  "outcome": "blocked",
+  "recordedAt": "2026-09-26T12:30:48Z",
+  "testedSourceSha": "4d3b43962c3e45cc013a9f78b045790177154d2c",
+  "testedSourceTree": "c23f5b666ea0b5ac33a7471f657ede59ca535ec9",
+  "workingTreePolicy": "documentation-only changes are intentionally left for review; no source files were changed",
+  "scope": "Cloud WebUI artifact manifest/receipt design and independent Issue draft only; no source, BFF, build pipeline, owner writer, runtime, provider, production, publication, or money mutation",
+  "changedFiles": [
+    "docs/implementation/cloud-webui-artifact-manifest-receipt.md",
+    "docs/implementation/issue-draft-cloud-webui-356.md",
+    "docs/evidence/source-checks/fixtures/cloud-webui-artifact-manifest-draft.json",
+    "docs/evidence/source-checks/2026-09-26-cloud-webui-artifact-blocked-receipt.json"
+  ],
+  "contract": {
+    "path": "packages/contracts/opl-cloud-webui-artifact-contract.json",
+    "sha256": "fa03ea70d39cb15d59c29df9aa8886a0365eebb346360467f253fa2d7e6e1b03",
+    "requiredPlatforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ],
+    "requiredPort": 3000,
+    "requiredHealthPath": "/healthz",
+    "mutableTagAllowed": false
+  },
+  "predecessorReceipts": [
+    {
+      "path": "docs/evidence/source-checks/2026-09-26-agent-package-runtime-webui-chain-integration.json",
+      "sha256": "0da68467a0d1b3b9b124dd62d0493cac7fc2428c010f6a8206c11b8d6acd4892",
+      "meaning": "Cloud field-level mapping and fail-closed intake gate"
+    },
+    {
+      "path": "docs/evidence/source-checks/2026-09-26-oma-package-runtime-webui-intake-audit.json",
+      "sha256": "35dea4bb204b54c16c2b8ad54b57ae41ce95210cbf1ef817eb19baa41ed01262",
+      "meaning": "Real upstream input audit and blocking findings"
+    }
+  ],
+  "artifact": {
+    "manifest": "docs/evidence/source-checks/fixtures/cloud-webui-artifact-manifest-draft.json",
+    "manifestStatus": "draft_blocked",
+    "imageRepository": "ghcr.io/gaofeng21cn/one-person-lab-cloud-webui",
+    "indexDigest": null,
+    "platformDigests": null,
+    "artifactManifestSha256": null,
+    "buildExecuted": false,
+    "smokeReadinessExecuted": false,
+    "reasonNoDigest": "No OCI bytes were built or inspected in this documentation-only change; any digest would be fabricated."
+  },
+  "chain": {
+    "packageRef": null,
+    "runtimeReleaseRef": null,
+    "webuiRef": null,
+    "buildOciDigest": null,
+    "workspaceAccepted": false,
+    "fabricReadback": false,
+    "serveReadback": false,
+    "bffReadback": false
+  },
+  "securityEvidence": {
+    "apiKeySupplied": false,
+    "apiKeyPresentInChangedFiles": false,
+    "apiKeyPresentInReceipt": false,
+    "apiKeyPresentInLogs": false,
+    "method": "Documentation-only diff inspection; no secret form, browser storage, OCI build, runtime log, or API request was executed.",
+    "runtimeProofStatus": "not_run"
+  },
+  "verification": {
+    "focusedChecks": [
+      {
+        "command": "jq -e . docs/evidence/source-checks/fixtures/cloud-webui-artifact-manifest-draft.json docs/evidence/source-checks/2026-09-26-cloud-webui-artifact-blocked-receipt.json",
+        "exitCode": 0,
+        "status": "passed"
+      },
+      {
+        "command": "python3 focused documentation whitespace/final-newline check over the four changed files",
+        "exitCode": 0,
+        "status": "passed"
+      }
+    ],
+    "browserScenarios": {
+      "status": "not_run",
+      "reason": "No UI/BFF source was changed and no real artifact or owner API chain is available.",
+      "requiredBeforeAdmission": [
+        "loading/empty/error/permission/expired/retry/refresh/success",
+        "narrow viewport/keyboard/focus",
+        "Package/Runtime/WebUI exact-ref selection",
+        "Build progress/log and owner-reported OCI digest",
+        "Workspace/Quote/Deploy readback",
+        "Secret/model non-leakage"
+      ]
+    },
+    "artifactSmokeReadiness": {
+      "status": "blocked",
+      "reason": "No Cloud WebUI OCI artifact exists in this change."
+    },
+    "fullGate": {
+      "command": "npm run verify:local:full",
+      "status": "not_run",
+      "exitCode": null,
+      "reason": "Documentation-only change; the prior source receipt remains the evidence for the unchanged source tree."
+    },
+    "documentationBoundary": {
+      "command": "git status --short with a source-path allowlist check",
+      "exitCode": 0,
+      "status": "passed",
+      "result": "Only the four listed docs/evidence/source-checks or docs/implementation files are untracked; no apps/services/packages/tools/tests source path changed."
+    },
+    "logs": [],
+    "secretScan": {
+      "command": "rg -n -i --pcre2 '(?:sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[0-9A-Za-z-]{20,}|-----BEGIN (?:OPENSSH|RSA|EC|PRIVATE) KEY-----)' four changed files || test $? -eq 1",
+      "exitCode": 0,
+      "status": "passed",
+      "result": "No credential-shaped value was found; the change contains only placeholders/nulls and explanatory text."
+    }
+  },
+  "notProven": [
+    "A real Cloud WebUI multi-arch OCI artifact and digest",
+    "Runtime ABI and Package format compatibility against qualified upstream inputs",
+    "Build OCI digest from three exact refs",
+    "Cloud WebUI port 3000 /healthz readiness readback",
+    "Accepted Quote -> Workspace -> Fabric -> Serve -> BFF chain",
+    "Browser receipt for the W13/W14/W16/W26 scenarios"
+  ],
+  "issueDraft": {
+    "path": "docs/implementation/issue-draft-cloud-webui-356.md",
+    "created": true,
+    "externalIssueCreated": false,
+    "externalPullRequestCreated": false
+  },
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false,
+  "realMoneyOrProviderMutation": false
+}

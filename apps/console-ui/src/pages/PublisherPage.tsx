@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { getJson, postJson } from "../api/console-api.ts";
 import { uploadPackagePart, type UploadPermit } from "../api/publisher-api.ts";
+import { isImmutableDigest } from "../app/cloud-webui-model.ts";
 import { Button } from "../components/ui/index.ts";
 import "./publisher.css";
 
 type Session = { actorId: string; tenantId?: string; csrfToken: string };
-type Entry = { id: string; name: string; versionLabel?: string; status?: string };
+type Entry = { id: string; name: string; versionLabel?: string; status?: string; artifactDigest?: string; admissionReceiptId?: string; publisherContractDigest?: string; publisherContractObjectRef?: string };
 type Part = { partNumber: number; etag: string; sizeBytes: number; sha256: string };
 type Upload = { id: string; packageVersionId: string; partSizeBytes: number; completedParts: Part[] };
 type Build = { id: string; status: string; stage: string; artifactDigest?: string; resultCapabilityVersionId?: string };
 type Version = { id: string; status: string; artifactDigest: string; deploymentDescriptorDigest: string };
+type PackageVersion = { id: string; status?: string; versionLabel?: string; sha256?: string; sizeBytes?: number };
 type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; webuiId: string };
 type Work = { selection?: Selection; fingerprint: string; key: string; packageId?: string; uploadId?: string; packageVersionId?: string; buildId?: string };
 
@@ -43,6 +45,7 @@ export function PublisherPage() {
   const [namespaces, setNamespaces] = useState<Entry[]>([]);
   const [packages, setPackages] = useState<Entry[]>([]);
   const [webuis, setWebuis] = useState<Entry[]>([]);
+  const [runtimeCatalogError, setRuntimeCatalogError] = useState("");
   const [namespaceId, setNamespaceId] = useState("");
   const [namespaceName, setNamespaceName] = useState("");
   const [packageId, setPackageId] = useState("");
@@ -55,6 +58,7 @@ export function PublisherPage() {
   const [error, setError] = useState("");
   const [build, setBuild] = useState<Build | null>(null);
   const [version, setVersion] = useState<Version | null>(null);
+  const [packageVersion, setPackageVersion] = useState<PackageVersion | null>(null);
   const work = useRef<Work | null>(null);
   const execution = useRef<AbortController | null>(null);
   const storageKey = (s: Session) => `opl-publisher:${s.actorId}:${s.tenantId || "platform"}`;
@@ -70,6 +74,7 @@ export function PublisherPage() {
       try {
         const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
         const [ns, ui] = await Promise.all([pages(`${base}/namespaces`, abort.signal), pages(`${base}/catalog/webui-versions`, abort.signal)]);
+        try { await pages(`${base}/catalog/runtime-versions`, abort.signal); } catch (cause) { if (!abort.signal.aborted) setRuntimeCatalogError(cause instanceof Error ? cause.message : "runtime_catalog_unavailable"); }
         if (abort.signal.aborted) return;
         setSession(active); setNamespaces(ns); setWebuis(ui.filter((v) => v.status === "approved"));
         setNamespaceId(ns[0]?.id || ""); setWebuiId(ui.find((v) => v.status === "approved")?.id || "");
@@ -83,6 +88,10 @@ export function PublisherPage() {
         if (work.current?.buildId) {
           const job = await getJson<Build>(`${base}/builds/${encodeURIComponent(work.current.buildId)}`, { signal: abort.signal });
           if (!abort.signal.aborted) setBuild(job);
+        }
+        if (work.current?.packageVersionId) {
+          const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(work.current.packageVersionId)}`, { signal: abort.signal });
+          if (!abort.signal.aborted) setPackageVersion(readback);
         }
         if (!abort.signal.aborted) setMessage("选择 ZIP Package 与已批准的 WebUI，构建不可变版本。");
       } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布目录读取失败"); }
@@ -154,12 +163,16 @@ export function PublisherPage() {
       await command(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts }, "complete");
       const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, webuiVersionId: webuiId }, "build");
       current.buildId = job.id; save(active, current); await readBuild(job.id, abort.signal);
+      const readback = await getJson<PackageVersion>(`${base}/package-versions/${encodeURIComponent(upload.packageVersionId)}`, { signal: abort.signal });
+      if (!abort.signal.aborted) setPackageVersion(readback);
     } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布失败，可重试读取或继续上传。"); }
     finally { if (!abort.signal.aborted) setBusy(false); }
   }
 
+  const selectableWebuis = webuis.filter((item) => item.status === "approved" && isImmutableDigest(item.artifactDigest));
   return <section className="panel publisher-page">
-    <div className="panel-title"><div><h2>发布 Package</h2><p>上传源码包，选择 WebUI，构建可供部署的版本。</p></div></div>
+    <div className="panel-title"><div><h2>Cloud WebUI / Agent Package</h2><p>读取 Package，选择不可变 WebUI，提交 Build 并回读 owner 结果。</p></div><span className="publisher-draft-badge">Draft / fixture-aware</span></div>
+    <div className="publisher-boundary" role="note"><strong>Fail-closed boundary</strong><span>Runtime catalog、Quote/Workspace/Deploy readback 与 Secret/model owner API 尚未在当前 BFF 契约中提供；页面不伪造 Runtime、OCI digest 或业务状态。</span></div>
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
         <label>命名空间<select aria-label="命名空间" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建命名空间</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
@@ -167,14 +180,16 @@ export function PublisherPage() {
         <label>Package<select aria-label="Package" value={packageId} onChange={(e) => setPackageId(e.target.value)}><option value="">新建 Package</option>{packages.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
         {!packageId && <label>Package 名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} required /></label>}
         <label>版本名称<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
-        <label>WebUI<select aria-label="WebUI" value={webuiId} onChange={(e) => setWebuiId(e.target.value)} required><option value="">选择已批准的 WebUI</option>{webuis.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.versionLabel}</option>)}</select></label>
+        <label>WebUI<select aria-label="WebUI" value={webuiId} onChange={(e) => setWebuiId(e.target.value)} required><option value="">选择已批准且 digest 固定的 WebUI</option>{webuis.map((v) => <option disabled={v.status !== "approved" || !isImmutableDigest(v.artifactDigest)} key={v.id} value={v.id}>{v.name} · {v.versionLabel} · {v.status === "approved" && isImmutableDigest(v.artifactDigest) ? "可选" : "拒绝"}</option>)}</select></label>
+        <div className="publisher-selection-readback" aria-label="WebUI owner readback"><span>artifact digest：<code>{webuis.find((v) => v.id === webuiId)?.artifactDigest || "暂不可用"}</code></span><span>Runtime catalog：<code>{runtimeCatalogError ? "unavailable" : "not exposed"}</code></span><span>admission receipt：<code>{webuis.find((v) => v.id === webuiId)?.admissionReceiptId || "暂不可用"}</code></span></div>
         <label>ZIP 文件<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
-        <Button type="submit" disabled={!webuis.length}>上传并构建 / 继续上传</Button>
+        <Button type="submit" disabled={!selectableWebuis.length}>上传并构建 / 继续上传</Button>
       </fieldset>
     </form>
     <p role="status">{message}</p>
     {error && <p role="alert">{error}</p>}
-    {build && <section aria-label="构建结果"><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd>{build.artifactDigest && <><dt>镜像摘要</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl><Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button></section>}
+    {packageVersion && <section aria-label="Package 版本读回"><h3>Package owner readback</h3><dl><dt>Package Version</dt><dd><code>{packageVersion.id}</code></dd><dt>状态</dt><dd>{packageVersion.status || "暂不可用"}</dd><dt>Package bytes sha256</dt><dd><code>{packageVersion.sha256 || "暂不可用"}</code></dd></dl></section>}
+    {build && <section aria-label="构建结果"><dl><dt>构建</dt><dd>{build.id}</dd><dt>状态</dt><dd>{stageLabel[build.status] || build.status}</dd><dt>Package ref</dt><dd><code>{work.current?.packageVersionId || "暂不可用"}</code></dd><dt>WebUI ref</dt><dd><code>{webuiId || "暂不可用"}</code></dd>{build.artifactDigest && <><dt>OCI digest（Build owner）</dt><dd><code>{build.artifactDigest}</code></dd></>}</dl><Button disabled={busy} variant="outline" onClick={() => void run(true)}>刷新构建状态</Button></section>}
     {version && <section aria-label="已就绪版本"><h3>版本已就绪</h3><p>{version.id}</p><p>版本与构建结果一致</p><code>{version.deploymentDescriptorDigest}</code></section>}
   </section>;
 }
