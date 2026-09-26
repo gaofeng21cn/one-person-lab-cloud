@@ -365,6 +365,7 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	}
 	restarted.Ledger, restarted.Capability, restarted.Serve = wl, workspaceOwner.Capability, workspaceOwner.Serve
 	recoveredOp, recovered, recoveredReady := waitState(restarted, api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY)
+	t.Logf("recovery readback: status=%s stage=%s error=%s runtime=%s deployment=%s epoch=%d url=%s ready=%t available=%t outcome=%s receipt=%s original_url=%s", recoveredOp.Status, recoveredOp.Stage, recoveredOp.ErrorCode, recoveredReady.RuntimeInstanceId, recoveredReady.DeploymentId, recoveredReady.ExecutionEpoch, recoveredReady.AccessUrl, recoveredReady.ProcessReady, recoveredReady.ApplicationAvailable, recoveredReady.Outcome.String(), recoveredReady.ReadinessReceiptId, ready.AccessUrl)
 	if recoveredOp.ID != opID || recovered.ResourceSetID != original.ResourceSetID || recovered.FabricOperationID != original.FabricOperationID || !bytes.Equal(recovered.RuntimeReservation, original.RuntimeReservation) || !bytes.Equal(recovered.RuntimeCommand, original.RuntimeCommand) || !bytes.Equal(recovered.ZeroChargeReceipt, original.ZeroChargeReceipt) || recoveredReady.RuntimeInstanceId != ready.RuntimeInstanceId || recoveredReady.DeploymentId != ready.DeploymentId || recoveredReady.ExecutionEpoch != ready.ExecutionEpoch {
 		t.Fatal("recovery changed an original order, resource, receipt or runtime identity")
 	}
