@@ -5,6 +5,7 @@ package fabric
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,7 +57,34 @@ func TestLinuxLocalDockerProjectQuotaEnforcesHardLimit(t *testing.T) {
 	if err := os.Chown(data, 65534, 65534); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestLinuxLocalDockerProjectQuotaUnprivilegedWrite$")
+	// The privileged workflow keeps its qualification root private to root. Copy
+	// the test binary to /tmp so the child can exec it after dropping privileges;
+	// the helper stays outside the quota project and cannot affect its budget.
+	original, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.CreateTemp("/tmp", "opl-quota-writer-*.test")
+	if err != nil {
+		_ = original.Close()
+		t.Fatal(err)
+	}
+	helperPath := helper.Name()
+	t.Cleanup(func() {
+		_ = original.Close()
+		_ = helper.Close()
+		_ = os.Remove(helperPath)
+	})
+	if _, err := io.Copy(helper, original); err != nil {
+		t.Fatal(err)
+	}
+	if err := helper.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(helperPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(helperPath, "-test.run=^TestLinuxLocalDockerProjectQuotaUnprivilegedWrite$")
 	cmd.Env = []string{"OPL_TEST_PROJECT_QUOTA_WRITE_PATH=" + filepath.Join(data, "limit.bin")}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65534, Gid: 65534}}
 	if output, err := cmd.CombinedOutput(); err != nil {
