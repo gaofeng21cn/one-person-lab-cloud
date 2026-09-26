@@ -126,7 +126,9 @@ if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMO
     const path = join(bin, command);
     await writeFile(path, mock); await chmod(path, 0o755);
   }
-  const root = join(temporary, "opl-local-first-deploy-test-1");
+  const root = join("/tmp", "opl-local-first-deploy-test-1");
+  await rm(root, { recursive: true, force: true });
+  t.after(() => rm(root, { recursive: true, force: true }));
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temporary, OPL_QUALIFICATION_ROOT: root,
     GITHUB_RUN_ID: "test", GITHUB_RUN_ATTEMPT: "1", QUALIFICATION_COMMAND_LOG: log, QUALIFICATION_AVAILABLE_BYTES: String(16 * 1024 ** 3), QUALIFICATION_MOUNTED: "1", QUALIFICATION_MODULE_MARKER: join(temporary, "quota-module-present") };
   const githubEnv = join(temporary, "github-env");
@@ -174,7 +176,7 @@ if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMO
   assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `umount ${root}/storage`));
   assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `rm -rf --one-file-system -- ${root}`));
   await writeFile(log, "");
-  await assert.rejects(run("bash", ["-c", prepare.run], { env: { ...env, GITHUB_RUN_ID: "low", GITHUB_RUN_ATTEMPT: "space", OPL_QUALIFICATION_ROOT: join(temporary, "opl-local-first-deploy-low-space"), QUALIFICATION_AVAILABLE_BYTES: "1024" } }));
+  await assert.rejects(run("bash", ["-c", prepare.run], { env: { ...env, GITHUB_RUN_ID: "low", GITHUB_RUN_ATTEMPT: "space", OPL_QUALIFICATION_ROOT: "/tmp/opl-local-first-deploy-low-space", QUALIFICATION_AVAILABLE_BYTES: "1024" } }));
   assert.deepEqual((await commands()).map((call) => call.command), ["df"]);
   await writeFile(log, "");
   await assert.rejects(run("bash", ["-c", cleanup.run], { env: { ...env, OPL_QUALIFICATION_ROOT: temporary } }));
