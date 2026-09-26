@@ -51,6 +51,13 @@ func TestLinuxLocalDockerProjectQuotaEnforcesHardLimit(t *testing.T) {
 			t.Fatalf("quota readback path=%s state=%#v err=%v", path, state, err)
 		}
 	}
+	// The mounted qualification root is created by root and may default to
+	// mode 0700. Make only this disposable test mount traversable before the
+	// child drops to the workload UID; the project directory remains the quota
+	// boundary under test.
+	if err := os.Chmod(root, 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Chmod(directory, 0711); err != nil {
 		t.Fatal(err)
 	}
