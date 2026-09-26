@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "action": "Land the field-level Cloud integration contract and a fail-closed intake validator for the Agent Package + Runtime Release + WebUI -> immutable OCI chain",
+  "recordedAt": "2026-09-26T11:30:00Z",
+  "baseSha": "60fad1ef6893db43ee8cc6be73a7b38cb9aaf7be",
+  "sourceTree": "f003bbd0c632cb2d6a97c16b1bdb324f41793204",
+  "worktree": "/Users/huangrende/.codex/worktrees/f536/one-person-lab-cloud",
+  "scope": "Cloud-side integration contract and admission gate only; no upstream artifact was invented",
+  "changedFiles": [
+    "docs/implementation/agent-package-runtime-webui-chain.md",
+    "tools/package-runtime-webui-intake.ts",
+    "tests/tools/package-runtime-webui-intake.test.ts",
+    "packages/contracts/opl-cloud-webui-artifact-contract.json",
+    "packages/contracts/README.md",
+    "docs/evidence/source-checks/fixtures/webui-artifact-development-fixture.json"
+  ],
+  "fieldLevelMapping": {
+    "packageManifestDigest": "OMA/Foundry candidate-index blueprint_digest/manifest_digest -> Capability W08",
+    "packageContentDigest": "OMA/Foundry candidate_digest (opl-foundry-candidate-index.v2) -> Capability W08",
+    "runtimeReleaseIdImageDigestAbi": "runtime_control.runtime_releases artifact_digest/runtime_abi_version/publisher_contract (Runtime Control W10)",
+    "runtimeEntrypointReadinessModelSecret": "RuntimePublisherContract buildRecipe/applicationAccess/modelConfiguration (upstream -> Serve via descriptor)",
+    "webuiDigestPort3000Health": "capability.webui_versions + opl-cloud-webui-artifact-contract.json (port 3000, /healthz)",
+    "ociDescriptorDigest": "capability.capability_versions.artifact_digest + DeploymentDescriptor digest (Build W09)",
+    "modelConfigRef": "workspace.model_configurations (Workspace W15)",
+    "secretBindingRefs": "fabric.secret_bindings (Fabric W11)",
+    "runtimeReadbackEntryUrlReadinessEvidence": "serve.agent_runtime_instances.access_url/readiness_evidence_ref + serve.access_bindings (Serve W17)"
+  },
+  "newAssets": {
+    "webuiArtifactContract": "packages/contracts/opl-cloud-webui-artifact-contract.json",
+    "intakeValidator": "tools/package-runtime-webui-intake.ts",
+    "intakeValidatorTests": "tests/tools/package-runtime-webui-intake.test.ts",
+    "developmentFixture": "docs/evidence/source-checks/fixtures/webui-artifact-development-fixture.json"
+  },
+  "failClosedBehavior": [
+    "admitChain refuses a mutable Runtime image tag instead of a sha256 digest",
+    "admitChain refuses a WebUI artifact without an immutable digest",
+    "admitChain refuses a WebUI port other than 3000",
+    "admitChain refuses a Runtime ABI the WebUI does not declare (compatibility)",
+    "admitChain refuses a missing Package content digest instead of deriving it",
+    "admitDevelopmentFixture admits the IBD candidate only when explicitly labelled fixture/legacy"
+  ],
+  "upstreamStatusAtRecord": {
+    "omaFoundry": "blocked: foundry/versions empty; newest run foundry_run_failed; OPL_FOUNDRY_EVALUATOR_BIN and OPL_FOUNDRY_REVIEWER_BIN unset",
+    "oplAppRuntimeRelease": "blocked: only desktop DMG and mutable-tag WebUI image found; no server/headless Runtime OCI digest",
+    "cloudWebui": "Cloud-owned deliverable; contract landed, real artifact digest still to be produced"
+  },
+  "verification": {
+    "command": "npm run verify:local",
+    "exitCode": 0,
+    "sourceTests": 237,
+    "browserTests": 114,
+    "requiredSkips": 0,
+    "note": "source test count increased 230 -> 237 from the 7 new intake-validator cases",
+    "logs": [
+      {"path": "output/cloud-chain-integration-20260926/verify-local.log",
+       "sha256": "c89298bfb2fed4d1dee63c115b5cac32b8033eb815a05cad93bec559e0439708",
+       "retention": "local ignored artifact"}
+    ]
+  },
+  "notProven": [
+    "a fresh qualified OMA AgentVersion",
+    "an approved server/headless Runtime Release OCI",
+    "a real Cloud WebUI artifact digest",
+    "Build OCI digest for the three exact inputs",
+    "accepted Quote -> Workspace -> Fabric -> Serve deployment and BFF readback"
+  ],
+  "productionDeploymentDispatched": false,
+  "instanceQualificationPerformed": false,
+  "issueOrPullRequestCreated": false,
+  "realMoneyOrProviderMutation": false
+}

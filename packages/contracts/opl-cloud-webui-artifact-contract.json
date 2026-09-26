@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "owner": "OPL Cloud WebUI (W13/W14/W16)",
+  "purpose": "Own the Cloud WebUI artifact identity and network compatibility fact that Build fixes into an immutable OCI.",
+  "state": "current",
+  "machineBoundary": "Cloud WebUI OCI artifact identity (digest, platform, port, health) and its declared Runtime/Package compatibility.",
+  "lifecycle": {
+    "type": "long_term_contract",
+    "removalCondition": "Replace only with a newer coordinated Cloud WebUI artifact contract."
+  },
+  "webuiArtifact": {
+    "schema": "opl-cloud-webui-artifact/v1",
+    "carrierKind": "oci_image",
+    "requiredIdentityFields": [
+      "imageDigest",
+      "platforms",
+      "port",
+      "healthPath",
+      "runtimeAbiVersions",
+      "packageFormatVersions"
+    ],
+    "platforms": ["linux/amd64", "linux/arm64"],
+    "port": 3000,
+    "portSemantics": "fixed_cross_module_compatibility_abi",
+    "healthPath": "/healthz",
+    "digestRequired": true,
+    "mutableTagAllowed": false,
+    "writesOwnerFacts": false
+  },
+  "compatibility": {
+    "runtimeAbiVersionRequiredMatch": true,
+    "packageFormatVersionRequiredMatch": true,
+    "declaredOnArtifact": true
+  }
+}
