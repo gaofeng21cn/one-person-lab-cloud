@@ -203,7 +203,7 @@ jobs:
       - name: Initialize Local qualification directory
         run: |
           set -euo pipefail
-          qualification_root="$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          qualification_root="/tmp/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf 'OPL_QUALIFICATION_ROOT=%s\n' "$qualification_root" >> "$GITHUB_ENV"
 
       - *checkout
@@ -242,11 +242,11 @@ jobs:
       - name: Prepare project quota filesystem
         run: |
           set -euo pipefail
-          test "$OPL_QUALIFICATION_ROOT" = "$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test "$OPL_QUALIFICATION_ROOT" = "/tmp/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -e "$OPL_QUALIFICATION_ROOT"
           # The real Local plan reserves 10 GiB. Keep room for filesystem metadata
           # and the fixture while refusing to overcommit the runner filesystem.
-          available_bytes="$(df -B1 --output=avail "$RUNNER_TEMP" | tail -n 1 | tr -d ' ')"
+          available_bytes="$(df -B1 --output=avail /tmp | tail -n 1 | tr -d ' ')"
           [[ "$available_bytes" =~ ^[0-9]+$ ]]
           (( available_bytes >= 14 * 1024 * 1024 * 1024 ))
           mkdir -p "$OPL_QUALIFICATION_ROOT"/{storage,tmp,home}
@@ -304,7 +304,7 @@ jobs:
         if: ${{ always() }}
         run: |
           set -euo pipefail
-          test "$OPL_QUALIFICATION_ROOT" = "$RUNNER_TEMP/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test "$OPL_QUALIFICATION_ROOT" = "/tmp/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -L "$OPL_QUALIFICATION_ROOT"
           if mountpoint -q "$OPL_QUALIFICATION_ROOT/storage"; then
             sudo umount "$OPL_QUALIFICATION_ROOT/storage"
