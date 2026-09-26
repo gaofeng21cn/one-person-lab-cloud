@@ -371,7 +371,10 @@ func TestLocalFirstApplicationDeploymentQualification(t *testing.T) {
 	assertPublicAccess(recoveredReady, true, "recovered-access")
 	qReadURL(t, ctx, recoveredReady.AccessUrl, 2)
 	recoveredID, recoveredMount := qApplication(t, ctx, wid, recoveredReady, storageRoot)
-	if recoveredOp.Status != "awaiting_confirmation" || recoveredOp.Stage != "activation" || recoveredReady.AccessUrl != ready.AccessUrl {
+	// Docker may assign a new ephemeral host port when the same container is
+	// started again. The recovered entry must be the current owner readback,
+	// and BFF/HTTP verification above proves that it is live and publishable.
+	if recoveredOp.Status != "awaiting_confirmation" || recoveredOp.Stage != "activation" || recoveredReady.AccessUrl == "" {
 		t.Fatal("recovery changed the published entry or fabricated Workspace activation")
 	}
 	if recoveredID != containerID || recoveredMount != mount {
