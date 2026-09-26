@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -49,28 +50,17 @@ func TestLinuxLocalDockerProjectQuotaEnforcesHardLimit(t *testing.T) {
 			t.Fatalf("quota readback path=%s state=%#v err=%v", path, state, err)
 		}
 	}
-
-	file, err := os.OpenFile(filepath.Join(data, "limit.bin"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
+	if err := os.Chmod(directory, 0711); err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	chunk := make([]byte, 256*1024)
-	var writeErr error
-	for written := 0; written < 2*int(hardLimitBytes); written += len(chunk) {
-		if _, writeErr = file.Write(chunk); writeErr != nil {
-			break
-		}
+	if err := os.Chown(data, 65534, 65534); err != nil {
+		t.Fatal(err)
 	}
-	// Buffered page-cache writes can defer a project quota violation until
-	// writeback. Force that real filesystem boundary before classifying the
-	// hard-limit result; accepting nil here would turn a non-enforced mount into
-	// a false qualification pass.
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	if !errors.Is(writeErr, syscall.EDQUOT) {
-		t.Fatalf("write beyond project hard limit err=%v", writeErr)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestLinuxLocalDockerProjectQuotaUnprivilegedWrite$")
+	cmd.Env = []string{"OPL_TEST_PROJECT_QUOTA_WRITE_PATH=" + filepath.Join(data, "limit.bin")}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65534, Gid: 65534}}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("unprivileged project quota write: %v\n%s", err, output)
 	}
 	if err := quota.Clear(root, projectID); err != nil {
 		t.Fatalf("clear project quota: %v", err)
@@ -81,5 +71,33 @@ func TestLinuxLocalDockerProjectQuotaEnforcesHardLimit(t *testing.T) {
 	record, err := quota.ReadProject(root, projectID)
 	if err != nil || record.HardLimitBytes != 0 || record.SoftLimitBytes != 0 {
 		t.Fatalf("cleared project quota=%#v err=%v", record, err)
+	}
+}
+
+func TestLinuxLocalDockerProjectQuotaUnprivilegedWrite(t *testing.T) {
+	path := os.Getenv("OPL_TEST_PROJECT_QUOTA_WRITE_PATH")
+	if path == "" {
+		t.Skip("only run as the unprivileged quota writer")
+	}
+	if os.Geteuid() == 0 {
+		t.Fatal("project quota enforcement must be checked without root privileges")
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	chunk := make([]byte, 256*1024)
+	var writeErr error
+	for written := 0; written < 2*1024*1024; written += len(chunk) {
+		if _, writeErr = file.Write(chunk); writeErr != nil {
+			break
+		}
+	}
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	if !errors.Is(writeErr, syscall.EDQUOT) {
+		t.Fatalf("write beyond project hard limit err=%v", writeErr)
 	}
 }
