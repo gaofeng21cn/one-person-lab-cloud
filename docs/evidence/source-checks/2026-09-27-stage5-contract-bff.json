@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_stage5_contract_bff_receipt",
+  "recordedAt": "2026-09-27T22:00:00+08:00",
+  "status": "source_contracts_and_bff_routes_verified",
+  "scope": "Shared Build Package+Runtime+WebUI contract revision and Console BFF real owner read routes; no Workspace/Fabric/Serve deployment, Instance adoption, provider purchase, or real-money mutation",
+  "source": {
+    "commit": "55ef1df3",
+    "workingTreeBeforeReceipt": "clean",
+    "contractSource": "packages/contracts/proto/internal.proto",
+    "generatedGo": "packages/contracts/go/api/internal.pb.go",
+    "bffRoutes": [
+      "GET /api/v2/capability-versions",
+      "GET /api/v2/catalog/models",
+      "GET /api/v2/wallet",
+      "POST /api/v2/workspaces",
+      "GET /api/v2/workspaces",
+      "GET /api/v2/operations/workspace/{operationId}"
+    ]
+  },
+  "contractChanges": {
+    "buildInput": "CreateBuildRequest and BuildInputRequest carry explicit runtime_version_id; Build validates and persists the exact selected Runtime Release with Package and WebUI.",
+    "ownerBoundary": "Capability resolves the explicitly selected approved Runtime Release; no implicit default or mutable tag is substituted when an explicit id is supplied.",
+    "walletJson": "Wallet.balance_usd_micros is emitted as balanceUSDMicros decimal string by publicjson; the value is read only from GatewayProductService.GetWallet."
+  },
+  "verification": {
+    "focused": [
+      "cd packages/contracts/go && go test ./... -count=1",
+      "cd services/build && go test ./internal/build -count=1",
+      "cd services/capability && go test ./catalog -count=1",
+      "cd apps/console-bff && go test ./internal/httpapi ./internal/clients"
+    ],
+    "focusedResult": "passed",
+    "nodeSourceTests": {
+      "command": "npm test",
+      "result": "failed_one_pre_existing_environment_contract",
+      "passed": 228,
+      "failed": 1,
+      "failure": "tests/tools/verify-local.test.ts:180 expected the low-space prepare path to invoke df, but observed no mocked command; no contract, BFF, Build, or Capability focused test failed"
+    },
+    "defaultLocalGate": {
+      "command": "npm run verify:local",
+      "result": "failed_same_pre_existing_environment_contract",
+      "failure": "tests/tools/verify-local.test.ts:180 expected df, observed []"
+    }
+  },
+  "blockedNextStage": "Full browser-to-Workspace-to-Fabric-to-Serve acceptance remains pending the Stage 3 approved opaque runtime injection/mount handle and successful owner readback. The Stage 2 TCR artifact is not reused as a substitute for that readback."
+}
