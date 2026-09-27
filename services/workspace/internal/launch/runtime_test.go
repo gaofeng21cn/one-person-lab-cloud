@@ -128,9 +128,42 @@ func (f *deniedResourceContinuation) ReadResources(_ context.Context, r *api.Res
 	return proto.Clone(f.readback).(*api.ResourceReadback), nil
 }
 
-// A configured Ledger marker: these tests begin with its already confirmed,
-// persisted receipt. Calling a new Ledger action is intentionally unsupported.
 type persistedReceiptLedger struct{ api.LedgerCoordinationClient }
+
+type deploymentReceiptLedger struct {
+	api.LedgerCoordinationClient
+	appendLost, readLost   bool
+	appendCalls, readCalls int
+	request                *api.AppendReceiptRequest
+	receipt                *api.Receipt
+}
+
+func (l *deploymentReceiptLedger) AppendReceipt(_ context.Context, r *api.AppendReceiptRequest, _ ...grpc.CallOption) (*api.Receipt, error) {
+	l.appendCalls++
+	if l.request == nil {
+		l.request = proto.Clone(r).(*api.AppendReceiptRequest)
+		l.receipt = &api.Receipt{Id: "deployment-receipt-original", Kind: r.Receipt.Kind, Owner: r.Receipt.Owner, OperationId: r.Receipt.OperationId, ArtifactDigest: r.Receipt.ArtifactDigest, Outcome: r.Receipt.Outcome, EvidenceSummary: r.Receipt.EvidenceSummary, CreatedAt: timestamppb.Now()}
+	} else if !proto.Equal(l.request, r) {
+		return nil, status.Error(codes.AlreadyExists, "deployment receipt replay changed")
+	}
+	if l.appendLost {
+		l.appendLost = false
+		return nil, status.Error(codes.Unavailable, "deployment receipt append response lost")
+	}
+	return proto.Clone(l.receipt).(*api.Receipt), nil
+}
+
+func (l *deploymentReceiptLedger) ReadReceiptByReference(_ context.Context, r *api.GetReceiptByReferenceRequest, _ ...grpc.CallOption) (*api.Receipt, error) {
+	l.readCalls++
+	if l.request == nil || r.GetOwner() != "workspace" || r.GetOwnerEvidenceReference() != deploymentReceiptReference("operation-original") {
+		return nil, status.Error(codes.NotFound, "deployment receipt missing")
+	}
+	if l.readLost {
+		l.readLost = false
+		return nil, status.Error(codes.Unavailable, "deployment receipt read response lost")
+	}
+	return proto.Clone(l.receipt).(*api.Receipt), nil
+}
 
 func (f *runtimeResourceClient) ReadResources(_ context.Context, r *api.ResourceReadbackRequest, _ ...grpc.CallOption) (*api.ResourceReadback, error) {
 	if r.ResourceSetId != f.readback.ResourceSetId {
@@ -307,6 +340,85 @@ func TestRuntimeRecoveryUsesDurableOriginalIdentities(t *testing.T) {
 				t.Fatal("drift dispatched another runtime")
 			}
 		})
+	}
+}
+
+func TestRuntimeReadinessRequiresExactDeploymentReceiptAndReplaysOriginalReceipt(t *testing.T) {
+	db := runtimeDatabase(t)
+	service, op, accepted, _ := seedRuntimeOrder(t, db)
+	capability := &runtimeCapabilityClient{version: runtimeVersion(t, accepted.Quote.GetCapabilityVersionId())}
+	serve := &runtimeServeClient{}
+	ledger := &deploymentReceiptLedger{readLost: true}
+	service.Capability, service.Serve, service.Ledger = capability, serve, ledger
+
+	if err := service.Resume(t.Context(), op.ID); status.Code(err) != codes.Unavailable {
+		t.Fatalf("lost deployment receipt read must remain recoverable: %v", err)
+	}
+	stored, err := service.Store.ReadOperation(t.Context(), op.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "awaiting_confirmation" || stored.Observation != "unknown" || stored.Terminal() {
+		t.Fatalf("receipt read loss became terminal: %+v", stored)
+	}
+	_, firstResult, err := decodeOrder(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := &api.RuntimeDeployCommand{}
+	if err = protojson.Unmarshal(firstResult.RuntimeCommand, command); err != nil {
+		t.Fatal(err)
+	}
+	if ledger.request == nil {
+		t.Fatal("deployment receipt append request was not persisted")
+	}
+	if ledger.request.GetReceipt().GetArtifactDigest() != command.GetDeploymentDescriptor().GetArtifact().GetDigest() {
+		t.Fatalf("deployment receipt did not bind the runtime artifact digest: request=%v command=%v", ledger.request.GetReceipt(), command)
+	}
+	var reservationEpoch int64
+	if err = db.QueryRowContext(t.Context(), `SELECT execution_epoch FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='reserve_runtime'`, op.ID).Scan(&reservationEpoch); err != nil {
+		t.Fatal(err)
+	}
+	if reservationEpoch != 0 {
+		t.Fatalf("Workspace guessed Serve's reservation epoch: %d", reservationEpoch)
+	}
+	if _, err = db.ExecContext(t.Context(), `UPDATE workspace.saga_steps SET next_attempt_at=NULL WHERE operation_id=$1`, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Resume(t.Context(), op.ID); err != nil {
+		t.Fatal(err)
+	}
+	stored, err = service.Store.ReadOperation(t.Context(), op.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "succeeded" || stored.Observation != "confirmed" || stored.CompletedAt.IsZero() {
+		t.Fatalf("exact deployment receipt did not complete Workspace: %+v", stored)
+	}
+	var workspaceState, inputDigest string
+	var epoch int64
+	if err = db.QueryRowContext(t.Context(), `SELECT status FROM workspace.workspaces WHERE id=$1`, op.ResourceID).Scan(&workspaceState); err != nil {
+		t.Fatal(err)
+	}
+	if workspaceState != "active" {
+		t.Fatalf("Workspace did not become active after Ledger readback: %s", workspaceState)
+	}
+	if err = db.QueryRowContext(t.Context(), `SELECT input_digest,execution_epoch FROM workspace.saga_steps WHERE operation_id=$1 AND step_key='deployment_receipt_read'`, op.ID).Scan(&inputDigest, &epoch); err != nil {
+		t.Fatal(err)
+	}
+	if len(inputDigest) != len("sha256:")+64 || epoch != 1 {
+		t.Fatalf("receipt step identity was not persisted exactly: digest=%q epoch=%d", inputDigest, epoch)
+	}
+	_, result, err := decodeOrder(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readback := &api.Receipt{}
+	if protojson.Unmarshal(result.DeploymentReceipt, readback) != nil || readback.GetId() != "deployment-receipt-original" || readback.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT {
+		t.Fatalf("deployment receipt was not persisted: %s", result.DeploymentReceipt)
+	}
+	if ledger.appendCalls != 2 || ledger.readCalls != 2 {
+		t.Fatalf("recovery did not replay the original receipt identity: append=%d read=%d", ledger.appendCalls, ledger.readCalls)
 	}
 }
 

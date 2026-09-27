@@ -103,6 +103,7 @@ type orderResult struct {
 	RuntimeReservation    json.RawMessage `json:"runtimeReservation,omitempty"`
 	RuntimeCommand        json.RawMessage `json:"runtimeCommand,omitempty"`
 	RuntimeReadback       json.RawMessage `json:"runtimeReadback,omitempty"`
+	DeploymentReceipt     json.RawMessage `json:"deploymentReceipt,omitempty"`
 	RuntimeDeployAccepted bool            `json:"runtimeDeployAccepted,omitempty"`
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -94,6 +95,9 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 			// original command is idempotent, so an unavailable observation may
 			// resume that same Start instead of leaving a never-started runtime.
 		} else if result.RuntimeDeployAccepted || !runtimeNeedsStart(observed) {
+			if observed.GetOutcome() == api.Observation_OBSERVATION_CONFIRMED && observed.GetState() == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
+				return s.ensureDeploymentReceipt(ctx, op, token, accepted, resources, command, observed, result)
+			}
 			return nil
 		}
 	} else {
@@ -119,8 +123,14 @@ func (s *Service) resumeRuntime(ctx context.Context, op ownerstore.Operation, to
 	if err = s.checkpoint(ctx, op, token, "deploy_runtime", "runtime", "awaiting_confirmation", "confirmed", reservation.OperationId, "", *result); err != nil {
 		return err
 	}
-	_, err = s.readRuntime(ctx, op, token, command, result)
-	return err
+	observed, err = s.readRuntime(ctx, op, token, command, result)
+	if err != nil {
+		return err
+	}
+	if observed.GetOutcome() != api.Observation_OBSERVATION_CONFIRMED || observed.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY {
+		return nil
+	}
+	return s.ensureDeploymentReceipt(ctx, op, token, accepted, resources, command, observed, result)
 }
 
 func runtimeBinding(op ownerstore.Operation, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, result *orderResult, commit *api.OwnerCommitEvidence) (*api.ResourceExecutionBinding, error) {
@@ -170,7 +180,7 @@ func runtimeCommand(op ownerstore.Operation, grant string, accepted *api.QuoteAc
 
 func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, token string, command *api.RuntimeDeployCommand, result *orderResult) (*api.RuntimeReadback, error) {
 	request := &api.RuntimeReadbackRequest{Context: continuation(op, result.GrantID, "read_runtime"), RuntimeInstanceId: command.RuntimeInstanceId, DeploymentId: command.DeploymentId}
-	if err := s.beginStep(ctx, op, token, "read_runtime", 8, "serve", "runtime", request); err != nil {
+	if err := s.beginStepAtEpoch(ctx, op, token, "read_runtime", 8, "serve", "runtime", request, command.GetExecutionEpoch()); err != nil {
 		return nil, err
 	}
 	observed, err := s.Serve.ReadRuntime(ctx, request)
@@ -195,6 +205,110 @@ func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, toke
 		return nil, err
 	}
 	return observed, nil
+}
+
+const deploymentReceiptReferenceSuffix = ":deployment"
+
+func deploymentReceiptReference(operationID string) string {
+	return operationID + deploymentReceiptReferenceSuffix
+}
+
+func (s *Service) ensureDeploymentReceipt(ctx context.Context, op ownerstore.Operation, token string, accepted *api.QuoteAcceptance, resources *api.ResourceReadback, command *api.RuntimeDeployCommand, observed *api.RuntimeReadback, result *orderResult) error {
+	if s.Ledger == nil {
+		// Runtime readiness is not a Workspace terminal fact until the independent
+		// deployment receipt has been appended and read back from Ledger.
+		return nil
+	}
+	commit, err := evidence(op)
+	if err != nil {
+		return err
+	}
+	digest, err := deploymentEvidenceDigest(command, observed, resources)
+	if err != nil {
+		return err
+	}
+	request := &api.AppendReceiptRequest{
+		Context: continuation(op, result.GrantID, "deployment_receipt"),
+		Receipt: &api.Receipt{
+			Kind:            api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT,
+			Owner:           api.OwnerEnum_OWNER_ENUM_WORKSPACE,
+			OperationId:     proto.String(op.ID),
+			ArtifactDigest:  proto.String(command.GetDeploymentDescriptor().GetArtifact().GetDigest()),
+			Outcome:         api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED,
+			EvidenceSummary: fmt.Sprintf("Workspace deployment %s ready at execution epoch %d.", command.GetDeploymentId(), command.GetExecutionEpoch()),
+		},
+		EvidenceDigest:         digest,
+		OwnerEvidenceReference: deploymentReceiptReference(op.ID),
+		QuoteAcceptance:        accepted,
+		OwnerCommitEvidence:    commit,
+	}
+	if err = s.beginStepAtEpoch(ctx, op, token, "deployment_receipt_append", 9, "ledger", "receipt", request, command.GetExecutionEpoch()); err != nil {
+		return err
+	}
+	appended, err := s.Ledger.AppendReceipt(ctx, request)
+	if err != nil {
+		return s.failedCall(ctx, op, token, "deployment_receipt_append", "receipt", *result, err)
+	}
+	if err = validateDeploymentReceipt(op, command, appended); err != nil {
+		return s.failedCall(ctx, op, token, "deployment_receipt_append", "receipt", *result, err)
+	}
+	readRequest := &api.GetReceiptByReferenceRequest{Context: continuation(op, result.GrantID, "read_deployment_receipt"), Owner: "workspace", OwnerEvidenceReference: deploymentReceiptReference(op.ID)}
+	if err = s.beginStepAtEpoch(ctx, op, token, "deployment_receipt_read", 10, "ledger", "receipt", readRequest, command.GetExecutionEpoch()); err != nil {
+		return err
+	}
+	readback, err := s.Ledger.ReadReceiptByReference(ctx, readRequest)
+	if err != nil {
+		return s.failedCall(ctx, op, token, "deployment_receipt_read", "receipt", *result, err)
+	}
+	if err = validateDeploymentReceipt(op, command, readback); err != nil || !proto.Equal(appended, readback) {
+		if err == nil {
+			err = status.Error(codes.DataLoss, "Ledger deployment receipt readback differs from append result")
+		}
+		return s.failedCall(ctx, op, token, "deployment_receipt_read", "receipt", *result, err)
+	}
+	result.DeploymentReceipt = wire(readback)
+	return s.checkpointOutcome(ctx, op, token, "deployment_receipt_read", "succeeded", "succeeded", "confirmed", "confirmed", readback.GetId(), "", "", *result)
+}
+
+func deploymentEvidenceDigest(command *api.RuntimeDeployCommand, observed *api.RuntimeReadback, resources *api.ResourceReadback) (string, error) {
+	material, err := (proto.MarshalOptions{Deterministic: true}).Marshal(&api.RuntimeDeployCommand{
+		WorkspaceId:                   command.GetWorkspaceId(),
+		DeploymentId:                  command.GetDeploymentId(),
+		RuntimeInstanceId:             command.GetRuntimeInstanceId(),
+		CapabilityVersionId:           command.GetCapabilityVersionId(),
+		DeploymentDescriptor:          command.GetDeploymentDescriptor(),
+		ResourceSetId:                 command.GetResourceSetId(),
+		DataAttachmentId:              command.GetDataAttachmentId(),
+		ModelConfigurationVersion:     command.GetModelConfigurationVersion(),
+		ModelSelections:               command.GetModelSelections(),
+		DataCompatibility:             command.GetDataCompatibility(),
+		DeploymentDescriptorDigest:    command.GetDeploymentDescriptorDigest(),
+		ExecutionEpoch:                command.GetExecutionEpoch(),
+		DeploymentDescriptorObjectRef: command.GetDeploymentDescriptorObjectRef(),
+		RuntimeConfiguration:          command.GetRuntimeConfiguration(),
+	})
+	if err != nil {
+		return "", status.Error(codes.Internal, "deployment command evidence cannot be encoded")
+	}
+	readback, err := (proto.MarshalOptions{Deterministic: true}).Marshal(observed)
+	if err != nil {
+		return "", status.Error(codes.Internal, "runtime readback evidence cannot be encoded")
+	}
+	resourceReadback, err := (proto.MarshalOptions{Deterministic: true}).Marshal(resources)
+	if err != nil {
+		return "", status.Error(codes.Internal, "Fabric readback evidence cannot be encoded")
+	}
+	combined := append(append(material, 0), readback...)
+	combined = append(append(combined, 0), resourceReadback...)
+	sum := sha256.Sum256(combined)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func validateDeploymentReceipt(op ownerstore.Operation, command *api.RuntimeDeployCommand, receipt *api.Receipt) error {
+	if receipt == nil || receipt.GetId() == "" || receipt.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT || receipt.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || receipt.GetOperationId() != op.ID || receipt.GetArtifactDigest() != command.GetDeploymentDescriptor().GetArtifact().GetDigest() || receipt.GetOutcome() != api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED || receipt.GetCreatedAt() == nil || receipt.GetCreatedAt().CheckValid() != nil {
+		return status.Error(codes.DataLoss, "Ledger deployment receipt differs from the original runtime execution")
+	}
+	return nil
 }
 
 func runtimeNeedsStart(observed *api.RuntimeReadback) bool {

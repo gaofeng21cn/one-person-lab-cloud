@@ -2,7 +2,9 @@ package coordination_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"net"
 	"os"
 	"sync"
@@ -206,6 +208,22 @@ func TestResourceAcceptanceAndReadback(t *testing.T) {
 		}
 		if quote != r.QuoteAcceptance.Quote.Id || workspace != r.WorkspaceId || obligation != r.ObligationId {
 			t.Fatal("original quote obligation binding lost")
+		}
+		var executionEpoch int64
+		var executionPlanDigest string
+		var executionPlanBytes []byte
+		if err = db.QueryRow(`SELECT execution_epoch,execution_plan_digest,execution_plan_bytes FROM fabric.resource_actions WHERE command_id=$1`, first.OperationId).Scan(&executionEpoch, &executionPlanDigest, &executionPlanBytes); err != nil {
+			t.Fatal(err)
+		}
+		original := proto.Clone(r).(*api.EnsureResourcesCommand)
+		original.Context = nil
+		normalized, err := (proto.MarshalOptions{Deterministic: true}).Marshal(original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(normalized)
+		if executionEpoch != 0 || executionPlanDigest != "sha256:"+hex.EncodeToString(sum[:]) || string(executionPlanBytes) != string(normalized) {
+			t.Fatalf("resource action lost exact replay identity: epoch=%d digest=%s bytes=%d", executionEpoch, executionPlanDigest, len(executionPlanBytes))
 		}
 		catalogOwner.mu.Lock()
 		defer catalogOwner.mu.Unlock()

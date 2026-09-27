@@ -6,7 +6,9 @@ package coordination
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -212,7 +214,9 @@ func (s *Service) EnsureResources(ctx context.Context, r *api.EnsureResourcesCom
 		if err != nil {
 			return nil, persistenceError(err)
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO fabric.resource_actions (id,resource_set_id,command_id,action,provider_idempotency_key,approved_input,observation_result,error_code) VALUES ($1,$2,$3,'allocate',$4,$5,'unknown','DEPENDENCY_UNAVAILABLE')`, "raction_"+uuid.NewString(), setID, operationID, "allocate:"+setID, body)
+		sum := sha256.Sum256(normalized)
+		executionPlanDigest := "sha256:" + hex.EncodeToString(sum[:])
+		_, err = tx.ExecContext(ctx, `INSERT INTO fabric.resource_actions (id,resource_set_id,command_id,action,provider_idempotency_key,approved_input,observation_result,error_code,execution_epoch,execution_plan_digest,execution_plan_bytes) VALUES ($1,$2,$3,'allocate',$4,$5,'unknown','DEPENDENCY_UNAVAILABLE',0,$6,$7)`, "raction_"+uuid.NewString(), setID, operationID, "allocate:"+setID, body, executionPlanDigest, normalized)
 		if err != nil {
 			return nil, persistenceError(err)
 		}

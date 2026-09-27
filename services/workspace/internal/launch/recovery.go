@@ -2,7 +2,9 @@ package launch
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
@@ -345,6 +347,24 @@ func validateAcceptance(op ownerstore.Operation, offer, accepted *api.QuoteAccep
 }
 
 func (s *Service) beginStep(ctx context.Context, op ownerstore.Operation, token, step string, sequence int, owner, stage string, request proto.Message) error {
+	return s.beginStepAtEpoch(ctx, op, token, step, sequence, owner, stage, request, stepExecutionEpoch(request))
+}
+
+func (s *Service) beginStepAtEpoch(ctx context.Context, op ownerstore.Operation, token, step string, sequence int, owner, stage string, request proto.Message, executionEpoch int64) error {
+	normalized, err := proto.MarshalOptions{Deterministic: true}.Marshal(request)
+	if err != nil {
+		return status.Error(codes.Internal, "Workspace step input cannot be encoded")
+	}
+	sum := sha256.Sum256(normalized)
+	inputDigest := "sha256:" + hex.EncodeToString(sum[:])
+	snapshot, err := json.Marshal(struct {
+		Input          json.RawMessage `json:"input"`
+		InputDigest    string          `json:"inputDigest"`
+		ExecutionEpoch int64           `json:"executionEpoch"`
+	}{Input: wire(request), InputDigest: inputDigest, ExecutionEpoch: executionEpoch})
+	if err != nil {
+		return status.Error(codes.Internal, "Workspace step input cannot be stored")
+	}
 	tx, err := s.Store.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return dbError(err)
@@ -355,8 +375,8 @@ func (s *Service) beginStep(ctx context.Context, op ownerstore.Operation, token,
 	if err = fenced(res, err); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO workspace.saga_steps(id,operation_id,step_key,sequence,target_owner,command_id,idempotency_key,input_snapshot,observation_result,attempt_count)
-		VALUES($1,$2,$3,$4,$5,$6,$6,$7,'unknown',1) ON CONFLICT(operation_id,step_key) DO UPDATE SET attempt_count=workspace.saga_steps.attempt_count+1,observation_result='unknown',confirmed_at=NULL,next_attempt_at=NULL,updated_at=now()`, id("step_"), op.ID, step, sequence, owner, op.ID+":"+step, []byte(wire(request)))
+	_, err = tx.ExecContext(ctx, `INSERT INTO workspace.saga_steps(id,operation_id,step_key,sequence,target_owner,command_id,idempotency_key,input_snapshot,input_digest,execution_epoch,observation_result,attempt_count)
+		VALUES($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,'unknown',1) ON CONFLICT(operation_id,step_key) DO UPDATE SET attempt_count=workspace.saga_steps.attempt_count+1,observation_result='unknown',confirmed_at=NULL,next_attempt_at=NULL,input_snapshot=$7,input_digest=$8,execution_epoch=$9,updated_at=now()`, id("step_"), op.ID, step, sequence, owner, op.ID+":"+step, snapshot, inputDigest, executionEpoch)
 	if err != nil {
 		return dbError(err)
 	}
@@ -364,6 +384,21 @@ func (s *Service) beginStep(ctx context.Context, op ownerstore.Operation, token,
 		return dbError(err)
 	}
 	return nil
+}
+
+func stepExecutionEpoch(request proto.Message) int64 {
+	switch r := request.(type) {
+	case *api.RuntimeDeployCommand:
+		return r.GetExecutionEpoch()
+	case *api.RuntimeReadbackRequest:
+		return 0
+	case *api.RuntimeReservationCommand:
+		// Serve allocates the runtime epoch in Reserve. Workspace records zero
+		// until that owner returns the authoritative epoch.
+		return 0
+	default:
+		return 0
+	}
 }
 
 func fenced(result sql.Result, err error) error {
@@ -394,7 +429,7 @@ func (s *Service) checkpointOutcome(ctx context.Context, op ownerstore.Operation
 		return dbError(err)
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET result=$3,status=$4,stage=$5,observation_result=$6,error_code=NULLIF($7,''),updated_at=now(),completed_at=CASE WHEN $4='failed' THEN now() ELSE completed_at END
+	res, err := tx.ExecContext(ctx, `UPDATE workspace.operations SET result=$3,status=$4,stage=$5,observation_result=$6,error_code=NULLIF($7,''),updated_at=now(),completed_at=CASE WHEN $4 IN ('succeeded','failed') THEN now() ELSE completed_at END
 		WHERE id=$1 AND worker_lease_token=$2 AND worker_lease_until>now() AND status NOT IN ('succeeded','failed','cancelled')`, op.ID, token, raw, state, stage, operationObservation, operationCode)
 	if err = fenced(res, err); err != nil {
 		return err
@@ -405,6 +440,12 @@ func (s *Service) checkpointOutcome(ctx context.Context, op ownerstore.Operation
 	}
 	if state == "failed" {
 		_, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET status='failed',version=version+1,updated_at=now() WHERE id=$1 AND active_operation_id=$2`, op.ResourceID, op.ID)
+		if err != nil {
+			return dbError(err)
+		}
+	}
+	if state == "succeeded" && operationObservation == "confirmed" {
+		_, err = tx.ExecContext(ctx, `UPDATE workspace.workspaces SET status='active',version=version+1,updated_at=now() WHERE id=$1 AND active_operation_id=$2 AND status NOT IN ('deleted','deleting')`, op.ResourceID, op.ID)
 		if err != nil {
 			return dbError(err)
 		}
