@@ -114,7 +114,10 @@ func withProviderOperationJournal(
 	if !ok {
 		binding, ok = directStorageProviderMutationBinding(operation)
 		if !ok {
-			return ctx
+			binding, ok = directApplicationRuntimeProviderMutationBinding(operation)
+			if !ok {
+				return ctx
+			}
 		}
 	}
 	return context.WithValue(ctx, providerMutationJournalContextKey{}, &providerMutationJournal{
@@ -138,6 +141,33 @@ func directStorageProviderMutationBinding(operation FabricOperation) (WorkspaceL
 		SchemaVersion: 1, LaunchOperationID: operation.OperationID,
 		AccountID: operation.AccountID, WorkspaceID: operation.WorkspaceID,
 		Stage: "storage", Action: "ensure_storage", FabricOperationID: operation.OperationID,
+		IdempotencyKey: operation.IdempotencyKey, RequestHash: operation.RequestHash,
+	}
+	return binding, validWorkspaceLaunchStageBinding(binding)
+}
+
+// directApplicationRuntimeProviderMutationBinding gives the application runtime
+// operation its own provider mutation journal. The operation is dispatched by
+// the Control Plane as a standalone, idempotent Fabric operation rather than as
+// a Workspace launch stage, so it carries no launch stage binding, yet its
+// provider work (attaching the gateway container to the workspace network) is a
+// real mutation that needs the same claim, replay, and readback contract.
+func directApplicationRuntimeProviderMutationBinding(operation FabricOperation) (WorkspaceLaunchStageBinding, bool) {
+	if operation.CallerService != "control-plane" || operation.Action != "create_workspace_application_runtime" || operation.ResourceKind != "workspace_application_runtime" {
+		return WorkspaceLaunchStageBinding{}, false
+	}
+	for _, value := range []string{
+		operation.OperationID, operation.ResourceID, operation.AccountID, operation.WorkspaceID,
+		operation.IdempotencyKey, operation.RequestHash,
+	} {
+		if value == "" || value != strings.TrimSpace(value) {
+			return WorkspaceLaunchStageBinding{}, false
+		}
+	}
+	binding := WorkspaceLaunchStageBinding{
+		SchemaVersion: 1, LaunchOperationID: operation.OperationID,
+		AccountID: operation.AccountID, WorkspaceID: operation.WorkspaceID,
+		Stage: "runtime", Action: "ensure_runtime", FabricOperationID: operation.OperationID,
 		IdempotencyKey: operation.IdempotencyKey, RequestHash: operation.RequestHash,
 	}
 	return binding, validWorkspaceLaunchStageBinding(binding)
