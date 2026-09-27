@@ -150,7 +150,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	} else {
 		runtime = seed("runtime", "runtime.txt", "approved runtime\n")
 	}
-	webui := seed("webui", "index.html", "<h1>Cloud WebUI</h1>\n")
+	webui := buildCloudAgentWebUI(t, docker, registry)
 	schemaBytes, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
 	if err != nil {
 		t.Fatal(err)
@@ -180,8 +180,8 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	recipeContract.PackageInput.SourceRoot = packageSourceRoot
 	recipeContract.PackageInput.TargetPath = "/agent"
-	recipeContract.WebuiInput.SourcePath = "/index.html"
-	recipeContract.WebuiInput.TargetPath = "/web/index.html"
+	recipeContract.WebuiInput.SourcePath = "/web"
+	recipeContract.WebuiInput.TargetPath = "/web"
 	recipeContract.Recipe.Repository = registry + "/recipe"
 	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	var pkg []byte
@@ -262,7 +262,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		t.Fatalf("output package: %q %v", payload, e)
 	}
 	html, e := os.ReadFile(filepath.Join(outDir, "web/index.html"))
-	if e != nil || string(html) != "<h1>Cloud WebUI</h1>\n" {
+	if e != nil || !bytes.Contains(html, []byte(`data-opl-cloud-agent-webui="v1"`)) || bytes.Contains(html, []byte("<h1>Cloud WebUI</h1>")) {
 		t.Fatalf("output WebUI: %q %v", html, e)
 	}
 	// Stop the actual builder: all subsequent confirmations must be registry reads.
@@ -292,6 +292,27 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 		t.Fatalf("lost-ack recovery: %v", e)
 	}
 	verifyPersistedRecovery(t, ctx, &reopened, input, repository, jobID, result.Manifest)
+}
+
+func buildCloudAgentWebUI(t *testing.T, docker func(...string) string, registry string) *api.ArtifactReference {
+	t.Helper()
+	if ref := os.Getenv("OPL_WEBUI_IMAGE"); ref != "" {
+		repo, d, ok := strings.Cut(ref, "@")
+		if !ok || !digestPattern.MatchString(d) {
+			t.Fatal("OPL_WEBUI_IMAGE must be digest-pinned")
+		}
+		return &api.ArtifactReference{Repository: repo, Digest: d, Platform: &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}}
+	}
+	repo := registry + "/cloud-agent-webui"
+	tag := repo + ":source"
+	webuiDir := filepath.Join("..", "..", "..", "..", "webui", "cloud-agent")
+	docker("build", "--platform", "linux/arm64", "--provenance=false", "--sbom=false", "--tag", tag, "-f", filepath.Join(webuiDir, "Dockerfile"), webuiDir)
+	pushed := docker("push", tag)
+	digestValue := regexp.MustCompile(`(?:digest: )(?P<digest>sha256:[a-f0-9]{64})`).FindStringSubmatch(pushed)
+	if len(digestValue) != 2 {
+		t.Fatalf("Cloud WebUI image push did not return an immutable digest: %s", pushed)
+	}
+	return &api.ArtifactReference{Repository: repo, Digest: digestValue[1], Platform: &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
