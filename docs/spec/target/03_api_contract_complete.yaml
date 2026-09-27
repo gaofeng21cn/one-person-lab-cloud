@@ -7118,10 +7118,13 @@ components:
           $ref: '#/components/schemas/OpaqueId'
         webuiVersionId:
           $ref: '#/components/schemas/OpaqueId'
+        runtimeVersionId:
+          $ref: '#/components/schemas/OpaqueId'
       required:
       - packageVersionId
       - webuiVersionId
-      description: runtimeVersionId来自管理员有效默认策略，Build创建时冻结。客户不传镜像/provider。
+      - runtimeVersionId
+      description: 客户显式选择获准的精确RuntimeRelease；Build创建时冻结三项版本引用，服务端仍校验Owner准入与兼容性。客户不传镜像/provider。
     BuildLog:
       type: object
       additionalProperties: false

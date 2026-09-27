@@ -56,7 +56,7 @@ func workspaceIdentity(action api.AuthorizationActionEnum, id string) *fakeIdent
 }
 func workspaceWrite() *http.Request {
 	r := sessionRequest(http.MethodPost, "/api/v2/workspaces")
-	r.Body = io.NopCloser(strings.NewReader(`{"name":"Research","quoteId":"quote-1","renewalMode":"manual"}`))
+	r.Body = io.NopCloser(strings.NewReader(`{"name":"Research","quoteId":"quote-1","renewalMode":"manual","automaticRenewalConsent":false}`))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", "csrf-1")
 	r.Header.Set("Idempotency-Key", "create-workspace-1")
@@ -75,7 +75,7 @@ func TestWorkspaceProcessRoutePreservesAcceptedOwnerResponse(t *testing.T) {
 		t.Fatalf("response: %d %v %s", w.Code, w.Header(), w.Body.String())
 	}
 	c := p.created.GetContext()
-	if c.GetActorId() != "actor-1" || c.GetScope().GetTenant().GetTenantId() != "tenant-1" || c.GetIdempotencyKey() != "create-workspace-1" || c.GetAuthorizationContextId() != "workspace-authorization" || p.created.GetBody().GetQuoteId() != "quote-1" {
+	if c.GetActorId() != "actor-1" || c.GetScope().GetTenant().GetTenantId() != "tenant-1" || c.GetIdempotencyKey() != "create-workspace-1" || c.GetAuthorizationContextId() != "workspace-authorization" || p.created.GetBody().GetQuoteId() != "quote-1" || p.created.GetBody().GetRenewalMode() != api.CreateWorkspaceRequestRenewalModeEnum_CREATE_WORKSPACE_REQUEST_RENEWAL_MODE_ENUM_MANUAL || p.created.GetBody().GetAutomaticRenewalConsent() {
 		t.Fatalf("caller not preserved: %v", p.created)
 	}
 	var body map[string]any

@@ -93,7 +93,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.Tenant && s.tenant == nil) {
+		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.Tenant && s.tenant == nil) || (owner == owneridentity.Gateway && s.gateway == nil) {
 			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
 			return
 		}
@@ -225,6 +225,19 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	})
 	s.publisherRoute(mux, "GET /api/v2/builds/{buildId}", owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_BUILD, "buildId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.build.GetBuild(r.Context(), &api.GetBuildRpcRequest{Context: c, BuildId: r.PathValue("buildId")})
+	})
+	s.publisherRoute(mux, "GET /api/v2/capability-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
+		statusValue := strings.TrimSpace(r.URL.Query().Get("status"))
+		request := &api.ListCapabilityVersionsRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryPackageId: optionalQuery(r, "packageId")}
+		if statusValue != "" {
+			value, ok := api.ListCapabilityVersionsRpcRequestStatusEnum_value["LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_"+strings.ToUpper(strings.ReplaceAll(statusValue, "-", "_"))]
+			if !ok {
+				return nil, status.Error(codes.InvalidArgument, "status must be ready")
+			}
+			statusEnum := api.ListCapabilityVersionsRpcRequestStatusEnum(value)
+			request.QueryStatus = &statusEnum
+		}
+		return s.capability.ListCapabilityVersions(r.Context(), request)
 	})
 	s.publisherRoute(mux, "GET /api/v2/capability-versions/{capabilityVersionId}", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETCAPABILITYVERSION, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "capabilityVersionId", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.GetCapabilityVersion(r.Context(), &api.GetCapabilityVersionRpcRequest{Context: c, CapabilityVersionId: r.PathValue("capabilityVersionId")})

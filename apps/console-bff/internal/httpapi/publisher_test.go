@@ -67,3 +67,94 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 		t.Fatal("cross-origin write reached owner")
 	}
 }
+
+type capabilityListProbe struct {
+	api.CapabilityProductServiceClient
+	request *api.ListCapabilityVersionsRpcRequest
+}
+
+func (p *capabilityListProbe) ListCapabilityVersions(_ context.Context, r *api.ListCapabilityVersionsRpcRequest, _ ...grpc.CallOption) (*api.CapabilityVersionPage, error) {
+	p.request = r
+	return &api.CapabilityVersionPage{}, nil
+}
+
+type publisherOwnerReader struct {
+	*fakeReader
+	capability api.CapabilityProductServiceClient
+	gateway    api.GatewayProductServiceClient
+}
+
+func (r publisherOwnerReader) PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient) {
+	return r.capability, nil
+}
+func (r publisherOwnerReader) GatewayClient() api.GatewayProductServiceClient { return r.gateway }
+
+type gatewayWalletProbe struct {
+	api.GatewayProductServiceClient
+	called       bool
+	modelsCalled bool
+	modelRequest *api.ListModelsRpcRequest
+}
+
+func (p *gatewayWalletProbe) ListModels(_ context.Context, r *api.ListModelsRpcRequest, _ ...grpc.CallOption) (*api.ModelPage, error) {
+	p.modelsCalled = true
+	p.modelRequest = r
+	return &api.ModelPage{}, nil
+}
+
+func (p *gatewayWalletProbe) GetWallet(_ context.Context, r *api.GetWalletRpcRequest, _ ...grpc.CallOption) (*api.Wallet, error) {
+	p.called = r.GetContext() != nil
+	return &api.Wallet{Source: api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY, Status: api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE, BalanceUsdMicros: 123456, Currency: api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD}, nil
+}
+
+func TestCapabilityVersionListPassesReadyFilterToOwner(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION}
+	probe := &capabilityListProbe{}
+	reader := publisherOwnerReader{fakeReader: resolvedReader(), capability: probe}
+	response := httptest.NewRecorder()
+	request := sessionRequest(http.MethodGet, "/api/v2/capability-versions?status=ready&cursor=c1&limit=10")
+	NewServer(reader, identity).Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.request == nil || probe.request.GetQueryStatus() != api.ListCapabilityVersionsRpcRequestStatusEnum_LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_READY || probe.request.GetQueryCursor() != "c1" || probe.request.GetQueryLimit() != 10 {
+		t.Fatalf("owner request=%v", probe.request)
+	}
+}
+
+func TestModelCatalogRouteUsesGatewayOwner(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMODELS
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}
+	probe := &gatewayWalletProbe{}
+	reader := publisherOwnerReader{fakeReader: resolvedReader(), gateway: probe}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/catalog/models?cursor=m1&limit=5"))
+	if response.Code != http.StatusOK || !probe.modelsCalled || probe.modelRequest.GetQueryCursor() != "m1" || probe.modelRequest.GetQueryLimit() != 5 {
+		t.Fatalf("model catalog response status=%d called=%v request=%v body=%s", response.Code, probe.modelsCalled, probe.modelRequest, response.Body.String())
+	}
+}
+
+func TestWalletRouteUsesGatewayOwnerAndFailsClosedWhenMissing(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETWALLET
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_GATEWAY
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, Id: proto.String("tenant-1")}
+	probe := &gatewayWalletProbe{}
+	reader := publisherOwnerReader{fakeReader: resolvedReader(), gateway: probe}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/wallet"))
+	if response.Code != http.StatusOK || !probe.called || !strings.Contains(response.Body.String(), `"balanceUSDMicros":"123456"`) {
+		t.Fatalf("wallet response status=%d called=%v body=%s", response.Code, probe.called, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	NewServer(publisherOwnerReader{fakeReader: resolvedReader()}, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/wallet"))
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "DEPENDENCY_UNAVAILABLE") {
+		t.Fatalf("missing gateway was not fail-closed: status=%d body=%s", response.Code, response.Body.String())
+	}
+}

@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "schema": "opl-foundry-candidate-transport.v1",
+  "owner": "OMA / Foundry",
+  "transport": {
+    "format": "ZIP",
+    "manifestPath": "manifest.json",
+    "candidateRoot": "candidate",
+    "candidateIndexPath": "candidate/candidate-index.json",
+    "candidateManifestPath": "candidate/agent/agent-pack.json",
+    "preserveCandidateBytes": true,
+    "outerTransportDigestDistinct": true
+  },
+  "identity": [
+    "transport archive sha256",
+    "candidate digest",
+    "candidate content digest",
+    "candidate index sha256",
+    "agent-pack manifest sha256",
+    "transport manifest sha256"
+  ],
+  "admission": {
+    "acceptedStatus": "development_transport_ready",
+    "requiredQualificationStatus": "not_qualified",
+    "requiredDomainQualityStatus": "not_evaluated",
+    "formalActivation": false
+  },
+  "validation": {
+    "rejectAbsolutePaths": true,
+    "rejectParentTraversal": true,
+    "rejectBackslashes": true,
+    "rejectDuplicateEntries": true,
+    "rejectSymlinks": true,
+    "maxExpandedBytes": "owner policy",
+    "maxFiles": "owner policy",
+    "verifyCandidateIndexEntries": true,
+    "verifyLengthPrefixedContentDigest": true
+  }
+}

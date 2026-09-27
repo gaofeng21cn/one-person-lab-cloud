@@ -149,8 +149,8 @@ func (s *Service) CreateBuild(ctx context.Context, req *api.CreateBuildRpcReques
 	return s.create(ctx, req.GetContext(), req.GetBody(), "")
 }
 func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.CreateBuildRequest, retry string) (*api.BuildJob, error) {
-	if call.GetIdempotencyKey() == "" || body.GetPackageVersionId() == "" || body.GetWebuiVersionId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "idempotency key, package version and WebUI version are required")
+	if call.GetIdempotencyKey() == "" || body.GetPackageVersionId() == "" || body.GetWebuiVersionId() == "" || body.GetRuntimeVersionId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency key, Package version, Runtime Release and Agent WebUI version are required")
 	}
 	if tenant(call) == "" {
 		return nil, status.Error(codes.PermissionDenied, "Build requires tenant scope")
@@ -158,7 +158,7 @@ func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.C
 	if err := s.authorize(ctx, call, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, body.PackageVersionId, tenant(call)); err != nil {
 		return nil, err
 	}
-	normalized, _ := json.Marshal(struct{ Package, WebUI, Retry string }{body.PackageVersionId, body.WebuiVersionId, retry})
+	normalized, _ := json.Marshal(struct{ Package, Runtime, WebUI, Retry string }{body.PackageVersionId, body.RuntimeVersionId, body.WebuiVersionId, retry})
 	operationName := "createBuild"
 	if retry != "" {
 		operationName = "retryBuild"
@@ -188,11 +188,11 @@ func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.C
 		}
 		return r.Job, nil
 	}
-	input, err := s.capability.ResolveBuildInput(ctx, &api.BuildInputRequest{Context: call, PackageVersionId: body.PackageVersionId, WebuiVersionId: body.WebuiVersionId})
+	input, err := s.capability.ResolveBuildInput(ctx, &api.BuildInputRequest{Context: call, PackageVersionId: body.PackageVersionId, WebuiVersionId: body.WebuiVersionId, RuntimeVersionId: body.RuntimeVersionId})
 	if err != nil {
 		return nil, err
 	}
-	if input.PackageVersionId != body.PackageVersionId || input.WebuiVersionId != body.WebuiVersionId {
+	if input.PackageVersionId != body.PackageVersionId || input.RuntimeVersionId != body.RuntimeVersionId || input.WebuiVersionId != body.WebuiVersionId {
 		return nil, status.Error(codes.FailedPrecondition, "Capability input identity mismatch")
 	}
 	if err = s.runner.ValidateInput(input); err != nil {
@@ -324,7 +324,7 @@ func (s *Service) RetryBuild(ctx context.Context, req *api.RetryBuildRpcRequest)
 	if !r.Job.RetryAllowed {
 		return nil, status.Error(codes.FailedPrecondition, "only a definitively failed job can be retried")
 	}
-	return s.create(ctx, req.GetContext(), &api.CreateBuildRequest{PackageVersionId: r.Job.PackageVersionId, WebuiVersionId: r.Job.WebuiVersionId}, r.Job.Id)
+	return s.create(ctx, req.GetContext(), &api.CreateBuildRequest{PackageVersionId: r.Job.PackageVersionId, RuntimeVersionId: r.Job.RuntimeVersionId, WebuiVersionId: r.Job.WebuiVersionId}, r.Job.Id)
 }
 func requirePeer(ctx context.Context, peers ...owneridentity.Owner) error {
 	p, ok := ownerservice.PeerOwner(ctx)
