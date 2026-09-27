@@ -270,6 +270,9 @@ func (s *Service) Deploy(ctx context.Context, r *api.RuntimeDeployCommand) (*api
 	if err := s.authorize(ctx, r.GetContext(), api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_RESERVERUNTIME, r.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
+	if err := validateRuntimeConfiguration(r); err != nil {
+		return nil, err
+	}
 	if s.Runtime == nil || s.Resources == nil || s.References == nil {
 		return nil, status.Error(codes.Unavailable, "runtime adapter, Fabric readback and Capability must be configured")
 	}

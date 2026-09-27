@@ -248,7 +248,10 @@ jobs:
           # and the fixture while refusing to overcommit the runner filesystem.
           available_bytes="$(df -B1 --output=avail /tmp | tail -n 1 | tr -d ' ')"
           [[ "$available_bytes" =~ ^[0-9]+$ ]]
-          (( available_bytes >= 14 * 1024 * 1024 * 1024 ))
+          if (( available_bytes < 14 * 1024 * 1024 * 1024 )); then
+            echo "insufficient /tmp capacity for the 12 GiB qualification image: ${available_bytes} bytes available" >&2
+            exit 1
+          fi
           mkdir -p "$OPL_QUALIFICATION_ROOT"/{storage,tmp,home}
           quota_image="$OPL_QUALIFICATION_ROOT/quota.img"
           truncate -s 12G "$quota_image"

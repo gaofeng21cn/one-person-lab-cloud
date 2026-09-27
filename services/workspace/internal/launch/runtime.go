@@ -165,7 +165,7 @@ func validateRuntimeReservation(request *api.RuntimeReservationCommand, r *api.R
 }
 
 func runtimeCommand(op ownerstore.Operation, grant string, accepted *api.QuoteAcceptance, version *api.CapabilityVersion, binding *api.ResourceExecutionBinding, resourceSetID string, reservation *api.RuntimeReservation) *api.RuntimeDeployCommand {
-	return &api.RuntimeDeployCommand{Context: continuation(op, grant, "deploy_runtime"), WorkspaceId: op.ResourceID, DeploymentId: reservation.DeploymentId, RuntimeInstanceId: reservation.RuntimeInstanceId, CapabilityVersionId: version.Id, DeploymentDescriptor: version.DeploymentDescriptor, DeploymentDescriptorDigest: version.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: version.DeploymentDescriptorObjectRef, ResourceSetId: resourceSetID, DataAttachmentId: binding.DataAttachmentId, DataCompatibility: version.DataCompatibility, ModelSelections: accepted.Quote.ModelSelections, ExecutionEpoch: reservation.ExecutionEpoch}
+	return &api.RuntimeDeployCommand{Context: continuation(op, grant, "deploy_runtime"), WorkspaceId: op.ResourceID, DeploymentId: reservation.DeploymentId, RuntimeInstanceId: reservation.RuntimeInstanceId, CapabilityVersionId: version.Id, DeploymentDescriptor: version.DeploymentDescriptor, DeploymentDescriptorDigest: version.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: version.DeploymentDescriptorObjectRef, ResourceSetId: resourceSetID, DataAttachmentId: binding.DataAttachmentId, DataCompatibility: version.DataCompatibility, ModelSelections: accepted.Quote.ModelSelections, ExecutionEpoch: reservation.ExecutionEpoch, RuntimeConfiguration: runtimeConfiguration(version.DeploymentDescriptor, binding, op.ResourceID, reservation.RuntimeInstanceId, version.DeploymentDescriptorDigest, reservation.ExecutionEpoch)}
 }
 
 func (s *Service) readRuntime(ctx context.Context, op ownerstore.Operation, token string, command *api.RuntimeDeployCommand, result *orderResult) (*api.RuntimeReadback, error) {
@@ -228,4 +228,42 @@ func validateRuntimeReadback(command *api.RuntimeDeployCommand, r *api.RuntimeRe
 		return status.Error(codes.DataLoss, "Serve readiness lacks confirmed application evidence")
 	}
 	return nil
+}
+
+func runtimeConfiguration(descriptor *api.DeploymentDescriptor, binding *api.ResourceExecutionBinding, workspaceID, runtimeID, descriptorDigest string, epoch int64) *api.WorkspaceApplicationRuntimeConfiguration {
+	if descriptor == nil || binding == nil || len(binding.GetInjectionHandles()) == 0 {
+		return nil
+	}
+	configuration := &api.WorkspaceApplicationRuntimeConfiguration{}
+	for _, handle := range binding.GetInjectionHandles() {
+		if handle == nil || handle.GetWorkspaceId() != workspaceID || handle.GetRuntimeInstanceId() != runtimeID || handle.GetDeploymentDescriptorDigest() != descriptorDigest || handle.GetExecutionEpoch() != epoch {
+			continue
+		}
+		slot := handle.GetTargetSlot()
+		switch handle.GetKind() {
+		case api.RuntimeInjectionHandle_SECRET:
+			for _, input := range descriptor.GetApplicationRevision().GetSecretInputs() {
+				if input.GetName() == slot {
+					configuration.SecretBindings = append(configuration.SecretBindings, &api.RuntimeSecretBindingReference{InputName: input.GetName(), Target: input.GetTarget(), Env: input.GetEnv(), SecretBindingId: handle.GetHandleId(), Handle: handle, Fingerprint: handle.GetFingerprint()})
+				}
+			}
+		case api.RuntimeInjectionHandle_CONFIG:
+			for _, input := range descriptor.GetApplicationRevision().GetConfigInputs() {
+				if input.GetName() == slot {
+					configuration.ConfigBindings = append(configuration.ConfigBindings, &api.RuntimeConfigBinding{InputName: input.GetName(), Target: input.GetTarget(), Handle: handle})
+				}
+			}
+		case api.RuntimeInjectionHandle_DATA_MOUNT, api.RuntimeInjectionHandle_SCRATCH_MOUNT:
+			for _, input := range append(append([]*api.WorkspaceApplicationMount{}, descriptor.GetApplicationRevision().GetPersistentMounts()...), descriptor.GetApplicationRevision().GetScratchMounts()...) {
+				if input.GetName() == slot {
+					mode := "read_write"
+					if input.GetReadOnly() {
+						mode = "read_only"
+					}
+					configuration.MountBindings = append(configuration.MountBindings, &api.RuntimeMountBinding{MountName: input.GetName(), Target: input.GetMountPath(), AccessMode: mode, Handle: handle})
+				}
+			}
+		}
+	}
+	return configuration
 }
