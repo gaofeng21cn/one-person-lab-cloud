@@ -58,7 +58,11 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 	os.WriteFile(schemaPath, schema, 0600)
 	httpServer := httptest.NewUnstartedServer(nil)
 	httpURL := "http://" + httpServer.Listener.Addr().String()
-	objects, err := catalog.NewObjects(root, httpURL, bytes.Repeat([]byte("x"), 32), catalog.UploadPolicy{MaxBytes: 1 << 20, PartBytes: 128, MaxExpandedBytes: 2 << 20, MaxFiles: 20, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: digest(schema)})
+	partBytes := int64(128)
+	if os.Getenv("OPL_BUILD_TEST_PACKAGE") != "" {
+		partBytes = 16 << 10
+	}
+	objects, err := catalog.NewObjects(root, httpURL, bytes.Repeat([]byte("x"), 32), catalog.UploadPolicy{MaxBytes: 1 << 20, PartBytes: partBytes, MaxExpandedBytes: 2 << 20, MaxFiles: 128, TTL: time.Minute, ManifestPath: "manifest.json", SchemaPath: schemaPath, SchemaDigest: digest(schema)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +99,7 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	client := &publisherCapabilityClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(conn), nil, identity), identity: identity}
+	client := &publisherCapabilityClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(conn), nil, nil, identity), identity: identity}
 	call := func(key string) *api.CallContext { return identity.call(key, "tenant-live") }
 
 	ns, err := client.CreateNamespace(ctx, &api.CreateNamespaceRpcRequest{Context: call("namespace"), Body: &api.NamespaceWriteRequest{Name: "live-package"}})
@@ -139,8 +143,9 @@ func uploadLivePackage(t *testing.T, ctx context.Context, dsn string, data []byt
 		if number == 1 && put(bytes.Repeat([]byte("x"), len(chunk))) != 400 {
 			t.Fatal("corrupt upload accepted")
 		}
-		if put(chunk) != 204 || put(chunk) != 204 {
-			t.Fatal("part upload/retry failed")
+		firstStatus, secondStatus := put(chunk), put(chunk)
+		if firstStatus != 204 || secondStatus != 204 {
+			t.Fatalf("part upload/retry failed number=%d size=%d statuses=%d/%d", number, len(chunk), firstStatus, secondStatus)
 		}
 		parts = append(parts, &api.UploadPart{PartNumber: number, Etag: strings.TrimPrefix(digest(chunk), "sha256:"), SizeBytes: int64(len(chunk)), Sha256: digest(chunk)})
 		start = end

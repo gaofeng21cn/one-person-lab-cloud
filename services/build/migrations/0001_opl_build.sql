@@ -10,7 +10,7 @@ REVOKE ALL ON DATABASE opl_build FROM PUBLIC;
 GRANT CONNECT ON DATABASE opl_build TO opl_build_writer;
 SET LOCAL ROLE opl_build_owner;
 
--- createBuild(packageVersionId,webuiVersionId)冻结批准Runtime/catalogPolicy/digests/claims；Operation与Job同库创建，注册确认后succeeded
+-- createBuild(packageVersionId,runtimeVersionId,webuiVersionId)冻结精确批准Runtime/digests/claims；Operation与Job同库创建，注册确认后succeeded
 CREATE TABLE build.build_jobs (
   id text NOT NULL,
   tenant_id text,

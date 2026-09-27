@@ -114,6 +114,7 @@ func id(prefix string) string {
 }
 
 var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
 
 func digest(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }

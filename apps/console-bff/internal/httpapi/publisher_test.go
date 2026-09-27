@@ -31,7 +31,7 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE}
 	identity.decision.AuthorizationContextId = proto.String("fresh-authority-context")
 	probe := &publisherProbe{}
-	handler := NewPublisherHandler(probe, nil, identity)
+	handler := NewPublisherHandler(probe, nil, nil, identity)
 	request := sessionRequest("POST", "/api/v2/packages")
 	request.Body = http.NoBody
 	prepare := func(body string) {

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"net"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func (c *lostInboxAck) Deliver(ctx context.Context, r *api.DeliverEventRequest, 
 func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability *capabilitycatalog.Service, capAddr string, runner *Runner, input *api.BuildInputSnapshot, identity *liveIdentity) {
 	t.Helper()
 	capWire := api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF))
-	capClient := &publisherCapabilityClient{CapabilityProductServiceClient: capWire, t: t, base: newPublisherHTTP(t, capWire, nil, identity), identity: identity}
+	capClient := &publisherCapabilityClient{CapabilityProductServiceClient: capWire, t: t, base: newPublisherHTTP(t, capWire, nil, nil, identity), identity: identity}
 	schemaPathForWebui := "../../../../docs/spec/target/contracts/publisher-contract.schema.json"
 	schemaData, err := os.ReadFile(schemaPathForWebui)
 	if err != nil {
@@ -108,15 +109,28 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The real registry fixture uses runtime/webui/recipe repositories under one
-	// authority. Admission reserves that exact prefix; no business tables are seeded.
-	input.RuntimeContract.PublisherNamespaceId = publisher.Id
+	// The local WebUI and recipe fixtures use the disposable registry namespace.
+	// When the test consumes the real App Runtime Release, Runtime Control gets a
+	// separate approved namespace for that exact GHCR repository prefix.
 	input.WebuiContract.PublisherNamespaceId = publisher.Id
+	runtimePublisher := publisher
+	if ref := os.Getenv("OPL_RUNTIME_IMAGE"); ref != "" {
+		repo, _, ok := strings.Cut(ref, "@")
+		if !ok {
+			t.Fatal("OPL_RUNTIME_IMAGE must be digest-pinned")
+		}
+		runtimePublisher, err = capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("runtime-publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "app-runtime-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "ghcr", RepositoryPrefix: repo, AdmissionReceiptId: "isolated-app-runtime-admission"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	input.RuntimeContract.PublisherNamespaceId = runtimePublisher.Id
 	webui, err := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("webui-admit", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "local-webui", VersionLabel: "v1", PublisherNamespaceId: publisher.Id, PublisherContract: input.WebuiContract, AdmissionReceiptId: "local-webui-admission"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	input.WebuiVersionId = webui.Id
+	t.Logf("CLOUD_WEBUI_REGISTERED id=%s artifact=%s contract=%s", webui.Id, webui.ArtifactDigest, webui.PublisherContractDigest)
 	forbidden := &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("tenant-admin-cannot-admit", "tenant-live"), Body: &api.CreatePublisherNamespaceRequest{Name: "forged", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "local-registry", RepositoryPrefix: publisher.RepositoryPrefix + "/forged", AdmissionReceiptId: "not-authority"}}
 	if _, e := capClient.CreatePublisherNamespace(ctx, forbidden); e == nil {
 		t.Fatal("tenant admin admitted a platform publisher")
@@ -162,6 +176,12 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if _, err = runtimeClient.SetBuildRuntimePolicy(ctx, &api.SetBuildRuntimePolicyRpcRequest{Context: call("runtime-policy", true), Body: &api.SetBuildRuntimePolicyRequest{RuntimeVersionId: runtime.Id}}); err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("CLOUD_RUNTIME_REGISTERED id=%s artifact=%s contract=%s", runtime.Id, runtime.ArtifactDigest, runtime.PublisherContractDigest)
+	selectedRuntime, err := runtimeClient.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: call("runtime-admit-explicit", true), Body: &api.RegisterRuntimeVersionRequest{Name: "local-runtime-explicit", VersionLabel: "v1", PublisherNamespaceId: input.RuntimeContract.PublisherNamespaceId, PublisherContract: input.RuntimeContract, AdmissionReceiptId: "local-runtime-explicit-admission"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("CLOUD_RUNTIME_SELECTED id=%s artifact=%s contract=%s", selectedRuntime.Id, selectedRuntime.ArtifactDigest, selectedRuntime.PublisherContractDigest)
 	capability.Runtime = api.NewRuntimeControlProductServiceClient(liveConn(t, runtimeAddr, owneridentity.Capability.Service()))
 	source, err := migrations.Source()
 	if err != nil {
@@ -194,11 +214,14 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	buildDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(buildCapConn)}
 	capability.BuildInbox = buildDrop
 	identity.service.BuildCommit = api.NewOwnerCommitReadbackClient(liveConn(t, buildAddr, owneridentity.Tenant.Service()))
-	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)), identity), identity: identity}
-	req := &api.CreateBuildRpcRequest{Context: call("create-build", false), Body: &api.CreateBuildRequest{PackageVersionId: input.PackageVersionId, WebuiVersionId: input.WebuiVersionId}}
+	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), runtimeClient, api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)), identity), identity: identity}
+	req := &api.CreateBuildRpcRequest{Context: call("create-build", false), Body: &api.CreateBuildRequest{PackageVersionId: input.PackageVersionId, RuntimeVersionId: selectedRuntime.Id, WebuiVersionId: input.WebuiVersionId}}
 	job, err := client.CreateBuild(ctx, req)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if job.RuntimeVersionId != selectedRuntime.Id {
+		t.Fatalf("Build selected Runtime=%q, want explicit approved Runtime=%q (default=%q)", job.RuntimeVersionId, selectedRuntime.Id, runtime.Id)
 	}
 	coordination := api.NewCapabilityCoordinationClient(capConn)
 	if _, err := coordination.AcquireReference(ctx, &api.ReferenceClaimRequest{Context: req.Context, Target: &api.ReferenceTarget{Target: &api.ReferenceTarget_PackageVersionId{PackageVersionId: input.PackageVersionId}}, ClaimantOwner: api.OwnerEnum_OWNER_ENUM_SERVE, ClaimantResourceId: job.Id}); status.Code(err) != codes.InvalidArgument {
@@ -215,8 +238,29 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if rec.Input.RuntimeVersionId != selectedRuntime.Id {
+		t.Fatalf("frozen Runtime input=%q, want explicit approved Runtime=%q", rec.Input.RuntimeVersionId, selectedRuntime.Id)
+	}
 	if rec.Job.Status != api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_REGISTERING {
-		t.Fatalf("real worker did not register: %v", rec.Job)
+		rows, queryErr := buildDB.QueryContext(ctx, `SELECT stage || ': ' || message FROM build.build_logs WHERE build_job_id=$1 ORDER BY sequence`, job.Id)
+		if queryErr != nil {
+			t.Fatalf("real worker did not register: job=%v; read build logs: %v", rec.Job, queryErr)
+		}
+		var logs []string
+		for rows.Next() {
+			var line string
+			if scanErr := rows.Scan(&line); scanErr != nil {
+				rows.Close()
+				t.Fatalf("real worker did not register: job=%v; read build log: %v", rec.Job, scanErr)
+			}
+			logs = append(logs, line)
+		}
+		if queryErr = rows.Err(); queryErr != nil {
+			rows.Close()
+			t.Fatalf("real worker did not register: job=%v; read build logs: %v", rec.Job, queryErr)
+		}
+		rows.Close()
+		t.Fatalf("real worker did not register: job=%v logs=%q", rec.Job, logs)
 	}
 	// Replaying bound claims must preserve the original binding, not fail a
 	// restarted worker after some Acquire/Bind acknowledgements were lost.

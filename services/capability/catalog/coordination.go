@@ -45,7 +45,7 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 	if e := s.auth(ctx, r.GetContext(), "ResolveBuildInput", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, r.GetPackageVersionId()); e != nil {
 		return nil, e
 	}
-	if r.GetPackageVersionId() == "" || r.GetWebuiVersionId() == "" || s.Runtime == nil {
+	if r.GetPackageVersionId() == "" || r.GetRuntimeVersionId() == "" || r.GetWebuiVersionId() == "" || s.Runtime == nil {
 		return nil, status.Error(codes.InvalidArgument, "package, WebUI and Runtime selections are required")
 	}
 	var packageID, objectRef, sha string
@@ -69,12 +69,12 @@ func (s *Service) ResolveBuildInput(ctx context.Context, r *api.BuildInputReques
 	}
 	webuiRef.VersionId = r.GetWebuiVersionId()
 	webuiRef.Kind = api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI
-	runtime, e := s.runtimeVersion(ctx, r.GetContext(), "")
+	runtime, e := s.runtimeVersion(ctx, r.GetContext(), r.GetRuntimeVersionId())
 	if e != nil {
 		return nil, e
 	}
 	if runtime == nil {
-		return nil, status.Error(codes.FailedPrecondition, "no approved Runtime catalog policy is available")
+		return nil, status.Error(codes.FailedPrecondition, "selected Runtime Release is not approved or does not exist")
 	}
 	contract := runtime.GetPublisherContract()
 	if contract == nil || contract.GetImage() == nil || contract.GetBuildRecipe() == nil {
@@ -432,7 +432,13 @@ func (s *Service) runtimeVersion(ctx context.Context, c *api.CallContext, id str
 			return nil, err
 		}
 		for _, v := range page.Items {
-			if (id != "" && v.Id == id) || (id == "" && v.DefaultForNewBuilds && v.Status == api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED) {
+			if id != "" && v.Id == id {
+				if v.Status != api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED {
+					return nil, status.Error(codes.FailedPrecondition, "selected Runtime Release is not approved")
+				}
+				return v, nil
+			}
+			if id == "" && v.DefaultForNewBuilds && v.Status == api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED {
 				return v, nil
 			}
 		}

@@ -23,8 +23,8 @@ import (
 
 // NewPublisherHandler exposes the same authenticated route implementation used
 // by the process, with explicit typed owner dependencies and no BFF persistence.
-func NewPublisherHandler(capability api.CapabilityProductServiceClient, build api.BuildProductServiceClient, identity IdentityReader) http.Handler {
-	return (&Server{identity: identity, capability: capability, build: build}).Handler()
+func NewPublisherHandler(capability api.CapabilityProductServiceClient, runtimeControl api.RuntimeControlProductServiceClient, build api.BuildProductServiceClient, identity IdentityReader) http.Handler {
+	return (&Server{identity: identity, capability: capability, runtimeControl: runtimeControl, build: build}).Handler()
 }
 
 type publisherCall func(*http.Request, *api.CallContext, proto.Message) (proto.Message, error)
@@ -93,7 +93,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.Tenant && s.tenant == nil) {
+		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.RuntimeControl && s.runtimeControl == nil) || (owner == owneridentity.Tenant && s.tenant == nil) {
 			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
 			return
 		}
@@ -219,6 +219,9 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 	})
 	s.publisherRoute(mux, "GET /api/v2/catalog/webui-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTWEBUIVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.capability.ListWebuiVersions(r.Context(), &api.ListWebuiVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
+	})
+	s.publisherRoute(mux, "GET /api/v2/catalog/runtime-versions", owneridentity.RuntimeControl, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
+		return s.runtimeControl.ListRuntimeVersions(r.Context(), &api.ListRuntimeVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
 	})
 	s.publisherRoute(mux, "POST /api/v2/builds", owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION, "", func() proto.Message { return &api.CreateBuildRequest{} }, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.build.CreateBuild(r.Context(), &api.CreateBuildRpcRequest{Context: c, Body: body.(*api.CreateBuildRequest)})
