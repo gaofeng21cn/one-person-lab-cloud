@@ -67,11 +67,16 @@ test("portable Local-Docker assets configure from a standalone download director
     const resolvedFabric = resolvedServices.fabric;
     assert.equal(resolvedFabric.environment.OPL_FABRIC_LOCAL_DOCKER_PROBE_IMAGE, resolvedFabric.image);
     assert.equal(resolvedServices["control-plane"].environment.OPL_WORKSPACE_APPLICATION_DEPLOYMENT_WORKER_ENABLED, "1");
+    assert.equal(
+      resolvedServices["control-plane"].environment.OPL_WORKSPACE_DOMAIN,
+      environmentSource.match(/^OPL_WORKSPACE_DOMAIN=(.*)$/m)?.[1]
+    );
 
     for (const requiredName of [
       "OPL_FABRIC_LOCAL_DOCKER_GATEWAY_CONTAINER",
       "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT",
-      "OPL_POSTGRES_DATA_ROOT"
+      "OPL_POSTGRES_DATA_ROOT",
+      "OPL_WORKSPACE_DOMAIN"
     ]) {
       const missingEnvironment = environmentSource.replace(new RegExp(`^${requiredName}=.*\\n`, "m"), "");
       await writeFile(join(downloadRoot, "opl-cloud.missing.env"), missingEnvironment, { mode: 0o600 });
