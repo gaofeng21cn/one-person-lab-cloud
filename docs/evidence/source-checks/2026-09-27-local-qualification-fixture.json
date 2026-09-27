@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "action": "Make the qualification fixture serve the delegated identity read so customer_owned can be qualified, and declare its one-debit/one-refund balance envelope where it is enforced and where operators read it",
+  "recordedAt": "2026-09-27T14:53:46.182502+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "9e298516455166ca366e47c12a025ee580960603",
+  "testedTree": "3d7d7fbdcbcbe62dd5f9cffba7c7a507901d942e",
+  "necessity": [
+    "Identity read: customer_owned authenticates the configured Sub2API user and then re-reads that identity through the session's delegated credential on every /api/auth/me and every delegated Gateway read. The fixture never implemented GET /api/v1/auth/me, so a Local installation could only ever be qualified as platform_owned and the customer_owned path stayed unreachable without an external wallet backend. The qualification apparatus therefore could not prove the deployment mode a real customer-owned installation runs. The fixture now returns the bearer's own identity (the qualification user for the user token, the qualification admin for the admin token) while the existing bearer gate still answers 401 for a missing or unknown token, so a token can never be read back as a different account.",
+    "Balance envelope: the fixture allows one debit and one refund per state file and refuses the next one by name (debit_identity_conflict / refund_identity_conflict). That refusal is load-bearing - it is what makes a second charge under a different code impossible to mistake for a missing adjustment - but it was incidental, asserted only by a unit test, and documented nowhere the operator reads. A run that needed a second debit therefore looked like a product failure parked in manual_review instead of a deliberate fixture boundary. The envelope is now declared where it is enforced and in docs/installation.md, and pinned with the coverage it was missing."
+  ],
+  "sourceFilesSha256": {
+    "tools/local-sub2api-authority-fixture.ts": "f2aa9b78be3220c4db60bfdb235c217c3cfe22766b48318f625e96dce30bab11",
+    "tests/tools/local-sub2api-authority-fixture.test.ts": "93ac9ed68125137eef88eb99e563199908942c2c84b382b11dab129d6d69d03f",
+    "docs/installation.md": "3811c3cae795d7d516c3c4a07d8ce20bb1a354f79d40dcad3c634f083eab79e9"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "GET /api/v1/auth/me returns the qualification user identity for the user token and the qualification admin identity for the admin token",
+      "A missing or unknown token still answers 401 unauthorized, so an identity can never be read back for another account",
+      "A same-code debit replays idempotently instead of charging twice",
+      "A second debit with a different code is refused with debit_identity_conflict; a second refund with a different code is refused with refund_identity_conflict",
+      "The refused attempts leave the wallet untouched",
+      "The whole local-sub2api-authority-fixture test file passes (4 tests, 0 failures)"
+    ]
+  },
+  "logs": [
+    {
+      "name": "b2-focused.log",
+      "sha256": "ceadd492866be15cf2c3eeaf57b503179c584685c7c4fbda3835431701d41721"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with the repository-owned qualification fixture. No real Sub2API, real balance, provider procurement, production access, publication or deployment was performed; the live Local qualification remains the separate lane."
+}
