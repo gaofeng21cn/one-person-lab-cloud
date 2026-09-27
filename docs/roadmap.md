@@ -97,9 +97,12 @@ chain is finished. Open work in dependency order:
    the decision point over the platform-administrator read of the customer plan
    list. Quoting one deploy request therefore does not mean a Local deployment
    loop is complete.
-4. Keep Console to the composed owner read only after the relevant owners expose
-   real commands; do not treat source scaffolds or documentation checks as
-   product execution evidence.
+4. The Cloud Console now has the first real Agent directory/detail read surface:
+   `/console/agents` and `/console/agents/:packageId` read Package,
+   PackageVersion, CapabilityVersion and Build owner facts through the BFF.
+   Remaining F04/F05/F06 work is the explicit upload/build-log/retry/archive/
+   down-level mutation surface and its owner operations; do not treat the
+   current readback page or source fixtures as a completed deployment chain.
 
 The single-repository topology is decided, not an open A/B choice. Runtime
 Release admission, Ledger evidence, and independent Fabric provider work may
