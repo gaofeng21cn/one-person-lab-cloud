@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "action": "Inject OPL_WORKSPACE_DOMAIN and OPL_AIONUI_ADMIN_PASSWORD_SEED into the base portable compose so the documented Candidate file set actually starts the Control Plane and lets Fabric derive the Workspace WebUI credential",
+  "recordedAt": "2026-09-27T13:59:23.206784+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "54b4080e364d6859ecb842e75d2f81594b1655d6",
+  "testedTree": "77ce14ad5734769ace902f2e2b1092177a93264f",
+  "necessity": [
+    "OPL_WORKSPACE_DOMAIN: the Control Plane fails closed at startup without it (deployment_profile.go returns \"OPL_WORKSPACE_DOMAIN is required\"), and no portable asset injected it — only the generic env template named the variable. Following the documented Candidate file set therefore left the Control Plane in a restart loop and every deployment mode was unusable. The base compose now injects it for every mode and the template states the single-host constraint (the Workspace host must differ from OPL_PUBLIC_URL, otherwise the Console is unreachable).",
+    "OPL_AIONUI_ADMIN_PASSWORD_SEED: Fabric derives the Workspace WebUI credential from this seed (local_docker_runtime.go and local_docker_application_configuration.go read it; the provider-neutral application preflight rejects the request before either adapter runs), but the portable assets passed it only to the Control Plane. Following the documented Candidate file set therefore created Workspaces whose resource chain completed while the default application installation stalled in manual_review / credentials_required with local_docker_webui_credential_seed_required in Fabric's own operation row. It belongs in the base Fabric environment, not either provider overlay."
+  ],
+  "sourceFilesSha256": {
+    "compose.yaml": "5da3758f074d41c90fd38d988c6ca26744f999996f2f82b7a5f28fe36f8b23d5",
+    "deploy/portable/opl-cloud.env.example": "fa5856d290213261a27eda84ea8d0d1cf260efe9442b8705745228b286731140",
+    "tests/contracts/portable-local-docker-assets.test.ts": "eedd6ddbad5577beb09054b0aa15ec1458c05a65b541bae88ec14aaa33cf2799"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "docker compose config resolves the Local-Docker Candidate file set and the Control Plane environment carries the template OPL_WORKSPACE_DOMAIN value",
+      "docker compose config resolves the Local-Docker Candidate file set and the Fabric environment carries the template OPL_AIONUI_ADMIN_PASSWORD_SEED value",
+      "Compose fails closed with a named error when OPL_WORKSPACE_DOMAIN is removed from the environment",
+      "Compose fails closed with a named error when OPL_AIONUI_ADMIN_PASSWORD_SEED is removed from the environment",
+      "The portable Local-Docker assets contract test passes end to end"
+    ]
+  },
+  "logs": [
+    {
+      "name": "a23-focused.log",
+      "sha256": "8c8680f0f99243d594769508359bb22b10c2aebcc703f00763d4693082bc07be"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with docker compose config and the existing portable contract test. No production or instance deployment, no real image pull or Service start, publication or installation was performed."
+}
