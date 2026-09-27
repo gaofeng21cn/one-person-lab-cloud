@@ -78,10 +78,10 @@ admission阶段先由Runtime Control Reserve持久生成runtimeInstanceId但不�
 | compute | Fabric依批准预付套餐获取计算 | 资源确属本operation/Workspace，provider身份和实际配置 | 查原provider动作，不重复采购 |
 | storage | Fabric创建/绑定批准存储 | 精确volume/大小/生命周期与owner读回 | 不用“未看到”推断可重建 |
 | attachment | Fabric挂载 | 精确compute-volume绑定、可读写检查 | 保留事实继续读回 |
-| runtime | Runtime Control创建Deployment/Runtime；Fabric部署冻结镜像/Secret/config/data | exact digest、环境、资源绑定、健康就绪、凭据可用 | 不显示active；保持可恢复操作 |
-| activation | Workspace选中Deployment，Fabric按generation确认对外路由 | 唯一选中部署、访问URL、鉴权/应用探针读回一致 | 不放开入口，不重复收费 |
+| runtime | Serve创建Agent Deployment/Runtime instance；Fabric按冻结的OCI、Secret、config/data执行并读回基础设施 | exact digest、环境、资源绑定、健康就绪、凭据可用 | 不显示active；保持可恢复操作 |
+| activation | Serve按Workspace授权和expected predecessor CAS当前Agent Deployment，Serve Access按generation确认对外路由 | 唯一current deployment、访问URL、鉴权/应用探针读回一致；Workspace只保留授权/权益/资源计划 | 不放开入口，不重复收费 |
 | receipt | Ledger保存购买/部署证据并精确读回 | 原单与workspace、quote/digest/provider/readiness关联完整 | 页面显示证据确认中，不宣称最终完成 |
-| succeeded | Workspace=active，Operation=succeeded | 上述全部事实存在且仍满足交付 | 客户能打开实际应用 |
+| succeeded | Workspace entitlement=active，Serve current Agent=ready，Operation=succeeded | 上述全部事实存在且仍满足交付 | 客户能打开实际Agent |
 
 ### 确定失败与释放
 
@@ -333,9 +333,10 @@ worker按固定recipe调用BuildKit与Registry exporter；不是新的构建框�
 | 11 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；serve→serve / `ServeAccessControl.ActivateRoute` | `RouteActivateCommand` → `RouteReadback` | serve.access_bindings, serve.access_switches | epoch/revision/target精确，provider实际路由确认；旧epoch/旧revision拒绝，丢响应ObserveRoute |
 | 12 | 按当前入口/阶段与06/13状态机前置执行；不是无条件调用；workspace→ledger / `LedgerCoordination.AppendReceipt` | `AppendReceiptRequest` → `Receipt` | ledger.receipts | 返回receipt身份，另ReadReceiptByReference核对原输入；同idempotency key读回，不填假Workspace或重写receipt |
 
-**终点**：Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前应用
+**终点**：Serve本域CAS active Deployment/访问generation后，receipt核对；客户可打开当前Agent
 
-Serve的active Deployment是选中业务权威，Fabric是真实路由权威；Workspace只提供授权和业务目标事实，没有跨库原子提交幻觉
+Serve的active Deployment、readiness和access binding是Agent交付权威；Fabric只提供
+基础设施资源与执行读回，Workspace只提供授权、权益和资源计划事实，没有跨库原子提交幻觉。
 
 ### F09 使用、模型配置与应用登录
 
