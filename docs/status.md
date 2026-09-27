@@ -114,6 +114,23 @@ carries authorization and business intent without a deployment pointer or
 cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
 
+### Cloud Console Agent directory and detail readback
+
+The Cloud Console now exposes `/console/agents` and
+`/console/agents/:packageId`. The directory reads Capability-owned Package DTOs;
+the detail page reads the Package, PackageVersion page, CapabilityVersion page,
+and related Build owner status through the same-origin BFF. A version is shown as
+"可部署" only when the Capability owner returns `ready`. The page does not show
+artifact digests or internal receipts by default and does not offer archive or
+removal actions without the corresponding owner write/reference-check contract.
+
+The source receipt
+[2026-09-27 Agent owner readback](./evidence/source-checks/2026-09-27-agent-owner-readback-console.json)
+binds commit `8fdd560a` and the focused browser/BFF checks. The prior TCR
+package/runtime/WebUI receipt remains explicitly unverified for this checkout;
+its artifact and smoke claims are not promoted into Console or deployment
+evidence.
+
 ### Serve delivery read surface
 
 The Serve process exposes `ListDeployments`, `GetDeployment` and
