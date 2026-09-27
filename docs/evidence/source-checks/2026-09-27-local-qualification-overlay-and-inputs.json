@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "action": "Make the Local qualification entry select the current Candidate overlay set and require the installation-owned Local-Docker facts before Docker runs",
+  "recordedAt": "2026-09-27T14:50:34.909161+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "1b12250b6ea1cef5fc4c514eba359a9ee6657a10",
+  "testedTree": "1af56312f58e58612117760e15ebd01a31b9716d",
+  "necessity": "The qualification entry is the apparatus that proves a real first deployment on this host. It composed only compose.yaml plus deploy/portable/compose.local-workspace.yaml, so the Fabric container started without OPL_FABRIC_PROVIDER and the run could never reach the provider stage; a qualification that cannot reach the provider stage cannot prove the first Agent deployment it exists to prove. The same entry also omitted the Control Plane's required Workspace host (OPL_WORKSPACE_DOMAIN) and the PostgreSQL data root (OPL_POSTGRES_DATA_ROOT, bound with create_host_path: false), so the stack could not start at all, and it invented the installation-owned Local-Docker facts instead of reading them. A run that invents the quota-enabled storage root or the provider profile qualifies a machine nobody deploys. The script now selects the overlays that carry the deployment mode and provider it fixes, and refuses to start with a named reason when either installation fact is absent, non-absolute, or an invalid profile.",
+  "sourceFilesSha256": {
+    "tools/local-workspace-qualification.ts": "75f187b6eb9a92befee97f5b974f8298c27537a6ffeb6b91a015e2f62fcd42f3",
+    "tests/tools/local-workspace-qualification.test.ts": "b600a76ae44c8d71ef97fdd105c6fe0612c96e477fe84c18713ebf1cea7d1bda",
+    "deploy/portable/opl-cloud.env.example": "d8eecc99deba21c64d5beedf45ca86a62d3be78197b470a7521eeed0a513d4b5"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "The fixture and live authority modes each select compose.yaml, the deployment overlay, the Fabric provider overlay, the Local-Workspace overlay and their mode-specific qualification overlay; an unknown mode is refused",
+      "The selected deployment and Fabric overlays carry OPL_DEPLOYMENT_MODE: platform_owned and OPL_FABRIC_PROVIDER: local-docker, so the selection cannot silently drift from the environment the script fixes",
+      "Missing, non-absolute and invalid installation inputs fail with the named codes local_docker_storage_root_missing, local_docker_storage_root_invalid, local_docker_provider_profile_missing and local_docker_provider_profile_invalid",
+      "A run without the installation inputs writes a NOT_READY receipt at stage installation_preflight with the named error code and never reaches Docker, image admission or Compose",
+      "The whole local-workspace-qualification test file passes (27 tests, 0 failures)"
+    ]
+  },
+  "logs": [
+    {
+      "name": "b1-focused.log",
+      "sha256": "8a4420d0ce96123a521f39aa5426892930caccf9ca1dd47b70c90802d95b90ca"
+    }
+  ],
+  "remainingBoundary": "Source-only verification. No real Local-Docker host run, no Candidate build, provider procurement, production access, publication or deployment was performed; the live Local qualification remains the separate lane."
+}
