@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "action": "Resolve application component ownership through a typed workspace_application_runtime record instead of the legacy WorkspaceRuntime candidate shape",
+  "recordedAt": "2026-09-27T15:59:57.337603+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "7986fc63e7f63502302485ee678a6bf5a795f693",
+  "testedTree": "e5ec0a7a8cd17d73b9533b85d82edbfc1a7411e4",
+  "necessity": "A running application component deployment reported ownership=unregistered even though its workspace_application_runtime creation record was durably succeeded. WorkspaceRuntimeIdentityCandidates only accepts legacy workspace_runtime / workspace_launch_stage / ensure_runtime records and every consumer decodes those as a WorkspaceRuntime, so an application runtime - a different resource kind with a different record shape - was never matched. Ownership observation therefore could not prove which recorded operation created a running application workload. The fix adds a separate typed store query (WorkspaceApplicationRuntimeOwnerCandidates) and verifies the physical workload against the record that created it: account, workspace, runtime id, operation id, the request hash computed from the retained input, and the revision-declared component identity. Missing records stay unregistered; a corrupted record, a non-succeeded claim or an undeclared component fail closed as conflict; several components of one revision verify individually. Legacy runtime candidate semantics and consumers are untouched, so no existing ownership reader changes behavior, and the platform never guesses an owner for a workload it did not record.",
+  "sourceFilesSha256": {
+    "services/fabric/internal/fabric/runtime_observations.go": "65fd7c279684246c0c96b605edaf96243179bb003311030ec91855b1cb0ceb69",
+    "services/fabric/internal/fabric/operation_store.go": "0afc97b2fc017262bb670322a96e52cccdee66b6125070682695e5bafd244b64",
+    "services/fabric/internal/fabric/operation_capability_ports.go": "440c468dd99bef955e4a6b7fd0fa16959e12e490fd6c722ff2ff5b389fdf602d",
+    "services/fabric/internal/fabric/application_observation_ownership_test.go": "e12137c41602343a88e3f6de045a84179e0e86f5672ecc9d492b9e5707b43fb9"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "TestOverlayApplicationRuntimeDurableOwnerMiss reproduces the original miss and now resolves ownership=verified with an unchanged journal and zero provider mutation",
+      "Foreign identity, corrupted record and undeclared component each fail closed as conflict",
+      "An unowned workload and an unrecorded workload stay distinct",
+      "Every declared component of one revision verifies on its own identity, never as an owner conflict",
+      "The typed owner candidates round-trip through the memory store",
+      "The whole services/fabric/internal/fabric package passes database-free"
+    ]
+  },
+  "logs": [
+    {
+      "name": "c2-focused.log",
+      "sha256": "3a48b79e0c4ae4eb5bb366a58ec73a998b6d23195d8310fe4c44e67922edcf45"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with provider stubs and the in-memory store. The PostgreSQL restart proof for the new query (TestPostgresWorkspaceApplicationRuntimeOwnerCandidatesRestart) is included but needs a real database and runs in the full lane; no live cluster, provider procurement, production access, publication or deployment was performed."
+}

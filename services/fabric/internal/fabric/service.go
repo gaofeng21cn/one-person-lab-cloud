@@ -112,7 +112,7 @@ func NewServiceWithOperationStore(provider Provider, operations OperationStore) 
 		service.optionalProviders.workspaceLaunchComputePool,
 		func() time.Time { return service.now() },
 	)
-	service.runtimeRead = newWorkspaceRuntimeReadEngine(provider, ports)
+	service.runtimeRead = newWorkspaceRuntimeReadEngine(provider, ports, ports)
 	return service
 }
 
