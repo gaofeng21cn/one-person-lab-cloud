@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_stage3_runtime_injection_contract_receipt",
+  "recordedAt": "2026-09-27T23:00:00+08:00",
+  "status": "source_contracts_and_owner_validation_verified",
+  "scope": "Scoped opaque Runtime injection, Secret binding, config and mount delivery contracts plus Workspace command propagation and Serve admission validation; no Instance deployment, provider purchase, real-money mutation, or production readback",
+  "source": {
+    "commit": "e232eb38",
+    "tree": "50bf0440e9d0400beec0fa4dfb7d8ffd7cc81f0d",
+    "contractSource": "packages/contracts/proto/internal.proto",
+    "targetContractProjection": "docs/spec/target/contracts/internal.proto",
+    "generatedGo": "packages/contracts/go/api/internal.pb.go",
+    "publicJsonProjection": "packages/contracts/go/publicjson/shape_generated.go",
+    "ownerFiles": [
+      "services/workspace/internal/launch/runtime.go",
+      "services/serve/internal/delivery/runtime_configuration.go",
+      "services/serve/internal/delivery/write.go"
+    ]
+  },
+  "contractChanges": {
+    "runtimeInjectionHandle": "Adds opaque scoped handles with SECRET, CONFIG, DATA_MOUNT and SCRATCH_MOUNT kinds, delivery reference, Workspace/runtime identity, descriptor digest, target slot, execution epoch, fingerprint and expiry.",
+    "runtimeConfiguration": "Adds typed config, Secret reference and mount bindings without raw value or secret material; RuntimeDeployCommand carries the approved WorkspaceApplicationRuntimeConfiguration.",
+    "resourceAndSecretBoundaries": "Fabric ResourceExecutionBinding carries approved injection handles; SecretBindingCommand and SecretBindingReadback bind descriptor digest, input name, execution epoch and typed binding readback.",
+    "workspaceOwner": "Workspace maps only identity-matching approved handles to descriptor-declared inputs and mounts; it does not mint or repair handles.",
+    "serveOwner": "Serve rejects undeclared, duplicate, missing, foreign, stale, kind-mismatched, fingerprint-mismatched, expired, path-unsafe or access-mode-invalid delivery before accepted/ready/access state is written.",
+    "publicJson": "Nested RuntimeInjectionHandle.Kind names are mapped explicitly; public JSON roundtrip preserves opaque facts and rejects raw value or secretMaterial properties."
+  },
+  "verification": {
+    "focused": [
+      "cd packages/contracts/go && go test ./... -count=1",
+      "cd services/serve && go test ./internal/delivery -count=1",
+      "cd services/workspace && go test ./internal/launch -count=1",
+      "cd apps/console-bff && go test ./internal/httpapi ./internal/clients",
+      "cd services/build && go test ./internal/build -count=1",
+      "cd services/capability && go test ./catalog -count=1",
+      "git diff --check"
+    ],
+    "focusedResult": "passed",
+    "nodeSourceTests": {
+      "command": "npm test",
+      "result": "passed",
+      "passed": 229,
+      "failed": 0,
+      "skipped": 0
+    },
+    "defaultLocalGate": {
+      "command": "npm run verify:local",
+      "result": "passed",
+      "notes": "The qualification low-space guard now exits explicitly instead of relying on errexit status from an arithmetic command; the test uses an isolated run-shaped temporary root."
+    }
+  },
+  "limits": [
+    "No browser-to-Workspace-to-Fabric-to-Serve deployment was run from this source checkpoint.",
+    "No Instance adoption, production private-network access, provider procurement, customer resource deletion, real-money charge, or Release publication was performed.",
+    "The contract and focused owner tests do not constitute qualified application readiness or owner-authoritative deployment readback."
+  ]
+}
