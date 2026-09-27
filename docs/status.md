@@ -339,6 +339,11 @@ all required PostgreSQL modules with zero skips, and Docker integration. The
 additional real browser/owner-chain test passed with inspected desktop/mobile
 screenshots. A final [HTTP contract-alignment receipt](./evidence/source-checks/2026-09-25-publisher-public-api-alignment.json) records focused rechecks for the canonical session path, CSRF header, response codes and Error shape. Earlier receipts remain bound to their historical source.
 
+The current PR #654 HEAD recheck confirms the native OMA archive/index/content/manifest
+bytes and the approved OPL App Runtime digest, but remains blocked before a real
+three-input BuildInputSnapshot: no admitted Cloud WebUI OCI artifact is available,
+and local TCR access returns 401. The [append-only recheck receipt](./evidence/source-checks/2026-09-27-cloud-package-runtime-webui-oci-recheck.json) therefore records no TCR digest, CapabilityVersion, descriptor, or application-call claim; PR #654 remains Draft.
+
 ### Publisher identity and admission
 
 `services/gateway-integration` now owns real Cloud session issuance, live

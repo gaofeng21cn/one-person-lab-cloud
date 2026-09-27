@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_package_runtime_webui_oci_recheck_receipt",
+  "recordedAt": "2026-09-27T19:40:00+08:00",
+  "status": "not_qualified_not_evaluated_blocked_before_real_webui_build",
+  "scope": "PR #654 current HEAD recheck of native OMA intake, approved OPL App Runtime identity, Cloud WebUI admission boundary, BuildInputSnapshot, BuildKit/TCR and CapabilityVersion readback; no Workspace, Fabric, Serve, Instance deployment, provider purchase, wallet mutation or secret access",
+  "source": {
+    "pr": 654,
+    "testedHeadSha": "9ee4e1d533286ec5e7ab654a2864918e174409c1",
+    "testedTreeSha": "fcb0d5649524143824a8523a73069cdb7035e72d",
+    "workingTreeBeforeReceipt": "clean",
+    "receiptIsAppendOnly": true,
+    "priorCompletionReceiptNotReused": "docs/evidence/source-checks/2026-09-27-tcr-package-runtime-webui-owner-chain.json is retained as historical input only; its claimed TCR artifact, test name and logs are not reproducible from this HEAD"
+  },
+  "omaPackage": {
+    "archive": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip",
+    "archiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "detachedManifest": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.manifest.json",
+    "detachedManifestSha256": "sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80",
+    "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "candidateIndexSha256": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+    "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "manifestDigest": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+    "candidateFileCount": 36,
+    "candidateTotalBytes": 338546,
+    "candidateDigestCheck": "declared candidate identity matches outer transport manifest and candidate-index; independent bytewise recomputation is not available because the current Cloud validator defines no canonical candidate-digest algorithm",
+    "qualificationStatus": "not_qualified",
+    "domainQualityStatus": "not_evaluated",
+    "admissionStatus": "development_transport_ready",
+    "byteChecks": {
+      "zipEntryIntegrity": "passed",
+      "candidateIndexEntriesAndSizes": "passed",
+      "candidateIndexFileDigests": "passed",
+      "contentDigestLengthPrefixedCanonicalization": "passed",
+      "agentManifestDigest": "passed",
+      "statusPreservation": "passed",
+      "candidateDigestIndependentRecomputation": "not_available",
+      "validatorCommand": "OPL_OMA_CANDIDATE_TRANSPORT=<archive> go test -tags=livebuild ./catalog -run TestNativeOMA -count=1 -v",
+      "validatorExitCode": 0
+    }
+  },
+  "runtime": {
+    "owner": "one-person-lab-app",
+    "releaseVersion": "26.9.26",
+    "releaseManifest": "/Users/huangrende/Documents/ChatGPT/opl-app/docs/delivery/release-evidence/cloud-runtime-release-26.9.26.json",
+    "releaseManifestSha256": "sha256:7d94904a56f840f0958bba895880b89d80fc6b4b2bea186437b57d3a8e020255",
+    "approvedIndex": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "approvedIndexDigestReadback": "sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "platform": "linux/arm64",
+    "platformDigest": "sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98",
+    "platformDigestReadback": "sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98",
+    "abiDigest": "sha256:ff923016f5f38eb950bd5fbc211d1246029f4a0ed65fc2a5d095b0d6128b8fcd",
+    "ownerReadback": "passed",
+    "readbackMethod": "GHCR anonymous pull token plus GET of index and linux/arm64 child manifest; no mutable tag"
+  },
+  "webui": {
+    "owner": "Cloud WebUI owner (W13/W14/W16)",
+    "requiredArtifact": "real digest-pinned OCI image, linux/amd64 and linux/arm64, port 3000, /healthz, runtime ABI and OMA package compatibility",
+    "artifact": null,
+    "registration": null,
+    "admission": "blocked",
+    "reason": "No real Cloud WebUI artifact and owner admission receipt are present. The checked-in fixture is explicitly labelled fixture, and services/build/internal/build/runner_live_test.go constructs <h1>Cloud WebUI</h1>; neither may be promoted as Agent WebUI evidence.",
+    "missingProviderAction": "Cloud WebUI owner must provide the immutable OCI repository@digest(s), publisher contract, compatibility fields and owner admission/readback receipt."
+  },
+  "buildChain": {
+    "packageOwnerRegistration": "not_run_for_this_recheck",
+    "runtimeOwnerRegistration": "not_run_for_this_recheck",
+    "webuiOwnerRegistration": "blocked_before_registration",
+    "buildInputSnapshot": null,
+    "recipe": null,
+    "buildkit": null,
+    "tcrPush": null,
+    "tcrManifestReadback": null,
+    "tcrBlobReadback": null,
+    "capabilityVersion": null,
+    "descriptor": null,
+    "stopPoint": "Before real WebUI owner registration and BuildInputSnapshot creation; fail-closed rather than using the fixture. TCR credentials/authorized runner are also unavailable in this checkout."
+  },
+  "tcr": {
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd",
+    "repositoryAtDigest": null,
+    "manifestDigest": null,
+    "manifestReadback": "HTTP 401 from /v2 and HTTP 401 from anonymous token endpoint",
+    "credentialEnvironmentNamesPresent": false,
+    "historicalClaimNotAccepted": "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd@sha256:f0f1e563ffb67923e8888e51b020b487cd0ec1e219b056041b2961ec16cfff63"
+  },
+  "applicationVerification": {
+    "healthz": "not_run",
+    "readyz": "not_run",
+    "agentLoaded": "not_run",
+    "realWebuiCall": "not_run",
+    "exactStop": "No final OCI exists from a real three-input chain. Model/external evidence service availability was not reached and no business success is claimed."
+  },
+  "verification": {
+    "sanitizedLogPath": "docs/evidence/source-checks/2026-09-27-cloud-package-runtime-webui-oci-recheck.log",
+    "sanitizedLogSha256": "sha256:21fc04965d7d1c0074f72eb23b02e3d033c140efb0871bb73a7bb5aca93dd549",
+    "commands": [
+      {
+        "command": "OPL_OMA_CANDIDATE_TRANSPORT=<archive> go test -tags=livebuild ./catalog -run TestNativeOMA -count=1 -v",
+        "exitCode": 0,
+        "result": "passed"
+      },
+      {
+        "command": "GET GHCR approved index and linux/arm64 child manifest by digest",
+        "exitCode": 0,
+        "result": "passed; body digests equal requested digests"
+      },
+      {
+        "command": "GET TCR /v2 and anonymous token endpoint",
+        "exitCode": 0,
+        "result": "HTTP 401 at both authorization boundaries"
+      },
+      {
+        "command": "real three-input Package -> Runtime/WebUI -> BuildKit -> TCR -> owner readback",
+        "exitCode": null,
+        "result": "not_run; fail-closed on missing real Cloud WebUI artifact and TCR owner credentials/runner"
+      }
+    ],
+    "ci": {
+      "runId": "36315068209",
+      "dependencyReview": "success",
+      "validate": "success"
+    }
+  },
+  "handoff": {
+    "ready": false,
+    "toDeploymentTask": "No deployable OCI identity can be handed off. Once the Cloud WebUI owner supplies the real admitted artifact and the authorized Cloud Owner runner supplies TCR access, rerun the chain and hand off only the resulting TCR repository@digest, CapabilityVersion ID, descriptor digest/object reference, and this receipt.",
+    "notToDeploy": [
+      "Do not deploy the historical f0f1e563... claim.",
+      "Do not deploy the loopback registry output.",
+      "Do not deploy any image built with <h1>Cloud WebUI</h1> fixture."
+    ]
+  }
+}
