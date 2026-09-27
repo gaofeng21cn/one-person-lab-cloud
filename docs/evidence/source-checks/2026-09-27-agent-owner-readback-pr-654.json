@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_agent_owner_readback_pr_port_receipt",
+  "recordedAt": "2026-09-27T19:20:00+08:00",
+  "outcome": "current_pr_source_verified_external_tcr_unverified",
+  "scope": "PR #654 Cloud Console Agent directory/detail owner readback port; no Package/Capability/Build mutation, Workspace deployment, Instance qualification, provider purchase, wallet mutation, or secret access",
+  "testedSourceSha": "48b66fe76a2e4d72834823412459e0ef351b713b",
+  "testedSourceTree": "f18b2a74ee84fd1f48d803ba64cb3ad88bd8eac2",
+  "ownerReadback": {
+    "routes": ["/console/agents", "/console/agents/:packageId"],
+    "bffReads": [
+      "GET /api/v2/packages",
+      "GET /api/v2/packages/{packageId}",
+      "GET /api/v2/packages/{packageId}/versions",
+      "GET /api/v2/capability-versions?packageId={packageId}",
+      "GET /api/v2/builds/{buildId}"
+    ],
+    "truthBoundary": "UI renders Capability and Build owner DTOs; ready is shown as deployable only from CapabilityVersion.status=ready; artifact digests and internal receipts are not ordinary customer fields; no archive/delete mutation is exposed"
+  },
+  "verification": {
+    "passed": [
+      {"command": "npm run typecheck", "exitCode": 0},
+      {"command": "npm run lint", "exitCode": 0},
+      {"command": "npm run build", "exitCode": 0},
+      {"command": "node --test tests/ui/cloud-webui-browser.test.ts tests/ui/agent-owner-readback-browser.test.ts tests/ui/workspace-task-experience-browser.test.ts", "exitCode": 0, "testsPassed": 17},
+      {"command": "cd apps/console-bff && go test ./...", "exitCode": 0}
+    ],
+    "notRun": ["npm run verify:local:full"],
+    "knownGateFailure": "The prior source-gate run on the same local checkout family failed only at tests/tools/verify-local.test.ts:180 because the mocked low-space preparation path observed no df call; this is retained as an explicit gate blocker and was not converted into a pass."
+  },
+  "externalEvidence": {
+    "tcrPackageRuntimeWebuiReceipt": "docs/evidence/source-checks/2026-09-27-tcr-package-runtime-webui-owner-chain.json",
+    "status": "not_used_as_completion_evidence",
+    "reason": "The independent review found no reproducible TCR manifest/log binding in this checkout; the current live test uses a loopback registry and a synthetic Cloud WebUI fixture."
+  },
+  "secrets": {"read": false, "written": false, "presentInChangedFiles": false, "presentInReceipt": false},
+  "sideEffects": {"productionDeploymentDispatched": false, "instanceQualificationPerformed": false, "realMoneyOrProviderMutation": false}
+}

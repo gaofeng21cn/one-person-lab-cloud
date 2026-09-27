@@ -126,10 +126,12 @@ removal actions without the corresponding owner write/reference-check contract.
 
 The source receipt
 [2026-09-27 Agent owner readback](./evidence/source-checks/2026-09-27-agent-owner-readback-console.json)
-binds commit `8fdd560a` and the focused browser/BFF checks. The prior TCR
-package/runtime/WebUI receipt remains explicitly unverified for this checkout;
-its artifact and smoke claims are not promoted into Console or deployment
-evidence.
+binds the original implementation commit. The current PR #654 port is bound
+by [the PR port receipt](./evidence/source-checks/2026-09-27-agent-owner-readback-pr-654.json),
+which records commit `48b66fe7` and the rerun focused browser/BFF checks. The
+prior TCR package/runtime/WebUI receipt remains explicitly unverified for this
+checkout; its artifact and smoke claims are not promoted into Console or
+deployment evidence.
 
 ### Serve delivery read surface
 
