@@ -236,6 +236,7 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("BUILD_INPUT_SNAPSHOT package_object=%s/%s package_sha256=%s runtime=%s@%s webui=%s@%s recipe=%s@%s snapshot=%s", input.PackageObject.StorageObjectId, input.PackageObject.VersionId, input.PackageObject.Sha256, input.RuntimeArtifact.Repository, input.RuntimeArtifact.Digest, input.WebuiArtifact.Repository, input.WebuiArtifact.Digest, input.RuntimeContract.BuildRecipe.Recipe.Repository, input.RuntimeContract.BuildRecipe.Recipe.Digest, input.SnapshotDigest)
 	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
 	jobID := "build_" + strings.Repeat("2", 32)
 	repository := r.Repository("tenant-live", input.PackageId)
