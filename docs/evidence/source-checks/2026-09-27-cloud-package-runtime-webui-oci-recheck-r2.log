@@ -1,0 +1,46 @@
+Cloud Package -> approved Runtime + Cloud generic Agent WebUI -> OCI recheck, PR #654
+Tested source: 65cefb31fef768589716873351e04b324e7601d5
+Tested tree: 63f949db10f105e836f65877d7f3686048072252
+
+OMA archive sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358
+OMA detached manifest sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80
+OMA candidate sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af
+OMA candidate-index sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125
+OMA content sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f
+OMA agent manifest sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2
+OMA qualification_status=not_qualified domain_quality_status=not_evaluated admission=development_transport_ready
+Native OMA validator exit=0; archive bytes/status fields were not rewritten.
+
+Runtime release 26.9.26
+Runtime index ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e
+Runtime index readback sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e
+Runtime linux/arm64 child sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98
+Runtime ABI sha256:ff923016f5f38eb950bd5fbc211d1246029f4a0ed65fc2a5d095b0d6128b8fcd
+Runtime package declaration: Framework managed package channel -> mounted /data; not pre-baked.
+
+Cloud generic Agent WebUI source files are under webui/cloud-agent and use bundled_static.
+WebUI artifact source build: 127.0.0.1:54000/cloud-agent-webui@sha256:b942c16d58ab3e72d50fa9bd724bdf601beb95968ce7491e2317785bb4512ccd
+WebUI admission attempt: local-webui-admission, version webui_164300b81848fc256c1d455c7bd8fea3, contract sha256:9ed3c6e869a35bf08440feb48f17028992e1e7ad239e385b3a639de6f6074dea
+WebUI protocol: /api/auth/user, /api/opl/state?profile=fast, EventSource /api/opl-events, POST /api/opl/action; no call was attempted without a projected operational Agent/action.
+
+BuildInputSnapshot package object sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358
+BuildInputSnapshot runtime ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e
+BuildInputSnapshot webui 127.0.0.1:54000/cloud-agent-webui@sha256:b942c16d58ab3e72d50fa9bd724bdf601beb95968ce7491e2317785bb4512ccd
+BuildInputSnapshot recipe 127.0.0.1:54000/recipe@sha256:ea33f927bf40a0387b36f9ff79e0b816a9b321eb4be122a7736af15804fc9c41d
+BuildInputSnapshot sha256:0f90a41d0b7b79904b96c09ca9903c73377fa40c0a98d83dceda1d274579246f
+Package target /agent; WebUI target /web; output platform linux/arm64; network none.
+
+Live owner chain exit=1.
+Package intake, WebUI owner registration and Runtime registration/selection completed.
+BuildKit exporter started; worker readback became status=needs_attention stage=needs_attention error_code=unspecified, mapped to build_result_unknown.
+Persisted logs: verified immutable package bytes and bounded archive; isolated BuildKit exporter started.
+Final OCI manifest was not confirmed; TCR push/readback, CapabilityVersion and descriptor readback were not reached.
+
+TCR repository uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd
+Anonymous /v2 status=401; anonymous token status=401.
+No TCR credentials or authorized runner available; no auth bypass attempted.
+
+Application verification: healthz/readyz, Agent load, and real WebUI call not run because no confirmed final OCI exists. No model/evidence-service success claimed.
+
+npm run test:source: exit=1, 237 passed and existing tests/tools/verify-local.test.ts:180 failed with actual [] vs expected ['df'].
+PR #654 remains OPEN/DRAFT; do not merge or deploy.

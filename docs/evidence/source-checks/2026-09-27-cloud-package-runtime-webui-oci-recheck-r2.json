@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_package_runtime_webui_oci_recheck_receipt",
+  "recordedAt": "2026-09-27T20:48:44+08:00",
+  "status": "not_qualified_not_evaluated_build_result_unknown_before_tcr",
+  "scope": "PR #654 current source recheck of native OMA intake, approved OPL App Runtime, Cloud generic Agent WebUI, owner registration, immutable BuildInputSnapshot and isolated BuildKit boundary; no Workspace, Fabric, Serve, Instance deployment, provider purchase, wallet mutation or secret access",
+  "source": {
+    "pr": 654,
+    "testedSourceSha": "65cefb31fef768589716873351e04b324e7601d5",
+    "testedSourceTreeSha": "63f949db10f105e836f65877d7f3686048072252",
+    "testedSourceCommit": "test: record immutable build input snapshot",
+    "receiptIsAppendOnly": true,
+    "priorCompletionReceiptNotReused": "The historical tcr-package-runtime-webui-owner-chain receipt and its claimed sha256:f0f1e563ffb67923e8888e51b020b487cd0ec1e219b056041b2961ec16cfff63 artifact are not reproducible from this source and are not deployment evidence."
+  },
+  "omaPackage": {
+    "archive": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip",
+    "archiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "detachedManifest": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.manifest.json",
+    "detachedManifestSha256": "sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80",
+    "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "candidateIndexSha256": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+    "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "manifestDigest": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+    "candidateFileCount": 36,
+    "candidateTotalBytes": 338546,
+    "qualificationStatus": "not_qualified",
+    "domainQualityStatus": "not_evaluated",
+    "admissionStatus": "development_transport_ready",
+    "byteChecks": {
+      "zipEntryIntegrity": "passed",
+      "candidateIndexEntriesAndSizes": "passed",
+      "candidateIndexFileDigests": "passed",
+      "contentDigestLengthPrefixedCanonicalization": "passed",
+      "agentManifestDigest": "passed",
+      "statusPreservation": "passed",
+      "candidateDigestIndependentRecomputation": "not_available; Cloud has no canonical candidate-digest algorithm",
+      "validatorCommand": "OPL_OMA_CANDIDATE_TRANSPORT=<archive> go test -tags=livebuild ./catalog -run TestNativeOMA -count=1 -v",
+      "validatorExitCode": 0
+    },
+    "mutation": "The native archive bytes and evaluation fields were not rewritten."
+  },
+  "runtime": {
+    "owner": "one-person-lab-app",
+    "releaseVersion": "26.9.26",
+    "releaseManifest": "/Users/huangrende/Documents/ChatGPT/opl-app/docs/delivery/release-evidence/cloud-runtime-release-26.9.26.json",
+    "releaseManifestSha256": "sha256:7d94904a56f840f0958bba895880b89d80fc6b4b2bea186437b57d3a8e020255",
+    "approvedIndex": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "approvedIndexDigestReadback": "sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "platform": "linux/arm64",
+    "platformDigest": "sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98",
+    "platformDigestReadback": "sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98",
+    "abiDigest": "sha256:ff923016f5f38eb950bd5fbc211d1246029f4a0ed65fc2a5d095b0d6128b8fcd",
+    "ownerReadback": "passed; GHCR index and linux/arm64 child were independently read by digest",
+    "packageLoadingDeclaration": "Runtime does not pre-bake OMA; Framework managed package channel loads it into mounted /data.",
+    "canonicalAppProtocol": "thread/resume and turn/start; runtime/ensure is not the canonical ordinary rail"
+  },
+  "webui": {
+    "owner": "Cloud WebUI owner (Cloud source under webui/cloud-agent)",
+    "contract": "bundled_static",
+    "sourceFiles": {
+      "webui/cloud-agent/Dockerfile": "sha256:23da3fedb1a618a9a7a3eb6d32b53b2a90ddca4c4086729ffe90228e903daa44",
+      "webui/cloud-agent/app.js": "sha256:5eb543d76be2a1f1517da678e3be8a52a834c1f0fa5a87dd35a211b43472f966",
+      "webui/cloud-agent/index.html": "sha256:bcf30f74d91f30f34e3e3957cc4e9cbb9739c713f6fedb1e8713bea13f72b213",
+      "webui/cloud-agent/style.css": "sha256:1cc22acf45b0082b66566b63edc398b9964b6341ab4d4502e72159831176dc8c"
+    },
+    "sourceChecks": {
+      "nodeCheck": "node --check webui/cloud-agent/app.js; exit 0",
+      "fixtureMarker": "data-opl-cloud-agent-webui=\"v1\"",
+      "forbiddenFixtureAbsent": "<h1>Cloud WebUI</h1> absent",
+      "domainLogic": "generic Agent interaction only; no IBD, medical, search_evidence or evidence-guide logic",
+      "runtimeRequests": "GET /api/auth/user; GET /api/opl/state?profile=fast; GET /api/opl-events via EventSource; POST /api/opl/action with dryRun=false",
+      "failClosed": "requires projected standard_agent, operational_ready=true and action invoke_agent_package_for_current_turn"
+    },
+    "disposableArtifact": {
+      "repository": "127.0.0.1:54000/cloud-agent-webui",
+      "digest": "sha256:b942c16d58ab3e72d50fa9bd724bdf601beb95968ce7491e2317785bb4512ccd",
+      "platform": "linux/arm64",
+      "buildFlags": "--provenance=false --sbom=false",
+      "scope": "loopback disposable registry only; not a TCR handoff identity"
+    },
+    "ownerAdmissionAttempt": {
+      "publisherNamespace": "local-publisher",
+      "admissionReceiptId": "local-webui-admission",
+      "webuiVersionId": "webui_164300b81848fc256c1d455c7bd8fea3",
+      "publisherContractDigest": "sha256:9ed3c6e869a35bf08440feb48f17028992e1e7ad239e385b3a639de6f6074dea",
+      "result": "Cloud Capability Owner local live fixture registered the exact artifact; this is not a production/TCR admission receipt."
+    }
+  },
+  "buildChain": {
+    "packageIntake": "passed; native archive uploaded/read with immutable object sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "runtimeOwnerRegistration": {
+      "registeredVersionId": "runtime_033565057adbd1e365c295943c554828",
+      "selectedVersionId": "runtime_7942faf3f0d1b44a8fb9d10db59036ed",
+      "artifact": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+      "publisherContractDigest": "sha256:c60a7e574c4268272d467440f272178b74f93a985fe32274122470c9507de6dc",
+      "result": "registered and selected before build"
+    },
+    "webuiOwnerRegistration": "passed in local owner-chain fixture; see webui.ownerAdmissionAttempt",
+    "buildInputSnapshot": {
+      "packageObject": {
+        "storageObjectId": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+        "versionId": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+        "sha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358"
+      },
+      "runtime": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+      "webui": "127.0.0.1:54000/cloud-agent-webui@sha256:b942c16d58ab3e72d50fa9bd724bdf601beb95968ce7491e2317785bb4512ccd",
+      "recipe": "127.0.0.1:54000/recipe@sha256:ea33f927bf40a0387b36f9ff79e0b816a9b321eb4be122a7736af15804fc9c41d",
+      "packageSourceRoot": "candidate",
+      "packageTargetPath": "/agent",
+      "webuiSourcePath": "/web",
+      "webuiTargetPath": "/web",
+      "snapshotDigest": "sha256:0f90a41d0b7b79904b96c09ca9903c73377fa40c0a98d83dceda1d274579246f",
+      "recipeContract": "opl-build-recipe/v1, network=none, output=linux/arm64, static recipe digest matched FixedDockerfile"
+    },
+    "buildKit": {
+      "command": "docker buildx build --builder isolated --network=none --provenance=false --sbom=false --platform linux/arm64 --build-context runtime=<approved digest> --build-context webui=<immutable digest> --build-context agent_package=<extracted native archive> --push",
+      "started": true,
+      "result": "unknown",
+      "jobStatus": "needs_attention",
+      "stage": "needs_attention",
+      "errorCode": "unspecified at owner readback; worker maps started exporter/readback absence to build_result_unknown",
+      "logs": [
+        "building: verified immutable package bytes and bounded archive",
+        "building: isolated BuildKit exporter started"
+      ],
+      "exactStop": "After BuildKit exporter start, before confirmed manifest readback; the worker deliberately does not persist raw BuildKit error text."
+    },
+    "tcrPush": "not reached",
+    "tcrManifestReadback": "not reached",
+    "tcrBlobReadback": "not reached",
+    "capabilityVersion": "not reached",
+    "descriptor": "not reached"
+  },
+  "tcr": {
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/chaokang_agent_ibd",
+    "repositoryAtDigest": null,
+    "manifestDigest": null,
+    "independentReadback": "not reached; anonymous GET /v2 and token endpoint both returned HTTP 401",
+    "probeHashes": {
+      "headers": "sha256:70e9502f5adb4dad32884d7f3cd0f6041c9f2ef31bb8370a693a6b881daa9307",
+      "body": "sha256:6f86a114362ec25321fcae5f4fd54a1b2b06bff063a7e802b7e5854ec6cc09af",
+      "tokenHeaders": "sha256:bf7995213bcc05cee2ee81dc99249c3c1aa79fc6501697bcba5638a66f3282c3",
+      "tokenBody": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "authorizedRunner": "not available; no credential bypass attempted"
+  },
+  "applicationVerification": {
+    "healthz": "not run",
+    "readyz": "not run",
+    "agentLoaded": "not proven; recipe declares /agent, runtime release declares managed package loading through mounted /data",
+    "realWebuiCall": "not run",
+    "exactStop": "No confirmed final OCI manifest exists. The external model/evidence call was not reached and no business success is claimed."
+  },
+  "verification": {
+    "commands": [
+      {
+        "command": "OPL_OMA_CANDIDATE_TRANSPORT=<archive> go test -tags=livebuild ./catalog -run TestNativeOMA -count=1 -v",
+        "exitCode": 0,
+        "result": "passed"
+      },
+      {
+        "command": "go test ./internal/build",
+        "exitCode": 0,
+        "result": "passed"
+      },
+      {
+        "command": "node --check webui/cloud-agent/app.js",
+        "exitCode": 0,
+        "result": "passed"
+      },
+      {
+        "command": "OPL_BUILD_TEST_PACKAGE=<archive> OPL_RUNTIME_IMAGE=<approved index> go test -tags=livebuild ./internal/build -run TestLivePackageBuildAndRestartReadback -count=1 -v",
+        "exitCode": 1,
+        "result": "owner registration and snapshot completed; BuildKit exporter started; worker reached needs_attention/build_result_unknown before final manifest"
+      },
+      {
+        "command": "npm run test:source",
+        "exitCode": 1,
+        "result": "237 passed, 1 pre-existing environment/fixture failure at tests/tools/verify-local.test.ts:180: actual [] versus expected ['df']"
+      },
+      {
+        "command": "GET https://uswccr.ccs.tencentyun.com/v2/ and anonymous token endpoint",
+        "exitCode": 0,
+        "result": "HTTP 401 at both authorization boundaries; no credential bypass"
+      }
+    ],
+    "sanitizedLiveLog": {
+      "path": "docs/evidence/source-checks/2026-09-27-cloud-package-runtime-webui-oci-recheck-r2.log",
+      "sha256": "sha256:0842b139db701b57c231b42d6d818f9b8ccd83d0dc31ca805d9ec388de5272b2"
+    }
+  },
+  "handoff": {
+    "ready": false,
+    "tcrDigest": null,
+    "capabilityVersion": null,
+    "descriptor": null,
+    "toDeploymentTask": "No deployable identity. Do not deploy the historical f0f1e563... claim, loopback registry output, or any fixture image. Wait for an authorized runner to resolve BuildKit result and TCR push/readback, then hand off only the final TCR repository@digest, CapabilityVersion, descriptor digest/object reference, and a new owner receipt.",
+    "scopeBoundary": "Workspace/Fabric/Serve deployment was not performed."
+  }
+}
