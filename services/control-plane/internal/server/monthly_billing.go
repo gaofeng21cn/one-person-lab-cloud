@@ -42,10 +42,26 @@ func monthlyPreflightConfirmed(input clients.MonthlyPreflightInput, result clien
 		result.Zone == input.Zone && result.Available
 }
 
-func (a *controlPlaneWorkspaceLaunchStageAdapter) preflightWorkspaceLaunchMonthly(ctx context.Context, operation workspaceLaunchReconcileOperation) error {
+// workspaceLaunchProviderZone returns the zone the selected provider orders in.
+// Only the Tencent adapter orders against a zone: its Fabric preflight rejects a
+// request without one, so the legacy OPL_TENCENT_ZONE read stays behind that
+// provider. A provider-neutral path such as Local-Docker orders nothing in a
+// zone, so it must not require a Tencent-specific environment variable.
+func workspaceLaunchProviderZone(operation workspaceLaunchReconcileOperation) (string, error) {
+	if operation.stringFact("providerProfileRef") != "tencent-tke" {
+		return "", nil
+	}
 	zone := controlplane.ProviderAcceptanceLaunchZone()
 	if zone == "" {
-		return errWorkspaceLaunchMonthlyPreflightInvalid
+		return "", errWorkspaceLaunchMonthlyPreflightInvalid
+	}
+	return zone, nil
+}
+
+func (a *controlPlaneWorkspaceLaunchStageAdapter) preflightWorkspaceLaunchMonthly(ctx context.Context, operation workspaceLaunchReconcileOperation) error {
+	zone, err := workspaceLaunchProviderZone(operation)
+	if err != nil {
+		return err
 	}
 	for _, input := range []clients.MonthlyPreflightInput{
 		{ResourceType: "compute", PackageID: operation.stringFact("packageId"), Zone: zone},
