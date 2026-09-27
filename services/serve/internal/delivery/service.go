@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "opl-cloud/packages/contracts/go/api"
@@ -49,13 +50,21 @@ type Service struct {
 	api.UnimplementedServeAgentCoordinationServer
 	api.UnimplementedOwnerCommitReadbackServer
 	api.UnimplementedClaimUsageReadbackServer
-	DB         *sql.DB
-	Store      *ownerstore.Store
-	Authorize  AuthorizeFunc
-	Capability api.CapabilityProductServiceClient
-	References api.CapabilityCoordinationClient
-	Resources  api.FabricCoordinationClient
-	Runtime    RuntimeAdapter
+	DB          *sql.DB
+	Store       *ownerstore.Store
+	Authorize   AuthorizeFunc
+	Capability  api.CapabilityProductServiceClient
+	References  api.CapabilityCoordinationClient
+	Resources   api.FabricCoordinationClient
+	Runtime     RuntimeAdapter
+	LedgerInbox api.DomainInboxClient
+}
+
+type deliveryCanceler struct{ cancel context.CancelFunc }
+
+func (c deliveryCanceler) Close() error {
+	c.cancel()
+	return nil
 }
 
 // New binds the read surface to Serve's own database and the live authorizer.
@@ -138,7 +147,80 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
 		service.Runtime = &FabricApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")}
 	}
+	if address := strings.TrimSpace(os.Getenv("OPL_LEDGER_ADDR")); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.LedgerInbox = api.NewDomainInboxClient(conn)
+	}
+	if service.LedgerInbox != nil {
+		deliveryCtx, cancel := context.WithCancel(context.Background())
+		if err := server.TrackCloser(deliveryCanceler{cancel: cancel}); err != nil {
+			cancel()
+			return err
+		}
+		go service.RunLedgerDelivery(deliveryCtx)
+	}
 	return service.Register(server)
+}
+
+// DeliverLedgerEvents retries Serve's declared Ledger consumer independently
+// from Workspace. A missing Ledger connection leaves the delivery pending so a
+// later process restart can replay the same immutable event identity.
+func (s *Service) DeliverLedgerEvents(ctx context.Context) error {
+	if s.LedgerInbox == nil {
+		return nil
+	}
+	pending, err := s.Store.PendingDeliveries(ctx, "ledger", 20)
+	if err != nil {
+		return err
+	}
+	for _, delivery := range pending {
+		e := delivery.Event
+		if e.EventType != "serve.agent_readiness_observed.v1" {
+			continue
+		}
+		payload := &api.RuntimeReadinessObservedEvent{}
+		if err := protojson.Unmarshal(e.Payload, payload); err != nil {
+			_ = s.Store.RecordDeliveryFailure(ctx, delivery.DeliveryID, "invalid_payload", time.Now().UTC().Add(time.Minute))
+			continue
+		}
+		envelope := &api.EventEnvelope{EventId: e.ID, EventType: e.EventType, SchemaVersion: e.SchemaVersion, Owner: "serve", TenantId: e.TenantID, Scope: "tenant", AggregateId: e.AggregateID, AggregateVersion: e.AggregateRevision, RequestId: e.CorrelationID, OccurredAt: timestamppb.New(e.OccurredAt), Payload: &api.EventEnvelope_RuntimeReadinessObserved{RuntimeReadinessObserved: payload}}
+		callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		ack, callErr := s.LedgerInbox.Deliver(callCtx, &api.DeliverEventRequest{AuthenticatedProducer: "serve", Event: envelope})
+		cancel()
+		if callErr != nil || ack.GetEventId() != e.ID || ack.GetConsumer() != "ledger" || !ack.GetCommitted() {
+			if err := s.Store.RecordDeliveryFailure(ctx, delivery.DeliveryID, "consumer_unavailable", time.Now().UTC().Add(5*time.Second)); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.Store.AcknowledgeDelivery(ctx, "ledger", e.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) RunLedgerDelivery(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		_ = s.DeliverLedgerEvents(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func limit(n int32) int {

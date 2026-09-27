@@ -65,6 +65,8 @@ func (f *resourcesForServe) ReadResources(_ context.Context, r *api.ResourceRead
 type runtimeForServe struct {
 	starts, observes int
 	observeErr       bool
+	state            api.AgentRuntimeObservationState
+	readiness        string
 }
 
 func (f *runtimeForServe) Start(context.Context, *api.RuntimeDeployCommand, *api.ResourceExecutionBinding) (delivery.RuntimeObservation, error) {
@@ -76,7 +78,14 @@ func (f *runtimeForServe) Observe(context.Context, *api.RuntimeDeployCommand, *a
 	if f.observeErr {
 		return delivery.RuntimeObservation{}, errors.New("readback unavailable")
 	}
-	return runtimeReady(applicationEntry(), "https://ws.example/app", "readback-original"), nil
+	if f.state == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING {
+		return delivery.RuntimeObservation{State: f.state, ObservedAt: time.Now().UTC()}, nil
+	}
+	readiness := f.readiness
+	if readiness == "" {
+		readiness = "readback-original"
+	}
+	return runtimeReady(applicationEntry(), "https://ws.example/app", readiness), nil
 }
 func reservationFixture(t *testing.T) (*delivery.Service, *api.RuntimeReservationCommand, *capabilityForServe) {
 	db, tenant, _ := fixture(t)
@@ -174,6 +183,13 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 	if err != nil || !state.ApplicationAvailable || state.ReadinessReceiptId != "readback-original" {
 		t.Fatalf("deployment=%v %v", state, err)
 	}
+	var readinessEvents int
+	if err = s.DB.QueryRowContext(ctx, `SELECT count(*) FROM serve.outbox_events WHERE event_type='serve.agent_readiness_observed.v1' AND aggregate_id=$1`, out.DeploymentId).Scan(&readinessEvents); err != nil {
+		t.Fatal(err)
+	}
+	if readinessEvents != 1 {
+		t.Fatalf("ready deployment emitted %d readiness events, want one", readinessEvents)
+	}
 	access, err := s.GetWorkspaceAccess(serveContext(), &api.GetWorkspaceAccessRpcRequest{Context: r.Context, WorkspaceId: r.WorkspaceId})
 	if err != nil || access.GetUrl() != "https://ws.example/app" {
 		t.Fatalf("access=%v %v", access, err)
@@ -198,6 +214,44 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 	old.ObservedAt = time.Now().Add(-time.Hour)
 	if _, err = s.RecordDeploymentObservation(ctx, command, old); err == nil {
 		t.Fatal("older same-epoch observation overwrote ready record")
+	}
+}
+
+func TestServeReadinessOutboxPreservesSameEpochProgression(t *testing.T) {
+	s, r, _ := reservationFixture(t)
+	ctx := workspaceContext()
+	reservation, err := s.Reserve(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Resources = &resourcesForServe{confirmed: true}
+	runtime := &runtimeForServe{state: api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING}
+	s.Runtime = runtime
+	command := deployReserved(r, reservation)
+	if record, err := s.Deploy(ctx, command); err != nil || record.GetState() != api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_PENDING {
+		t.Fatalf("pending deployment=%v %v", record, err)
+	}
+	runtime.state = api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY
+	runtime.readiness = "ready-evidence"
+	if record, err := s.Deploy(ctx, command); err != nil || !record.GetApplicationAvailable() {
+		t.Fatalf("ready deployment=%v %v", record, err)
+	}
+	if _, err := s.Deploy(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	var events int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM serve.outbox_events WHERE event_type='serve.agent_readiness_observed.v1' AND aggregate_id=$1`, reservation.DeploymentId).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if events != 2 {
+		t.Fatalf("same-epoch readiness events=%d, want pending and ready", events)
+	}
+	var deliveries, acknowledged int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), count(*) FILTER (WHERE acknowledged_at IS NOT NULL) FROM serve.outbox_deliveries d JOIN serve.outbox_events e ON e.id=d.event_id WHERE e.aggregate_id=$1 AND d.consumer_owner='ledger'`, reservation.DeploymentId).Scan(&deliveries, &acknowledged); err != nil {
+		t.Fatal(err)
+	}
+	if deliveries != 2 || acknowledged != 0 {
+		t.Fatalf("readiness delivery rows deliveries=%d acknowledged=%d, want two pending before Ledger wiring", deliveries, acknowledged)
 	}
 }
 
