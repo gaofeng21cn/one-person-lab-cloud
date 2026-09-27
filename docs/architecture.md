@@ -320,49 +320,45 @@ the OPL App port, credentials and mounts.
 
 ### Provisioning And Application Deployment
 
-Resource provisioning and application installation are separate business
-operations. A new customer Launch purchases and fulfills compute, storage,
-attachment and the declared infrastructure readiness, then establishes the
-Workspace's resource entitlement and purchase Receipt. It completes with no
-application installed, and it does not append an installation operation:
-application health, an application password, an application Gateway Key and an
-LLM Key are neither provisioning completion requirements nor part of a customer
-Launch. A customer Launch states its provisioning shape explicitly rather than
-relying on a server default. Retained Launch contracts keep the completion
-obligations recorded in their own operation.
+For a new customer, the Launch is an Agent SaaS operation: the customer selects
+an admitted Agent version and compute/storage plan, confirms the quote, and
+receives a Workspace whose approved resources and exact built OCI are delivered
+as one product path. The path is deliberately staged rather than one database
+transaction: Workspace owns admission, entitlement and the purchase/resource
+Saga; Fabric provisions and reads back infrastructure; Serve deploys the exact
+OCI and owns Agent readiness, access and the current deployment. A resource
+readback alone is never a successful new-customer outcome.
 
-In the initial scope, an authorized administrator selects a target Workspace,
-registry connection, repository and image version, supplies the required
-startup/configuration/data bindings and deploys onto those existing resources.
-Account ownership alone does not grant application distribution authority;
-customer self-service deployment is outside this scope. Deployment can fail or
-be retried without repeating the purchase or reclassifying fulfilled resources
-as an unfulfilled Launch. A convenience action that provisions and installs
-composes two explicit operations; an installation failure does not erase
-provisioning success.
+The Agent input chain is fixed and reproducible: Capability owns the native OMA
+Package and immutable version, Runtime Control supplies an approved OPL App
+Runtime release, the selected reference WebUI is fixed, and Build emits a
+readable immutable TCR OCI digest. The customer chooses the resulting Agent
+version and plan in Console; the customer does not install an application
+afterward and an administrator does not perform a separate application
+distribution step for this new-customer path. Deployment can fail or be
+retried without repeating a settled purchase; failure remains distinct from
+resource fulfillment and is read back by its owning service.
 
-Control Plane owns these independent business commands. Fabric separates
-compute/storage provisioning ports from Runtime deployment/execution ports;
-Runtime is another capability within the existing resource execution owner,
-not logic embedded in resource purchase. No new process is needed to separate
-these paths. Workspace resource readiness, deployment progress and application
-availability are distinct projections, including a valid provisioned Workspace
-with an empty current application binding.
+The historical `resource_only` Launch remains valid for existing purchases and
+unfinished obligations. Its retained completion conditions and any later
+adoption onto existing resources are migration behavior, not the new-customer
+default and not permission to add an implicit Agent to an old order.
 
 ### Control Plane Authority And Credential Boundary
 
-Control Plane's application authority is admission and coordination. It decides
-which application revisions are admitted, which Workspace holds which current
-deployment binding, and how deployment, restore and lifecycle operations
-proceed. Application business behavior and data formats stay with the
-application publisher; execution and authoritative resource readback stay with
-Fabric; wallet and gateway-key authority stay with Sub2API; evidence stays with
-Ledger.
+The current Control Plane remains the migration source for application
+admission/coordination in the code that exists today. The target does not keep
+its per-Workspace deployment binding as a second writer: Capability/Runtime
+Control/Build fix Agent inputs, Workspace owns entitlement and target
+authorization, Fabric owns infrastructure readback, and Serve owns Agent
+deployment/readiness/access/current selection. Application behavior and data
+formats stay with the publisher; wallet and Gateway-Key authority stay with
+Sub2API; evidence stays with Ledger.
 
-Control Plane stays one process. Separation is enforced by package boundaries,
-typed contracts and owner-local persistence, not by new deployment units. A
-process split is a later decision driven by measured scale or isolation need,
-not a prerequisite for the business loops.
+The current Control Plane stays one process until each live capability moves;
+that fact is not a target owner decision. The target uses the domain service
+boundaries adopted on 2026-09-22, with typed contracts and owner-local
+persistence rather than a permanent parallel deployment writer.
 
 Control Plane's Fabric, Ledger and Sub2API service tokens are process-scoped.
 They are never forwarded to applications, browser sessions or application
@@ -371,8 +367,8 @@ and administrator credentials do not reach the application runtime.
 
 ### Application And Deployment Identity
 
-The initial scope is zero or one selected application deployment per Workspace;
-that application may contain a primary service and private supporting services.
+The target scope is zero or one selected Agent deployment per Workspace; that
+Agent may contain a primary service and private supporting services.
 Independent applications within the same Workspace are a later product choice.
 A web entry is optional for a worker-only application. An authorized
 administrator may explicitly allow anonymous application access; that alone
@@ -381,9 +377,9 @@ lifecycle. Serve publication remains a separate capability.
 
 | Concept | Owns | Change boundary |
 | --- | --- | --- |
-| Workspace | Account identity, paid resource entitlement, optional current deployment, application exposure policy and stable data bindings | Provisioning can complete before installation; application replacement does not create another purchase or erase retained data |
-| Application revision | Immutable deployment description and exact component image references published by the application owner | A change to images or the description creates a new revision |
-| Application deployment | One Workspace's fixed deployment intent, non-secret configuration, Secret versions and resource/data references | Control Plane owns the operation/current selection; Fabric owns observed execution and physical bindings |
+| Workspace | Account identity, membership/entitlement, resource plan, target authorization and stable data bindings | It does not store an Agent deployment pointer/status copy; Agent replacement does not create another purchase or erase retained data |
+| Agent version | Capability Package/version, approved Runtime release, WebUI selection and exact immutable OCI reference | A changed Package, Runtime, WebUI or OCI digest creates a new Build/Agent version |
+| Agent deployment | Serve-owned delivery attempt, non-secret configuration, Secret/resource references, readiness and access/current selection | Serve owns the operation/current selection; Fabric owns only observed infrastructure facts |
 | Application data | Persistent volumes, restore inputs and their consistency/compatibility facts | Restore, schema migration and deletion have explicit data operations; a process restart has none of these effects |
 
 The description declares executable image digests and platforms, startup,
@@ -392,8 +388,8 @@ runtime capabilities, persistent or scratch mounts, configuration/Secret
 inputs, private dependencies and permitted connections. Restore requirements
 reference a versioned application-owned restore artifact and exact input data;
 they do not embed an unbounded workflow language. Fields become machine
-contracts only as the corresponding Control Plane and Fabric consumers are
-implemented together.
+contracts only as the corresponding Capability/Build/Workspace/Serve/Fabric
+consumers are implemented together.
 
 OCI registries such as TCR retain the image and, where supported, its versioned
 deployment-description artifact. Data archives use an approved artifact or
@@ -410,32 +406,23 @@ browse credential into Control Plane while the runtime keeps its own pull
 credential. The browsable namespace boundary is server-side admission policy, so
 configuring an endpoint never widens it.
 
-New application revisions
-are registered by an authorized administrator through Control Plane within
-Instance-approved registry and admission policy; they do not require a Cloud
-rebuild, product Release or a new application-specific provider branch. Console's basic input is registry,
-repository and image/tag selection; the selected tag resolves to an immutable
-reference, and required settings are explicitly supplied or taken from a
-publisher's declared description. Selection is discovery for one deployment,
-not a global application publication: a simple image does not require a separate
-OPL Package, marketplace publication or prior installation-wide revision
-registration before use. Selecting one Workspace's
-revision does not change the installation default or another Workspace.
-Each Workspace fixes its own desired revision, configuration and stable data
-bindings. Pushing a new TCR tag/digest or changing an installation default never
-updates an existing Workspace implicitly; every deployment targets an explicit
-Workspace. The same application version may serve several Workspaces with
-separate data, while those Workspaces may advance through versions independently.
+New Agent versions are produced from the approved Package + Runtime + WebUI
+chain and are selected by the customer for a specific Workspace and quote.
+Console presents the owner readbacks and does not turn a mutable registry tag
+into a deployment identity. A new Package, Runtime, WebUI or OCI digest creates
+a new immutable version; selecting it never changes another Workspace
+implicitly. The same Agent version may serve several Workspaces with separate
+data, while those Workspaces may advance through versions independently.
 
-Control Plane is the writer of application admission and per-Workspace desired
-selection. Fabric receives the admitted immutable specification through its
-authenticated typed execution boundary and checks the installation's registry,
-resource and runtime capability constraints. Its target selection must not
-remain a second environment-only per-image catalog that requires redeploying
-Cloud whenever an administrator admits a new revision. Installation trust policy,
-application availability, an optional installation default and a Workspace's
-selected revision remain distinct facts. The legacy catalog retains only its
-proven consumers and operations until their coordinated migration.
+Capability, Runtime Control and Build admit and fix the Agent inputs; Workspace
+authorizes the target and resource plan; Serve is the writer of the per-
+Workspace Agent delivery attempt, readiness and current selection. Fabric
+receives the exact OCI and resource bindings through its authenticated typed
+execution boundary and reports infrastructure facts only. The old Control
+Plane application-admission/current-selection path is a migration source and
+must not remain a second deployment writer after its callers move to the target
+owners. Installation trust policy, Agent availability, and Workspace
+entitlement remain distinct facts.
 
 Admission validates the whole deployment, including supporting services and
 restore peak requirements, against current resource limits, provider
@@ -630,7 +617,7 @@ resource provisioning and Runtime execution behind distinct capability ports.
 
 | Layer | Control Plane responsibility | Fabric responsibility |
 | --- | --- | --- |
-| Domain | Typed Workspace rules for entitlement, administrator distribution, expected predecessor, data-binding compatibility, reservation and current selection. A policy consumes declared application compatibility facts; it does not infer database formats. | Resource ownership, attachments, admitted execution identities, capability constraints and valid physical lifecycle transitions. No application-specific business rules. |
+| Domain | Typed Workspace rules for entitlement, target authorization, expected predecessor, data-binding compatibility and reservation. A policy consumes declared Agent compatibility facts; it does not own Agent current selection or infer database formats. | Resource ownership, attachments, admitted execution identities, capability constraints and valid physical lifecycle transitions. No Agent deployment/readiness/access business rules. |
 | Application services | Provision, register/preview/deploy, restore, rotate and manage lifecycle by coordinating the domain, repositories and typed HTTP clients. Resume the same durable operation after uncertain results. | Coordinate resource or Runtime operations, Secret/data binding and readback through narrow provider ports and existing operation journals. |
 | Inbound adapters | HTTP authentication/authorization context, request decoding, use-case invocation and response DTOs in `internal/server`; these handlers do not become the owner of new deployment rules. Console only presents those DTOs. | Typed internal HTTP endpoints in `internal/http`; validate the caller and contract before executing the owning use case. |
 | Outbound adapters | Repository implementations over owner-local Ent/PostgreSQL, plus existing Fabric/Ledger/Sub2API clients. No writes to another service's tables. | Owner-local persistence and Tencent/TKE or Local-Docker adapters; translate execution intent to actual provider objects and observed facts. |
@@ -645,52 +632,50 @@ The primary migration splits two proofs that current callers combine:
 
 - The original successful Launch proves purchase, accepted price/period,
   initial resource fulfillment and its Receipt. It remains immutable history.
-- The Workspace's versioned current deployment plus matching Fabric readback
-  proves which application, services, entry and credentials are usable now.
+- Serve's versioned current Agent deployment plus matching Fabric resource
+  readback proves which Agent, services, entry and credentials are usable now.
 
-New provisioning operations end at resource fulfillment and Workspace resource
-activation; application installation is a later independent command against
-that entitlement. They do not require an image or model credential. Application
-failure does not trigger a second debit, implicit resource deletion or a failed-
-purchase refund. Application changes append deployment evidence and never
-rewrite the Launch to describe a different historical purchase. Existing
-successful and non-terminal Launches retain the completion obligations of their
-original contract, including their original Runtime binding where applicable;
-introduce the new provisioning contract without silently relaxing old records.
+New customer operations do not end at resource fulfillment: the selected Agent
+must be delivered and available through Serve before the product path is
+successful. Resource fulfillment is an intermediate owner result. Agent
+delivery failure does not trigger a second debit, implicit resource deletion or
+a failed-purchase refund; it remains a separately evidenced delivery outcome.
+Existing successful and non-terminal `resource_only` Launches retain the
+completion obligations of their original contract, including their original
+Runtime binding where applicable; migration introduces Agent adoption without
+silently relaxing or rewriting old records.
 
 ### Commands And Transaction Boundaries
 
 Command names here express proposed use cases, not already published APIs.
-`ProvisionWorkspace` owns purchase and resource fulfillment independently of
-`DeployWorkspaceApplication`. `RegisterApplicationRevision` admits an exact publisher revision;
-`PreviewApplicationDeployment` checks declared configuration, data compatibility,
-provider capabilities, selected exposure policy and resource fit without
-mutation. Registry inspection
-uses the authorized artifact/resource boundary; registry credentials never
-become customer input or application environment by implication.
+`CreateWorkspace` accepts the selected Agent version, quote and plan; Workspace
+checks membership, entitlement, target authorization, compatibility and
+conflicting operations before reserving a durable operation. Capability/Build
+admission fixes the exact Package, Runtime, WebUI and OCI references; registry
+credentials never become customer input or application environment by
+implication.
 
-`DeployWorkspaceApplication` fixes the target and expected predecessor. Within
-the Workspace transaction it checks administrator distribution permission,
-target ownership, current entitlement, conflicting operations and version, then
-reserves a durable operation before dispatch.
+`ServeAgentCoordination.Deploy` fixes the target and expected predecessor.
+Serve owns the Agent delivery operation and current-selection CAS, while
+Workspace retains only the business authorization and resource entitlement.
 Each external mutation rechecks its applicable authorization and resource
 binding; a preview is not a permanent capacity or entitlement grant.
 
 Fabric prepares only the admitted resource/data/Secret bindings, runs an
 explicit restore when selected, and applies the declared component group.
 Provider capabilities translate that request to Kubernetes or Docker and read
-back the same specification. Application health, data-validation success and
+back the same specification. Agent health, data-validation success and
 platform access readiness are distinct facts; all required facts must match
-before Control Plane activates the deployment under its selected exposure
-policy. This activation changes the current application binding, not the
-already completed resource purchase.
+before Serve activates the current Agent deployment under its selected access
+policy. This activation changes Serve's current delivery fact, not the
+Workspace's already accepted entitlement or historical purchase.
 
-Activation uses the Workspace version and operation reservation to atomically
-commit its current deployment reference and the deployment result in the
-Control Plane database. It rechecks entitlement after execution. No database
-transaction spans Fabric HTTP calls. A response loss resumes the same persisted
+Activation uses the Workspace authorization/version and Serve operation
+reservation to CAS the current Agent deployment and access result in the Serve
+database. Workspace rechecks entitlement before dispatch; no database
+transaction spans owner calls. A response loss resumes the same persisted
 identity; observed success from a superseded operation cannot overwrite a later
-binding. Ledger receipt failure retries only evidence recording.
+Serve binding. Ledger receipt failure retries only evidence recording.
 
 `RollbackWorkspaceApplication` is a new explicitly targeted deployment with a
 data-compatibility check, not replay of an old operation. `RestoreApplicationData`
@@ -715,10 +700,11 @@ deployment specification through the same Workspace reservation/version rules.
 The owning change operation may reuse the application revision, physical Runtime
 and data bindings; it does not imply recreating containers when the admitted
 capability supports an in-place binding change. The old intent and Receipt stay
-immutable. Fabric confirms the changed consumers/entry before Control Plane
-selects the successor; desired and observed versions remain separately visible
-while the operation is incomplete. Existing rotation uses this same operation
-mechanism instead of mutating a historical deployment's fixed Secret version.
+immutable. Fabric confirms changed infrastructure consumers/entry facts before
+Serve selects the successor; desired and observed versions remain separately
+visible while the operation is incomplete. Existing rotation uses this same
+operation mechanism instead of mutating a historical deployment's fixed Secret
+version.
 
 A replacement preview states its interruption strategy and capacity needs.
 Overlapping deployments are not assumed possible on the existing plan or with
@@ -736,12 +722,12 @@ command names above do not claim that corresponding types already exist.
 | Owner | Current seams | Required responsibility change |
 | --- | --- | --- |
 | Control Plane domain and repositories | `services/control-plane/internal/domain/`, `internal/controlplane/`, `ent/schema/`, `internal/server/workspace_store.go` and `ent_state_store_workspace.go` | Cohesive owner-local domain rules and application services for the live use case; the current Workspace projection and thin delegates do not themselves establish these layers. Ent/store adapters implement typed persistence and atomic reservation/activation. Keep actual provider state out. |
-| Control Plane current orchestration entrypoints | `workspace_launch_fabric_stages.go`, `workspace_launch_activation.go`, `workspace_runtime_image_replacement.go`, `workspace_image_release_policy.go`, `workspace_renewal.go`, `workspace_delete.go` under `services/control-plane/internal/server/` | Move changed use cases behind typed application services; end new provisioning at resource fulfillment; install/switch/rollback use a separate deployment operation. Preserve old Launch contracts and separate historical purchase proof from current deployment proof; lifecycle covers the entire owned component/data set. |
+| Control Plane current orchestration entrypoints | `workspace_launch_fabric_stages.go`, `workspace_launch_activation.go`, `workspace_runtime_image_replacement.go`, `workspace_image_release_policy.go`, `workspace_renewal.go`, `workspace_delete.go` under `services/control-plane/internal/server/` | Migration source only: move new Agent admission/deployment callers to Workspace/Serve owners; preserve old Launch contracts and separate historical purchase proof from current Agent proof. Retire the old deployment/current-selection writer after the real callers move. |
 | Control Plane access and clients | `services/control-plane/internal/server/workspace_gateway.go`, `routes_workspace.go`, `internal/clients/` | Authenticate management operations; apply the chosen application exposure policy and preserve application login/session behavior. Use current Fabric entry/Secret bindings instead of the original Launch's Runtime; map typed cross-owner results. |
 | Fabric resource fulfillment | `services/fabric/internal/fabric/workspace_launch_stage_engine.go`, `workspace_launch_stage.go`, `internal/http/server.go`, capability ports and owner stores; CP client `services/control-plane/internal/clients/fabric_workspace_launch.go` | Resource-only preflight, typed input/integrity, persistence/decoder and compute/storage/attachment execution/readback move together. Image admission applies to application execution; the new resource contract cannot inherit the old required-image check. |
 | Fabric Runtime | `services/fabric/internal/fabric/provider_port.go`, `workspace_runtime_read_engine.go`, `workspace_runtime_image_replacement.go`, `tencent_provider.go`, `tencent_provider_runtime.go`, `local_docker_runtime.go` and owner stores | Declared component-group creation, readback, power/deletion, general Secret binding and bounded restore execution. Manifest generation and authoritative validation change together; dependency digests participate in retention/cleanup. |
 | Contracts | `packages/contracts/go/`, the current Workspace Runtime ABI and image-release contracts | Versioned deployment/entry/resource observation DTOs and integrity bindings consumed by both services; preserve retained request identities and migrate consumers together. No shared ORM entities or business reducers. |
-| Console | `apps/console-ui/src/api/`, `apps/console-ui/src/app/`, `apps/console-ui/src/pages/AdminPages.tsx` and Workspace views | Extend the existing administrator Workspace controls with target registry/image selection, configuration/data inputs, preview and deployment progress. Preserve the resource list; show resource readiness separately from current application/version and availability. Customer views expose current access/status without distribution controls. No provider or application-format policy in the browser. |
+| Console | `apps/console-ui/src/api/`, `apps/console-ui/src/app/`, `apps/console-ui/src/pages/AdminPages.tsx` and Workspace views | Customer entry selects an admitted Agent version, quote and plan, then shows Workspace→Fabric→Serve progress. Preserve resource readback as a separate fact; do not expose a separate administrator-install step for new customers. No provider or Package/Runtime policy in the browser. |
 | Ledger | `services/ledger/internal/ledger/` and its existing HTTP receipt surface | Record owner-produced deployment/restore evidence through existing receipts; extend only consumed payload validation where needed, without an application-state model. |
 
 Fabric provider adapters are anti-corruption layers: they translate stable
@@ -754,14 +740,14 @@ how to operate them. OPL App conventions move into its explicit description.
 
 ### Existing Owners And Migration
 
-The administrator Console selects an admitted application revision,
-configuration, data source and target Workspace through Control Plane product
-APIs. It presents the exact planned scope, resource fit, restore progress and application readiness.
-Control Plane adds application deployment/data coordination to its existing
-durable Workspace operations. Fabric extends its typed Runtime/resource ports
-and provider adapters for the declared services, volumes, Secrets and network.
-Ledger keeps opaque immutable evidence; no new generic workflow engine, service,
-wallet, Framework Host or provider writer is required by this change.
+The following paragraph describes the retained implementation migration source,
+not the target new-customer entry. In that source, the administrator Console
+selects an admitted application revision through Control Plane and Fabric
+extends its Runtime/resource ports. The target replaces that path with the
+customer Agent-version-plus-plan entry: Workspace owns admission and resource
+entitlement, while Serve owns Agent delivery/readiness/access/current selection.
+Ledger keeps opaque immutable evidence; no second deployment writer is retained
+after the live callers migrate.
 
 Every Workspace-owned component and restore workload participates in the same
 ownership, serialization, expiry, renewal and deletion boundaries. Replacing an
