@@ -1,37 +1,73 @@
 import { useRef, useState } from "react";
 
-import { getPricingCatalog, previewPricing } from "../api/console-read-api.ts";
 import type {
   AuthSession,
   GatewayWallet,
-  PlanId,
   PricingCatalogResponse,
   SourceEnvelope,
-  WorkspaceLaunchResponse,
-  WorkspacePricePreview
+  CapabilityVersionDTO,
+  ComputePlanDTO,
+  StoragePlanDTO,
+  LaunchModelDTO,
+  WorkspaceQuoteDTO,
+  WorkspaceOwnerOperationDTO,
+  WorkspaceOwnerDTO,
+  WorkspaceOwnerAccessDTO,
+  GatewayWalletReadbackDTO
 } from "../api/dtos.ts";
 import {
-  findWorkspaceInPages,
-  getWorkspaceLaunch,
-  getWorkspaceLaunches,
-  launchWorkspace,
+  createAgentWorkspace,
+  createWorkspaceQuote,
+  getLaunchWallet,
+  getWorkspaceQuote,
+  getWorkspaceOwnerAccess,
+  getWorkspaceOwnerOperation,
+  listAvailableComputePlans,
+  listAvailableLaunchModels,
+  listAvailableStoragePlans,
+  listReadyCapabilityVersions,
+  listWorkspaceOwnerRows,
   workspaceLaunchIdempotencyKey
 } from "../api/workspaces-api.ts";
-import { hasSufficientWorkspaceLaunchBalance } from "../console-model.ts";
 import type { RemoteState, WorkspaceLaunchController, WorkspaceLaunchStep } from "./console-controller-types.ts";
 import {
-  canReviewWorkspaceLaunch,
-  canSubmitWorkspaceLaunch,
-  classifyWorkspaceLaunchRecovery,
-  resolveWorkspaceLaunchIntent,
-  shouldPollWorkspaceLaunch,
-  shouldRetainWorkspaceLaunchIntent,
-  workspaceLaunchSubmission,
-  type WorkspaceLaunchIntent
+  canCreateAgentQuote,
+  canCreateAgentWorkspace,
+  operationPollDelayMs,
+  type AgentLaunchReadiness
 } from "./workspace-launch-controller-model.ts";
 
-const workspaceLaunchPollIntervalMs = 10_000;
-const workspaceLaunchPollAttempts = 30;
+const agentOperationStorageKey = "opl-cloud:agent-workspace-operation";
+
+export interface AgentWorkspaceLaunchController extends WorkspaceLaunchController {
+  agentCapabilityVersions: CapabilityVersionDTO[];
+  agentComputePlans: ComputePlanDTO[];
+  agentStoragePlans: StoragePlanDTO[];
+  agentModels: LaunchModelDTO[];
+  agentWallet: GatewayWalletReadbackDTO | null;
+  agentSourceError: string;
+  agentSourceLoading: boolean;
+  agentCapabilityVersionId: string;
+  setAgentCapabilityVersionId: (value: string) => void;
+  agentComputePlanId: string;
+  setAgentComputePlanId: (value: string) => void;
+  agentStoragePlanId: string;
+  setAgentStoragePlanId: (value: string) => void;
+  agentModelSelections: Record<string, string>;
+  setAgentModelSelection: (slot: string, modelId: string) => void;
+  agentQuote: WorkspaceQuoteDTO | null;
+  agentOperation: WorkspaceOwnerOperationDTO | null;
+  agentWorkspace: WorkspaceOwnerDTO | null;
+  agentAccess: WorkspaceOwnerAccessDTO | null;
+  agentStep: "configure" | "quote" | "operation";
+  agentConfirmed: boolean;
+  setAgentConfirmed: (value: boolean) => void;
+  agentBusy: boolean;
+  agentPollIssue: "" | "unavailable" | "timeout" | "unknown";
+  reviewAgentLaunch: () => void;
+  submitAgentLaunch: () => Promise<void>;
+  openAgentWorkspace: () => void;
+}
 
 interface WorkspaceLaunchDependencies {
   session: AuthSession | null;
@@ -44,7 +80,7 @@ interface WorkspaceLaunchDependencies {
   friendlyError: (error: unknown) => string;
 }
 
-export interface WorkspaceLaunchCapability extends WorkspaceLaunchController {
+export interface WorkspaceLaunchCapability extends AgentWorkspaceLaunchController {
   loadCatalog: (generation: number, activeSession: AuthSession) => Promise<void>;
   recover: (generation: number, activeSession: AuthSession) => Promise<void>;
   reset: () => void;
@@ -52,9 +88,19 @@ export interface WorkspaceLaunchCapability extends WorkspaceLaunchController {
 
 const emptyCatalog = (): RemoteState<PricingCatalogResponse> => ({ value: null, loading: false, error: "" });
 
+function operationIsTerminal(operation: WorkspaceOwnerOperationDTO): boolean {
+  return ["succeeded", "failed", "needs_attention", "cancelled"].includes(operation.status);
+}
+
+function selectionList(requirements: CapabilityVersionDTO["modelRequirements"], selections: Record<string, string>) {
+  return requirements.flatMap((requirement) => {
+    const modelId = selections[requirement.slot];
+    return modelId ? [{ slot: requirement.slot, modelId }] : [];
+  });
+}
+
 export function useWorkspaceLaunchController({
   session,
-  wallet,
   isRequestCurrent,
   currentMutationRequest,
   currentRequestGeneration,
@@ -63,238 +109,292 @@ export function useWorkspaceLaunchController({
   friendlyError
 }: WorkspaceLaunchDependencies): WorkspaceLaunchCapability {
   const [catalog, setCatalog] = useState<RemoteState<PricingCatalogResponse>>(emptyCatalog);
-  const [previews, setPreviews] = useState<Partial<Record<PlanId, WorkspacePricePreview>>>({});
   const [launchName, setLaunchName] = useState("");
-  const [launchPlan, setLaunchPlan] = useState<PlanId>("basic");
   const [launchAutoRenew, setLaunchAutoRenew] = useState(false);
   const [launchStep, setLaunchStep] = useState<WorkspaceLaunchStep>("configure");
   const [launchConfirmed, setLaunchConfirmed] = useState(false);
-  const [launchOperation, setLaunchOperation] = useState<WorkspaceLaunchResponse | null>(null);
-  const [launchRecoveryState, setLaunchRecoveryState] = useState<WorkspaceLaunchController["launchRecoveryState"]>("idle");
-  const [launchPollIssue, setLaunchPollIssue] = useState<"" | "error" | "timeout" | "readback">("");
-  const [busy, setBusy] = useState(false);
-  const intent = useRef<WorkspaceLaunchIntent | null>(null);
+  const [agentCapabilityVersions, setAgentCapabilityVersions] = useState<CapabilityVersionDTO[]>([]);
+  const [agentComputePlans, setAgentComputePlans] = useState<ComputePlanDTO[]>([]);
+  const [agentStoragePlans, setAgentStoragePlans] = useState<StoragePlanDTO[]>([]);
+  const [agentModels, setAgentModels] = useState<LaunchModelDTO[]>([]);
+  const [agentWallet, setAgentWallet] = useState<GatewayWalletReadbackDTO | null>(null);
+  const [agentSourceError, setAgentSourceError] = useState("");
+  const [agentSourceLoading, setAgentSourceLoading] = useState(false);
+  const [agentCapabilityVersionId, setAgentCapabilityVersionIdState] = useState("");
+  const [agentComputePlanId, setAgentComputePlanIdState] = useState("");
+  const [agentStoragePlanId, setAgentStoragePlanIdState] = useState("");
+  const [agentModelSelections, setAgentModelSelections] = useState<Record<string, string>>({});
+  const [agentQuote, setAgentQuote] = useState<WorkspaceQuoteDTO | null>(null);
+  const [agentOperation, setAgentOperation] = useState<WorkspaceOwnerOperationDTO | null>(null);
+  const [agentWorkspace, setAgentWorkspace] = useState<WorkspaceOwnerDTO | null>(null);
+  const [agentAccess, setAgentAccess] = useState<WorkspaceOwnerAccessDTO | null>(null);
+  const [agentConfirmed, setAgentConfirmed] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentPollIssue, setAgentPollIssue] = useState<"" | "unavailable" | "timeout" | "unknown">("");
+  const intent = useRef<{ quoteId: string; input: { name: string; quoteId: string; renewalMode: "manual" | "automatic"; automaticRenewalConsent?: true }; idempotencyKey: string } | null>(null);
+
+  const invalidateQuote = () => {
+    setAgentQuote(null);
+    setAgentConfirmed(false);
+    setLaunchStep("configure");
+  };
 
   const reset = () => {
     setCatalog(emptyCatalog());
-    setPreviews({});
     setLaunchName("");
-    setLaunchPlan("basic");
     setLaunchAutoRenew(false);
     setLaunchStep("configure");
     setLaunchConfirmed(false);
-    setLaunchOperation(null);
-    setLaunchRecoveryState("idle");
-    setLaunchPollIssue("");
-    setBusy(false);
+    setAgentCapabilityVersions([]);
+    setAgentComputePlans([]);
+    setAgentStoragePlans([]);
+    setAgentModels([]);
+    setAgentWallet(null);
+    setAgentSourceError("");
+    setAgentCapabilityVersionIdState("");
+    setAgentComputePlanIdState("");
+    setAgentStoragePlanIdState("");
+    setAgentModelSelections({});
+    setAgentQuote(null);
+    setAgentOperation(null);
+    setAgentWorkspace(null);
+    setAgentAccess(null);
+    setAgentConfirmed(false);
+    setAgentBusy(false);
+    setAgentPollIssue("");
     intent.current = null;
+    sessionStorage.removeItem(agentOperationStorageKey);
   };
 
   const loadCatalog = async (generation: number, activeSession: AuthSession) => {
-    setCatalog((current) => ({ ...current, loading: true, error: "" }));
-    setPreviews({});
+    setAgentSourceLoading(true);
+    setAgentSourceError("");
     try {
-      const value = await getPricingCatalog();
+      const [versions, compute, storage, models, wallet] = await Promise.all([
+        listReadyCapabilityVersions(), listAvailableComputePlans(), listAvailableStoragePlans(), listAvailableLaunchModels(), getLaunchWallet()
+      ]);
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      setCatalog({ value, loading: false, error: "" });
-      if (value.resourceBillingMode === "none") setLaunchAutoRenew(false);
-      if (!value.packages.some((plan) => plan.id === launchPlan && plan.available)) {
-        const firstAvailablePlan = value.packages.find((plan) => plan.available);
-        if (firstAvailablePlan) setLaunchPlan(firstAvailablePlan.id);
+      const availableVersions = versions.filter((version) => version.status === "ready");
+      const availableCompute = compute.filter((plan) => plan.availability === "available");
+      const availableStorage = storage.filter((plan) => plan.availability === "available");
+      const availableModels = models.filter((model) => model.available);
+      if (!availableVersions.length || !availableCompute.length || !availableStorage.length || !availableModels.length) {
+        throw new Error("agent_launch_catalog_empty");
       }
-      const entries = await Promise.all(value.packages.filter((plan) => plan.available).map(async (plan) => {
-        const preview = await previewPricing({ resourceType: "workspace", packageId: plan.id }, activeSession.csrfToken);
-        return [plan.id, preview] as const;
-      }));
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      const next: Partial<Record<PlanId, WorkspacePricePreview>> = {};
-      for (const [planId, preview] of entries) {
-        if (typeof preview.totalChargeUsdMicros === "number") next[planId] = preview as WorkspacePricePreview;
-      }
-      setPreviews(next);
+      setAgentCapabilityVersions(availableVersions);
+      setAgentComputePlans(availableCompute);
+      setAgentStoragePlans(availableStorage);
+      setAgentModels(availableModels);
+      setAgentWallet(wallet);
+      setAgentCapabilityVersionIdState((current) => current && availableVersions.some((v) => v.id === current) ? current : availableVersions[0].id);
+      setAgentComputePlanIdState((current) => current && availableCompute.some((p) => p.id === current) ? current : availableCompute[0].id);
+      setAgentStoragePlanIdState((current) => current && availableStorage.some((p) => p.id === current) ? current : availableStorage[0].id);
+      setAgentSourceLoading(false);
     } catch (error) {
       if (isRequestCurrent(generation, activeSession.user.id)) {
-        setCatalog((current) => ({ ...current, value: null, loading: false, error: friendlyError(error) }));
+        setAgentSourceLoading(false);
+        setAgentSourceError(friendlyError(error));
+        setAgentWallet(null);
+        setAgentQuote(null);
       }
     }
   };
 
-  const confirmReadback = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
+  const readAccess = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
+    if (!session) return;
     try {
-      const detail = await findWorkspaceInPages(workspaceId);
-      if (!isRequestCurrent(generation, activeSession.user.id)) return false;
-      if (!detail.available || detail.data === null) {
-        setLaunchPollIssue("readback");
-        flash("开通操作已完成，但 Workspace 权威回读尚未确认", "danger");
-        return false;
-      }
-      setLaunchPollIssue("");
-      flash("Workspace 已开通");
-      navigate(`/console/workspaces/${encodeURIComponent(workspaceId)}`);
-      return true;
+      const access = await getWorkspaceOwnerAccess(workspaceId, activeSession.csrfToken, `workspace-access:${workspaceId}:${crypto.randomUUID()}`);
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      setAgentAccess(access);
+      setAgentPollIssue("");
     } catch {
       if (isRequestCurrent(generation, activeSession.user.id)) {
-        setLaunchPollIssue("readback");
-        flash("开通操作已完成，但 Workspace 权威回读尚未确认", "danger");
+        setAgentAccess(null);
+        setAgentPollIssue("unknown");
       }
-      return false;
     }
   };
 
-  const poll = async (operationId: string, generation: number, activeSession: AuthSession) => {
-    setLaunchPollIssue("");
-    for (let attempt = 0; attempt < workspaceLaunchPollAttempts; attempt += 1) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, workspaceLaunchPollIntervalMs));
-      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+  const pollAgentOperation = async (operationId: string, generation: number, activeSession: AuthSession) => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        const operation = await getWorkspaceLaunch(operationId);
+        const operation = await getWorkspaceOwnerOperation(operationId);
         if (!isRequestCurrent(generation, activeSession.user.id)) return;
-        setLaunchOperation(operation);
-        if (!shouldPollWorkspaceLaunch(operation)) {
-          if (operation.status === "succeeded" && operation.workspaceId) {
-            await confirmReadback(operation.workspaceId, generation, activeSession);
-          } else if (operation.status === "refunded") {
-            flash("Workspace 未完成，已退款", "danger");
+        setAgentOperation(operation);
+        if (operationIsTerminal(operation)) {
+          if (operation.status === "succeeded" && operation.resourceId) {
+            try {
+              const rows = await listWorkspaceOwnerRows();
+              const workspace = rows.find((item) => item.id === operation.resourceId) || null;
+              if (!isRequestCurrent(generation, activeSession.user.id)) return;
+              setAgentWorkspace(workspace);
+              if (workspace?.applicationAvailability === "available") await readAccess(workspace.id, generation, activeSession);
+            } catch {
+              setAgentPollIssue("unknown");
+            }
+          } else if (operation.status !== "cancelled") {
+            setAgentPollIssue("unknown");
           }
           return;
         }
-      } catch (error) {
-        if (isRequestCurrent(generation, activeSession.user.id)) {
-          setLaunchPollIssue("error");
-          flash(friendlyError(error), "danger");
-        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, operationPollDelayMs(operation.pollAfterSeconds)));
+      } catch {
+        if (isRequestCurrent(generation, activeSession.user.id)) setAgentPollIssue("unknown");
         return;
       }
     }
-    if (isRequestCurrent(generation, activeSession.user.id)) setLaunchPollIssue("timeout");
+    if (isRequestCurrent(generation, activeSession.user.id)) setAgentPollIssue("timeout");
   };
 
   const recover = async (generation: number, activeSession: AuthSession) => {
-    setLaunchRecoveryState("checking");
-    setLaunchPollIssue("");
+    const raw = sessionStorage.getItem(agentOperationStorageKey);
+    if (!raw) return;
     try {
-      const recovery = classifyWorkspaceLaunchRecovery(await getWorkspaceLaunches());
+      const saved = JSON.parse(raw) as { operationId?: string; quoteId?: string };
+      if (!saved.operationId) throw new Error("invalid_agent_operation_locator");
+      if (saved.quoteId) {
+        try { setAgentQuote(await getWorkspaceQuote(saved.quoteId)); } catch { setAgentPollIssue("unknown"); }
+      }
+      setLaunchStep("confirm");
+      setAgentBusy(false);
+      const operation = await getWorkspaceOwnerOperation(saved.operationId);
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
-      if (recovery.kind === "none") {
-        setLaunchOperation(null);
-        setLaunchRecoveryState("clear");
-        return;
-      }
-      if (recovery.kind === "conflict") {
-        setLaunchOperation(null);
-        setLaunchRecoveryState("conflict");
-        return;
-      }
-      setLaunchOperation(recovery.operation);
-      setLaunchRecoveryState("clear");
-      if (shouldPollWorkspaceLaunch(recovery.operation)) {
-        void poll(recovery.operation.operationId, generation, activeSession);
-      }
+      setAgentOperation(operation);
+      if (!operationIsTerminal(operation)) void pollAgentOperation(operation.operationId, generation, activeSession);
     } catch {
-      if (isRequestCurrent(generation, activeSession.user.id)) setLaunchRecoveryState("unavailable");
+      if (isRequestCurrent(generation, activeSession.user.id)) setAgentPollIssue("unavailable");
     }
   };
 
-  const selectedPlan = catalog.value?.packages.find((plan) => plan.id === launchPlan && plan.available) || null;
-  const customerOwned = catalog.value?.resourceBillingMode === "none";
-  const selectedPrice = selectedPlan ? (customerOwned ? 0 : previews[selectedPlan.id]?.totalChargeUsdMicros ?? null) : null;
-  const walletValue = wallet.value?.available ? wallet.value.data : null;
-  const balanceSufficient = customerOwned ? true : walletValue && selectedPrice !== null
-    ? hasSufficientWorkspaceLaunchBalance(walletValue.usdMicros, selectedPrice)
-    : walletValue ? false : null;
-  const launchReviewReadiness = {
-    recoveryState: launchRecoveryState,
-    hasName: Boolean(launchName.trim()),
-    hasSelectedPlan: selectedPlan !== null,
-    selectedPriceKnown: selectedPrice !== null,
-    balanceSufficient: balanceSufficient === true
-  } as const;
+  const setAgentCapabilityVersionId = (value: string) => { setAgentCapabilityVersionIdState(value); invalidateQuote(); };
+  const setAgentComputePlanId = (value: string) => { setAgentComputePlanIdState(value); invalidateQuote(); };
+  const setAgentStoragePlanId = (value: string) => { setAgentStoragePlanIdState(value); invalidateQuote(); };
+  const setAgentModelSelection = (slot: string, modelId: string) => { setAgentModelSelections((current) => ({ ...current, [slot]: modelId })); invalidateQuote(); };
 
-  const reviewWorkspaceLaunch = () => {
-    if (!canReviewWorkspaceLaunch(launchReviewReadiness)) return;
-    setLaunchConfirmed(false);
-    setLaunchStep("confirm");
+  const selectedCapability = agentCapabilityVersions.find((version) => version.id === agentCapabilityVersionId) || null;
+  const modelSelections = selectedCapability ? selectionList(selectedCapability.modelRequirements, agentModelSelections) : [];
+  const modelSelectionsReady = Boolean(selectedCapability) && selectedCapability.modelRequirements.every((requirement) => {
+    const selection = modelSelections.find((item) => item.slot === requirement.slot);
+    return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId));
+  });
+  const readiness: AgentLaunchReadiness = {
+    sourceReady: !agentSourceLoading && !agentSourceError,
+    hasName: Boolean(launchName.trim()),
+    hasCapabilityVersion: Boolean(selectedCapability),
+    hasComputePlan: Boolean(agentComputePlanId),
+    hasStoragePlan: Boolean(agentStoragePlanId),
+    modelSelectionsReady,
+    walletReadbackReady: Boolean(agentWallet),
+    walletSufficient: Boolean(agentWallet && agentQuote && BigInt(agentWallet.balanceUSDMicros) >= BigInt(agentQuote.totalUsdMicros)),
+    quoteReady: Boolean(agentQuote),
+    quoteCurrent: Boolean(agentQuote && agentQuote.status === "offered" && new Date(agentQuote.expiresAt).getTime() > Date.now())
   };
 
-  const submitWorkspaceLaunch = async () => {
-    if (!canSubmitWorkspaceLaunch({
-      ...launchReviewReadiness,
-      sessionAvailable: session !== null,
-      busy,
-      step: launchStep,
-      confirmed: launchConfirmed
-    }) || !session || !selectedPlan) return;
-    const requestStillCurrent = currentMutationRequest();
-    const input = workspaceLaunchSubmission({
-      name: launchName.trim(),
-      packageId: selectedPlan.id,
-      autoRenew: launchAutoRenew
-    }, catalog.value?.resourceBillingMode);
-    const resolution = resolveWorkspaceLaunchIntent(intent.current, input, workspaceLaunchIdempotencyKey);
-    if (resolution.kind === "conflict") {
-      flash("上次 Workspace 开通结果待确认，请按原配置重试", "danger");
+  const reviewAgentLaunch = () => {
+    if (!session || !selectedCapability || !canCreateAgentQuote(readiness)) return;
+    setAgentBusy(true);
+    void createWorkspaceQuote({
+      purpose: "deploy", capabilityVersionId: selectedCapability.id, computePlanId: agentComputePlanId,
+      storagePlanId: agentStoragePlanId, modelSelections, periodMonths: 1
+    }, session.csrfToken, `workspace-quote:${crypto.randomUUID()}`).then((quote) => {
+      setAgentQuote(quote);
+      setAgentConfirmed(false);
+      setLaunchStep("confirm");
+    }).catch((error) => flash(friendlyError(error), "danger")).finally(() => setAgentBusy(false));
+  };
+
+  const submitAgentLaunch = async () => {
+    if (!session || !agentQuote) return;
+    if (Date.parse(agentQuote.expiresAt) <= Date.now()) {
+      setAgentQuote(null);
+      setAgentConfirmed(false);
+      flash("报价已过期，请重新获取准确报价", "danger");
       return;
     }
-    intent.current = resolution.intent;
-    setBusy(true);
+    if (!canCreateAgentWorkspace(readiness, agentConfirmed)) return;
+    const stillCurrent = currentMutationRequest();
+    const input = { name: launchName.trim(), quoteId: agentQuote.id, renewalMode: launchAutoRenew ? "automatic" as const : "manual" as const, ...(launchAutoRenew ? { automaticRenewalConsent: true as const } : {}) };
+    if (intent.current && (intent.current.quoteId !== agentQuote.id || JSON.stringify(intent.current.input) !== JSON.stringify(input))) {
+      flash("原开通请求待核实，请勿更换报价后重试", "danger");
+      return;
+    }
+    const idempotencyKey = intent.current?.idempotencyKey || workspaceLaunchIdempotencyKey();
+    intent.current = { quoteId: agentQuote.id, input, idempotencyKey };
+    setAgentBusy(true);
+    setLaunchStep("confirm");
     try {
-      const operation = await launchWorkspace(input, session.csrfToken, resolution.intent.idempotencyKey);
-      if (!requestStillCurrent()) return;
-      intent.current = null;
-      setLaunchOperation(operation);
-      if (operation.status === "succeeded" && operation.workspaceId) {
-        await confirmReadback(operation.workspaceId, currentRequestGeneration(), session);
-      } else if (operation.status === "refunded") {
-        flash("Workspace 未完成，已退款", "danger");
-      } else if (shouldPollWorkspaceLaunch(operation)) {
-        void poll(operation.operationId, currentRequestGeneration(), session);
-      }
+      const operation = await createAgentWorkspace(input, session.csrfToken, idempotencyKey);
+      if (!stillCurrent()) return;
+      setAgentOperation(operation);
+      sessionStorage.setItem(agentOperationStorageKey, JSON.stringify({ operationId: operation.operationId, quoteId: agentQuote.id }));
+      if (!operationIsTerminal(operation)) void pollAgentOperation(operation.operationId, currentRequestGeneration(), session);
+      else if (operation.status !== "succeeded") setAgentPollIssue("unknown");
     } catch (error) {
-      if (!requestStillCurrent()) return;
-      if (!shouldRetainWorkspaceLaunchIntent(error)) intent.current = null;
-      flash(friendlyError(error), "danger");
+      if (stillCurrent()) flash(friendlyError(error), "danger");
     } finally {
-      if (requestStillCurrent()) setBusy(false);
+      if (stillCurrent()) setAgentBusy(false);
     }
   };
 
-  const openLaunchedWorkspace = async () => {
-    if (!session || !launchOperation?.workspaceId) return;
-    await confirmReadback(launchOperation.workspaceId, currentRequestGeneration(), session);
+  const openAgentWorkspace = async () => {
+    if (!agentAccess?.url) return;
+    window.open(agentAccess.url, "_blank", "noopener,noreferrer");
   };
 
   return {
     catalog,
-    previews,
+    previews: {},
     launchName,
     setLaunchName,
-    launchPlan,
-    setLaunchPlan,
+    launchPlan: "basic",
+    setLaunchPlan: () => undefined,
     launchAutoRenew,
-    setLaunchAutoRenew,
+    setLaunchAutoRenew: (value) => { setLaunchAutoRenew(value); invalidateQuote(); },
     launchStep,
     setLaunchStep,
     launchConfirmed,
     setLaunchConfirmed,
-    selectedPlan,
-    selectedPrice,
-    walletUsdMicros: walletValue?.usdMicros || null,
-    balanceSufficient,
-    customerOwned,
-    launchOperation,
-    launchRecoveryState,
-    launchPollIssue,
-    busy,
-    reviewWorkspaceLaunch,
-    submitWorkspaceLaunch,
-    openLaunchedWorkspace,
+    selectedPlan: null,
+    selectedPrice: null,
+    walletUsdMicros: agentWallet?.balanceUSDMicros || null,
+    balanceSufficient: agentWallet !== null,
+    customerOwned: false,
+    launchOperation: null,
+    launchRecoveryState: "clear",
+    launchPollIssue: "",
+    busy: agentBusy,
+    reviewWorkspaceLaunch: reviewAgentLaunch,
+    submitWorkspaceLaunch: submitAgentLaunch,
+    openLaunchedWorkspace: openAgentWorkspace,
     openLaunchBilling: () => navigate("/console/billing"),
-    prepareNewWorkspaceLaunch: () => {
-      if (!launchOperation || !["failed", "refunded"].includes(launchOperation.status) || launchOperation.closeout?.status !== "closed") return;
-      intent.current = null;
-      setLaunchStep("configure");
-      setLaunchConfirmed(false);
-    },
+    prepareNewWorkspaceLaunch: () => { setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
+    agentCapabilityVersions,
+    agentComputePlans,
+    agentStoragePlans,
+    agentModels,
+    agentWallet,
+    agentSourceError,
+    agentSourceLoading,
+    agentCapabilityVersionId,
+    setAgentCapabilityVersionId,
+    agentComputePlanId,
+    setAgentComputePlanId,
+    agentStoragePlanId,
+    setAgentStoragePlanId,
+    agentModelSelections,
+    setAgentModelSelection,
+    agentQuote,
+    agentOperation,
+    agentWorkspace,
+    agentAccess,
+    agentStep: launchStep === "confirm" ? "quote" : agentOperation ? "operation" : "configure",
+    agentConfirmed,
+    setAgentConfirmed,
+    agentBusy,
+    agentPollIssue,
+    reviewAgentLaunch,
+    submitAgentLaunch,
+    openAgentWorkspace,
     loadCatalog,
     recover,
     reset
