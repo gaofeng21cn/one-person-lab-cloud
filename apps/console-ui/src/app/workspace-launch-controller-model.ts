@@ -119,3 +119,35 @@ export function workspaceLaunchSubmission(
   };
   return resourceBillingMode === "none" ? { ...submitted, autoRenew: false } : submitted;
 }
+
+export type AgentLaunchStep = "configure" | "quote" | "operation";
+
+export interface AgentLaunchReadiness {
+  sourceReady: boolean;
+  hasName: boolean;
+  hasCapabilityVersion: boolean;
+  hasComputePlan: boolean;
+  hasStoragePlan: boolean;
+  modelSelectionsReady: boolean;
+  walletReadbackReady: boolean;
+  walletSufficient: boolean;
+  quoteReady: boolean;
+  quoteCurrent: boolean;
+}
+
+export function canCreateAgentQuote(readiness: AgentLaunchReadiness): boolean {
+  return readiness.sourceReady && readiness.hasName && readiness.hasCapabilityVersion
+    && readiness.hasComputePlan && readiness.hasStoragePlan && readiness.modelSelectionsReady
+    && readiness.walletReadbackReady;
+}
+
+export function canCreateAgentWorkspace(readiness: AgentLaunchReadiness, confirmed: boolean): boolean {
+  return canCreateAgentQuote(readiness) && readiness.walletSufficient && readiness.quoteReady && readiness.quoteCurrent && confirmed;
+}
+
+export function operationPollDelayMs(pollAfterSeconds: number | undefined): number {
+  if (!Number.isInteger(pollAfterSeconds) || pollAfterSeconds === undefined || pollAfterSeconds < 1 || pollAfterSeconds > 300) {
+    throw new Error("invalid_operation_poll_after_seconds");
+  }
+  return pollAfterSeconds * 1000;
+}

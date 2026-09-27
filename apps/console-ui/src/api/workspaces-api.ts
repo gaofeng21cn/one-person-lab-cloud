@@ -21,6 +21,150 @@ import type {
 } from "./dtos.ts";
 import type { WorkspaceApplicationInstallationDTO } from "./dtos.ts";
 import { deleteJson, postJson, getJson, patchJson, type ApiError } from "./console-api.ts";
+import type {
+  CapabilityVersionPageDTO,
+  ComputePlanPageDTO,
+  GatewayWalletReadbackDTO,
+  LaunchModelPageDTO,
+  StoragePlanPageDTO,
+  WorkspaceOwnerAccessDTO,
+  WorkspaceOwnerDTO,
+  WorkspaceOwnerOperationDTO,
+  WorkspaceQuoteDTO,
+  WorkspaceQuoteRequestDTO
+} from "./dtos.ts";
+
+function requirePage<T>(value: unknown, name: string): { items: T[]; nextCursor?: string } {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { items?: unknown }).items)) {
+    throw new Error(`invalid_${name}_page`);
+  }
+  const page = value as { items: T[]; nextCursor?: unknown };
+  if (page.nextCursor !== undefined && (typeof page.nextCursor !== "string" || !page.nextCursor.trim())) {
+    throw new Error(`invalid_${name}_cursor`);
+  }
+  return { items: page.items, ...(typeof page.nextCursor === "string" ? { nextCursor: page.nextCursor } : {}) };
+}
+
+async function listAllOwnerPages<T>(path: string, name: string): Promise<T[]> {
+  const items: T[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const separator = path.includes("?") ? "&" : "?";
+    const query = new URLSearchParams({ limit: "100" });
+    if (cursor) query.set("cursor", cursor);
+    const page = requirePage<T>(await getJson<unknown>(`${path}${separator}${query}`), name);
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error(`repeated_${name}_cursor`);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+// F07 owner reads. These paths intentionally target the v2 BFF only. If an
+// owner route is not deployed yet, the request rejects and the launch remains
+// unavailable instead of consulting legacy catalog data or fixtures.
+export async function listReadyCapabilityVersions(): Promise<CapabilityVersionPageDTO["items"]> {
+  return listAllOwnerPages<CapabilityVersionPageDTO["items"][number]>("/api/v2/capability-versions?status=ready", "capability_version");
+}
+
+export async function listAvailableComputePlans(): Promise<ComputePlanPageDTO["items"]> {
+  return listAllOwnerPages<ComputePlanPageDTO["items"][number]>("/api/v2/catalog/compute-plans", "compute_plan");
+}
+
+export async function listAvailableStoragePlans(): Promise<StoragePlanPageDTO["items"]> {
+  return listAllOwnerPages<StoragePlanPageDTO["items"][number]>("/api/v2/catalog/storage-plans", "storage_plan");
+}
+
+export async function listAvailableLaunchModels(): Promise<LaunchModelPageDTO["items"]> {
+  return listAllOwnerPages<LaunchModelPageDTO["items"][number]>("/api/v2/catalog/models", "model");
+}
+
+export async function getLaunchWallet(): Promise<GatewayWalletReadbackDTO> {
+  const wallet = await getJson<unknown>("/api/v2/wallet");
+  if (!wallet || typeof wallet !== "object") throw new Error("invalid_gateway_wallet_readback");
+  const value = wallet as Record<string, unknown>;
+  if (value.source !== "gateway" || value.status !== "available" || value.currency !== "USD"
+    || typeof value.balanceUSDMicros !== "string" || !/^(0|[1-9]\d*)$/.test(value.balanceUSDMicros)
+    || typeof value.fetchedAt !== "string" || !value.fetchedAt.trim()) {
+    throw new Error("invalid_gateway_wallet_readback");
+  }
+  return value as unknown as GatewayWalletReadbackDTO;
+}
+
+export async function createWorkspaceQuote(
+  input: WorkspaceQuoteRequestDTO,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceQuoteDTO> {
+  const quote = await postJson<unknown>("/api/v2/quotes", input, csrfToken, idempotencyKey);
+  if (!quote || typeof quote !== "object") throw new Error("invalid_workspace_quote");
+  const value = quote as WorkspaceQuoteDTO;
+  if (!value.id || value.purpose !== "deploy" || value.status !== "offered"
+    || value.capabilityVersionId !== input.capabilityVersionId
+    || value.computePlanId !== input.computePlanId || value.storagePlanId !== input.storagePlanId
+    || value.periodMonths !== 1 || !Array.isArray(value.modelSelections)
+    || value.modelSelections.length !== input.modelSelections.length
+    || typeof value.totalUsdMicros !== "string" || !/^(0|[1-9]\d*)$/.test(value.totalUsdMicros)
+    || !value.expiresAt || !value.periodStart || !value.periodEnd
+    || !value.pricePolicyVersionId || !value.refundPolicyVersionId || !value.retentionPolicyVersionId
+    || !value.refundTerms || !value.retentionTerms || !Array.isArray(value.lineItems)) {
+    throw new Error("invalid_workspace_quote");
+  }
+  return value;
+}
+
+export async function getWorkspaceQuote(quoteId: string): Promise<WorkspaceQuoteDTO> {
+  const value = await getJson<unknown>(`/api/v2/quotes/${encodeURIComponent(quoteId)}`);
+  if (!value || typeof value !== "object" || (value as WorkspaceQuoteDTO).id !== quoteId) {
+    throw new Error("invalid_workspace_quote_readback");
+  }
+  return value as WorkspaceQuoteDTO;
+}
+
+export async function createAgentWorkspace(
+  input: { name: string; quoteId: string; renewalMode: "manual" | "automatic"; automaticRenewalConsent?: true },
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceOwnerOperationDTO> {
+  const value = await postJson<unknown>("/api/v2/workspaces", input, csrfToken, idempotencyKey, 60_000);
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_operation");
+  const operation = value as WorkspaceOwnerOperationDTO;
+  if (!operation.operationId || operation.owner !== "workspace" || operation.kind !== "create_workspace"
+    || !operation.resourceId || !operation.status || !operation.stage) {
+    throw new Error("invalid_workspace_operation");
+  }
+  return operation;
+}
+
+export async function getWorkspaceOwnerOperation(operationId: string): Promise<WorkspaceOwnerOperationDTO> {
+  const value = await getJson<unknown>(`/api/v2/operations/workspace/${encodeURIComponent(operationId)}`);
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_operation_readback");
+  const operation = value as WorkspaceOwnerOperationDTO;
+  if (operation.operationId !== operationId || operation.owner !== "workspace" || !operation.status || !operation.stage) {
+    throw new Error("invalid_workspace_operation_readback");
+  }
+  return operation;
+}
+
+export async function listWorkspaceOwnerRows(): Promise<WorkspaceOwnerDTO[]> {
+  return listAllOwnerPages<WorkspaceOwnerDTO>("/api/v2/workspaces", "workspace");
+}
+
+export async function getWorkspaceOwnerAccess(
+  workspaceId: string,
+  csrfToken: string,
+  idempotencyKey: string
+): Promise<WorkspaceOwnerAccessDTO> {
+  const value = await postJson<unknown>(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/access`, {}, csrfToken, idempotencyKey);
+  if (!value || typeof value !== "object") throw new Error("invalid_workspace_access_readback");
+  const access = value as WorkspaceOwnerAccessDTO;
+  if (access.workspaceId !== workspaceId || typeof access.url !== "string" || !/^https?:\/\//.test(access.url)) {
+    throw new Error("invalid_workspace_access_readback");
+  }
+  return access;
+}
 
 const terminalLaunchStatuses = new Set(["succeeded", "failed", "refunded"]);
 
