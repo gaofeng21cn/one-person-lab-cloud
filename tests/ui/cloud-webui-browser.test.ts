@@ -6,6 +6,8 @@ import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/st
 const digest = "sha256:" + "a".repeat(64);
 
 test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions", { timeout: 30_000 }, async () => {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const server = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await chromium.launch({ headless: true });
   try {
@@ -13,7 +15,9 @@ test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions",
     await page.route("**/api/v2/**", async (route) => {
       const url = new URL(route.request().url());
       const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-      if (url.pathname === "/api/v2/auth/session") return json({ id: "user-customer", tenantId: "tenant-fixture", csrfToken: "csrf-fixture" });
+      if (url.pathname === "/api/v2/auth/context") return json({ csrfToken: "csrf-fixture" });
+      if (url.pathname === "/api/v2/auth/login") return json({ actorId: "user-customer", tenantId: "tenant-fixture", displayName: "Customer", permissions: [], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" });
+      if (url.pathname === "/api/v2/auth/session") return json({ actorId: "user-customer", tenantId: "tenant-fixture", displayName: "Customer", permissions: [], csrfToken: "csrf-fixture", expiresAt: "2099-01-01T00:00:00Z" });
       if (url.pathname === "/api/v2/namespaces") return json({ items: [{ id: "ns-1", name: "fixture", status: "active" }] });
       if (url.pathname === "/api/v2/packages") return json({ items: [{ id: "pkg-1", name: "fixture-agent", status: "ready" }] });
       if (url.pathname === "/api/v2/catalog/webui-versions") return json({ items: [
@@ -50,5 +54,7 @@ test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions",
   } finally {
     await browser.close();
     await server.close();
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
   }
 });

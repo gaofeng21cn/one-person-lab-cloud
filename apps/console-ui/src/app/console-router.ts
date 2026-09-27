@@ -6,6 +6,7 @@ export type ConsoleRouteSurface = "public" | "customer" | "admin";
 export type ConsoleNavigationId =
   | "customer.overview"
   | "customer.workspaces"
+  | "customer.agents"
   | "customer.api"
   | "customer.billing"
   | "customer.announcements"
@@ -53,7 +54,8 @@ const CANONICAL_STATIC_ROUTE_DEFINITIONS = {
     requiresSession: true,
     navigationId: "customer.overview"
   },
-  "/console/publisher": { kind: "customer.publisher", surface: "customer", title: "发布 Package", requiresSession: true, navigationId: "customer.workspaces" },
+  "/console/publisher": { kind: "customer.publisher", surface: "customer", title: "发布 Package", requiresSession: true, navigationId: "customer.agents" },
+  "/console/agents": { kind: "customer.agents", surface: "customer", title: "我的智能体", requiresSession: true, navigationId: "customer.agents" },
   "/console/workspaces": {
     kind: "customer.workspaces",
     surface: "customer",
@@ -163,6 +165,16 @@ type AliasedStaticConsoleRoute = {
 }[StaticRouteAliasPath];
 type StaticConsoleRoute = CanonicalStaticConsoleRoute | AliasedStaticConsoleRoute;
 
+type AgentDetailRoute = {
+  kind: "customer.agent-detail";
+  path: string;
+  surface: "customer";
+  title: "智能体详情";
+  requiresSession: true;
+  navigationId: "customer.agents";
+  packageId: string;
+};
+
 type WorkspaceDetailRoute = {
   kind: "customer.workspace-detail";
   path: string;
@@ -173,7 +185,7 @@ type WorkspaceDetailRoute = {
   workspaceId: string;
 };
 
-export type ConsoleRoute = StaticConsoleRoute | WorkspaceDetailRoute;
+export type ConsoleRoute = StaticConsoleRoute | AgentDetailRoute | WorkspaceDetailRoute;
 export type ConsoleRouteKind = ConsoleRoute["kind"];
 export type PublicConsoleRoute = Extract<ConsoleRoute, { surface: "public" }>;
 export type CustomerConsoleRoute = Extract<ConsoleRoute, { surface: "customer" }>;
@@ -190,10 +202,25 @@ function normalizePath(pathname: string) {
 export function parseConsoleRoute(pathname: string): ConsoleRoute | null {
   const path = normalizePath(pathname);
   const canonicalPath = STATIC_ROUTE_ALIASES[path as StaticRouteAliasPath] ?? path;
-  if (canonicalPath === "/console/publisher" && !cloudIdentity) return null;
+  if ((canonicalPath === "/console/publisher" || canonicalPath === "/console/agents") && !cloudIdentity) return null;
   const staticDefinition = CANONICAL_STATIC_ROUTE_DEFINITIONS[canonicalPath as CanonicalStaticConsolePath];
   if (staticDefinition) {
     return { ...staticDefinition, path } as StaticConsoleRoute;
+  }
+
+  const agentDetailPrefix = "/console/agents/";
+  if (path.startsWith(agentDetailPrefix)) {
+    if (!cloudIdentity) return null;
+    const encodedPackageId = path.slice(agentDetailPrefix.length);
+    if (!encodedPackageId || encodedPackageId.includes("/")) return null;
+    let packageId: string;
+    try {
+      packageId = decodeURIComponent(encodedPackageId);
+    } catch {
+      return null;
+    }
+    if (!packageId || packageId.includes("/")) return null;
+    return { kind: "customer.agent-detail", path, surface: "customer", title: "智能体详情", requiresSession: true, navigationId: "customer.agents", packageId };
   }
 
   const workspaceDetailPrefix = "/console/workspaces/";
