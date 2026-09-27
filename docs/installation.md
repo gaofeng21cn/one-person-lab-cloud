@@ -99,6 +99,15 @@ provider are independent selections. The current Local-Docker provider also
 requires Workspace storage on a dedicated ext4/XFS mount with project quota
 enabled and rejects unsupported layouts before Launch mutation.
 
+The installation model has three separate axes: `OPL_DEPLOYMENT_MODE` is the
+deployment-owner value (`platform_owned`, `managed_tke`, or `customer_owned`),
+`OPL_FABRIC_PROVIDER` is the execution provider (`local-docker` or
+`tencent-tke`), and the `admin`/`customer` surface is derived from login and
+Console routing. Customer Console does not select a provider. The current
+`managed_tke` path is paired with `tencent-tke`; `managed_tke` with
+`local-docker` is rejected, while `platform_owned` with `local-docker` remains
+qualification-only.
+
 A Candidate is not a Product Release. Its files are admitted and qualified as
 one checksum-bound set from one canonical Cloud SHA and image digest. The
 Instance owner supplies the domain, provider profile, immutable Workspace image

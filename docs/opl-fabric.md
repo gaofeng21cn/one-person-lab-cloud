@@ -65,11 +65,11 @@ admitted CPU and memory limits. Unsupported hosts fail readiness instead of
 silently falling back to an unenforced directory.
 
 An OPL Cloud instance selects an approved provider profile. The first target
-set is `tencent-tke` for the `medopl` hosted instance, `local-docker` for a
-supported Linux host, and a generic `kubernetes` adapter for self-hosted clusters. The
-initial implementation may select one primary adapter per instance while every
-Workspace persists its exact provider binding so later instances can expose
-more than one provider without changing Workspace identity.
+set is `tencent-tke` for the `medopl` hosted instance and `local-docker` for a
+supported Linux host. Generic Kubernetes remains a future extension, not a
+current Provider or installation choice. The initial implementation may select
+one primary adapter per instance while every Workspace persists its exact
+provider binding.
 
 `local-docker` is now implemented as a Core adapter, but Fabric startup requires
 the installer to provide `OPL_FABRIC_PROVIDER`; a missing value never selects an
