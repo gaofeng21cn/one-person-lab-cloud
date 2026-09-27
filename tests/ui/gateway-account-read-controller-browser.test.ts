@@ -323,7 +323,7 @@ test("Gateway Account Read follows the route plan and leaves one endpoint owner 
     });
 
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
     assert.deepEqual(reads, { wallet: 1, accountUsage: 0, balanceHistory: 0, endpoint: 0 });
 
     reads.wallet = 0;
