@@ -70,12 +70,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux, catalog api.ResourceC
 			return catalog.ListStoragePlans(r.Context(), &api.ListStoragePlansRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryComputePlanId: optionalQuery(r, "computePlanId")})
 		})
 
-	s.publisherRoute(mux, "GET /api/v2/catalog/models", owneridentity.Gateway, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTMODELS, catalogKind, "", nil, func(r *http.Request, c *api.CallContext, _ proto.Message) (proto.Message, error) {
-		if err := requireGateway(s.gateway); err != nil {
-			return nil, err
-		}
-		return s.gateway.ListModels(r.Context(), &api.ListModelsRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r)})
-	})
+	s.registerModelCatalogRoute(mux, s.gateway)
 
 	// The customer pricing surface. A quote is priced by the owner and is neither a
 	// reservation nor a charge; the caller's own tenant scope is what the owner
