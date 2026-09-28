@@ -48,6 +48,7 @@ func (s *Server) ConfigureCoordination(config ownerservice.Config, getenv func(s
 			s.Catalog = api.NewCatalogCoordinationClient(conn)
 		} else {
 			s.Workspace = api.NewOwnerCommitReadbackClient(conn)
+			s.WorkspaceInbox = api.NewDomainInboxClient(conn)
 		}
 	}
 	return close, nil

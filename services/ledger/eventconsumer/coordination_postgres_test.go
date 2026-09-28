@@ -101,6 +101,12 @@ func coordinationDB(t *testing.T) *sql.DB {
 	if err = admin.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// A prior package run may have been interrupted after its cleanup hook was
+	// skipped. Reset the canonical owner-event schema before allocating this
+	// test's isolated legacy search-path schema.
+	if _, err = admin.ExecContext(ctx, "DROP SCHEMA IF EXISTS ledger CASCADE"); err != nil {
+		t.Fatal(err)
+	}
 	schema := fmt.Sprintf("ledger_coord_%d", time.Now().UnixNano())
 	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA "+pq.QuoteIdentifier(schema)); err != nil {
 		t.Fatal(err)
@@ -121,7 +127,12 @@ func coordinationDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(8)
 	t.Cleanup(func() {
 		db.Close()
-		admin.Exec("DROP SCHEMA " + pq.QuoteIdentifier(schema) + " CASCADE")
+		_, _ = admin.Exec("DROP SCHEMA " + pq.QuoteIdentifier(schema) + " CASCADE")
+		// The Ledger owner-event tables live in the canonical ledger schema,
+		// while the legacy receipt tables use this test's isolated search path.
+		// Remove the owner schema as well so each coordination test starts with
+		// an empty Inbox/Outbox and cannot observe another test's receipt event.
+		_, _ = admin.Exec("DROP SCHEMA IF EXISTS ledger CASCADE")
 		admin.Close()
 	})
 	return db
@@ -199,6 +210,83 @@ func coordinatedService(t *testing.T) (*sql.DB, *Server, *coordinationOwners, ap
 	}
 	address := startCoordinationWire(t, server)
 	return db, s, owners, coordinationClient(t, address, owneridentity.Workspace), coordinationClient(t, address, owneridentity.Fabric)
+}
+
+func TestServeReadinessInboxCommitsReceiptAndOutboxOnce(t *testing.T) {
+	db, s, _, _, _ := coordinatedService(t)
+	ctx := ownerservice.WithPeerOwner(context.Background(), owneridentity.Serve.Service())
+	event := &api.EventEnvelope{
+		EventId: "evt-serve-readiness-wire", EventType: "serve.agent_readiness_observed.v1", SchemaVersion: 1,
+		Owner: "serve", TenantId: "tenant-local", AggregateId: "runtime-wire", AggregateVersion: 13,
+		RequestId: "request-wire", Scope: "tenant", OccurredAt: timestamppb.Now(),
+		Payload: &api.EventEnvelope_RuntimeReadinessObserved{RuntimeReadinessObserved: &api.RuntimeReadinessObservedEvent{
+			RuntimeInstanceId: "runtime-wire", WorkspaceId: "workspace-wire", DeploymentId: "deployment-wire", Outcome: "confirmed", ApplicationAvailable: true, ReceiptId: proto.String("fabric-readback-wire"),
+		}},
+	}
+	request := &api.DeliverEventRequest{Event: event, AuthenticatedProducer: "serve"}
+	first, err := s.Deliver(ctx, request)
+	if err != nil || !first.Committed || first.Duplicate {
+		t.Fatalf("first ack=%v err=%v", first, err)
+	}
+	second, err := s.Deliver(ctx, request)
+	if err != nil || !second.Committed || !second.Duplicate {
+		t.Fatalf("duplicate ack=%v err=%v", second, err)
+	}
+	conflict := proto.Clone(event).(*api.EventEnvelope)
+	conflict.GetRuntimeReadinessObserved().WorkspaceId = "workspace-conflict"
+	if _, err = s.Deliver(ctx, &api.DeliverEventRequest{Event: conflict, AuthenticatedProducer: "serve"}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("conflicting event err=%v", err)
+	}
+	var receipts, inbox, outbox int
+	if err = db.QueryRow(`SELECT count(*) FROM evidence_receipts WHERE idempotency_key=$1`, "domain:serve:evt-serve-readiness-wire").Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM ledger.inbox_events WHERE source_owner='serve' AND source_event_id=$1 AND processed_at IS NOT NULL`, event.EventId).Scan(&inbox); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM ledger.outbox_events WHERE event_type='ledger.receipt_recorded.v1' AND tenant_id='tenant-local'`).Scan(&outbox); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 1 || inbox != 1 || outbox != 1 {
+		t.Fatalf("receipts=%d inbox=%d outbox=%d", receipts, inbox, outbox)
+	}
+}
+
+func TestDeploymentReceiptPostgresWirePersistence(t *testing.T) {
+	db, s, owners, client, _ := coordinatedService(t)
+	ctx := context.Background()
+	request := coordinationFixtureRequest()
+	request.OwnerCommitEvidence = proto.Clone(owners.commit).(*api.OwnerCommitEvidence)
+	request.Context.RequestId = "deployment-request"
+	request.Context.IdempotencyKey = "deployment-append"
+	request.Receipt = &api.Receipt{Kind: api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT, Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: proto.String(request.OwnerEvidenceReference), ArtifactDigest: proto.String("sha256:" + strings.Repeat("c", 64)), Outcome: api.ReceiptOutcomeEnum_RECEIPT_OUTCOME_ENUM_CONFIRMED, EvidenceSummary: "Workspace deployment confirmed by exact runtime readback."}
+	request.EvidenceDigest = "sha256:" + strings.Repeat("d", 64)
+	request.OwnerEvidenceReference += ":deployment"
+	first, err := client.AppendReceipt(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.GetId() == "" || first.GetKind() != api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT || first.GetOwner() != api.OwnerEnum_OWNER_ENUM_WORKSPACE || first.GetOperationId() != "order-local" || first.GetArtifactDigest() != "sha256:"+strings.Repeat("c", 64) {
+		t.Fatalf("deployment receipt=%v", first)
+	}
+	secondRequest := proto.Clone(request).(*api.AppendReceiptRequest)
+	secondRequest.Context.RequestId = "deployment-retry"
+	secondRequest.Context.IdempotencyKey = "deployment-retry"
+	second, err := client.AppendReceipt(ctx, secondRequest)
+	if err != nil || !proto.Equal(first, second) {
+		t.Fatalf("deployment replay differs: %v %v", second, err)
+	}
+	read, err := client.ReadReceiptByReference(ctx, &api.GetReceiptByReferenceRequest{Context: secondRequest.Context, Owner: "workspace", OwnerEvidenceReference: request.OwnerEvidenceReference})
+	if err != nil || !proto.Equal(first, read) {
+		t.Fatalf("deployment readback differs: %v %v", read, err)
+	}
+	var count int
+	if err = db.QueryRow(`SELECT count(*) FROM evidence_receipts WHERE receipt_type=$1`, ledger.DeploymentReceiptType).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("deployment rows=%d %v", count, err)
+	}
+	if _, err = s.store.RecordReceipt(ctx, ledger.ReceiptInput{Type: ledger.DeploymentReceiptType, Status: "completed", Surface: "cloud", WorkspaceID: "workspace-local", IdempotencyKey: "forged-deployment"}); err != ledger.ErrInvalidReceiptInput {
+		t.Fatalf("generic deployment writer=%v", err)
+	}
 }
 
 func TestLocalNoChargeReceiptPostgresWirePersistence(t *testing.T) {

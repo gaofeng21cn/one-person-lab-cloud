@@ -10,7 +10,7 @@ type Part = { partNumber: number; etag: string; sizeBytes: number; sha256: strin
 type Upload = { id: string; packageVersionId: string; partSizeBytes: number; completedParts: Part[] };
 type Build = { id: string; status: string; stage: string; artifactDigest?: string; resultCapabilityVersionId?: string };
 type Version = { id: string; status: string; artifactDigest: string; deploymentDescriptorDigest: string };
-type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; webuiId: string };
+type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; runtimeId: string; webuiId: string };
 type Work = { selection?: Selection; fingerprint: string; key: string; packageId?: string; uploadId?: string; packageVersionId?: string; buildId?: string };
 
 const base = "/api/v2";
@@ -42,12 +42,14 @@ export function PublisherPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [namespaces, setNamespaces] = useState<Entry[]>([]);
   const [packages, setPackages] = useState<Entry[]>([]);
+  const [runtimes, setRuntimes] = useState<Entry[]>([]);
   const [webuis, setWebuis] = useState<Entry[]>([]);
   const [namespaceId, setNamespaceId] = useState("");
   const [namespaceName, setNamespaceName] = useState("");
   const [packageId, setPackageId] = useState("");
   const [packageName, setPackageName] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
+  const [runtimeId, setRuntimeId] = useState("");
   const [webuiId, setWebuiId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,16 +71,18 @@ export function PublisherPage() {
     void (async () => {
       try {
         const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
-        const [ns, ui] = await Promise.all([pages(`${base}/namespaces`, abort.signal), pages(`${base}/catalog/webui-versions`, abort.signal)]);
+        const [ns, runtimeVersions, ui] = await Promise.all([pages(`${base}/namespaces`, abort.signal), pages(`${base}/catalog/runtime-versions`, abort.signal), pages(`${base}/catalog/webui-versions`, abort.signal)]);
         if (abort.signal.aborted) return;
-        setSession(active); setNamespaces(ns); setWebuis(ui.filter((v) => v.status === "approved"));
-        setNamespaceId(ns[0]?.id || ""); setWebuiId(ui.find((v) => v.status === "approved")?.id || "");
+        const approvedRuntimes = runtimeVersions.filter((v) => v.status === "approved");
+        const approvedWebuis = ui.filter((v) => v.status === "approved");
+        setSession(active); setNamespaces(ns); setRuntimes(approvedRuntimes); setWebuis(approvedWebuis);
+        setNamespaceId(ns[0]?.id || ""); setRuntimeId(approvedRuntimes[0]?.id || ""); setWebuiId(approvedWebuis[0]?.id || "");
         try { work.current = JSON.parse(sessionStorage.getItem(storageKey(active)) || "null") as Work | null; } catch { work.current = null; }
         const selected = work.current?.selection;
         if (selected) {
           setNamespaceId(selected.namespaceId); setNamespaceName(selected.namespaceName);
           setPackageId(selected.packageId); setPackageName(selected.packageName);
-          setVersionLabel(selected.versionLabel); setWebuiId(selected.webuiId);
+          setVersionLabel(selected.versionLabel); setRuntimeId(selected.runtimeId); setWebuiId(selected.webuiId);
         }
         if (work.current?.buildId) {
           const job = await getJson<Build>(`${base}/builds/${encodeURIComponent(work.current.buildId)}`, { signal: abort.signal });
@@ -120,12 +124,12 @@ export function PublisherPage() {
       const active = await getJson<Session>(`${base}/auth/session`, { signal: abort.signal });
       if (storageKey(active) !== storageKey(session)) throw new Error("会话已切换，请重新打开发布页面。");
       if (resumeBuild && work.current?.buildId) { await readBuild(work.current.buildId, abort.signal); return; }
-      if (!file || !versionLabel || !webuiId || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写发布信息并选择 ZIP 文件。");
+      if (!file || !versionLabel || !runtimeId || !webuiId || (!namespaceId && !namespaceName) || (!packageId && !packageName)) throw new Error("请填写发布信息并选择 ZIP 文件。");
       setMessage("正在校验 ZIP 文件…");
       const bytes = await file.arrayBuffer(); const hash = await sha256(bytes);
-      const fingerprint = JSON.stringify([namespaceId, namespaceName, packageId, packageName, versionLabel, webuiId, hash]);
+      const fingerprint = JSON.stringify([namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId, hash]);
       let current = work.current;
-      if (!current || current.fingerprint !== fingerprint) { current = { fingerprint, key: crypto.randomUUID(), selection: { namespaceId, namespaceName, packageId, packageName, versionLabel, webuiId } }; setBuild(null); setVersion(null); }
+      if (!current || current.fingerprint !== fingerprint) { current = { fingerprint, key: crypto.randomUUID(), selection: { namespaceId, namespaceName, packageId, packageName, versionLabel, runtimeId, webuiId } }; setBuild(null); setVersion(null); }
       save(active, current);
       const command = <T,>(path: string, body: unknown, key: string) => postJson<T>(base + path, body, active.csrfToken, `${current.key}:${key}`, 30_000, abort.signal);
       if (!current.packageId) {
@@ -152,14 +156,14 @@ export function PublisherPage() {
         parts.push({ partNumber: number, etag, sizeBytes: chunk.byteLength, sha256: checksum });
       }
       await command(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts }, "complete");
-      const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, webuiVersionId: webuiId }, "build");
+      const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, runtimeVersionId: runtimeId, webuiVersionId: webuiId }, "build");
       current.buildId = job.id; save(active, current); await readBuild(job.id, abort.signal);
     } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "发布失败，可重试读取或继续上传。"); }
     finally { if (!abort.signal.aborted) setBusy(false); }
   }
 
   return <section className="panel publisher-page">
-    <div className="panel-title"><div><h2>发布 Package</h2><p>上传源码包，选择 WebUI，构建可供部署的版本。</p></div></div>
+    <div className="panel-title"><div><h2>发布 Package</h2><p>上传源码包，选择已批准的 Runtime 与 WebUI，构建可供部署的版本。</p></div></div>
     <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
       <fieldset disabled={busy || !session}>
         <label>命名空间<select aria-label="命名空间" value={namespaceId} onChange={(e) => setNamespaceId(e.target.value)}><option value="">新建命名空间</option>{namespaces.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
@@ -167,9 +171,10 @@ export function PublisherPage() {
         <label>Package<select aria-label="Package" value={packageId} onChange={(e) => setPackageId(e.target.value)}><option value="">新建 Package</option>{packages.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
         {!packageId && <label>Package 名称<input value={packageName} onChange={(e) => setPackageName(e.target.value)} required /></label>}
         <label>版本名称<input value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="例如 0.1.0" required /></label>
+        <label>Runtime Version<select aria-label="Runtime Version" value={runtimeId} onChange={(e) => setRuntimeId(e.target.value)} required><option value="">选择已批准的 Runtime Version</option>{runtimes.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.versionLabel}</option>)}</select></label>
         <label>WebUI<select aria-label="WebUI" value={webuiId} onChange={(e) => setWebuiId(e.target.value)} required><option value="">选择已批准的 WebUI</option>{webuis.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.versionLabel}</option>)}</select></label>
         <label>ZIP 文件<input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] || null)} required /></label>
-        <Button type="submit" disabled={!webuis.length}>上传并构建 / 继续上传</Button>
+        <Button type="submit" disabled={!runtimes.length || !webuis.length}>上传并构建 / 继续上传</Button>
       </fieldset>
     </form>
     <p role="status">{message}</p>

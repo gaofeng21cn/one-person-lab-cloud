@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/owneridentity"
@@ -185,6 +186,14 @@ func TestServeDeployRequiresResourceAndApplicationReadback(t *testing.T) {
 	operation, err := operations.Read(serveContext(), &api.OwnerOperationRequest{Context: r.Context, OperationId: out.OperationId})
 	if err != nil || operation.GetStage() != api.OperationStageEnum_OPERATION_STAGE_ENUM_VERIFICATION || operation.GetStatus() != api.OperationStatusEnum_OPERATION_STATUS_ENUM_SUCCEEDED {
 		t.Fatalf("public operation readback=%v %v", operation, err)
+	}
+	pending, err := s.Store.PendingDeliveries(ctx, "ledger", 10)
+	if err != nil || len(pending) != 1 || pending[0].Event.EventType != "serve.agent_readiness_observed.v1" {
+		t.Fatalf("Serve readiness event pending=%v err=%v", pending, err)
+	}
+	readiness := &api.RuntimeReadinessObservedEvent{}
+	if err = protojson.Unmarshal(pending[0].Event.Payload, readiness); err != nil || readiness.GetRuntimeInstanceId() != out.RuntimeInstanceId || readiness.GetDeploymentId() != out.DeploymentId || readiness.GetOutcome() != "confirmed" || readiness.GetReceiptId() != "readback-original" {
+		t.Fatalf("readiness event=%v err=%v", readiness, err)
 	}
 	for _, change := range []func(*api.RuntimeDeployCommand){func(v *api.RuntimeDeployCommand) { v.ExecutionEpoch++ }, func(v *api.RuntimeDeployCommand) { v.RuntimeInstanceId = "other-runtime" }, func(v *api.RuntimeDeployCommand) { v.ResourceSetId = "other-resource-set" }, func(v *api.RuntimeDeployCommand) { v.DataAttachmentId = "other-attachment" }} {
 		bad := proto.Clone(command).(*api.RuntimeDeployCommand)

@@ -26,6 +26,7 @@ import (
 type Service struct {
 	api.UnimplementedWorkspaceProductServiceServer
 	api.UnimplementedOwnerCommitReadbackServer
+	api.UnimplementedDomainInboxServer
 	Store      *ownerstore.Store
 	Auth       *ownerservice.Authorizer
 	Catalog    api.CatalogCoordinationClient
@@ -50,6 +51,7 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("WorkspaceProductService", func(g *grpc.Server) {
 		api.RegisterWorkspaceProductServiceServer(g, s)
 		api.RegisterOwnerCommitReadbackServer(g, s)
+		api.RegisterDomainInboxServer(g, s)
 	})
 }
 func id(prefix string) string {

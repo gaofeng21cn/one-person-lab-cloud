@@ -24,6 +24,7 @@ type Server struct {
 	identity   IdentityReader
 	capability api.CapabilityProductServiceClient
 	build      api.BuildProductServiceClient
+	runtime    api.RuntimeControlProductServiceClient
 	tenant     api.TenantProductServiceClient
 	catalog    api.ResourceCatalogProductServiceClient
 	gateway    api.GatewayProductServiceClient
@@ -46,6 +47,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 		PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient)
 	}); ok {
 		s.capability, s.build = p.PublisherClients()
+	}
+	if p, ok := reader.(interface {
+		RuntimeControlClient() api.RuntimeControlProductServiceClient
+	}); ok {
+		s.runtime = p.RuntimeControlClient()
 	}
 	if p, ok := reader.(interface {
 		TenantClient() api.TenantProductServiceClient

@@ -22,6 +22,9 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
 		return nil, err
 	}
+	if r.GetReceipt().GetKind() == api.ReceiptKindEnum_RECEIPT_KIND_ENUM_DEPLOYMENT {
+		return s.appendDeploymentReceipt(ctx, r)
+	}
 	if err := ledger.ValidateLocalNoChargeReceiptInput(r); err != nil {
 		return nil, receiptError(err)
 	}
@@ -29,26 +32,8 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, q.WorkspaceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId); err != nil {
 		return nil, err
 	}
-	if s.Catalog == nil || s.Workspace == nil {
-		return nil, status.Error(codes.Unavailable, "Catalog and Workspace owner readback required")
-	}
-	// An authorization context is bound to its owner audience. Catalog obtains
-	// its own live decision from the same session or accepted operation grant.
-	catalogCall := proto.Clone(r.Context).(*api.CallContext)
-	catalogCall.AuthorizationContextId = ""
-	actualQuote, err := s.Catalog.ReadQuoteResourcePlan(ctx, &api.QuoteResourcePlanRequest{Context: catalogCall, QuoteId: q.Quote.Id})
-	if err != nil {
+	if err := s.verifyReceiptOwnerReadbacks(ctx, r); err != nil {
 		return nil, err
-	}
-	if !proto.Equal(actualQuote, q) {
-		return nil, status.Error(codes.FailedPrecondition, "accepted Catalog quote differs from submitted evidence")
-	}
-	actualCommit, err := s.Workspace.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: commit.OperationId, ResourceId: commit.ResourceId})
-	if err != nil {
-		return nil, err
-	}
-	if !proto.Equal(actualCommit, commit) {
-		return nil, status.Error(codes.FailedPrecondition, "Workspace commit differs from submitted evidence")
 	}
 	stored, err := s.store.RecordLocalNoChargeReceipt(ctx, r, func(ctx context.Context) error {
 		freshCall := proto.Clone(r.Context).(*api.CallContext)
@@ -61,12 +46,78 @@ func (s *Server) AppendReceipt(ctx context.Context, r *api.AppendReceiptRequest)
 	return stored.Evidence.Receipt, nil
 }
 
-func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.Receipt, error) {
-	evidence, err := s.ReadLocalNoChargeReceipt(ctx, r)
-	if err != nil {
+func (s *Server) appendDeploymentReceipt(ctx context.Context, r *api.AppendReceiptRequest) (*api.Receipt, error) {
+	if err := ledger.ValidateDeploymentReceiptInput(r); err != nil {
+		return nil, receiptError(err)
+	}
+	q, commit := r.QuoteAcceptance, r.OwnerCommitEvidence
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, q.WorkspaceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId); err != nil {
 		return nil, err
 	}
-	return evidence.Receipt, nil
+	if err := s.verifyReceiptOwnerReadbacks(ctx, r); err != nil {
+		return nil, err
+	}
+	stored, err := s.store.RecordDeploymentReceipt(ctx, r, func(ctx context.Context) error {
+		freshCall := proto.Clone(r.Context).(*api.CallContext)
+		freshCall.AuthorizationContextId = ""
+		return s.authorizeReceipt(ctx, freshCall, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_APPENDRECEIPT, q.WorkspaceId, commit.Scope.GetTenant().GetTenantId(), commit.ActorId)
+	})
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	return stored.Receipt, nil
+}
+
+func (s *Server) verifyReceiptOwnerReadbacks(ctx context.Context, r *api.AppendReceiptRequest) error {
+	q, commit := r.QuoteAcceptance, r.OwnerCommitEvidence
+	if s.Catalog == nil || s.Workspace == nil {
+		return status.Error(codes.Unavailable, "Catalog and Workspace owner readback required")
+	}
+	catalogCall := proto.Clone(r.Context).(*api.CallContext)
+	catalogCall.AuthorizationContextId = ""
+	actualQuote, err := s.Catalog.ReadQuoteResourcePlan(ctx, &api.QuoteResourcePlanRequest{Context: catalogCall, QuoteId: q.Quote.Id})
+	if err != nil {
+		return err
+	}
+	if !proto.Equal(actualQuote, q) {
+		return status.Error(codes.FailedPrecondition, "accepted Catalog quote differs from submitted evidence")
+	}
+	actualCommit, err := s.Workspace.ReadOwnerCommit(ctx, &api.ReadOwnerCommitRequest{Owner: api.OwnerEnum_OWNER_ENUM_WORKSPACE, OperationId: commit.OperationId, ResourceId: commit.ResourceId})
+	if err != nil {
+		return err
+	}
+	if !proto.Equal(actualCommit, commit) {
+		return status.Error(codes.FailedPrecondition, "Workspace commit differs from submitted evidence")
+	}
+	return nil
+}
+
+func (s *Server) ReadReceiptByReference(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.Receipt, error) {
+	evidence, err := s.ReadLocalNoChargeReceipt(ctx, r)
+	if err == nil {
+		return evidence.Receipt, nil
+	}
+	if !errors.Is(err, ledger.ErrReceiptNotFound) && status.Code(err) != codes.NotFound {
+		return nil, err
+	}
+	peer, ok := ownerservice.PeerOwner(ctx)
+	if !ok || peer != owneridentity.Workspace.Service() {
+		return nil, status.Error(codes.Unauthenticated, "verified Workspace peer required")
+	}
+	if err := ownerservice.ValidateCallContext(ctx, r.GetContext()); err != nil {
+		return nil, err
+	}
+	if r.GetOwner() != "workspace" || strings.TrimSpace(r.GetOwnerEvidenceReference()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "original Workspace owner reference required")
+	}
+	stored, err := s.store.ReadDeploymentReceipt(ctx, r.OwnerEvidenceReference)
+	if err != nil {
+		return nil, receiptError(err)
+	}
+	if err := s.authorizeReceipt(ctx, r.Context, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_GETRECEIPT, stored.WorkspaceID, stored.TenantID, stored.ActorID); err != nil {
+		return nil, err
+	}
+	return stored.Receipt, nil
 }
 
 func (s *Server) ReadLocalNoChargeReceipt(ctx context.Context, r *api.GetReceiptByReferenceRequest) (*api.LocalNoChargeReceiptEvidence, error) {

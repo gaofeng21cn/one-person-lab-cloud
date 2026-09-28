@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -22,6 +24,8 @@ import (
 )
 
 func main() {
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	addr := os.Getenv("LEDGER_ADDR")
 	if addr == "" {
 		addr = ":8081"
@@ -84,6 +88,7 @@ func main() {
 				log.Fatal("Ledger domain listener stopped")
 			}
 		}()
+		go consumer.RunReceiptDelivery(runCtx)
 	}
 
 	handler := ledgerhttp.NewServerWithAuth(store, token, capabilityKey)

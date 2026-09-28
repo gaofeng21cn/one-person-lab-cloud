@@ -25,7 +25,7 @@ evidence that the target is implemented.
 | Current service modules | `services/control-plane`, `services/fabric`, `services/ledger`; shared infrastructure: `services/internal/postgresmigrate` |
 | Current latest control-plane migration | `202609130001_workspace_application_selection.sql` |
 | Current latest fabric migration | `202609080001_launch_compute_pool_admission.sql` |
-| Current latest ledger migration | `202609080001_receipt_request_lookup.sql` |
+| Current latest ledger migration | `202609270001_owner_events.sql` |
 | Current contracts module | `opl-cloud/packages/contracts/go` (Go 1.22) |
 | Publisher contract schema hash | `5f683f8aecb1c3c03b07370f66e8d685852f047681b145e4289691bbd42083ec` |
 | Target databases | `opl_tenant`, `opl_capability`, `opl_build`, `opl_workspace`, `opl_runtime_control`, `opl_fabric`, `opl_gateway`, `opl_resource_catalog`, `opl_ledger` |
@@ -243,6 +243,15 @@ scope limits.
 This receipt proves the stated historical Cloud source/local checks. It does not
 prove the complete authenticated Package-to-CapabilityVersion journey.
 
+The 2026-09-27 [Serve/Ledger/Workspace closeout receipt](./evidence/source-checks/2026-09-27-serve-ledger-workspace-closeout.json)
+records the current dirty-checkout verification: the Serve readiness Outbox,
+Ledger typed Inbox/receipt-recorded Outbox, and Workspace deployment-receipt
+recovery checks pass against isolated PostgreSQL; `npm run verify:local:full`
+passes with 231 source tests, 111 browser tests, zero required PostgreSQL skips,
+and Docker integration. This remains Cloud local evidence: it does not claim a
+real Build/TCR admission, OCI publication, Instance deployment, production
+receipt, or end-to-end BFF/TCR/Serve/Ledger deployment.
+
 ### Isolated Package upload and BuildKit execution
 
 `npm run verify:package-to-oci` now exercises Capability's gRPC Package/upload
@@ -302,6 +311,43 @@ selection as authentication. The [dual-mode browser evidence](./evidence/source-
 checks rendered navigation, direct URLs and requests: legacy makes no `/api/v2`
 calls, while explicit `cloud` builds retain publisher catalog and delivery reads.
 This is source validation; it does not establish a deployed Instance change.
+
+The 2026-09-28 Publisher repair now reads Runtime Control's approved catalog at
+`GET /api/v2/catalog/runtime-versions`, filters revoked releases out of the
+Console selector, persists the selected `runtimeVersionId` for recovery, and
+forwards it with the Package and WebUI IDs to `POST /api/v2/builds`. The BFF
+uses the typed Runtime Control client and fails closed when that owner is not
+configured. Focused BFF, browser, TypeScript and lint checks pass; the
+[Publisher source receipt](./evidence/source-checks/2026-09-28-publisher-runtime-selection-local.json)
+records the pre-publication source boundary. The subsequent customer-private
+publication is recorded separately below and does not upgrade this source
+receipt into a Product Release or Instance claim.
+
+### Customer-private OMA application OCI publication
+
+On 2026-09-28, the Cloud Build path completed one bounded application-material
+publication for the customer email local-part `huangrende`. The exact OMA Agent
+Package, the selected Runtime image and the selected WebUI image were bound as
+one Build input, composed by BuildKit, and published to
+`uswccr.ccs.tencentyun.com/oplcloud/huangrende`.
+
+The published tag is
+`oma-ibd-evidence-assistant-20260928`; the remote manifest readback is
+`sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930`.
+The image contains `/agent/agent/agent-pack.json` and
+`/app/aionui-web/static/index.html`, and retains the Runtime command
+`start --remote --port 3000`. The exact input references, composition, checks
+and output digest are retained in the append-only
+[publication closeout receipt](./evidence/source-checks/2026-09-28-customer-private-oci-publication-closeout.json).
+
+This is the Build/application-material lane only. TCR is the approved storage
+location for application materials; Instance owns installation configuration
+and protected deployment. Therefore Instance Candidate admission, same-digest
+protected-runtime readback and Workspace availability were not prerequisites
+for this publication and are not claimed. A formal Cloud Product Release was
+also not requested or published. The related account-admission policy is
+tracked in [Issue #356](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/356);
+it does not change this build boundary.
 
 Ledger now consumes upload, Build confirmation/failure and version-registration
 events through its authenticated gRPC Inbox and existing receipt store. Each

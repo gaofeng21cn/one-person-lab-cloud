@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_business_line_3_input_audit_receipt",
+  "recordedAt": "2026-09-28T13:22:12+08:00",
+  "status": "blocked_before_build",
+  "scope": "Business line 3 only: OMA native Agent Package local storage and Console upload, approved Runtime OCI plus approved WebUI OCI, one immutable Build OCI, owner readback and closed receipt. No Workspace, Fabric, Serve, Instance deployment, provider purchase or real-money mutation.",
+  "source": {
+    "branch": "codex/serve-ledger-deployment-evidence",
+    "head": "d5db771a27d997ad41a05c24c631d94ae4878813",
+    "workingTree": "pre-existing Serve/Ledger/Workspace/Console changes preserved; this audit added only this receipt",
+    "headTree": "bf3ee330913d209c4b50377f1bf05afad39646cb"
+  },
+  "omaPackage": {
+    "archive": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip",
+    "archiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "transportManifestDigest": "sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80",
+    "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "candidateIndexSha256": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+    "agentManifestSha256": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+    "qualificationStatus": "not_qualified",
+    "domainQualityStatus": "not_evaluated",
+    "sourceRunId": "ibd-oma-create-33",
+    "validation": {
+      "command": "OPL_OMA_CANDIDATE_TRANSPORT=<archive> go test -tags livebuild ./catalog -run TestNativeOMACandidateTransportValidatesExactManifestAndContent -count=1",
+      "result": "passed",
+      "owner": "Capability source validator",
+      "boundary": "transport and indexed bytes only; no OMA qualification"
+    }
+  },
+  "runtimeInput": {
+    "retainedReference": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "status": "not_admitted_in_current_run",
+    "reason": "The reference is present only in retained origin/main source evidence; this checkout has no current Runtime Control owner readback, approval receipt or exact input snapshot bound to it."
+  },
+  "webuiInput": {
+    "status": "missing",
+    "required": [
+      "approved WebUI OCI repository@sha256 reference",
+      "multi-platform index digest and selected platform child digest",
+      "port 3000 and health /healthz readback",
+      "runtime ABI/package-format compatibility readback",
+      "Capability WebUI version owner record and admission receipt"
+    ],
+    "excludedEvidence": [
+      "local webui/cloud-agent source",
+      "origin/main development fixture with all-zero digest",
+      "GHCR Runtime image",
+      "historical final Agent TCR artifact receipt",
+      "historical TCR owner-chain receipt whose live test seeded WebUI from a local scratch image"
+    ]
+  },
+  "registryProbe": {
+    "registry": "uswccr.ccs.tencentyun.com",
+    "unauthenticatedV2Probe": "HTTP 401 with Bearer challenge",
+    "historicalFinalArtifactDigestProbe": "HTTP 404 without owner credentials",
+    "result": "No authenticated TCR WebUI owner readback was available; no publication or mutation was attempted"
+  },
+  "notProven": [
+    "Console upload of this OMA archive through the current BFF/UI",
+    "approved Runtime Control readback bound to this source run",
+    "approved Cloud WebUI TCR OCI readback",
+    "Build input snapshot containing all three exact owner references",
+    "single immutable Build OCI digest and descriptor",
+    "CapabilityVersion/Build/Ledger closed receipt"
+  ],
+  "nextOwnerAction": "Provide the approved Cloud WebUI TCR OCI reference and owner readback/approval receipt, then rerun the three-input Build on one exact source SHA without using fixtures or historical receipts.",
+  "productionDeploymentDispatched": false,
+  "issueOrPullRequestCreated": false,
+  "realMoneyOrProviderMutation": false,
+  "consoleSurface": {
+    "status": "incomplete",
+    "uploadRoutesPresent": [
+      "POST /api/v2/packages/{packageId}/uploads",
+      "POST /api/v2/uploads/{uploadId}/parts",
+      "POST /api/v2/uploads/{uploadId}/complete"
+    ],
+    "buildRoutePresent": "POST /api/v2/builds",
+    "observedGap": "apps/console-ui/src/pages/PublisherPage.tsx sends packageVersionId and webuiVersionId only; it has no Runtime Version selection/readback and omits required runtimeVersionId",
+    "sourceLine": "apps/console-ui/src/pages/PublisherPage.tsx:155"
+  }
+}

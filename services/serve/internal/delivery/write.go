@@ -327,7 +327,7 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 	}
 	return dbError(tx.Commit())
 }
-func finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
+func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
 	var err error
 	var recordedStatus, recordedEvidence string
 	var recordedAt time.Time
@@ -347,6 +347,9 @@ func finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_actions SET observation_result='confirmed',evidence_ref=NULLIF($2,''),updated_at=now() WHERE command_id=$1`, stableID("start_", r.DeploymentId), o.ReadinessEvidenceRef)
 	if err != nil {
+		return dbError(err)
+	}
+	if err = appendRuntimeReadinessEvent(ctx, tx, s.Store, r, o); err != nil {
 		return dbError(err)
 	}
 	if state == "active" {
@@ -459,7 +462,7 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
 		return nil, err
 	}
-	if err = finishFirstDelivery(ctx, tx, command, observation); err != nil {
+	if err = s.finishFirstDelivery(ctx, tx, command, observation); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {

@@ -154,6 +154,7 @@ for (const identity of ["legacy", "cloud"] as const) {
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
           "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
+          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved" }] },
           "/api/v2/delivery/ws-1": {
             workspaceId: "ws-1",
             workspace: { owner: "workspace", state: "active", details: {} },

@@ -1,0 +1,732 @@
+
+> opl-cloud@0.1.0 verify:local:full
+> node tools/verify-local.ts --with-postgres
+
+
+==> product boundary
+
+> opl-cloud@0.1.0 validate:product-boundary
+> node tools/validate-product-boundary.mjs
+
+OPL Cloud product distribution boundary is valid
+
+==> Node source tests
+
+> opl-cloud@0.1.0 test:source
+> node --test "tests/contracts/*.test.ts" "tests/tools/*.test.ts" tests/ui/agent-delivery-controller-model.test.ts tests/ui/console-model.test.ts tests/ui/console-source-adapters.test.ts tests/ui/customer-announcement-controller-model.test.ts tests/ui/customer-experience-model.test.ts tests/ui/customer-workspace-read-controller-model.test.ts tests/ui/fabric-runtime-read-controller-model.test.ts tests/ui/gateway-account-read-controller-model.test.ts tests/ui/operator-account-controller-model.test.ts tests/ui/operator-announcement-controller-model.test.ts tests/ui/operator-resource-read-controller-model.test.ts tests/ui/pricing-preview.test.ts tests/ui/workspace-application-deployment-controller-model.test.ts tests/ui/workspace-budget-controller-model.test.ts tests/ui/workspace-delete-controller-model.test.ts tests/ui/workspace-experience-model.test.ts tests/ui/workspace-image-release-controller-model.test.ts tests/ui/workspace-launch-controller-model.test.ts tests/ui/workspace-renewal-controller-model.test.ts tests/ui/workspace-runtime-image-replacement-controller-model.test.ts tests/ui/workspace-secret-controller-model.test.ts tests/ui/wallet-adjustment-controller-model.test.ts
+
+✔ clean-host workflow delegates qualification to the reusable local runner (19.245417ms)
+✔ every external GitHub workflow dependency is pinned to one immutable SHA (175.017167ms)
+✔ Go services remain physically isolated behind typed owner contracts (905.3245ms)
+✔ Console UI reaches services only through the same-origin Control Plane API adapter (126.749167ms)
+✔ portable Local-Docker assets configure from a standalone download directory (931.492833ms)
+✔ portable Compose isolates service credentials and databases (34.27125ms)
+✔ Cloud Release promotes an admitted Candidate and isolates public mutation (20.098042ms)
+✔ Cloud distribution contract makes same-tag recovery explicit (2.019291ms)
+✔ Workspace image release catalog accepts unique immutable versions containing the installed image (1.27075ms)
+✔ Workspace image release catalog rejects mutable, duplicate, unknown, and incomplete inputs (0.171375ms)
+✔ candidate canonical JSON and receipt digest are stable by key order (1.304334ms)
+✔ candidate validator accepts one portable multi-architecture identity (30.229208ms)
+✔ candidate validator rejects image, platform, revision, asset, and path drift (0.719458ms)
+✔ candidate Base64 decoder requires a strict round trip (0.457625ms)
+✔ candidate writer preserves validated canonical bytes with mode 0600 (11.697583ms)
+✔ candidate bundle validator recomputes every asset and the canonical manifest (115.437125ms)
+✔ candidate bundle validator rejects tampered, missing, extra, and malformed checksum inputs (59.384666ms)
+✔ candidate export-env exposes only exact immutable Cloud consumer facts (2.395875ms)
+✔ qualification authority configuration is explicit and rejects unsafe input (1.304458ms)
+✔ qualification authority provides one persistent user, key, and exact debit identity (161.703875ms)
+✔ owner delete continues only from exact durable compute pending evidence (2.011ms)
+✔ owner delete response-loss continuation preserves the consumed read ordinal (0.387291ms)
+✔ owner delete rejects pending identity, ordinal, and budget drift (0.386875ms)
+✔ owner delete failure keeps only redacted last pending evidence (0.3965ms)
+✔ qualification compose uses the runner-owned exact environment (0.485875ms)
+✔ qualification teardown clears the root-owned secret bind mount through Fabric (0.537792ms)
+✔ source image tag inspection hands off one exact immutable RepoDigest (0.300292ms)
+✔ local qualification accepts exact source and immutable image identities (0.359666ms)
+✔ live arguments require one external J0 READY receipt (0.114625ms)
+✔ J0 READY admission binds exact clean source, authority, provider, and external 0600 file (30.97175ms)
+✔ top-level live entry rejects J0 source drift before starting the J1 stack or HTTP (117.4735ms)
+✔ live Sub2API secret file admission is exact and never creates a second env SSOT (30.530792ms)
+✔ Sub2API secret file failures redact the path and values before Docker (34.273541ms)
+✔ live authority adjustment readback counts the exact code through the final financial page (8.873709ms)
+✔ Local J1 accounting allows unrelated history and rejects duplicate operation evidence (2.044666ms)
+✔ READY receipt binds the exact durable and accounting evidence (0.87ms)
+✔ local build proxy rejects credentials or URL parameters and errors redact the entire URL authority and query (1.571167ms)
+✔ qualification source identity requires one clean unchanged HEAD and tree (0.485042ms)
+✔ sourceData and createHTTP/login preserve account mapping scope without Workspace mutation (98.198792ms)
+✔ canonical J1 HTTP preview covers every live stage and validates exact local cleanup (101.554916ms)
+✔ canonical J1 HTTP preview cleans a failure before Workspace Create (0.449916ms)
+✔ canonical J1 HTTP preview preserves exact recovery authority after Workspace Create submission (2.900708ms)
+✔ canonical J1 HTTP preview still forbids cleanup when the post-Create owner readback is unavailable (0.671208ms)
+✔ live authority configuration fails closed before Docker and writes a redacted receipt (39.77775ms)
+✔ local J1 cleanup is permitted only before Create acceptance or after READY (1.966166ms)
+✔ cleanup plan preserves running service and volume authority after Create submission (0.3465ms)
+✔ recovery artifact path is deterministic beside the qualification receipt (0.72225ms)
+✔ owner-authoritative recovery readback is GET-only and scoped to the original operation (0.842375ms)
+✔ recovery readback preserves budgets and counts without raw identities (0.233875ms)
+✔ recovery readback rejects missing, conflicting, or exhausted counter shapes (0.185792ms)
+✔ 0600 recovery artifact binds exact source, recovery refs, and redacted authority (8.899792ms)
+✔ recovery artifact fails closed without owner-authoritative launch readback (0.378417ms)
+✔ readback-unavailable recovery artifact still preserves exact refs and only identity digests (0.265291ms)
+✔ staging env loader parses ignored local env files without overwriting explicit process env (11.30775ms)
+✔ staging env validation requires Tencent mode, shared persistence, and cloud mutation settings (1.385833ms)
+✔ verify-local exposes one default gate across Node, builds, and every Go module (12.326833ms)
+✔ Qualification executes the independent Go contracts module (19.362459ms)
+✔ Local qualification uses one bounded runner filesystem and explicit privileged inputs (2304.674834ms)
+✔ verify-local reports leaf Go test failures separately from package failures (7.559042ms)
+✔ full local gate covers every PostgreSQL owner with the CI-only extensions (2.921208ms)
+✔ full verification adds the temporary PostgreSQL modules after the default checks (0.28925ms)
+✔ Agent delivery adapter calls only the same-origin BFF delivery path (15.607958ms)
+✔ Agent delivery adapter encodes the workspace id and surfaces an upstream failure (1.433458ms)
+✔ Console route owner describes every static product route (1.070875ms)
+✔ Console route owner parses one decoded Workspace detail segment (0.157625ms)
+✔ Console route owner normalizes aliases and trailing slashes (0.097792ms)
+✔ Console entry aliases share all metadata with their canonical overview routes (0.0925ms)
+✔ Console route owner rejects unknown or malformed paths without guessing (0.09ms)
+✔ Console navigation targets carry route-owner identities (0.090041ms)
+✔ customer navigation has exactly four task destinations in order (0.090125ms)
+✔ customer mobile navigation has the same four tasks with a compact Gateway label (0.061208ms)
+✔ API navigation has exactly three customer task pages in order (0.072708ms)
+✔ Workspace launch accepts balance equal to or greater than the server quote (0.160959ms)
+✔ formatters preserve exact money and unavailable facts (75.75725ms)
+✔ Workspace Gateway budget adapters use the scoped route and exact mutation boundary (18.662084ms)
+✔ Workspace Gateway budget adapter rejects source, identity, field, and micros drift (1.379ms)
+✔ unavailable source adapters preserve the authoritative reason code (0.099625ms)
+✔ unavailable source adapters reject a missing reason code (0.100042ms)
+✔ source adapters reject contradictory availability states (0.083083ms)
+✔ unavailable source adapters reject data disguised as an unavailable source (0.072416ms)
+✔ source adapters require non-empty source and fetchedAt fields (0.071834ms)
+✔ local unavailable fallbacks keep a stable reason code and a real fetch timestamp (3.276042ms)
+✔ monthly balance failures use the specific customer-facing balance message (0.403333ms)
+✔ Console read adapters normalize a legacy unavailable envelope with a stable reason code (2.130125ms)
+✔ Workspace settlement trend reads the owner projection once and keeps its days (0.721708ms)
+✔ per-Key usage list and summary send the same canonical period (0.364292ms)
+✔ Workspace adapters find an exact ID through real server pagination and stop when found (0.395125ms)
+✔ Workspace adapters return an authoritative not-found result after total is exhausted (0.241042ms)
+✔ same unresolved announcement reuses its original idempotency key (0.465958ms)
+✔ a different announcement receives a different intent and key (0.423084ms)
+✔ read receipt requires the exact announcement and a valid RFC3339 instant (0.2495ms)
+✔ readback accepts an absent target but rejects a visible unread target (0.101292ms)
+✔ readback preserves every receipt confirmed in the current Session (0.098209ms)
+✔ account statuses use exact customer labels (5.92125ms)
+✔ API key statuses use only exact owner values (0.13175ms)
+✔ balance history type and status use exact current values (0.1835ms)
+✔ billing receipt type and status use exact current values (0.163542ms)
+✔ billing and balance history statuses reject values from the other owner (0.138417ms)
+✔ unknown values are unconfirmed without becoming customer labels (0.537125ms)
+✔ missing values are unavailable without raw evidence (0.62075ms)
+✔ customer receipts distinguish monthly charges, partial refunds and expiry without a new charge (48.953541ms)
+✔ route read plans keep overview/list/detail/terms responsibilities exact (0.848333ms)
+✔ list completion requires the exact Control Plane page identity (0.18425ms)
+✔ detail completion accepts only the requested Workspace or authoritative absence (0.087542ms)
+✔ list and detail settle independently (0.208083ms)
+✔ stale completion cannot mutate either projection (0.08225ms)
+✔ page settlement advances only for a matching authoritative page (0.085458ms)
+✔ Session, route, request, and Workspace identity are all part of freshness (0.090959ms)
+✔ a committed detail projection lease invalidates the older detail refresh (0.0935ms)
+✔ reset invalidates old leases and production settlement keeps empty, absence, and unavailable distinct (1.79975ms)
+✔ Fabric owns Runtime readback and unavailable facts for the requested Workspace (0.740583ms)
+✔ Control Plane confirms an empty resource-only application without inventing a Fabric outage (0.571542ms)
+✔ Control Plane's empty application projection cannot claim runtime ownership or another Workspace (0.215375ms)
+✔ scope identity rejects route, Session, request, and Workspace changes (1.054958ms)
+✔ current available completion commits the typed Runtime projection (0.219ms)
+✔ same-Workspace refresh rejects the older completion (0.098125ms)
+✔ late completion cannot cross a route, Session, or Workspace boundary (0.109458ms)
+✔ current Fabric unavailable completion settles only the Runtime projection (0.075375ms)
+✔ reset state contains no retained Runtime projection (0.070375ms)
+✔ Gateway Account Read plans only the projections consumed by each route scope (0.92ms)
+✔ each projection request has an independent current scope (0.173209ms)
+✔ balance history accepts only Sub2API data for the requested page and fixed page size (0.13825ms)
+✔ projection loading and completion update only their owning state (0.211125ms)
+✔ history advances its committed page only after a matching available completion (0.101417ms)
+✔ route, Session, and reset invalidation advance the owning epoch (0.110709ms)
+✔ provision input normalization preserves one semantic command (2.054167ms)
+✔ same provision semantics reuse the original key independently of field order (0.372542ms)
+✔ changed provision semantics receive a new key (0.375625ms)
+✔ account commands fail closed on operation status or account identity mismatch (0.266792ms)
+✔ provision and eligibility commands require their exact eligibility target (0.133291ms)
+✔ provision readback requires the complete authoritative account identity (0.204917ms)
+✔ create intent normalizes one semantic draft and reuses its original key (3.184459ms)
+✔ changed draft semantics receive a new key (0.49375ms)
+✔ publish intent freezes one schedule for response-loss retry (0.405292ms)
+✔ commands fail closed on announcement identity, state, or schedule mismatch (1.1665ms)
+✔ command and readback matching use RFC3339 instant semantics (0.171083ms)
+✔ readback must match the complete command projection (0.135792ms)
+✔ operator resource list scope fixes pageSize and accepts only matching page identity (1.073042ms)
+✔ detail and preview scopes reject a response for another Workspace (0.130583ms)
+✔ each projection has an independent scope key (0.127ms)
+✔ late completion is rejected after a Session or route generation changes (0.08575ms)
+✔ scope-source validation rejects wrong kinds without throwing (0.151333ms)
+✔ reset invalidates every old scope without changing the source contract (0.518875ms)
+✔ empty is a successful empty source and remains distinct from unavailable (0.0945ms)
+✔ successful list completion commits authoritative data and stops loading (0.165708ms)
+✔ successful image policy completion commits policy and stops loading (0.111541ms)
+✔ partial failure settles one projection without clearing a successful sibling (0.135334ms)
+✔ stale completion cannot mutate any projection (0.067584ms)
+✔ failed page read keeps public page and refresh request on the last committed page (0.086042ms)
+✔ operator resource page navigation accepts only positive integers (0.06025ms)
+✔ storage quote comes from the authenticated pricing preview API (24.841333ms)
+✔ same wallet adjustment input reuses the original idempotency intent (0.470167ms)
+✔ wallet input comparison is independent of optional field insertion order (0.074ms)
+✔ account or input changes create a new wallet adjustment intent (0.494333ms)
+✔ wallet recovery keeps the original operation identity (0.172667ms)
+✔ A blank draft fails so the submit button stays disabled (0.709708ms)
+✔ Structured registration draft passes when every field matches the contract (0.476792ms)
+✔ Per-field errors keep mistakes out of the request (0.13375ms)
+✔ Mount and dependency rows validate names, paths and uniqueness (1.305833ms)
+✔ The composed revision carries only what the administrator declared (0.289958ms)
+✔ HTTP entry and health checks are independent declarations (0.139417ms)
+✔ Invalid ports, partial probes and mutable dependency images cannot be submitted (0.16275ms)
+✔ Manual review does not claim that an unknown failed stage reached receipt (0.069834ms)
+✔ Deployment phases present in the operator's language (0.099708ms)
+✔ Replacement progress does not report completion before previous instances are retired (0.133875ms)
+✔ Component states present with the operator's vocabulary (0.082334ms)
+✔ A registry-resolved digest-pinned reference passes the draft validation unchanged (0.080792ms)
+✔ A tag reference from the registry never passes validation as an image (0.065834ms)
+✔ Publisher JSON preserves complete component inputs and execution without re-composition (0.263209ms)
+✔ Deployment JSON preserves files and only accepts immutable Secret reference fields (0.226041ms)
+✔ same Workspace budget input reuses the idempotency intent (0.49475ms)
+✔ Workspace or key changes create a new intent (0.436208ms)
+✔ budget result must match all stable requested policy fields (0.101042ms)
+✔ budget input comparison ignores object property order (0.08725ms)
+✔ response loss and server failures retain budget intent (0.087375ms)
+✔ same Workspace reuses its delete idempotency intent (3.606ms)
+✔ a different Workspace receives a new delete idempotency intent (0.529625ms)
+✔ delete succeeds only when the authoritative list confirms absence (0.106125ms)
+✔ response loss and 404 retain a delete intent, while known client errors release it (0.123375ms)
+✔ owner not-found errors are identified for authoritative absence readback (0.775042ms)
+✔ deletion progress renders only the platform stage, state, reason and refund it published (0.2105ms)
+✔ a blocked deletion is shown as paused with its stable reason, never as deleted (0.120667ms)
+✔ a retrying deletion reports the automatic retry and keeps the refund separate (0.065416ms)
+✔ a completed deletion and its refund status are distinct statements (0.065583ms)
+✔ an unknown reason code degrades to a neutral statement instead of leaking the code (0.110583ms)
+✔ a missing deletion operation renders nothing so the page stays in its read state (0.056458ms)
+✔ a response without a page state still renders a truthful platform state (0.076083ms)
+✔ the last readback time is rendered from the persisted evidence (14.152833ms)
+✔ Workspace launch statuses produce exact customer outcomes (0.897834ms)
+✔ closeout progress reports only confirmed money and never opens an unfinished Workspace (12.37475ms)
+✔ unknown Workspace launch status is explicitly unconfirmed and cannot open (0.090541ms)
+✔ a succeeded launch without a valid Workspace identity is explicitly unconfirmed (0.081167ms)
+✔ Workspace launch stages use only exact current stage values (0.151792ms)
+✔ Workspace Runtime presentation separates every availability outcome (0.152042ms)
+✔ Workspace renewal statuses have exact labels and an explicit unknown (0.120959ms)
+✔ Workspace lifecycle statuses use only exact current owner values (0.111541ms)
+✔ Workspace budget statuses have exact labels and an explicit unknown (0.110375ms)
+✔ Workspace application binding presents the empty state for resource-only workspaces (0.196541ms)
+✔ Current applications use their own entry and an absent web entry is a valid running application (0.133084ms)
+✔ Application installation results stay separate from resource purchase success (0.135959ms)
+✔ Workspace budget inputs convert exact USD decimals without floating point rounding (0.224959ms)
+✔ Workspace quote presentation preserves unavailable, included zero, and prepaid totals (0.080083ms)
+✔ Workspace quote presentation rejects price and ownership contradictions (0.047625ms)
+✔ Workspace image release activation creates a valid bounded mutation key (0.525542ms)
+✔ Workspace image release activation reuses only the exact CAS intent (0.125167ms)
+✔ Workspace image release activation accepts only the selected version and CAS revision (0.091875ms)
+✔ identical Workspace launch input reuses the existing intent key (1.470625ms)
+✔ different Workspace launch input fields conflict without creating a key (0.105875ms)
+✔ Workspace launch intent survives unknown outcome and is released for known API errors (0.102125ms)
+✔ Workspace launch recovery distinguishes zero, one, and multiple non-terminal operations (0.441917ms)
+✔ Workspace launch review and submit require an unambiguous clear recovery (0.117166ms)
+✔ Workspace launch polling stops for manual review and terminal operations (0.088875ms)
+✔ resource billing mode none disables Workspace auto-renew (0.082ms)
+✔ a customer Workspace Launch always opens resources only (0.070833ms)
+✔ an intent that changes provisioning mode is a conflict, not a silent reuse (0.073458ms)
+✔ Agent launch stays closed until every owner readback is available (0.137792ms)
+✔ Agent operation polling uses the owner's exact pollAfterSeconds (0.241875ms)
+✔ Workspace renewal intent reuses the key for the same Workspace and setting (0.466875ms)
+✔ Workspace renewal intent changes when the Workspace or setting changes (0.42175ms)
+✔ Workspace renewal response requires the requested setting and complete dates (0.101041ms)
+✔ Workspace renewal requires the persisted intent from the identity-matched authoritative readback (0.084666ms)
+✔ Workspace renewal keeps intent for unknown or server failures (0.089958ms)
+✔ Workspace image replacement creates a valid bounded mutation key (0.528333ms)
+✔ Workspace image replacement reuses an exact idempotent intent (0.095666ms)
+✔ Workspace image replacement readback requires the same runtime and target image (0.085125ms)
+✔ accepted Runtime credential completion hides the Workspace Key (0.698333ms)
+✔ accepted Workspace Key completion hides the Runtime credential (0.072292ms)
+✔ invalidated request generation cannot restore Secret data (0.070916ms)
+✔ Workspace Secret expires at the exact 60 second boundary (0.05725ms)
+✔ Runtime rotation reuses an intent for the same Workspace (0.072708ms)
+✔ Runtime rotation creates a new intent when the Workspace changes (0.059625ms)
+ℹ tests 231
+ℹ suites 0
+ℹ pass 231
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2879.769125
+
+==> Console browser suite
+
+> opl-cloud@0.1.0 test:browser:suite
+> npm run test:ownership && node --test --test-concurrency=3 tests/ui/billing-controller-browser.test.ts tests/ui/console-layout-alignment-browser.test.ts tests/ui/gateway-usage-controller-browser.test.ts tests/ui/gateway-account-read-controller-browser.test.ts tests/ui/customer-workspace-read-navigation-browser.test.ts tests/ui/fabric-runtime-read-controller-browser.test.ts tests/ui/customer-announcement-controller-browser.test.ts tests/ui/customer-console-task-experience-browser.test.ts tests/ui/operator-account-controller-browser.test.ts tests/ui/operator-announcement-controller-browser.test.ts tests/ui/operator-resource-read-controller-browser.test.ts tests/ui/logout-safety-browser.test.ts tests/ui/workspace-launch-recovery-browser.test.ts tests/ui/workspace-mvp-flow.test.ts tests/ui/workspace-lifecycle-freshness-browser.test.ts tests/ui/workspace-renewal-navigation-browser.test.ts tests/ui/workspace-budget-navigation-browser.test.ts tests/ui/workspace-task-experience-browser.test.ts
+
+
+> opl-cloud@0.1.0 test:ownership
+> node tools/validate-test-ownership.mjs
+
+All 63 console test files are reachable from a test script.
+✔ Billing rejects a late overview limit-3 page after the billing limit-20 page commits (3381.579416ms)
+✔ Billing rejects Receipt A when its detail arrives after Receipt B (1931.042167ms)
+✔ Billing close invalidates an in-flight Receipt detail (2067.2305ms)
+✔ Billing preserves opaque cursor order across next and previous navigation (2539.304666ms)
+✔ Billing page navigation clears detail and rejects the old detail completion (1758.237542ms)
+✔ Billing route exit rejects an in-flight Receipt detail (2106.580334ms)
+✔ Billing keeps list and detail failure state isolated (2064.143125ms)
+✔ Billing list failure does not become a Receipt detail failure (2184.486375ms)
+✔ Billing Session reset rejects a detail completion from the signed-out Session (2480.503ms)
+✔ customers can trace monthly charges and partial refunds to the original Workspace order on desktop and mobile (2979.286125ms)
+✔ customers distinguish a closed unfulfilled order from its refund and can identify an uncharged closure (4682.9285ms)
+✔ Overview trend counts the owner's confirmed Workspace charges (1546.686167ms)
+✔ Overview trend keeps a failed renewal charge and its full refund distinct (1470.132458ms)
+✔ Overview trend renders the owner's days and never re-buckets them in the browser (1661.600459ms)
+✔ Overview trend separates unavailable, unconfirmed, in-flight and real zero (1873.907125ms)
+✔ Overview trend reads only the owner projection, not receipts or paging (1853.126958ms)
+✔ Console pages keep table, card and panel content inside their boxes (59108.153791ms)
+✔ Account and purchase labels keep their full text where the container has room (2547.718958ms)
+✔ Customer Announcement rejects a late Overview 3 result after the list 20 scope loads (3381.746875ms)
+✔ Customer Announcement refreshes the current list scope after an Overview command settles (1899.045792ms)
+✔ Customer Announcement retries response loss with the original read intent (2144.648416ms)
+✔ Customer Announcement does not downgrade a valid receipt when projection refresh fails (1856.419333ms)
+✔ Customer Announcement retains its intent until receipt identity matches and does not commit conflicting readback (2063.501458ms)
+✔ Customer Announcement ordinary refresh cannot supersede and downgrade a durable read receipt (2083.462167ms)
+✔ Customer Announcement holds a route-spanning claim until its request settles (1907.666917ms)
+✔ Customer Announcement session reset admits a new claim and rejects stale completion (2161.194292ms)
+✔ customer shell exposes four tasks and keeps account internals out of the customer surface (3651.206625ms)
+✔ customer task pages use customer language and expose task fields (6635.9255ms)
+✔ Customer Workspace routes use their exact list and detail read identities (2552.439166ms)
+✔ a late page response cannot replace a newer page selection on the same route (2421.974791ms)
+✔ Renewal readback invalidates an older Workspace detail refresh (2297.305834ms)
+✔ Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budget projections (1925.3325ms)
+✔ Workspace detail failure settles before and independently from Runtime (1812.915833ms)
+✔ a late Workspace detail cannot replace the current route Workspace (12285.936541ms)
+✔ resource-only Workspace accepts Control Plane's empty application readback without a Fabric outage (2135.925208ms)
+✔ Fabric Runtime Read rejects late Workspace and refresh responses and settles failure independently (3170.778209ms)
+✔ Fabric Runtime request starts before Customer Workspace detail completes (1273.120125ms)
+✔ leaving the Workspace detail route rejects an in-flight Runtime completion (1481.711834ms)
+✔ Gateway Account Read settles API overview projections independently (1848.261458ms)
+✔ Gateway Account Read rejects wallet and history completions from an earlier route activation (1610.140542ms)
+✔ Gateway Account Read rejects wallet and history completions from a logged-out Session (1785.483667ms)
+✔ Gateway Account Read rejects an older response for the same balance page (1732.433666ms)
+✔ Gateway Account Read follows the route plan and leaves one endpoint owner on Keys (2481.491292ms)
+✔ Gateway usage rejects a late week result after today commits (2655.490667ms)
+✔ Gateway usage rejects late results for a previously selected key (2105.082833ms)
+✔ Gateway usage rejects a response from an earlier route activation (1948.250084ms)
+✔ Gateway usage rejects late results after a Session reset (2062.726791ms)
+✔ Gateway usage clears its current range only after a single-key not-found readback (1943.1245ms)
+✔ Gateway usage preserves key identity when authoritative readback is transiently unavailable (1994.5565ms)
+✔ Gateway usage renders successful records independently from a failed summary (2089.28675ms)
+✔ Gateway usage renders a successful summary independently from failed records (2510.675333ms)
+✔ Gateway usage selects the twenty-first key and refreshes it through authoritative readback (3139.849708ms)
+✔ Gateway usage key search rejects stale responses and restores focus after closing (3547.378291ms)
+✔ Gateway usage pagination retries the requested page without reloading summary (2976.145709ms)
+✔ Gateway usage rejects available records with the wrong page identity (3217.640917ms)
+✔ Gateway usage keeps an available zero summary when request records are empty (2940.222917ms)
+✔ Gateway usage does not request usage when the account has no keys (2273.529792ms)
+✔ Gateway usage preserves the result-first hierarchy in desktop and mobile viewports (4324.094125ms)
+✔ Console hides secrets and rejects late account data while logout is unconfirmed (3321.576375ms)
+✔ a late login response cannot restore an account or cancel logout (2843.0565ms)
+✔ Workspace Secret controller rejects late reveal and refreshes after rotation (3274.198291ms)
+✔ Operator Account rejects an older retry result for the same page (2872.278792ms)
+✔ Operator Account invalidates a pending list completion after route exit (2469.052542ms)
+✔ Operator Account suppresses a pending command completion after route exit (2744.071208ms)
+✔ Operator Account provision retries response loss with the original normalized intent (3058.801792ms)
+✔ Operator Account keeps a pending provision claimed when its Modal closes and reopens (3213.632125ms)
+✔ Operator Account disable retains its key until identity, status, and readback all match (3198.518708ms)
+✔ Operator Account keeps a pending disable claimed across route exit and re-entry (3269.295542ms)
+✔ Operator Account removes a stale origin row when disable readback finds a migrated target (2803.882458ms)
+✔ Operator Account eligibility retains its key across command and readback mismatches (2856.8795ms)
+✔ Operator Account session reset discards a stale eligibility intent (3641.133667ms)
+✔ Operator Announcement route renders its own page without the overview projection (4046.177209ms)
+✔ Operator Announcement rejects an older retry result (2876.507959ms)
+✔ Operator Announcement create retries response loss with one normalized intent (3256.902834ms)
+✔ Operator Announcement keeps a pending publish claimed across route exit and re-entry (3655.408917ms)
+✔ Operator Announcement retains withdraw intent until command and readback match (3274.280125ms)
+✔ Operator Announcement session reset holds the stale claim until settlement and discards its intent (3606.273292ms)
+✔ Application deployment retries its accepted operation and ignores another Workspace's late completion (4506.058042ms)
+✔ Operator Resource Read loads list and policy and rejects a late page 1 response (2324.134042ms)
+✔ Operator Resource Read rejects late detail and preview after selecting another Workspace (2378.857375ms)
+✔ Operator Resource Read keeps detail and preview failures independent (2494.722458ms)
+✔ Operator Resource Read rejects late list, detail, and preview after route and Session reset (3047.837709ms)
+✔ Runtime Image Replacement refreshes only the selected Workspace detail and preview (2482.696125ms)
+✔ Admin activates an approved rollback for new launches and applies it to an existing Workspace (2082.997917ms)
+✔ Resource refresh updates an expanded Workspace and rejects its late response after selection changes (2585.959208ms)
+✔ System health separates Fabric service from release and opens a read-only Runtime reconciliation (3227.524ms)
+✔ Gateway overview displays real zero OPL account totals separately from unavailable balances (2032.336666ms)
+✔ Registry selection admits a complete publisher revision and deploys its files and Secret references (4126.585959ms)
+✔ Workspace Budget keeps its intent across navigation and scopes busy to the active Workspace (2920.267792ms)
+✔ operators check the original launch using server actions, preserving uncertain results and retry identity (5837.19575ms)
+✔ operators close an unfulfilled order through one retained request and can reopen its refund progress (7790.678334ms)
+✔ Workspace refresh rejects an older Budget completion and preserves the refreshed Key projection (2841.655833ms)
+✔ Renewal projection commit rejects an older in-flight Workspace refresh (2662.544416ms)
+✔ Workspace delete adapter sends one typed Control Plane command (4.567834ms)
+✔ Workspace delete adapter reports an unlanded backend route as unavailable (0.514458ms)
+✔ Workspace delete does not relabel an owner not-found response as route unavailability (0.531542ms)
+✔ Workspace deletion read distinguishes confirmed no intent from inaccessible or mismatched operations (2.527916ms)
+✔ Workspace delete scopes busy and reuses its intent after a late response (4289.646375ms)
+✔ Workspace deletion survives closing the page and remains pending until its original receipt and absence are confirmed (6231.187667ms)
+✔ Workspace Renewal keeps its intent across navigation and scopes busy to the active Workspace (3316.715958ms)
+✔ expired customers explicitly renew after funding and reopen the original recovery without gaining unpaid access (8698.195333ms)
+✔ legacy Console exposes only its deployed publisher and delivery routes (4855.729375ms)
+✔ cloud Console exposes only its deployed publisher and delivery routes (4342.748458ms)
+✔ customer completes one authoritative Workspace journey at desktop and mobile widths (6238.83325ms)
+✔ Workspace detail prioritizes authoritative availability and entry while keeping policy and evidence disclosed (4501.022583ms)
+✔ Current application status and declared capabilities replace legacy Workspace entry and controls (7716.214833ms)
+✔ v2 launch fails closed when Gateway or capability owner routes are unavailable (1435.31425ms)
+✔ Workspace detail fails closed without exposing Runtime or delete reason codes by default (2147.502333ms)
+✔ Workspace credential mismatch uses customer terminology (1898.905333ms)
+✔ legacy resource-only Workspace history remains readable without becoming the new launch entry (1958.020208ms)
+✔ v2 operation refresh keeps the original order and never opens before Serve access confirmation (1814.985916ms)
+ℹ tests 111
+ℹ suites 0
+ℹ pass 111
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 151710.759916
+
+==> TypeScript typecheck
+
+> opl-cloud@0.1.0 typecheck
+> tsc -p apps/console-ui/tsconfig.json --noEmit
+
+
+==> TypeScript lint
+
+> opl-cloud@0.1.0 lint
+> tsc -p apps/console-ui/tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters
+
+
+==> Console build
+
+> opl-cloud@0.1.0 build
+> vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2811 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             0.87 kB │ gzip:   0.47 kB
+dist/assets/vendor-DxL85Pzh.css            86.78 kB │ gzip:   9.85 kB
+dist/assets/index-Bo5RNPBS.css            219.59 kB │ gzip:  37.01 kB
+dist/assets/rolldown-runtime-CbXtAM7H.js    0.58 kB │ gzip:   0.36 kB
+dist/assets/vendor-BVm12Qtk.js            335.62 kB │ gzip: 108.53 kB
+dist/assets/index-DACgAOeH.js             380.51 kB │ gzip:  89.65 kB
+
+✓ built in 674ms
+
+==> packages/contracts/go compile
+ok  	opl-cloud/packages/contracts/go	(cached) [no tests to run]
+?   	opl-cloud/packages/contracts/go/api	[no test files]
+ok  	opl-cloud/packages/contracts/go/owneridentity	(cached) [no tests to run]
+ok  	opl-cloud/packages/contracts/go/publicjson	(cached) [no tests to run]
+
+==> services/control-plane compile
+ok  	opl-cloud/services/control-plane/cmd/control-plane	(cached) [no tests to run]
+?   	opl-cloud/services/control-plane/ent	[no test files]
+?   	opl-cloud/services/control-plane/ent/account	[no test files]
+?   	opl-cloud/services/control-plane/ent/adminauditevent	[no test files]
+?   	opl-cloud/services/control-plane/ent/announcement	[no test files]
+?   	opl-cloud/services/control-plane/ent/announcementread	[no test files]
+?   	opl-cloud/services/control-plane/ent/applicationdatamaterial	[no test files]
+?   	opl-cloud/services/control-plane/ent/applicationrevision	[no test files]
+?   	opl-cloud/services/control-plane/ent/archivedadminauditevent	[no test files]
+?   	opl-cloud/services/control-plane/ent/authattempt	[no test files]
+?   	opl-cloud/services/control-plane/ent/billingreconciliation	[no test files]
+?   	opl-cloud/services/control-plane/ent/computeallocation	[no test files]
+?   	opl-cloud/services/control-plane/ent/enttest	[no test files]
+?   	opl-cloud/services/control-plane/ent/hook	[no test files]
+?   	opl-cloud/services/control-plane/ent/migrate	[no test files]
+?   	opl-cloud/services/control-plane/ent/predicate	[no test files]
+?   	opl-cloud/services/control-plane/ent/productione2erecord	[no test files]
+?   	opl-cloud/services/control-plane/ent/projecttasksynchead	[no test files]
+?   	opl-cloud/services/control-plane/ent/runtime	[no test files]
+?   	opl-cloud/services/control-plane/ent/runtimeoperation	[no test files]
+?   	opl-cloud/services/control-plane/ent/schema	[no test files]
+?   	opl-cloud/services/control-plane/ent/session	[no test files]
+?   	opl-cloud/services/control-plane/ent/storageattachment	[no test files]
+?   	opl-cloud/services/control-plane/ent/storagevolume	[no test files]
+?   	opl-cloud/services/control-plane/ent/user	[no test files]
+?   	opl-cloud/services/control-plane/ent/workspace	[no test files]
+?   	opl-cloud/services/control-plane/ent/workspacesyncevent	[no test files]
+ok  	opl-cloud/services/control-plane/internal/arch	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/clients	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/controlplane	(cached) [no tests to run]
+?   	opl-cloud/services/control-plane/internal/domain	[no test files]
+ok  	opl-cloud/services/control-plane/internal/domain/application	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/domain/provisioning	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/server	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/migrations	(cached) [no tests to run]
+
+==> services/fabric compile
+ok  	opl-cloud/services/fabric/cmd/fabric	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/cmd/opl-node-image-retire	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/cmd/opl-tencent-provisioner	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/coordination	(cached) [no tests to run]
+?   	opl-cloud/services/fabric/ent	[no test files]
+?   	opl-cloud/services/fabric/ent/enttest	[no test files]
+?   	opl-cloud/services/fabric/ent/fabricoperation	[no test files]
+?   	opl-cloud/services/fabric/ent/hook	[no test files]
+?   	opl-cloud/services/fabric/ent/machineownership	[no test files]
+?   	opl-cloud/services/fabric/ent/migrate	[no test files]
+?   	opl-cloud/services/fabric/ent/predicate	[no test files]
+?   	opl-cloud/services/fabric/ent/runtime	[no test files]
+?   	opl-cloud/services/fabric/ent/schema	[no test files]
+ok  	opl-cloud/services/fabric/internal/fabric	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/internal/http	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/internal/protectedresource	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/ownermigrations	(cached) [no tests to run]
+
+==> services/ledger compile
+ok  	opl-cloud/services/ledger/cmd/ledger	(cached) [no tests to run]
+?   	opl-cloud/services/ledger/ent	[no test files]
+?   	opl-cloud/services/ledger/ent/enttest	[no test files]
+?   	opl-cloud/services/ledger/ent/evidencereceipt	[no test files]
+?   	opl-cloud/services/ledger/ent/hook	[no test files]
+?   	opl-cloud/services/ledger/ent/idempotencykey	[no test files]
+?   	opl-cloud/services/ledger/ent/migrate	[no test files]
+?   	opl-cloud/services/ledger/ent/predicate	[no test files]
+?   	opl-cloud/services/ledger/ent/reconciliationreport	[no test files]
+?   	opl-cloud/services/ledger/ent/runtime	[no test files]
+?   	opl-cloud/services/ledger/ent/schema	[no test files]
+ok  	opl-cloud/services/ledger/eventconsumer	(cached) [no tests to run]
+ok  	opl-cloud/services/ledger/internal/http	(cached) [no tests to run]
+ok  	opl-cloud/services/ledger/internal/ledger	(cached) [no tests to run]
+
+==> services/internal/postgresmigrate compile
+ok  	opl-cloud/services/internal/postgresmigrate	(cached) [no tests to run]
+
+==> services/internal/ownerstore compile
+?   	opl-cloud/services/internal/ownerstore	[no test files]
+?   	opl-cloud/services/internal/ownerstore/ownerstoretest	[no test files]
+
+==> services/internal/ownerservice compile
+ok  	opl-cloud/services/internal/ownerservice	(cached) [no tests to run]
+
+==> services/capability compile
+ok  	opl-cloud/services/capability/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/capability/cmd/server	[no test files]
+ok  	opl-cloud/services/capability/migrations	(cached) [no tests to run]
+
+==> services/gateway-integration compile
+?   	opl-cloud/services/gateway-integration/cmd/server	[no test files]
+ok  	opl-cloud/services/gateway-integration/identity	(cached) [no tests to run]
+ok  	opl-cloud/services/gateway-integration/migrations	(cached) [no tests to run]
+
+==> services/build compile
+?   	opl-cloud/services/build/cmd/server	[no test files]
+ok  	opl-cloud/services/build/internal/build	(cached) [no tests to run]
+ok  	opl-cloud/services/build/migrations	(cached) [no tests to run]
+
+==> services/runtime-control compile
+ok  	opl-cloud/services/runtime-control/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/runtime-control/cmd/server	[no test files]
+ok  	opl-cloud/services/runtime-control/migrations	(cached) [no tests to run]
+
+==> services/workspace compile
+?   	opl-cloud/services/workspace/cmd/server	[no test files]
+ok  	opl-cloud/services/workspace/internal/launch	(cached) [no tests to run]
+ok  	opl-cloud/services/workspace/migrations	(cached) [no tests to run]
+
+==> services/resource-catalog compile
+ok  	opl-cloud/services/resource-catalog/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/resource-catalog/cmd/server	[no test files]
+ok  	opl-cloud/services/resource-catalog/migrations	(cached) [no tests to run]
+
+==> services/serve compile
+?   	opl-cloud/services/serve/cmd/server	[no test files]
+ok  	opl-cloud/services/serve/internal/delivery	(cached) [no tests to run]
+ok  	opl-cloud/services/serve/migrations	(cached) [no tests to run]
+
+==> apps/console-bff compile
+?   	opl-cloud/apps/console-bff	[no test files]
+?   	opl-cloud/apps/console-bff/cmd/server	[no test files]
+ok  	opl-cloud/apps/console-bff/internal/clients	(cached) [no tests to run]
+ok  	opl-cloud/apps/console-bff/internal/httpapi	(cached) [no tests to run]
+
+==> packages/contracts/go database-free tests
+ok  	opl-cloud/packages/contracts/go	0.377s
+?   	opl-cloud/packages/contracts/go/api	[no test files]
+ok  	opl-cloud/packages/contracts/go/owneridentity	0.626s
+ok  	opl-cloud/packages/contracts/go/publicjson	0.896s
+
+==> services/control-plane database-free tests
+ok  	opl-cloud/services/control-plane/cmd/control-plane	0.543s
+ok  	opl-cloud/services/control-plane/internal/clients	0.441s
+
+==> services/control-plane database-free tests
+ok  	opl-cloud/services/control-plane/internal/server	0.443s
+
+==> services/fabric database-free tests
+ok  	opl-cloud/services/fabric/cmd/fabric	0.754s
+ok  	opl-cloud/services/fabric/cmd/opl-tencent-provisioner	1.488s
+ok  	opl-cloud/services/fabric/cmd/opl-node-image-retire	1.087s
+ok  	opl-cloud/services/fabric/internal/http	0.871s
+ok  	opl-cloud/services/fabric/internal/protectedresource	1.337s
+
+==> services/ledger database-free tests
+ok  	opl-cloud/services/ledger/cmd/ledger	0.600s
+ok  	opl-cloud/services/ledger/internal/http	0.365s
+
+==> services/internal/postgresmigrate database-free tests
+ok  	opl-cloud/services/internal/postgresmigrate	0.274s
+
+==> services/internal/ownerservice database-free tests
+ok  	opl-cloud/services/internal/ownerservice	0.295s
+
+==> Git whitespace
+
+==> temporary PostgreSQL 16
+83f58aeb5ad9f083ea77d2a09c44d5126ce9ea6ca8fad208fd23a1c2b4b3ff08
+
+==> services/internal/postgresmigrate PostgreSQL compile
+ok  	opl-cloud/services/internal/postgresmigrate	(cached) [no tests to run]
+
+==> services/internal/postgresmigrate PostgreSQL tests (zero skips)
+Go packages passed: 1; skipped: 0
+
+==> services/internal/ownerservice PostgreSQL compile
+ok  	opl-cloud/services/internal/ownerservice	(cached) [no tests to run]
+
+==> services/internal/ownerservice PostgreSQL tests (zero skips)
+Go packages passed: 1; skipped: 0
+
+==> services/capability PostgreSQL compile
+ok  	opl-cloud/services/capability/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/capability/cmd/server	[no test files]
+ok  	opl-cloud/services/capability/migrations	(cached) [no tests to run]
+
+==> services/capability PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/gateway-integration PostgreSQL compile
+?   	opl-cloud/services/gateway-integration/cmd/server	[no test files]
+ok  	opl-cloud/services/gateway-integration/identity	(cached) [no tests to run]
+ok  	opl-cloud/services/gateway-integration/migrations	(cached) [no tests to run]
+
+==> services/gateway-integration PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/build PostgreSQL compile
+?   	opl-cloud/services/build/cmd/server	[no test files]
+ok  	opl-cloud/services/build/internal/build	(cached) [no tests to run]
+ok  	opl-cloud/services/build/migrations	(cached) [no tests to run]
+
+==> services/build PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/runtime-control PostgreSQL compile
+ok  	opl-cloud/services/runtime-control/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/runtime-control/cmd/server	[no test files]
+ok  	opl-cloud/services/runtime-control/migrations	(cached) [no tests to run]
+
+==> services/runtime-control PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/workspace PostgreSQL compile
+?   	opl-cloud/services/workspace/cmd/server	[no test files]
+ok  	opl-cloud/services/workspace/internal/launch	(cached) [no tests to run]
+ok  	opl-cloud/services/workspace/migrations	(cached) [no tests to run]
+
+==> services/workspace PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/resource-catalog PostgreSQL compile
+ok  	opl-cloud/services/resource-catalog/catalog	(cached) [no tests to run]
+?   	opl-cloud/services/resource-catalog/cmd/server	[no test files]
+ok  	opl-cloud/services/resource-catalog/migrations	(cached) [no tests to run]
+
+==> services/resource-catalog PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/serve PostgreSQL compile
+?   	opl-cloud/services/serve/cmd/server	[no test files]
+ok  	opl-cloud/services/serve/internal/delivery	(cached) [no tests to run]
+ok  	opl-cloud/services/serve/migrations	(cached) [no tests to run]
+
+==> services/serve PostgreSQL tests (zero skips)
+Go packages passed: 2; skipped: 0
+
+==> services/ledger PostgreSQL compile
+ok  	opl-cloud/services/ledger/cmd/ledger	(cached) [no tests to run]
+?   	opl-cloud/services/ledger/ent	[no test files]
+?   	opl-cloud/services/ledger/ent/enttest	[no test files]
+?   	opl-cloud/services/ledger/ent/evidencereceipt	[no test files]
+?   	opl-cloud/services/ledger/ent/hook	[no test files]
+?   	opl-cloud/services/ledger/ent/idempotencykey	[no test files]
+?   	opl-cloud/services/ledger/ent/migrate	[no test files]
+?   	opl-cloud/services/ledger/ent/predicate	[no test files]
+?   	opl-cloud/services/ledger/ent/reconciliationreport	[no test files]
+?   	opl-cloud/services/ledger/ent/runtime	[no test files]
+?   	opl-cloud/services/ledger/ent/schema	[no test files]
+ok  	opl-cloud/services/ledger/eventconsumer	(cached) [no tests to run]
+ok  	opl-cloud/services/ledger/internal/http	(cached) [no tests to run]
+ok  	opl-cloud/services/ledger/internal/ledger	(cached) [no tests to run]
+
+==> services/ledger PostgreSQL tests (zero skips)
+Go packages passed: 4; skipped: 0
+
+==> services/control-plane PostgreSQL compile
+ok  	opl-cloud/services/control-plane/cmd/control-plane	(cached) [no tests to run]
+?   	opl-cloud/services/control-plane/ent	[no test files]
+?   	opl-cloud/services/control-plane/ent/account	[no test files]
+?   	opl-cloud/services/control-plane/ent/adminauditevent	[no test files]
+?   	opl-cloud/services/control-plane/ent/announcement	[no test files]
+?   	opl-cloud/services/control-plane/ent/announcementread	[no test files]
+?   	opl-cloud/services/control-plane/ent/applicationdatamaterial	[no test files]
+?   	opl-cloud/services/control-plane/ent/applicationrevision	[no test files]
+?   	opl-cloud/services/control-plane/ent/archivedadminauditevent	[no test files]
+?   	opl-cloud/services/control-plane/ent/authattempt	[no test files]
+?   	opl-cloud/services/control-plane/ent/billingreconciliation	[no test files]
+?   	opl-cloud/services/control-plane/ent/computeallocation	[no test files]
+?   	opl-cloud/services/control-plane/ent/enttest	[no test files]
+?   	opl-cloud/services/control-plane/ent/hook	[no test files]
+?   	opl-cloud/services/control-plane/ent/migrate	[no test files]
+?   	opl-cloud/services/control-plane/ent/predicate	[no test files]
+?   	opl-cloud/services/control-plane/ent/productione2erecord	[no test files]
+?   	opl-cloud/services/control-plane/ent/projecttasksynchead	[no test files]
+?   	opl-cloud/services/control-plane/ent/runtime	[no test files]
+?   	opl-cloud/services/control-plane/ent/runtimeoperation	[no test files]
+?   	opl-cloud/services/control-plane/ent/schema	[no test files]
+?   	opl-cloud/services/control-plane/ent/session	[no test files]
+?   	opl-cloud/services/control-plane/ent/storageattachment	[no test files]
+?   	opl-cloud/services/control-plane/ent/storagevolume	[no test files]
+?   	opl-cloud/services/control-plane/ent/user	[no test files]
+?   	opl-cloud/services/control-plane/ent/workspace	[no test files]
+?   	opl-cloud/services/control-plane/ent/workspacesyncevent	[no test files]
+ok  	opl-cloud/services/control-plane/internal/arch	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/clients	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/controlplane	(cached) [no tests to run]
+?   	opl-cloud/services/control-plane/internal/domain	[no test files]
+ok  	opl-cloud/services/control-plane/internal/domain/application	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/domain/provisioning	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/internal/server	(cached) [no tests to run]
+ok  	opl-cloud/services/control-plane/migrations	(cached) [no tests to run]
+
+==> services/control-plane PostgreSQL tests (zero skips)
+Go packages passed: 8; skipped: 0
+
+==> services/fabric PostgreSQL compile
+ok  	opl-cloud/services/fabric/cmd/fabric	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/cmd/opl-node-image-retire	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/cmd/opl-tencent-provisioner	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/coordination	(cached) [no tests to run]
+?   	opl-cloud/services/fabric/ent	[no test files]
+?   	opl-cloud/services/fabric/ent/enttest	[no test files]
+?   	opl-cloud/services/fabric/ent/fabricoperation	[no test files]
+?   	opl-cloud/services/fabric/ent/hook	[no test files]
+?   	opl-cloud/services/fabric/ent/machineownership	[no test files]
+?   	opl-cloud/services/fabric/ent/migrate	[no test files]
+?   	opl-cloud/services/fabric/ent/predicate	[no test files]
+?   	opl-cloud/services/fabric/ent/runtime	[no test files]
+?   	opl-cloud/services/fabric/ent/schema	[no test files]
+ok  	opl-cloud/services/fabric/internal/fabric	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/internal/http	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/internal/protectedresource	(cached) [no tests to run]
+ok  	opl-cloud/services/fabric/ownermigrations	(cached) [no tests to run]
+
+==> services/fabric PostgreSQL tests (zero skips)
+Go packages passed: 8; skipped: 0
+
+Local verification passed with PostgreSQL and Docker integration.

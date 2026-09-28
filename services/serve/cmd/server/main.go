@@ -38,7 +38,7 @@ func main() {
 	}
 
 	bootstrap, err := ownerservice.Start(ctx, config, source, func(server *ownerservice.Server, database *ownerservice.Database) error {
-		return delivery.Configure(server, database, config)
+		return delivery.ConfigureWithContext(ctx, server, database, config)
 	})
 	if err != nil {
 		log.Fatal(err)

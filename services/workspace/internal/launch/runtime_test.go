@@ -165,6 +165,13 @@ func (l *deploymentReceiptLedger) ReadReceiptByReference(_ context.Context, r *a
 	return proto.Clone(l.receipt).(*api.Receipt), nil
 }
 
+func (f *runtimeResourceClient) EnsureResources(_ context.Context, r *api.EnsureResourcesCommand, _ ...grpc.CallOption) (*api.Operation, error) {
+	if r.WorkspaceId != f.readback.WorkspaceId || r.ConfirmedChargeReceiptId != "receipt-original" {
+		return nil, status.Error(codes.InvalidArgument, "different original resource intent")
+	}
+	return &api.Operation{OperationId: "fabric-operation-original", Owner: api.OperationOwnerEnum_OPERATION_OWNER_ENUM_FABRIC, Kind: api.OperationKindEnum_OPERATION_KIND_ENUM_RESOURCE_PROVISION, ResourceId: f.readback.ResourceSetId, Status: api.OperationStatusEnum_OPERATION_STATUS_ENUM_RUNNING}, nil
+}
+
 func (f *runtimeResourceClient) ReadResources(_ context.Context, r *api.ResourceReadbackRequest, _ ...grpc.CallOption) (*api.ResourceReadback, error) {
 	if r.ResourceSetId != f.readback.ResourceSetId {
 		return nil, status.Error(codes.NotFound, "different resources")

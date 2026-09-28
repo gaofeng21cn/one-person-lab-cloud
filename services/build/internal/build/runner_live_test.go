@@ -29,10 +29,38 @@ import (
 	"opl-cloud/services/internal/ownerstore/ownerstoretest"
 )
 
+// liveBuildPlatform is explicit so a real Runtime/WebUI pair cannot be
+// accidentally described as a different platform in the Build snapshot.
+func liveBuildPlatform(t *testing.T) *api.ImagePlatform {
+	t.Helper()
+	value := os.Getenv("OPL_BUILD_TEST_PLATFORM")
+	if value == "" {
+		value = "linux/arm64"
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 || parts[0] != "linux" {
+		t.Fatalf("OPL_BUILD_TEST_PLATFORM must be linux/amd64 or linux/arm64, got %q", value)
+	}
+	architecture := api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_UNSPECIFIED
+	switch parts[1] {
+	case "amd64":
+		architecture = api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_AMD64
+	case "arm64":
+		architecture = api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64
+	default:
+		t.Fatalf("OPL_BUILD_TEST_PLATFORM must be linux/amd64 or linux/arm64, got %q", value)
+	}
+	return &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: architecture}
+}
+
 // This opt-in test owns disposable loopback-only containers. It never contacts
 // an instance, publishes to a public registry or uses customer resources.
 func TestLivePackageBuildAndRestartReadback(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	contextTimeout := 8 * time.Minute
+	if os.Getenv("OPL_RUNTIME_IMAGE") != "" || os.Getenv("OPL_WEBUI_IMAGE") != "" {
+		contextTimeout = 45 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	root := t.TempDir()
 	docker := func(args ...string) string {
@@ -90,15 +118,38 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if buildxDir == "" {
 		t.Fatal("Docker Buildx CLI plugin is required")
 	}
-	isolatedDockerConfig, err := json.Marshal(struct {
-		CLIPluginsExtraDirs []string `json:"cliPluginsExtraDirs"`
-	}{CLIPluginsExtraDirs: []string{buildxDir}})
+	isolatedConfig := struct {
+		CLIPluginsExtraDirs []string                   `json:"cliPluginsExtraDirs"`
+		Auths               map[string]json.RawMessage `json:"auths,omitempty"`
+	}{CLIPluginsExtraDirs: []string{buildxDir}, Auths: map[string]json.RawMessage{}}
+	if home, e := os.UserHomeDir(); e == nil {
+		if data, e := os.ReadFile(filepath.Join(home, ".docker", "config.json")); e == nil {
+			var source struct {
+				Auths map[string]json.RawMessage `json:"auths"`
+			}
+			if json.Unmarshal(data, &source) == nil {
+				if source.Auths != nil {
+					isolatedConfig.Auths = source.Auths
+				}
+			}
+		}
+	}
+	if auth, host := os.Getenv("OPL_BUILD_TEST_DOCKER_AUTH"), os.Getenv("OPL_BUILD_TEST_DOCKER_REGISTRY"); auth != "" && host != "" {
+		isolatedConfig.Auths[host] = json.RawMessage(fmt.Sprintf(`{"auth":%q}`, auth))
+	}
+	isolatedDockerConfig, err := json.Marshal(isolatedConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dc, "config.json"), isolatedDockerConfig, 0600); err != nil {
 		t.Fatal(err)
 	}
+	// The remote worker performs docker-image:// resolution inside the
+	// BuildKit daemon. Supply the same short-lived approved config there; the
+	// client-side DockerConfig alone cannot authenticate that worker.
+	docker("exec", bkName, "mkdir", "-p", "/root/.docker")
+	docker("cp", filepath.Join(dc, "config.json"), bkName+":/root/.docker/config.json")
+	docker("restart", bkName)
 	bx := func(args ...string) string {
 		t.Helper()
 		return docker(append([]string{"--config", dc, "buildx"}, args...)...)
@@ -124,8 +175,12 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if !ok || !digestPattern.MatchString(frontDigest) {
 		t.Fatal("digest-pinned frontend required")
 	}
-	p := &api.ImagePlatform{Os: api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX, Architecture: api.ImagePlatformArchitectureEnum_IMAGE_PLATFORM_ARCHITECTURE_ENUM_ARM64}
-	r := &Runner{Builder: "isolated", RegistryPrefix: registry + "/result", DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: 3 * time.Minute, AllowHTTP: true}
+	p := liveBuildPlatform(t)
+	runnerTimeout := 3 * time.Minute
+	if os.Getenv("OPL_RUNTIME_IMAGE") != "" || os.Getenv("OPL_WEBUI_IMAGE") != "" {
+		runnerTimeout = 35 * time.Minute
+	}
+	r := &Runner{Builder: "isolated", RegistryPrefix: registry + "/result", DockerConfig: dc, WorkDir: root, MaxPackageBytes: 1 << 20, MaxExpandedBytes: 2 << 20, MaxFiles: 128, Timeout: runnerTimeout, AllowHTTP: true}
 	seed := func(name, filename, body string) *api.ArtifactReference {
 		t.Helper()
 		d := filepath.Join(root, name)
@@ -150,7 +205,26 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	} else {
 		runtime = seed("runtime", "runtime.txt", "approved runtime\n")
 	}
-	webui := seed("webui", "index.html", "<h1>Cloud WebUI</h1>\n")
+	var webui *api.ArtifactReference
+	webuiSourcePath, webuiTargetPath := "/index.html", "/web/index.html"
+	webuiOutputPath := filepath.Join("web", "index.html")
+	if ref := os.Getenv("OPL_WEBUI_IMAGE"); ref != "" {
+		repo, d, ok := strings.Cut(ref, "@")
+		if !ok || !digestPattern.MatchString(d) {
+			t.Fatal("OPL_WEBUI_IMAGE must be digest-pinned")
+		}
+		webui = &api.ArtifactReference{Repository: repo, Digest: d, Platform: p}
+		webuiSourcePath = os.Getenv("OPL_BUILD_TEST_WEBUI_SOURCE_PATH")
+		if webuiSourcePath == "" {
+			t.Fatal("OPL_BUILD_TEST_WEBUI_SOURCE_PATH is required with OPL_WEBUI_IMAGE")
+		}
+		webuiTargetPath = os.Getenv("OPL_BUILD_TEST_WEBUI_TARGET_PATH")
+		if webuiTargetPath == "" {
+			webuiTargetPath = "/web"
+		}
+	} else {
+		webui = seed("webui", "index.html", "<h1>Cloud WebUI</h1>\n")
+	}
 	schemaBytes, err := os.ReadFile("../../../../docs/spec/target/contracts/publisher-contract.schema.json")
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +244,10 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	runtimeContract.Image = runtime
 	webuiContract.Image = webui
 	runtimeContract.ApplicationRevisionTemplate.Image = runtime.Repository + "@" + runtime.Digest
-	runtimeContract.ApplicationRevisionTemplate.Platform = "linux/arm64"
+	runtimeContract.ApplicationRevisionTemplate.Platform, err = platform(p)
+	if err != nil {
+		t.Fatal(err)
+	}
 	recipeContract := runtimeContract.BuildRecipe
 	recipeContract.Frontend = &api.ArtifactReference{Repository: frontRepo, Digest: frontDigest, Platform: p}
 	recipeContract.OutputPlatform = p
@@ -180,8 +257,8 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	recipeContract.PackageInput.SourceRoot = packageSourceRoot
 	recipeContract.PackageInput.TargetPath = "/agent"
-	recipeContract.WebuiInput.SourcePath = "/index.html"
-	recipeContract.WebuiInput.TargetPath = "/web/index.html"
+	recipeContract.WebuiInput.SourcePath = webuiSourcePath
+	recipeContract.WebuiInput.TargetPath = webuiTargetPath
 	recipeContract.Recipe.Repository = registry + "/recipe"
 	input := &api.BuildInputSnapshot{RuntimeVersionId: "runtime-live", WebuiVersionId: "webui-live", RuntimeArtifact: runtime, WebuiArtifact: webui, RuntimeContract: runtimeContract, WebuiContract: webuiContract, RuntimeContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_RUNTIME}, WebuiContractReference: &api.PublisherContractReference{Kind: api.PublisherContractReferenceKindEnum_PUBLISHER_CONTRACT_REFERENCE_KIND_ENUM_WEBUI}}
 	var pkg []byte
@@ -250,7 +327,11 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	os.Mkdir(export, 0755)
 	os.WriteFile(filepath.Join(export, "Dockerfile"), []byte("FROM "+repository+"@"+result.Manifest.Digest+"\n"), 0644)
 	outDir := filepath.Join(root, "output")
-	bx("build", "--builder", "isolated", "--platform", "linux/arm64", "--output", "type=local,dest="+outDir, export)
+	outputPlatform, err := platform(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bx("build", "--builder", "isolated", "--platform", outputPlatform, "--output", "type=local,dest="+outDir, export)
 	packageOutput := "agent/payload.txt"
 	wantPackage := "immutable package payload\n"
 	if os.Getenv("OPL_BUILD_TEST_PACKAGE") != "" {
@@ -261,8 +342,12 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	if e != nil || (wantPackage != "" && string(payload) != wantPackage) {
 		t.Fatalf("output package: %q %v", payload, e)
 	}
-	html, e := os.ReadFile(filepath.Join(outDir, "web/index.html"))
-	if e != nil || string(html) != "<h1>Cloud WebUI</h1>\n" {
+	html, e := os.ReadFile(filepath.Join(outDir, webuiOutputPath))
+	if os.Getenv("OPL_WEBUI_IMAGE") != "" {
+		if e != nil || len(html) == 0 {
+			t.Fatalf("output WebUI: expected non-empty %s: %q %v", webuiOutputPath, html, e)
+		}
+	} else if e != nil || string(html) != "<h1>Cloud WebUI</h1>\n" {
 		t.Fatalf("output WebUI: %q %v", html, e)
 	}
 	// Stop the actual builder: all subsequent confirmations must be registry reads.

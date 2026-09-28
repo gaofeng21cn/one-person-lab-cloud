@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_customer_private_oci_publication_closeout_receipt",
+  "recordedAt": "2026-09-28T20:03:40+08:00",
+  "status": "published",
+  "action": "Compose and publish one customer-private OMA application OCI",
+  "scope": "Customer application-material OCI publication only. No Instance deployment, Workspace availability, formal Cloud Product Release, production promotion, provider mutation or real-money mutation.",
+  "ssotClassification": {
+    "buildOwner": "Build owns immutable OCI construction and digest readback.",
+    "registryRole": "TCR stores the versioned application material for the customer.",
+    "instanceDeployment": "out_of_scope_and_not_performed",
+    "formalProductRelease": "not_claimed",
+    "issue356": "Related Cloud account-admission context only; it does not add an Instance deployment prerequisite to this application-material publication."
+  },
+  "customerRepository": {
+    "emailLocalPart": "huangrende",
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/huangrende",
+    "tag": "oma-ibd-evidence-assistant-20260928",
+    "reference": "uswccr.ccs.tencentyun.com/oplcloud/huangrende@sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "manifestDigest": "sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "platform": "linux/amd64"
+  },
+  "inputs": {
+    "omaArchiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "omaCandidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "omaContentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "webui": {
+      "reference": "uswccr.ccs.tencentyun.com/oplcloud/webui@sha256:dac7cb39a0729181c02dfcc103142c2964139e048ea1a0d9a22eb50508a33cc3",
+      "indexDigest": "sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+      "selectedPlatform": "linux/amd64",
+      "selectedChildDigest": "sha256:dac7cb39a0729181c02dfcc103142c2964139e048ea1a0d9a22eb50508a33cc3"
+    },
+    "runtime": {
+      "reference": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:7d27eb555bef3ebe518511e7f2792ef64368c00d72d2eada4991d780d6979cfd",
+      "tagIndexDigest": "sha256:74571e4f2c63e66991542d58df2b428ea5ba8b1ccc6a85a4e3a750a5c5399730",
+      "selectedPlatform": "linux/amd64",
+      "selectedChildDigest": "sha256:7d27eb555bef3ebe518511e7f2792ef64368c00d72d2eada4991d780d6979cfd"
+    }
+  },
+  "buildChain": [
+    "Capability package input is the exact OMA archive identified by archive, candidate and content digests.",
+    "Build binds the package, the selected Runtime digest and the selected WebUI digest as one immutable input snapshot.",
+    "BuildKit composes the package at /agent and WebUI files from /app/dist/webui into /app/aionui-web/static while retaining the Runtime entrypoint and command.",
+    "The composed linux/amd64 OCI is exported to the customer-private TCR repository.",
+    "The remote TCR manifest is read back by the final digest; the published image contains /agent/agent/agent-pack.json and /app/aionui-web/static/index.html."
+  ],
+  "composition": {
+    "packageSource": "OMA Agent Package",
+    "packageTarget": "/agent",
+    "webuiSource": "/app/dist/webui",
+    "webuiTarget": "/app/aionui-web/static",
+    "entrypoint": ["tini", "--", "/opt/opl/entrypoint.sh"],
+    "cmd": ["start", "--remote", "--port", "3000"]
+  },
+  "verification": {
+    "remoteManifestReadback": "passed",
+    "packageFilePresent": "/agent/agent/agent-pack.json",
+    "webuiIndexPresent": "/app/aionui-web/static/index.html",
+    "runtimeHealthz": "observed 200/ok during the first container startup probe",
+    "localOwnerChain": "Capability upload, Runtime/WebUI registration and selection, BuildKit composition, Ledger event persistence, lost-ack replay and post-registry worker recovery passed",
+    "sourceFocusedChecks": [
+      "go test ./internal/httpapi ./internal/clients -count=1: passed",
+      "go test -tags=livebuild ./internal/build -run '^$' -count=1: passed",
+      "git diff --check: passed"
+    ]
+  },
+  "ownerEvidence": {
+    "localBuildAndLedger": "2026-09-28-oma-runtime-webui-local-build-readback.json",
+    "customerRepositoryPublication": "2026-09-28-customer-private-oci-publication.json",
+    "issue": "https://github.com/gaofeng21cn/one-person-lab-cloud/issues/673",
+    "instanceAdmissionReceipt": "not_required_for_this_scope_and_not_performed",
+    "sameDigestInstanceRuntimeReadback": "not_required_for_this_scope_and_not_performed"
+  },
+  "boundaries": [
+    "The earlier pending publication receipt remains historical evidence for the pre-closeout attempt; this append-only receipt records the completed publication.",
+    "No claim is made that Instance formally received, deployed or accepted this artifact.",
+    "No claim is made that the artifact is available in a Workspace or that a formal Cloud Product Release was published.",
+    "The stable browser-page probe was not used as a publication prerequisite; its bounded startup limitation remains recorded in the historical publication receipt."
+  ],
+  "credentials": {
+    "valuesRecorded": false,
+    "dockerLogoutAfterPublication": true
+  },
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false
+}

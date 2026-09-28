@@ -522,7 +522,11 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 			Current, Total int64
 		}
 		if json.Unmarshal(line, &v) == nil {
-			if digestPattern.MatchString(v.ID) {
+			if v.Error != "" && !digestPattern.MatchString(v.ID) {
+				// Preserve only the fact that an untrusted BuildKit vertex
+				// rejected the build; never forward its raw error text.
+				w.log("BuildKit vertex rejected")
+			} else if digestPattern.MatchString(v.ID) {
 				state := "running"
 				if v.Completed != nil {
 					state = "completed"

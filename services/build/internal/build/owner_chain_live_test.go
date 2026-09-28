@@ -110,22 +110,37 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		t.Fatal(err)
 	}
 	// The local WebUI and recipe fixtures use the disposable registry namespace.
-	// When the test consumes the real App Runtime Release, Runtime Control gets a
-	// separate approved namespace for that exact GHCR repository prefix.
-	input.WebuiContract.PublisherNamespaceId = publisher.Id
+	// Real OCI inputs get a separate approved namespace for their exact repository
+	// prefix; the owner must never broaden the local namespace to admit them.
+	webuiPublisher := publisher
+	if ref := os.Getenv("OPL_WEBUI_IMAGE"); ref != "" {
+		repo, _, ok := strings.Cut(ref, "@")
+		if !ok {
+			t.Fatal("OPL_WEBUI_IMAGE must be digest-pinned")
+		}
+		webuiPublisher, err = capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("webui-publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "tcr-webui-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "tcr", RepositoryPrefix: repo, AdmissionReceiptId: "isolated-tcr-webui-admission"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	input.WebuiContract.PublisherNamespaceId = webuiPublisher.Id
 	runtimePublisher := publisher
 	if ref := os.Getenv("OPL_RUNTIME_IMAGE"); ref != "" {
 		repo, _, ok := strings.Cut(ref, "@")
 		if !ok {
 			t.Fatal("OPL_RUNTIME_IMAGE must be digest-pinned")
 		}
-		runtimePublisher, err = capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("runtime-publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "app-runtime-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: "ghcr", RepositoryPrefix: repo, AdmissionReceiptId: "isolated-app-runtime-admission"}})
+		registryID := "ghcr"
+		if strings.HasPrefix(repo, "uswccr.ccs.tencentyun.com/") {
+			registryID = "tcr"
+		}
+		runtimePublisher, err = capClient.CreatePublisherNamespace(ctx, &api.CreatePublisherNamespaceRpcRequest{Context: identity.call("runtime-publisher-admit", "platform"), Body: &api.CreatePublisherNamespaceRequest{Name: "app-runtime-publisher", Kind: api.CreatePublisherNamespaceRequestKindEnum_CREATE_PUBLISHER_NAMESPACE_REQUEST_KIND_ENUM_OFFICIAL, RegistryId: registryID, RepositoryPrefix: repo, AdmissionReceiptId: "isolated-app-runtime-admission"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	input.RuntimeContract.PublisherNamespaceId = runtimePublisher.Id
-	webui, err := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("webui-admit", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "local-webui", VersionLabel: "v1", PublisherNamespaceId: publisher.Id, PublisherContract: input.WebuiContract, AdmissionReceiptId: "local-webui-admission"}})
+	webui, err := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("webui-admit", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "local-webui", VersionLabel: "v1", PublisherNamespaceId: webuiPublisher.Id, PublisherContract: input.WebuiContract, AdmissionReceiptId: "local-webui-admission"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +157,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	}
 	wrongWebui := proto.Clone(input.WebuiContract).(*api.WebuiPublisherContract)
 	wrongWebui.Image.Repository = "unapproved.example/foreign/image"
-	if _, e := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("foreign-image-denied", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "bad-ui", VersionLabel: "v1", PublisherNamespaceId: publisher.Id, PublisherContract: wrongWebui, AdmissionReceiptId: "not-sufficient"}}); e == nil {
+	if _, e := capClient.RegisterWebuiVersion(ctx, &api.RegisterWebuiVersionRpcRequest{Context: identity.call("foreign-image-denied", "platform"), Body: &api.RegisterWebuiVersionRequest{Name: "bad-ui", VersionLabel: "v1", PublisherNamespaceId: webuiPublisher.Id, PublisherContract: wrongWebui, AdmissionReceiptId: "not-sufficient"}}); e == nil {
 		t.Fatal("out-of-prefix WebUI admitted")
 	}
 
@@ -177,9 +192,12 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 		t.Fatal(err)
 	}
 	t.Logf("CLOUD_RUNTIME_REGISTERED id=%s artifact=%s contract=%s", runtime.Id, runtime.ArtifactDigest, runtime.PublisherContractDigest)
-	selectedRuntime, err := runtimeClient.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: call("runtime-admit-explicit", true), Body: &api.RegisterRuntimeVersionRequest{Name: "local-runtime-explicit", VersionLabel: "v1", PublisherNamespaceId: input.RuntimeContract.PublisherNamespaceId, PublisherContract: input.RuntimeContract, AdmissionReceiptId: "local-runtime-explicit-admission"}})
-	if err != nil {
-		t.Fatal(err)
+	selectedRuntime := runtime
+	if os.Getenv("OPL_RUNTIME_IMAGE") == "" {
+		selectedRuntime, err = runtimeClient.RegisterRuntimeVersion(ctx, &api.RegisterRuntimeVersionRpcRequest{Context: call("runtime-admit-explicit", true), Body: &api.RegisterRuntimeVersionRequest{Name: "local-runtime-explicit", VersionLabel: "v1", PublisherNamespaceId: input.RuntimeContract.PublisherNamespaceId, PublisherContract: input.RuntimeContract, AdmissionReceiptId: "local-runtime-explicit-admission"}})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Logf("CLOUD_RUNTIME_SELECTED id=%s artifact=%s contract=%s", selectedRuntime.Id, selectedRuntime.ArtifactDigest, selectedRuntime.PublisherContractDigest)
 	capability.Runtime = api.NewRuntimeControlProductServiceClient(liveConn(t, runtimeAddr, owneridentity.Capability.Service()))
@@ -214,7 +232,7 @@ func verifyOwnerChain(t *testing.T, ctx context.Context, dsn string, capability 
 	buildDrop := &lostInboxAck{DomainInboxClient: api.NewDomainInboxClient(buildCapConn)}
 	capability.BuildInbox = buildDrop
 	identity.service.BuildCommit = api.NewOwnerCommitReadbackClient(liveConn(t, buildAddr, owneridentity.Tenant.Service()))
-	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), runtimeClient, api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)), identity), identity: identity}
+	client := &publisherBuildClient{t: t, base: newPublisherHTTP(t, api.NewCapabilityProductServiceClient(liveConn(t, capAddr, owneridentity.ConsoleBFF)), api.NewBuildProductServiceClient(liveConn(t, buildAddr, owneridentity.ConsoleBFF)), runtimeClient, identity), identity: identity}
 	req := &api.CreateBuildRpcRequest{Context: call("create-build", false), Body: &api.CreateBuildRequest{PackageVersionId: input.PackageVersionId, RuntimeVersionId: selectedRuntime.Id, WebuiVersionId: input.WebuiVersionId}}
 	job, err := client.CreateBuild(ctx, req)
 	if err != nil {

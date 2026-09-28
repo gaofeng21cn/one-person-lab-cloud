@@ -81,13 +81,89 @@ func (p *capabilityListProbe) ListCapabilityVersions(_ context.Context, r *api.L
 type publisherOwnerReader struct {
 	*fakeReader
 	capability api.CapabilityProductServiceClient
+	build      api.BuildProductServiceClient
+	runtime    api.RuntimeControlProductServiceClient
 	gateway    api.GatewayProductServiceClient
 }
 
 func (r publisherOwnerReader) PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient) {
-	return r.capability, nil
+	return r.capability, r.build
+}
+func (r publisherOwnerReader) RuntimeControlClient() api.RuntimeControlProductServiceClient {
+	return r.runtime
 }
 func (r publisherOwnerReader) GatewayClient() api.GatewayProductServiceClient { return r.gateway }
+
+type runtimeVersionListProbe struct {
+	api.RuntimeControlProductServiceClient
+	request *api.ListRuntimeVersionsRpcRequest
+}
+
+func (p *runtimeVersionListProbe) ListRuntimeVersions(_ context.Context, r *api.ListRuntimeVersionsRpcRequest, _ ...grpc.CallOption) (*api.RuntimeVersionPage, error) {
+	p.request = r
+	return &api.RuntimeVersionPage{Items: []*api.RuntimeVersion{{Id: "runtime-1", VersionLabel: "v1", Status: api.RuntimeVersionStatusEnum_RUNTIME_VERSION_STATUS_ENUM_APPROVED}}}, nil
+}
+
+type buildCreateProbe struct {
+	api.BuildProductServiceClient
+	request *api.CreateBuildRpcRequest
+}
+
+func (p *buildCreateProbe) CreateBuild(_ context.Context, r *api.CreateBuildRpcRequest, _ ...grpc.CallOption) (*api.BuildJob, error) {
+	p.request = r
+	return &api.BuildJob{Id: "build-1", PackageVersionId: r.Body.PackageVersionId, RuntimeVersionId: r.Body.RuntimeVersionId, WebuiVersionId: r.Body.WebuiVersionId, Status: api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_QUEUED, Stage: "queued"}, nil
+}
+
+func TestRuntimeVersionCatalogForwardsCursorAndLimitToOwner(t *testing.T) {
+	identity := allowedIdentity()
+	runtimeDecision := allowFor(
+		"actor-1",
+		"tenant-1",
+		api.OwnerEnum_OWNER_ENUM_RUNTIME_CONTROL,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS,
+		api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG,
+		"",
+	)
+	runtimeDecision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_CATALOG}
+	identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTRUNTIMEVERSIONS] = runtimeDecision
+	probe := &runtimeVersionListProbe{}
+	reader := publisherOwnerReader{fakeReader: resolvedReader(), runtime: probe}
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/catalog/runtime-versions?cursor=r1&limit=7"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "runtime-1") || probe.request == nil || probe.request.GetQueryCursor() != "r1" || probe.request.GetQueryLimit() != 7 {
+		t.Fatalf("runtime owner request=%v body=%s", probe.request, response.Body.String())
+	}
+}
+
+func TestCreateBuildForwardsRuntimeVersionID(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decisions[api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD] = allowFor(
+		"actor-1",
+		"tenant-1",
+		api.OwnerEnum_OWNER_ENUM_BUILD,
+		api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_CREATEBUILD,
+		api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_VERSION,
+		"package-version-1",
+	)
+	probe := &buildCreateProbe{}
+	reader := publisherOwnerReader{fakeReader: resolvedReader(), build: probe}
+	request := sessionRequest(http.MethodPost, "/api/v2/builds")
+	request.Body = io.NopCloser(strings.NewReader(`{"packageVersionId":"package-version-1","runtimeVersionId":"runtime-1","webuiVersionId":"webui-1"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", "csrf-1")
+	request.Header.Set("Idempotency-Key", "build-command-1")
+	response := httptest.NewRecorder()
+	NewServer(reader, identity).Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if probe.request == nil || probe.request.Body.GetPackageVersionId() != "package-version-1" || probe.request.Body.GetRuntimeVersionId() != "runtime-1" || probe.request.Body.GetWebuiVersionId() != "webui-1" {
+		t.Fatalf("build owner request=%v", probe.request)
+	}
+}
 
 type gatewayWalletProbe struct {
 	api.GatewayProductServiceClient

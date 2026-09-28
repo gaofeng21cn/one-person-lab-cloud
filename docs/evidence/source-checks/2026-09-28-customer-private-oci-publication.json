@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_customer_private_oci_publication_receipt",
+  "recordedAt": "2026-09-28T19:34:00+08:00",
+  "status": "published_customer_private_registry_runtime_owner_readback_pending",
+  "scope": "Customer private OCI publication only. No Instance deployment, production promotion, provider mutation or real-money mutation.",
+  "customerRepository": {
+    "emailLocalPart": "huangrende",
+    "repository": "uswccr.ccs.tencentyun.com/oplcloud/huangrende",
+    "tag": "oma-ibd-evidence-assistant-20260928",
+    "reference": "uswccr.ccs.tencentyun.com/oplcloud/huangrende@sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "manifestDigest": "sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "platform": "linux/amd64"
+  },
+  "inputs": {
+    "omaArchiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "webui": "uswccr.ccs.tencentyun.com/oplcloud/webui@sha256:dac7cb39a0729181c02dfcc103142c2964139e048ea1a0d9a22eb50508a33cc3",
+    "runtime": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app@sha256:7d27eb555bef3ebe518511e7f2792ef64368c00d72d2eada4991d780d6979cfd"
+  },
+  "composition": {
+    "packageSource": "candidate",
+    "packageTarget": "/agent",
+    "webuiSource": "/app/dist/webui",
+    "webuiTarget": "/app/aionui-web/static",
+    "entrypoint": ["tini", "--", "/opt/opl/entrypoint.sh"],
+    "cmd": ["start", "--remote", "--port", "3000"]
+  },
+  "readback": {
+    "remoteManifestReadback": "passed",
+    "packageFilePresent": "/agent/agent/agent-pack.json",
+    "webuiIndexPresent": "/app/aionui-web/static/index.html",
+    "runtimeHealthz": "observed 200/ok during first container startup attempt",
+    "stableBrowserPageReadback": "not established; fresh startup maintenance exceeded the bounded probe window"
+  },
+  "ownerEvidence": {
+    "localBuildAndLedger": "verified in 2026-09-28-oma-runtime-webui-local-build-readback.json",
+    "customerRepositoryPublication": "completed",
+    "formalCandidateAdmissionReceipt": "not available in Cloud workspace",
+    "sameDigestInstanceRuntimeReadback": "pending"
+  },
+  "credentials": {
+    "source": "approved secret file",
+    "valuesRecorded": false,
+    "dockerLogoutAfterPublication": true
+  },
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false
+}

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_publisher_runtime_selection_source_receipt",
+  "recordedAt": "2026-09-28T14:19:47+08:00",
+  "status": "cloud_source_implemented_chain_blocked_on_external_owner_inputs",
+  "scope": "Business line 3 Cloud source only: approved Runtime Version catalog read/selection and Build request propagation. No shared owner semantic change, TCR publication, Instance deployment, provider mutation, real-money mutation or closed OCI receipt.",
+  "source": {
+    "head": "d5db771a27d997ad41a05c24c631d94ae4878813",
+    "headTree": "bf3ee330913d209c4b50377f1bf05afad39646cb",
+    "workingTreeDiffSha256": "sha256:b0d230a229bed7cd056e39d1ad8b44609718384364002a4c5d3de303216d3b2d",
+    "changedFiles": [
+      ".env.example",
+      "apps/console-bff/internal/clients/clients.go",
+      "apps/console-bff/internal/httpapi/publisher.go",
+      "apps/console-bff/internal/httpapi/publisher_test.go",
+      "apps/console-bff/internal/httpapi/server.go",
+      "apps/console-ui/src/pages/PublisherPage.tsx",
+      "tests/ui/publisher-runtime-selection-browser.test.ts",
+      "tests/ui/workspace-task-experience-browser.test.ts"
+    ]
+  },
+  "implementation": {
+    "bff": [
+      "Dial and expose Runtime Control through OPL_RUNTIME_CONTROL_URL and OPL_RUNTIME_CONTROL_TOKEN",
+      "GET /api/v2/catalog/runtime-versions forwards cursor/limit to the Runtime Control owner",
+      "publisher owner boundary remains authenticated and fail-closed"
+    ],
+    "console": [
+      "reads the Runtime Control catalog",
+      "filters to status=approved and excludes revoked entries",
+      "persists runtimeVersionId in recovery fingerprint/selection",
+      "sends packageVersionId, runtimeVersionId and webuiVersionId to POST /api/v2/builds",
+      "disables publish when either approved Runtime or WebUI catalog is empty"
+    ]
+  },
+  "focusedVerification": [
+    {
+      "command": "cd apps/console-bff && go test ./internal/httpapi ./internal/clients -count=1",
+      "result": "passed",
+      "coverage": "BFF Runtime catalog forwarding and Build runtimeVersionId propagation"
+    },
+    {
+      "command": "node --test tests/ui/publisher-runtime-selection-browser.test.ts",
+      "result": "passed",
+      "coverage": "approved Runtime selection, revoked filtering and exact Build JSON"
+    },
+    {
+      "command": "npm run typecheck && npm run lint",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "node --test tests/ui/workspace-task-experience-browser.test.ts",
+      "result": "passed: 10/10",
+      "coverage": "existing cloud/legacy publisher navigation fixture updated for Runtime catalog request"
+    }
+  ],
+  "omaInputAudit": {
+    "archiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "nativeCapabilityValidation": "passed",
+    "uploadToBuildVerification": "not_run: current approved Runtime/WebUI owner inputs are incomplete"
+  },
+  "notProven": [
+    "authenticated Console upload of the real OMA archive into a live Capability owner",
+    "current approved Runtime Control readback bound to the real archive run",
+    "approved WebUI TCR OCI index/child digest, port/health/ABI readback and admission receipt",
+    "Build input snapshot containing all three exact owner references",
+    "single immutable OCI artifact and Capability ready Version",
+    "Ledger receipt/ACK and Console same-digest readback"
+  ],
+  "externalOwnerInputsRequired": [
+    "approved Runtime Version owner readback with immutable OCI digest, ABI and package-format compatibility",
+    "approved WebUI TCR OCI reference with index digest, selected platform child digest, port 3000, /healthz and compatibility",
+    "owner-authorized live run that binds the real OMA package, both approved OCI inputs, Build artifact, Capability Version and Ledger receipt"
+  ],
+  "productionDeploymentDispatched": false,
+  "issueOrPullRequestCreated": false,
+  "realMoneyOrProviderMutation": false
+}

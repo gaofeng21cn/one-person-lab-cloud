@@ -48,6 +48,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 		Addresses: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
 			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_URL")),
+			owneridentity.RuntimeControl:  strings.TrimSpace(getenv("OPL_RUNTIME_CONTROL_URL")),
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_URL")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_URL")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_URL")),
@@ -56,6 +57,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 		Tokens: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
 			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_TOKEN")),
+			owneridentity.RuntimeControl:  strings.TrimSpace(getenv("OPL_RUNTIME_CONTROL_TOKEN")),
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_TOKEN")),
@@ -74,6 +76,7 @@ func ReachableOwners() []owneridentity.Owner {
 	return []owneridentity.Owner{
 		owneridentity.Capability,
 		owneridentity.Build,
+		owneridentity.RuntimeControl,
 		owneridentity.Workspace,
 		owneridentity.Serve,
 		owneridentity.Gateway,
@@ -85,6 +88,7 @@ func ReachableOwners() []owneridentity.Owner {
 type Clients struct {
 	capability    api.CapabilityProductServiceClient
 	build         api.BuildProductServiceClient
+	runtime       api.RuntimeControlProductServiceClient
 	workspace     api.WorkspaceProductServiceClient
 	serve         api.ServeProductServiceClient
 	tenant        api.TenantProductServiceClient
@@ -121,6 +125,8 @@ func Dial(config Config) (*Clients, error) {
 			clients.capability = api.NewCapabilityProductServiceClient(conn)
 		case owneridentity.Build:
 			clients.build = api.NewBuildProductServiceClient(conn)
+		case owneridentity.RuntimeControl:
+			clients.runtime = api.NewRuntimeControlProductServiceClient(conn)
 		case owneridentity.Workspace:
 			clients.workspace = api.NewWorkspaceProductServiceClient(conn)
 		case owneridentity.Serve:
@@ -258,6 +264,9 @@ func CallContext(ctx context.Context) *api.CallContext {
 
 // GatewayClient exposes the Gateway Integration product read client.
 func (c *Clients) GatewayClient() api.GatewayProductServiceClient { return c.gateway }
+
+// RuntimeControlClient exposes the approved Runtime Release catalog.
+func (c *Clients) RuntimeControlClient() api.RuntimeControlProductServiceClient { return c.runtime }
 
 // Wallet reads the Gateway-owned spendable wallet. No local balance is synthesized.
 func (c *Clients) Wallet(ctx context.Context) (*api.Wallet, error) {

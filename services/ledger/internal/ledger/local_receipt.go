@@ -140,6 +140,9 @@ func (s *PostgresStore) RecordLocalNoChargeReceipt(ctx context.Context, r *api.A
 		if err != nil {
 			return nil, err
 		}
+		if err = s.appendReceiptRecordedFieldsTx(ctx, tx, receiptID, "workspace", tenant, r.Context.RequestId, r.OwnerEvidenceReference, r.EvidenceDigest, now); err != nil {
+			return nil, err
+		}
 		storedPayload = string(payload)
 	} else {
 		return nil, err

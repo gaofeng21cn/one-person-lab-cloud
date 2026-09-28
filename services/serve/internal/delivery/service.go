@@ -56,6 +56,8 @@ type Service struct {
 	References api.CapabilityCoordinationClient
 	Resources  api.FabricCoordinationClient
 	Runtime    RuntimeAdapter
+	Ledger     api.DomainInboxClient
+	Workspace  api.DomainInboxClient
 }
 
 // New binds the read surface to Serve's own database and the live authorizer.
@@ -81,6 +83,11 @@ func (s *Service) Register(server *ownerservice.Server) error {
 	})
 }
 
+func Configure(server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config) error {
+	return ConfigureWithContext(context.Background(), server, database, config)
+}
+
+// ConfigureWithContext is Configure with process cancellation for Outbox delivery.
 // Configure is the Serve owner process's product wiring: it opens the live
 // CloudIdentity authorizer, binds the read surface to Serve's own database and
 // registers the product group. It is the single wiring path the process and its
@@ -89,7 +96,7 @@ func (s *Service) Register(server *ownerservice.Server) error {
 //
 // A process without its own database has nothing to read and reports
 // handlers-not-implemented, exactly like an owner with no product group.
-func Configure(server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config) error {
+func ConfigureWithContext(ctx context.Context, server *ownerservice.Server, database *ownerservice.Database, config ownerservice.Config) error {
 	if database == nil {
 		return ownerservice.ErrHandlersNotImplemented
 	}
@@ -138,7 +145,41 @@ func Configure(server *ownerservice.Server, database *ownerservice.Database, con
 	if address := os.Getenv("OPL_FABRIC_APPLICATION_URL"); address != "" {
 		service.Runtime = &FabricApplicationAdapter{BaseURL: address, Token: os.Getenv("OPL_FABRIC_SERVE_SERVICE_TOKEN"), CapabilityKey: os.Getenv("OPL_FABRIC_SERVE_CAPABILITY_KEY")}
 	}
-	return service.Register(server)
+	if address := os.Getenv("OPL_LEDGER_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Ledger.Service(), os.Getenv("OPL_LEDGER_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.Ledger = api.NewDomainInboxClient(conn)
+	}
+	if address := os.Getenv("OPL_WORKSPACE_ADDR"); address != "" {
+		options, err := config.TLS.DialOptions(config.Owner.Service(), owneridentity.Workspace.Service(), os.Getenv("OPL_WORKSPACE_TOKEN"))
+		if err != nil {
+			return err
+		}
+		conn, err := grpc.NewClient(address, options...)
+		if err != nil {
+			return err
+		}
+		if err = server.TrackCloser(conn); err != nil {
+			return err
+		}
+		service.Workspace = api.NewDomainInboxClient(conn)
+	}
+	if err := service.Register(server); err != nil {
+		return err
+	}
+	if service.Ledger != nil || service.Workspace != nil {
+		go service.RunEventDelivery(ctx)
+	}
+	return nil
 }
 
 func limit(n int32) int {

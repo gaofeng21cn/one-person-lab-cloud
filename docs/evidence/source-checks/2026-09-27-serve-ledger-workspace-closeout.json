@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "action": "Serve-Ledger-Workspace Outbox/Inbox and deployment-evidence closeout",
+  "recordedAt": "2026-09-27T18:37:32Z",
+  "baseSha": "d5db771a27d997ad41a05c24c631d94ae4878813",
+  "verification": {
+    "command": "npm run verify:local:full",
+    "result": "passed",
+    "sourceTests": 231,
+    "browserTests": 111,
+    "browserFailures": 0,
+    "browserSkips": 0,
+    "postgresql": "all modules passed with zero required skips",
+    "dockerIntegration": "passed",
+    "focusedOwnerTests": {
+      "ledger": "services/ledger go test ./... passed with PostgreSQL",
+      "serve": "services/serve go test ./... passed with PostgreSQL",
+      "workspace": "services/workspace go test ./... passed with PostgreSQL"
+    },
+    "behaviors": [
+      "Serve readiness Outbox revision advances for repeated observations in one execution epoch and replays identical payloads idempotently",
+      "Ledger owner Inbox, typed deployment/local receipt persistence and receipt-recorded Outbox commit on one PostgreSQL transaction",
+      "Workspace deployment receipt recovery preserves the original receipt identity after a lost read response",
+      "Gateway Account Read browser route-owner test passes without the former heading timeout"
+    ]
+  },
+  "sourceFilesSha256": {
+    "services/ledger/internal/ledger/transaction_receipt.go": "920859cff7beb336da59a3a056eaf4b34b56165d55e216f7b2c3ab4aad5198af",
+    "services/ledger/migrations/202609270001_owner_events.sql": "cfe14da62cde51c7ff510b10b580a9c14b47f5fecf21d4715883a08a0355b359",
+    "services/ledger/internal/ledger/ent_migrations/202609270001_owner_events.sql": "cfe14da62cde51c7ff510b10b580a9c14b47f5fecf21d4715883a08a0355b359",
+    "services/ledger/eventconsumer/coordination_postgres_test.go": "1ad39732aa4246c0cb0fd5d5b322d1985239b34486ebad27a8bd1d4f7509c4b1",
+    "services/serve/internal/delivery/events.go": "2d21fd54b043cf88771d05cb8eb29751c644e3c0fd6143707de9443c940e10f1",
+    "services/workspace/internal/launch/runtime_test.go": "f3326702a085e74b416e2b5cb2bc1163b2e2c96dd625de0b465a088cfc91b753",
+    "tests/ui/gateway-account-read-controller-browser.test.ts": "ba485a5ad8e1c8bb29ac84364aa94f5cee452c96d853250fed101e405c541e01"
+  },
+  "log": {
+    "path": "docs/evidence/source-checks/2026-09-27-serve-ledger-workspace-closeout.log",
+    "sha256": "4391a86df41aadb06c856eb38eb2955dc07c870772527e44ea787a5f4f39783c"
+  },
+  "limits": [
+    "This is Cloud local/source evidence, not an Instance deployment or production receipt.",
+    "No real customer money, provider purchase/deletion, TCR admission, OCI publication, or production deployment was performed.",
+    "The full browser suite uses the existing local mock/intercept harness; it is not a real BFF-to-TCR-to-Serve-to-Ledger E2E receipt.",
+    "No real Build/TCR success receipt or final multi-platform manifest readback was available for this run."
+  ],
+  "sideEffects": {
+    "walletWrites": 0,
+    "providerActions": 0,
+    "productionWrites": 0
+  }
+}

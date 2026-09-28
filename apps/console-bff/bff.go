@@ -16,6 +16,10 @@ func NewPublisherHandler(capability api.CapabilityProductServiceClient, build ap
 	return httpapi.NewPublisherHandler(capability, build, identity)
 }
 
+func NewPublisherHandlerWithRuntime(capability api.CapabilityProductServiceClient, build api.BuildProductServiceClient, runtime api.RuntimeControlProductServiceClient, identity IdentityReader) http.Handler {
+	return httpapi.NewPublisherHandlerWithRuntime(capability, build, runtime, identity)
+}
+
 // IdentityClient is the same thin transport used by the BFF process.
 type IdentityClient interface {
 	IdentityReader

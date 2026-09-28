@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 
+	"opl-cloud/services/internal/ownerstore"
 	"opl-cloud/services/internal/postgresmigrate"
 	ledgerent "opl-cloud/services/ledger/ent"
 	"opl-cloud/services/ledger/ent/evidencereceipt"
@@ -30,9 +31,10 @@ type embeddedMigration struct {
 }
 
 type PostgresStore struct {
-	client *ledgerent.Client
-	db     *sql.DB
-	now    func() time.Time
+	client      *ledgerent.Client
+	db          *sql.DB
+	ownerEvents *ownerstore.Store
+	now         func() time.Time
 }
 
 func ledgerEmbeddedMigrations() ([]embeddedMigration, error) {
@@ -71,12 +73,18 @@ func PostgresSchemaSQL() string {
 }
 
 func NewPostgresStore(db *sql.DB) *PostgresStore {
+	ownerEvents, _ := ownerstore.New(db, "ledger")
 	return &PostgresStore{
-		client: ledgerent.NewClient(ledgerent.Driver(entsql.OpenDB(dialect.Postgres, db))),
-		db:     db,
-		now:    func() time.Time { return time.Now().UTC() },
+		client:      ledgerent.NewClient(ledgerent.Driver(entsql.OpenDB(dialect.Postgres, db))),
+		db:          db,
+		ownerEvents: ownerEvents,
+		now:         func() time.Time { return time.Now().UTC() },
 	}
 }
+
+// DB exposes the Ledger owner database to the typed DomainInbox transaction.
+// Callers must keep all domain mutation and Inbox changes in the same transaction.
+func (s *PostgresStore) DB() *sql.DB { return s.db }
 
 func (s *PostgresStore) Ready(ctx context.Context) error {
 	return s.db.PingContext(ctx)

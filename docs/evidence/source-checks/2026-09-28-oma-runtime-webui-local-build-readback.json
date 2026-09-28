@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_oma_runtime_webui_local_build_readback",
+  "recordedAt": "2026-09-28T18:12:00+08:00",
+  "status": "candidate_build_verified_external_publication_pending",
+  "scope": "Business line 3 Cloud candidate path only: exact OMA package, approved TCR Runtime, approved TCR WebUI, BuildKit composition, owner chain, Ledger persistence and local readback. No Instance deployment or production promotion.",
+  "source": {
+    "branch": "codex/serve-ledger-deployment-evidence",
+    "head": "d5db771a27d997ad41a05c24c631d94ae4878813",
+    "workingTree": "pre-existing changes preserved; this receipt records the live attempt and source wiring changes"
+  },
+  "inputs": {
+    "omaArchive": {
+      "path": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip",
+      "sha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+      "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+      "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+      "sourceRunId": "ibd-oma-create-33"
+    },
+    "webui": {
+      "repository": "uswccr.ccs.tencentyun.com/oplcloud/webui",
+      "indexDigest": "sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+      "selectedPlatform": "linux/amd64",
+      "selectedChildDigest": "sha256:dac7cb39a0729181c02dfcc103142c2964139e048ea1a0d9a22eb50508a33cc3",
+      "sourcePath": "/app/dist/webui",
+      "runtimeTargetPath": "/app/aionui-web/static",
+      "runtimePort": 3000,
+      "runtimeHealthReadback": "GET /healthz returned 200 with status=ok"
+    },
+    "runtime": {
+      "repository": "uswccr.ccs.tencentyun.com/oplcloud/one-person-lab-app",
+      "tagReadback": "latest",
+      "tagIndexDigest": "sha256:74571e4f2c63e66991542d58df2b428ea5ba8b1ccc6a85a4e3a750a5c5399730",
+      "selectedPlatform": "linux/amd64",
+      "selectedChildDigest": "sha256:7d27eb555bef3ebe518511e7f2792ef64368c00d72d2eada4991d780d6979cfd",
+      "entrypoint": ["tini", "--", "/opt/opl/entrypoint.sh"],
+      "cmd": ["start", "--remote", "--port", "3000"],
+      "workingDir": "/app"
+    }
+  },
+  "liveRun": {
+    "platform": "linux/amd64",
+    "buildWorker": "isolated remote BuildKit",
+    "buildkitPrivateRegistryAuth": "accepted; TCR source contexts were fetched without anonymous-401 rejection",
+    "webuiRegistered": true,
+    "runtimeRegistered": true,
+    "runtimeSelected": true,
+    "ledger": "original domain events persisted; lost acknowledgements replayed without duplicates",
+    "workerRecovery": "SIGKILL after registry commit recovered the exact artifact without exporter rerun",
+    "localCandidateArtifactDigest": "sha256:b5ae0643f34702ee27c55cc519fc084959b95b52599b8869308c848791ad431d",
+    "artifactPersistence": "disposable loopback registry; not retained as an external Candidate"
+  },
+  "sourceFixes": {
+    "bffRuntimeOwner": "added runtime-aware publisher handler constructor and wired the Runtime Control client into the live publisher harness",
+    "focusedChecks": [
+      "go test ./internal/httpapi ./internal/clients -count=1: passed",
+      "go test -tags=livebuild ./internal/build -run '^$' -count=1: passed",
+      "git diff --check: passed"
+    ],
+    "browserAttemptBeforeFix": "publisher browser stage failed with publisher owner unavailable because the live harness did not inject Runtime Control; this was a harness wiring defect, not a Build/owner/Ledger rejection"
+  },
+  "notProven": [
+    "persistent external final OCI repository and digest",
+    "Instance-authorized Candidate admission receipt",
+    "same-digest Runtime readback from the protected Instance owner",
+    "formal production Release or deployment"
+  ],
+  "nextOwnerAction": "Use the approved Instance/registry owner workflow to retain the exact candidate bytes and return the Candidate publication receipt plus Runtime readback; no credential value should be sent in chat.",
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false
+}
