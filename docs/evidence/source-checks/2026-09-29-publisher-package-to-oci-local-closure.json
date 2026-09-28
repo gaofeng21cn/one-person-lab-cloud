@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "publisher-package-to-oci-local-closure",
+  "result": "pass",
+  "recordedAt": "2026-09-28T16:29:58Z",
+  "source": {
+    "repository": "gaofeng21cn/one-person-lab-cloud",
+    "headSha": "086ac33a76a27d69126179954477e1ec35b8b9f5",
+    "treeSha": "4be466af5c8a79502ef7d6f94d2c1a6e3be371f8",
+    "worktreeClean": true,
+    "base": "origin/main",
+    "trackedFileSha256": {
+      "apps/console-ui/src/pages/PublisherPage.tsx": "45a621bb4a8764cb4e92d36e0292f895501c8eba6c6988be24237e0f4342cbb2",
+      "services/build/internal/build/runner_live_test.go": "b8df1cdc59b15f7c081353d43c6254da3ec7a4040279cbd884110c97512252a3",
+      "packages/contracts/proto/internal.proto": "feaf5e796972ffa30b106d44cf7ea8d4316a7556eea67380f7fba1bffbdd0e22",
+      "tests/live/publisher-browser.ts": "454907e7090585b567bb07bbeca9ce7b15e2139c0e93eb835230cd60a603ce72"
+    }
+  },
+  "environment": {
+    "node": "v25.3.0",
+    "go": "go version go1.26.3 darwin/arm64",
+    "os": "darwin/arm64"
+  },
+  "isolatedDependencies": {
+    "postgres": "postgres:16",
+    "buildkit": "moby/buildkit:buildx-stable-1",
+    "note": "ephemeral containers on a private container network; no host ports, credentials or provider calls"
+  },
+  "chain": [
+    "CloudIdentity browser session and CSRF",
+    "Capability upload session and part permits over the BFF /api/v2 surface",
+    "three-part replayed upload with idempotent completion; corrupt bytes and cross-tenant reads rejected",
+    "Runtime and WebUI admission, then CreateBuild with three bound reference claims",
+    "real BuildKit composes one immutable OCI from the exact Package, Runtime and WebUI inputs",
+    "Registry push and manifest readback; artifact digest pinned",
+    "CapabilityVersion registered exactly once as ready",
+    "Ledger persists both original domain events; lost ACKs replay without duplicates",
+    "worker SIGKILL after Registry commit and before exporter ACK, then fresh-worker recovery with one artifact/event/version and no exporter rerun",
+    "browser publisher journey completes and reload readback preserves the same version"
+  ],
+  "observedEvidence": {
+    "test": "TestLivePackageBuildAndRestartReadback",
+    "testResult": "PASS",
+    "browserMarker": "BROWSER_PUBLISHER_OK",
+    "artifactDigest": "sha256:17c37266d5addae8b4a772707a0754ba0c3fad2c48810ecf1e71d9a89a10292d",
+    "capabilityVersionId": "capv_f14a8e32975022bd34e2b6a1369a7980",
+    "buildInputSnapshotDigest": "sha256:b59782b5b3e73ef3880704711e46e2ed9da74fb68277bd00c3a54413c8ea29d1",
+    "runtimeArtifact": "sha256:fff914f2a8486473756022dc75bfd1142e14e6845dff7a4ba66f250a4d1ac0da",
+    "webuiArtifact": "sha256:505d3d78ce1c93d2f2cce771f93a268fd4ef287390539e3fc867600fdbdc8c61",
+    "persistedDescriptor": "sha256:be7552a7a87e05d47140ad114e639aa84ebee42826556b25e0204b9e5d589561",
+    "durationSeconds": 51.31
+  },
+  "boundary": {
+    "localOnly": true,
+    "notClaimed": [
+      "Tencent TCR publication",
+      "Instance deployment or Workspace availability",
+      "production promotion or a formal Cloud Product Release",
+      "real-money or provider resource mutation",
+      "TCR full physical inventory"
+    ]
+  },
+  "claimBoundary": "A real local end-to-end run of the Package upload -> BuildKit OCI -> Registry readback -> Capability version -> Ledger recovery -> browser reload chain on the exact origin/main source. Instance adoption and any production claim remain out of scope and are a separate owner action."
+}
