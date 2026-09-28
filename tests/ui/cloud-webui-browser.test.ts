@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chromium } from "playwright";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/start-console-demo.ts";
 
 const digest = "sha256:" + "a".repeat(64);
@@ -9,7 +9,7 @@ test("Cloud publisher selects immutable Runtime and Agent WebUI owner versions",
   const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
   process.env.VITE_CONSOLE_IDENTITY = "cloud";
   const server = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.route("**/api/v2/**", async (route) => {

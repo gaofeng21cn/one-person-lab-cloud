@@ -17,9 +17,26 @@
     "goldenCoverage": "HTML characters, Unicode and line separator are serialized identically to the actual Framework canonicalDigest function"
   },
   "validation": [
-    {"command": "go test ./... -count=1", "cwd": "services/capability", "result": "passed", "database": "isolated local PostgreSQL 16; real owner migrations and SQL"},
-    {"command": "go test ./internal/httpapi ./internal/clients -count=1", "cwd": "apps/console-bff", "result": "passed"},
-    {"command": "git diff --check", "result": "passed"}
+    {
+      "command": "go test ./... -count=1",
+      "cwd": "services/capability",
+      "result": "passed",
+      "database": "isolated local PostgreSQL 16; real owner migrations and SQL"
+    },
+    {
+      "command": "go test ./internal/httpapi ./internal/clients -count=1",
+      "cwd": "apps/console-bff",
+      "result": "passed"
+    },
+    {
+      "command": "node --test --test-concurrency=1 tests/ui/agent-owner-readback-browser.test.ts tests/ui/cloud-webui-browser.test.ts",
+      "result": "passed: 2/2",
+      "boundary": "Browser interaction uses intercepted owner HTTP fixtures; no production claim"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
   ],
   "limits": [
     "No production or provider resource mutation",
