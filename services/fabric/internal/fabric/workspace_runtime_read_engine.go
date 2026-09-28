@@ -10,12 +10,13 @@ import (
 // Runtime mutations and Gateway Secret reads remain separate capabilities
 // because they have different write authority and failure models.
 type workspaceRuntimeReadEngine struct {
-	provider   runtimeResourceReader
-	operations WorkspaceRuntimeReadStore
+	provider          runtimeResourceReader
+	operations        WorkspaceRuntimeReadStore
+	applicationOwners WorkspaceApplicationRuntimeOwnerStore
 }
 
-func newWorkspaceRuntimeReadEngine(provider runtimeResourceReader, operations WorkspaceRuntimeReadStore) *workspaceRuntimeReadEngine {
-	return &workspaceRuntimeReadEngine{provider: provider, operations: operations}
+func newWorkspaceRuntimeReadEngine(provider runtimeResourceReader, operations WorkspaceRuntimeReadStore, applicationOwners WorkspaceApplicationRuntimeOwnerStore) *workspaceRuntimeReadEngine {
+	return &workspaceRuntimeReadEngine{provider: provider, operations: operations, applicationOwners: applicationOwners}
 }
 
 func (e *workspaceRuntimeReadEngine) providerStatus(ctx context.Context, workspaceID string) (WorkspaceRuntime, error) {

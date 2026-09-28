@@ -45,6 +45,9 @@ func deploymentProfileFromEnv() (deploymentProfile, error) {
 		}
 		switch provider {
 		case fabricLocalDocker, fabricTencentTKE:
+			if mode == deploymentManagedTKE && provider == fabricLocalDocker {
+				return deploymentProfile{}, errors.New("managed_tke requires tencent-tke")
+			}
 			return deploymentProfile{Mode: mode, FabricProvider: provider}, nil
 		default:
 			return deploymentProfile{}, errors.New("OPL_FABRIC_PROVIDER must be local-docker or tencent-tke")

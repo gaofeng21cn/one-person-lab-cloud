@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page } from "playwright";
+import type { Page } from "playwright";
 
 import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 /*
  * 页面网格对齐回归：每个页面都不允许出现「内容跑出容器盒」的情况，
@@ -188,7 +189,7 @@ async function login(page: Page, origin: string, admin: boolean) {
 
 test("Console pages keep table, card and panel content inside their boxes", { timeout: 240_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const failures: Finding[] = [];
   try {
     for (const viewport of VIEWPORTS) {
@@ -228,7 +229,7 @@ test("Console pages keep table, card and panel content inside their boxes", { ti
 
 test("Account and purchase labels keep their full text where the container has room", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     await login(page, demo.origin, true);

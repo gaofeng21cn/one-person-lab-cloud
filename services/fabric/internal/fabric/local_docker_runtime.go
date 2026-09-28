@@ -454,8 +454,15 @@ func (p *LocalDockerProvider) verifyRuntimeGatewayNetwork(ctx context.Context, c
 		return err
 	}
 	bound, err := p.runtimeGatewayNetworkStatus(ctx, container, readback)
-	if err != nil || !bound {
-		return firstNonNil(err, fmt.Errorf("local_docker_runtime_gateway_network_readback_mismatch"))
+	if err != nil {
+		return err
+	}
+	if !bound {
+		// The gateway container is not attached yet. That is a state the owning
+		// runtime operation can still advance, not an identity or network
+		// mismatch, so reads report it as not ready instead of failing the whole
+		// application runtime read.
+		return ErrRuntimeGatewayNetworkNotBound
 	}
 	return nil
 }

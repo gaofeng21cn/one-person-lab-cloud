@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Response, type Route } from "playwright";
+import type { Page, Response, Route } from "playwright";
 
 import type {
   BillingReceipt,
@@ -14,6 +14,7 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-26T00:00:00Z";
 
@@ -133,7 +134,7 @@ async function settleResponse(page: Page, responsePromise: Promise<Response>) {
 
 test("Billing rejects a late overview limit-3 page after the billing limit-20 page commits", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const overviewHeld = deferred<void>();
   const releaseOverview = deferred<void>();
   try {
@@ -170,7 +171,7 @@ test("Billing rejects a late overview limit-3 page after the billing limit-20 pa
 
 test("Billing rejects Receipt A when its detail arrives after Receipt B", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const receiptAHeld = deferred<void>();
   const releaseReceiptA = deferred<void>();
   const receiptA = receipt("receipt-A");
@@ -211,7 +212,7 @@ test("Billing rejects Receipt A when its detail arrives after Receipt B", { time
 
 test("Billing close invalidates an in-flight Receipt detail", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const detailHeld = deferred<void>();
   const releaseDetail = deferred<void>();
   const receiptA = receipt("receipt-close");
@@ -246,7 +247,7 @@ test("Billing close invalidates an in-flight Receipt detail", { timeout: 60_000 
 
 test("Billing preserves opaque cursor order across next and previous navigation", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const cursorA = "opaque:A/+?=";
   const cursorB = "opaque:B/+?=";
   const billingCursors: string[] = [];
@@ -294,7 +295,7 @@ test("Billing preserves opaque cursor order across next and previous navigation"
 
 test("Billing page navigation clears detail and rejects the old detail completion", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const cursor = "next-page-cursor";
   const detailHeld = deferred<void>();
   const releaseDetail = deferred<void>();
@@ -337,7 +338,7 @@ test("Billing page navigation clears detail and rejects the old detail completio
 
 test("Billing route exit rejects an in-flight Receipt detail", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const detailHeld = deferred<void>();
   const releaseDetail = deferred<void>();
   const receiptA = receipt("receipt-route-exit");
@@ -373,7 +374,7 @@ test("Billing route exit rejects an in-flight Receipt detail", { timeout: 60_000
 
 test("Billing keeps list and detail failure state isolated", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const receiptA = receipt("receipt-fails");
   const receiptB = receipt("receipt-succeeds");
   try {
@@ -409,7 +410,7 @@ test("Billing keeps list and detail failure state isolated", { timeout: 60_000 }
 
 test("Billing list failure does not become a Receipt detail failure", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const receiptA = receipt("receipt-before-list-failure");
   let failBillingList = false;
   try {
@@ -445,7 +446,7 @@ test("Billing list failure does not become a Receipt detail failure", { timeout:
 
 test("Billing Session reset rejects a detail completion from the signed-out Session", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const detailHeld = deferred<void>();
   const releaseDetail = deferred<void>();
   const firstSessionReceipt = receipt("first-session");
@@ -492,7 +493,7 @@ test("Billing Session reset rejects a detail completion from the signed-out Sess
 
 test("customers can trace monthly charges and partial refunds to the original Workspace order on desktop and mobile", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const monthly: BillingReceipt = { ...receipt("monthly", "ws-1"), status: "completed", operationId: "renewal-local-order", type: "billing.workspace_renewed.v1" };
   const refund: BillingReceipt = { ...monthly, receiptId: "refund", type: "gateway.wallet_adjustment.v1", kind: "business_refund", refundUsdMicros: 3_000_000, operationId: "refund-local-order", relatedOperationId: monthly.operationId, chargeReference: "private-upstream-code" };
   const expiry: BillingReceipt = { ...monthly, receiptId: "expiry", type: "billing.workspace_expired.v1" };
@@ -531,7 +532,7 @@ test("customers can trace monthly charges and partial refunds to the original Wo
 
 test("customers distinguish a closed unfulfilled order from its refund and can identify an uncharged closure", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const closed: BillingReceipt = {
     ...receipt("closed", "ws-closed"),
     status: "completed",
@@ -671,7 +672,7 @@ function fourteenDays(): Array<Partial<WorkspaceSettlementTrend["days"][number]>
 
 test("Overview trend counts the owner's confirmed Workspace charges", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.route("**/api/billing/workspace-settlements", (route) => fulfill(route, settlementSource(settlementTrend(
@@ -698,7 +699,7 @@ test("Overview trend counts the owner's confirmed Workspace charges", { timeout:
 
 test("Overview trend keeps a failed renewal charge and its full refund distinct", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     // 已确认扣款 $52.58 后全额退款：只有一张退款回执，但资金发生两次。
@@ -727,7 +728,7 @@ test("Overview trend keeps a failed renewal charge and its full refund distinct"
 
 test("Overview trend renders the owner's days and never re-buckets them in the browser", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     // 服务端给出的窗口与浏览器本地日历不同（7 月），页面必须原样呈现。
@@ -758,7 +759,7 @@ test("Overview trend renders the owner's days and never re-buckets them in the b
 
 test("Overview trend separates unavailable, unconfirmed, in-flight and real zero", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     let mode: "unavailable" | "unconfirmed" | "in-flight" | "zero" = "unavailable";
@@ -813,7 +814,7 @@ test("Overview trend separates unavailable, unconfirmed, in-flight and real zero
 
 test("Overview trend reads only the owner projection, not receipts or paging", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const settlementRequests: string[] = [];
   const receiptRequests: string[] = [];
   try {

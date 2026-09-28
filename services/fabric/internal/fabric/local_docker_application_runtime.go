@@ -204,6 +204,12 @@ func (p *LocalDockerProvider) readWorkspaceApplicationComponent(ctx context.Cont
 		entryPort = localDockerApplicationEntryPort(input.Revision)
 		if input.SchemaVersion == 2 && contracts.WorkspaceApplicationCredentialKind(input.Revision, contracts.WorkspaceApplicationCredentialGatewayKey) {
 			if err := p.verifyRuntimeGatewayNetwork(ctx, container); err != nil {
+				if errors.Is(err, ErrRuntimeGatewayNetworkNotBound) {
+					// The gateway is not attached yet. Report the component as not
+					// ready so the owning runtime operation can still advance it,
+					// instead of failing the whole application runtime read.
+					return contracts.WorkspaceApplicationRuntimeComponentState{Name: component.Name, Role: component.Role, Image: component.Image, State: "pending"}, "", nil
+				}
 				return component, "", err
 			}
 		}

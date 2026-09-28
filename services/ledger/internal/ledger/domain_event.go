@@ -12,6 +12,31 @@ import (
 
 var artifactDigest = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
+func readinessReceiptStatus(event *api.EventEnvelope, p *api.RuntimeReadinessObservedEvent) (string, error) {
+	if event == nil || p == nil || event.Owner != "serve" || strings.TrimSpace(p.RuntimeInstanceId) == "" || strings.TrimSpace(p.WorkspaceId) == "" || strings.TrimSpace(p.DeploymentId) == "" || event.AggregateId != p.DeploymentId || p.AppliedModelConfigurationVersion < 0 {
+		return "", ErrInvalidReceiptInput
+	}
+	switch p.Outcome {
+	case "confirmed":
+		if !p.ApplicationAvailable || p.ReceiptId == nil || strings.TrimSpace(p.GetReceiptId()) == "" {
+			return "", ErrInvalidReceiptInput
+		}
+		return "completed", nil
+	case "rejected":
+		if p.ApplicationAvailable || p.CredentialInjectionVerified {
+			return "", ErrInvalidReceiptInput
+		}
+		return "failed", nil
+	case "unknown":
+		if p.ApplicationAvailable || p.CredentialInjectionVerified {
+			return "", ErrInvalidReceiptInput
+		}
+		return "review_required", nil
+	default:
+		return "", ErrInvalidReceiptInput
+	}
+}
+
 // RecordDomainEvent is called only by the authenticated domain Inbox. It shares
 // the existing immutable receipt/idempotency store without inventing a Workspace
 // for build-time evidence. Generic receipt HTTP writes cannot enter this path.
@@ -46,6 +71,14 @@ func (s *PostgresStore) RecordDomainEvent(ctx context.Context, event *api.EventE
 			return Receipt{}, ErrInvalidReceiptInput
 		}
 		job, digest = p.BuildJobId, p.ArtifactDigest
+	case "serve.agent_readiness_observed.v1":
+		p := event.GetRuntimeReadinessObserved()
+		var err error
+		status, err = readinessReceiptStatus(event, p)
+		if err != nil {
+			return Receipt{}, ErrInvalidReceiptInput
+		}
+		job = p.DeploymentId
 	default:
 		return Receipt{}, ErrInvalidReceiptInput
 	}
@@ -53,7 +86,11 @@ func (s *PostgresStore) RecordDomainEvent(ctx context.Context, event *api.EventE
 	if err != nil {
 		return Receipt{}, ErrInvalidReceiptInput
 	}
-	input := ReceiptInput{Type: event.EventType, Status: status, Surface: "cloud", OrganizationID: event.TenantId, JobID: job, ArtifactID: digest, RequestID: event.RequestId, Owner: map[string]any{"name": event.Owner}, InputRefs: map[string]any{"domainEvent": json.RawMessage(raw)}, IdempotencyKey: "domain:" + event.Owner + ":" + event.EventId}
+	workspaceID := ""
+	if p := event.GetRuntimeReadinessObserved(); p != nil {
+		workspaceID = p.WorkspaceId
+	}
+	input := ReceiptInput{Type: event.EventType, Status: status, Surface: "cloud", OrganizationID: event.TenantId, WorkspaceID: workspaceID, JobID: job, ArtifactID: digest, RequestID: event.RequestId, Owner: map[string]any{"name": event.Owner}, InputRefs: map[string]any{"domainEvent": json.RawMessage(raw)}, IdempotencyKey: "domain:" + event.Owner + ":" + event.EventId}
 	if containsForbiddenReceiptKey(input) {
 		return Receipt{}, ErrInvalidReceiptInput
 	}

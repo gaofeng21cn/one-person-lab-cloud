@@ -19,7 +19,27 @@ import {
 } from "./local-workspace-recovery.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const baseComposeFiles = ["compose.yaml", "deploy/portable/compose.local-workspace.yaml"];
+// The Candidate file set this script qualifies: one base Compose file, the
+// deployment overlay, the Fabric provider overlay, and the Local-Workspace
+// overlay. The deployment and Fabric overlays are separate selections that the
+// script fixes to the Local installation it qualifies.
+const baseComposeFiles = [
+  "compose.yaml",
+  "deploy/portable/compose.deployment-platform-owned.yaml",
+  "deploy/portable/compose.fabric-local-docker.yaml",
+  "deploy/portable/compose.local-workspace.yaml"
+];
+
+// The qualification overlays stay mode-specific: the fixture run bills its own
+// Sub2API authority under platform-owned billing, while a live run qualifies
+// the deployment mode the installation actually runs.
+export function localQualificationComposeFiles(authorityMode) {
+  if (authorityMode !== "fixture" && authorityMode !== "live") throw new Error("authority mode must be fixture or live");
+  const qualificationCompose = authorityMode === "fixture"
+    ? "deploy/portable/compose.local-qualification.yaml"
+    : "deploy/portable/compose.local-qualification-live.yaml";
+  return [...baseComposeFiles, qualificationCompose];
+}
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
 const shaPattern = /^[0-9a-f]{40}$/;
 const sub2apiSecretFileFields = Object.freeze([
@@ -100,7 +120,11 @@ export function parseLocalQualificationArgs(args = process.argv.slice(2)) {
 }
 
 function sub2apiSecretFileError(code) {
-  const error = new Error(code);
+  return namedQualificationError(code, code);
+}
+
+function namedQualificationError(code, message) {
+  const error = new Error(message);
   error.code = code;
   return error;
 }
@@ -480,6 +504,36 @@ export function qualificationComposeEnvironment(baseEnvironment, exactEntries) {
     environment[key] = String(value);
   }
   return environment;
+}
+
+// Two Local-Docker facts belong to the installation, not to this script: the
+// quota-enabled Workspace storage root, and the provider profile that lists the
+// packages that root can host. A qualification run that invented either one
+// would qualify a machine nobody deploys, so the script requires them and fails
+// with a named reason before Compose or PostgreSQL initialization can produce
+// an unrelated error.
+export function localDockerInstallationInputs(environment = process.env) {
+  const storageRoot = String(environment.OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT || "").trim();
+  if (!storageRoot) {
+    throw namedQualificationError("local_docker_storage_root_missing", "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT must name the quota-enabled Workspace storage root");
+  }
+  if (!isAbsolute(storageRoot)) {
+    throw namedQualificationError("local_docker_storage_root_invalid", "OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT must be an absolute path");
+  }
+  const providerProfileJSON = String(environment.OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON || "").trim();
+  if (!providerProfileJSON) {
+    throw namedQualificationError("local_docker_provider_profile_missing", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must carry the Local-Docker provider profile");
+  }
+  let profile;
+  try {
+    profile = JSON.parse(providerProfileJSON);
+  } catch {
+    throw namedQualificationError("local_docker_provider_profile_invalid", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must be valid JSON");
+  }
+  if (profile?.schemaVersion !== 1 || !Array.isArray(profile?.packages) || profile.packages.length === 0) {
+    throw namedQualificationError("local_docker_provider_profile_invalid", "OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON must carry schemaVersion 1 and at least one package");
+  }
+  return { storageRoot, providerProfileJSON };
 }
 
 export async function buildSourceImages(sourceSha, project, registryPort) {
@@ -1128,6 +1182,15 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       throw error;
     }
   }
+  // Every path below assembles the Local-Docker store stack, so the
+  // installation facts it binds are admitted before anything starts.
+  let installationInputs;
+  try {
+    installationInputs = localDockerInstallationInputs(process.env);
+  } catch (error) {
+    await writeEarlyNotReady(options, "installation_preflight", String(error?.code || "local_docker_installation_inputs_invalid"), error);
+    throw error;
+  }
   if (options.authorityMode === "live" && dependencies.runLiveJ1) {
     const result = await dependencies.runLiveJ1({ options, liveAuthority, source: sourceBefore, j0Ready });
     const receipt = validateLocalQualificationReceipt(result?.receipt || result);
@@ -1141,6 +1204,11 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
   const tempRoot = await mkdtemp(join(tmpdir(), "opl-local-qualification-"));
   const fabricSecretRoot = join(tempRoot, "fabric-secrets");
   await mkdir(fabricSecretRoot, { recursive: true, mode: 0o700 });
+  // The Local-Workspace overlay binds the PostgreSQL data root with
+  // create_host_path: false, so the directory must exist before Compose starts;
+  // PostgreSQL initializes and owns its contents inside the container.
+  const postgresDataRoot = join(tempRoot, "postgres");
+  await mkdir(postgresDataRoot, { recursive: true, mode: 0o700 });
   const envFile = join(tempRoot, "qualification.env");
   const publicPort = await unusedPort();
   const authorityPort = await unusedPort();
@@ -1171,8 +1239,7 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
   let ownerDeletePending = null;
   let residuals = { containers: null, volumes: null, networks: null };
   const composePrefix = ["compose", "--project-name", project, "--env-file", envFile];
-  const qualificationCompose = options.authorityMode === "fixture" ? "deploy/portable/compose.local-qualification.yaml" : "deploy/portable/compose.local-qualification-live.yaml";
-  for (const file of [...baseComposeFiles, qualificationCompose]) composePrefix.push("-f", file);
+  for (const file of localQualificationComposeFiles(options.authorityMode)) composePrefix.push("-f", file);
   let composeEnvironment = process.env;
   const compose = (args, settings = {}) => runProcess("docker", [...composePrefix, ...args], { ...settings, env: composeEnvironment });
 
@@ -1201,6 +1268,20 @@ export async function runLocalWorkspaceQualification(options, dependencies = {})
       ["OPL_BIND_ADDRESS", "127.0.0.1"],
       ["OPL_HTTP_PORT", publicPort],
       ["OPL_PUBLIC_URL", `http://127.0.0.1:${publicPort}`],
+      // The Control Plane refuses to start without a Workspace host, and it must
+      // differ from OPL_PUBLIC_URL because that host serves Workspace entries
+      // while every other host serves the Console this script drives.
+      ["OPL_WORKSPACE_DOMAIN", `ws-qualification-${suffix}.localhost`],
+      // The qualification run bills its own fixture authority, so it qualifies
+      // the platform-owned deployment mode.
+      ["OPL_DEPLOYMENT_MODE", "platform_owned"],
+      ["OPL_POSTGRES_DATA_ROOT", postgresDataRoot],
+      ["OPL_WORKSPACE_IMAGE_RELEASES_JSON", ""],
+      // Installation-owned facts, already verified by the installation
+      // preflight: the quota-enabled Workspace storage root and the provider
+      // profile that describes the packages this host can host.
+      ["OPL_FABRIC_LOCAL_DOCKER_STORAGE_ROOT", installationInputs.storageRoot],
+      ["OPL_FABRIC_LOCAL_DOCKER_PROVIDER_PROFILE_JSON", installationInputs.providerProfileJSON],
       ["OPL_DOCKER_SUBNET", `10.251.${subnetOctet}.0/24`],
       ["OPL_POSTGRES_HOST", `10.251.${subnetOctet}.10`],
       ["OPL_POSTGRES_ADMIN_PASSWORD", secrets[0]],

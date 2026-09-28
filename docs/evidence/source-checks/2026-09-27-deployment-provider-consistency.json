@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "action": "Enforce deployment provider consistency: reject managed_tke with local-docker and block new Workspace Launch admission when Control Plane and Fabric report different providers",
+  "recordedAt": "2026-09-27T15:55:36.123177+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "b8ac78e1bda11f66675f158d79d2c700003abfc1",
+  "testedTree": "c101b03eef912315bc647784bd2cbc81140c52f4",
+  "necessity": "Deployment owner (OPL_DEPLOYMENT_MODE) and Fabric provider (OPL_FABRIC_PROVIDER) are independent installation inputs, but nothing checked that they agree. A Control Plane configured for one provider could admit a Workspace Launch against a Fabric reporting another, and the mismatch would surface only later as a failed or ambiguous provider stage rather than as a refused admission. Two concrete gaps on current canonical main: deployment_profile.go accepted managed_tke with local-docker even though the medopl managed path is tencent-tke, and the Launch admission path never compared the configured provider with Fabric's typed FabricReadiness.Provider readback before preflight persistence, billing admission or provider mutation. The fix compares the two before admission, reports provider_consistency_failure, marks readiness unready, and performs no provider mutation; the Instance verification paths additionally only check that OPL_RUNTIME_PROVIDER and OPL_FABRIC_PROVIDER agree when both are supplied, without introducing a third provider.",
+  "sourceFilesSha256": {
+    "services/control-plane/internal/server/provider_consistency.go": "74219628a450437b770cfb5e52f6997ca2f764453ae038805ff904b668bf0f78",
+    "services/control-plane/internal/server/routes_workspace_launch.go": "af48a3b7a6b75388f5d6c2a58b5424a8cb9df7f84af8791a30a7c2aac851ae91",
+    "services/control-plane/internal/server/routes_core.go": "e92dbe1643866347a139dd825a11cde3650f3356687343b39b004a3f7b5a2722",
+    "services/control-plane/internal/server/deployment_profile.go": "3cd8d59862162b6cddd6237971b83250d53cbf065a955d4662d4e9dfaf380163",
+    "services/control-plane/internal/server/server_test.go": "3007e2e688e395e693890ecc0a9c09af45f681d194b0bb3558fcf12190dd8d3c"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "managed_tke with local-docker is rejected by deploymentProfileFromEnv",
+      "A new Workspace Launch against a Fabric whose readiness provider differs from the configured provider returns 503 provider_consistency_failure and issues only the read-only fabric.readiness call, no provider mutation",
+      "Runtime and production readiness report the mismatch as unready without leaking internal facts",
+      "The operator health projection normalizes a mismatched readiness provider",
+      "The production manifest and Fabric production readiness gates reject a disagreement between OPL_RUNTIME_PROVIDER and OPL_FABRIC_PROVIDER when both are supplied",
+      "The focused control-plane tests pass and the production TypeScript gates pass (25 tests)"
+    ]
+  },
+  "logs": [
+    {
+      "name": "c1-focused.log",
+      "sha256": "32592acc949ebe853232a5c5a97e0783cc3794e858cf36656d5caff707997446"
+    }
+  ],
+  "remainingBoundary": "Source-only verification. PostgreSQL-gated control-plane suites need a real database and were not part of this focused run. No provider procurement, production access, publication or deployment was performed."
+}

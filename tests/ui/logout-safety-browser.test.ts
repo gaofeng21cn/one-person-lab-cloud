@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium } from "playwright";
 
 import type {
   RuntimeCredentialResponse,
@@ -12,6 +11,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 interface ControllerProjectionProbe {
   workspaceNames: string[];
@@ -65,7 +65,7 @@ async function readControllerProjection(page: import("playwright").Page): Promis
 
 test("Console hides secrets and rejects late account data while logout is unconfirmed", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
@@ -213,7 +213,7 @@ test("Console hides secrets and rejects late account data while logout is unconf
 
 test("a late login response cannot restore an account or cancel logout", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.addInitScript(() => {
@@ -274,7 +274,7 @@ test("a late login response cannot restore an account or cancel logout", async (
 
 test("Workspace Secret controller rejects late reveal and refreshes after rotation", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });

@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserContext, Page } from "playwright";
 import type { OperatorRuntimeObservationsDTO, WorkspaceLaunchRecoveryDTO } from "../apps/console-ui/src/api/dtos.ts";
+import { launchBrowser } from "./launch-browser.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = "2026-07-19T12:00:00Z";
@@ -356,8 +357,7 @@ async function defaultServerFactory() {
 }
 
 async function defaultBrowserFactory() {
-  const { chromium } = await import("playwright");
-  return chromium.launch({ headless: true });
+  return launchBrowser({ headless: true });
 }
 
 async function fulfillJson(route, payload, status = 200, headers = {}) {

@@ -47,6 +47,15 @@ The product has one Agent delivery chain, not parallel Workspace and Agent Servi
 
 The owner flow is: the user may start upload in the Serve experience, while Capability owns upload sessions, Package metadata/versions and immutable Package bytes/references; Build fixes exact Package, WebUI and Runtime-release inputs and owns the build job and OCI evidence; Runtime Control owns the approved Runtime release catalog and immutable Runtime references consumed by Build, not deployed Agent instances; Workspace owns the target Workspace and resource entitlement; Fabric provisions/binds compute, storage and network resources and owns those resource facts; Serve deploys the built OCI to the authorized Workspace, owns deployment/readiness/routing state and exposes API, Embed and Hosted UI access to that same Agent. The Runtime implementation is supplied by the OPL App/Framework owner and is packaged into the OCI. Ledger records required evidence without becoming a lifecycle writer.
 
+For avoidance of doubt, this is the new-customer entry: Console/Serve starts
+the native OMA Package flow, the approved OPL App Runtime and selected WebUI are
+fixed into a Build-owned immutable TCR OCI, and the customer selects that Agent
+version together with the Workspace plan. A successful new-customer outcome
+requires Serve readback of the delivered/current Agent; a resource-only
+readback is intermediate evidence, not completion. The earlier
+`resource_only` order remains valid only as a retained historical/legacy
+contract and is not silently converted into a new Agent order.
+
 Serve is a Cloud service/data Owner because it owns a durable per-Workspace Agent delivery lifecycle. This adds one service module and one data Owner to the target topology; Runtime Control is an existing target module with a narrowed, accurately documented version-catalog responsibility, not a new service. Product entry screens may live in the Console UI/Serve experience, but UI placement never transfers Package or deployment write authority.
 
 The remaining target decisions are:
@@ -75,6 +84,12 @@ The remaining target decisions are:
   runtime is introduced for the current chains.
 - The BFF performs authentication, authorization context, and product DTO
   aggregation only. The Workspace service owns the business Saga.
+- New-customer Workspace admission is Agent-version-plus-plan, not a bare
+  `resource_only` purchase followed by administrator installation. Workspace
+  owns entitlement and target authorization; Serve owns the Agent deployment,
+  readiness, access and current-selection facts. The old Control Plane/Fabric
+  application writer is migration source only and must be retired when its
+  callers move.
 - `Capability` owns Package, version, and catalog metadata while object bytes
   live in the storage provider. `Build` reads immutable references and writes
   its own jobs and artifact evidence. A ready Capability version is created only

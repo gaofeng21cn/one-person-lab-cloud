@@ -99,6 +99,15 @@ provider are independent selections. The current Local-Docker provider also
 requires Workspace storage on a dedicated ext4/XFS mount with project quota
 enabled and rejects unsupported layouts before Launch mutation.
 
+The installation model has three separate axes: `OPL_DEPLOYMENT_MODE` is the
+deployment-owner value (`platform_owned`, `managed_tke`, or `customer_owned`),
+`OPL_FABRIC_PROVIDER` is the execution provider (`local-docker` or
+`tencent-tke`), and the `admin`/`customer` surface is derived from login and
+Console routing. Customer Console does not select a provider. The current
+`managed_tke` path is paired with `tencent-tke`; `managed_tke` with
+`local-docker` is rejected, while `platform_owned` with `local-docker` remains
+qualification-only.
+
 A Candidate is not a Product Release. Its files are admitted and qualified as
 one checksum-bound set from one canonical Cloud SHA and image digest. The
 Instance owner supplies the domain, provider profile, immutable Workspace image
@@ -110,6 +119,48 @@ No public successor currently contains this format. For current source
 development and qualification, use the repository-owned tooling and
 [developer guide](../DEV_GUIDE.md); do not present a locally generated Candidate
 as a public Release.
+
+## Local Qualification Fixture
+
+`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
+Sub2API authority fixture, so a Local installation can be qualified without an
+external wallet backend. The fixture serves one qualification user and one
+optional qualification admin, including the delegated identity read that
+`customer_owned` requires. Both deployment modes can therefore be qualified
+against it:
+
+- `platform_owned` and `managed_tke` authenticate with
+  `OPL_SUB2API_ADMIN_EMAIL` / `OPL_SUB2API_ADMIN_PASSWORD`.
+- `customer_owned` additionally requires `OPL_SUB2API_USER_EMAIL` /
+  `OPL_SUB2API_USER_PASSWORD` and signs in as that configured user.
+
+The fixture is qualification-only. It carries no real balance authority, holds
+no production credential, and keeps its state in the
+`opl-qualification-sub2api` volume.
+
+## Local Qualification Fixture Balance Envelope
+
+`deploy/portable/compose.local-qualification.yaml` runs the repository-owned
+Sub2API authority fixture so a Local installation can be qualified without an
+external wallet backend. The fixture models one qualification run rather than a
+general wallet: its state file holds **one debit and one refund**, each refused
+by name once used (`debit_identity_conflict` / `refund_identity_conflict`).
+
+The envelope is deliberate. It is what makes a second charge under a different
+code impossible to mistake for a missing one, which is the property a
+qualification run must be able to prove. A repeat of the *same* code replays
+idempotently instead of charging again.
+
+Consequences an operator must plan for:
+
+- A qualification run consumes the envelope. `OPL_QUALIFICATION_STATE_PATH` is
+  the reset boundary: start a fresh run from a fresh state file rather than
+  retrying the dispatch that was refused.
+- Scenarios that need a second debit against the same state file — a second
+  Workspace purchase, or a monthly renewal — are outside the fixture's envelope.
+  Qualify those against a live authority instead.
+- `customer_owned` installations do not debit resource charges at all, so the
+  envelope does not constrain them.
 
 ## Upgrade and Rollback
 

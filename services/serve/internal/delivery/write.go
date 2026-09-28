@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -324,7 +325,7 @@ func (s *Service) acceptDeploy(ctx context.Context, r *api.RuntimeDeployCommand)
 	}
 	return dbError(tx.Commit())
 }
-func finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
+func (s *Service) finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
 	var err error
 	var recordedStatus, recordedEvidence string
 	var recordedAt time.Time
@@ -352,7 +353,74 @@ func finishFirstDelivery(ctx context.Context, tx *sql.Tx, r *api.RuntimeDeployCo
 			return dbError(err)
 		}
 	}
+	if err = appendReadinessEvent(ctx, tx, s.Store, r, o); err != nil {
+		return dbError(err)
+	}
 	return nil
+}
+
+// appendReadinessEvent persists the exact runtime observation in Serve's
+// owner-local Outbox. The deterministic aggregate identity makes a replay after
+// a lost response append no second fact, while the existing delivery rows keep
+// Ledger and Workspace acknowledgements independent.
+func appendReadinessEvent(ctx context.Context, tx *sql.Tx, store *ownerstore.Store, r *api.RuntimeDeployCommand, o RuntimeObservation) error {
+	tenantID := r.GetContext().GetScope().GetTenant().GetTenantId()
+	if tenantID == "" || r.GetContext().GetRequestId() == "" || r.GetDeploymentId() == "" || r.GetRuntimeInstanceId() == "" || o.ObservedAt.IsZero() {
+		return errors.New("runtime readiness event identity is incomplete")
+	}
+	outcome := "unknown"
+	switch o.State {
+	case api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY:
+		outcome = "confirmed"
+	case api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_FAILED,
+		api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_TERMINATED:
+		outcome = "rejected"
+	}
+	payload, err := protojson.Marshal(&api.RuntimeReadinessObservedEvent{
+		RuntimeInstanceId:    r.GetRuntimeInstanceId(),
+		WorkspaceId:          r.GetWorkspaceId(),
+		DeploymentId:         r.GetDeploymentId(),
+		Outcome:              outcome,
+		ApplicationAvailable: o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY,
+		// The current Fabric adapter rejects secret/model configuration and does
+		// not return a credential-injection readback. Absence of a binding is not
+		// proof that injection happened, so keep this explicitly false.
+		CredentialInjectionVerified:      false,
+		AppliedModelConfigurationVersion: r.GetModelConfigurationVersion(),
+		ReceiptId: func() *string {
+			if o.ReadinessEvidenceRef == "" {
+				return nil
+			}
+			v := o.ReadinessEvidenceRef
+			return &v
+		}(),
+	})
+	if err != nil {
+		return err
+	}
+	const eventType = "serve.agent_readiness_observed.v1"
+	receiptID := ""
+	if o.ReadinessEvidenceRef != "" {
+		receiptID = o.ReadinessEvidenceRef
+	}
+	eventID := stableID("evt_", eventType, r.GetDeploymentId(), r.GetRuntimeInstanceId(), strconv.FormatInt(r.GetExecutionEpoch(), 10), outcome, strconv.FormatBool(o.State == api.AgentRuntimeObservationState_RUNTIME_INSTANCE_STATE_READY), strconv.FormatInt(r.GetModelConfigurationVersion(), 10), receiptID)
+	var exists bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM serve.outbox_events WHERE id=$1)`, eventID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	var revision int64
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(aggregate_revision), 0) + 1 FROM serve.outbox_events WHERE event_type=$1 AND aggregate_type=$2 AND aggregate_id=$3`, eventType, "agent_deployment", r.GetDeploymentId()).Scan(&revision); err != nil {
+		return err
+	}
+	return store.AppendEvent(ctx, tx, ownerstore.Event{
+		ID:        eventID,
+		EventType: eventType, SchemaVersion: 1, AggregateType: "agent_deployment", AggregateID: r.GetDeploymentId(),
+		AggregateRevision: revision, TenantID: tenantID, CorrelationID: r.GetContext().GetRequestId(),
+		Payload: payload, OccurredAt: o.ObservedAt.UTC(),
+	})
 }
 func (s *Service) ReadRuntime(ctx context.Context, r *api.RuntimeReadbackRequest) (*api.RuntimeReadback, error) {
 	if err := requirePeer(ctx, owneridentity.Workspace); err != nil {
@@ -456,7 +524,7 @@ func (s *Service) reconcileRuntime(ctx context.Context, command *api.RuntimeDepl
 	if _, err = recordDeploymentObservation(ctx, tx, command, observation); err != nil {
 		return nil, err
 	}
-	if err = finishFirstDelivery(ctx, tx, command, observation); err != nil {
+	if err = s.finishFirstDelivery(ctx, tx, command, observation); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {

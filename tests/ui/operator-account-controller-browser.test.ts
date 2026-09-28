@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   OperatorAccountCommandDTO,
@@ -15,6 +15,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-26T00:00:00Z";
 const unknownWriteMessage = "结果待确认，请刷新操作状态，不要重复提交";
@@ -124,7 +125,7 @@ async function settle(page: Page) {
 
 test("Operator Account rejects an older retry result for the same page", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const oldRequestHeld = deferred();
   const releaseOldRequest = deferred();
   const oldRequestSettled = deferred();
@@ -166,7 +167,7 @@ test("Operator Account rejects an older retry result for the same page", { timeo
 
 test("Operator Account invalidates a pending list completion after route exit", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const firstRequestHeld = deferred();
   const releaseFirstRequest = deferred();
   const firstRequestSettled = deferred();
@@ -212,7 +213,7 @@ test("Operator Account invalidates a pending list completion after route exit", 
 
 test("Operator Account suppresses a pending command completion after route exit", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const commandHeld = deferred();
   const releaseCommand = deferred();
   const commandSettled = deferred();
@@ -260,7 +261,7 @@ test("Operator Account suppresses a pending command completion after route exit"
 
 test("Operator Account provision retries response loss with the original normalized intent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const base = account("acct-base", "base@example.com");
   const provisioned = account("acct-provisioned", "retry@example.com");
   const keys: string[] = [];
@@ -316,7 +317,7 @@ test("Operator Account provision retries response loss with the original normali
 
 test("Operator Account keeps a pending provision claimed when its Modal closes and reopens", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const base = account("acct-provision-claim-base", "provision-claim-base@example.com");
   const provisioned = account("acct-provision-claim-created", "provision-claim@example.com");
   const firstRequestHeld = deferred();
@@ -388,7 +389,7 @@ test("Operator Account keeps a pending provision claimed when its Modal closes a
 
 test("Operator Account disable retains its key until identity, status, and readback all match", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const active = account("acct-disable", "disable@example.com");
   let projection = active;
   let attempts = 0;
@@ -429,7 +430,7 @@ test("Operator Account disable retains its key until identity, status, and readb
 
 test("Operator Account keeps a pending disable claimed across route exit and re-entry", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const active = account("acct-disable-claim", "disable-claim@example.com");
   const disabled = { ...active, status: "disabled" as const };
   const firstRequestHeld = deferred();
@@ -524,7 +525,7 @@ test("Operator Account keeps a pending disable claimed across route exit and re-
 
 test("Operator Account removes a stale origin row when disable readback finds a migrated target", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const active = account("acct-disable-migrated", "disable-migrated@example.com");
   const disabled = { ...active, status: "disabled" as const };
   const firstPageAccount = account("acct-disable-migrated-first", "disable-migrated-first@example.com");
@@ -578,7 +579,7 @@ test("Operator Account removes a stale origin row when disable readback finds a 
 
 test("Operator Account eligibility retains its key across command and readback mismatches", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const eligible = account("acct-eligibility-stale", "eligibility-stale@example.com", {
     workspacePurchaseEnabled: true
   });
@@ -635,7 +636,7 @@ test("Operator Account eligibility retains its key across command and readback m
 
 test("Operator Account session reset discards a stale eligibility intent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const ineligible = account("acct-eligibility", "eligibility@example.com", { workspacePurchaseEnabled: false });
   let projection = ineligible;
   const keys: string[] = [];

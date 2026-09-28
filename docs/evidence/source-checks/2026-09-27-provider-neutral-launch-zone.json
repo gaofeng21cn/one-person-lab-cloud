@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "action": "Resolve the Workspace Launch monthly preflight zone from the operation's own provider profile instead of reading OPL_TENCENT_ZONE unconditionally",
+  "recordedAt": "2026-09-27T13:56:44.694559+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "bc76616c49d76cc7d99cbc18d5aa147aa0ebf5bd",
+  "testedTree": "862d97eecf1119d7ab4c78766d354bba6207c1e3",
+  "necessity": "monthlyPreflightConfirmed compares the requested zone against the Fabric result, but preflightWorkspaceLaunchMonthly read OPL_TENCENT_ZONE unconditionally. That variable is a Tencent-TKE-only legacy input; the installation template documents it as tencent-tke only and a provider-neutral Local-Docker profile orders nothing in a zone. A Local-Docker launch therefore failed closed at the debit stage and parked in manual_review with only stage_read_failed, even though the provider echoes the zone it actually sent. Resolving the zone from the operation's provider profile keeps tencent-tke's exact guarded read while letting the provider-neutral path confirm the empty zone it sent, which is required for the Local-Docker first-deployment lane.",
+  "sourceFilesSha256": {
+    "services/control-plane/internal/server/monthly_billing.go": "9426b3bfd6938cb06fd0718228097bd3fb27a91514ad04f6fad82a8f43b7fdda",
+    "services/control-plane/internal/server/workspace_launch_monthly_preflight_test.go": "4b083484c1df4f0d2336754a3782172482a34d046ca40fc47b23c446a4ecd44f"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "A provider-neutral (local-docker) profile with OPL_TENCENT_ZONE unset runs the monthly preflight, sends an empty zone to Fabric, does not park on debit and still debits",
+      "A tencent-tke profile with OPL_TENCENT_ZONE unset still fails closed with errWorkspaceLaunchMonthlyPreflightInvalid and parks the reserved debit without an authority write",
+      "The whole workspace launch monthly preflight test family passes database-free"
+    ]
+  },
+  "logs": [
+    {
+      "name": "a1-focused.log",
+      "sha256": "47f9cc5cd804cc1fab823e3da38ef810d0e881c3efab4b078a30a6093138aa87"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with the existing database-free control-plane test fixtures. No provider procurement, real funds, production access, publication or deployment was performed."
+}

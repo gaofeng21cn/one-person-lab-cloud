@@ -31,6 +31,14 @@ type WorkspaceRuntimeReadStore interface {
 	WorkspaceRuntimeIdentityCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
 }
 
+// WorkspaceApplicationRuntimeOwnerStore is the typed read port for durable
+// application runtime records. It exists so ownership observation can verify a
+// discovered application component against the record that created it, without
+// widening the legacy runtime candidate semantics its other consumers rely on.
+type WorkspaceApplicationRuntimeOwnerStore interface {
+	WorkspaceApplicationRuntimeOwnerCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error)
+}
+
 type ComputeClaimStore interface {
 	OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error)
 	ComputeClaimTerminalOperation(ctx context.Context, approvalID, idempotencyKey string) (FabricOperation, bool, error)
@@ -89,6 +97,10 @@ func (p operationStoreCapabilityPorts) WorkspaceRuntimeIdentityCandidates(ctx co
 	return p.store.WorkspaceRuntimeIdentityCandidates(ctx, workspaceID)
 }
 
+func (p operationStoreCapabilityPorts) WorkspaceApplicationRuntimeOwnerCandidates(ctx context.Context, workspaceID string) ([]FabricOperation, error) {
+	return p.store.WorkspaceApplicationRuntimeOwnerCandidates(ctx, workspaceID)
+}
+
 func (p operationStoreCapabilityPorts) OperationByActionIdempotency(ctx context.Context, action, idempotencyKey string) (FabricOperation, bool, error) {
 	return p.store.OperationByActionIdempotency(ctx, action, idempotencyKey)
 }
@@ -130,6 +142,7 @@ var _ OperationHistoryStore = operationStoreCapabilityPorts{}
 var _ ResourceOperationStore = operationStoreCapabilityPorts{}
 var _ RuntimeOperationQueryStore = operationStoreCapabilityPorts{}
 var _ WorkspaceRuntimeReadStore = operationStoreCapabilityPorts{}
+var _ WorkspaceApplicationRuntimeOwnerStore = operationStoreCapabilityPorts{}
 var _ ComputeClaimStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchPreflightStore = operationStoreCapabilityPorts{}
 var _ WorkspaceLaunchStageStore = operationStoreCapabilityPorts{}

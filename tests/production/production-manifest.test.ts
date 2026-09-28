@@ -54,6 +54,7 @@ test("production manifest requires deployment secret refs for every launch varia
     "required_env:true",
     "secret_refs:true",
     "runtime_provider:true",
+    "provider_consistency:true",
     "tencent_provider_profile:true",
     "verification_mutation_authority:true",
     "system_compute_identity:true",
@@ -61,6 +62,17 @@ test("production manifest requires deployment secret refs for every launch varia
     "workspace_image_releases:true",
     "workspace_domain:true",
   ]);
+});
+
+test("production manifest rejects disagreement between runtime and fabric providers when both are supplied", () => {
+  const report = validateProductionManifest({
+    env: {
+      OPL_RUNTIME_PROVIDER: { value: "tencent-tke" },
+      OPL_FABRIC_PROVIDER: { value: "local-docker" }
+    }
+  });
+  assert.equal(report.ok, false);
+  assert.ok(report.failedChecks.includes("provider_consistency"));
 });
 
 test("production manifest validates Tencent TKE fields only", () => {
@@ -97,6 +109,7 @@ test("production manifest validates Tencent TKE fields only", () => {
     "required_env:true",
     "secret_refs:true",
     "runtime_provider:true",
+    "provider_consistency:true",
     "tencent_provider_profile:true",
     "verification_mutation_authority:true",
     "system_compute_identity:true",

@@ -119,6 +119,7 @@ export async function productionReadiness({ env = process.env, commandExists = (
   const missingEnv = [];
   const missingTools = [];
   const provider = env.OPL_RUNTIME_PROVIDER || "";
+  const fabricProvider = String(env.OPL_FABRIC_PROVIDER || "").trim();
   const providerConfig = PROVIDER_CONFIG[provider] || { requiredEnv: [], requiredTools: [] };
   const hasEnv = (key) => Boolean(String(env[key] ?? "").trim());
 
@@ -140,6 +141,7 @@ export async function productionReadiness({ env = process.env, commandExists = (
 
   const checks = [
     check("runtime_provider", provider === PROVIDERS.TENCENT_TKE, "OPL_RUNTIME_PROVIDER must be tencent-tke"),
+    check("provider_consistency", !fabricProvider || fabricProvider === provider, "OPL_FABRIC_PROVIDER must match OPL_RUNTIME_PROVIDER when both are supplied"),
     check(
       "registry_images",
       looksLikeRegistryImage({ image: env.OPL_CLOUD_IMAGE, registry: env.TENCENT_TCR_REGISTRY }) &&

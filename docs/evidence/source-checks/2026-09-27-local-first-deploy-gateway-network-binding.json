@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "action": "Give the standalone workspace_application_runtime Fabric operation its own direct provider mutation binding so the application runtime can attach the gateway network, and report an unattached gateway as a distinct not-bound state instead of a hard readback mismatch",
+  "recordedAt": "2026-09-27T13:52:56.787511+00:00",
+  "baseSha": "ca592c0d3c567d2dac6c63e858912cca2214ea47",
+  "testedSha": "c212949aa4ec92b315badb535c1a733eaa9834e0",
+  "testedTree": "c080961b7fbdcfaff6bc8a92078127dc73d3ea66",
+  "necessity": "The Control Plane dispatches create_workspace_application_runtime as a standalone idempotent Fabric operation, not as a Workspace launch stage, so withProviderOperationJournal gave it no journal. The gateway-network mutation then failed closed with local_docker_runtime_gateway_mutation_binding_required, and a replay only converged from a failed record, so the gateway container was never attached to the workspace network. In parallel, verifyRuntimeGatewayNetwork collapsed an unattached gateway into local_docker_runtime_gateway_network_readback_mismatch, which the application runtime read returned as a hard failure rather than the still-advanceable not-ready state. Without this fix the first real Local-Docker Agent deployment cannot complete its gateway network binding, which blocks the Serve first-deployment lane that consumes it.",
+  "sourceFilesSha256": {
+    "services/fabric/internal/fabric/provider_mutation.go": "019bf208ff49fda0bd68a217999bffe57ce16302225d06b023ea108658bf29b7",
+    "services/fabric/internal/fabric/local_docker_runtime.go": "412fcaeac7fa8ec984bcf26eda9c27e11d4aee4d889405547a591fda8756d028",
+    "services/fabric/internal/fabric/local_docker_application_runtime.go": "40edcedf53ddf9e01f3731471a6edb6416ec020b417f63f9f937a1d06e13439d",
+    "services/fabric/internal/fabric/types.go": "c02de45fbd8a45625e2d9cfc527e78cdc187682fd4a4d73d00c5e50340d02fb9",
+    "services/fabric/internal/fabric/provider_mutation_test.go": "aec1296dee19b6ae8646cee1c0f5a386a66bb45843f75f517bab9878b47d6efb"
+  },
+  "verification": {
+    "result": "passed",
+    "checks": [
+      "The application runtime operation receives a direct provider mutation binding only for caller control-plane, action create_workspace_application_runtime and resource kind workspace_application_runtime with every binding value present and trimmed",
+      "Other caller, other action, other resource kind, missing idempotency key, untrimmed request hash and missing workspace are each refused a direct binding",
+      "The derived binding satisfies validWorkspaceLaunchStageBinding and carries the operation's own operation id and idempotency key",
+      "The existing provider mutation envelope round trip still fails closed on digest drift, field drift and unknown fields",
+      "The whole services/fabric/internal/fabric package passes database-free"
+    ]
+  },
+  "logs": [
+    {
+      "name": "a4-package.log",
+      "sha256": "883ac533ecf39a7480ad598715a8f1896a4007e91338a1a8db58c84473c9c457"
+    },
+    {
+      "name": "a4-focused.log",
+      "sha256": "60184dbdb6efbefdcd7480d30222aad1c7a2f955b6f73304c7fea8582f461eaa"
+    }
+  ],
+  "remainingBoundary": "Source-only verification with the existing Local-Docker provider stubs and database-free tests. No Local-Docker host run, no real gateway container attach replay on a live host, no provider procurement, production access, publication or deployment was performed; live Local qualification remains the separate lane."
+}
