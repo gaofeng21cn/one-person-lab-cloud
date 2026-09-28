@@ -349,10 +349,17 @@ all required PostgreSQL modules with zero skips, and Docker integration. The
 additional real browser/owner-chain test passed with inspected desktop/mobile
 screenshots. A final [HTTP contract-alignment receipt](./evidence/source-checks/2026-09-25-publisher-public-api-alignment.json) records focused rechecks for the canonical session path, CSRF header, response codes and Error shape. Earlier receipts remain bound to their historical source.
 
-The current PR #654 HEAD recheck confirms the native OMA archive/index/content/manifest
-bytes and the approved OPL App Runtime digest, but remains blocked before a real
-three-input BuildInputSnapshot: no admitted Cloud WebUI OCI artifact is available,
-and local TCR access returns 401. The [append-only recheck receipt](./evidence/source-checks/2026-09-27-cloud-package-runtime-webui-oci-recheck.json) therefore records no TCR digest, CapabilityVersion, descriptor, or application-call claim; PR #654 remains Draft.
+The [September 28 exact Runtime build](./evidence/source-checks/2026-09-28-exact-runtime-local-build.json)
+uses the approved upstream GHCR Runtime digest, the real Cloud WebUI source and
+an explicitly synthetic Package. Isolated BuildKit composition, immutable
+Registry readback, real browser publisher flow, file-content checks and worker
+restart/lost-ack recovery all pass. Earlier GHCR/network failures therefore do
+not describe the current local build path. The local source acceptance is
+separate from the original OMA candidate run: its archive is unavailable on this
+machine and no authorized TCR publication/readback occurred. Those historical
+unknown facts are retained in the append-only receipts, without a source-merge
+or recurring monitoring obligation. No Agent loading, real model call or
+production deployment is claimed.
 
 ### Publisher identity and admission
 

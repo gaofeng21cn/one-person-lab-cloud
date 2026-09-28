@@ -249,7 +249,10 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	// Inspect the real output filesystem, not only the manifest returned by the builder.
 	export := filepath.Join(root, "export")
 	os.Mkdir(export, 0755)
-	os.WriteFile(filepath.Join(export, "Dockerfile"), []byte("FROM "+repository+"@"+result.Manifest.Digest+"\n"), 0644)
+	// Export the composed inputs we assert below. Exporting the entire upstream
+	// Runtime also copies its dependency tree through the host filesystem and can
+	// exhaust the test deadline without adding evidence about these inputs.
+	os.WriteFile(filepath.Join(export, "Dockerfile"), []byte("FROM "+repository+"@"+result.Manifest.Digest+" AS built\nFROM scratch\nCOPY --from=built /agent /agent\nCOPY --from=built /web /web\n"), 0644)
 	outDir := filepath.Join(root, "output")
 	bx("build", "--builder", "isolated", "--platform", "linux/arm64", "--output", "type=local,dest="+outDir, export)
 	packageOutput := "agent/payload.txt"

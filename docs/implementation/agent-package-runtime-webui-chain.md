@@ -1,9 +1,8 @@
 # Agent Package + Runtime Release + WebUI → immutable OCI chain
 
-Machine boundary: this document owns the Cloud integration contract for the
-end-to-end Agent delivery chain. It is a current implementation/authority
-mapping, not a deployment or runtime-readiness claim. Source, tests and receipts
-prove their own layer.
+This document maps the Cloud delivery chain to its source owners and typed
+contracts. It does not introduce another runtime or admission authority.
+Implementation evidence is recorded separately from deployment and readiness.
 
 ## Goal
 
@@ -29,8 +28,8 @@ authority. Cloud only consumes approved upstream facts.
 
 | Chain element | Canonical field | Owner (writer) | Consumed by |
 | --- | --- | --- | --- |
-| Package manifest digest | `candidate-index.json` `blueprint_digest` / `manifest_digest` | OMA/Foundry (upstream) | Capability W08 |
-| Package content digest | `candidate_digest` (`opl-foundry-candidate-index.v2`) | OMA/Foundry (upstream) | Capability W08 |
+| Agent manifest digest | transport `manifest_digest` binds `candidate/agent/agent-pack.json` | OMA/Foundry (upstream) | Capability W08 |
+| Candidate identity | `candidate_digest` binds the canonical v2 index; `content_digest` separately binds indexed file bytes | OMA/Foundry (upstream) | Capability W08 |
 | Package version identity | `capability.package_versions.sha256` (uploaded content) + version label | Capability W08 | Build W09 |
 | Package claim | `capability.reference_claims` `package_claim_id` | Capability W08 | Build W09 |
 | Runtime release | `runtime_control.runtime_releases` (`artifact_digest`, `runtime_abi_version`, `publisher_contract`) | Runtime Control W10 | Build W09 |
@@ -74,21 +73,21 @@ authority. Cloud only consumes approved upstream facts.
 - Serve refuses a revision whose declared contract needs an input the deployment
   command does not carry.
 
-## Current blocking state
+## Current source acceptance
 
-As of 2026-09-26 two of the three inputs are missing upstream
-([intake audit](../evidence/source-checks/2026-09-26-oma-package-runtime-webui-intake-audit.json)):
+The [September 28 source repair](../evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json)
+checks native candidate identity and byte integrity without upgrading its
+`not_qualified` / `not_evaluated` state. Capability owns the intake and approved
+catalogs; Build validates the immutable owner snapshot and fixed recipe.
 
-1. **OMA/Foundry**: no qualified AgentVersion can be produced locally because
-   `OPL_FOUNDRY_EVALUATOR_BIN` / `OPL_FOUNDRY_REVIEWER_BIN` are unset, so
-   `foundry/versions` is empty. The candidate directory/digest format itself is
-   real and stable.
-2. **OPL App/Framework**: no approved server/headless Runtime Release OCI exists;
-   only a desktop DMG and a mutable-tag WebUI image were found.
-3. **WebUI**: Cloud must build its own digest-pinned, port-3000, health-carrying
-   artifact; that is a Cloud deliverable, not an upstream one.
+The [exact Runtime local build](../evidence/source-checks/2026-09-28-exact-runtime-local-build.json)
+uses the approved GHCR Runtime digest, Cloud WebUI and a synthetic Package. It
+proves composition, Registry digest readback, publisher browser behavior and
+restart recovery. The original OMA candidate and TCR publication remain
+unverified on this machine. These unknown facts do not imply Agent loading,
+model use or deployment success, and do not impose a recurring source-merge
+obligation. The historical September 26 missing-Runtime diagnosis is superseded.
 
-Until (1) and (2) land, the chain stays fail-closed: the intake validator
-(`tools/package-runtime-webui-intake.ts`) refuses to admit a chain that lacks any
-of the three immutable inputs, and the IBD candidate may be used only as a
-labelled development fixture, never as a Build input.
+`tools/package-runtime-webui-intake.ts` is a development diagnostic exercised by
+its focused tests. It is not called by the Build admission path and must not be
+used as another authority over the typed owner contracts.
