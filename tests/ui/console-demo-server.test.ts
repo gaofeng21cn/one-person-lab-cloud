@@ -3,7 +3,6 @@ import { createServer as createHttpServer } from "node:http";
 import { connect } from "node:net";
 import test from "node:test";
 
-import { chromium } from "playwright";
 
 import type {
   OperatorAccountPageDTO,
@@ -15,6 +14,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 class DemoClient {
   cookie = "";
@@ -386,7 +386,7 @@ test("Console demo closes within a bounded time when a client leaves a request b
 
 test("Console demo is clickable in a normal browser for customer and Admin", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${demo.origin}/login`, { waitUntil: "networkidle" });

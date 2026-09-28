@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
-import { chromium } from "playwright";
 import { startConsoleDemoServer } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const bff = process.env.OPL_PUBLISHER_BFF_URL!;
 const zip = process.env.OPL_PUBLISHER_TEST_ZIP!;
@@ -34,7 +34,7 @@ await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
 const address = proxy.address();
 assert.ok(address && typeof address !== "string");
 const origin = `http://127.0.0.1:${address.port}`;
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
   const page = await context.newPage();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 import { decodeSource } from "../../apps/console-ui/src/api/dtos.ts";
 
 import type {
@@ -16,6 +16,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 
@@ -136,7 +137,7 @@ async function openDisclosure(page: Page, selector: string) {
 
 test("resource-only Workspace accepts Control Plane's empty application readback without a Fabric outage", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const value = workspace("ws-1", "Resource-only Workspace", "");
   value.applicationBinding = "empty";
   delete value.url;
@@ -183,7 +184,7 @@ test("resource-only Workspace accepts Control Plane's empty application readback
 
 test("Fabric Runtime Read rejects late Workspace and refresh responses and settles failure independently", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseAlpha = deferred();
   const alphaHeld = deferred();
   const alphaSettled = deferred();
@@ -296,7 +297,7 @@ test("Fabric Runtime Read rejects late Workspace and refresh responses and settl
 
 test("Fabric Runtime request starts before Customer Workspace detail completes", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const detailHeld = deferred();
   const releaseDetail = deferred();
   const runtimeStarted = deferred();
@@ -332,7 +333,7 @@ test("Fabric Runtime request starts before Customer Workspace detail completes",
 
 test("leaving the Workspace detail route rejects an in-flight Runtime completion", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const staleRuntimeHeld = deferred();
   const releaseStaleRuntime = deferred();
   const staleRuntimeSettled = deferred();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   SourceEnvelope,
@@ -16,6 +16,7 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -41,7 +42,7 @@ async function openWorkspace(page: Page, name: string, workspaceId: string) {
 
 test("Workspace Renewal keeps its intent across navigation and scopes busy to the active Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseFirst = deferred<void>();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -139,7 +140,7 @@ test("Workspace Renewal keeps its intent across navigation and scopes busy to th
 
 test("expired customers explicitly renew after funding and reopen the original recovery without gaining unpaid access", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
       const context = await browser.newContext({ viewport });
