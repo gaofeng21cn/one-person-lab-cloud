@@ -23,6 +23,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	api "opl-cloud/packages/contracts/go/api"
+	"opl-cloud/packages/contracts/go/owneridentity"
 	"opl-cloud/packages/contracts/go/publicjson"
 	"opl-cloud/services/build/migrations"
 	"opl-cloud/services/internal/ownerstore"
@@ -59,6 +60,9 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	regName := "opl-build-test-reg-" + suffix
 	bkName := "opl-build-test-kit-" + suffix
 	registry := "127.0.0.1:" + rp
+	// Build resolves each Tenant's destination from the Tenant owner. The live
+	// harness points those reserved bindings at this disposable registry.
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", registry)
 	docker("run", "-d", "--name", regName, "-p", registry+":"+rp, "-p", "127.0.0.1:"+bp+":"+bp, "-e", "REGISTRY_HTTP_ADDR=0.0.0.0:"+rp, "registry:2")
 	t.Cleanup(func() { exec.Command("docker", "rm", "-fv", regName).Run() })
 	cfg := filepath.Join(root, "buildkit.toml")
@@ -239,7 +243,14 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	t.Logf("BUILD_INPUT_SNAPSHOT package_object=%s/%s package_sha256=%s runtime=%s@%s webui=%s@%s recipe=%s@%s snapshot=%s", input.PackageObject.StorageObjectId, input.PackageObject.VersionId, input.PackageObject.Sha256, input.RuntimeArtifact.Repository, input.RuntimeArtifact.Digest, input.WebuiArtifact.Repository, input.WebuiArtifact.Digest, input.RuntimeContract.BuildRecipe.Recipe.Repository, input.RuntimeContract.BuildRecipe.Recipe.Digest, input.SnapshotDigest)
 	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
 	jobID := "build_" + strings.Repeat("2", 32)
-	repository := r.Repository("tenant-live", input.PackageId)
+	binding, err := api.NewCloudIdentityAuthorizationClient(identityConn(t, identity.address, owneridentity.Build.Service())).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: "tenant-live"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := r.DestinationRepository(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Log("executing production Runner against isolated BuildKit and registry")
 	result := r.Execute(ctx, jobID, repository, input, func(message string) { t.Log(message) })
 	if result.Err != nil {

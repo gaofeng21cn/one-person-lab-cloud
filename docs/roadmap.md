@@ -230,6 +230,73 @@ tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入
 统一正在完成本地验证。Cloud 源码不代表 IBD 实际投放，具体证据由
 [status](status.md#current-capability-baseline) 维护。
 
+### Generic Agent OCI Tenant Routing And Tencent/TKE Qualification
+
+本工作线面向所有 Agent Package，不以 IBD 为产品特例。输入固定为
+`Agent Package + approved Runtime + selected WebUI`，Build 输出一个不可变
+OCI digest；IBD/OMA 只是首个真实 Package fixture。
+
+目标：腾讯 TCR 个人版；安装级共享 namespace `oplcloud`，每个已接纳 Cloud
+Tenant 一个私有 repository，路径
+`uswccr.ccs.tencentyun.com/oplcloud/<tenant-repository>`，不是每 Tenant 一个
+TCR namespace。Tenant ID 才是授权与持久映射身份；email local-part 仅是可
+冲突的初始 slug。Cloud Capability namespace 是另一个概念。
+
+| Fact / action | Owner | Non-owner boundary |
+| --- | --- | --- |
+| Tenant admission, verified email input, stable repository reservation and collision decision | `tenant` / CloudIdentity | Does not hold TCR credentials or write OCI layers |
+| Agent Package/version and uploaded bytes | `capability` | Not the TCR destination or Build output |
+| Approved Runtime release | `runtime_control` | Not Runtime implementation or per-Workspace state |
+| Repository resolution, OCI push, Build identity, output digest, readback | `build` | No user-selected destination; no per-Build Instance involvement |
+| Tenant authorization/target Workspace | `workspace` | No Build output or current Agent selection |
+| Application delivery and readiness | `serve`; TKE execution/readback by `fabric` | Instance does not install each Agent |
+| Append-only Build/application receipts | `ledger` | Does not become a Build or deployment writer |
+| Personal TCR account/namespace, Cloud Candidate deployment, TKE profile, Secret references | `opl-instance-medopl` | No per-application deployment workflow |
+
+**Stages**
+
+1. **SSOT and runtime inventory — in progress.** Keep the generic Agent chain and
+   the Instance/Cloud deployment boundary in the decision, architecture, status
+   and roadmap owners.
+2. **Tenant repository binding — cloud_complete.** CloudIdentity `CreateTenant`
+   admits the Tenant, writes the owner membership and reserves one stable
+   `tenant_id -> repository` binding in one command transaction. A collision gets
+   a deterministic suffix and never aliases two Tenants. On startup, the Tenant
+   owner backfills a binding for each pre-binding Tenant from its durable Tenant
+   ID and the installation registry facts, without re-reading historical Gateway
+   identity. The physical repository materializes on the first authorized Build
+   push.
+3. **Build destination implementation — cloud_complete.** Build reads the
+   Tenant-owned binding, persists `<repository>:<job-id>` as the immutable
+   destination and pushes only there. Retries, response loss and email changes
+   keep the original repository/digest; request JSON cannot override it.
+4. **Local generic owner-chain verification — cloud_complete.** Two Tenants,
+   collision, cross-Tenant refusal, retry/recovery and exact digest lineage pass
+   via the real BFF → Capability → BuildKit → Registry → Capability → Ledger
+   chain against a disposable Registry using the Tenant binding resolver.
+5. **Cloud Candidate deployment to Tencent/TKE.** Instance deploys the exact
+   Cloud Candidate only and supplies stable Cloud/TKE/TCR configuration and
+   Secret references once per installation/upgrade. Build gets scoped input-read
+   and output-write credentials; TKE workload pull uses a separate read identity.
+6. **Tencent-hosted Build acceptance — open.** Through the deployed Cloud
+   Console, admit a test Tenant and run a real Build; read back the Tenant
+   binding, Build destination, remote TCR manifest digest, Capability
+   version/descriptor and Ledger receipt, all bound to one Tenant and digest.
+7. **Cloud-driven TKE application acceptance — open.** If runtime delivery is in
+   scope, Cloud Serve/Fabric deploys that exact digest to a designated test
+   Workspace/TKE target; read back Pod image digest, readiness, port/health and
+   browser access. Instance does not deploy the Agent.
+8. **50-Tenant readiness — open.** Test 50 tenant bindings/reservations and
+   isolation without buying 50 Workspaces, then measure expected concurrent Build
+   and registry API rate against personal-TCR limits; record the peak before
+   setting load acceptance.
+
+Current source gap and evidence boundary:
+[implementation architecture](implementation-architecture.md#current-tenant-to-tcr-build-path)
+and the
+[binding receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-local.json)
+and [upgrade backfill receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-backfill-local.json).
+
 ### Required Deliverables
 
 | 最终交付物 | 生产者 → 接收者 | 可拿到、可使用的具体内容 | 接收条件 |

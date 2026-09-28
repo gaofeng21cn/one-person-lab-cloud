@@ -59,10 +59,18 @@ func (r *Runner) Validate() error {
 	}
 	return nil
 }
-func (r *Runner) Repository(tenantID, packageID string) string {
-	t := sha256.Sum256([]byte(tenantID))
-	p := sha256.Sum256([]byte(packageID))
-	return r.RegistryPrefix + "/" + hex.EncodeToString(t[:12]) + "/" + hex.EncodeToString(p[:12])
+// DestinationRepository joins one Tenant-reserved destination to the immutable
+// output identity. The destination comes from the Tenant owner; Build never
+// derives it from a request or from a caller-supplied value.
+func (r *Runner) DestinationRepository(binding *api.TenantRepositoryBinding) (string, error) {
+	if binding == nil || binding.GetRegistryHost() == "" || binding.GetRegistryNamespace() == "" || binding.GetRepository() == "" {
+		return "", errors.New("tenant repository binding is incomplete")
+	}
+	repo := binding.GetRegistryHost() + "/" + binding.GetRegistryNamespace() + "/" + binding.GetRepository()
+	if !repositoryPattern.MatchString(repo) {
+		return "", errors.New("tenant repository binding is not a safe output identity")
+	}
+	return repo, nil
 }
 func platform(p *api.ImagePlatform) (string, error) {
 	if p.GetOs() != api.ImagePlatformOsEnum_IMAGE_PLATFORM_OS_ENUM_LINUX {
