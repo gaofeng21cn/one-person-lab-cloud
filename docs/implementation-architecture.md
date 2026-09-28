@@ -916,6 +916,40 @@ publication admission, same-digest promotion, recovery and public readback.
 [Status](status.md) owns retained release and Instance evidence, while
 [roadmap](roadmap.md) owns unresolved qualification outcomes.
 
+### Current Tenant-to-TCR Build Path
+
+`services/gateway-integration/identity.CreateTenant` is the Cloud Tenant
+admission entry. It writes `tenant.tenants`, the owner membership and one
+`tenant.tenant_repository_bindings` row in one command transaction. The binding
+uses the installation's `OPL_WORKSPACE_REGISTRY_HOST` /
+`OPL_WORKSPACE_REGISTRY_NAMESPACE` and derives the initial repository-name
+candidate from the verified owner email local-part, with a deterministic suffix
+on collision. `GetTenantRepositoryBinding` exposes it to Build and the Console
+BFF only, guarded by the signed mTLS peer.
+
+`services/build/internal/build.Runner.DestinationRepository` joins the resolved
+binding into `host/namespace/repository`, and `CreateBuild` stores
+`<repository>:<build-job-id>` as the immutable `executor_ref`. The isolated live
+BuildKit tests exercise the same resolver against a disposable loopback
+Registry. This is the selected personal-TCR destination policy
+`uswccr.ccs.tencentyun.com/oplcloud/<tenant-repository>`. What remains open is
+the hosted proof, not the resolver: no recorded Build job is bound to the
+existing `oplcloud/huangrende` artifact, and no Tencent/TKE-hosted Cloud Build
+has pushed a Tenant-resolved destination yet.
+
+The current Console publisher selects a Cloud Capability namespace to organize
+Agent Packages. That object is not a TCR namespace or TCR repository. The
+generic product chain is Agent Package + approved Runtime + selected WebUI →
+one immutable OCI; IBD/OMA is a reference input used to exercise the chain, not
+a product-specific Build branch.
+
+The final `oplcloud/huangrende` sample OCI has remote TCR digest readback, while
+the local Build owner-chain receipt records a different artifact digest in a
+disposable Registry. Current evidence does not bind that remote digest to the
+output of the recorded Build job. The append-only
+[Build/TCR lineage audit](evidence/source-checks/2026-09-28-customer-private-oci-build-lineage-audit.json)
+records this distinction and the remaining source gap.
+
 
 ## Target owner transition under product review
 

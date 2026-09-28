@@ -200,8 +200,11 @@ an Instance operation with separate immutable evidence.
 从 `uswccr.ccs.tencentyun.com/oplcloud` 命名空间先选择 repository，再选择
 tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入后部署；用户打开该应用，
 其真实业务可用，后续更新、重启和兼容回滚保持已声明的持久数据。
-首个实际投放目标是 `ws-609081bc2298edd18e`：将 OPL App 切换为完整 IBD，
-保留原计算/存储身份、购买历史和隔离的 OPL App 数据。
+首个参考验收材料是 IBD Agent Package 与其应用依赖，目标 Workspace 为
+`ws-609081bc2298edd18e`。IBD 只用于验证通用 Agent Package + Runtime + WebUI
+链和应用部署能力，不定义 IBD 专属 Build/Registry/Serve 分支，也不改变
+Cloud 的 Agent SaaS 产品边界。其知识数据恢复与业务质量验收是独立于通用
+OCI Build 的样例应用验收。
 
 这是 Workspace 应用分发能力的交付范围。每个 Workspace 初期允许零个或一个
 选定应用，该应用可包含多个私有支持服务；OPL App 是默认应用。资源开通、
@@ -224,14 +227,96 @@ tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入
 统一正在完成本地验证。Cloud 源码不代表 IBD 实际投放，具体证据由
 [status](status.md#current-capability-baseline) 维护。
 
+### Generic Agent OCI Tenant Routing And Tencent/TKE Qualification
+
+本工作线面向所有 Agent Package，不以 IBD 为产品特例。目标输入固定为
+`Agent Package + approved Runtime + selected WebUI`，Build 输出一个不可变
+OCI digest。IBD/OMA 只是首个真实 Package fixture。
+
+已对齐的产品目标：当前使用腾讯 TCR 个人版；使用安装级共享 namespace
+`oplcloud`，为每个已接纳 Cloud Tenant 保留一个私有 repository 名称候选，
+优先取经验证的 Tenant 邮箱 `@` 前 local-part。路径形状为
+`uswccr.ccs.tencentyun.com/oplcloud/<tenant-repository>`，不是每个 Tenant
+一个 TCR namespace。Cloud Capability 的 Package namespace 是另一个概念。
+Tenant ID 才是授权和持久映射身份；email local-part 仅是可冲突的初始 slug。
+
+**Canonical owners**
+
+| Fact / action | Owner | Non-owner boundary |
+| --- | --- | --- |
+| Cloud Tenant admission, verified email input, stable repository slug reservation and collision decision | `tenant` / CloudIdentity | Does not hold TCR credentials or write OCI layers |
+| Agent Package/version and uploaded bytes | `capability` | Not the TCR repository destination or Build output |
+| Approved Runtime release | `runtime_control` | Not Runtime implementation or per-Workspace runtime state |
+| Repository resolution, repository ensure/push, Build identity, output digest and artifact readback | `build` | No user-selected destination and no Instance participation per Build |
+| Tenant authorization/target Workspace | `workspace` | No Build output or current Agent selection |
+| Application delivery, current deployment and readiness | `serve`; TKE resource execution/readback by `fabric` | Instance does not separately install each Agent application |
+| Append-only Build/application receipts | `ledger` | Does not become Build or deployment writer |
+| Personal TCR account/namespace, Cloud Candidate deployment, TKE profile and protected Secret references | `opl-instance-medopl` | Does not execute a per-application deployment workflow |
+
+**Stages and acceptance**
+
+1. **SSOT and runtime inventory — in progress.** Keep the generic Agent chain,
+   the personal-TCR path and the Instance/Cloud deployment boundary in the
+   decision, architecture, status and roadmap owners. Inventory the exact Cloud
+   Candidate deployment topology: a Dockerfile containing owner binaries is not
+   proof that Instance Compose/TKE starts and connects those owners.
+2. **Tenant repository binding — cloud_complete.** CloudIdentity `CreateTenant`
+   admits the Tenant, writes the owner membership and reserves one stable
+   `tenant_id -> repository` binding in one command transaction. The candidate
+   comes from the verified owner email local-part; a collision gets a
+   deterministic suffix and never aliases two Tenants. The physical repository
+   is materialized by the first authorized Build push on personal TCR.
+3. **Build destination implementation — cloud_complete.** Build reads the
+   Tenant-owned binding through the authenticated owner boundary, persists
+   `<repository>:<job-id>` as the immutable destination and pushes only there.
+   The global-prefix + hashed Tenant/Package destination is replaced. Retries,
+   response loss and email changes keep the original repository/digest;
+   request JSON cannot override the destination. Remaining: the hosted proof
+   below, not the resolver.
+4. **Local generic owner-chain verification.** Run the real BFF → Capability
+   upload → Runtime/WebUI selection → BuildKit → Registry → Capability ready
+   Version → Ledger receipt chain against a disposable Registry using the same
+   Tenant binding resolver. Test two Tenants, slug collision, cross-Tenant
+   refusal, retry/recovery and exact digest lineage. IBD may be one fixture;
+   add no IBD-specific production branch.
+5. **Cloud Candidate deployment to Tencent/TKE.** Instance deploys the exact
+   Cloud Candidate only. It supplies the stable Cloud/TKE/TCR configuration and
+   Secret references once per installation/upgrade. Build gets scoped input-read
+   and output-write credentials; TKE workload pull uses a separate read identity.
+   No application user supplies credentials or calls Instance.
+6. **Tencent-hosted Build acceptance.** Through the deployed Cloud Console,
+   admit a test Cloud Tenant and run a real generic Package + Runtime + WebUI
+   Build. Read back Tenant binding, Build job destination, remote TCR manifest
+   digest, Capability descriptor/version and Ledger receipt. All must bind the
+   same Tenant and output digest. This is the first proof that deployed Cloud
+   Build wrote the per-Tenant personal-TCR repository.
+7. **Cloud-driven TKE application acceptance.** If runtime delivery is in this
+   qualification scope, Cloud Serve/Fabric deploys that exact digest to a
+   designated test Workspace/TKE target. Read back Pod `imageID` digest,
+   readiness, port/health behavior, browser page and restart recovery. The
+   Instance receipt proves the Cloud Candidate/environment; Serve/Fabric/Ledger
+   evidence proves the Agent delivery. Instance does not deploy the Agent.
+8. **50-Tenant readiness.** First test 50 tenant bindings/repository
+   reservations and isolation without buying 50 Workspaces. Then measure the
+   expected concurrent Build and registry API rate against personal-TCR limits.
+   Only provision paid TKE Workspaces if a separate authorized acceptance needs
+   them. A 50-user statement alone is not a concurrency target; record the
+   expected peak before setting load acceptance.
+
+The current source gap is recorded in
+[implementation architecture](implementation-architecture.md#current-tenant-to-tcr-build-path).
+The 2026-09-28 `huangrende` TCR sample and local BuildKit owner-chain run are
+separate evidence until a same-Build-job provenance chain is captured; see the
+[status audit](status.md#customer-private-agent-oci-sample-publication).
+
 ### Required Deliverables
 
 | 最终交付物 | 生产者 → 接收者 | 可拿到、可使用的具体内容 | 接收条件 |
 | --- | --- | --- | --- |
 | Cloud 平台实现与 portable Candidate | Console / Control Plane / Fabric / Ledger → 本地安装与 Instance owner | 源码、实际 typed HTTP API、管理员界面、领域规则、owner-local schema/decoder/存量迁移、操作恢复和测试；确定 Cloud SHA 对应的 GHCR 多架构镜像，以及既有安装包、`opl-cloud-candidate.json` 和 `SHA256SUMS`。 | 五个闭环中相应 Cloud 行为有实际验证；Candidate 绑定 SHA/tree、index/platform digests、安装文件校验和及构建 provenance；支持另一已满足能力要求的应用时，只需登记其材料，无需再改代码或重建 Cloud。 |
 | OPL App 显式应用描述与存量迁移 | App 发布者 + Cloud 迁移 owner → 新部署与现有 Workspace | 现有镜像的版本化运行描述；原端口/探针/配置/凭据/挂载声明；可执行、可恢复的成功与未完成 Launch/Workspace 绑定迁移。迁移代码随 Cloud 交付，应用描述保留发布者归属。 | OPL App 经独立应用操作安装；原 `/data`、`/projects`、凭据、资源和购买事实保持；旧操作能按原合同完成，迁移后的真实查询/访问/生命周期调用可用。 |
-| IBD 应用交付材料 | IBD 发布者，Fabric 提供通用存储执行能力 → Cloud 准入与 Instance owner | 版本化、机器可读的运行描述；主/依赖 OCI 的完整不可变引用和平台；组件、端口、探针、资源、连接、配置与 Secret 接口、持久/临时挂载；数据/模型/PDF/索引引用和一致性校验和；版本化恢复、验证工具及兼容性说明。 | 主镜像和六个知识服务或明确的外部绑定均齐备；Docker-volume 数据可通过已实现且验证的通用 TKE/PVC 导入路径使用；恢复后的真实检索、问答、SSE 和引用证据通过；材料不包含凭据值。2026-09-28 已完成一个客户私有应用材料 OCI 的独立发布：`uswccr.ccs.tencentyun.com/oplcloud/huangrende@sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930`，证据见 [publication closeout receipt](evidence/source-checks/2026-09-28-customer-private-oci-publication-closeout.json)。这不等于 Instance 投放、Workspace 可用或正式 Cloud Product Release。 |
-| 指定 Workspace 的实际部署结果与不可变凭证 | `opl-instance-medopl` → 操作者与最终用户 | 对应 Candidate 的安装；Registry/Secret/provider/DNS/TLS/origin 绑定；限定目标的 IBD 部署、数据导入和可用入口；实际 Runtime、数据、使用及恢复/回滚读回；owner `receipts/` 下的新凭证。 | 凭证同时绑定准确的 Cloud、应用/依赖、数据与恢复工具身份、目标 Workspace、时间及实际结果。只有该层完成，才能声明 IBD 已在目标 Workspace 可用。 |
+| 参考 Agent 应用材料（IBD sample） | IBD 发布者 → 通用 Cloud Package/Build/Serve 路径 | 一组完整 Agent Package、Runtime、WebUI、依赖和可选数据恢复材料，用来验证通用交付合同；不产生 IBD 专属 Cloud 服务或 Build 路径。 | Package + Runtime + WebUI 的 OCI Build 按通用合同完成；若验收完整 IBD 业务，再单独验证知识服务、数据恢复、查询/SSE/引用等样例应用标准。 |
+| 指定 Workspace 的 Agent 实际部署结果与不可变凭证 | Cloud Serve/Fabric → 操作者与最终用户；Instance 提供 Cloud 运行环境 | Cloud Candidate 在腾讯环境运行；Cloud 通过 Serve/Fabric 将选定 Agent digest 投递至授权 Workspace/TKE；分别保留 Cloud Candidate/环境 readback 与 Agent 部署/runtime receipt。 | Agent OCI、目标 Workspace、Pod observed digest、健康/入口和时间相互绑定。Instance 只部署 Cloud 平台，不直接部署 Agent；只有 Cloud Agent runtime readback 完成才能声明该 Agent 在目标 Workspace 可用。 |
 | 操作说明与验收证据 | 各 owner → 后续运维和接入应用的操作者 | 可复现的登记、预检查、部署、更新、恢复、兼容回滚和故障续接说明；输入格式/示例、支持能力、权限边界；Cloud 检查证据、应用验证结果和 Instance receipt 引用。 | 操作者能用同一版本材料复现完整操作，并区分完成、失败、处理中和结果未知；镜像更新与数据恢复有各自明确步骤和副作用。 |
 
 交付形态分为三条可独立版本化的产物链：
@@ -243,8 +328,10 @@ tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入
    CP/Fabric 实际 API 消费的机器可读格式，数据与恢复工具位于批准的产物存储。
    交付清单关联这些确定引用和校验和。简单应用可以由管理员表单生成同样的
    部署描述，不强制新增 OPL Package、市场发布或第二个 Registry。
-3. **安装结果。** Instance 使用平台和应用材料，加上自己的配置/Secret 绑定
-   执行投放，通过 receipt 关联上述身份。应用版本发布不等同于 Cloud Product
+3. **安装结果。** Instance 部署 Cloud Candidate，并向 Cloud 提供自身配置、
+   Secret 引用和 provider capability。Cloud Serve/Fabric 使用已授权的应用材料
+   执行 Workspace Agent 部署并回读。Cloud Candidate 环境 receipt 与 Agent
+   deployment receipt 分别由其 owner 持有。应用版本发布不等同于 Cloud Product
    Release；正式 Product Release 若另行请求，按现有机制提升同一已验证 digest。
 
 ### Business Work Packages
@@ -258,7 +345,7 @@ tag/版本并解析固定 digest，补齐受支持的应用配置和数据输入
 | `WORKSPACE-APPLICATION-ORIGIN-01` | 每个 Workspace–应用绑定使用派生 origin；平台凭据不进入应用；应用 Cookie/Authorization 语义保持。 | Control Plane 路由与访问边界；Instance 通配 DNS/TLS。 | 3 |
 | `WORKSPACE-APPLICATION-DATA-01` | 真实数据跨兼容更新/重启保留，初始数据可显式、一致地导入。 | Control Plane 逻辑数据/恢复操作；应用发布者的数据算法；Fabric 存储/执行；Ledger。 | 2 的稳定绑定，3 的导入和数据使用 |
 | `WORKSPACE-APPLICATION-LIFECYCLE-01` | 所有当前/未完成应用组件随 Workspace 权益、续费、到期、删除和配置操作正确演进。 | Control Plane 生命周期；Fabric；Ledger；Sub2API 保留钱包/Key authority。 | 每个闭环随能力迁移，4 完成全部存量与竞争验证 |
-| `WORKSPACE-IBD-DEPLOYMENT-01` | IBD 经 OPL App 相同的通用路径，在指定 Workspace 真实可用。 | IBD 发布者提供材料；Cloud 完成公共能力；Instance 负责实际采用。 | 材料可立即准备，3 本地使用，5 指定目标投放 |
+| `AGENT-OCI-TENANT-DELIVERY-01` | 任何合规 Agent Package 都能与批准 Runtime/WebUI 合成 Tenant-scoped OCI，并经 Cloud Serve/Fabric 投递；IBD 仅为参考样例。 | Tenant 维护稳定仓库绑定；Build 构建/推送/摘要回读；Serve/Fabric 投递；Instance 仅部署 Cloud Candidate 并提供环境配置。 | 本地双 Tenant owner chain → Cloud Candidate → Tencent-hosted Build/TCR readback → Cloud-owned Workspace/TKE runtime readback |
 
 ### Implementation Sequence
 
@@ -397,11 +484,13 @@ PostgreSQL/Local-Docker 检查 → 通过既有 PR/CI/main 流程形成确定 ca
 → 既有 Candidate workflow 构造确定 digest 与安装包 → 对该 Candidate 进行干净
 Linux Local-Docker 安装/使用资格验证。源码检查和 Candidate 验证分别保留证据。
 
-**Instance 交付链路：** Instance 读取同一 Candidate + OPL App 迁移材料 + IBD
-完整材料，落实自身配置/Secret/Registry/域名和目标状态 → 受保护 owner 工作流
-部署平台并完成必要的存量迁移 → 对目标 Workspace 预检查、中断/替换、导入数据
-和部署 IBD → Runtime/数据/真实使用、重启及兼容回滚读回 → 新的不可变 receipt。
-目标资源满足全组件及恢复峰值才执行；容量不足返回明确缺项，扩容采购是独立动作。
+**Instance 交付链路：** Instance 读取同一 Candidate，落实自身 Cloud 配置、
+Secret 引用、TKE Provider Profile、域名和目标环境 → 通过受保护 owner workflow
+部署/升级 `one-person-lab-cloud` 并保留 Cloud Candidate/runtime receipt。Instance
+不安装 OPL App 或 IBD。Cloud 登录与 Build 验收通过后，由 Cloud Serve/Fabric 对
+获准的测试 Workspace 执行 Agent 预检查、投递和 runtime readback；Cloud owner
+receipt 绑定 Agent OCI、Workspace、Pod digest、健康/入口与数据结果。目标资源
+满足全组件及恢复峰值才执行；容量不足返回明确缺项，扩容采购是独立动作。
 
 **验收：** 操作者收到上述五组交付物；目标 Workspace 的完整 IBD 可访问并真实
 使用，原资源身份、财务历史和被隔离的 OPL App 数据保持；操作可从相同输入

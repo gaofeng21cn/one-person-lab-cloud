@@ -323,31 +323,71 @@ records the pre-publication source boundary. The subsequent customer-private
 publication is recorded separately below and does not upgrade this source
 receipt into a Product Release or Instance claim.
 
-### Customer-private OMA application OCI publication
+### Customer-private Agent OCI sample publication
 
-On 2026-09-28, the Cloud Build path completed one bounded application-material
-publication for the customer email local-part `huangrende`. The exact OMA Agent
-Package, the selected Runtime image and the selected WebUI image were bound as
-one Build input, composed by BuildKit, and published to
-`uswccr.ccs.tencentyun.com/oplcloud/huangrende`.
+On 2026-09-28, one sample Agent OCI was published to the customer TCR
+repository for the verified email local-part candidate `huangrende`. The sample
+uses an IBD/OMA Agent Package, but IBD is only a reference application: the
+product Build contract is generic Agent Package + approved Runtime + selected
+WebUI → one immutable OCI.
 
 The published tag is
 `oma-ibd-evidence-assistant-20260928`; the remote manifest readback is
 `sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930`.
-The image contains `/agent/agent/agent-pack.json` and
-`/app/aionui-web/static/index.html`, and retains the Runtime command
-`start --remote --port 3000`. The exact input references, composition, checks
-and output digest are retained in the append-only
-[publication closeout receipt](./evidence/source-checks/2026-09-28-customer-private-oci-publication-closeout.json).
+The remote image readback is recorded as containing
+`/agent/agent/agent-pack.json` and `/app/aionui-web/static/index.html`, and
+retaining the Runtime command `start --remote --port 3000`. The exact sample
+input references and remote digest are in the append-only
+[publication receipt](./evidence/source-checks/2026-09-28-customer-private-oci-publication.json).
 
-This is the Build/application-material lane only. TCR is the approved storage
-location for application materials; Instance owns installation configuration
-and protected deployment. Therefore Instance Candidate admission, same-digest
-protected-runtime readback and Workspace availability were not prerequisites
-for this publication and are not claimed. A formal Cloud Product Release was
-also not requested or published. The related account-admission policy is
-tracked in [Issue #356](https://github.com/gaofeng21cn/one-person-lab-cloud/issues/356);
-it does not change this build boundary.
+This must not be conflated with the Cloud Build owner-chain test: that test
+executed BuildKit, Capability and Ledger against a disposable loopback Registry
+and recorded local artifact digest
+`sha256:b5ae0643f34702ee27c55cc519fc084959b95b52599b8869308c848791ad431d`.
+The local Build receipt and the customer TCR publication receipt have different
+artifact digests; no recorded Build job/provenance currently binds that local
+owner-chain run to the published TCR digest. The new
+[lineage-audit receipt](./evidence/source-checks/2026-09-28-customer-private-oci-build-lineage-audit.json)
+corrects the claim boundary without overwriting the earlier action receipts.
+
+This proves one sample OCI exists in customer TCR. The general Tenant-to-
+repository routing now exists in Cloud source and is verified locally (below);
+a TKE-hosted Cloud Build pushing a Tenant-resolved destination remains the
+outstanding hosted proof. Instance deploys the Cloud product and injects
+installation-level configuration/Secret references. Once Cloud is running,
+Cloud Build publishes the Agent OCI and Cloud Serve/Fabric owns any subsequent
+Workspace/TKE application deployment. Instance does not deploy the IBD sample as
+a separate application workflow. No formal Cloud Product Release is claimed.
+
+### Tenant-scoped application OCI destination (Cloud source, local)
+
+CloudIdentity `CreateTenant` now admits a Cloud Tenant, writes its owner
+membership, and reserves one stable `tenant_id -> repository` binding in a
+single command transaction. The initial repository name is derived from the
+verified owner email local-part; a collision receives a deterministic suffix,
+so two Tenants never alias one repository. The installation supplies
+`OPL_WORKSPACE_REGISTRY_HOST` / `OPL_WORKSPACE_REGISTRY_NAMESPACE` together as
+non-secret installation facts, and `GetTenantRepositoryBinding` exposes the
+binding to Build and the Console BFF only over the authenticated owner boundary.
+
+Build resolves its output destination from that binding through
+`Runner.DestinationRepository` and stores `<repository>:<job-id>` as the
+immutable `executor_ref`, replacing the previous global-prefix + hashed
+Tenant/Package path. The append-only
+[binding receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-local.json)
+records the exact commands and the remaining boundary.
+
+Verified locally: `TestRepositorySlugCandidate`; the real `CreateTenant` /
+`GetTenantRepositoryBinding` path over isolated PostgreSQL (platform-admin
+gate, first Tenant reserves `huangrende`, a second same-local-part Tenant gets
+`huangrende-1`, stable re-read, `NotFound` for an unknown Tenant, Build/BFF
+read allowed and Ledger read refused); and the full live owner chain
+`TestLivePackageBuildAndRestartReadback`, which pushed to
+`127.0.0.1:<port>/result/tenant-live` — the Tenant-resolved
+`host/namespace/repository`, not the hashed path. `npm run verify:local`
+passes. Still open: no Tencent/TKE-hosted Cloud Build has pushed a
+Tenant-resolved destination, and the existing `oplcloud/huangrende` digest is
+not bound to a recorded Build job.
 
 Ledger now consumes upload, Build confirmation/failure and version-registration
 events through its authenticated gRPC Inbox and existing receipt store. Each

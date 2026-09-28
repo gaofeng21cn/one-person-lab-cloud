@@ -87,6 +87,9 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	regName := "opl-build-test-reg-" + suffix
 	bkName := "opl-build-test-kit-" + suffix
 	registry := "127.0.0.1:" + rp
+	// Build resolves each Tenant's output destination from the Tenant owner. The
+	// live harness points those reserved bindings at this disposable registry.
+	t.Setenv("OPL_BUILD_TEST_REGISTRY_HOST", registry)
 	docker("run", "-d", "--name", regName, "-p", registry+":"+rp, "-p", "127.0.0.1:"+bp+":"+bp, "-e", "REGISTRY_HTTP_ADDR=0.0.0.0:"+rp, "registry:2")
 	t.Cleanup(func() { exec.Command("docker", "rm", "-fv", regName).Run() })
 	cfg := filepath.Join(root, "buildkit.toml")
@@ -315,7 +318,11 @@ func TestLivePackageBuildAndRestartReadback(t *testing.T) {
 	}
 	verifyOwnerChain(t, ctx, dsn, capability, capabilityAddr, r, input, identity)
 	jobID := "build_" + strings.Repeat("2", 32)
-	repository := r.Repository("tenant-live", input.PackageId)
+	binding := identity.repositoryBinding(t, registry, "result", "tenant-live", "tenant-live")
+	repository, e := r.DestinationRepository(binding)
+	if e != nil {
+		t.Fatal(e)
+	}
 	t.Log("executing production Runner against isolated BuildKit and registry")
 	result := r.Execute(ctx, jobID, repository, input, func(message string) { t.Log(message) })
 	if result.Err != nil {

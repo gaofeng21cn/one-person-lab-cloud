@@ -22,6 +22,79 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-28: Tenant-Scoped Application OCI Repositories On Personal TCR
+
+The current customer TCR account is the Tencent TCR personal edition. The
+application-material distribution target is therefore one shared TCR namespace
+owned by the installation, `oplcloud`, with one private repository per admitted
+Cloud Tenant:
+
+```text
+Tenant A  -> uswccr.ccs.tencentyun.com/oplcloud/alice
+Tenant B  -> uswccr.ccs.tencentyun.com/oplcloud/huangrende
+```
+
+This decision uses a repository per Tenant, not a TCR namespace per Tenant. A
+repository is the initial OCI destination for the first approximately fifty
+users. A Tenant's verified email local-part is only the initial
+repository-name candidate. Cloud must reserve the candidate, reject conflicts,
+and retain an immutable `tenant_id -> repository` binding; email changes never
+silently move an existing artifact history. A collision requires an explicit
+resolved slug; it must never silently route two Tenants to the same repository.
+
+The terms below are deliberately separate:
+
+- **Cloud Capability namespace:** a tenant-owned Package organization inside
+  Cloud; it is not a TCR namespace or repository.
+- **TCR namespace:** the installation-owned `oplcloud` registry grouping.
+- **TCR repository:** the Tenant-scoped OCI destination under that grouping.
+- **Build artifact:** the immutable `host/namespace/repository@sha256` result.
+
+Ownership is split without creating a second registry authority:
+
+- `tenant`/CloudIdentity owns Tenant admission and the stable Tenant identity;
+- the Instance owner owns deployment of the Cloud installation and supplies
+  protected references for the personal TCR account, the installation-level
+  `oplcloud` namespace and scoped registry credential; it does not create each
+  Tenant repository or deploy Tenant applications;
+- `tenant` owns the stable Tenant-to-repository-name reservation; the verified
+  local-part is a naming input, not the authorization identity;
+- `capability` owns Package namespaces, Package versions and uploaded Package
+  bytes inside Cloud;
+- `build` consumes the Tenant-owned destination through an authenticated typed
+  owner read and owns the OCI push, immutable Build output identity, digest
+  readback and artifact evidence;
+- `serve`/Fabric own deployment of a selected OCI to a Workspace/TKE runtime;
+- `ledger` owns append-only Build/deployment evidence.
+
+The Instance configures the installation once; it does not create each
+Tenant's repository or participate in each application Build. Users never
+submit a TCR destination or credential in a Build request. Cloud Tenant
+admission reserves the destination under the Tenant owner, and Build retries
+preserve the original repository and Build identity. The preferred initial
+behavior is to materialize the personal-TCR repository on the first authorized
+Build push, avoiding empty repositories; immediate creation at Tenant
+admission is a separate product behavior and is not required for Build.
+
+This is a generic Agent distribution path:
+
+```text
+Agent Package + approved Runtime + selected WebUI -> one immutable OCI
+```
+
+IBD is one reference Agent Package/application used to exercise the generic
+path. It does not define a separate IBD build owner, registry policy, OCI
+format, or mandatory multi-service deployment path.
+
+Local and Tencent/TKE implement the same logical resolver and ownership rules.
+They may use different registry endpoints and credentials. The Cloud source now
+implements the first slice: Tenant admission creates the Tenant, its owner
+membership and its stable repository binding in one transaction, and Build
+resolves the destination through the Tenant owner instead of hashing
+Tenant/Package ids. What remains unproven is the hosted path: no recorded Build
+job binds the existing `huangrende` TCR digest, and no Tencent/TKE-hosted Cloud
+Build has yet pushed a Tenant-resolved destination.
+
 ## 2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture
 
 This repository's target product is Agent SaaS: a customer selects an Agent
@@ -48,11 +121,12 @@ The product has one Agent delivery chain, not parallel Workspace and Agent Servi
 The owner flow is: the user may start upload in the Serve experience, while Capability owns upload sessions, Package metadata/versions and immutable Package bytes/references; Build fixes exact Package, WebUI and Runtime-release inputs and owns the build job and OCI evidence; Runtime Control owns the approved Runtime release catalog and immutable Runtime references consumed by Build, not deployed Agent instances; Workspace owns the target Workspace and resource entitlement; Fabric provisions/binds compute, storage and network resources and owns those resource facts; Serve deploys the built OCI to the authorized Workspace, owns deployment/readiness/routing state and exposes API, Embed and Hosted UI access to that same Agent. The Runtime implementation is supplied by the OPL App/Framework owner and is packaged into the OCI. Ledger records required evidence without becoming a lifecycle writer.
 
 For avoidance of doubt, this is the new-customer entry: Console/Serve starts
-the native OMA Package flow, the approved OPL App Runtime and selected WebUI are
-fixed into a Build-owned immutable TCR OCI, and the customer selects that Agent
-version together with the Workspace plan. A successful new-customer outcome
-requires Serve readback of the delivered/current Agent; a resource-only
-readback is intermediate evidence, not completion. The earlier
+the generic Agent Package flow, the approved OPL App Runtime and selected WebUI
+are fixed into a Build-owned immutable TCR OCI, and the customer selects that
+Agent version together with the Workspace plan. IBD is a reference package for
+testing this generic contract, not a product-specific branch. A successful
+new-customer outcome requires Serve readback of the delivered/current Agent; a
+resource-only readback is intermediate evidence, not completion. The earlier
 `resource_only` order remains valid only as a retained historical/legacy
 contract and is not silently converted into a new Agent order.
 

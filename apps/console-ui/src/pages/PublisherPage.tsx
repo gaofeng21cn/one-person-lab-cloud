@@ -6,8 +6,11 @@ import "./publisher.css";
 
 type Session = { actorId: string; tenantId?: string; csrfToken: string };
 type Entry = { id: string; name: string; versionLabel?: string; status?: string };
-type Part = { partNumber: number; etag: string; sizeBytes: number; sha256: string };
-type Upload = { id: string; packageVersionId: string; partSizeBytes: number; completedParts: Part[] };
+// The canonical contract types the byte-count fields as NonnegativeInt64: a JSON
+// decimal string, never a JavaScript number. The wire shape therefore carries
+// strings both directions.
+type Part = { partNumber: number; etag: string; sizeBytes: string; sha256: string };
+type Upload = { id: string; packageVersionId: string; partSizeBytes: string; completedParts: Part[] };
 type Build = { id: string; status: string; stage: string; artifactDigest?: string; resultCapabilityVersionId?: string };
 type Version = { id: string; status: string; artifactDigest: string; deploymentDescriptorDigest: string };
 type Selection = { namespaceId: string; namespaceName: string; packageId: string; packageName: string; versionLabel: string; runtimeId: string; webuiId: string };
@@ -140,20 +143,21 @@ export function PublisherPage() {
       let upload: Upload;
       if (current.uploadId) upload = await getJson<Upload>(`${base}/uploads/${encodeURIComponent(current.uploadId)}`, { signal: abort.signal });
       else {
-        upload = await command<Upload>(`/packages/${encodeURIComponent(current.packageId)}/uploads`, { versionLabel, fileName: file.name, sizeBytes: file.size, sha256: hash }, "upload");
+        upload = await command<Upload>(`/packages/${encodeURIComponent(current.packageId)}/uploads`, { versionLabel, fileName: file.name, sizeBytes: String(file.size), sha256: hash }, "upload");
         current.uploadId = upload.id; current.packageVersionId = upload.packageVersionId; save(active, current);
       }
       const parts: Part[] = [];
-      if (!(upload.partSizeBytes > 0)) throw new Error("上传服务没有返回有效分片大小。");
-      for (let offset = 0, number = 1; offset < bytes.byteLength; offset += upload.partSizeBytes, number++) {
-        const chunk = bytes.slice(offset, Math.min(bytes.byteLength, offset + upload.partSizeBytes));
+      const partSize = Number(upload.partSizeBytes);
+      if (!(partSize > 0)) throw new Error("上传服务没有返回有效分片大小。");
+      for (let offset = 0, number = 1; offset < bytes.byteLength; offset += partSize, number++) {
+        const chunk = bytes.slice(offset, Math.min(bytes.byteLength, offset + partSize));
         const checksum = await sha256(chunk);
-        const done = upload.completedParts.find((p) => p.partNumber === number && p.sha256 === checksum && p.sizeBytes === chunk.byteLength);
+        const done = upload.completedParts.find((p) => p.partNumber === number && p.sha256 === checksum && p.sizeBytes === String(chunk.byteLength));
         if (done) { parts.push(done); continue; }
         setMessage(`正在上传分片 ${number}…`);
-        const permit = await command<UploadPermit>(`/uploads/${encodeURIComponent(upload.id)}/parts`, { partNumber: number, sizeBytes: chunk.byteLength, sha256: checksum }, `part-${number}`);
+        const permit = await command<UploadPermit>(`/uploads/${encodeURIComponent(upload.id)}/parts`, { partNumber: number, sizeBytes: String(chunk.byteLength), sha256: checksum }, `part-${number}`);
         const etag = await uploadPackagePart(permit, chunk, checksum, abort.signal);
-        parts.push({ partNumber: number, etag, sizeBytes: chunk.byteLength, sha256: checksum });
+        parts.push({ partNumber: number, etag, sizeBytes: String(chunk.byteLength), sha256: checksum });
       }
       await command(`/uploads/${encodeURIComponent(upload.id)}/complete`, { parts }, "complete");
       const job = await command<Build>("/builds", { packageVersionId: upload.packageVersionId, runtimeVersionId: runtimeId, webuiVersionId: webuiId }, "build");

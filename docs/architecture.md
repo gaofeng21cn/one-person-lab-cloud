@@ -302,15 +302,17 @@ Saga; Fabric provisions and reads back infrastructure; Serve deploys the exact
 OCI and owns Agent readiness, access and the current deployment. A resource
 readback alone is never a successful new-customer outcome.
 
-The Agent input chain is fixed and reproducible: Capability owns the native OMA
-Package and immutable version, Runtime Control supplies an approved OPL App
-Runtime release, the selected reference WebUI is fixed, and Build emits a
-readable immutable TCR OCI digest. The customer chooses the resulting Agent
-version and plan in Console; the customer does not install an application
-afterward and an administrator does not perform a separate application
-distribution step for this new-customer path. Deployment can fail or be
-retried without repeating a settled purchase; failure remains distinct from
-resource fulfillment and is read back by its owning service.
+The Agent input chain is generic and reproducible: Capability owns an Agent
+Package and immutable version, Runtime Control supplies an approved Runtime
+release, the selected compatible WebUI is fixed, and Build emits one readable
+immutable TCR OCI digest. IBD/OMA is a reference Package and application used
+to exercise this chain; it does not define the package model or a special IBD
+build/deployment path. The customer chooses the resulting Agent version and
+plan in Console; the customer does not install an application afterward and
+an administrator does not perform a separate application distribution step
+for this new-customer path. Deployment can fail or be retried without
+repeating a settled purchase; failure remains distinct from resource
+fulfillment and is read back by its owning service.
 
 The historical `resource_only` Launch remains valid for existing purchases and
 unfinished obligations. Its retained completion conditions and any later
@@ -378,6 +380,36 @@ selection capability rather than an anonymous one, and the instance injects the
 browse credential into Control Plane while the runtime keeps its own pull
 credential. The browsable namespace boundary is server-side admission policy, so
 configuring an endpoint never widens it.
+
+For the current Tencent TCR personal installation, application output uses the
+installation-owned `oplcloud` namespace and a private repository reserved for
+each admitted Cloud Tenant. The Tenant owner reserves a stable
+`tenant_id -> repository` binding; the verified email local-part is only the
+initial name candidate and collision/rename handling must preserve the binding.
+Build reads that binding through an authenticated owner boundary and is the
+only writer of the OCI result. Neither the browser nor an application Build
+request can select another Tenant's repository. Instance configures the
+installation's TCR account, namespace and scoped credential references once;
+it does not create or deploy a Tenant application for each Build.
+
+This is distinct from the Cloud Capability namespace, which organizes Package
+metadata and source bytes. TCR namespace, TCR repository and Cloud Capability
+namespace are three different identities. The stable OCI identity returned to
+Capability and Serve remains `host/namespace/repository@sha256`, not a mutable
+tag. Tencent personal TCR may create a repository on its first authorized push;
+whether Cloud reserves only the name at Tenant admission or also creates the
+empty repository then is decided by the owning Tenant/Build onboarding path,
+not by a per-application Instance workflow.
+
+Current source implements the Tenant destination binding. CloudIdentity
+`CreateTenant` reserves one stable `tenant_id -> repository` destination in the
+same transaction as the Tenant and its owner membership, and
+`GetTenantRepositoryBinding` exposes it to Build over the authenticated owner
+boundary. Build resolves its output repository from that binding. The live local
+BuildKit test exercises this resolver against a disposable registry. Still
+unproven is the hosted result: the customer-specific `oplcloud/huangrende`
+readback is a separate artifact fact, and no Tencent/TKE-hosted Cloud Build has
+yet pushed a Tenant-resolved destination.
 
 New Agent versions are produced from the approved Package + Runtime + WebUI
 chain and are selected by the customer for a specific Workspace and quote.

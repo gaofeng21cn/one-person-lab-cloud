@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -49,6 +50,30 @@ func identityConn(t *testing.T, address string, peer owneridentity.Service) *grp
 }
 func (s *liveIdentity) auth(t *testing.T, owner owneridentity.Owner) api.CloudIdentityAuthorizationClient {
 	return api.NewCloudIdentityAuthorizationClient(identityConn(t, s.address, owner.Service()))
+}
+
+// reserveRepository seeds a Tenant's application-OCI destination exactly as
+// Tenant admission reserves it, pointing at the disposable local registry the
+// live Build tests run. It exercises the real destination resolver instead of a
+// test-only shortcut.
+func (s *liveIdentity) reserveRepository(t *testing.T, host, namespace, repository, tenantID string) {
+	t.Helper()
+	if _, e := s.db.ExecContext(context.Background(), `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES($1,$2,$3,$4)`, tenantID, host, namespace, repository); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func (s *liveIdentity) repositoryBinding(t *testing.T, host, namespace, repository, tenantID string) *api.TenantRepositoryBinding {
+	t.Helper()
+	client := s.auth(t, owneridentity.Build)
+	binding, e := client.GetTenantRepositoryBinding(context.Background(), &api.GetTenantRepositoryBindingRequest{TenantId: tenantID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if binding.GetRegistryHost() != host || binding.GetRegistryNamespace() != namespace || binding.GetRepository() != repository {
+		t.Fatalf("binding %v does not match reserved destination %s/%s/%s", binding, host, namespace, repository)
+	}
+	return binding
 }
 func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentity {
 	t.Helper()
@@ -121,6 +146,18 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if e != nil {
 		t.Fatal(e)
 	}
+	// The live Build tests run the real Tenant destination resolver. Reserve a
+	// binding for each seeded Tenant against the disposable local registry the
+	// harness starts, mirroring Tenant admission's own reservation.
+	host, namespace := os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST"), "result"
+	if host != "" {
+		if _, e = db.ExecContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES('tenant-live',$1,$2,'tenant-live'),('another-tenant',$1,$2,'another-tenant')`, host, namespace); e != nil {
+			t.Fatal(e)
+		}
+	} else {
+		t.Fatal("OPL_BUILD_TEST_REGISTRY_HOST must be set for the live Build destination resolver")
+	}
+	service.ConfigureRegistry(host, namespace)
 	cfg := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{}}
 	for _, p := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Build.Service(), owneridentity.Capability.Service(), owneridentity.RuntimeControl.Service()} {
 		cfg.Peers[p] = identityPeerToken

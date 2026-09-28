@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_customer_tcr_build_lineage_audit",
+  "recordedAt": "2026-09-28T22:28:29+08:00",
+  "status": "published_sample_artifact_and_local_build_chain_are_separate_evidence",
+  "scope": "Read-only SSOT/evidence reconciliation for the generic Agent Package + Runtime + WebUI build path. IBD/OMA is a reference sample only. No registry write, deployment, provider mutation or real-money mutation was performed by this audit.",
+  "sampleTcrArtifact": {
+    "reference": "uswccr.ccs.tencentyun.com/oplcloud/huangrende@sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "manifestDigest": "sha256:ce27c4cbb6ff72cbb5615f07a737a76e246c8d89565412b48d4c20024b435930",
+    "remoteManifestReadback": "recorded_passed_in_2026-09-28-customer-private-oci-publication.json",
+    "samplePackage": "IBD/OMA Agent Package; example input, not an IBD-specific product build path"
+  },
+  "localBuildOwnerChain": {
+    "receipt": "2026-09-28-oma-runtime-webui-local-build-readback.json",
+    "artifactDigest": "sha256:b5ae0643f34702ee27c55cc519fc084959b95b52599b8869308c848791ad431d",
+    "registry": "disposable loopback Registry",
+    "buildkitCapabilityLedgerRecovery": "recorded_passed"
+  },
+  "currentBuildSource": {
+    "repositoryResolver": "services/build/internal/build/runner.go:Runner.Repository",
+    "rule": "OPL_BUILD_REGISTRY_PREFIX/<first-12-bytes-of-sha256(tenantID)>/<first-12-bytes-of-sha256(packageID)>:<buildJobID>",
+    "tenantRegistryBinding": "not_implemented",
+    "emailLocalPartDestination": "not_implemented",
+    "tencentTkeHostedBuildToCustomerRepository": "not_proven"
+  },
+  "evidenceBoundary": {
+    "proven": [
+      "A sample Agent OCI manifest was read back from the customer-private TCR repository at the stated digest.",
+      "The local Cloud owner chain can compose Package + Runtime + WebUI through BuildKit, persist owner events and recover the exact local Registry artifact after worker acknowledgement loss."
+    ],
+    "notProven": [
+      "That the customer TCR digest is the output of the recorded local Build job.",
+      "That a Tencent/TKE-hosted Cloud Build job selected the Tenant's email-local-part repository and pushed this digest there.",
+      "Automatic Tenant repository reservation/provisioning or multi-Tenant repository isolation on TCR."
+    ]
+  },
+  "correctedClaim": "The sample TCR publication and local Build owner-chain verification are two successful but separately evidenced facts. Their same-job provenance link is not established.",
+  "instanceBoundary": "Instance deploys one-person-lab-cloud and injects installation-level configuration. Cloud Build owns Agent OCI publication; Cloud Serve/Fabric owns any Agent deployment to a Workspace/TKE runtime.",
+  "sideEffects": {
+    "registryWrites": 0,
+    "providerActions": 0,
+    "productionWrites": 0
+  }
+}
