@@ -100,6 +100,9 @@ chain is finished. Open work in dependency order:
 4. The Cloud Console now has the first real Agent directory/detail read surface:
    `/console/agents` and `/console/agents/:packageId` read Package,
    PackageVersion, CapabilityVersion and Build owner facts through the BFF.
+   The September 28 repair completes the real Capability list implementation and
+   current ready-version projection; isolated owner tests cover the visibility
+   and filtering boundary ([source receipt](./evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json)).
    Remaining F04/F05/F06 work is the explicit upload/build-log/retry/archive/
    down-level mutation surface and its owner operations; do not treat the
    current readback page or source fixtures as a completed deployment chain.

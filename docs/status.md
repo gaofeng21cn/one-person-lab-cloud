@@ -116,6 +116,16 @@ cross-database selection transaction. Build persistence includes the exact
 
 ### Cloud Console Agent directory and detail readback
 
+The September 28 source repair implements the previously missing Capability
+version list, preserves status/cursor/limit filters through the BFF, and derives
+Package's latest ready version from Capability rows. Isolated PostgreSQL tests
+exercise tenant/private visibility, official packages, status, pagination and
+active references. Native OMA upload validation now checks the upstream
+candidate identity and rejects duplicate index paths; the canonical digest
+check is compared with Framework's actual serializer. See the
+[source repair receipt](./evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json).
+These checks establish source acceptance without claiming production adoption.
+
 The Cloud Console now exposes `/console/agents` and
 `/console/agents/:packageId`. The directory reads Capability-owned Package DTOs;
 the detail page reads the Package, PackageVersion page, CapabilityVersion page,

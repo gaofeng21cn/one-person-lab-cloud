@@ -227,7 +227,15 @@ func (s *Server) registerPublisherRoutes(mux *http.ServeMux) {
 		return s.runtimeControl.ListRuntimeVersions(r.Context(), &api.ListRuntimeVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor"))})
 	})
 	s.publisherRoute(mux, "GET /api/v2/capability-versions", owneridentity.Capability, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
-		return s.capability.ListCapabilityVersions(r.Context(), &api.ListCapabilityVersionsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor")), QueryPackageId: proto.String(r.URL.Query().Get("packageId"))})
+		query := &api.ListCapabilityVersionsRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryPackageId: optionalQuery(r, "packageId")}
+		if value := r.URL.Query().Get("status"); value != "" {
+			n, ok := api.ListCapabilityVersionsRpcRequestStatusEnum_value["LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_"+strings.ToUpper(value)]
+			if !ok || n == 0 {
+				return nil, status.Error(codes.InvalidArgument, "invalid CapabilityVersion status")
+			}
+			query.QueryStatus = api.ListCapabilityVersionsRpcRequestStatusEnum(n).Enum()
+		}
+		return s.capability.ListCapabilityVersions(r.Context(), query)
 	})
 	s.publisherRoute(mux, "GET /api/v2/builds", owneridentity.Build, api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTBUILDS, api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_TENANT, "", nil, func(r *http.Request, c *api.CallContext, body proto.Message) (proto.Message, error) {
 		return s.build.ListBuilds(r.Context(), &api.ListBuildsRpcRequest{Context: c, QueryCursor: proto.String(r.URL.Query().Get("cursor")), QueryPackageVersionId: proto.String(r.URL.Query().Get("packageVersionId"))})

@@ -67,3 +67,36 @@ func TestPublisherCommandsPreserveOnlyAuthenticatedContext(t *testing.T) {
 		t.Fatal("cross-origin write reached owner")
 	}
 }
+
+type capabilityListProbe struct {
+	api.CapabilityProductServiceClient
+	received *api.ListCapabilityVersionsRpcRequest
+}
+
+func (p *capabilityListProbe) ListCapabilityVersions(_ context.Context, r *api.ListCapabilityVersionsRpcRequest, _ ...grpc.CallOption) (*api.CapabilityVersionPage, error) {
+	p.received = r
+	return &api.CapabilityVersionPage{}, nil
+}
+func TestCapabilityVersionListPreservesFilters(t *testing.T) {
+	identity := allowedIdentity()
+	identity.decision.Action = api.AuthorizationActionEnum_AUTHORIZATION_ACTION_ENUM_LISTCAPABILITYVERSIONS
+	identity.decision.AudienceOwner = api.OwnerEnum_OWNER_ENUM_CAPABILITY
+	identity.decision.Resource = &api.AuthorizationResource{Kind: api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE}
+	probe := &capabilityListProbe{}
+	handler := NewPublisherHandler(probe, nil, nil, identity)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, sessionRequest("GET", "/api/v2/capability-versions?packageId=package-a&status=ready&cursor=version-a&limit=7"))
+	if response.Code != 200 {
+		t.Fatalf("response=%d %s", response.Code, response.Body.String())
+	}
+	request := probe.received
+	if request.GetQueryPackageId() != "package-a" || request.GetQueryCursor() != "version-a" || request.GetQueryLimit() != 7 || request.GetQueryStatus() != api.ListCapabilityVersionsRpcRequestStatusEnum_LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_READY {
+		t.Fatalf("owner query=%v", request)
+	}
+	probe.received = nil
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, sessionRequest("GET", "/api/v2/capability-versions?status=other"))
+	if response.Code != 400 || probe.received != nil {
+		t.Fatalf("invalid status=%d, query=%v", response.Code, probe.received)
+	}
+}

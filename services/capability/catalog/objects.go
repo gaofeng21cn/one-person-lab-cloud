@@ -17,7 +17,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -173,7 +172,7 @@ func (o *Objects) validateArchive(filename string) ([]byte, error) {
 	if e = o.schema.Validate(v); e == nil {
 		return manifest, nil
 	}
-	if e = validateOMACandidateTransport(r, manifest, o.Policy); e != nil {
+	if e = validateOMACandidateTransport(r, manifest); e != nil {
 		return nil, e
 	}
 	return manifest, nil
@@ -182,7 +181,7 @@ func (o *Objects) validateArchive(filename string) ([]byte, error) {
 // validateOMACandidateTransport admits the native Foundry transport without
 // rewriting its candidate bytes. The outer transport digest is the upload
 // digest; candidate/content/manifest digests remain distinct provenance facts.
-func validateOMACandidateTransport(r *zip.ReadCloser, transportManifest []byte, policy UploadPolicy) error {
+func validateOMACandidateTransport(r *zip.ReadCloser, transportManifest []byte) error {
 	var envelope struct {
 		SchemaVersion        int    `json:"schema_version"`
 		SurfaceKind          string `json:"surface_kind"`
@@ -240,31 +239,22 @@ func validateOMACandidateTransport(r *zip.ReadCloser, transportManifest []byte, 
 	if !ok || digest(agentManifest) != envelope.ManifestDigest {
 		return fmt.Errorf("OMA agent manifest digest mismatch")
 	}
-	var idx struct {
-		Files []struct {
-			Path     string `json:"path"`
-			ByteSize int64  `json:"byte_size"`
-			SHA256   string `json:"sha256"`
-		} `json:"files"`
-	}
-	if json.Unmarshal(index, &idx) != nil || len(idx.Files) != envelope.CandidateFileCount {
+	var idx omaCandidateIndex
+	if json.Unmarshal(index, &idx) != nil || idx.SurfaceKind != "opl_foundry_candidate_file_index" || idx.Version != "opl-foundry-candidate-index.v2" || !digestRE.MatchString(idx.BlueprintDigest) || len(idx.Files) != envelope.CandidateFileCount {
 		return fmt.Errorf("invalid OMA candidate index")
 	}
-	keys := make([]string, 0, len(idx.Files))
-	for _, item := range idx.Files {
-		keys = append(keys, item.Path)
+	if idx.CandidateDigest != envelope.CandidateDigest || omaCandidateDigest(idx) != envelope.CandidateDigest {
+		return fmt.Errorf("OMA candidate identity digest mismatch")
 	}
-	sort.Strings(keys)
-	if len(keys) != len(idx.Files) {
-		return fmt.Errorf("invalid OMA candidate index")
-	}
+	seen := make(map[string]bool, len(idx.Files))
 	var total int64
 	h := sha256.New()
 	for _, item := range idx.Files {
 		b, ok := files[item.Path]
-		if !ok || item.Path == "" || strings.Contains(item.Path, "..") || strings.HasPrefix(item.Path, "/") || strings.Contains(item.Path, "\\") || !hex64.MatchString(item.SHA256) || int64(len(b)) != item.ByteSize || strings.TrimPrefix(digest(b), "sha256:") != item.SHA256 {
+		if !ok || !safePath(item.Path) || item.Path == "candidate-index.json" || seen[item.Path] || !hex64.MatchString(item.SHA256) || int64(len(b)) != item.ByteSize || strings.TrimPrefix(digest(b), "sha256:") != item.SHA256 {
 			return fmt.Errorf("OMA candidate file digest mismatch")
 		}
+		seen[item.Path] = true
 		var n [8]byte
 		binary.BigEndian.PutUint64(n[:], uint64(len([]byte(item.Path))))
 		h.Write(n[:])
@@ -280,8 +270,78 @@ func validateOMACandidateTransport(r *zip.ReadCloser, transportManifest []byte, 
 	if len(files) != envelope.CandidateFileCount+1 {
 		return fmt.Errorf("OMA candidate file inventory mismatch")
 	}
-	_ = policy
 	return nil
+}
+
+// These fields follow Foundry's opl-foundry-candidate-index.v2 identity. The
+// candidate_digest is the canonical JSON digest of the other four fields;
+// candidate-index.json itself is not part of its file inventory.
+type omaCandidateFile struct {
+	Path     string `json:"path"`
+	ByteSize int64  `json:"byte_size"`
+	SHA256   string `json:"sha256"`
+}
+type omaCandidateIndex struct {
+	SurfaceKind     string             `json:"surface_kind"`
+	Version         string             `json:"version"`
+	BlueprintDigest string             `json:"blueprint_digest"`
+	CandidateDigest string             `json:"candidate_digest"`
+	Files           []omaCandidateFile `json:"files"`
+}
+
+func omaCandidateDigest(index omaCandidateIndex) string {
+	// Object keys use the upstream canonical order; array order is preserved.
+	// JSON.stringify leaves Unicode and HTML characters unescaped.
+	var out strings.Builder
+	out.WriteString(`{"blueprint_digest":`)
+	writeOMAJSONString(&out, index.BlueprintDigest)
+	out.WriteString(`,"files":[`)
+	for i, file := range index.Files {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		out.WriteString(`{"byte_size":`)
+		out.WriteString(strconv.FormatInt(file.ByteSize, 10))
+		out.WriteString(`,"path":`)
+		writeOMAJSONString(&out, file.Path)
+		out.WriteString(`,"sha256":`)
+		writeOMAJSONString(&out, file.SHA256)
+		out.WriteByte('}')
+	}
+	out.WriteString(`],"surface_kind":`)
+	writeOMAJSONString(&out, index.SurfaceKind)
+	out.WriteString(`,"version":`)
+	writeOMAJSONString(&out, index.Version)
+	out.WriteByte('}')
+	return digest([]byte(out.String()))
+}
+
+func writeOMAJSONString(out *strings.Builder, value string) {
+	out.WriteByte('"')
+	for _, char := range value {
+		switch char {
+		case '"', '\\':
+			out.WriteByte('\\')
+			out.WriteRune(char)
+		case '\b':
+			out.WriteString(`\b`)
+		case '\f':
+			out.WriteString(`\f`)
+		case '\n':
+			out.WriteString(`\n`)
+		case '\r':
+			out.WriteString(`\r`)
+		case '\t':
+			out.WriteString(`\t`)
+		default:
+			if char < 0x20 {
+				fmt.Fprintf(out, `\u%04x`, char)
+			} else {
+				out.WriteRune(char)
+			}
+		}
+	}
+	out.WriteByte('"')
 }
 
 type partPermit struct {
