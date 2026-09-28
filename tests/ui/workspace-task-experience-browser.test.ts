@@ -351,6 +351,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
         assert.deepEqual(request.postDataJSON(), { purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1 });
         return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", expectedInterruption: "部署期间可能短暂不可用。", lineItems: [{ kind: "compute", description: "计算套餐", quantity: 1, amountUSDMicros: "52580000" }], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
       }
+      if (path === "/api/v2/quotes/quote-1") return route.fulfill({ json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", lineItems: [], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
       if (path === "/api/v2/workspaces" && request.method() === "POST") {
         createdBody = request.postDataJSON() as Record<string, unknown>;
         assert.deepEqual(createdBody, { name: `Customer Journey ${viewport.name}`, quoteId: "quote-1", renewalMode: "manual" });
@@ -389,6 +390,15 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
     await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).click();
     assert.deepEqual(await page.evaluate(() => (window as Window & { openedWorkspace?: unknown }).openedWorkspace), { url: `https://agent.example.invalid/${workspaceId}`, target: "_blank", features: "noopener,noreferrer" });
     assert.ok(operationReads >= 2);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
+      throw new Error(`reload access: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
+    });
+    assert.equal(seenIdempotencyKeys.size, 1);
+    assert.ok(accessReads >= 2);
+    await page.getByRole("button", { name: "创建另一个 Workspace" }).click();
+    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation")), null);
     assertBrowserAuditClean(audit);
   } finally {
     await context.close();
@@ -404,6 +414,64 @@ test("customer completes one authoritative Workspace journey at desktop and mobi
     }
   } finally {
     await browser.close();
+  }
+});
+
+test("lost create response reloads into the original idempotent Workspace request", { timeout: 60_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
+  const browser = await launchBrowser({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: viewports[0] });
+    let createWrites = 0;
+    let activeActor = "user-customer";
+    const keys = new Set<string>();
+    await page.route("**/api/v2/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: activeActor, tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", status: "ready", provenance: "build", modelRequirements: [] }] } });
+      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available" }] } });
+      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available" }] } });
+      if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true }] } });
+      if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (path === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-lost", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/quotes/quote-lost") return route.fulfill({ json: { id: "quote-lost", purpose: "deploy", status: "offered", totalUSDMicros: "1", expiresAt: "2099-01-01T00:00:00Z", modelSelections: [], lineItems: [] } });
+      if (path === "/api/v2/workspaces" && request.method() === "POST") {
+        createWrites += 1;
+        keys.add(request.headers()["idempotency-key"] || "");
+        assert.deepEqual(request.postDataJSON(), { name: "Recovery Test", quoteId: "quote-lost", renewalMode: "manual" });
+        if (createWrites === 1) return route.abort("failed");
+        return route.fulfill({ status: 202, json: { operationId: "op-lost", owner: "workspace", kind: "create_workspace", resourceId: "ws-lost", status: "accepted", stage: "admission", requestId: "req", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", pollAfterSeconds: 1 } });
+      }
+      if (path === "/api/v2/operations/workspace/op-lost") return route.fulfill({ json: { operationId: "op-lost", owner: "workspace", kind: "create_workspace", resourceId: "ws-lost", status: "running", stage: "runtime", requestId: "req", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", pollAfterSeconds: 5 } });
+      return route.fulfill({ status: 404, json: { error: "unexpected_v2_route" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
+    await page.getByLabel("工作空间名称").fill("Recovery Test");
+    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
+    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
+    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
+    await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible", timeout: 5_000 }).catch(async (error) => {
+      throw new Error(`lost response: ${await page.locator("body").innerText()} storage=${await page.evaluate(() => sessionStorage.getItem("opl-cloud:agent-workspace-operation"))}`, { cause: error });
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByText("正在核对原开通请求", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "确认并开通 Workspace" }).count(), 0);
+    activeActor = "another-customer";
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByText("原开通请求需由提交账户核对", { exact: false }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "核对原请求" }).count(), 0);
+    assert.equal(createWrites, 1);
+    activeActor = "user-customer";
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "核对原请求" }).click();
+    await page.getByText("正在开通 Workspace", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(createWrites, 2);
+    assert.equal(keys.size, 1);
+  } finally {
+    await browser.close();
+    await demo.close();
   }
 });
 

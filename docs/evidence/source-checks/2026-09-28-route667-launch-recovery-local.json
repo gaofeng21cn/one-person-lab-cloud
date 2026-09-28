@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "action": "Repair the Console Agent Workspace create response-loss and terminal-operation recovery paths",
+  "recordedAt": "2026-09-28T14:19:27Z",
+  "provenance": {
+    "kind": "local",
+    "note": "Source and browser-fixture verification on PR #672 head. No merge, deployment, real charge, provider mutation or Instance qualification is claimed."
+  },
+  "baseSha": "4365417e04a2359e69ed50eab63a6c109e091dc4",
+  "sourceFilesSha256": {
+    "apps/console-ui/src/app/use-workspace-launch-controller.ts": "d7a1f7fc0273b0789fb6098885d87de7d9dfb36686b2422c017ce60c170154cf",
+    "apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx": "bb1f7a0275db504f04b25f0d11801c2122f11940ae4135d36cb79dfc8289be6c",
+    "tests/ui/workspace-task-experience-browser.test.ts": "45c793355b2e0ed9fa73198d320e40cc8d3e71d9b450aab93c71dd905ae81171"
+  },
+  "ownerBasis": "Workspace CreateWorkspace replays an idempotency record scoped to tenant, actor, operation and key when the normalized request hash matches; the replay lookup precedes quote expiry validation. First deployment accepts manual renewal only.",
+  "checks": [
+    {"command": "npm run verify:local", "result": "pass", "details": "245 source tests, 115 browser tests, lint, build and database-free Go checks passed before the final account-switch guard"},
+    {"command": "node --test --test-name-pattern='lost create response|customer completes one authoritative Workspace journey' tests/ui/workspace-task-experience-browser.test.ts", "result": "pass", "details": "2 focused cases passed after the account-switch guard"},
+    {"command": "npm run lint", "result": "pass"},
+    {"command": "git diff --check", "result": "pass"}
+  ],
+  "acceptance": [
+    "A lost create response retains the original actor, request and key; reload and explicit retry cannot issue a second key.",
+    "A different actor cannot retry or replace the pending request in the same browser tab.",
+    "A terminal operation reloads Workspace and Serve access from their owners before showing the WebUI action.",
+    "The Console only offers manual renewal for the currently implemented first-deployment owner contract."
+  ],
+  "openBoundary": "PR #672 is unmerged. This browser fixture does not prove Instance adoption or a real paid create."
+}
