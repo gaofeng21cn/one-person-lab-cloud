@@ -40,9 +40,10 @@ import {
 const agentOperationStorageKey = "opl-cloud:agent-workspace-operation";
 
 interface PersistedAgentIntent {
+  actorId: string;
   operationId?: string;
   quoteId: string;
-  input: { name: string; quoteId: string; renewalMode: "manual" | "automatic"; automaticRenewalConsent?: true };
+  input: { name: string; quoteId: string; renewalMode: "manual" };
   idempotencyKey: string;
 }
 
@@ -71,8 +72,12 @@ export interface AgentWorkspaceLaunchController extends WorkspaceLaunchControlle
   setAgentConfirmed: (value: boolean) => void;
   agentBusy: boolean;
   agentPollIssue: "" | "unavailable" | "timeout" | "unknown";
+  agentRecoveryPending: boolean;
+  agentRecoveryActionable: boolean;
   reviewAgentLaunch: () => void;
   submitAgentLaunch: () => Promise<void>;
+  retryAgentLaunch: () => Promise<void>;
+  startAnotherAgentLaunch: () => void;
   openAgentWorkspace: () => void;
 }
 
@@ -138,6 +143,7 @@ export function useWorkspaceLaunchController({
   const [agentConfirmed, setAgentConfirmed] = useState(false);
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentPollIssue, setAgentPollIssue] = useState<"" | "unavailable" | "timeout" | "unknown">("");
+  const [agentRecoveryPending, setAgentRecoveryPending] = useState(() => Boolean(sessionStorage.getItem(agentOperationStorageKey)));
   const intent = useRef<PersistedAgentIntent | null>(null);
 
   const invalidateQuote = () => {
@@ -169,8 +175,8 @@ export function useWorkspaceLaunchController({
     setAgentConfirmed(false);
     setAgentBusy(false);
     setAgentPollIssue("");
+    setAgentRecoveryPending(false);
     intent.current = null;
-    sessionStorage.removeItem(agentOperationStorageKey);
   };
 
   const loadCatalog = async (generation: number, activeSession: AuthSession) => {
@@ -208,7 +214,6 @@ export function useWorkspaceLaunchController({
   };
 
   const readAccess = async (workspaceId: string, generation: number, activeSession: AuthSession) => {
-    if (!session) return;
     try {
       const access = await getWorkspaceOwnerAccess(workspaceId, activeSession.csrfToken, `workspace-access:${workspaceId}`);
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
@@ -222,6 +227,21 @@ export function useWorkspaceLaunchController({
     }
   };
 
+  const readCompletedAgentOperation = async (operation: WorkspaceOwnerOperationDTO, generation: number, activeSession: AuthSession) => {
+    if (operation.status !== "succeeded" || !operation.resourceId) {
+      if (operation.status !== "cancelled") setAgentPollIssue("unknown");
+      return;
+    }
+    try {
+      const workspace = await getWorkspaceOwner(operation.resourceId);
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
+      setAgentWorkspace(workspace);
+      if (workspace.applicationAvailability === "available") await readAccess(workspace.id, generation, activeSession);
+    } catch {
+      if (isRequestCurrent(generation, activeSession.user.id)) setAgentPollIssue("unknown");
+    }
+  };
+
   const pollAgentOperation = async (operationId: string, generation: number, activeSession: AuthSession) => {
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
@@ -229,18 +249,7 @@ export function useWorkspaceLaunchController({
         if (!isRequestCurrent(generation, activeSession.user.id)) return;
         setAgentOperation(operation);
         if (operationIsTerminal(operation)) {
-          if (operation.status === "succeeded" && operation.resourceId) {
-            try {
-              const workspace = await getWorkspaceOwner(operation.resourceId);
-              if (!isRequestCurrent(generation, activeSession.user.id)) return;
-              setAgentWorkspace(workspace);
-              if (workspace?.applicationAvailability === "available") await readAccess(workspace.id, generation, activeSession);
-            } catch {
-              setAgentPollIssue("unknown");
-            }
-          } else if (operation.status !== "cancelled") {
-            setAgentPollIssue("unknown");
-          }
+          await readCompletedAgentOperation(operation, generation, activeSession);
           return;
         }
         await new Promise<void>((resolve) => window.setTimeout(resolve, operationPollDelayMs(operation.pollAfterSeconds)));
@@ -254,20 +263,31 @@ export function useWorkspaceLaunchController({
 
   const recover = async (generation: number, activeSession: AuthSession) => {
     const raw = sessionStorage.getItem(agentOperationStorageKey);
-    if (!raw) return;
+    if (!raw) { setAgentRecoveryPending(false); return; }
     try {
       const saved = JSON.parse(raw) as Partial<PersistedAgentIntent>;
-      if (!saved.operationId || !saved.quoteId || !saved.input || !saved.idempotencyKey) throw new Error("invalid_agent_operation_locator");
+      if (saved.actorId !== activeSession.user.id) { setAgentRecoveryPending(true); return; }
+      if (!saved.quoteId || !saved.input || !saved.idempotencyKey) throw new Error("invalid_agent_operation_locator");
       intent.current = saved as PersistedAgentIntent;
       try { setAgentQuote(await getWorkspaceQuote(saved.quoteId)); } catch { setAgentPollIssue("unknown"); }
+      if (!isRequestCurrent(generation, activeSession.user.id)) return;
       setLaunchStep("confirm");
       setAgentBusy(false);
+      if (!saved.operationId) {
+        setAgentRecoveryPending(true);
+        return;
+      }
+      setAgentRecoveryPending(false);
       const operation = await getWorkspaceOwnerOperation(saved.operationId);
       if (!isRequestCurrent(generation, activeSession.user.id)) return;
       setAgentOperation(operation);
       if (!operationIsTerminal(operation)) void pollAgentOperation(operation.operationId, generation, activeSession);
+      else await readCompletedAgentOperation(operation, generation, activeSession);
     } catch {
-      if (isRequestCurrent(generation, activeSession.user.id)) setAgentPollIssue("unavailable");
+      if (isRequestCurrent(generation, activeSession.user.id)) {
+        setAgentRecoveryPending(true);
+        setAgentPollIssue("unavailable");
+      }
     }
   };
 
@@ -283,7 +303,7 @@ export function useWorkspaceLaunchController({
     return !requirement.required && !selection || Boolean(selection && requirement.allowedModelIds.length > 0 && requirement.allowedModelIds.includes(selection.modelId));
   });
   const readiness: AgentLaunchReadiness = {
-    sourceReady: !agentSourceLoading && !agentSourceError,
+    sourceReady: !agentSourceLoading && !agentSourceError && !agentRecoveryPending,
     hasName: Boolean(launchName.trim()),
     hasCapabilityVersion: Boolean(selectedCapability),
     hasComputePlan: Boolean(agentComputePlanId),
@@ -296,7 +316,7 @@ export function useWorkspaceLaunchController({
   };
 
   const reviewAgentLaunch = () => {
-    if (!session || !selectedCapability || !canCreateAgentQuote(readiness)) return;
+    if (!session || intent.current || !selectedCapability || !canCreateAgentQuote(readiness)) return;
     setAgentBusy(true);
     void createWorkspaceQuote({
       purpose: "deploy", capabilityVersionId: selectedCapability.id, computePlanId: agentComputePlanId,
@@ -309,7 +329,7 @@ export function useWorkspaceLaunchController({
   };
 
   const submitAgentLaunch = async () => {
-    if (!session || !agentQuote) return;
+    if (!session || !agentQuote || agentRecoveryPending) return;
     if (Date.parse(agentQuote.expiresAt) <= Date.now()) {
       setAgentQuote(null);
       setAgentConfirmed(false);
@@ -318,13 +338,13 @@ export function useWorkspaceLaunchController({
     }
     if (!canCreateAgentWorkspace(readiness, agentConfirmed)) return;
     const stillCurrent = currentMutationRequest();
-    const input = { name: launchName.trim(), quoteId: agentQuote.id, renewalMode: launchAutoRenew ? "automatic" as const : "manual" as const, ...(launchAutoRenew ? { automaticRenewalConsent: true as const } : {}) };
+    const input = { name: launchName.trim(), quoteId: agentQuote.id, renewalMode: "manual" as const };
     if (intent.current && (intent.current.quoteId !== agentQuote.id || JSON.stringify(intent.current.input) !== JSON.stringify(input))) {
       flash("原开通请求待核实，请勿更换报价后重试", "danger");
       return;
     }
     const idempotencyKey = intent.current?.idempotencyKey || workspaceLaunchIdempotencyKey();
-    intent.current = { quoteId: agentQuote.id, input, idempotencyKey };
+    intent.current = { actorId: session.user.id, quoteId: agentQuote.id, input, idempotencyKey };
     sessionStorage.setItem(agentOperationStorageKey, JSON.stringify(intent.current satisfies PersistedAgentIntent));
     setAgentBusy(true);
     setLaunchStep("confirm");
@@ -332,14 +352,58 @@ export function useWorkspaceLaunchController({
       const operation = await createAgentWorkspace(input, session.csrfToken, idempotencyKey);
       if (!stillCurrent()) return;
       setAgentOperation(operation);
-      sessionStorage.setItem(agentOperationStorageKey, JSON.stringify({ operationId: operation.operationId, quoteId: agentQuote.id, input, idempotencyKey } satisfies PersistedAgentIntent));
+      intent.current = { ...intent.current, operationId: operation.operationId } as PersistedAgentIntent;
+      sessionStorage.setItem(agentOperationStorageKey, JSON.stringify(intent.current));
       if (!operationIsTerminal(operation)) void pollAgentOperation(operation.operationId, currentRequestGeneration(), session);
-      else if (operation.status !== "succeeded") setAgentPollIssue("unknown");
+      else await readCompletedAgentOperation(operation, currentRequestGeneration(), session);
     } catch (error) {
-      if (stillCurrent()) flash(friendlyError(error), "danger");
+      if (stillCurrent()) {
+        setAgentRecoveryPending(true);
+        setAgentPollIssue("unavailable");
+        flash(friendlyError(error), "danger");
+      }
     } finally {
       if (stillCurrent()) setAgentBusy(false);
     }
+  };
+
+  const retryAgentLaunch = async () => {
+    const saved = intent.current;
+    if (!session || !saved || saved.actorId !== session.user.id || saved.operationId || agentBusy) return;
+    const stillCurrent = currentMutationRequest();
+    setAgentBusy(true);
+    try {
+      const operation = await createAgentWorkspace(saved.input, session.csrfToken, saved.idempotencyKey);
+      if (!stillCurrent()) return;
+      setAgentOperation(operation);
+      intent.current = { ...saved, operationId: operation.operationId };
+      sessionStorage.setItem(agentOperationStorageKey, JSON.stringify(intent.current));
+      setAgentRecoveryPending(false);
+      setAgentPollIssue("");
+      if (!operationIsTerminal(operation)) void pollAgentOperation(operation.operationId, currentRequestGeneration(), session);
+      else await readCompletedAgentOperation(operation, currentRequestGeneration(), session);
+    } catch (error) {
+      if (stillCurrent()) {
+        setAgentPollIssue("unavailable");
+        flash(friendlyError(error), "danger");
+      }
+    } finally {
+      if (stillCurrent()) setAgentBusy(false);
+    }
+  };
+
+  const startAnotherAgentLaunch = () => {
+    if (agentOperation?.status !== "succeeded" || !agentAccess?.url) return;
+    sessionStorage.removeItem(agentOperationStorageKey);
+    intent.current = null;
+    setAgentOperation(null);
+    setAgentWorkspace(null);
+    setAgentAccess(null);
+    setAgentQuote(null);
+    setAgentConfirmed(false);
+    setAgentPollIssue("");
+    setLaunchName("");
+    setLaunchStep("configure");
   };
 
   const openAgentWorkspace = async () => {
@@ -373,7 +437,7 @@ export function useWorkspaceLaunchController({
     submitWorkspaceLaunch: submitAgentLaunch,
     openLaunchedWorkspace: openAgentWorkspace,
     openLaunchBilling: () => navigate("/console/billing"),
-    prepareNewWorkspaceLaunch: () => { setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
+    prepareNewWorkspaceLaunch: () => { if (agentRecoveryPending) return; setAgentOperation(null); setAgentWorkspace(null); setAgentAccess(null); setLaunchStep("configure"); setAgentConfirmed(false); },
     agentCapabilityVersions,
     agentComputePlans,
     agentStoragePlans,
@@ -398,8 +462,12 @@ export function useWorkspaceLaunchController({
     setAgentConfirmed,
     agentBusy,
     agentPollIssue,
+    agentRecoveryPending,
+    agentRecoveryActionable: Boolean(intent.current && intent.current.actorId === session?.user.id && !intent.current.operationId),
     reviewAgentLaunch,
     submitAgentLaunch,
+    retryAgentLaunch,
+    startAnotherAgentLaunch,
     openAgentWorkspace,
     loadCatalog,
     recover,
