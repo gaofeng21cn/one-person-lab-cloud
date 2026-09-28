@@ -510,10 +510,8 @@ message Model {
  string name = 2;
  repeated string capabilities = 3;
  bool available = 4;
- int64 input_price_per_million_tokens_usd_micros = 5;
- int64 output_price_per_million_tokens_usd_micros = 6;
- ModelPriceSourceEnum price_source = 7;
  google.protobuf.Timestamp fetched_at = 8;
+ reserved 5, 6, 7;
 }
 
 message ModelSelection {
@@ -3435,10 +3433,6 @@ enum RetentionPolicyVersionBuildHistoryDispositionEnum {
  RETENTION_POLICY_VERSION_BUILD_HISTORY_DISPOSITION_ENUM_RETAIN = 1;
 }
 
-enum ModelPriceSourceEnum {
- MODEL_PRICE_SOURCE_ENUM_UNSPECIFIED = 0;
- MODEL_PRICE_SOURCE_ENUM_GATEWAY = 1;
-}
 
 enum QuoteRequestPurposeEnum {
  QUOTE_REQUEST_PURPOSE_ENUM_UNSPECIFIED = 0;

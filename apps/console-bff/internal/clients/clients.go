@@ -52,6 +52,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_URL")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_URL")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_URL")),
+			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_URL")),
 		},
 		Tokens: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
@@ -60,6 +61,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
 			owneridentity.ResourceCatalog: strings.TrimSpace(getenv("OPL_RESOURCE_CATALOG_TOKEN")),
+			owneridentity.Gateway:         strings.TrimSpace(getenv("OPL_GATEWAY_TOKEN")),
 		},
 		CloudIdentityAddr:  strings.TrimSpace(getenv(CloudIdentityAddressEnv)),
 		CloudIdentityToken: strings.TrimSpace(getenv(CloudIdentityTokenEnv)),
@@ -77,6 +79,7 @@ func ReachableOwners() []owneridentity.Owner {
 		owneridentity.Build,
 		owneridentity.Workspace,
 		owneridentity.Serve,
+		owneridentity.Gateway,
 	}
 }
 
@@ -90,6 +93,7 @@ type Clients struct {
 	serve          api.ServeProductServiceClient
 	tenant         api.TenantProductServiceClient
 	catalog        api.ResourceCatalogProductServiceClient
+	gateway        api.GatewayProductServiceClient
 	authorization  api.CloudIdentityAuthorizationClient
 	owner          map[owneridentity.Owner]api.OwnerOperationsClient
 	conns          []*grpc.ClientConn
@@ -127,6 +131,8 @@ func Dial(config Config) (*Clients, error) {
 			clients.workspace = api.NewWorkspaceProductServiceClient(conn)
 		case owneridentity.Serve:
 			clients.serve = api.NewServeProductServiceClient(conn)
+		case owneridentity.Gateway:
+			clients.gateway = api.NewGatewayProductServiceClient(conn)
 		}
 	}
 	if addr := strings.TrimSpace(config.Addresses[owneridentity.ResourceCatalog]); addr != "" {
@@ -254,6 +260,25 @@ func WithCallContext(ctx context.Context, call *api.CallContext) context.Context
 func CallContext(ctx context.Context) *api.CallContext {
 	call, _ := ctx.Value(callContextKey{}).(*api.CallContext)
 	return call
+}
+
+// GatewayClient exposes the Gateway Integration product read client.
+func (c *Clients) GatewayClient() api.GatewayProductServiceClient { return c.gateway }
+
+// Wallet reads the Gateway-owned spendable wallet. No local balance is synthesized.
+func (c *Clients) Wallet(ctx context.Context) (*api.Wallet, error) {
+	if c.gateway == nil {
+		return nil, fmt.Errorf("gateway: %w", ErrUpstreamUnconfigured)
+	}
+	return c.gateway.GetWallet(ctx, &api.GetWalletRpcRequest{Context: CallContext(ctx)})
+}
+
+// Models reads the Gateway-owned model catalog for the caller. No model or price is synthesized.
+func (c *Clients) Models(ctx context.Context, cursor string, limit *int32) (*api.ModelPage, error) {
+	if c.gateway == nil {
+		return nil, fmt.Errorf("gateway: %w", ErrUpstreamUnconfigured)
+	}
+	return c.gateway.ListModels(ctx, &api.ListModelsRpcRequest{Context: CallContext(ctx), QueryCursor: &cursor, QueryLimit: limit})
 }
 
 func (c *Clients) PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient) {

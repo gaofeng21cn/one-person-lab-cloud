@@ -70,6 +70,9 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("workspace: %w", err)
 	}
+	if workspace == nil {
+		return DeliveryView{}, fmt.Errorf("workspace: empty owner readback")
+	}
 	view.Workspace = OwnerFact{
 		Owner: workspaceOwner,
 		State: workspace.GetStatus().String(),
@@ -108,6 +111,9 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("serve access: %w", err)
 	}
+	if access == nil {
+		return DeliveryView{}, fmt.Errorf("serve access: empty owner readback")
+	}
 	view.Serve.Details["accessUrl"] = access.GetUrl()
 	view.Serve.Details["accessAuthenticationMode"] = access.GetAuthenticationMode().String()
 	view.Serve.Details["applicationCredentialsAvailable"] = access.GetApplicationCredentialsAvailable()
@@ -125,6 +131,9 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 	version, err := reader.CapabilityVersion(ctx, capabilityVersionID)
 	if err != nil {
 		return DeliveryView{}, fmt.Errorf("capability version: %w", err)
+	}
+	if version == nil {
+		return DeliveryView{}, fmt.Errorf("capability version: empty owner readback")
 	}
 	view.Capability = OwnerFact{
 		Owner: capabilityOwner,
@@ -145,6 +154,9 @@ func (s *Server) deliveryView(ctx context.Context, caller Caller, workspaceID st
 		job, err := reader.Build(ctx, buildID)
 		if err != nil {
 			return DeliveryView{}, fmt.Errorf("build: %w", err)
+		}
+		if job == nil {
+			return DeliveryView{}, fmt.Errorf("build: empty owner readback")
 		}
 		view.Build = OwnerFact{
 			Owner: buildOwner,

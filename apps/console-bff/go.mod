@@ -18,3 +18,11 @@ require (
 )
 
 replace opl-cloud/packages/contracts/go => ../../packages/contracts/go
+
+replace opl-cloud/services/gateway-integration => ../../services/gateway-integration
+
+replace opl-cloud/services/internal/ownerservice => ../../services/internal/ownerservice
+
+replace opl-cloud/services/internal/ownerstore => ../../services/internal/ownerstore
+
+replace opl-cloud/services/internal/postgresmigrate => ../../services/internal/postgresmigrate

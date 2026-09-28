@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,6 +23,12 @@ type GatewayIdentity struct {
 	ID     int64  `json:"id"`
 	Email  string `json:"email"`
 	Status string `json:"status"`
+}
+
+type GatewayBalance struct {
+	UserID    int64
+	USDMicros int64
+	Status    string
 }
 type Gateway struct {
 	base   string
@@ -215,4 +222,150 @@ func (g *Gateway) Read(ctx context.Context, token, actor string) (GatewayIdentit
 		return out, status.Error(codes.Unauthenticated, "Gateway identity is no longer active")
 	}
 	return out, nil
+}
+
+// Balance reads the spendable balance from the real Sub2API admin user
+// readback. Decimal conversion floors to whole USD micros, matching the retained
+// Control Plane adapter's money semantics.
+func (g *Gateway) Balance(ctx context.Context, subject string) (GatewayBalance, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(subject), 10, 64)
+	if err != nil || id <= 0 {
+		return GatewayBalance{}, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+	}
+	if !g.DirectoryConfigured() {
+		return GatewayBalance{}, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	token, err := g.directoryToken(ctx)
+	if err != nil {
+		return GatewayBalance{}, err
+	}
+	var out struct {
+		ID      int64       `json:"id"`
+		Balance json.Number `json:"balance"`
+		Status  string      `json:"status"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10), token, nil, &out); err != nil {
+		return GatewayBalance{}, err
+	}
+	if out.ID != id || (out.Status != "active" && out.Status != "disabled") {
+		return GatewayBalance{}, status.Error(codes.FailedPrecondition, "Gateway wallet readback identity mismatch")
+	}
+	micros, err := floorUSDDecimalToMicros(out.Balance)
+	if err != nil {
+		return GatewayBalance{}, status.Error(codes.Unavailable, "invalid Gateway wallet balance")
+	}
+	return GatewayBalance{UserID: id, USDMicros: micros, Status: out.Status}, nil
+}
+
+func floorUSDDecimalToMicros(value json.Number) (int64, error) {
+	raw := strings.TrimSpace(value.String())
+	if raw == "" {
+		return 0, fmt.Errorf("empty balance")
+	}
+	r := new(big.Rat)
+	if _, ok := r.SetString(raw); !ok || r.Sign() < 0 {
+		return 0, fmt.Errorf("invalid balance")
+	}
+	micros := new(big.Int).Quo(new(big.Int).Mul(r.Num(), big.NewInt(1_000_000)), r.Denom())
+	if !micros.IsInt64() {
+		return 0, fmt.Errorf("balance overflow")
+	}
+	return micros.Int64(), nil
+}
+
+// ModelEntry is one Gateway model catalog entry read live from the provider. It
+// carries no price: token pricing is not a Gateway fact this owner publishes.
+type ModelEntry struct {
+	ID           string
+	Name         string
+	Capabilities []string
+	Available    bool
+}
+
+// Models reads the Codex model catalog from the Gateway provider using the
+// caller's own active API key. A caller without an active key, or an
+// unresolvable or malformed catalog, fails closed; no model or price is
+// synthesized.
+func (g *Gateway) Models(ctx context.Context, subject string) ([]ModelEntry, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(subject), 10, 64)
+	if err != nil || id <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "a positive Gateway subject id is required")
+	}
+	if !g.DirectoryConfigured() {
+		return nil, status.Error(codes.FailedPrecondition, "the Gateway directory identity is not configured")
+	}
+	admin, err := g.directoryToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var keys struct {
+		Items []struct {
+			Key    string `json:"key"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+	if err := g.request(ctx, "/api/v1/admin/users/"+strconv.FormatInt(id, 10)+"/api-keys", admin, nil, &keys); err != nil {
+		return nil, err
+	}
+	key := ""
+	for _, candidate := range keys.Items {
+		if candidate.Status == "active" && strings.TrimSpace(candidate.Key) != "" {
+			key = candidate.Key
+			break
+		}
+	}
+	if key == "" {
+		return nil, status.Error(codes.FailedPrecondition, "the caller has no active Gateway API key")
+	}
+	var catalog struct {
+		Data []struct {
+			ID           string   `json:"id"`
+			Name         string   `json:"name"`
+			Hidden       bool     `json:"hidden"`
+			Capabilities []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := g.modelRequest(ctx, "/v1/models", key, &catalog); err != nil {
+		return nil, err
+	}
+	out := make([]ModelEntry, 0, len(catalog.Data))
+	for _, item := range catalog.Data {
+		modelID := strings.TrimSpace(item.ID)
+		if modelID == "" {
+			return nil, status.Error(codes.Unavailable, "Gateway model catalog entry has no id")
+		}
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			name = modelID
+		}
+		out = append(out, ModelEntry{ID: modelID, Name: name, Capabilities: item.Capabilities, Available: !item.Hidden})
+	}
+	return out, nil
+}
+
+// modelRequest performs the OpenAI-compatible model catalog read, which is not
+// wrapped in the administrator {code,data} envelope the other Gateway endpoints
+// use.
+func (g *Gateway) modelRequest(ctx context.Context, path, token string, out any) error {
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, g.base+path, nil)
+	if err != nil {
+		return err
+	}
+	r.Header.Set("Authorization", "Bearer "+token)
+	response, err := g.client.Do(r)
+	if err != nil {
+		return status.Error(codes.Unavailable, "Gateway model catalog unavailable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode == 401 || response.StatusCode == 403 {
+		return status.Error(codes.Unauthenticated, "Gateway API key rejected")
+	}
+	if response.StatusCode != 200 {
+		return status.Error(codes.Unavailable, "Gateway model catalog unavailable")
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil || json.Unmarshal(data, out) != nil {
+		return status.Error(codes.Unavailable, "invalid Gateway model catalog response")
+	}
+	return nil
 }

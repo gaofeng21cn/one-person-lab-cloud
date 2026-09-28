@@ -5,6 +5,7 @@ import { RadioGroup } from "@openai/apps-sdk-ui/components/RadioGroup";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import type { WorkspaceLaunchController } from "../../app/console-controller-types.ts";
+import type { AgentWorkspaceLaunchController } from "../../app/use-workspace-launch-controller.ts";
 import {
   presentWorkspaceApplicationInstallation, presentWorkspaceLaunch, presentWorkspaceLaunchStage, presentWorkspaceQuote
 } from "../../app/workspace-experience-model.ts";
@@ -101,6 +102,78 @@ function WorkspaceOrderSummary({
   );
 }
 
+
+function AgentLaunchPage({
+  controller,
+  onBack,
+  onRefresh
+}: {
+  controller: AgentWorkspaceLaunchController;
+  onBack: () => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const version = controller.agentCapabilityVersions.find((item) => item.id === controller.agentCapabilityVersionId);
+  const compute = controller.agentComputePlans.find((item) => item.id === controller.agentComputePlanId);
+  const storage = controller.agentStoragePlans.find((item) => item.id === controller.agentStoragePlanId);
+  const quote = controller.agentQuote;
+  const operation = controller.agentOperation;
+  const operationDone = operation && ["succeeded", "failed", "needs_attention", "cancelled"].includes(operation.status);
+  const canOpen = Boolean(controller.agentAccess?.url);
+  const modelFor = (id: string) => controller.agentModels.find((model) => model.id === id)?.name || id;
+
+  if (controller.agentRecoveryPending && !operation) {
+    return <section className="workspace-launch-page" data-slide="C-WS-04">
+      <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
+      <Alert color="warning" title="正在核对原开通请求" description={controller.agentRecoveryActionable ? "上次请求可能已被接受。只能使用原报价和原请求继续核对，请勿重新开通。" : "原开通请求需由提交账户核对，请返回原账户；当前账户不能重复开通。"} actions={controller.agentRecoveryActionable ? <Button busy={controller.agentBusy} onClick={() => void controller.retryAgentLaunch()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />核对原请求</Button> : undefined} />
+    </section>;
+  }
+
+  if (operation) {
+    return (
+      <section className="workspace-launch-page" data-slide="C-WS-04">
+        <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
+        <WorkspaceLaunchSteps current="operation" />
+        <div className="workspace-launch-layout workspace-launch-layout--operation">
+          <section className="launch-operation">
+            <div className="launch-operation-head"><div><h2>{operation.status === "succeeded" && canOpen ? "Serve Agent 可访问，订单证据确认中" : operation.status === "succeeded" ? "Workspace 证据确认中" : operation.status === "needs_attention" ? "需要管理员处理" : operation.status === "failed" ? "Workspace 开通失败" : "正在开通 Workspace"}</h2><p>{operation.status === "succeeded" && canOpen ? "Serve confirmed access 已确认，可以打开 Agent WebUI；客户 Workspace 订单 receipt 仍需 owner 证据确认。" : operation.status === "succeeded" ? "操作已收到终态，但订单 receipt 与 Serve access 尚未同时确认；请刷新原操作，暂不重复提交。" : operation.status === "needs_attention" ? "操作结果需要管理员核实，请勿重复提交。" : operation.status === "failed" ? "开通未完成；页面不会把资源状态伪装成可用应用。" : "订单、资源和 Serve Agent 正在由各自 owner 继续处理。"}</p></div></div>
+            <div className="launch-current-phase"><span>订单阶段</span><strong>{operation.stage}</strong><small>状态：{operation.status}</small></div>
+            {controller.agentPollIssue === "unknown" ? <Alert color="warning" title="结果正在核实" description="暂时无法确认下一阶段，请勿重复提交；刷新后继续读取原操作。" /> : null}
+            {controller.agentPollIssue === "timeout" ? <Alert color="warning" title="仍在处理中" description="owner 没有在当前轮次内完成读回，原操作仍被保留。" /> : null}
+            {controller.agentWorkspace ? <div className="launch-diagnostic"><header><span>Workspace owner readback</span></header><dl className="operation-readback"><div><dt>Workspace</dt><dd>{controller.agentWorkspace.name}</dd></div><div><dt>资源</dt><dd>{controller.agentWorkspace.resourceReadiness}</dd></div><div><dt>Serve Agent</dt><dd>{controller.agentWorkspace.applicationAvailability}</dd></div><div><dt>订单 receipt</dt><dd>证据确认中</dd></div></dl></div> : null}
+            <div className="launch-operation-actions">
+              {canOpen ? <Button color="primary" onClick={controller.openAgentWorkspace}>打开 Agent WebUI</Button> : null}
+              {operation.status === "succeeded" && canOpen ? <Button onClick={controller.startAnotherAgentLaunch} variant="outline">创建另一个 Workspace</Button> : null}
+              <Button onClick={() => void onRefresh()} variant="outline"><RefreshCw aria-hidden size={16} />刷新状态</Button>
+              {operationDone && !canOpen ? <span className="inline-error">Serve confirmed access 未确认，暂不开放 WebUI。</span> : null}
+            </div>
+          </section>
+          <aside className="workspace-order-summary"><header><span>订单与资源</span><strong>{controller.agentWorkspace?.name || controller.launchName || "Workspace"}</strong></header><dl className="workspace-order-summary__facts"><div><dt>报价</dt><dd>{quote ? formatUsdMicros(quote.totalUSDMicros) : "原报价读回中"}</dd></div><div><dt>套餐</dt><dd>{compute?.name || "暂不可用"} / {storage?.name || "暂不可用"}</dd></div><div><dt>Agent 版本</dt><dd>{version?.versionLabel || "暂不可用"}</dd></div><div><dt>模型</dt><dd>{quote?.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、") || "暂不可用"}</dd></div></dl></aside>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="workspace-launch-page" data-slide={controller.agentStep === "quote" ? "C-WS-03" : "C-WS-02"}>
+      <Button className="workspace-launch-back" onClick={onBack} size="sm" variant="ghost"><ChevronLeft aria-hidden size={16} />返回工作空间列表</Button>
+      <WorkspaceLaunchSteps current={controller.agentStep === "quote" ? "confirm" : "configure"} />
+      {controller.agentSourceLoading ? <div className="source-loading" aria-live="polite"><span className="spinner" />正在读取 Agent、套餐、模型与 Gateway 钱包权威数据</div> : null}
+      {controller.agentSourceError ? <Alert color="warning" title="开通入口暂不可用" description={`无法取得真实 owner 数据：${controller.agentSourceError}。未使用旧目录、缓存余额或模拟 Agent。`} actions={<Button onClick={() => void onRefresh()} size="sm" variant="outline"><RefreshCw aria-hidden size={14} />重试</Button>} /> : null}
+      {controller.agentStep === "quote" && quote ? (
+        <div className="workspace-launch-layout">
+          <section className="workspace-launch-review"><header><h2>确认准确报价与部署条款</h2></header><dl className="launch-confirm-list"><div><dt>Agent 版本</dt><dd>{version?.versionLabel || version?.id}</dd></div><div><dt>计算套餐</dt><dd>{compute?.name}</dd></div><div><dt>存储套餐</dt><dd>{storage?.name}</dd></div><div><dt>模型</dt><dd>{quote.modelSelections.map((selection) => `${selection.slot}: ${modelFor(selection.modelId)}`).join("、")}</dd></div><div><dt>计费周期</dt><dd>{quote.periodStart} 至 {quote.periodEnd}</dd></div><div><dt>报价有效至</dt><dd>{quote.expiresAt}</dd></div></dl><p>{quote.refundTerms}</p><p>{quote.retentionTerms}</p>{controller.agentWallet && BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros) ? <Alert color="warning" title="余额不足" description="Gateway 权威余额不足本次报价，请联系管理员充值后重新报价。" /> : null}<div className="launch-confirm-check"><Checkbox checked={controller.agentConfirmed} label="我确认以上 Agent、套餐、模型、费用与数据政策，并同意创建同一 Workspace。" onChange={controller.setAgentConfirmed} /></div><footer><Button onClick={() => { controller.setLaunchStep("configure"); controller.setAgentConfirmed(false); }} variant="outline">返回修改</Button></footer></section><aside className="workspace-order-summary"><header><span>确定报价</span><strong>{formatUsdMicros(quote.totalUSDMicros)}</strong></header><dl className="workspace-order-summary__facts">{quote.lineItems.map((item) => <div key={`${item.kind}:${item.description}`}><dt>{item.description}</dt><dd>{formatUsdMicros(item.amountUSDMicros)}</dd></div>)}</dl><div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentConfirmed || !controller.agentWallet || BigInt(controller.agentWallet.balanceUSDMicros) < BigInt(quote.totalUSDMicros)} onClick={() => void controller.submitAgentLaunch()}>确认并开通 Workspace</Button></div></aside></div>
+      ) : (
+        <div className="workspace-launch-layout"><section className="workspace-launch-config"><header><h2>新建 Agent Workspace</h2><p>选择已 ready 的 Agent CapabilityVersion、计算/存储套餐和模型；价格只由 Resource Catalog 报价。</p></header><Field label="工作空间名称" maxLength={256} onChange={(event) => controller.setLaunchName(event.currentTarget.value)} placeholder="例如：IBD 研究助手" required value={controller.launchName} />
+          <fieldset><legend>Agent CapabilityVersion</legend><select aria-label="Agent CapabilityVersion" disabled={!controller.agentCapabilityVersions.length} onChange={(event) => controller.setAgentCapabilityVersionId(event.currentTarget.value)} value={controller.agentCapabilityVersionId}><option value="">请选择 ready 版本</option>{controller.agentCapabilityVersions.map((item) => <option key={item.id} value={item.id}>{item.versionLabel} · {item.provenance}</option>)}</select></fieldset>
+          <fieldset><legend>计算套餐</legend><RadioGroup<string> aria-label="计算套餐" className="workspace-plan-list" direction="col" name="agent-compute-plan" onChange={controller.setAgentComputePlanId} value={controller.agentComputePlanId}>{controller.agentComputePlans.map((item) => <RadioGroup.Item block key={item.id} value={item.id}><strong>{item.name}</strong><small>{item.vcpus} vCPU / {item.memoryMiB} MiB</small></RadioGroup.Item>)}</RadioGroup></fieldset>
+          <fieldset><legend>存储套餐</legend><select aria-label="存储套餐" onChange={(event) => controller.setAgentStoragePlanId(event.currentTarget.value)} value={controller.agentStoragePlanId}>{controller.agentStoragePlans.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.capacityGiB} GiB</option>)}</select></fieldset>
+          {version?.modelRequirements.map((requirement) => <fieldset key={requirement.slot}><legend>{requirement.slot}{requirement.required ? "（必选）" : "（可选）"}</legend><select aria-label={requirement.slot} onChange={(event) => controller.setAgentModelSelection(requirement.slot, event.currentTarget.value)} value={controller.agentModelSelections[requirement.slot] || ""}><option value="">请选择模型</option>{controller.agentModels.filter((model) => requirement.allowedModelIds.includes(model.id)).map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></fieldset>)}
+        </section><aside className="workspace-order-summary"><header><span>当前选择</span><strong>{version?.versionLabel || "未选择 Agent"}</strong></header><dl className="workspace-order-summary__facts"><div><dt>计算</dt><dd>{compute?.name || "未选择"}</dd></div><div><dt>存储</dt><dd>{storage?.name || "未选择"}</dd></div><div><dt>Gateway 钱包</dt><dd>{controller.agentWallet ? `${formatUsdMicros(controller.agentWallet.balanceUSDMicros)}（实时）` : "暂不可用"}</dd></div></dl><div className="workspace-order-summary__action"><Button busy={controller.agentBusy} color="primary" disabled={!controller.agentWallet || controller.agentSourceLoading || Boolean(controller.agentSourceError)} onClick={controller.reviewAgentLaunch}>获取准确报价</Button></div></aside></div>
+      )}
+    </section>
+  );
+}
+
 export function WorkspaceLaunchPage({
   controller,
   onBack,
@@ -110,6 +183,10 @@ export function WorkspaceLaunchPage({
   onBack: () => void;
   onRefresh: () => Promise<void>;
 }) {
+  const agentController = controller as WorkspaceLaunchController & Partial<AgentWorkspaceLaunchController>;
+  if (agentController.agentCapabilityVersions && agentController.reviewAgentLaunch) {
+    return <AgentLaunchPage controller={agentController as AgentWorkspaceLaunchController} onBack={onBack} onRefresh={onRefresh} />;
+  }
   const catalog = controller.catalog.value;
   if (controller.launchOperation) {
     return <section className="workspace-launch-page" data-slide="C-WS-04"><LaunchOperation controller={controller} onBack={onBack} onRefresh={onRefresh} /></section>;

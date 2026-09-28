@@ -70,6 +70,8 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux, catalog api.ResourceC
 			return catalog.ListStoragePlans(r.Context(), &api.ListStoragePlansRpcRequest{Context: c, QueryCursor: optionalQuery(r, "cursor"), QueryLimit: optionalLimit(r), QueryComputePlanId: optionalQuery(r, "computePlanId")})
 		})
 
+	s.registerModelCatalogRoute(mux, s.gateway)
+
 	// The customer pricing surface. A quote is priced by the owner and is neither a
 	// reservation nor a charge; the caller's own tenant scope is what the owner
 	// authorizes against.
@@ -181,4 +183,11 @@ func optionalLimit(r *http.Request) *int32 {
 	}
 	value := int32(parsed)
 	return &value
+}
+
+func requireGateway(gateway api.GatewayProductServiceClient) error {
+	if gateway == nil {
+		return status.Error(codes.Unavailable, "gateway owner is not configured")
+	}
+	return nil
 }

@@ -5,6 +5,9 @@ import type { ApiError } from "../../apps/console-ui/src/api/console-api.ts";
 import type { WorkspaceLaunchRequest, WorkspaceLaunchResponse } from "../../apps/console-ui/src/api/dtos.ts";
 import {
   canReviewWorkspaceLaunch,
+  canCreateAgentQuote,
+  canCreateAgentWorkspace,
+  operationPollDelayMs,
   canSubmitWorkspaceLaunch,
   classifyWorkspaceLaunchRecovery,
   resolveWorkspaceLaunchIntent,
@@ -165,4 +168,30 @@ test("an intent that changes provisioning mode is a conflict, not a silent reuse
   };
   const resolved = resolveWorkspaceLaunchIntent(intent, { ...basicRequest, provisioningMode: "full" }, () => "new-key");
   assert.equal(resolved.kind, "conflict");
+});
+
+test("Agent launch stays closed until every owner readback is available", () => {
+  const base = {
+    sourceReady: true,
+    hasName: true,
+    hasCapabilityVersion: true,
+    hasComputePlan: true,
+    hasStoragePlan: true,
+    modelSelectionsReady: true,
+    walletReadbackReady: true,
+    walletSufficient: true,
+    quoteReady: false,
+    quoteCurrent: false
+  } as const;
+  assert.equal(canCreateAgentQuote(base), true);
+  assert.equal(canCreateAgentWorkspace(base, true), false);
+  assert.equal(canCreateAgentWorkspace({ ...base, quoteReady: true, quoteCurrent: true }, false), false);
+  assert.equal(canCreateAgentWorkspace({ ...base, quoteReady: true, quoteCurrent: true }, true), true);
+});
+
+test("Agent operation polling uses the owner's exact pollAfterSeconds", () => {
+  assert.equal(operationPollDelayMs(1), 1000);
+  assert.equal(operationPollDelayMs(300), 300000);
+  assert.throws(() => operationPollDelayMs(undefined), /invalid_operation_poll_after_seconds/);
+  assert.throws(() => operationPollDelayMs(0), /invalid_operation_poll_after_seconds/);
 });
