@@ -1,4 +1,5 @@
 import { PublisherPage } from "./PublisherPage.tsx";
+import { AgentPages } from "./AgentPages.tsx";
 import {
   ArrowRight,
   ChevronLeft,
@@ -338,6 +339,9 @@ export function CustomerPages({ controller, route }: { controller: ConsoleContro
   switch (route.kind) {
     case "customer.publisher":
       return <PublisherPage key={controller.session?.user.id} />;
+    case "customer.agents":
+    case "customer.agent-detail":
+      return <AgentPages controller={controller} route={route} />;
     case "customer.overview":
       return <OverviewPage controller={controller} />;
     case "customer.workspaces":

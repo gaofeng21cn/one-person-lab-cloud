@@ -20,9 +20,9 @@ import (
 	"opl-cloud/packages/contracts/go/publicjson"
 )
 
-func newPublisherHTTP(t *testing.T, cap api.CapabilityProductServiceClient, build api.BuildProductServiceClient, identity *liveIdentity) string {
+func newPublisherHTTP(t *testing.T, cap api.CapabilityProductServiceClient, runtime api.RuntimeControlProductServiceClient, build api.BuildProductServiceClient, identity *liveIdentity) string {
 	t.Helper()
-	server := httptest.NewServer(bff.NewPublisherHandler(cap, build, identity.client))
+	server := httptest.NewServer(bff.NewPublisherHandler(cap, runtime, build, identity.client))
 	t.Cleanup(server.Close)
 	for _, test := range []struct {
 		cookie, csrf string

@@ -134,9 +134,10 @@ for (const identity of ["legacy", "cloud"] as const) {
     let demo: Awaited<ReturnType<typeof startConsoleDemoServer>>;
     try {
       demo = await startConsoleDemoServer({ port: 0, log: false });
-    } finally {
+    } catch (error) {
       if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
       else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+      throw error;
     }
     const browser = await launchBrowser({ headless: true });
     try {
@@ -155,6 +156,7 @@ for (const identity of ["legacy", "cloud"] as const) {
           "/api/v2/namespaces": { items: [{ id: "namespace-1", name: "Fixture namespace" }] },
           "/api/v2/packages": { items: [] },
           "/api/v2/catalog/webui-versions": { items: [{ id: "webui-1", name: "Fixture WebUI", versionLabel: "1.0.0", status: "approved" }] },
+          "/api/v2/catalog/runtime-versions": { items: [{ id: "runtime-1", name: "Fixture Runtime", versionLabel: "1.0.0", status: "approved", artifactDigest: "sha256:" + "a".repeat(64) }] },
           "/api/v2/delivery/ws-1": {
             workspaceId: "ws-1",
             workspace: { owner: "workspace", state: "active", details: {} },
@@ -182,7 +184,7 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.ok(v2Requests.includes("/api/v2/delivery/ws-1"));
         await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
         await page.getByRole("link", { name: "发布 Package", exact: true }).click();
-        await page.locator(".publisher-page").getByRole("heading", { name: "发布 Package", exact: true }).waitFor({ state: "visible" });
+        await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
         await page.waitForFunction(() => (document.querySelector('[aria-label="WebUI"]') as HTMLSelectElement | null)?.value === "webui-1");
         assert.equal(await page.locator(".publisher-page fieldset").isDisabled(), false);
         assert.ok(v2Requests.includes("/api/v2/namespaces"));
@@ -195,13 +197,15 @@ for (const identity of ["legacy", "cloud"] as const) {
         assert.equal(await page.locator(".publisher-page").count(), 0);
         assert.deepEqual(v2Requests, []);
       } else {
-        await page.locator(".publisher-page").getByRole("heading", { name: "发布 Package", exact: true }).waitFor({ state: "visible" });
+        await page.locator(".publisher-page").getByRole("heading", { name: "Cloud WebUI / Agent Package", exact: true }).waitFor({ state: "visible" });
         assert.equal(await page.getByRole("heading", { name: "页面不存在", exact: true }).count(), 0);
       }
       assertBrowserAuditClean(audit);
     } finally {
       await browser.close();
       await demo.close();
+      if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+      else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
     }
   });
 }

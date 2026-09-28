@@ -47,6 +47,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 		TLS: owneridentity.TLSFromEnv(getenv),
 		Addresses: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_URL")),
+			owneridentity.RuntimeControl:  strings.TrimSpace(getenv("OPL_RUNTIME_CONTROL_URL")),
 			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_URL")),
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_URL")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_URL")),
@@ -54,6 +55,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 		},
 		Tokens: map[owneridentity.Owner]string{
 			owneridentity.Capability:      strings.TrimSpace(getenv("OPL_CAPABILITY_TOKEN")),
+			owneridentity.RuntimeControl:  strings.TrimSpace(getenv("OPL_RUNTIME_CONTROL_TOKEN")),
 			owneridentity.Build:           strings.TrimSpace(getenv("OPL_BUILD_TOKEN")),
 			owneridentity.Workspace:       strings.TrimSpace(getenv("OPL_WORKSPACE_TOKEN")),
 			owneridentity.Serve:           strings.TrimSpace(getenv("OPL_SERVE_TOKEN")),
@@ -71,6 +73,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 func ReachableOwners() []owneridentity.Owner {
 	return []owneridentity.Owner{
 		owneridentity.Capability,
+		owneridentity.RuntimeControl,
 		owneridentity.Build,
 		owneridentity.Workspace,
 		owneridentity.Serve,
@@ -80,15 +83,16 @@ func ReachableOwners() []owneridentity.Owner {
 // Clients holds one typed client per owner the BFF reaches, plus the
 // CloudIdentity session and authorization boundary.
 type Clients struct {
-	capability    api.CapabilityProductServiceClient
-	build         api.BuildProductServiceClient
-	workspace     api.WorkspaceProductServiceClient
-	serve         api.ServeProductServiceClient
-	tenant        api.TenantProductServiceClient
-	catalog       api.ResourceCatalogProductServiceClient
-	authorization api.CloudIdentityAuthorizationClient
-	owner         map[owneridentity.Owner]api.OwnerOperationsClient
-	conns         []*grpc.ClientConn
+	capability     api.CapabilityProductServiceClient
+	runtimeControl api.RuntimeControlProductServiceClient
+	build          api.BuildProductServiceClient
+	workspace      api.WorkspaceProductServiceClient
+	serve          api.ServeProductServiceClient
+	tenant         api.TenantProductServiceClient
+	catalog        api.ResourceCatalogProductServiceClient
+	authorization  api.CloudIdentityAuthorizationClient
+	owner          map[owneridentity.Owner]api.OwnerOperationsClient
+	conns          []*grpc.ClientConn
 }
 
 // Dial opens one connection per configured owner. An owner that is not configured
@@ -115,6 +119,8 @@ func Dial(config Config) (*Clients, error) {
 		switch owner {
 		case owneridentity.Capability:
 			clients.capability = api.NewCapabilityProductServiceClient(conn)
+		case owneridentity.RuntimeControl:
+			clients.runtimeControl = api.NewRuntimeControlProductServiceClient(conn)
 		case owneridentity.Build:
 			clients.build = api.NewBuildProductServiceClient(conn)
 		case owneridentity.Workspace:
@@ -252,4 +258,16 @@ func CallContext(ctx context.Context) *api.CallContext {
 
 func (c *Clients) PublisherClients() (api.CapabilityProductServiceClient, api.BuildProductServiceClient) {
 	return c.capability, c.build
+}
+
+// ListRuntimeVersions reads the immutable Runtime Release catalog from its owner.
+func (c *Clients) ListRuntimeVersions(ctx context.Context, cursor string) (*api.RuntimeVersionPage, error) {
+	if c.runtimeControl == nil {
+		return nil, fmt.Errorf("runtime_control: %w", ErrUpstreamUnconfigured)
+	}
+	return c.runtimeControl.ListRuntimeVersions(ctx, &api.ListRuntimeVersionsRpcRequest{Context: CallContext(ctx), QueryCursor: &cursor})
+}
+
+func (c *Clients) RuntimeControlClient() api.RuntimeControlProductServiceClient {
+	return c.runtimeControl
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -168,10 +169,179 @@ func (o *Objects) validateArchive(filename string) ([]byte, error) {
 	if d.Decode(new(any)) != io.EOF {
 		return nil, fmt.Errorf("manifest has trailing data")
 	}
-	if e = o.schema.Validate(v); e != nil {
-		return nil, fmt.Errorf("package manifest does not match approved schema")
+	if e = o.schema.Validate(v); e == nil {
+		return manifest, nil
+	}
+	if e = validateOMACandidateTransport(r, manifest); e != nil {
+		return nil, e
 	}
 	return manifest, nil
+}
+
+// validateOMACandidateTransport admits the native Foundry transport without
+// rewriting its candidate bytes. The outer transport digest is the upload
+// digest; candidate/content/manifest digests remain distinct provenance facts.
+func validateOMACandidateTransport(r *zip.ReadCloser, transportManifest []byte) error {
+	var envelope struct {
+		SchemaVersion        int    `json:"schema_version"`
+		SurfaceKind          string `json:"surface_kind"`
+		TransportFormat      string `json:"transport_format"`
+		CandidateRoot        string `json:"candidate_root"`
+		CandidateFileCount   int    `json:"candidate_file_count"`
+		CandidateTotalBytes  int64  `json:"candidate_total_bytes"`
+		CandidateDigest      string `json:"candidate_digest"`
+		CandidateIndexSHA256 string `json:"candidate_index_sha256"`
+		ContentDigest        string `json:"content_digest"`
+		ManifestDigest       string `json:"manifest_digest"`
+		QualificationStatus  string `json:"qualification_status"`
+		DomainQualityStatus  string `json:"domain_quality_status"`
+		Admission            struct {
+			Status string `json:"status"`
+		} `json:"admission"`
+	}
+	if json.Unmarshal(transportManifest, &envelope) != nil || envelope.SchemaVersion != 1 ||
+		envelope.SurfaceKind != "opl_foundry_candidate_transport.v1" || envelope.TransportFormat != "ZIP" ||
+		envelope.CandidateRoot != "candidate" || envelope.CandidateFileCount <= 0 || envelope.CandidateTotalBytes <= 0 ||
+		!digestRE.MatchString(envelope.CandidateDigest) || !digestRE.MatchString(envelope.CandidateIndexSHA256) ||
+		!digestRE.MatchString(envelope.ContentDigest) || !digestRE.MatchString(envelope.ManifestDigest) ||
+		envelope.QualificationStatus != "not_qualified" || envelope.DomainQualityStatus != "not_evaluated" ||
+		envelope.Admission.Status != "development_transport_ready" {
+		return fmt.Errorf("invalid OMA candidate transport manifest")
+	}
+	files := map[string][]byte{}
+	for _, entry := range r.File {
+		name := strings.TrimSuffix(entry.Name, "/")
+		if name == "" || name == "manifest.json" || entry.FileInfo().IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(name, "candidate/") || strings.HasSuffix(name, "/") || strings.Contains(path.Base(name), "._") {
+			return fmt.Errorf("OMA candidate transport contains non-candidate content")
+		}
+		f, err := entry.Open()
+		if err != nil {
+			return fmt.Errorf("OMA candidate entry unreadable")
+		}
+		b, err := io.ReadAll(io.LimitReader(f, int64(entry.UncompressedSize64)+1))
+		f.Close()
+		if err != nil || uint64(len(b)) != entry.UncompressedSize64 {
+			return fmt.Errorf("OMA candidate entry integrity failed")
+		}
+		files[strings.TrimPrefix(name, "candidate/")] = b
+	}
+	index, ok := files["candidate-index.json"]
+	if !ok {
+		return fmt.Errorf("OMA candidate index is missing")
+	}
+	if digest(index) != envelope.CandidateIndexSHA256 {
+		return fmt.Errorf("OMA candidate index digest mismatch")
+	}
+	agentManifest, ok := files["agent/agent-pack.json"]
+	if !ok || digest(agentManifest) != envelope.ManifestDigest {
+		return fmt.Errorf("OMA agent manifest digest mismatch")
+	}
+	var idx omaCandidateIndex
+	if json.Unmarshal(index, &idx) != nil || idx.SurfaceKind != "opl_foundry_candidate_file_index" || idx.Version != "opl-foundry-candidate-index.v2" || !digestRE.MatchString(idx.BlueprintDigest) || len(idx.Files) != envelope.CandidateFileCount {
+		return fmt.Errorf("invalid OMA candidate index")
+	}
+	if idx.CandidateDigest != envelope.CandidateDigest || omaCandidateDigest(idx) != envelope.CandidateDigest {
+		return fmt.Errorf("OMA candidate identity digest mismatch")
+	}
+	seen := make(map[string]bool, len(idx.Files))
+	var total int64
+	h := sha256.New()
+	for _, item := range idx.Files {
+		b, ok := files[item.Path]
+		if !ok || !safePath(item.Path) || item.Path == "candidate-index.json" || seen[item.Path] || !hex64.MatchString(item.SHA256) || int64(len(b)) != item.ByteSize || strings.TrimPrefix(digest(b), "sha256:") != item.SHA256 {
+			return fmt.Errorf("OMA candidate file digest mismatch")
+		}
+		seen[item.Path] = true
+		var n [8]byte
+		binary.BigEndian.PutUint64(n[:], uint64(len([]byte(item.Path))))
+		h.Write(n[:])
+		h.Write([]byte(item.Path))
+		binary.BigEndian.PutUint64(n[:], uint64(len(b)))
+		h.Write(n[:])
+		h.Write(b)
+		total += int64(len(b))
+	}
+	if total != envelope.CandidateTotalBytes || "sha256:"+hex.EncodeToString(h.Sum(nil)) != envelope.ContentDigest {
+		return fmt.Errorf("OMA candidate content digest mismatch")
+	}
+	if len(files) != envelope.CandidateFileCount+1 {
+		return fmt.Errorf("OMA candidate file inventory mismatch")
+	}
+	return nil
+}
+
+// These fields follow Foundry's opl-foundry-candidate-index.v2 identity. The
+// candidate_digest is the canonical JSON digest of the other four fields;
+// candidate-index.json itself is not part of its file inventory.
+type omaCandidateFile struct {
+	Path     string `json:"path"`
+	ByteSize int64  `json:"byte_size"`
+	SHA256   string `json:"sha256"`
+}
+type omaCandidateIndex struct {
+	SurfaceKind     string             `json:"surface_kind"`
+	Version         string             `json:"version"`
+	BlueprintDigest string             `json:"blueprint_digest"`
+	CandidateDigest string             `json:"candidate_digest"`
+	Files           []omaCandidateFile `json:"files"`
+}
+
+func omaCandidateDigest(index omaCandidateIndex) string {
+	// Object keys use the upstream canonical order; array order is preserved.
+	// JSON.stringify leaves Unicode and HTML characters unescaped.
+	var out strings.Builder
+	out.WriteString(`{"blueprint_digest":`)
+	writeOMAJSONString(&out, index.BlueprintDigest)
+	out.WriteString(`,"files":[`)
+	for i, file := range index.Files {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		out.WriteString(`{"byte_size":`)
+		out.WriteString(strconv.FormatInt(file.ByteSize, 10))
+		out.WriteString(`,"path":`)
+		writeOMAJSONString(&out, file.Path)
+		out.WriteString(`,"sha256":`)
+		writeOMAJSONString(&out, file.SHA256)
+		out.WriteByte('}')
+	}
+	out.WriteString(`],"surface_kind":`)
+	writeOMAJSONString(&out, index.SurfaceKind)
+	out.WriteString(`,"version":`)
+	writeOMAJSONString(&out, index.Version)
+	out.WriteByte('}')
+	return digest([]byte(out.String()))
+}
+
+func writeOMAJSONString(out *strings.Builder, value string) {
+	out.WriteByte('"')
+	for _, char := range value {
+		switch char {
+		case '"', '\\':
+			out.WriteByte('\\')
+			out.WriteRune(char)
+		case '\b':
+			out.WriteString(`\b`)
+		case '\f':
+			out.WriteString(`\f`)
+		case '\n':
+			out.WriteString(`\n`)
+		case '\r':
+			out.WriteString(`\r`)
+		case '\t':
+			out.WriteString(`\t`)
+		default:
+			if char < 0x20 {
+				fmt.Fprintf(out, `\u%04x`, char)
+			} else {
+				out.WriteRune(char)
+			}
+		}
+	}
+	out.WriteByte('"')
 }
 
 type partPermit struct {

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	api "opl-cloud/packages/contracts/go/api"
 	"opl-cloud/packages/contracts/go/publicjson"
+	"strings"
 	"time"
 )
 
@@ -87,6 +88,10 @@ func (s *Service) GetCapabilityVersion(ctx context.Context, r *api.GetCapability
 	if err := s.DB.QueryRowContext(ctx, `SELECT provenance_evidence,status,created_at FROM capability.capability_versions WHERE id=$1`, r.CapabilityVersionId).Scan(&raw, &state, &created); err != nil {
 		return nil, dbError(err)
 	}
+	return buildCapabilityVersion(r.CapabilityVersionId, raw, state, created)
+}
+
+func buildCapabilityVersion(id string, raw []byte, state string, created time.Time) (*api.CapabilityVersion, error) {
 	v := &api.BuildArtifactReadback{}
 	if err := protojson.Unmarshal(raw, v); err != nil {
 		return nil, dbError(err)
@@ -94,5 +99,52 @@ func (s *Service) GetCapabilityVersion(ctx context.Context, r *api.GetCapability
 	if v.Input == nil || v.Artifact == nil || v.Outcome != api.Observation_OBSERVATION_CONFIRMED {
 		return nil, status.Error(codes.DataLoss, "invalid persisted Build evidence")
 	}
-	return &api.CapabilityVersion{Id: r.CapabilityVersionId, PackageId: proto.String(v.Input.PackageId), PackageVersionId: proto.String(v.Input.PackageVersionId), RuntimeVersionId: proto.String(v.Input.RuntimeVersionId), WebuiVersionId: proto.String(v.Input.WebuiVersionId), BuildJobId: proto.String(v.BuildJobId), VersionLabel: v.VersionLabel, ArtifactDigest: v.Artifact.Digest, Artifact: v.Artifact, Status: api.CapabilityVersionStatusEnum(api.CapabilityVersionStatusEnum_value["CAPABILITY_VERSION_STATUS_ENUM_"+upper(state)]), CreatedAt: timestamppb.New(created), Provenance: api.CapabilityVersionProvenanceEnum_CAPABILITY_VERSION_PROVENANCE_ENUM_BUILD, DeploymentDescriptor: v.DeploymentDescriptor, DeploymentDescriptorDigest: v.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: v.DeploymentDescriptorObjectRef, ModelRequirements: v.ModelRequirements, DataCompatibility: v.DataCompatibility}, nil
+	return &api.CapabilityVersion{Id: id, PackageId: proto.String(v.Input.PackageId), PackageVersionId: proto.String(v.Input.PackageVersionId), RuntimeVersionId: proto.String(v.Input.RuntimeVersionId), WebuiVersionId: proto.String(v.Input.WebuiVersionId), BuildJobId: proto.String(v.BuildJobId), VersionLabel: v.VersionLabel, ArtifactDigest: v.Artifact.Digest, Artifact: v.Artifact, Status: api.CapabilityVersionStatusEnum(api.CapabilityVersionStatusEnum_value["CAPABILITY_VERSION_STATUS_ENUM_"+upper(state)]), CreatedAt: timestamppb.New(created), Provenance: api.CapabilityVersionProvenanceEnum_CAPABILITY_VERSION_PROVENANCE_ENUM_BUILD, DeploymentDescriptor: v.DeploymentDescriptor, DeploymentDescriptorDigest: v.DeploymentDescriptorDigest, DeploymentDescriptorObjectRef: v.DeploymentDescriptorObjectRef, ModelRequirements: v.ModelRequirements, DataCompatibility: v.DataCompatibility}, nil
+}
+
+// ListCapabilityVersions reads only versions of packages visible to the caller.
+// Build provenance remains the immutable owner receipt; live state and active
+// reference counts come from Capability's own tables.
+func (s *Service) ListCapabilityVersions(ctx context.Context, r *api.ListCapabilityVersionsRpcRequest) (*api.CapabilityVersionPage, error) {
+	if err := s.auth(ctx, r.GetContext(), "ListCapabilityVersions", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, ""); err != nil {
+		return nil, err
+	}
+	state := ""
+	if r.GetQueryStatus() != api.ListCapabilityVersionsRpcRequestStatusEnum_LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_UNSPECIFIED {
+		name, ok := api.ListCapabilityVersionsRpcRequestStatusEnum_name[int32(r.GetQueryStatus())]
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "invalid CapabilityVersion status")
+		}
+		state = strings.ToLower(strings.TrimPrefix(name, "LIST_CAPABILITY_VERSIONS_RPC_REQUEST_STATUS_ENUM_"))
+	}
+	n := limit(r.GetQueryLimit())
+	rows, err := s.DB.QueryContext(ctx, `SELECT v.id,v.provenance_evidence,v.status,v.created_at,(SELECT COUNT(*) FROM capability.reference_claims rc WHERE rc.capability_version_id=v.id AND rc.released_at IS NULL) FROM capability.capability_versions v JOIN capability.packages p ON p.id=v.package_id JOIN capability.namespaces ns ON ns.id=p.namespace_id WHERE (ns.tenant_id=$1 OR p.visibility='official') AND ($2='' OR v.package_id=$2) AND ($3='' OR v.status=$3) AND v.id>$4 ORDER BY v.id LIMIT $5`, tenant(r.GetContext()), r.GetQueryPackageId(), state, r.GetQueryCursor(), n+1)
+	if err != nil {
+		return nil, dbError(err)
+	}
+	defer rows.Close()
+	out := &api.CapabilityVersionPage{}
+	for rows.Next() {
+		var id, state string
+		var raw []byte
+		var created time.Time
+		var count int64
+		if err := rows.Scan(&id, &raw, &state, &created, &count); err != nil {
+			return nil, dbError(err)
+		}
+		v, err := buildCapabilityVersion(id, raw, state, created)
+		if err != nil {
+			return nil, err
+		}
+		v.ReferenceCount = count
+		out.Items = append(out.Items, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, dbError(err)
+	}
+	if len(out.Items) > n {
+		out.Items = out.Items[:n]
+		out.NextCursor = proto.String(out.Items[n-1].Id)
+	}
+	return out, nil
 }

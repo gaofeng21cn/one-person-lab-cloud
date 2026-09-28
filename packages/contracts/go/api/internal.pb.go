@@ -13015,6 +13015,7 @@ type CreateBuildRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	PackageVersionId string                 `protobuf:"bytes,1,opt,name=package_version_id,json=packageVersionId,proto3" json:"package_version_id,omitempty"`
 	WebuiVersionId   string                 `protobuf:"bytes,2,opt,name=webui_version_id,json=webuiVersionId,proto3" json:"webui_version_id,omitempty"`
+	RuntimeVersionId string                 `protobuf:"bytes,3,opt,name=runtime_version_id,json=runtimeVersionId,proto3" json:"runtime_version_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -13059,6 +13060,13 @@ func (x *CreateBuildRequest) GetPackageVersionId() string {
 func (x *CreateBuildRequest) GetWebuiVersionId() string {
 	if x != nil {
 		return x.WebuiVersionId
+	}
+	return ""
+}
+
+func (x *CreateBuildRequest) GetRuntimeVersionId() string {
+	if x != nil {
+		return x.RuntimeVersionId
 	}
 	return ""
 }
@@ -30729,6 +30737,7 @@ type BuildInputRequest struct {
 	Context          *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	PackageVersionId string                 `protobuf:"bytes,2,opt,name=package_version_id,json=packageVersionId,proto3" json:"package_version_id,omitempty"`
 	WebuiVersionId   string                 `protobuf:"bytes,3,opt,name=webui_version_id,json=webuiVersionId,proto3" json:"webui_version_id,omitempty"`
+	RuntimeVersionId string                 `protobuf:"bytes,4,opt,name=runtime_version_id,json=runtimeVersionId,proto3" json:"runtime_version_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -30780,6 +30789,13 @@ func (x *BuildInputRequest) GetPackageVersionId() string {
 func (x *BuildInputRequest) GetWebuiVersionId() string {
 	if x != nil {
 		return x.WebuiVersionId
+	}
+	return ""
+}
+
+func (x *BuildInputRequest) GetRuntimeVersionId() string {
+	if x != nil {
+		return x.RuntimeVersionId
 	}
 	return ""
 }
@@ -41864,10 +41880,11 @@ const file_internal_proto_rawDesc = "" +
 	"\x10_artifact_digestB\x1f\n" +
 	"\x1d_result_capability_version_idB\x18\n" +
 	"\x16_retry_of_build_job_idB\r\n" +
-	"\v_error_code\"l\n" +
+	"\v_error_code\"\x9a\x01\n" +
 	"\x12CreateBuildRequest\x12,\n" +
 	"\x12package_version_id\x18\x01 \x01(\tR\x10packageVersionId\x12(\n" +
-	"\x10webui_version_id\x18\x02 \x01(\tR\x0ewebuiVersionId\"\xfb\x01\n" +
+	"\x10webui_version_id\x18\x02 \x01(\tR\x0ewebuiVersionId\x12,\n" +
+	"\x12runtime_version_id\x18\x03 \x01(\tR\x10runtimeVersionId\"\xfb\x01\n" +
 	"\bBuildLog\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\fbuild_job_id\x18\x02 \x01(\tR\n" +
@@ -43637,11 +43654,12 @@ const file_internal_proto_rawDesc = "" +
 	"version_id\x18\x02 \x01(\tR\tversionId\x12\x16\n" +
 	"\x06sha256\x18\x03 \x01(\tR\x06sha256\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\"\xa1\x01\n" +
+	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\"\xcf\x01\n" +
 	"\x11BuildInputRequest\x124\n" +
 	"\acontext\x18\x01 \x01(\v2\x1a.opl.cloud.api.CallContextR\acontext\x12,\n" +
 	"\x12package_version_id\x18\x02 \x01(\tR\x10packageVersionId\x12(\n" +
-	"\x10webui_version_id\x18\x03 \x01(\tR\x0ewebuiVersionId\"\xaf\a\n" +
+	"\x10webui_version_id\x18\x03 \x01(\tR\x0ewebuiVersionId\x12,\n" +
+	"\x12runtime_version_id\x18\x04 \x01(\tR\x10runtimeVersionId\"\xaf\a\n" +
 	"\x12BuildInputSnapshot\x12\x1d\n" +
 	"\n" +
 	"package_id\x18\x01 \x01(\tR\tpackageId\x12,\n" +

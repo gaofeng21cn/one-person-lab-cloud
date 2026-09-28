@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_package_runtime_webui_oci_build_receipt",
+  "recordedAt": "2026-09-27T14:45:00+08:00",
+  "status": "bounded_cloud_chain_verified_with_upstream_runtime_build_boundary",
+  "scope": "Cloud Package intake, Runtime/WebUI owner registration, BuildKit OCI push and registry readback only; no Workspace, Fabric, Serve, Instance, provider purchase, production deployment, or real-money mutation",
+  "candidate": {
+    "transportFormat": "opl-foundry-candidate-transport.v1",
+    "archive": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip",
+    "archiveSha256": "sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358",
+    "detachedManifest": "/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.manifest.json",
+    "detachedManifestSha256": "sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80",
+    "candidateDigest": "sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af",
+    "candidateIndexSha256": "sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125",
+    "contentDigest": "sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f",
+    "agentManifestSha256": "sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2",
+    "qualification": "not_qualified",
+    "domainQuality": "not_evaluated",
+    "admission": "development_transport_ready",
+    "validation": [
+      "ZIP entry integrity",
+      "absolute/traversal/backslash/duplicate/symlink rejection",
+      "candidate index file count/size/hash",
+      "length-prefixed content digest"
+    ]
+  },
+  "upstreamRuntime": {
+    "manifest": "/Users/huangrende/Documents/ChatGPT/opl-app/docs/delivery/release-evidence/cloud-runtime-release-26.9.26.json",
+    "manifestSha256": "sha256:7d94904a56f840f0958bba895880b89d80fc6b4b2bea186437b57d3a8e020255",
+    "releaseVersion": "26.9.26",
+    "ociIndex": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "platformDigests": {
+      "linux/amd64": "sha256:dac7cb39a0729181c02dfcc103142c2964139e048ea1a0d9a22eb50508a33cc3",
+      "linux/arm64": "sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98"
+    },
+    "abiDigest": "sha256:ff923016f5f38eb950bd5fbc211d1246029f4a0ed65fc2a5d095b0d6128b8fcd",
+    "registration": "Runtime Control registration path is implemented; the exact upstream-image Build attempt reached BuildKit but did not produce an OCI readback because the isolated worker could not resolve the remote GHCR context. The successful artifact below therefore binds the isolated approved Runtime fixture, not this upstream image."
+  },
+  "cloudWebui": {
+    "registration": "Capability WebUI registration and owner readback passed in the live owner chain",
+    "contract": "opl-cloud-webui-artifact/v1",
+    "requirements": {
+      "digestPinned": true,
+      "port": 3000,
+      "health": "/healthz",
+      "readiness": "/readyz",
+      "runtimeAbiCompatibility": true,
+      "packageCompatibility": true
+    }
+  },
+  "successfulCloudBuild": {
+    "command": "npm run verify:package-to-oci",
+    "exitCode": 0,
+    "buildInputSnapshotDigest": "sha256:f8aefaedd88e80afc05846ea3d439ca090e8814d43ee1e5738b672859439b7cd",
+    "runtimeRegistrationId": "runtime_dfca5887d6d2e753a53de5a24e10fcfb",
+    "webuiRegistrationId": "webui_50302d2b9fc67dcb5509ba0a65762f8d",
+    "capabilityVersionId": "capv_a5b5f92527c50b2e151193c3b6be54b3",
+    "registryRef": "127.0.0.1:50701/result/4ec4af08c009c4034dc47a88/ab61f7f16e2c89ac2f434e22@sha256:24a63f0aa5d15436eb0c26c8f4dfc7f9a61b0d099521ba8512c9e9fcc781c96b",
+    "ociDigest": "sha256:24a63f0aa5d15436eb0c26c8f4dfc7f9a61b0d099521ba8512c9e9fcc781c96b",
+    "descriptorDigest": "sha256:b8cea52b34cc2889919003a22c37926f663c68026cf85ba7c3bbc2f9761f7284",
+    "buildkit": {
+      "realCommand": true,
+      "exporterExitObserved": true,
+      "registryManifestReadback": true,
+      "builderRestartReadback": true
+    },
+    "logSha256": "sha256:a75b01721d55950aafbbb5cf0f0b18e3741ac3726b676fa46213d520a88cf1e1",
+    "runtimeRegistrationArtifactSha256": "sha256:3ac18fd9cb68a77bff6033aa9b0aba39e396b89d1d947853a98407505aff6d41",
+    "runtimeRegistrationContractSha256": "sha256:9f3e7a08bff3fd1b4b0da67f913f83cd1a40079ebab13bc0596a3e59facbb2af",
+    "selectedRuntimeId": "runtime_bfab3e96775c842ab0e53b22581c8b00",
+    "webuiRegistrationArtifactSha256": "sha256:94e9b34c0e55678fbc9316e2f02f54ed066c86fd1e7e2579bdbcbe77e0ee3714",
+    "webuiRegistrationContractSha256": "sha256:1242e211aae790d8016ce0114d6ec5d09c05fa28b9c24abe15a707f1f66375b8"
+  },
+  "failureAttempts": [
+    {
+      "stage": "upstream_runtime_build",
+      "command": "OPL_BUILD_TEST_PACKAGE=<native transport> OPL_RUNTIME_IMAGE=<App OCI index> npm run verify:package-to-oci",
+      "result": "BuildKit started after package intake and owner registration but timed out with needs_attention; no registry output was read back",
+      "reason": "isolated BuildKit worker cannot fetch the remote GHCR runtime context under the current network boundary",
+      "rawLogsStored": false
+    },
+    {
+      "stage": "previous_buildkit_frontend",
+      "result": "fixed by pushing the immutable Dockerfile frontend into the isolated registry; no mutable tag fallback used"
+    }
+  ],
+  "source": {
+    "headSha": "445e3e08",
+    "workingTreeDiffSha256": "sha256:10a5297cd59192310bb5d50529e27c0856b7e8e465873a0f1f88116e768a9e43",
+    "treeState": "candidate implementation is committed on a clean origin/main-derived branch; this receipt is the evidence projection"
+  },
+  "verification": {
+    "nativeCandidateValidator": "OPL_OMA_CANDIDATE_TRANSPORT=/Users/huangrende/Documents/ChatGPT/oma/cloud-handoff/artifacts/ibd-evidence-assistant-native-candidate-transport.zip go test -tags=livebuild ./catalog -run TestNativeOMA -count=1",
+    "focusedOwnerBuild": "npm run verify:package-to-oci passed on the clean candidate branch; the retained log hash is bound above",
+    "localFull": "npm run verify:local was attempted on the clean candidate branch and failed one unrelated existing local qualification test (Local qualification uses one bounded runner filesystem and explicit privileged inputs); this remains an open gate and is not reported as passing",
+    "deploymentReceipt": false,
+    "productionOrInstanceClaim": false
+  }
+}

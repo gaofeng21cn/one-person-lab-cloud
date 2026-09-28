@@ -1,0 +1,14 @@
+{
+  "schema": "opl-cloud-webui-artifact/v1",
+  "labelled": true,
+  "provenance": "fixture",
+  "note": "Development fixture for BFF/UI state-machine work only. Not an admitted Build input and not a production claim. Replace with the real Cloud WebUI artifact digest before any Build.",
+  "carrierKind": "oci_image",
+  "imageRepository": "ghcr.io/gaofeng21cn/one-person-lab-cloud-webui",
+  "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "port": 3000,
+  "healthPath": "/healthz",
+  "runtimeAbiVersions": ["opl-runtime-abi/v1"],
+  "packageFormatVersions": ["opl-agent-package/v1"]
+}

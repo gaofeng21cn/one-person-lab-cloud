@@ -293,6 +293,7 @@ message BuildJob {
 message CreateBuildRequest {
  string package_version_id = 1;
  string webui_version_id = 2;
+ string runtime_version_id = 3;
 }
 
 message BuildLog {
@@ -2269,7 +2270,7 @@ service LedgerProductService {
 enum Observation { OBSERVATION_UNSPECIFIED = 0; OBSERVATION_CONFIRMED = 1; OBSERVATION_REJECTED = 2; OBSERVATION_UNKNOWN = 3; }
 message OwnerOperationRequest { CallContext context = 1; string operation_id = 2; }
 message SourceObjectReference { string storage_object_id = 1; string version_id = 2; string sha256 = 3; int64 size_bytes = 4; }
-message BuildInputRequest { CallContext context = 1; string package_version_id = 2; string webui_version_id = 3; }
+message BuildInputRequest { CallContext context = 1; string package_version_id = 2; string webui_version_id = 3; string runtime_version_id = 4; }
 message BuildInputSnapshot { string package_id = 1; string package_version_id = 2; SourceObjectReference package_object = 3; string runtime_version_id = 4; ArtifactReference runtime_artifact = 5; string webui_version_id = 6; ArtifactReference webui_artifact = 7; RuntimePublisherContract runtime_contract = 8; WebuiPublisherContract webui_contract = 9; string snapshot_digest = 10; PublisherContractReference runtime_contract_reference = 11; PublisherContractReference webui_contract_reference = 12; string package_claim_id = 13; string runtime_claim_id = 14; string webui_claim_id = 15; }
 // ResolveBuildInput is side-effect-free. Claim IDs are empty until a queued job
 // exists. Worker acquires all three, commits IDs locally, then binds owner evidence

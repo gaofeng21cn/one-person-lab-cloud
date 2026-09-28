@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_agent_owner_readback_console_receipt",
+  "recordedAt": "2026-09-27T00:00:00Z",
+  "outcome": "implemented_source_verified_external_tcr_unverified",
+  "scope": "Cloud Console agent directory/detail readback and BFF owner routes; no Package/Capability/Build mutation, Workspace deployment, Instance qualification, provider purchase, wallet mutation, or secret access",
+  "testedSourceSha": "8fdd560a4f86cdb4e0db4a8b98695e56734f8d76",
+  "testedSourceTree": "26b3e96713b5784aced7738209cbad25701f93bb",
+  "changedFiles": [
+    "apps/console-bff/internal/httpapi/publisher.go",
+    "apps/console-ui/src/app/console-router.ts",
+    "apps/console-ui/src/app/use-console-controller.ts",
+    "apps/console-ui/src/console-model.ts",
+    "apps/console-ui/src/pages/CustomerPages.tsx",
+    "apps/console-ui/src/pages/AgentPages.tsx",
+    "apps/console-ui/src/pages/agents.css",
+    "tests/ui/agent-owner-readback-browser.test.ts",
+    "tests/ui/cloud-webui-browser.test.ts",
+    "tests/ui/workspace-task-experience-browser.test.ts",
+    "package.json"
+  ],
+  "ownerReadback": {
+    "directoryRoute": "/console/agents",
+    "detailRoute": "/console/agents/:packageId",
+    "bffReads": [
+      "GET /api/v2/packages",
+      "GET /api/v2/packages/{packageId}",
+      "GET /api/v2/packages/{packageId}/versions",
+      "GET /api/v2/capability-versions?packageId={packageId}",
+      "GET /api/v2/builds/{buildId}"
+    ],
+    "ownerBoundary": "BFF forwards authenticated caller context to Capability and Build owners; UI renders returned DTO fields and does not write business facts",
+    "customerSurface": "Shows Package purpose/status, uploaded versions, deployable status only for CapabilityVersion status=ready, provenance, reference count and Build owner status; does not show artifact digest or internal receipt by default",
+    "mutationBoundary": "Archive, directory removal and CapabilityVersion deletion are not presented as available actions; the page explicitly preserves the owner write/reference-check boundary"
+  },
+  "verification": {
+    "passed": [
+      {"command": "npm run typecheck", "exitCode": 0},
+      {"command": "npm run lint", "exitCode": 0},
+      {"command": "npm run build", "exitCode": 0},
+      {"command": "node --test tests/ui/cloud-webui-browser.test.ts tests/ui/agent-owner-readback-browser.test.ts tests/ui/workspace-task-experience-browser.test.ts", "exitCode": 0, "testsPassed": 17},
+      {"command": "cd apps/console-bff && go test ./...", "exitCode": 0}
+    ],
+    "failedOrIncomplete": [
+      {"command": "npm test", "exitCode": 1, "result": "237 passed, 1 failed", "failure": "tests/tools/verify-local.test.ts:180 expected the low-space preparation path to invoke df, but observed no mocked command; no Agent owner-readback test or BFF test failed"},
+      {"evidence": "docs/evidence/source-checks/2026-09-27-tcr-package-runtime-webui-owner-chain.json", "status": "not_used_as_completion_evidence", "reason": "Independent review confirmed the TCR artifact, live test name, logs and source binding are not reproducible from this checkout; the current live test uses a loopback registry and a <h1>Cloud WebUI</h1> fixture"}
+    ]
+  },
+  "secrets": {"read": false, "written": false, "presentInChangedFiles": false, "presentInReceipt": false},
+  "sideEffects": {"productionDeploymentDispatched": false, "instanceQualificationPerformed": false, "realMoneyOrProviderMutation": false}
+}

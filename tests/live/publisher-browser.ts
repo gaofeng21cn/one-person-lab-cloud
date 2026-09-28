@@ -54,7 +54,7 @@ try {
   await page.getByRole("button", { name: "上传并构建 / 继续上传", exact: true }).click();
   await page.getByRole("heading", { name: "版本已就绪", exact: true }).waitFor({ timeout: 90000 });
   const result = page.getByRole("region", { name: "构建结果" });
-  const artifact = await result.locator("code").textContent();
+  const artifact = await result.getByText(/^sha256:[a-f0-9]{64}$/).textContent();
   assert.match(artifact || "", /^sha256:[a-f0-9]{64}$/);
   const version = await page.getByRole("region", { name: "已就绪版本" }).locator("p").first().textContent();
   assert.ok(version?.startsWith("capv_"));

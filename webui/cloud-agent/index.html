@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="opl-cloud-webui" content="generic-agent-webui/v1">
+  <title>OPL Agent</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell" data-opl-cloud-agent-webui="v1">
+    <header class="topbar">
+      <div><span class="eyebrow">OPL AGENT</span><h1>Agent workspace</h1><p>Cloud-provided generic Agent WebUI</p></div>
+      <span id="runtime-status" class="status">Connecting…</span>
+    </header>
+    <section class="workspace" aria-label="Agent conversation">
+      <div id="messages" class="messages" aria-live="polite"><div class="empty"><strong>Start a task</strong><span>Select an installed Agent and send a prompt.</span></div></div>
+      <form id="composer" class="composer">
+        <label for="agent">Agent</label>
+        <select id="agent" required disabled><option>Loading Agent catalog…</option></select>
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" rows="4" required placeholder="Ask the selected Agent to do something…" disabled></textarea>
+        <div class="composer-actions"><span id="hint">Loading runtime state…</span><button id="send" type="submit" disabled>Send</button></div>
+      </form>
+    </section>
+    <details class="diagnostics"><summary>Runtime details</summary><pre id="diagnostics-body">Not loaded.</pre></details>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

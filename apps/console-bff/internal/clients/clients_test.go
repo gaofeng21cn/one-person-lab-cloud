@@ -40,6 +40,8 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 			return &api.BuildJob{}, nil
 		case api.CapabilityProductService_GetCapabilityVersion_FullMethodName:
 			return &api.CapabilityVersion{}, nil
+		case api.RuntimeControlProductService_ListRuntimeVersions_FullMethodName:
+			return &api.RuntimeVersionPage{}, nil
 		default:
 			return &api.Operation{}, nil
 		}
@@ -48,6 +50,7 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 	api.RegisterServeProductServiceServer(server, &api.UnimplementedServeProductServiceServer{})
 	api.RegisterBuildProductServiceServer(server, &api.UnimplementedBuildProductServiceServer{})
 	api.RegisterCapabilityProductServiceServer(server, &api.UnimplementedCapabilityProductServiceServer{})
+	api.RegisterRuntimeControlProductServiceServer(server, &api.UnimplementedRuntimeControlProductServiceServer{})
 	api.RegisterOwnerOperationsServer(server, &api.UnimplementedOwnerOperationsServer{})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -81,10 +84,13 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 	if _, err := client.CapabilityVersion(ctx, "version-a"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := client.ListRuntimeVersions(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := client.Operation(ctx, owneridentity.Build, "operation-a"); err != nil {
 		t.Fatal(err)
 	}
-	if len(methods) != 6 {
+	if len(methods) != 7 {
 		t.Fatalf("exercised %d methods", len(methods))
 	}
 }

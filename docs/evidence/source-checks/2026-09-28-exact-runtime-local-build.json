@@ -1,0 +1,50 @@
+{
+  "recorded_at": "2026-09-28T02:07:47.155206+00:00",
+  "pr": 654,
+  "tested_head": "e63051f51cffeef34c77ff91390473bcb216836a",
+  "runtime": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+  "package_kind": "fixture ZIP, NOT original OMA candidate",
+  "package_sha256": "sha256:98037058b2a093cb7517c133c5c67da2d688c04e261fc47b40776a4dce28a948",
+  "webui_digest": "sha256:69305d7979add3039db48f2be7d1a06cb5532eaeb8e3f425e6e5d5ee98bcce23",
+  "snapshot_digest": "sha256:fa4142ee940fc8fad42dd47bd7194d9f1b5d2aa6a549523c494cc0fa40b1f4f7",
+  "output_digest": "sha256:5967db5b09e981999f4453f616b0cd76299e082cb328c823be148976d14718dc",
+  "registry_scope": "disposable loopback",
+  "observed_pass": [
+    "BuildKit composed exact Runtime digest and pushed output",
+    "fresh worker after SIGKILL recovered original artifact with one artifact/event/version and no exporter rerun",
+    "real browser publisher admission and reload preserved capv_054f6093c6e237180aa93c0537cb2e74",
+    "Ledger persisted both original events; replay no duplicates; forged/conflicting events rejected",
+    "package and Cloud WebUI files read from real composed image",
+    "builder stopped; manifest and persisted worker restart recovery passed"
+  ],
+  "full_test": "PASS 41.15 seconds after narrowing filesystem export to composed /agent and /web; immutable digest/readback and restart assertions retained",
+  "limitations": [
+    "No original OMA archive available on this machine",
+    "No TCR push/readback or production deployment",
+    "Package load into Runtime not proven"
+  ],
+  "tested_source": "PR e63051f plus main integration 92704d0c and scoped test-export repair",
+  "log_sha256": "aa1d1305fc0cf71988715cb071f936eb804a1fd28e32e1d1f0d2809d5381a457",
+  "scope": "Source acceptance: exact upstream Runtime plus real Cloud WebUI and explicitly synthetic Package in disposable owner services",
+  "earlier_failure": "Full filesystem export timed out after successful composition and browser owner readback; export now copies only asserted /agent and /web inputs.",
+  "final_source_recheck": {
+    "recorded_at": "2026-09-28T02:53:19.445836+00:00",
+    "tested_head": "21837778f30b507a4c66dbaf640fbef262da4945",
+    "runtime": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "package_kind": "synthetic ZIP; not the original OMA archive",
+    "webui_digest": "sha256:d557e252463bf1ca02df174833ef7ae32a6519d8137d26579f775ed7786f8060",
+    "snapshot_digest": "sha256:4088693890ef1c651fe68f57ec0481d658c73d36df4ea465b40fc5b137391658",
+    "output_digest": "sha256:150fee7568b202f4e7f3818a06c800f675c736cf8fbdee81f0fed4919e1e8a4f",
+    "descriptor_digest": "sha256:0c52087983d04545140ac67e9aa11220f3253438ae82f77d238b4ff6458517b7",
+    "result": "PASS, 43.92 seconds",
+    "log_sha256": "02d6bb4295c5b1adf8838c942eaa27a3f903ee08be43c4c1b055c198e7ad14eb",
+    "webui_fix": "Removed unsupported Stop action; turn remains locked until owner completion. Regression fails before repair and both focused browser tests pass."
+  },
+  "full_local_gate": {
+    "tested_head": "99f9d6eedcbc250cb57a4807d402a6232e7f11b8",
+    "command": "npm run verify:local:full",
+    "result": "PASS, PostgreSQL zero skips and Docker integration",
+    "log_sha256": "d6cc9715f1520ab6b190e31c61503d97bad71c5699b2841511d117f03df1b12d",
+    "subsequent_delta": "Only four WebUI/browser-test files; focused browser, syntax, diff, and exact Runtime composition rechecked at final_source_recheck.tested_head."
+  }
+}

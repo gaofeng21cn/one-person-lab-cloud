@@ -12,8 +12,8 @@ import (
 
 type IdentityReader = httpapi.IdentityReader
 
-func NewPublisherHandler(capability api.CapabilityProductServiceClient, build api.BuildProductServiceClient, identity IdentityReader) http.Handler {
-	return httpapi.NewPublisherHandler(capability, build, identity)
+func NewPublisherHandler(capability api.CapabilityProductServiceClient, runtimeControl api.RuntimeControlProductServiceClient, build api.BuildProductServiceClient, identity IdentityReader) http.Handler {
+	return httpapi.NewPublisherHandler(capability, runtimeControl, build, identity)
 }
 
 // IdentityClient is the same thin transport used by the BFF process.

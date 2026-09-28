@@ -133,7 +133,18 @@ func (s *Service) ListPackages(ctx context.Context, r *api.ListPackagesRpcReques
 		cursor := out.Items[len(out.Items)-1].Id
 		out.NextCursor = &cursor
 	}
-	return out, dbError(rows.Err())
+	if err := rows.Err(); err != nil {
+		return nil, dbError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, dbError(err)
+	}
+	for _, item := range out.Items {
+		if err := s.setLatestReadyVersion(ctx, item); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 func (s *Service) CreatePackage(ctx context.Context, r *api.CreatePackageRpcRequest) (*api.Package, error) {
 	if e := s.auth(ctx, r.GetContext(), "CreatePackage", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, ""); e != nil {
@@ -159,7 +170,26 @@ func (s *Service) GetPackage(ctx context.Context, r *api.GetPackageRpcRequest) (
 	if e := s.auth(ctx, r.GetContext(), "GetPackage", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.PackageId); e != nil {
 		return nil, e
 	}
-	return scanPackage(s.DB.QueryRowContext(ctx, `SELECT `+packageColumns+` FROM capability.packages p JOIN capability.namespaces n ON n.id=p.namespace_id WHERE p.id=$1 AND (n.tenant_id=$2 OR p.visibility='official')`, r.PackageId, tenant(r.Context)))
+	item, err := scanPackage(s.DB.QueryRowContext(ctx, `SELECT `+packageColumns+` FROM capability.packages p JOIN capability.namespaces n ON n.id=p.namespace_id WHERE p.id=$1 AND (n.tenant_id=$2 OR p.visibility='official')`, r.PackageId, tenant(r.Context)))
+	if err != nil {
+		return nil, err
+	}
+	if err := s.setLatestReadyVersion(ctx, item); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+func (s *Service) setLatestReadyVersion(ctx context.Context, item *api.Package) error {
+	var latest string
+	err := s.DB.QueryRowContext(ctx, `SELECT id FROM capability.capability_versions WHERE package_id=$1 AND status='ready' ORDER BY created_at DESC,id DESC LIMIT 1`, item.Id).Scan(&latest)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return dbError(err)
+	}
+	item.LatestReadyVersionId = proto.String(latest)
+	return nil
 }
 func (s *Service) UpdatePackage(ctx context.Context, r *api.UpdatePackageRpcRequest) (*api.Package, error) {
 	if e := s.auth(ctx, r.GetContext(), "UpdatePackage", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.PackageId); e != nil {

@@ -1,4 +1,5 @@
 import type { ReadinessFact } from "./api/dtos.ts";
+import { cloudIdentity } from "./app/console-identity.ts";
 import type { ConsoleNavigationId, CustomerConsoleRoute } from "./app/console-router.ts";
 
 type ConsoleMenuItem = {
@@ -18,6 +19,7 @@ type ApiMenuItem = {
 
 export const customerMenu = Object.freeze([
   { id: "customer.overview", label: "概览", path: "/console/overview", icon: "LayoutDashboard" },
+  ...(cloudIdentity ? [{ id: "customer.agents", label: "智能体", path: "/console/agents", icon: "Bot" } as const] : []),
   { id: "customer.workspaces", label: "工作空间", path: "/console/workspaces", icon: "Database" },
   { id: "customer.api", label: "OPL Gateway", mobileLabel: "Gateway", path: "/console/api", icon: "Server" },
   { id: "customer.billing", label: "费用", path: "/console/billing", icon: "ReceiptText" }

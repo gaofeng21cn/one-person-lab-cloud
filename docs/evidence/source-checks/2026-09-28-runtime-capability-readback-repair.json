@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-28",
+  "scope": "Cloud source repair for PR 654",
+  "baseHead": "92704d0cd56f5fbbb609e26d1cea0953091c5d78",
+  "changes": [
+    "Implement Capability-owned version listing with tenant visibility, status, cursor, limit and active reference count",
+    "Forward BFF CapabilityVersion query filters and reject unknown status values",
+    "Read Package latestReadyVersionId from current ready Capability rows",
+    "Recompute OMA candidate identity using the upstream v2 index fields and canonical JSON; reject duplicate indexed paths"
+  ],
+  "upstreamAlgorithm": {
+    "repository": "one-person-lab",
+    "path": "src/authority/evidence/foundry-persistent-adapters-parts/candidate-compiler.ts",
+    "canonicalSerializer": "src/kernel/canonical-json.ts",
+    "goldenDigest": "sha256:fb500a3b06f91f2dff71f718549f4deba7ce2354a8f65fc69ff192e6a4b9e42d",
+    "goldenCoverage": "HTML characters, Unicode and line separator are serialized identically to the actual Framework canonicalDigest function"
+  },
+  "validation": [
+    {
+      "command": "go test ./... -count=1",
+      "cwd": "services/capability",
+      "result": "passed",
+      "database": "isolated local PostgreSQL 16; real owner migrations and SQL"
+    },
+    {
+      "command": "go test ./internal/httpapi ./internal/clients -count=1",
+      "cwd": "apps/console-bff",
+      "result": "passed"
+    },
+    {
+      "command": "node --test --test-concurrency=1 tests/ui/agent-owner-readback-browser.test.ts tests/ui/cloud-webui-browser.test.ts",
+      "result": "passed: 2/2",
+      "boundary": "Browser interaction uses intercepted owner HTTP fixtures; no production claim"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "passed",
+      "log": "/tmp/github-ci-runtime-review-verify-local.log"
+    }
+  ],
+  "limits": [
+    "No production or provider resource mutation",
+    "External OMA archive check is optional and was skipped when OPL_OMA_CANDIDATE_TRANSPORT was unset",
+    "Local source checks do not claim TCR publication or live application completion"
+  ]
+}

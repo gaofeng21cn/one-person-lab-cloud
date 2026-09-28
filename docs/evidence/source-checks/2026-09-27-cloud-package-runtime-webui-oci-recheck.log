@@ -1,0 +1,38 @@
+Cloud Package -> Runtime/WebUI -> OCI recheck, PR #654
+Source HEAD: 9ee4e1d533286ec5e7ab654a2864918e174409c1
+Source tree: fcb0d5649524143824a8523a73069cdb7035e72d
+
+OMA archive: sha256:b3cb1bdadadd8214b2255c224a1c8b4ac8129bbd403227265cb28d9954a6e358
+OMA detached manifest: sha256:7eb3ddcb93ed807033348789410cf37b8ca752be702f0f9e3c74286570741f80
+OMA candidate digest (producer identity, consistent in outer manifest and candidate-index): sha256:3ff53f8a58b7c217e2aae8a796d8e592f5efbd7d2f4f5a656517aebf4ead60af
+OMA candidate digest independent bytewise recomputation: unavailable; current Cloud validator has no canonical candidate-digest algorithm
+OMA candidate index digest: sha256:1279d0927d8642af294718da1f8252042ed36892686c4497f90124c59a651125
+OMA content digest: sha256:6499b5215f3e1fac7e5d6aa157ca3e38e68297d7f7dbb647e76a2791da75498f
+OMA agent manifest digest: sha256:f67517f4d46620ebdaa7bc52d5416a74be62a50867a03e0422c831dbc54b30d2
+OMA qualification_status: not_qualified
+OMA domain_quality_status: not_evaluated
+OMA admission: development_transport_ready
+Native OMA validator: PASS (exit 0)
+
+Runtime owner input: OPL App release 26.9.26
+Runtime release manifest: sha256:7d94904a56f840f0958bba895880b89d80fc6b4b2bea186437b57d3a8e020255
+Runtime OCI index: ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e
+Runtime OCI index GET body digest: sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e (exit 0)
+Runtime linux/arm64 child: sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98
+Runtime linux/arm64 manifest GET body digest: sha256:db05f4bc2afb369ede1a96dd346905da367f33a18e770465507b482aaf809f98 (exit 0)
+Runtime owner release readback: confirmed locally and by GHCR anonymous pull token; no mutable tag used.
+
+Cloud WebUI owner input: NOT AVAILABLE
+Cloud WebUI artifact contract requires a real digest-pinned OCI artifact, linux/amd64+linux/arm64, port 3000, /healthz, runtime ABI and package compatibility. The only checked-in WebUI artifact is labelled fixture and the current live test constructs <h1>Cloud WebUI</h1>; neither is admissible evidence.
+
+TCR GET /v2: HTTP 401 (curl exit 0)
+TCR anonymous token endpoint: HTTP 401 (curl exit 0)
+TCR credential environment names: absent
+TCR repository@digest readback: NOT AVAILABLE
+
+BuildInputSnapshot: NOT CREATED for a real three-input selection
+BuildKit/TCR push: NOT RUN; fail-closed before any fixture could be promoted
+CapabilityVersion/descriptor owner readback: NOT CREATED
+Final OCI health/ready/application call: NOT RUN; exact stop is missing real Cloud WebUI artifact and TCR owner credentials/runner
+
+PR #654 CI run 36315068209: dependency-review SUCCESS; validate SUCCESS; PR remains OPEN/DRAFT.

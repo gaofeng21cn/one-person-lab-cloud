@@ -114,6 +114,35 @@ carries authorization and business intent without a deployment pointer or
 cross-database selection transaction. Build persistence includes the exact
 `call_context` and `descriptor_bytes` fields used by the worker and migration.
 
+### Cloud Console Agent directory and detail readback
+
+The September 28 source repair implements the previously missing Capability
+version list, preserves status/cursor/limit filters through the BFF, and derives
+Package's latest ready version from Capability rows. Isolated PostgreSQL tests
+exercise tenant/private visibility, official packages, status, pagination and
+active references. Native OMA upload validation now checks the upstream
+candidate identity and rejects duplicate index paths; the canonical digest
+check is compared with Framework's actual serializer. See the
+[source repair receipt](./evidence/source-checks/2026-09-28-runtime-capability-readback-repair.json).
+These checks establish source acceptance without claiming production adoption.
+
+The Cloud Console now exposes `/console/agents` and
+`/console/agents/:packageId`. The directory reads Capability-owned Package DTOs;
+the detail page reads the Package, PackageVersion page, CapabilityVersion page,
+and related Build owner status through the same-origin BFF. A version is shown as
+"可部署" only when the Capability owner returns `ready`. The page does not show
+artifact digests or internal receipts by default and does not offer archive or
+removal actions without the corresponding owner write/reference-check contract.
+
+The source receipt
+[2026-09-27 Agent owner readback](./evidence/source-checks/2026-09-27-agent-owner-readback-console.json)
+binds the original implementation commit. The current PR #654 port is bound
+by [the PR port receipt](./evidence/source-checks/2026-09-27-agent-owner-readback-pr-654.json),
+which records commit `48b66fe7` and the rerun focused browser/BFF checks. The
+prior TCR package/runtime/WebUI receipt remains explicitly unverified for this
+checkout; its artifact and smoke claims are not promoted into Console or
+deployment evidence.
+
 ### Serve delivery read surface
 
 The Serve process exposes `ListDeployments`, `GetDeployment` and
@@ -319,6 +348,18 @@ The full-local gate passed: 228 source tests, 114 browser-suite tests,
 all required PostgreSQL modules with zero skips, and Docker integration. The
 additional real browser/owner-chain test passed with inspected desktop/mobile
 screenshots. A final [HTTP contract-alignment receipt](./evidence/source-checks/2026-09-25-publisher-public-api-alignment.json) records focused rechecks for the canonical session path, CSRF header, response codes and Error shape. Earlier receipts remain bound to their historical source.
+
+The [September 28 exact Runtime build](./evidence/source-checks/2026-09-28-exact-runtime-local-build.json)
+uses the approved upstream GHCR Runtime digest, the real Cloud WebUI source and
+an explicitly synthetic Package. Isolated BuildKit composition, immutable
+Registry readback, real browser publisher flow, file-content checks and worker
+restart/lost-ack recovery all pass. Earlier GHCR/network failures therefore do
+not describe the current local build path. The local source acceptance is
+separate from the original OMA candidate run: its archive is unavailable on this
+machine and no authorized TCR publication/readback occurred. Those historical
+unknown facts are retained in the append-only receipts, without a source-merge
+or recurring monitoring obligation. No Agent loading, real model call or
+production deployment is claimed.
 
 ### Publisher identity and admission
 
