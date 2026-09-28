@@ -5,8 +5,8 @@ import { createServer } from "node:http";
 import { extname, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
-import { chromium } from "playwright";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(import.meta.dirname, "../..");
@@ -81,7 +81,7 @@ async function startDistServer() {
 test("production dist boots the React Console at desktop and mobile", { timeout: 120_000 }, async () => {
   await buildProductionDist();
   const server = await startDistServer();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const evidence = [];
   try {
     for (const viewport of viewports) {

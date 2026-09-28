@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   AnnouncementDTO,
@@ -13,6 +13,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 const unknownWriteMessage = "结果待确认，请刷新操作状态，不要重复提交";
@@ -98,7 +99,7 @@ async function settle(page: Page) {
 
 test("Operator Announcement route renders its own page without the overview projection", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [
       { width: 1280, height: 900 },
@@ -145,7 +146,7 @@ test("Operator Announcement route renders its own page without the overview proj
 
 test("Operator Announcement rejects an older retry result", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const oldRequestHeld = deferred();
   const releaseOldRequest = deferred();
   const oldRequestSettled = deferred();
@@ -187,7 +188,7 @@ test("Operator Announcement rejects an older retry result", { timeout: 60_000 },
 
 test("Operator Announcement create retries response loss with one normalized intent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const created = announcement("announcement-created", "Normalized title", "draft", {
     body: "Normalized body",
     startsAt: "2026-08-28T01:00:00Z"
@@ -237,7 +238,7 @@ test("Operator Announcement create retries response loss with one normalized int
 
 test("Operator Announcement keeps a pending publish claimed across route exit and re-entry", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const draft = announcement("announcement-publish", "Pending publish");
   const published = { ...draft, status: "published" as const, startsAt: "2026-08-27T03:00:00Z", publishedAt: "2026-08-27T03:00:00Z", updatedAt: "2026-08-27T03:00:00Z" };
   const firstRequestHeld = deferred();
@@ -301,7 +302,7 @@ test("Operator Announcement keeps a pending publish claimed across route exit an
 
 test("Operator Announcement retains withdraw intent until command and readback match", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const published = announcement("announcement-withdraw", "Withdraw mismatch", "published", {
     startsAt: "2026-08-27T01:00:00Z",
     publishedAt: "2026-08-27T01:00:00Z"
@@ -341,7 +342,7 @@ test("Operator Announcement retains withdraw intent until command and readback m
 
 test("Operator Announcement session reset holds the stale claim until settlement and discards its intent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const created = announcement("announcement-session", "Session reset", "draft", { body: "Session reset body" });
   const firstRequestHeld = deferred();
   const releaseFirstRequest = deferred();

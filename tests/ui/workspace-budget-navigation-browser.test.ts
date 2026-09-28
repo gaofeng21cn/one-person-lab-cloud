@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   SourceEnvelope,
@@ -11,6 +11,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -46,7 +47,7 @@ async function openWorkspace(page: Page, name: string, workspaceId: string) {
 
 test("Workspace Budget keeps its intent across navigation and scopes busy to the active Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseFirst = deferred<void>();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
