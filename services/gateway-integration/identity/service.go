@@ -262,7 +262,7 @@ func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*a
 	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
 		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
 	}
-	out, _, _, err := s.session(ctx, owneridentity.SessionReference(r.GetContext().GetSessionId()))
+	out, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (s *Service) ListModels(ctx context.Context, r *api.ListModelsRpcRequest) (
 	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
 		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
 	}
-	out, _, _, err := s.session(ctx, owneridentity.SessionReference(r.GetContext().GetSessionId()))
+	out, _, _, err := s.session(ctx, r.GetContext().GetSessionId())
 	if err != nil {
 		return nil, err
 	}
