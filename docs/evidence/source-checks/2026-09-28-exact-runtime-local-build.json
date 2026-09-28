@@ -26,5 +26,25 @@
   "tested_source": "PR e63051f plus main integration 92704d0c and scoped test-export repair",
   "log_sha256": "aa1d1305fc0cf71988715cb071f936eb804a1fd28e32e1d1f0d2809d5381a457",
   "scope": "Source acceptance: exact upstream Runtime plus real Cloud WebUI and explicitly synthetic Package in disposable owner services",
-  "earlier_failure": "Full filesystem export timed out after successful composition and browser owner readback; export now copies only asserted /agent and /web inputs."
+  "earlier_failure": "Full filesystem export timed out after successful composition and browser owner readback; export now copies only asserted /agent and /web inputs.",
+  "final_source_recheck": {
+    "recorded_at": "2026-09-28T02:53:19.445836+00:00",
+    "tested_head": "21837778f30b507a4c66dbaf640fbef262da4945",
+    "runtime": "ghcr.io/gaofeng21cn/one-person-lab-webui@sha256:90648c0ca1f3d0c826da8697e26789248f9fc1aee261bb481bc702d083c8c89e",
+    "package_kind": "synthetic ZIP; not the original OMA archive",
+    "webui_digest": "sha256:d557e252463bf1ca02df174833ef7ae32a6519d8137d26579f775ed7786f8060",
+    "snapshot_digest": "sha256:4088693890ef1c651fe68f57ec0481d658c73d36df4ea465b40fc5b137391658",
+    "output_digest": "sha256:150fee7568b202f4e7f3818a06c800f675c736cf8fbdee81f0fed4919e1e8a4f",
+    "descriptor_digest": "sha256:0c52087983d04545140ac67e9aa11220f3253438ae82f77d238b4ff6458517b7",
+    "result": "PASS, 43.92 seconds",
+    "log_sha256": "02d6bb4295c5b1adf8838c942eaa27a3f903ee08be43c4c1b055c198e7ad14eb",
+    "webui_fix": "Removed unsupported Stop action; turn remains locked until owner completion. Regression fails before repair and both focused browser tests pass."
+  },
+  "full_local_gate": {
+    "tested_head": "99f9d6eedcbc250cb57a4807d402a6232e7f11b8",
+    "command": "npm run verify:local:full",
+    "result": "PASS, PostgreSQL zero skips and Docker integration",
+    "log_sha256": "d6cc9715f1520ab6b190e31c61503d97bad71c5699b2841511d117f03df1b12d",
+    "subsequent_delta": "Only four WebUI/browser-test files; focused browser, syntax, diff, and exact Runtime composition rechecked at final_source_recheck.tested_head."
+  }
 }
