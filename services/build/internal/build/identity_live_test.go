@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -113,6 +114,16 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if _, e = db.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES('tenant-live','Test Tenant'),('another-tenant','Other Tenant'); INSERT INTO tenant.tenant_members(id,tenant_id,actor_id,role) VALUES('member-live','tenant-live','101','admin'),('member-other','another-tenant','102','admin')`); e != nil {
 		t.Fatal(e)
 	}
+	// Reserve each seeded Tenant's application OCI destination the same way Tenant
+	// admission does, pointing at the disposable local registry the Build live
+	// tests run, so the real Build destination resolver is exercised end to end.
+	registryHost := os.Getenv("OPL_BUILD_TEST_REGISTRY_HOST")
+	if registryHost == "" {
+		t.Fatal("OPL_BUILD_TEST_REGISTRY_HOST must be set for the live Build destination resolver")
+	}
+	if _, e = db.ExecContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES('tenant-live',$1,'result','tenant-live'),('another-tenant',$1,'result','another-tenant')`, registryHost); e != nil {
+		t.Fatal(e)
+	}
 	g, e := cloudidentity.NewGateway(gateway.URL)
 	if e != nil {
 		t.Fatal(e)
@@ -121,6 +132,7 @@ func newLiveIdentity(t *testing.T, ctx context.Context, dsn string) *liveIdentit
 	if e != nil {
 		t.Fatal(e)
 	}
+	service.ConfigureRegistry(registryHost, "result")
 	cfg := ownerservice.Config{Owner: owneridentity.Tenant, TLS: owneridentity.TLSConfig{AllowInsecureLocal: true}, Peers: map[owneridentity.Service]string{}}
 	for _, p := range []owneridentity.Service{owneridentity.ConsoleBFF, owneridentity.Build.Service(), owneridentity.Capability.Service(), owneridentity.RuntimeControl.Service()} {
 		cfg.Peers[p] = identityPeerToken

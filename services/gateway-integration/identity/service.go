@@ -48,6 +48,10 @@ type Service struct {
 	admins        map[string]bool
 	mu            sync.Mutex
 	credentials   map[string]credential
+	// RegistryHost / RegistryNamespace are installation facts used to reserve a
+	// Tenant's application OCI destination. They carry no credential.
+	registryHost      string
+	registryNamespace string
 }
 
 // Platform administrators are explicit deployment-owned Gateway subject IDs,
@@ -78,6 +82,13 @@ func (s *Service) Register(server *ownerservice.Server) error {
 		api.RegisterTenantProductServiceServer(g, s)
 		api.RegisterCloudIdentityAuthorizationServer(g, s)
 	})
+}
+
+// ConfigureRegistry records the installation's registry facts once at startup.
+// Both are supplied together; a half-configured pair is refused by the caller.
+func (s *Service) ConfigureRegistry(host, namespace string) {
+	s.registryHost = strings.ToLower(strings.TrimSpace(host))
+	s.registryNamespace = strings.ToLower(strings.TrimSpace(namespace))
 }
 func randomID() string {
 	var b [32]byte

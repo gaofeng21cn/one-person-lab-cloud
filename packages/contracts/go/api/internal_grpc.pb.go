@@ -5519,6 +5519,7 @@ const (
 	CloudIdentityAuthorization_AuthorizeAction_FullMethodName             = "/opl.cloud.api.CloudIdentityAuthorization/AuthorizeAction"
 	CloudIdentityAuthorization_GetAuthorizationContext_FullMethodName     = "/opl.cloud.api.CloudIdentityAuthorization/GetAuthorizationContext"
 	CloudIdentityAuthorization_IssueAcceptedOperationGrant_FullMethodName = "/opl.cloud.api.CloudIdentityAuthorization/IssueAcceptedOperationGrant"
+	CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName  = "/opl.cloud.api.CloudIdentityAuthorization/GetTenantRepositoryBinding"
 )
 
 // CloudIdentityAuthorizationClient is the client API for CloudIdentityAuthorization service.
@@ -5528,6 +5529,9 @@ type CloudIdentityAuthorizationClient interface {
 	AuthorizeAction(ctx context.Context, in *AuthorizationRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	GetAuthorizationContext(ctx context.Context, in *GetAuthorizationContextRequest, opts ...grpc.CallOption) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(ctx context.Context, in *AcceptedOperationGrantRequest, opts ...grpc.CallOption) (*AcceptedOperationGrant, error)
+	// Read the Tenant's reserved application OCI destination. Build resolves its
+	// output repository here; the destination is never accepted from a caller.
+	GetTenantRepositoryBinding(ctx context.Context, in *GetTenantRepositoryBindingRequest, opts ...grpc.CallOption) (*TenantRepositoryBinding, error)
 }
 
 type cloudIdentityAuthorizationClient struct {
@@ -5568,6 +5572,16 @@ func (c *cloudIdentityAuthorizationClient) IssueAcceptedOperationGrant(ctx conte
 	return out, nil
 }
 
+func (c *cloudIdentityAuthorizationClient) GetTenantRepositoryBinding(ctx context.Context, in *GetTenantRepositoryBindingRequest, opts ...grpc.CallOption) (*TenantRepositoryBinding, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TenantRepositoryBinding)
+	err := c.cc.Invoke(ctx, CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CloudIdentityAuthorizationServer is the server API for CloudIdentityAuthorization service.
 // All implementations must embed UnimplementedCloudIdentityAuthorizationServer
 // for forward compatibility.
@@ -5575,6 +5589,9 @@ type CloudIdentityAuthorizationServer interface {
 	AuthorizeAction(context.Context, *AuthorizationRequest) (*AuthorizationDecision, error)
 	GetAuthorizationContext(context.Context, *GetAuthorizationContextRequest) (*AuthorizationDecision, error)
 	IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error)
+	// Read the Tenant's reserved application OCI destination. Build resolves its
+	// output repository here; the destination is never accepted from a caller.
+	GetTenantRepositoryBinding(context.Context, *GetTenantRepositoryBindingRequest) (*TenantRepositoryBinding, error)
 	mustEmbedUnimplementedCloudIdentityAuthorizationServer()
 }
 
@@ -5593,6 +5610,9 @@ func (UnimplementedCloudIdentityAuthorizationServer) GetAuthorizationContext(con
 }
 func (UnimplementedCloudIdentityAuthorizationServer) IssueAcceptedOperationGrant(context.Context, *AcceptedOperationGrantRequest) (*AcceptedOperationGrant, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueAcceptedOperationGrant not implemented")
+}
+func (UnimplementedCloudIdentityAuthorizationServer) GetTenantRepositoryBinding(context.Context, *GetTenantRepositoryBindingRequest) (*TenantRepositoryBinding, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTenantRepositoryBinding not implemented")
 }
 func (UnimplementedCloudIdentityAuthorizationServer) mustEmbedUnimplementedCloudIdentityAuthorizationServer() {
 }
@@ -5670,6 +5690,24 @@ func _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CloudIdentityAuthorization_GetTenantRepositoryBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTenantRepositoryBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CloudIdentityAuthorizationServer).GetTenantRepositoryBinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CloudIdentityAuthorization_GetTenantRepositoryBinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CloudIdentityAuthorizationServer).GetTenantRepositoryBinding(ctx, req.(*GetTenantRepositoryBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CloudIdentityAuthorization_ServiceDesc is the grpc.ServiceDesc for CloudIdentityAuthorization service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -5688,6 +5726,10 @@ var CloudIdentityAuthorization_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IssueAcceptedOperationGrant",
 			Handler:    _CloudIdentityAuthorization_IssueAcceptedOperationGrant_Handler,
+		},
+		{
+			MethodName: "GetTenantRepositoryBinding",
+			Handler:    _CloudIdentityAuthorization_GetTenantRepositoryBinding_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

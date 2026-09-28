@@ -24,6 +24,6 @@ func TestOwnerDatabaseIsolation(t *testing.T) {
 		RuntimeRole:     "opl_tenant_runtime",
 		Source:          source,
 		OperationKind:   "create_tenant",
-		Tables:          []string{"tenants", "tenant_members", "sessions", "authorization_contexts", "accepted_operation_grants", "operations", "idempotency_records", "audit_events"},
+		Tables:          []string{"tenants", "tenant_members", "sessions", "authorization_contexts", "accepted_operation_grants", "operations", "idempotency_records", "audit_events", "tenant_repository_bindings"},
 	})
 }

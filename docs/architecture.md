@@ -406,6 +406,32 @@ browse credential into Control Plane while the runtime keeps its own pull
 credential. The browsable namespace boundary is server-side admission policy, so
 configuring an endpoint never widens it.
 
+### Tenant-Scoped Application Repository Policy
+
+For the current Tencent TCR personal installation, application output uses the
+installation-owned namespace `oplcloud` and one private repository reserved for
+each admitted Cloud Tenant. The Tenant owner reserves a stable
+`tenant_id -> repository` binding; the verified email local-part is only the
+initial name candidate and collision handling must preserve that binding. Build
+reads the binding through an authenticated owner boundary and is the only writer
+of the OCI result. Neither the browser nor a Build request can select another
+Tenant's repository. Instance configures the installation's TCR account,
+namespace and scoped credential references once; it does not create a Tenant
+repository or deploy a Tenant application for each Build.
+
+Cloud Capability namespace, TCR namespace and TCR repository are three different
+identities. The stable OCI identity returned to Capability and Serve remains
+`host/namespace/repository@sha256`, not a mutable tag. The Tencent personal TCR
+repository is materialized on the first authorized Build push.
+
+Cloud source implements this binding: CloudIdentity `CreateTenant` reserves one
+stable destination in the same transaction as the Tenant and its owner
+membership, and `GetTenantRepositoryBinding` exposes it to Build over the
+authenticated owner boundary. Build resolves its output repository from that
+binding. The live local BuildKit chain exercises the same resolver against a
+disposable registry. A Tencent/TKE-hosted Cloud Build pushing a Tenant-resolved
+destination remains the open hosted proof.
+
 New Agent versions are produced from the approved Package + Runtime + WebUI
 chain and are selected by the customer for a specific Workspace and quote.
 Console presents the owner readbacks and does not turn a mutable registry tag

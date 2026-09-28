@@ -144,7 +144,14 @@ func verifyInterruptedWorker(t *testing.T, ctx context.Context, dsn, capAddr str
 	if rec.Job.Status != api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_BUILDING {
 		t.Fatalf("not awaiting exporter acknowledgement: %s", rec.Job.Status)
 	}
-	repository := runner.Repository("tenant-live", rec.Input.PackageId)
+	binding, err := api.NewCloudIdentityAuthorizationClient(identityConn(t, client.identity.address, owneridentity.Build.Service())).GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: "tenant-live"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := runner.DestinationRepository(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
 	manifest, err := runner.ReadManifest(ctx, repository, job.Id, rec.Input.RuntimeArtifact.Platform)
 	if err != nil {
 		t.Fatal(err)

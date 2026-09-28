@@ -22,6 +22,58 @@ This file records durable product and architecture choices. Current
 implementation evidence belongs in [status.md](./status.md); unfinished outcomes
 belong in [roadmap.md](./roadmap.md).
 
+## 2026-09-29: Tenant-Scoped Application OCI Repositories On Personal TCR
+
+The customer TCR account is Tencent TCR personal edition, so application output
+uses one installation-owned namespace, `oplcloud`, and one private repository
+per admitted Cloud Tenant:
+
+```text
+Tenant A  -> uswccr.ccs.tencentyun.com/oplcloud/alice
+Tenant B  -> uswccr.ccs.tencentyun.com/oplcloud/huangrende
+```
+
+This is a repository per Tenant, not a TCR namespace per Tenant. The Tenant id
+stays the authorization identity; the verified email local-part is only the
+initial repository-name candidate, and a collision receives a deterministic
+suffix, so two Tenants never alias one repository and a rename never moves
+existing artifact history. `tenant_id -> repository` is reserved once and
+persisted by the Tenant owner.
+
+- `tenant`/CloudIdentity owns Tenant admission and the stable repository
+  reservation.
+- The Instance owner deploys the Cloud installation and supplies protected
+  references for the personal TCR account, the `oplcloud` namespace and scoped
+  registry credentials; it does not create each Tenant repository, does not run a
+  per-application workflow, and does not deploy Tenant applications.
+- `capability` owns Package namespaces, Package versions and uploaded bytes.
+- `build` consumes the Tenant-owned destination through an authenticated typed
+  owner read and owns the OCI push, immutable output identity, digest readback
+  and artifact evidence.
+- `serve`/Fabric own delivery of a selected OCI to a Workspace/TKE runtime;
+  `ledger` owns append-only evidence.
+
+Cloud Capability namespace, TCR namespace and TCR repository are three distinct
+identities. The physical personal-TCR repository is materialized on the first
+authorized Build push; users never submit a TCR destination or credential in a
+Build request, and retries preserve the original repository and Build identity.
+
+This is the generic Agent distribution path:
+
+```text
+Agent Package + approved Runtime + selected WebUI -> one immutable OCI
+```
+
+IBD/OMA is one reference Agent Package used to exercise the generic path; it does
+not define a separate build owner, registry policy, OCI format, or required
+multi-service deployment path.
+
+Local-Docker and Tencent/TKE implement the same resolver and ownership rules and
+may use different registry endpoints and credentials. The local source and live
+chain are implemented and verified; a Tencent/TKE-hosted Cloud Build pushing a
+Tenant-resolved destination to the real personal-TCR repository remains the
+outstanding hosted proof and is not claimed here.
+
 ## 2026-09-22: Adopt The Domain-Separated Agent SaaS Target Architecture
 
 This repository's target product is Agent SaaS: a customer selects an Agent
