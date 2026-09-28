@@ -111,6 +111,147 @@ export interface WorkspaceListData {
 
 export type PlanId = "basic" | "pro";
 
+// W16 customer Agent launch consumes the typed v2 owner APIs. These DTOs are
+// intentionally separate from the retained resource_only launch DTOs below.
+export interface AgentModelRequirementDTO {
+  slot: string;
+  required: boolean;
+  capability: string;
+  allowedModelIds: string[];
+}
+
+export interface CapabilityVersionDTO {
+  id: string;
+  versionLabel: string;
+  artifactDigest: string;
+  status: "ready" | "deprecated" | "deleting" | "deleted";
+  modelRequirements: AgentModelRequirementDTO[];
+  provenance: "build" | "legacy_application";
+}
+
+export interface CapabilityVersionPageDTO {
+  items: CapabilityVersionDTO[];
+  nextCursor?: string;
+}
+
+export interface ComputePlanDTO {
+  id: string;
+  name: string;
+  vcpus: number;
+  memoryMiB: number;
+  availability: "available" | "unavailable" | "retired";
+  billingMode: "prepaid_monthly" | "local_no_charge";
+  monthlyPriceUSDMicros?: string;
+  pricePolicyVersionId?: string;
+}
+
+export interface ComputePlanPageDTO { items: ComputePlanDTO[]; nextCursor?: string; }
+
+export interface StoragePlanDTO {
+  id: string;
+  name: string;
+  capacityGiB: number;
+  availability: "available" | "unavailable" | "retired";
+  billingMode: "prepaid_monthly" | "local_no_charge";
+  monthlyPriceUSDMicros?: string;
+  pricePolicyVersionId?: string;
+}
+
+export interface StoragePlanPageDTO { items: StoragePlanDTO[]; nextCursor?: string; }
+
+export interface LaunchModelDTO {
+  id: string;
+  name: string;
+  capabilities: string[];
+  available: boolean;
+  fetchedAt: string;
+}
+
+export interface LaunchModelPageDTO { items: LaunchModelDTO[]; nextCursor?: string; }
+
+export interface WorkspaceQuoteRequestDTO {
+  purpose: "deploy";
+  capabilityVersionId: string;
+  computePlanId: string;
+  storagePlanId: string;
+  modelSelections: Array<{ slot: string; modelId: string }>;
+  periodMonths: 1;
+}
+
+export interface WorkspaceQuoteDTO {
+  id: string;
+  purpose: "deploy";
+  capabilityVersionId: string;
+  computePlanId: string;
+  storagePlanId: string;
+  modelSelections: Array<{ slot: string; modelId: string }>;
+  periodMonths: 1;
+  periodStart: string;
+  periodEnd: string;
+  pricePolicyVersionId: string;
+  refundPolicyVersionId: string;
+  retentionPolicyVersionId: string;
+  refundTerms: string;
+  retentionTerms: string;
+  expectedInterruption: string;
+  lineItems: Array<{ kind: string; description: string; quantity: number; amountUSDMicros: string }>;
+  totalUSDMicros: string;
+  status: "offered" | "accepted" | "expired";
+  expiresAt: string;
+  createdAt: string;
+  runtimeReadbackRequirement: "required" | "not_applicable";
+}
+
+export interface WorkspaceOwnerOperationDTO {
+  operationId: string;
+  owner: string;
+  kind: string;
+  resourceId: string;
+  status: "accepted" | "running" | "awaiting_confirmation" | "succeeded" | "failed" | "needs_attention" | "cancelled";
+  stage: string;
+  observationResult?: "confirmed" | "rejected" | "unknown";
+  errorCode?: string;
+  requestId: string;
+  createdAt: string;
+  updatedAt: string;
+  pollAfterSeconds?: number;
+}
+
+export interface WorkspaceOwnerPageDTO { items: WorkspaceOwnerDTO[]; nextCursor?: string; }
+
+export interface WorkspaceOwnerDTO {
+  id: string;
+  name: string;
+  capabilityVersionId?: string;
+  computePlanId: string;
+  storagePlanId: string;
+  deliveryModel: "legacy_resource_only" | "imported_application" | "agent_saas";
+  status: string;
+  resourceReadiness: string;
+  applicationAvailability: string;
+  currentPeriodEnd?: string;
+  accessUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  version: string;
+}
+
+export interface WorkspaceOwnerAccessDTO {
+  workspaceId: string;
+  url: string;
+  authenticationMode: "application_login" | "cloud_private" | "anonymous";
+  expiresAt?: string;
+  applicationCredentialsAvailable?: boolean;
+}
+
+export interface GatewayWalletReadbackDTO {
+  source: "gateway";
+  status: "available";
+  balanceUSDMicros: string;
+  currency: "USD";
+  fetchedAt: string;
+}
+
 // WorkspaceProvisioningMode is the Control Plane's provisioning shape for one
 // Launch. Console always opens resources only: compute, storage and attachment
 // are delivered without installing an application. The retained full mode

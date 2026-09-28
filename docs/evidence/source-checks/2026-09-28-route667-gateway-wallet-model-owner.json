@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "action": "Close the PR #667 owner gaps by implementing the Gateway wallet/model owner reads against fresh main and removing the unbacked Model token price from the contract",
+  "recordedAt": "2026-09-28T11:01:54.139212+00:00",
+  "provenance": {
+    "kind": "local",
+    "note": "Local source verification only. No CI workflow, image build, deployment, provider purchase, charge, or Instance qualification is claimed."
+  },
+  "baseSha": "086ac33a76a27d69126179954477e1ec35b8b9f5",
+  "testedSha": "a6e340cb9ca566d7783373b6f9a81f13ad7b4886",
+  "testedTree": "b9eb3f22ebc799e00a79e2cbeaadb7108b0f9bbf",
+  "branch": "codex/route667-owner-closure",
+  "sourceFilesSha256": {
+    "apps/console-bff/internal/clients/clients.go": "12490fb8ff5cac08de699b0691a91448caa9c3dbf3b4a341411679947ec468c3",
+    "apps/console-bff/internal/clients/clients_test.go": "67375055d73b342681339b4d354ecc655cff2d19ef08281cc1549a81983c148e",
+    "apps/console-bff/internal/httpapi/catalog.go": "56b99a114c8e330a449b223f3750c7eec32909108ebdc6f2cbfed8d2427cb5eb",
+    "apps/console-bff/internal/httpapi/delivery.go": "5c898dc4704d24e619b8b418d438c12fdfc64d7a9242bec86e3c7bb2fa20ed22",
+    "apps/console-bff/internal/httpapi/gateway.go": "3390194d92445c56bf327814bc59e6722a38472a9afd7635c75d14bcc09418cc",
+    "apps/console-bff/internal/httpapi/publisher.go": "d85ab4d190034d10b595431c2f4e34142127b3d4c7df60e96c9e9751b2934533",
+    "apps/console-bff/internal/httpapi/publisher_test.go": "f40082e3818513dd97469aeeb0aacfd4fd1079c55b1b375e41ad5d348f2f47b9",
+    "apps/console-bff/internal/httpapi/server.go": "16f184fa21bc3b789d49af2d74e2e4361695f1b1575c45f64a37b051cdd700c2",
+    "apps/console-bff/internal/httpapi/server_test.go": "30e8945f21f86190d75d63003de0f07192618b147363a456acf1a903116828fa",
+    "apps/console-bff/internal/httpapi/workspace_test.go": "da8924b01bc570c9fb032e21f29ca39360ba65f7a04907a81b948c12e92ec979",
+    "apps/console-ui/src/api/dtos.ts": "a2d70fd40224db9cb5332ebc9ae0189068d5c02c9769765aa43eda1852d1ab5d",
+    "apps/console-ui/src/api/workspaces-api.ts": "b2328366247f111145166925433df9f3718e264fcf7259614faa5da96bd09e8e",
+    "apps/console-ui/src/app/use-workspace-launch-controller.ts": "3506f8e35f174113db3730e774fdca57a70ff27b1187de68eb0c88c38221a460",
+    "apps/console-ui/src/app/workspace-launch-controller-model.ts": "84b909294bc5355cf4ab53c6b2f0fb5277c35ade9d38139197a6a14397882f2f",
+    "apps/console-ui/src/components/workspaces/WorkspaceLaunchPage.tsx": "409a08908e937c6252c5541dae7ee4202fd618c34c9a6b261b03519e0b79878f",
+    "docs/spec/target/03_api_contract_complete.yaml": "3dff8a7bdf57b0c88a0becc3370c2de42a0ec30da5300146042b75d13c17ab88",
+    "docs/spec/target/10_feature_traceability.md": "49b9428af0ac8d29313b79c61f5fc7b6cea84462e8dcdabe215838bbfb5a386d",
+    "docs/spec/target/contracts/internal.proto": "798094ab084c81cab789a857f96bad65a19f24ffa0298483400c7b59d0efef51",
+    "docs/spec/target/contracts/traceability.json": "94684f60eba7574ec5bff4f7267dcb088f540a220427eb086a16240cea08e9b0",
+    "docs/spec/target/contracts/ui_inventory.json": "a27d1e5b218c63941127851ed563ff25cd3b90d20db1b791a82b5fbd051c8a3d",
+    "packages/contracts/go/api/internal.pb.go": "3f3d8fae8edcf25cfc806454de06471a6a91e82303303bced298c2ceabee5b9e",
+    "packages/contracts/go/publicjson/shape_generated.go": "f096fae34ebf71a7984de7575e46a957310fc2bf131e79886063a4fd66b61720",
+    "packages/contracts/proto/internal.proto": "51a53c8f728365a9511a16e5ba5be1fa6acb513924bb24f7695fa192a795f37a",
+    "services/gateway-integration/identity/gateway.go": "23ea5af86f8c8e1f7ec030f070b788256ddc54889dc42ad1be4305a9f8b0bf59",
+    "services/gateway-integration/identity/generate_policy.py": "8c832ba83ca6c19033cf2eaab406e00fb4aeb82b42c011966c47586369a2d51e",
+    "services/gateway-integration/identity/models_test.go": "f3652ed6729f4451f988b788abcb5415e6b82b8e4752294643f8a5f2db440c83",
+    "services/gateway-integration/identity/policy_generated.go": "95f90d1411ebeb696732b5b87642f9ae4922470fa2b41f5e7a5b5d04283fa675",
+    "services/gateway-integration/identity/policy_generated_test.go": "8f7e5f83575e422c1991d56bec54e70b38eb69cce6cdcdb9958472360f43d9b1",
+    "services/gateway-integration/identity/service.go": "a7411d6e6c5e5c2e5b655133cc13793b4c78ae1956e07a1e67d535a67048c8dc",
+    "tests/ui/gateway-account-read-controller-browser.test.ts": "25b2f2f261ab3df8d590ec9f6afa071ce10788e77f20fe45a7d5098622a4ce93",
+    "tests/ui/workspace-launch-controller-model.test.ts": "a44140661d99a854bafb9971eff6c587c0f3745dea9c5a64a408bb30204ffff6",
+    "tests/ui/workspace-task-experience-browser.test.ts": "42566d27210fe73f70d09c9a933f13d7fdb519efc7f44140dabf128ec5c8cd00"
+  },
+  "dependencyBoundary": {
+    "goVersion": "go version go1.26.3 darwin/arm64",
+    "generator": "packages/contracts/proto/generate.sh",
+    "protoc": "grpcio-tools (libprotoc 31.1), protoc-gen-go v1.36.6, protoc-gen-go-grpc v1.5.1",
+    "externalSub2Api": "not contacted; the Sub2API /v1/models and admin key reads are exercised only against an in-process httptest fixture"
+  },
+  "commands": [
+    {
+      "command": "go build ./...",
+      "cwd": "each of packages/contracts/go, services/*, apps/console-bff",
+      "exitCode": 0
+    },
+    {
+      "command": "go test ./...",
+      "cwd": "packages/contracts/go, services/capability, services/resource-catalog, services/gateway-integration, apps/console-bff",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run test:ownership",
+      "exitCode": 0,
+      "note": "All 67 console test files reachable from a test script."
+    },
+    {
+      "command": "node --test tests/ui/workspace-launch-controller-model.test.ts",
+      "exitCode": 0,
+      "counts": {
+        "pass": 11,
+        "fail": 0
+      }
+    },
+    {
+      "command": "node --test tests/ui/workspace-task-experience-browser.test.ts",
+      "exitCode": 0,
+      "counts": {
+        "pass": 10,
+        "fail": 0
+      }
+    },
+    {
+      "command": "node --test --test-name-pattern='Gateway Account Read follows the route plan' tests/ui/gateway-account-read-controller-browser.test.ts",
+      "exitCode": 0,
+      "counts": {
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    {
+      "command": "npm run test:source",
+      "exitCode": 1,
+      "counts": {
+        "pass": 244,
+        "fail": 1,
+        "note": "The single failure is the pre-existing local-environment assertion in tests/tools/verify-local.test.ts ('Local qualification uses one bounded runner filesystem and explicit privileged inputs') that observes no df command; it is unrelated to this change and reproduces without it."
+      }
+    }
+  ],
+  "acceptanceResults": [
+    {
+      "item": "Model contract carries no token price",
+      "result": "pass",
+      "evidence": "docs/spec/target/03_api_contract_complete.yaml Model required is id/name/capabilities/available/fetchedAt; packages/contracts/go/publicjson/shape_generated.go and internal.pb.go regenerated; no consumer of the removed fields remains."
+    },
+    {
+      "item": "Gateway owns wallet and model reads",
+      "result": "pass",
+      "evidence": "services/gateway-integration/identity GetWallet and ListModels read the caller's live provider facts; models_test.go covers the caller-key path, the missing-key refusal, and a malformed catalog."
+    },
+    {
+      "item": "BFF routes fail closed without the owner",
+      "result": "pass",
+      "evidence": "apps/console-bff GetWallet/ListModels routes; TestWalletRouteUsesGatewayOwnerAndFailsClosedWhenMissing and TestModelCatalogRouteUsesGatewayOwner."
+    },
+    {
+      "item": "Console quote uses the contract spelling",
+      "result": "pass",
+      "evidence": "apps/console-ui/src/api/workspaces-api.ts validates totalUSDMicros/amountUSDMicros; LaunchModelDTO dropped the price fields."
+    }
+  ],
+  "unprovenItems": [
+    "The exact Sub2API HTTP shape of GET /v1/models (OpenAI-style data[]; optional hidden/name) is assumed from the Codex model catalog contract; it was not observed against a live Sub2API in this run.",
+    "tenant-wallet binding is not implemented: Gateway does not support cross-identity wallet delegation and the account/email sync still needs an owner decision.",
+    "applied against a browser intercept boundary only; this does not prove deployed BFF routing, Serve deployment, Ledger receipt confirmation, or Instance qualification."
+  ]
+}

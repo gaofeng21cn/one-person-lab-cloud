@@ -7909,14 +7909,6 @@ components:
             type: string
         available:
           type: boolean
-        inputPricePerMillionTokensUSDMicros:
-          $ref: '#/components/schemas/USDMicros'
-        outputPricePerMillionTokensUSDMicros:
-          $ref: '#/components/schemas/USDMicros'
-        priceSource:
-          type: string
-          enum:
-          - gateway
         fetchedAt:
           type: string
           format: date-time
@@ -7925,12 +7917,10 @@ components:
       - name
       - capabilities
       - available
-      - inputPricePerMillionTokensUSDMicros
-      - outputPricePerMillionTokensUSDMicros
-      - priceSource
       - fetchedAt
       x-owner: gateway
-      description: Gateway模型价格实时readback；不成为Cloud price policy。
+      description: Gateway模型目录实时readback；不成为Cloud price policy。
+
     ModelSelection:
       type: object
       additionalProperties: false

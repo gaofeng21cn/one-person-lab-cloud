@@ -222,3 +222,58 @@ func TestUnpublishedEnumValueIsOmittedOrRefused(t *testing.T) {
 		t.Fatal("a required property with no published value was answered anyway")
 	}
 }
+
+// TestQuoteMoneyUsesTheContractSpelling pins the exact money property names the
+// Console quote caller requires. The owner emits totalUSDMicros and the line
+// items emit amountUSDMicros; the protobuf-derived totalUsdMicros spelling is not
+// part of the public vocabulary, which is what apps/console-ui/src/api/
+// workspaces-api.ts validates.
+func TestQuoteMoneyUsesTheContractSpelling(t *testing.T) {
+	quote := &api.Quote{
+		Id:                         "quote-1",
+		Purpose:                    api.QuotePurposeEnum_QUOTE_PURPOSE_ENUM_DEPLOY,
+		ComputePlanId:              "compute-1",
+		StoragePlanId:              "storage-1",
+		PeriodMonths:               1,
+		LineItems:                  []*api.QuoteLine{{Kind: api.QuoteLineKindEnum_QUOTE_LINE_KIND_ENUM_COMPUTE, Description: "compute", Quantity: 1, AmountUsdMicros: 52_580_000}},
+		TotalUsdMicros:             52_580_000,
+		Status:                     api.QuoteStatusEnum_QUOTE_STATUS_ENUM_OFFERED,
+		RuntimeReadbackRequirement: api.QuoteRuntimeReadbackRequirementEnum_QUOTE_RUNTIME_READBACK_REQUIREMENT_ENUM_REQUIRED,
+	}
+	out, err := Marshal(quote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var object map[string]any
+	if err = json.Unmarshal(out, &object); err != nil {
+		t.Fatal(err)
+	}
+	if object["totalUSDMicros"] != "52580000" {
+		t.Fatalf("totalUSDMicros=%#v in %s", object["totalUSDMicros"], out)
+	}
+	lines, ok := object["lineItems"].([]any)
+	if !ok || len(lines) != 1 {
+		t.Fatalf("lineItems=%#v", object["lineItems"])
+	}
+	if line, _ := lines[0].(map[string]any); line["amountUSDMicros"] != "52580000" {
+		t.Fatalf("lineItems[0]=%#v", lines[0])
+	}
+	// The protobuf-only spelling is not emitted.
+	for _, key := range []string{"totalUsdMicros", "amountUsdMicros"} {
+		if _, present := object[key]; present {
+			t.Fatalf("quote wire leaked %s", key)
+		}
+	}
+
+	// The contract spelling round-trips and the protobuf spelling is not an alias.
+	var decoded api.Quote
+	if err = Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(quote, &decoded) {
+		t.Fatal("quote changed on public JSON roundtrip")
+	}
+	if err = Unmarshal([]byte(`{"id":"q","purpose":"deploy","computePlanId":"c","storagePlanId":"s","totalUsdMicros":"1"}`), &api.Quote{}); err == nil {
+		t.Fatal("accepted the protobuf-only quote money spelling")
+	}
+}

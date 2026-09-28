@@ -149,7 +149,7 @@
 - `DataUpgradeContract`：`backupFormatVersion`、`backupRequired`、`compatibleFromSchemaVersions`、`migrationArtifact`、`mode`
 - `DowngradePlanRules`：`cancelBefore`、`currentPeriodRefund`、`earlyPaidChange`、`fallback`、`kind`、`knownFailureCompensation`、`manualUnpaidBoundary`、`nextPeriodPrice`、`plannedBoundary`、`requiresConfirmedNextPeriodPayment`
 - `ImagePlatform`：`architecture`、`os`、`variant`
-- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`inputPricePerMillionTokensUSDMicros`、`name`、`outputPricePerMillionTokensUSDMicros`、`priceSource`
+- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`name`
 - `ModelConfigurationContract`：`applyPath`、`authorizationSecretInputName`、`portName`、`protocol`、`readbackFields`、`readbackPath`、`requestFields`
 - `Package`：`createdAt`、`description`、`id`、`latestReadyVersionId`、`name`、`namespaceId`、`status`、`updatedAt`、`visibility`
 - `PackageBuildInput`：`contextName`、`formatVersion`、`gid`、`sourceRoot`、`targetPath`、`uid`
@@ -409,7 +409,7 @@
 - `DataUpgradeContract`：`backupFormatVersion`、`backupRequired`、`compatibleFromSchemaVersions`、`migrationArtifact`、`mode`
 - `DeploymentDescriptor`：`applicationRevision`、`artifact`、`buildInputDigest`、`legacyApplicationRevisionId`、`packageVersionId`、`provenance`、`runtimeContract`、`runtimeContractReference`、`schemaVersion`、`webuiContract`、`webuiContractReference`
 - `ImagePlatform`：`architecture`、`os`、`variant`
-- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`inputPricePerMillionTokensUSDMicros`、`name`、`outputPricePerMillionTokensUSDMicros`、`priceSource`
+- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`name`
 - `ModelConfigurationContract`：`applyPath`、`authorizationSecretInputName`、`portName`、`protocol`、`readbackFields`、`readbackPath`、`requestFields`
 - `ModelRequirement`：`allowedModelIds`、`capability`、`required`、`slot`
 - `ModelSelection`：`modelId`、`slot`
@@ -507,7 +507,7 @@
 
 - `DataCompatibility`：`compatibleFromVersions`、`dataSchemaVersion`、`migrationReceiptId`、`migrationRequired`、`rollbackSafe`
 - `Deployment`：`capabilityVersionId`、`createdAt`、`dataCompatibility`、`id`、`previousDeploymentId`、`runtimeInstanceId`、`status`、`updatedAt`、`workspaceId`
-- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`inputPricePerMillionTokensUSDMicros`、`name`、`outputPricePerMillionTokensUSDMicros`、`priceSource`
+- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`name`
 - `ModelConfiguration`：`appliedVersion`、`operationId`、`selections`、`status`、`updatedAt`、`version`、`workspaceId`
 - `ModelSelection`：`modelId`、`slot`
 - `Operation`：`createdAt`、`errorCode`、`kind`、`observationResult`、`operationId`、`owner`、`pollAfterSeconds`、`requestId`、`resourceId`、`stage`、`status`、`updatedAt`
@@ -842,7 +842,7 @@
 - `Deployment`：`capabilityVersionId`、`createdAt`、`dataCompatibility`、`id`、`previousDeploymentId`、`runtimeInstanceId`、`status`、`updatedAt`、`workspaceId`
 - `DeploymentDescriptor`：`applicationRevision`、`artifact`、`buildInputDigest`、`legacyApplicationRevisionId`、`packageVersionId`、`provenance`、`runtimeContract`、`runtimeContractReference`、`schemaVersion`、`webuiContract`、`webuiContractReference`
 - `ImagePlatform`：`architecture`、`os`、`variant`
-- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`inputPricePerMillionTokensUSDMicros`、`name`、`outputPricePerMillionTokensUSDMicros`、`priceSource`
+- `Model`：`available`、`capabilities`、`fetchedAt`、`id`、`name`
 - `ModelConfigurationContract`：`applyPath`、`authorizationSecretInputName`、`portName`、`protocol`、`readbackFields`、`readbackPath`、`requestFields`
 - `ModelRequirement`：`allowedModelIds`、`capability`、`required`、`slot`
 - `Operation`：`createdAt`、`errorCode`、`kind`、`observationResult`、`operationId`、`owner`、`pollAfterSeconds`、`requestId`、`resourceId`、`stage`、`status`、`updatedAt`

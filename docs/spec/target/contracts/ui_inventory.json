@@ -1534,10 +1534,7 @@
         "Model.capabilities",
         "Model.fetchedAt",
         "Model.id",
-        "Model.inputPricePerMillionTokensUSDMicros",
         "Model.name",
-        "Model.outputPricePerMillionTokensUSDMicros",
-        "Model.priceSource",
         "ModelConfigurationContract.applyPath",
         "ModelConfigurationContract.authorizationSecretInputName",
         "ModelConfigurationContract.portName",
@@ -2409,10 +2406,7 @@
         "Model.capabilities": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.fetchedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.id": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.inputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
         "Model.name": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.outputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
-        "Model.priceSource": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.applyPath": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.authorizationSecretInputName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.portName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -2998,16 +2992,7 @@
         "Model.id": [
           "listModels"
         ],
-        "Model.inputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
         "Model.name": [
-          "listModels"
-        ],
-        "Model.outputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
-        "Model.priceSource": [
           "listModels"
         ],
         "ModelConfigurationContract.applyPath": [
@@ -9073,10 +9058,7 @@
         "Model.capabilities",
         "Model.fetchedAt",
         "Model.id",
-        "Model.inputPricePerMillionTokensUSDMicros",
         "Model.name",
-        "Model.outputPricePerMillionTokensUSDMicros",
-        "Model.priceSource",
         "ModelConfigurationContract.applyPath",
         "ModelConfigurationContract.authorizationSecretInputName",
         "ModelConfigurationContract.portName",
@@ -9515,10 +9497,7 @@
         "Model.capabilities": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.fetchedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.id": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.inputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
         "Model.name": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.outputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
-        "Model.priceSource": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.applyPath": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.authorizationSecretInputName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.portName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -10168,16 +10147,7 @@
         "Model.id": [
           "listModels"
         ],
-        "Model.inputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
         "Model.name": [
-          "listModels"
-        ],
-        "Model.outputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
-        "Model.priceSource": [
           "listModels"
         ],
         "ModelConfigurationContract.applyPath": [
@@ -12124,10 +12094,7 @@
         "Model.capabilities",
         "Model.fetchedAt",
         "Model.id",
-        "Model.inputPricePerMillionTokensUSDMicros",
         "Model.name",
-        "Model.outputPricePerMillionTokensUSDMicros",
-        "Model.priceSource",
         "ModelConfiguration.appliedVersion",
         "ModelConfiguration.operationId",
         "ModelConfiguration.selections",
@@ -12264,10 +12231,7 @@
         "Model.capabilities": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.fetchedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.id": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.inputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
         "Model.name": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.outputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
-        "Model.priceSource": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfiguration.appliedVersion": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfiguration.operationId": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfiguration.selections": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -12369,16 +12333,7 @@
         "Model.id": [
           "listModels"
         ],
-        "Model.inputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
         "Model.name": [
-          "listModels"
-        ],
-        "Model.outputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
-        "Model.priceSource": [
           "listModels"
         ],
         "ModelConfiguration.appliedVersion": [
@@ -20307,10 +20262,7 @@
         "Model.capabilities",
         "Model.fetchedAt",
         "Model.id",
-        "Model.inputPricePerMillionTokensUSDMicros",
         "Model.name",
-        "Model.outputPricePerMillionTokensUSDMicros",
-        "Model.priceSource",
         "ModelConfigurationContract.applyPath",
         "ModelConfigurationContract.authorizationSecretInputName",
         "ModelConfigurationContract.portName",
@@ -20654,10 +20606,7 @@
         "Model.capabilities": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.fetchedAt": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "Model.id": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.inputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
         "Model.name": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
-        "Model.outputPricePerMillionTokensUSDMicros": "exact returned micro string; BigInt display min2/max6 decimals; never Number or recalculate billing from JavaScript Date",
-        "Model.priceSource": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.applyPath": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.authorizationSecretInputName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
         "ModelConfigurationContract.portName": "readonly Owner facts displayed under this feature ux; optional missing is not zero or success",
@@ -21208,16 +21157,7 @@
         "Model.id": [
           "listModels"
         ],
-        "Model.inputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
         "Model.name": [
-          "listModels"
-        ],
-        "Model.outputPricePerMillionTokensUSDMicros": [
-          "listModels"
-        ],
-        "Model.priceSource": [
           "listModels"
         ],
         "ModelConfigurationContract.applyPath": [
