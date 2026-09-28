@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_tenant_repository_binding_upgrade_backfill_source_receipt",
+  "recordedAt": "2026-09-29T08:00:00+08:00",
+  "status": "cloud_source_upgrade_backfill_local_chain_passed_hosted_pending",
+  "scope": "Upgrade compatibility for Tenant records admitted before tenant_repository_bindings existed. No Instance deployment, provider mutation or real-money mutation.",
+  "implementation": {
+    "owner": "Tenant-owner startup configures the installation registry facts and calls BackfillTenantRepositoryBindings before it registers request handlers.",
+    "identity": "Each missing binding uses tenant-<sha256-prefix> from the durable Tenant ID. Backfill never calls Gateway and never replaces an existing binding.",
+    "concurrency": "A transaction-scoped PostgreSQL advisory lock serializes a startup backfill; the existing per-destination advisory lock and unique index retain collision safety with admission."
+  },
+  "focusedVerification": [
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./identity/ -run 'TestTenantRepositoryBindingPostgres|TestBackfillTenantRepositoryBindingsPostgres|TestCreateTenantRequiresPlatformAdminPostgres' -count=1 -v",
+      "result": "passed",
+      "coverage": "isolated PostgreSQL verifies admission collision handling, ID-derived historical backfill, repeated-startup idempotency, and preservation of a pre-existing destination."
+    },
+    {
+      "command": "go test -tags=livebuild ./internal/build/ -run TestLivePackageBuildAndRestartReadback -count=1 -v",
+      "result": "passed",
+      "coverage": "a historical Tenant is backfilled before the real BuildKit owner chain pushes to 127.0.0.1:<port>/result/tenant-4ec4af08c009c4034dc47a88."
+    },
+    {
+      "command": "npm run verify:local:full",
+      "result": "passed",
+      "coverage": "product boundary, 243 Node source tests, browser suite, lint/build and PostgreSQL owner-module checks."
+    }
+  ],
+  "notProven": [
+    "A Tencent/TKE-hosted Cloud Build pushing a Tenant-resolved destination to the customer personal-TCR repository.",
+    "Physical repository materialization on personal TCR for a historical Tenant."
+  ],
+  "source": {
+    "baseSha": "536609dfd4ff3ca16523cc8e6fe934ca381e2a24",
+    "branch": "codex/github-ci-tenant-binding-backfill-20260929"
+  },
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false
+}

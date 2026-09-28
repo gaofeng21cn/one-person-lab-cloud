@@ -261,8 +261,11 @@ TCR namespace。Tenant ID 才是授权与持久映射身份；email local-part �
 2. **Tenant repository binding — cloud_complete.** CloudIdentity `CreateTenant`
    admits the Tenant, writes the owner membership and reserves one stable
    `tenant_id -> repository` binding in one command transaction. A collision gets
-   a deterministic suffix and never aliases two Tenants. The physical repository
-   materializes on the first authorized Build push.
+   a deterministic suffix and never aliases two Tenants. On startup, the Tenant
+   owner backfills a binding for each pre-binding Tenant from its durable Tenant
+   ID and the installation registry facts, without re-reading historical Gateway
+   identity. The physical repository materializes on the first authorized Build
+   push.
 3. **Build destination implementation — cloud_complete.** Build reads the
    Tenant-owned binding, persists `<repository>:<job-id>` as the immutable
    destination and pushes only there. Retries, response loss and email changes
@@ -291,7 +294,8 @@ TCR namespace。Tenant ID 才是授权与持久映射身份；email local-part �
 Current source gap and evidence boundary:
 [implementation architecture](implementation-architecture.md#current-tenant-to-tcr-build-path)
 and the
-[binding receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-local.json).
+[binding receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-local.json)
+and [upgrade backfill receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-backfill-local.json).
 
 ### Required Deliverables
 

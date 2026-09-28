@@ -23,3 +23,12 @@ func TestRepositorySlugCandidate(t *testing.T) {
 		t.Fatal("candidate must be a valid repository name")
 	}
 }
+
+func TestLegacyRepositorySlug(t *testing.T) {
+	if got, want := legacyRepositorySlug("tenant-existing"), "tenant-"+hash("tenant-existing")[:24]; got != want {
+		t.Fatalf("legacyRepositorySlug = %q, want %q", got, want)
+	}
+	if !repositoryNamePattern.MatchString(legacyRepositorySlug("tenant-existing")) {
+		t.Fatal("legacy candidate must be a valid repository name")
+	}
+}

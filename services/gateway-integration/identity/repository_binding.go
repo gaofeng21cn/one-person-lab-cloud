@@ -60,11 +60,15 @@ func repositorySlugCandidate(email string) string {
 	return slug
 }
 
-// reserveRepositoryBinding reserves one stable tenant_id -> repository binding.
-// The candidate is used only when free; otherwise a deterministic numeric
-// suffix is chosen. An existing binding is never changed, and a caller-supplied
-// destination is never accepted.
-func (s *Service) reserveRepositoryBinding(ctx context.Context, tx *sql.Tx, tenantID, email string) (*api.TenantRepositoryBinding, error) {
+// legacyRepositorySlug gives a pre-binding Tenant a stable destination without
+// re-reading an old owner email from Gateway. Tenant ids are already durable
+// authorization identities, so this preserves existing artifact history while
+// avoiding a dependency on an external identity lookup during startup.
+func legacyRepositorySlug(tenantID string) string {
+	return "tenant-" + hash(tenantID)[:24]
+}
+
+func (s *Service) reserveRepositoryBindingCandidate(ctx context.Context, tx *sql.Tx, tenantID, base string) (*api.TenantRepositoryBinding, error) {
 	var existing api.TenantRepositoryBinding
 	var createdAt, updatedAt time.Time
 	e := tx.QueryRowContext(ctx, `SELECT tenant_id,registry_host,registry_namespace,repository,status,created_at,updated_at FROM tenant.tenant_repository_bindings WHERE tenant_id=$1`, tenantID).Scan(&existing.TenantId, &existing.RegistryHost, &existing.RegistryNamespace, &existing.Repository, &existing.Status, &createdAt, &updatedAt)
@@ -78,24 +82,94 @@ func (s *Service) reserveRepositoryBinding(ctx context.Context, tx *sql.Tx, tena
 	if s.registryHost == "" || s.registryNamespace == "" {
 		return nil, status.Error(codes.FailedPrecondition, "installation registry host and namespace are required to reserve a Tenant repository")
 	}
-	base := repositorySlugCandidate(email)
-	candidate := base
-	for attempt := 1; attempt < 1000; attempt++ {
+	for attempt := 0; attempt < 1000; attempt++ {
+		candidate := base
+		if attempt > 0 {
+			candidate = fmt.Sprintf("%s-%d", base, attempt)
+		}
+		// The uniqueness index is the durable guard. This transaction-scoped lock
+		// serializes the read-then-insert reservation among concurrent admissions.
+		if _, e := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, s.registryHost+"/"+s.registryNamespace+"/"+candidate); e != nil {
+			return nil, persistence(e)
+		}
 		var taken bool
 		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tenant.tenant_repository_bindings WHERE registry_host=$1 AND registry_namespace=$2 AND repository=$3)`, s.registryHost, s.registryNamespace, candidate).Scan(&taken); e != nil {
 			return nil, persistence(e)
 		}
-		if !taken {
-			break
+		if taken {
+			continue
 		}
-		candidate = fmt.Sprintf("%s-%d", base, attempt)
+		out := &api.TenantRepositoryBinding{TenantId: tenantID, RegistryHost: s.registryHost, RegistryNamespace: s.registryNamespace, Repository: candidate, Status: "reserved"}
+		if e := tx.QueryRowContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES($1,$2,$3,$4) RETURNING created_at,updated_at`, out.TenantId, out.RegistryHost, out.RegistryNamespace, out.Repository).Scan(&createdAt, &updatedAt); e != nil {
+			return nil, persistence(e)
+		}
+		out.CreatedAt, out.UpdatedAt = stampOf(createdAt), stampOf(updatedAt)
+		return out, nil
 	}
-	out := &api.TenantRepositoryBinding{TenantId: tenantID, RegistryHost: s.registryHost, RegistryNamespace: s.registryNamespace, Repository: candidate, Status: "reserved"}
-	if e := tx.QueryRowContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES($1,$2,$3,$4) RETURNING created_at,updated_at`, out.TenantId, out.RegistryHost, out.RegistryNamespace, out.Repository).Scan(&createdAt, &updatedAt); e != nil {
-		return nil, persistence(e)
+	return nil, status.Error(codes.ResourceExhausted, "no Tenant repository destination is available")
+}
+
+// reserveRepositoryBinding reserves one stable tenant_id -> repository binding.
+// The candidate is used only when free; otherwise a deterministic numeric
+// suffix is chosen. An existing binding is never changed, and a caller-supplied
+// destination is never accepted.
+func (s *Service) reserveRepositoryBinding(ctx context.Context, tx *sql.Tx, tenantID, email string) (*api.TenantRepositoryBinding, error) {
+	return s.reserveRepositoryBindingCandidate(ctx, tx, tenantID, repositorySlugCandidate(email))
+}
+
+// BackfillTenantRepositoryBindings reserves stable destinations for Tenants
+// admitted before tenant_repository_bindings existed. It runs at Tenant-owner
+// startup after the installation registry facts are configured, before requests
+// can reach Build. It never consults Gateway or replaces an existing binding.
+func (s *Service) BackfillTenantRepositoryBindings(ctx context.Context) error {
+	if s.registryHost == "" || s.registryNamespace == "" {
+		var missing bool
+		e := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tenant.tenants t WHERE NOT EXISTS(SELECT 1 FROM tenant.tenant_repository_bindings b WHERE b.tenant_id=t.id))`).Scan(&missing)
+		if e != nil {
+			return persistence(e)
+		}
+		if missing {
+			return status.Error(codes.FailedPrecondition, "installation registry host and namespace are required to backfill existing Tenant repositories")
+		}
+		return nil
 	}
-	out.CreatedAt, out.UpdatedAt = stampOf(createdAt), stampOf(updatedAt)
-	return out, nil
+	tx, e := s.DB.BeginTx(ctx, nil)
+	if e != nil {
+		return persistence(e)
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('tenant_repository_bindings_backfill',0))`); e != nil {
+		return persistence(e)
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT t.id FROM tenant.tenants t WHERE NOT EXISTS(SELECT 1 FROM tenant.tenant_repository_bindings b WHERE b.tenant_id=t.id) ORDER BY t.id`)
+	if e != nil {
+		return persistence(e)
+	}
+	var tenantIDs []string
+	for rows.Next() {
+		var tenantID string
+		if e = rows.Scan(&tenantID); e != nil {
+			rows.Close()
+			return persistence(e)
+		}
+		tenantIDs = append(tenantIDs, tenantID)
+	}
+	if e = rows.Err(); e != nil {
+		rows.Close()
+		return persistence(e)
+	}
+	if e = rows.Close(); e != nil {
+		return persistence(e)
+	}
+	for _, tenantID := range tenantIDs {
+		if _, e = s.reserveRepositoryBindingCandidate(ctx, tx, tenantID, legacyRepositorySlug(tenantID)); e != nil {
+			return e
+		}
+	}
+	if e = tx.Commit(); e != nil {
+		return persistence(e)
+	}
+	return nil
 }
 
 // GetTenantRepositoryBinding is a cross-owner coordination read. Build resolves

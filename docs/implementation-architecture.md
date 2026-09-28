@@ -932,8 +932,10 @@ admission entry. It writes `tenant.tenants`, the owner membership and one
 uses the installation's `OPL_WORKSPACE_REGISTRY_HOST` /
 `OPL_WORKSPACE_REGISTRY_NAMESPACE` and derives the initial repository-name
 candidate from the verified owner email local-part, with a deterministic suffix
-on collision. `GetTenantRepositoryBinding` exposes it to Build and the Console
-BFF only, guarded by the signed mTLS peer.
+on collision. Tenant-owner startup backfills pre-binding Tenants with a stable
+`tenant-<sha256-prefix>` derived from their durable Tenant IDs; it does not call
+Gateway and never replaces an existing binding. `GetTenantRepositoryBinding`
+exposes it to Build and the Console BFF only, guarded by the signed mTLS peer.
 
 `services/build/internal/build.Runner.DestinationRepository` joins the resolved
 binding into `host/namespace/repository`, and `CreateBuild` stores

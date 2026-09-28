@@ -62,6 +62,9 @@ func main() {
 			return fmt.Errorf("OPL_WORKSPACE_REGISTRY_HOST and OPL_WORKSPACE_REGISTRY_NAMESPACE must be supplied together")
 		}
 		s.ConfigureRegistry(registryHost, registryNamespace)
+		if err := s.BackfillTenantRepositoryBindings(ctx); err != nil {
+			return err
+		}
 		options, e := config.TLS.DialOptions(owneridentity.Tenant.Service(), owneridentity.Build.Service(), os.Getenv("OPL_BUILD_TOKEN"))
 		if e != nil {
 			return e

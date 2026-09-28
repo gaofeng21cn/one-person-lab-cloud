@@ -3,6 +3,8 @@ package identity_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -205,6 +207,48 @@ func TestCreateTenantRequiresPlatformAdminPostgres(t *testing.T) {
 		t.Fatal("non-admin admitted a Tenant")
 	}
 	_ = s
+}
+
+func TestBackfillTenantRepositoryBindingsPostgres(t *testing.T) {
+	s, _, address := bindingSystem(t)
+	ctx := t.Context()
+	if _, e := s.DB.ExecContext(ctx, `INSERT INTO tenant.tenants(id,name) VALUES('tenant-existing-a','Existing A'),('tenant-existing-b','Existing B')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.DB.ExecContext(ctx, `INSERT INTO tenant.tenant_repository_bindings(tenant_id,registry_host,registry_namespace,repository) VALUES('tenant-existing-a','uswccr.ccs.tencentyun.com','oplcloud','preserved-destination')`); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.BackfillTenantRepositoryBindings(ctx); e != nil {
+		t.Fatal(e)
+	}
+	// Repeating owner startup does not replace or allocate another binding.
+	if e := s.BackfillTenantRepositoryBindings(ctx); e != nil {
+		t.Fatal(e)
+	}
+	conn, e := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(owneridentity.OutboundInterceptor(owneridentity.Build.Service(), bindingPeerToken)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { conn.Close() })
+	bindings := api.NewCloudIdentityAuthorizationClient(conn)
+	for _, tenantID := range []string{"tenant-existing-a", "tenant-existing-b"} {
+		binding, e := bindings.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: tenantID})
+		if e != nil {
+			t.Fatal(e)
+		}
+		sum := sha256.Sum256([]byte(tenantID))
+		wantRepository := "tenant-" + hex.EncodeToString(sum[:])[:24]
+		if tenantID == "tenant-existing-a" {
+			wantRepository = "preserved-destination"
+		}
+		if binding.GetRegistryHost() != "uswccr.ccs.tencentyun.com" || binding.GetRegistryNamespace() != "oplcloud" || binding.GetRepository() != wantRepository {
+			t.Fatalf("backfilled binding for %s = %v", tenantID, binding)
+		}
+	}
+	var count int
+	if e := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM tenant.tenant_repository_bindings WHERE tenant_id IN ('tenant-existing-a','tenant-existing-b')`).Scan(&count); e != nil || count != 2 {
+		t.Fatalf("backfilled binding count = %d, %v", count, e)
+	}
 }
 
 func strPtr(v string) *string { return &v }
