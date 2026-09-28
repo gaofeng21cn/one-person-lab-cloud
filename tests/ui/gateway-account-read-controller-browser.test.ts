@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   GatewayAccountUsageSummaryDTO,
@@ -14,6 +14,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 
@@ -90,7 +91,7 @@ async function settle(page: Page) {
 
 test("Gateway Account Read settles API overview projections independently", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
@@ -115,7 +116,7 @@ test("Gateway Account Read settles API overview projections independently", { ti
 
 test("Gateway Account Read rejects wallet and history completions from an earlier route activation", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const oldWalletHeld = deferred();
   const oldHistoryHeld = deferred();
   const releaseOldReads = deferred();
@@ -179,7 +180,7 @@ test("Gateway Account Read rejects wallet and history completions from an earlie
 
 test("Gateway Account Read rejects wallet and history completions from a logged-out Session", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const oldWalletHeld = deferred();
   const oldHistoryHeld = deferred();
   const releaseOldSessionReads = deferred();
@@ -251,7 +252,7 @@ test("Gateway Account Read rejects wallet and history completions from a logged-
 
 test("Gateway Account Read rejects an older response for the same balance page", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const firstPageTwoHeld = deferred();
   const releaseFirstPageTwo = deferred();
   const firstPageTwoSettled = deferred();
@@ -300,7 +301,7 @@ test("Gateway Account Read rejects an older response for the same balance page",
 
 test("Gateway Account Read follows the route plan and leaves one endpoint owner on Keys", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const reads = { wallet: 0, accountUsage: 0, balanceHistory: 0, endpoint: 0 };
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });

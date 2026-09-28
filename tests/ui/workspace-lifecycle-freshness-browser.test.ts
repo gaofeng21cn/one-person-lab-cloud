@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   SourceEnvelope,
@@ -14,6 +14,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-26T00:00:00Z";
 
@@ -44,7 +45,7 @@ async function openAdvancedSettings(page: Page) {
 
 test("Workspace refresh rejects an older Budget completion and preserves the refreshed Key projection", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${demo.origin}/login`, { waitUntil: "domcontentloaded" });
@@ -145,7 +146,7 @@ test("Workspace refresh rejects an older Budget completion and preserves the ref
 
 test("Renewal projection commit rejects an older in-flight Workspace refresh", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let releaseStaleRefresh = () => {};
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });

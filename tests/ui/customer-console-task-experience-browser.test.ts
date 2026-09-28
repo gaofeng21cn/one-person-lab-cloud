@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Locator, type Page } from "playwright";
+import type { Locator, Page } from "playwright";
 
 import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const desktopCustomerNavigation = ["概览", "工作空间", "OPL Gateway", "费用"];
 const mobileCustomerNavigation = ["概览", "工作空间", "Gateway", "费用"];
@@ -143,7 +144,7 @@ async function login(page: Page, origin: string) {
 
 test("customer shell exposes four tasks and keeps account internals out of the customer surface", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({ viewport });
@@ -221,7 +222,7 @@ test("customer shell exposes four tasks and keeps account internals out of the c
 
 test("customer task pages use customer language and expose task fields", { timeout: 120_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({ viewport });

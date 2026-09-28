@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   OperatorResourceDTO,
@@ -23,6 +23,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 const pageSize = 20;
@@ -232,7 +233,7 @@ async function settle(page: Page) {
 
 test("Application deployment retries its accepted operation and ignores another Workspace's late completion", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const alphaReadStarted = deferred();
   const releaseAlphaRead = deferred();
   const alphaReadFinished = deferred();
@@ -315,7 +316,7 @@ test("Application deployment retries its accepted operation and ignores another 
 
 test("Operator Resource Read loads list and policy and rejects a late page 1 response", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const stalePageHeld = deferred();
   const releaseStalePage = deferred();
   const stalePageSettled = deferred();
@@ -378,7 +379,7 @@ test("Operator Resource Read loads list and policy and rejects a late page 1 res
 
 test("Operator Resource Read rejects late detail and preview after selecting another Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const alphaDetailHeld = deferred();
   const alphaPreviewHeld = deferred();
   const releaseAlpha = deferred();
@@ -440,7 +441,7 @@ test("Operator Resource Read rejects late detail and preview after selecting ano
 
 test("Operator Resource Read keeps detail and preview failures independent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const alpha = operatorWorkspace("workspace-alpha", "Alpha");
   const beta = operatorWorkspace("workspace-beta", "Beta");
   try {
@@ -481,7 +482,7 @@ test("Operator Resource Read keeps detail and preview failures independent", { t
 
 test("Operator Resource Read rejects late list, detail, and preview after route and Session reset", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const routeListHeld = deferred();
   const routeDetailHeld = deferred();
   const routePreviewHeld = deferred();
@@ -614,7 +615,7 @@ test("Operator Resource Read rejects late list, detail, and preview after route 
 
 test("Runtime Image Replacement refreshes only the selected Workspace detail and preview", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const alpha = operatorWorkspace("workspace-alpha", "Alpha");
   const betaBefore = operatorWorkspace("workspace-beta", "Beta", "before");
   const betaAfter = operatorWorkspace("workspace-beta", "Beta", "after");
@@ -718,7 +719,7 @@ test("Runtime Image Replacement refreshes only the selected Workspace detail and
 
 test("Admin activates an approved rollback for new launches and applies it to an existing Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const value = operatorWorkspace("workspace-rollback", "Rollback", "before");
   let activeVersion = "26.8.26";
   let policyRevision = 1;
@@ -809,7 +810,7 @@ test("Admin activates an approved rollback for new launches and applies it to an
 
 test("Resource refresh updates an expanded Workspace and rejects its late response after selection changes", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const held = deferred();
   const release = deferred();
   const settled = deferred();
@@ -909,7 +910,7 @@ function observedHealth(workspaceImageStatus: OperatorFabricHealthDTO["workspace
 
 test("System health separates Fabric service from release and opens a read-only Runtime reconciliation", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let observationReads = 0;
   let includeUnmatched = false;
   let includeDeleting = false;
@@ -1007,7 +1008,7 @@ test("System health separates Fabric service from release and opens a read-only 
 
 test("Gateway overview displays real zero OPL account totals separately from unavailable balances", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let failBalance = false;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -1039,7 +1040,7 @@ test("Gateway overview displays real zero OPL account totals separately from una
 
 test("Registry selection admits a complete publisher revision and deploys its files and Secret references", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const id = "workspace-publisher";
   // Control Plane owns the registry identity: a catalog item is one repository
   // name inside the cataloged namespace, and a resolved reference is

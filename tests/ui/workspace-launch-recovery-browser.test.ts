@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium } from "playwright";
 
 import type {
   OperatorReconciliationPageDTO,
@@ -11,10 +10,11 @@ import type {
 } from "../../apps/console-ui/src/api/dtos.ts";
 import { CONSOLE_DEMO_CREDENTIALS, startConsoleDemoServer } from "../../tools/start-console-demo.ts";
 import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 test("operators check the original launch using server actions, preserving uncertain results and retry identity", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
       const context = await browser.newContext({ viewport });
@@ -112,7 +112,7 @@ test("operators check the original launch using server actions, preserving uncer
 
 test("operators close an unfulfilled order through one retained request and can reopen its refund progress", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
       const context = await browser.newContext({ viewport });

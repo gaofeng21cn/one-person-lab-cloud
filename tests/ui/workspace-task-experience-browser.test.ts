@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
+import type { Browser, BrowserContext, Locator, Page } from "playwright";
 
 import type {
   PricingCatalogResponse,
@@ -23,6 +23,7 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const viewports = [
   { name: "desktop", width: 1280, height: 900 },
@@ -137,7 +138,7 @@ for (const identity of ["legacy", "cloud"] as const) {
       if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
       else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
     }
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchBrowser({ headless: true });
     try {
       const page = await browser.newPage();
       const audit = await installBrowserAudit(page, demo.origin);
@@ -301,7 +302,7 @@ async function assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(pa
 }
 
 test("customer completes one authoritative Workspace journey at desktop and mobile widths", { timeout: 120_000 }, async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of viewports) {
       await verifyWorkspaceCustomerJourney(browser, viewport);
@@ -315,7 +316,7 @@ test("Workspace detail prioritizes authoritative availability and entry while ke
 
 test("Current application status and declared capabilities replace legacy Workspace entry and controls", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const application: WorkspaceCurrentApplicationDTO = {
     operationId: "application-knowledge", applicationId: "knowledge-app", revision: "1.2.3", status: "pending",
     capabilities: { credentials: false, gateway: false }
@@ -466,7 +467,7 @@ test("Current application status and declared capabilities replace legacy Worksp
 
 test("multiple active Workspace launches block repeat purchase until recovery is unambiguous", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const conflictingLaunches: WorkspaceLaunchResponse[] = [
     pendingLaunch,
     {
@@ -565,7 +566,7 @@ test("multiple active Workspace launches block repeat purchase until recovery is
 
 test("succeeded launch without a Workspace identity keeps raw success behind technical details", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const malformedSuccess: WorkspaceLaunchResponse = {
     operationId: "launch-missing-workspace-identity",
     status: "succeeded",
@@ -639,7 +640,7 @@ test("succeeded launch without a Workspace identity keeps raw success behind tec
 
 test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
@@ -698,7 +699,7 @@ test("Workspace detail fails closed without exposing Runtime or delete reason co
 
 test("Workspace credential mismatch uses customer terminology", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
@@ -731,7 +732,7 @@ test("Workspace credential mismatch uses customer terminology", { timeout: 30_00
 
 test("pending launch keeps raw evidence behind technical details at desktop and mobile widths", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   demo.state.launches = [pendingLaunch];
   try {
     for (const viewport of viewports) {
@@ -767,7 +768,7 @@ test("pending launch keeps raw evidence behind technical details at desktop and 
 
 test("closing and returning resumes the original pending purchase without another order, including after polling ends", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({ viewport });
@@ -828,7 +829,7 @@ test("closing and returning resumes the original pending purchase without anothe
 
 test("customers reopen closeout progress, see confirmed refunds or no-charge closure, and explicitly restart purchase", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of viewports) {
       for (const refundedUsdMicros of [52_580_000, 0]) {
@@ -890,7 +891,7 @@ test("customers reopen closeout progress, see confirmed refunds or no-charge clo
 
 test("customer entitlement shows authoritative zero due without prepayment language", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
@@ -927,7 +928,7 @@ test("customer entitlement shows authoritative zero due without prepayment langu
 
 test("unavailable quote remains distinct from an authoritative zero price", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
@@ -954,7 +955,7 @@ test("unavailable quote remains distinct from an authoritative zero price", { ti
 
 test("readback refresh retains the succeeded launch and retries only authoritative Workspace discovery", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const retryReadStarted = deferred();
   const releaseRetryRead = deferred();
   try {
@@ -1341,7 +1342,7 @@ async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof
 
 async function verifyWorkspaceDetailExperience() {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const workspaceDtoUrl = "https://dto-entry.example.invalid/w/ws-1/";
   const expectedRuntimeUrl = "https://runtime-entry.example.invalid/w/ws-1/";
   const workspaceDetail: WorkspaceDTO = {

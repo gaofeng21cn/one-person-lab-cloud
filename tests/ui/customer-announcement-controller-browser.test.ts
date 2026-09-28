@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   AnnouncementDTO,
@@ -13,6 +13,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 
@@ -87,7 +88,7 @@ async function settle(page: Page) {
 
 test("Customer Announcement rejects a late Overview 3 result after the list 20 scope loads", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-overview", "Overview target");
   const overviewHeld = deferred();
   const releaseOverview = deferred();
@@ -138,7 +139,7 @@ test("Customer Announcement rejects a late Overview 3 result after the list 20 s
 
 test("Customer Announcement refreshes the current list scope after an Overview command settles", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-overview", "Overview target");
   const commandHeld = deferred();
   const releaseCommand = deferred();
@@ -187,7 +188,7 @@ test("Customer Announcement refreshes the current list scope after an Overview c
 
 test("Customer Announcement retries response loss with the original read intent", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-retry", "Retry read");
   const other = announcement("announcement-other", "Other read");
   const keys = new Map<string, string[]>();
@@ -230,7 +231,7 @@ test("Customer Announcement retries response loss with the original read intent"
 
 test("Customer Announcement does not downgrade a valid receipt when projection refresh fails", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-refresh", "Refresh failure");
   const other = announcement("announcement-refresh-other", "Follow-up read");
   const refreshFailed = deferred();
@@ -277,7 +278,7 @@ test("Customer Announcement does not downgrade a valid receipt when projection r
 
 test("Customer Announcement retains its intent until receipt identity matches and does not commit conflicting readback", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-mismatch", "Mismatch read");
   const other = announcement("announcement-mismatch-other", "Mismatch follow-up");
   const conflictingReadbackCompleted = deferred();
@@ -334,7 +335,7 @@ test("Customer Announcement retains its intent until receipt identity matches an
 
 test("Customer Announcement ordinary refresh cannot supersede and downgrade a durable read receipt", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-refresh-race", "Refresh race");
   const mutationReadbackHeld = deferred();
   const releaseMutationReadback = deferred();
@@ -390,7 +391,7 @@ test("Customer Announcement ordinary refresh cannot supersede and downgrade a du
 
 test("Customer Announcement holds a route-spanning claim until its request settles", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-route", "Route read");
   const requestHeld = deferred();
   const releaseRequest = deferred();
@@ -437,7 +438,7 @@ test("Customer Announcement holds a route-spanning claim until its request settl
 
 test("Customer Announcement session reset admits a new claim and rejects stale completion", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const target = announcement("announcement-session", "Session read");
   const oldRequestHeld = deferred();
   const releaseOldRequest = deferred();

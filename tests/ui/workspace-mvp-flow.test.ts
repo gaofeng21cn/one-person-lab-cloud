@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { chromium } from "playwright";
 
 import * as workspaceApi from "../../apps/console-ui/src/api/workspaces-api.ts";
 import { CUSTOMER_WORKSPACE_LIST_PAGE_SIZE } from "../../apps/console-ui/src/app/customer-workspace-read-controller-model.ts";
@@ -11,6 +10,7 @@ import {
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
 import { viteClientWithoutHmrTransport } from "../../tools/console-browser-qa.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 async function openAdvancedSettings(page: import("playwright").Page) {
   const details = page.locator("details.workspace-advanced-details");
@@ -85,7 +85,7 @@ test("Workspace deletion read distinguishes confirmed no intent from inaccessibl
 
 test("Workspace delete scopes busy and reuses its intent after a late response", async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let releaseDelete: (() => void) | undefined;
   let releaseListRefresh: (() => void) | undefined;
   try {
@@ -222,7 +222,7 @@ test("Workspace delete scopes busy and reuses its intent after a late response",
 
 test("Workspace deletion survives closing the page and remains pending until its original receipt and absence are confirmed", { timeout: 90_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
       const context = await browser.newContext({ viewport });

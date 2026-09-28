@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
-import { chromium, type Page, type Response, type Route } from "playwright";
+import type { Page, Response, Route } from "playwright";
 
 import type {
   GatewayKeyPageDTO,
@@ -18,6 +18,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -230,7 +231,7 @@ async function readGatewayUsageProjection(page: Page): Promise<GatewayUsageProje
 
 test("Gateway usage rejects a late week result after today commits", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseWeek = deferred<void>();
   const weekRequestsHeld = deferred<void>();
   let heldWeekRequests = 0;
@@ -281,7 +282,7 @@ test("Gateway usage rejects a late week result after today commits", { timeout: 
 
 test("Gateway usage rejects late results for a previously selected key", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseFirstKey = deferred<void>();
   const firstKeyRequestsHeld = deferred<void>();
   let heldRequests = 0;
@@ -330,7 +331,7 @@ test("Gateway usage rejects late results for a previously selected key", { timeo
 
 test("Gateway usage rejects a response from an earlier route activation", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseFirstVisit = deferred<void>();
   const firstVisitRequestsHeld = deferred<void>();
   let weekRequests = 0;
@@ -381,7 +382,7 @@ test("Gateway usage rejects a response from an earlier route activation", { time
 
 test("Gateway usage rejects late results after a Session reset", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const refreshHeld = deferred<void>();
   const releaseRefresh = deferred<void>();
   const refreshSettled = deferred<void>();
@@ -453,7 +454,7 @@ test("Gateway usage rejects late results after a Session reset", { timeout: 60_0
 
 test("Gateway usage clears its current range only after a single-key not-found readback", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let listReads = 0;
   let keyReadbacks = 0;
   try {
@@ -497,7 +498,7 @@ test("Gateway usage clears its current range only after a single-key not-found r
 
 test("Gateway usage preserves key identity when authoritative readback is transiently unavailable", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let listReads = 0;
   let keyReadbacks = 0;
   try {
@@ -539,7 +540,7 @@ test("Gateway usage preserves key identity when authoritative readback is transi
 
 test("Gateway usage renders successful records independently from a failed summary", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let summaryReads = 0;
   let usageReads = 0;
   try {
@@ -585,7 +586,7 @@ test("Gateway usage renders successful records independently from a failed summa
 
 test("Gateway usage renders a successful summary independently from failed records", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let summaryReads = 0;
   let usageReads = 0;
   try {
@@ -629,7 +630,7 @@ test("Gateway usage renders a successful summary independently from failed recor
 
 test("Gateway usage selects the twenty-first key and refreshes it through authoritative readback", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let listReads = 0;
   let selectedKeyReadbacks = 0;
   const keyQueries: Array<{ page: number; search: string }> = [];
@@ -704,7 +705,7 @@ test("Gateway usage selects the twenty-first key and refreshes it through author
 
 test("Gateway usage key search rejects stale responses and restores focus after closing", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseFirstOldSearch = deferred<void>();
   const releaseClosedSearch = deferred<void>();
   const firstOldSearchStarted = deferred<void>();
@@ -795,7 +796,7 @@ test("Gateway usage key search rejects stale responses and restores focus after 
 
 test("Gateway usage pagination retries the requested page without reloading summary", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let summaryReads = 0;
   const usagePages: number[] = [];
   try {
@@ -845,7 +846,7 @@ test("Gateway usage pagination retries the requested page without reloading summ
 
 test("Gateway usage rejects available records with the wrong page identity", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const releaseWrongPageSize = deferred<void>();
   let pageTwoReads = 0;
   try {
@@ -922,7 +923,7 @@ test("Gateway usage rejects available records with the wrong page identity", { t
 
 test("Gateway usage keeps an available zero summary when request records are empty", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await routePopulatedKeys(page);
@@ -944,7 +945,7 @@ test("Gateway usage keeps an available zero summary when request records are emp
 
 test("Gateway usage does not request usage when the account has no keys", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   let usageReads = 0;
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -966,7 +967,7 @@ test("Gateway usage does not request usage when the account has no keys", { time
 
 test("Gateway usage preserves the result-first hierarchy in desktop and mobile viewports", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const screenshotDir = process.env.OPL_GATEWAY_USAGE_SCREENSHOT_DIR || "";
   if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
   try {

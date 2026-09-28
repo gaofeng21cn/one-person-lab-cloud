@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chromium, type Page, type Route } from "playwright";
+import type { Page, Route } from "playwright";
 
 import type {
   RuntimeCredentialResponse,
@@ -16,6 +16,7 @@ import {
   CONSOLE_DEMO_CREDENTIALS,
   startConsoleDemoServer
 } from "../../tools/start-console-demo.ts";
+import { launchBrowser } from "../../tools/launch-browser.ts";
 
 const fetchedAt = "2026-08-27T00:00:00Z";
 
@@ -113,7 +114,7 @@ async function openWorkspaceDisclosure(page: Page, selector: string) {
 
 test("Customer Workspace routes use their exact list and detail read identities", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const reads: string[] = [];
@@ -147,7 +148,7 @@ test("Customer Workspace routes use their exact list and detail read identities"
 
 test("a late page response cannot replace a newer page selection on the same route", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const stalePageHeld = deferred<Route>();
   const releaseStalePage = deferred<void>();
   const stalePageSettled = deferred<void>();
@@ -215,7 +216,7 @@ test("a late page response cannot replace a newer page selection on the same rou
 
 test("Renewal readback invalidates an older Workspace detail refresh", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const staleRefreshHeld = deferred<Route>();
   const releaseStaleRefresh = deferred<void>();
   const staleRefreshSettled = deferred<void>();
@@ -295,7 +296,7 @@ test("Renewal readback invalidates an older Workspace detail refresh", { timeout
 
 test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budget projections", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, demo.origin);
@@ -425,7 +426,7 @@ test("Runtime credential rotation refreshes Workspace, Runtime, and Gateway Budg
 
 test("Workspace detail failure settles before and independently from Runtime", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const runtimeHeld = deferred<Route>();
   const releaseRuntime = deferred<void>();
   try {
@@ -473,7 +474,7 @@ test("Workspace detail failure settles before and independently from Runtime", {
 
 test("a late Workspace detail cannot replace the current route Workspace", { timeout: 60_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser({ headless: true });
   const staleReadHeld = deferred<Route>();
   const releaseStaleRead = deferred<void>();
   const staleReadSettled = deferred<void>();
