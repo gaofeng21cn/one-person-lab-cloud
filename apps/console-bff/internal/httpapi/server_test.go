@@ -200,6 +200,18 @@ func TestDeliveryViewReportsMissingOwnerAsFailure(t *testing.T) {
 	}
 }
 
+func TestDeliveryViewFailsClosedOnEmptyOwnerReadback(t *testing.T) {
+	reader := resolvedReader()
+	reader.access = nil
+	server := NewServer(reader, allowedIdentity())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, sessionRequest(http.MethodGet, "/api/v2/delivery/ws-1"))
+
+	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body.String(), "empty owner readback") {
+		t.Fatalf("empty Serve readback was not rejected: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestOperationRoutingRejectsUnknownOwner(t *testing.T) {
 	server := NewServer(resolvedReader(), allowedIdentity())
 	request := sessionRequest(http.MethodGet, "/api/v2/operations/not-an-owner/op-1")

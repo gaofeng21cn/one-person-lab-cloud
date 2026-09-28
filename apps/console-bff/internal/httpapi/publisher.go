@@ -93,7 +93,7 @@ func (s *Server) publisherRoute(mux *http.ServeMux, pattern string, owner owneri
 			writePublisherIdentityError(w, r, err)
 			return
 		}
-		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.RuntimeControl && s.runtimeControl == nil) || (owner == owneridentity.Tenant && s.tenant == nil) {
+		if (owner == owneridentity.Build && s.build == nil) || (owner == owneridentity.Capability && s.capability == nil) || (owner == owneridentity.RuntimeControl && s.runtimeControl == nil) || (owner == owneridentity.Tenant && s.tenant == nil) || (owner == owneridentity.Gateway && s.gateway == nil) {
 			writePublisherError(w, r, 503, "owner_unconfigured", "publisher owner unavailable")
 			return
 		}

@@ -305,6 +305,97 @@ async function assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(pa
   assert.equal(await visibleTextCount(page, /micros/i), 0, "micros should not be visible by default");
 }
 
+async function startCloudConsoleDemo() {
+  const previousIdentity = process.env.VITE_CONSOLE_IDENTITY;
+  process.env.VITE_CONSOLE_IDENTITY = "cloud";
+  try {
+    return await startConsoleDemoServer({ port: 0, log: false });
+  } finally {
+    if (previousIdentity === undefined) delete process.env.VITE_CONSOLE_IDENTITY;
+    else process.env.VITE_CONSOLE_IDENTITY = previousIdentity;
+  }
+}
+
+async function loginCloudFixture(page: Page, origin: string) {
+  const session = await page.request.post(`${origin}/api/auth/login`, { data: CONSOLE_DEMO_CREDENTIALS.customer });
+  assert.equal(session.ok(), true);
+}
+
+async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof viewports[number]) {
+  const demo = await startCloudConsoleDemo();
+  const context = await browser.newContext({ viewport, permissions: ["clipboard-read", "clipboard-write"] });
+  const page = await context.newPage();
+  const audit = await installBrowserAudit(page, demo.origin);
+  const operationId = `operation-${viewport.name}`;
+  const workspaceId = `workspace-${viewport.name}`;
+  const seenIdempotencyKeys = new Set<string>();
+  let operationReads = 0;
+  let accessReads = 0;
+  let createdBody: Record<string, unknown> | null = null;
+  try {
+    await page.addInitScript({ content: `window.openedWorkspace = null; window.open = (url, target, features) => { window.openedWorkspace = { url: String(url || ""), target: String(target || ""), features: String(features || "") }; return null; };` });
+    await page.route("**/api/v2/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (path === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (path === "/api/v2/capability-versions") {
+        assert.equal(url.searchParams.get("status"), "ready");
+        return route.fulfill({ json: { items: [{ id: "cap-ready-1", versionLabel: "IBD Agent 1.0", artifactDigest: "sha256:agent", status: "ready", provenance: "build", modelRequirements: [{ slot: "default", required: true, capability: "chat", allowedModelIds: ["model-1"] }] }] } });
+      }
+      if (path === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute Standard", vcpus: 2, memoryMiB: 4096, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (path === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage Standard", capacityGiB: 50, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (path === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "IBD Model", capabilities: ["chat"], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "2", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
+      if (path === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (path === "/api/v2/quotes" && request.method() === "POST") {
+        assert.deepEqual(request.postDataJSON(), { purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1 });
+        return route.fulfill({ status: 201, json: { id: "quote-1", purpose: "deploy", capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [{ slot: "default", modelId: "model-1" }], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "price-1", refundPolicyVersionId: "refund-1", retentionPolicyVersionId: "retention-1", refundTerms: "按报价政策处理退款。", retentionTerms: "数据保留按报价政策执行。", expectedInterruption: "部署期间可能短暂不可用。", lineItems: [{ kind: "compute", description: "计算套餐", quantity: 1, amountUSDMicros: "52580000" }], totalUSDMicros: "52580000", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
+      }
+      if (path === "/api/v2/workspaces" && request.method() === "POST") {
+        createdBody = request.postDataJSON() as Record<string, unknown>;
+        assert.deepEqual(createdBody, { name: `Customer Journey ${viewport.name}`, quoteId: "quote-1", renewalMode: "manual" });
+        seenIdempotencyKeys.add(request.headers()["idempotency-key"] || "");
+        return route.fulfill({ status: 202, json: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: "accepted", stage: "admission", requestId: "request-1", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", pollAfterSeconds: 1 } });
+      }
+      if (path === `/api/v2/operations/workspace/${operationId}`) {
+        operationReads += 1;
+        return route.fulfill({ json: { operationId, owner: "workspace", kind: "create_workspace", resourceId: workspaceId, status: operationReads === 1 ? "running" : "succeeded", stage: operationReads === 1 ? "runtime" : "succeeded", ...(operationReads === 1 ? { pollAfterSeconds: 1 } : { observationResult: "confirmed" }), requestId: "request-1", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z" } });
+      }
+      if (path === "/api/v2/workspaces" && request.method() === "GET") return route.fulfill({ json: { items: [{ id: workspaceId, name: `Customer Journey ${viewport.name}`, capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-10-27T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" }] } });
+      if (path === `/api/v2/workspaces/${workspaceId}`) return route.fulfill({ json: { id: workspaceId, name: `Customer Journey ${viewport.name}`, capabilityVersionId: "cap-ready-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", currentPeriodEnd: "2026-10-27T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" } });
+      if (path === `/api/v2/workspaces/${workspaceId}/access`) {
+        accessReads += 1;
+        assert.equal(request.method(), "POST");
+        return route.fulfill({ json: { workspaceId, url: `https://agent.example.invalid/${workspaceId}`, authenticationMode: "application_login" } });
+      }
+      return route.fulfill({ status: 404, json: { error: "unexpected_v2_route" } });
+    });
+    await loginCloudFixture(page, demo.origin);
+    await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+    await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
+    await page.getByRole("heading", { name: "新建 Agent Workspace", exact: true }).waitFor({ state: "visible" });
+    await page.getByLabel("工作空间名称").fill(`Customer Journey ${viewport.name}`);
+    await page.getByLabel("default").selectOption("model-1");
+    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
+    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
+    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    assert.equal(accessReads, 1);
+    assert.equal(seenIdempotencyKeys.size, 1);
+    assert.deepEqual(createdBody, { name: `Customer Journey ${viewport.name}`, quoteId: "quote-1", renewalMode: "manual" });
+    await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => (window as Window & { openedWorkspace?: unknown }).openedWorkspace), { url: `https://agent.example.invalid/${workspaceId}`, target: "_blank", features: "noopener,noreferrer" });
+    assert.ok(operationReads >= 2);
+    assertBrowserAuditClean(audit);
+  } finally {
+    await context.close();
+    await demo.close();
+  }
+}
+
 test("customer completes one authoritative Workspace journey at desktop and mobile widths", { timeout: 120_000 }, async () => {
   const browser = await launchBrowser({ headless: true });
   try {
@@ -469,178 +560,36 @@ test("Current application status and declared capabilities replace legacy Worksp
   }
 });
 
-test("multiple active Workspace launches block repeat purchase until recovery is unambiguous", { timeout: 30_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
+test("v2 launch fails closed when Gateway or capability owner routes are unavailable", { timeout: 30_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
   const browser = await launchBrowser({ headless: true });
-  const conflictingLaunches: WorkspaceLaunchResponse[] = [
-    pendingLaunch,
-    {
-      ...pendingLaunch,
-      operationId: "launch-manual-review-conflict",
-      status: "manual_review",
-      updatedAt: "2026-09-01T00:02:00Z"
-    }
-  ];
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
-    let launchListReadCount = 0;
-    let launchPostCount = 0;
-    let recoveryResult: "conflict" | "unavailable" | "clear" = "conflict";
-    const initialRecovery = deferred();
-    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
-      if (route.request().method() === "GET") {
-        launchListReadCount += 1;
-        if (launchListReadCount === 1) await initialRecovery.promise;
-        if (recoveryResult === "unavailable") {
-          await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
-        } else {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify(recoveryResult === "conflict" ? conflictingLaunches : [])
-          });
-        }
+    await page.route("**/api/v2/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/v2/auth/session") {
+        await route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
         return;
       }
-      if (route.request().method() === "POST") launchPostCount += 1;
-      await route.fallback();
+      await route.fulfill({ status: 503, json: { error: "DEPENDENCY_UNAVAILABLE" } });
     });
-
-    await login(page, demo.origin);
-    const launchPageNavigation = page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-
-    await page.getByText("正在确认是否存在未完成的开通操作", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(launchListReadCount, 1);
-    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
-    assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
-    assert.equal(launchPostCount, 0);
-
-    initialRecovery.resolve();
-    await launchPageNavigation;
-
-    await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText("为避免重复扣费，请暂勿再次购买。刷新后确认仅有一个或没有未完成操作，才能继续开通。", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
-    assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "确认预付并开通", exact: true }).count(), 0);
-    assert.equal(launchPostCount, 0);
-
-    const refreshResponse = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
-    });
-    await page.getByRole("button", { name: "重新检查", exact: true }).click();
-    await refreshResponse;
-    await page.getByText("存在多个待确认的开通操作", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(launchListReadCount, 2);
-    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
-    assert.equal(launchPostCount, 0);
-
-    recoveryResult = "unavailable";
-    const unavailableResponse = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
-    });
-    await page.getByRole("button", { name: "重新检查", exact: true }).click();
-    await unavailableResponse;
-    await page.getByText("暂时无法确认开通状态", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByLabel("工作空间名称").count(), 0);
-    assert.equal(launchPostCount, 0);
-
-    recoveryResult = "clear";
-    const clearResponse = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "GET" && new URL(response.url()).pathname === "/api/workspace-launches";
-    });
-    await page.getByRole("button", { name: "重新检查", exact: true }).click();
-    await clearResponse;
-    await page.getByLabel("工作空间名称").waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor({ state: "visible" });
-    assert.equal(launchListReadCount, 4);
-    assert.equal(launchPostCount, 0);
-    await assertNoHorizontalOverflow(page);
-    assertBrowserAuditClean(audit);
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("succeeded launch without a Workspace identity keeps raw success behind technical details", { timeout: 30_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const malformedSuccess: WorkspaceLaunchResponse = {
-    operationId: "launch-missing-workspace-identity",
-    status: "succeeded",
-    phase: "receipt",
-    accountId: "acct-1",
-    name: "Missing Identity Workspace",
-    packageId: "basic",
-    sizeGb: 10,
-    autoRenew: false,
-    priceVersion: "pilot-usd-2026-07-v1",
-    currency: "USD",
-    totalChargeUsdMicros: 52_580_000,
-    createdAt: "2026-09-01T00:00:00Z",
-    updatedAt: "2026-09-01T00:01:00Z"
-  };
-  try {
-    const page = await browser.newPage({ viewport: viewports[0] });
-    const audit = await installBrowserAudit(page, demo.origin);
-    let launchPostCount = 0;
-    let authoritativeReadCount = 0;
-    let launchIdempotencyKey = "";
-    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      launchPostCount += 1;
-      launchIdempotencyKey = route.request().headers()["idempotency-key"] || "";
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(malformedSuccess) });
-    });
-    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces", async (route) => {
-      const requestUrl = new URL(route.request().url());
-      if (requestUrl.searchParams.get("pageSize") === "50") authoritativeReadCount += 1;
-      await route.fallback();
-    });
-
-    await login(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-    await page.getByLabel("工作空间名称").fill(malformedSuccess.name);
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-    await page.getByRole("checkbox", {
-      name: "我确认一次性预付工作空间月度总额并开通",
-      exact: true
-    }).click();
-    await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
-
-    await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
-    await page.getByText("当前开通结果尚未确认，请刷新状态，暂勿重复购买。", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("heading", { name: "工作空间资源已开通", exact: true }).count(), 0);
-    assert.equal(await visibleTextCount(page, "计算与存储资源已开通，可进入详情查看应用安装与运行状态。"), 0);
-    assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
-    assert.equal(await visibleTextCount(page, "succeeded"), 0);
-    assert.equal(authoritativeReadCount, 0);
-    assert.equal(launchPostCount, 1);
-    assert.notEqual(launchIdempotencyKey, "");
-
-    const technical = page.locator("details.launch-technical-details");
-    await technical.locator("summary").click();
-    const statusCode = technical.locator(".operation-readback dt")
-      .filter({ hasText: /^status$/ })
-      .locator("xpath=following-sibling::dd/code");
-    await statusCode.waitFor({ state: "visible" });
-    assert.equal(await statusCode.textContent(), "succeeded");
-    await assertNoHorizontalOverflow(page);
+    await page.getByText("开通入口暂不可用", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "获取准确报价", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: /确认并开通/ }).count(), 0);
+    assert.equal(await page.getByText("模拟 Agent", { exact: true }).count(), 0);
+    assert.ok(audit.consoleErrors.length > 0);
+    assert.ok(audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
+    audit.consoleErrors.length = 0;
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
     await demo.close();
   }
 });
+
 
 test("Workspace detail fails closed without exposing Runtime or delete reason codes by default", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
@@ -734,195 +683,19 @@ test("Workspace credential mismatch uses customer terminology", { timeout: 30_00
   }
 });
 
-test("pending launch keeps raw evidence behind technical details at desktop and mobile widths", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  demo.state.launches = [pendingLaunch];
-  try {
-    for (const viewport of viewports) {
-      const context = await browser.newContext({ viewport });
-      const page = await context.newPage();
-      const audit = await installBrowserAudit(page, demo.origin);
-      await login(page, demo.origin);
-
-      await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "domcontentloaded" });
-      const compact = page.locator(".launch-operation--compact");
-      await compact.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor({ state: "visible" });
-      await compact.getByText("启动工作空间", { exact: true }).waitFor({ state: "visible" });
-      await assertTechnicalEvidenceClosed(page);
-      await compact.getByText("技术详情", { exact: true }).click();
-      await assertTechnicalEvidenceOpen(page);
-      await assertNoHorizontalOverflow(page);
-
-      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-      const full = page.locator(".workspace-launch-page .launch-operation");
-      await full.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor({ state: "visible" });
-      await assertTechnicalEvidenceClosed(page);
-      await full.getByText("技术详情", { exact: true }).click();
-      await assertTechnicalEvidenceOpen(page);
-      await assertNoHorizontalOverflow(page);
-      assertBrowserAuditClean(audit);
-      await context.close();
-    }
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("closing and returning resumes the original pending purchase without another order, including after polling ends", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  try {
-    for (const viewport of viewports) {
-      const context = await browser.newContext({ viewport });
-      const operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `launch-return-${viewport.name}` };
-      demo.state.launches = [operation];
-      let purchaseWrites = 0;
-      const observedOperationIds = new Set<string>();
-      context.on("request", (request) => {
-        const url = new URL(request.url());
-        if (url.pathname === "/api/workspace-launches" && request.method() === "POST") purchaseWrites += 1;
-        if (url.pathname.startsWith("/api/workspace-launches/") && request.method() === "GET") {
-          observedOperationIds.add(decodeURIComponent(url.pathname.split("/").at(-1)!));
-        }
-      });
-      let page = await context.newPage();
-      await login(page, demo.origin);
-      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
-      await page.getByText("系统正在后台准备所需资源。可以关闭页面，稍后回来查看，无需重复购买。", { exact: true }).waitFor();
-      await page.close();
-
-      page = await context.newPage();
-      const audit = await installBrowserAudit(page, demo.origin);
-      await page.clock.install();
-      await page.clock.pauseAt(new Date(Date.now() + 1_000));
-      await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
-        await page.clock.fastForward(10_000);
-        await (await readback).finished();
-        await page.clock.runFor(1);
-      }
-      await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor();
-      assert.equal(await page.getByRole("heading", { name: "开通失败", exact: true }).count(), 0);
-      assert.equal(purchaseWrites, 0);
-
-      const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/workspace-launches");
-      await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-      await (await refreshed).finished();
-      // The heading changes before the async refresh schedules its next poll.
-      // Let that completion settle before advancing a paused browser clock.
-      await page.clock.runFor(1);
-      await page.getByRole("heading", { name: "正在准备工作空间", exact: true }).waitFor();
-      demo.state.launches = [{ ...operation, status: "succeeded", phase: "succeeded", workspaceId: "ws-1" }];
-      await page.clock.fastForward(10_000);
-      await page.waitForURL(/\/console\/workspaces\/ws-1$/);
-      assert.deepEqual([...observedOperationIds], [operation.operationId]);
-      assert.equal(purchaseWrites, 0);
-      assertBrowserAuditClean(audit);
-      await context.close();
-    }
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("customers reopen closeout progress, see confirmed refunds or no-charge closure, and explicitly restart purchase", { timeout: 90_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  try {
-    for (const viewport of viewports) {
-      for (const refundedUsdMicros of [52_580_000, 0]) {
-        const context = await browser.newContext({ viewport });
-        let operation: WorkspaceLaunchResponse = { ...pendingLaunch, operationId: `closeout-${viewport.name}-${refundedUsdMicros}`, status: "pending", closeout: { status: "confirming", refundedUsdMicros: 0 } };
-        demo.state.launches = [operation];
-        let purchaseWrites = 0;
-        context.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/workspace-launches") purchaseWrites += 1; });
-        let page = await context.newPage();
-        await installBrowserAudit(page, demo.origin);
-        await login(page, demo.origin);
-        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-        await page.getByRole("heading", { name: "正在核对结案条件", exact: true }).waitFor();
-        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
-        await page.close();
-
-        operation = { ...operation, closeout: { status: "closing", refundedUsdMicros: 0 } };
-        demo.state.launches = [operation];
-        page = await context.newPage();
-        const audit = await installBrowserAudit(page, demo.origin);
-        await page.clock.install();
-        await page.clock.pauseAt(new Date(Date.now() + 1_000));
-        await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "domcontentloaded" });
-        await page.getByRole("heading", { name: "正在结束未完成的开通", exact: true }).waitFor();
-        const advance = async (next: WorkspaceLaunchResponse, heading: string) => {
-          operation = next;
-          demo.state.launches = [operation];
-          const readback = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspace-launches/${operation.operationId}`);
-          await page.clock.fastForward(10_000);
-          await (await readback).finished();
-          await page.clock.runFor(1);
-          await page.getByRole("heading", { name: heading, exact: true }).waitFor();
-        };
-        if (refundedUsdMicros > 0) {
-          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0, pendingConfirmation: true } }, "结案结果仍在核对");
-          assert.equal(await page.getByRole("button", { name: "查看工作空间", exact: true }).count(), 0);
-          assert.equal((await page.locator(".launch-operation").innerText()).includes("已退回原账户余额"), false);
-          await advance({ ...operation, closeout: { status: "refunding", refundedUsdMicros: 0 } }, "退款处理中");
-        }
-        await advance({ ...operation, closeout: { status: "recording", refundedUsdMicros } }, "正在记录结案结果");
-        assert.equal(await page.getByRole("button", { name: "重新购买", exact: true }).count(), 0);
-        await advance({ ...operation, status: refundedUsdMicros ? "refunded" : "failed", closeout: { status: "closed", refundedUsdMicros, receiptId: "receipt-close-original" } }, "开通未完成，已结案");
-        await page.getByText(refundedUsdMicros ? "已退回原账户余额 $52.58。可查看费用记录或重新购买。" : "本次开通未扣款。可查看费用记录或重新购买。", { exact: true }).waitFor();
-        assert.equal(await page.getByRole("button", { name: "查看费用", exact: true }).count(), 1);
-        assert.equal(purchaseWrites, 0);
-        await page.getByRole("button", { name: "重新购买", exact: true }).click();
-        await page.getByRole("button", { name: "核对开通信息", exact: true }).waitFor();
-        assert.equal(purchaseWrites, 0);
-        await assertNoHorizontalOverflow(page);
-        assertBrowserAuditClean(audit);
-        await context.close();
-      }
-    }
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("customer entitlement shows authoritative zero due without prepayment language", { timeout: 60_000 }, async () => {
+test("legacy resource-only Workspace history remains readable without becoming the new launch entry", { timeout: 30_000 }, async () => {
   const demo = await startConsoleDemoServer({ port: 0, log: false });
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
-    await page.route("**/api/pricing/catalog", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(customerOwnedCatalog)
-      });
-    });
     await login(page, demo.origin);
-    await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-
-    const actualDue = page.locator(".workspace-order-summary__total");
-    await actualDue.getByText("实际应付", { exact: true }).waitFor({ state: "visible" });
-    await actualDue.getByText("$0.00", { exact: true }).waitFor({ state: "visible" });
-    assert.ok(await page.getByText("$52.58", { exact: true }).count() > 0, "positive preview remains reference evidence");
-
-    await page.getByLabel("工作空间名称").fill("Customer Entitlement Workspace");
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-    await page.getByRole("checkbox", {
-      name: "我确认使用当前客户权益开通工作空间（无需预付）",
-      exact: true
-    }).click();
-    await page.getByRole("button", { name: "确认并开通", exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.getByRole("button", { name: /预付/ }).count(), 0);
-    await assertNoHorizontalOverflow(page);
+    await page.goto(`${demo.origin}/console/workspaces`, { waitUntil: "networkidle" });
+    await page.locator(".workspace-list-row").first().waitFor({ state: "visible" });
+    await page.locator(".workspace-list-row").first().getByText("查看详情", { exact: true }).click();
+    await page.locator(".workspace-identity-panel").waitFor({ state: "visible" });
+    assert.equal(await page.getByRole("button", { name: "打开工作空间", exact: true }).count() > 0, true);
+    assert.equal(await page.getByRole("button", { name: "新建工作空间", exact: true }).count(), 0);
     assertBrowserAuditClean(audit);
   } finally {
     await browser.close();
@@ -930,419 +703,56 @@ test("customer entitlement shows authoritative zero due without prepayment langu
   }
 });
 
-test("unavailable quote remains distinct from an authoritative zero price", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
+test("v2 operation refresh keeps the original order and never opens before Serve access confirmation", { timeout: 30_000 }, async () => {
+  const demo = await startCloudConsoleDemo();
   const browser = await launchBrowser({ headless: true });
   try {
     const page = await browser.newPage({ viewport: viewports[0] });
     const audit = await installBrowserAudit(page, demo.origin);
-    await page.route("**/api/pricing/catalog", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(billedCatalog) });
-    });
-    await page.route("**/api/pricing/preview", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(unavailablePreview) });
-    });
-    await login(page, demo.origin);
-    await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-
-    const actualDue = page.locator(".workspace-order-summary__total");
-    await actualDue.getByText("实际应付", { exact: true }).waitFor({ state: "visible" });
-    await actualDue.getByText("暂不可用", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await actualDue.getByText("$0.00", { exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "核对开通信息", exact: true }).isDisabled(), true);
-    assertBrowserAuditClean(audit);
-  } finally {
-    await browser.close();
-    await demo.close();
-  }
-});
-
-test("readback refresh retains the succeeded launch and retries only authoritative Workspace discovery", { timeout: 60_000 }, async () => {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  const browser = await launchBrowser({ headless: true });
-  const retryReadStarted = deferred();
-  const releaseRetryRead = deferred();
-  try {
-    const page = await browser.newPage({ viewport: viewports[0] });
-    const audit = await installBrowserAudit(page, demo.origin);
-    const unavailableReadback: SourceEnvelope<WorkspaceListData> = {
-      source: "control-plane",
-      status: "unavailable",
-      available: false,
-      fetchedAt: "2026-09-01T00:00:00Z",
-      reasonCode: "workspace_readback_temporarily_unavailable"
-    };
-    let authoritativeReads = 0;
-    await page.route("**/api/workspaces?*", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get("pageSize") !== "50") {
-        await route.fallback();
-        return;
-      }
-      authoritativeReads += 1;
-      if (authoritativeReads === 1) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(unavailableReadback)
-        });
-        return;
-      }
-      if (authoritativeReads === 2) {
-        retryReadStarted.resolve();
-        await releaseRetryRead.promise;
-      }
-      await route.fallback();
-    });
-
-    let launchPostCount = 0;
-    const launchIdempotencyKeys = new Set<string>();
-    page.on("request", (request) => {
+    let operationReads = 0;
+    let createWrites = 0;
+    await page.addInitScript("window.open = (url) => { window.openedWorkspace = url; return null; };");
+    await page.route("**/api/v2/**", async (route) => {
+      const request = route.request();
       const url = new URL(request.url());
-      if (request.method() !== "POST" || url.pathname !== "/api/workspace-launches") return;
-      launchPostCount += 1;
-      launchIdempotencyKeys.add(request.headers()["idempotency-key"] || "");
+      if (url.pathname === "/api/v2/auth/session") return route.fulfill({ json: { actorId: "user-customer", tenantId: "acct-1", displayName: "Customer", permissions: [], csrfToken: "fixture-csrf", expiresAt: "2099-01-01T00:00:00Z" } });
+      if (url.pathname === "/api/v2/capability-versions") return route.fulfill({ json: { items: [{ id: "cap-1", versionLabel: "Agent", artifactDigest: "sha256:x", status: "ready", provenance: "build", modelRequirements: [] }] } });
+      if (url.pathname === "/api/v2/catalog/compute-plans") return route.fulfill({ json: { items: [{ id: "compute-1", name: "Compute", vcpus: 2, memoryMiB: 1024, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (url.pathname === "/api/v2/catalog/storage-plans") return route.fulfill({ json: { items: [{ id: "storage-1", name: "Storage", capacityGiB: 10, availability: "available", billingMode: "prepaid_monthly" }] } });
+      if (url.pathname === "/api/v2/catalog/models") return route.fulfill({ json: { items: [{ id: "model-1", name: "Model", capabilities: [], available: true, inputPricePerMillionTokensUSDMicros: "1", outputPricePerMillionTokensUSDMicros: "1", priceSource: "gateway", fetchedAt: "2026-09-27T00:00:00Z" }] } });
+      if (url.pathname === "/api/v2/wallet") return route.fulfill({ json: { source: "gateway", status: "available", balanceUSDMicros: "100000000", currency: "USD", fetchedAt: "2026-09-27T00:00:00Z" } });
+      if (url.pathname === "/api/v2/quotes" && request.method() === "POST") return route.fulfill({ status: 201, json: { id: "quote-refresh", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", expectedInterruption: "none", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
+      if (url.pathname === "/api/v2/quotes/quote-refresh") return route.fulfill({ json: { id: "quote-refresh", purpose: "deploy", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", modelSelections: [], periodMonths: 1, periodStart: "2026-09-27T00:00:00Z", periodEnd: "2026-10-27T00:00:00Z", pricePolicyVersionId: "p", refundPolicyVersionId: "r", retentionPolicyVersionId: "t", refundTerms: "refund", retentionTerms: "retention", expectedInterruption: "none", lineItems: [], totalUSDMicros: "1", status: "offered", expiresAt: "2099-01-01T00:00:00Z", createdAt: "2026-09-27T00:00:00Z", runtimeReadbackRequirement: "required" } });
+      if (url.pathname === "/api/v2/workspaces" && request.method() === "POST") { createWrites += 1; return route.fulfill({ status: 202, json: { operationId: "op-refresh", owner: "workspace", kind: "create_workspace", resourceId: "ws-refresh", status: "accepted", stage: "admission", requestId: "req", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", pollAfterSeconds: 1 } }); }
+      if (url.pathname === "/api/v2/operations/workspace/op-refresh") { operationReads += 1; return route.fulfill({ json: { operationId: "op-refresh", owner: "workspace", kind: "create_workspace", resourceId: "ws-refresh", status: "succeeded", stage: "succeeded", observationResult: "confirmed", requestId: "req", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z" } }); }
+      if (url.pathname === "/api/v2/workspaces" && request.method() === "GET") return route.fulfill({ json: { items: [{ id: "ws-refresh", name: "Refresh", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" }] } });
+      if (url.pathname === "/api/v2/workspaces/ws-refresh") return route.fulfill({ json: { id: "ws-refresh", name: "Refresh", capabilityVersionId: "cap-1", computePlanId: "compute-1", storagePlanId: "storage-1", deliveryModel: "agent_saas", status: "active", resourceReadiness: "ready", applicationAvailability: "available", createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", version: "1" } });
+      if (url.pathname === "/api/v2/workspaces/ws-refresh/access") return route.fulfill({ status: 503, json: { error: "DEPENDENCY_UNAVAILABLE" } });
+      return route.fulfill({ status: 404, json: { error: "unexpected_v2_route" } });
     });
-
-    await login(page, demo.origin);
+    await loginCloudFixture(page, demo.origin);
     await page.goto(`${demo.origin}/console/workspaces/new`, { waitUntil: "networkidle" });
-    await page.getByLabel("工作空间名称").fill("Readback Retry Workspace");
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-    await page.getByRole("checkbox", {
-      name: "我确认一次性预付工作空间月度总额并开通",
-      exact: true
-    }).click();
-
-    const launchResponsePromise = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "POST" && new URL(response.url()).pathname === "/api/workspace-launches";
-    });
-    await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
-    const launchResponse = await launchResponsePromise;
-    const launch = await launchResponse.json() as WorkspaceLaunchResponse;
-    assert.equal(launch.status, "succeeded");
-    assert.ok(launch.workspaceId);
-    await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
-    await page.getByText("当前开通结果尚未确认，请刷新状态，暂勿重复购买。", { exact: true }).waitFor({ state: "visible" });
-
-    const retryRequest = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      return request.method() === "GET" && url.pathname === "/api/workspaces" && url.searchParams.get("pageSize") === "50";
-    }, { timeout: 3_000 });
+    await page.getByLabel("工作空间名称").fill("Refresh");
+    await page.getByRole("button", { name: "获取准确报价", exact: true }).click();
+    await page.getByRole("heading", { name: "确认准确报价与部署条款", exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: /我确认以上 Agent/ }).check();
+    await page.getByRole("button", { name: "确认并开通 Workspace", exact: true }).click();
+    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    assert.equal(await page.getByRole("button", { name: "打开 Agent WebUI", exact: true }).count(), 0);
+    assert.equal(createWrites, 1);
+    assert.ok(operationReads >= 1);
     await page.getByRole("button", { name: "刷新状态", exact: true }).click();
-    await retryRequest;
-    await retryReadStarted.promise;
-
-    await page.getByRole("heading", { name: "结果待确认", exact: true }).waitFor({ state: "visible" });
-    assert.equal(authoritativeReads, 2);
-    assert.equal(await page.getByRole("button", { name: /确认.*开通/ }).count(), 0);
-    assert.equal(await page.getByRole("checkbox", { name: /确认.*开通/ }).count(), 0);
-    assert.equal(launchPostCount, 1);
-    assert.equal(launchIdempotencyKeys.size, 1);
-    assert.notEqual([...launchIdempotencyKeys][0], "");
-
-    releaseRetryRead.resolve();
-    await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
-    await page.getByRole("heading", { name: "Readback Retry Workspace", exact: true }).waitFor({ state: "visible" });
-    assert.equal(launchPostCount, 1);
-    assert.equal(launchIdempotencyKeys.size, 1);
+    await page.getByText("Serve confirmed access 未确认，暂不开放 WebUI。", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(createWrites, 1);
+    assert.ok(audit.consoleErrors.every((message) => message.includes("503 (Service Unavailable)")));
+    audit.consoleErrors.length = 0;
     assertBrowserAuditClean(audit);
   } finally {
-    releaseRetryRead.resolve();
     await browser.close();
     await demo.close();
   }
 });
 
-async function verifyWorkspaceCustomerJourney(browser: Browser, viewport: typeof viewports[number]) {
-  const demo = await startConsoleDemoServer({ port: 0, log: false });
-  let context: BrowserContext | null = null;
-  const authoritativeReadStarted = deferred();
-  const customerOpenReadStarted = deferred();
-  const releaseAuthoritativeRead = deferred();
-  let launchPostCount = 0;
-  let launchedWorkspaceId = "";
-  let workspaceDtoFixtureReads = 0;
-  let runtimeFixtureReads = 0;
-  const authoritativeReadRequests: Array<{ page: string | null; pageSize: string | null }> = [];
-  const launchIdempotencyKeys = new Set<string>();
-  const journeyName = `Customer Journey ${viewport.name}`;
-
-  try {
-    context = await browser.newContext({
-      viewport,
-      permissions: ["clipboard-read", "clipboard-write"]
-    });
-    const page = await context.newPage();
-    const audit = await installBrowserAudit(page, demo.origin);
-    await page.addInitScript({ content: `
-      window.openedWorkspace = null;
-      window.open = (url, target, features) => {
-        window.openedWorkspace = {
-          url: String(url || ""),
-          target: String(target || ""),
-          features: String(features || "")
-        };
-        return null;
-      };
-    ` });
-
-    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspace-launches", async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      launchPostCount += 1;
-      launchIdempotencyKeys.add(route.request().headers()["idempotency-key"] || "");
-      const upstream = await route.fetch();
-      const operation = await upstream.json() as WorkspaceLaunchResponse;
-      launchedWorkspaceId = operation.workspaceId || "";
-      await route.fulfill({ response: upstream, body: JSON.stringify(operation) });
-    });
-
-    await page.route((url) => url.origin === demo.origin && url.pathname === "/api/workspaces", async (route) => {
-      const requestUrl = new URL(route.request().url());
-      if (route.request().method() !== "GET" || requestUrl.searchParams.get("pageSize") !== "50" || !launchedWorkspaceId) {
-        await route.fallback();
-        return;
-      }
-      authoritativeReadRequests.push({
-        page: requestUrl.searchParams.get("page"),
-        pageSize: requestUrl.searchParams.get("pageSize")
-      });
-      const upstream = await route.fetch();
-      const payload = await upstream.json() as SourceEnvelope<WorkspaceListData>;
-      assert.equal(payload.available, true, "authoritative Workspace readback must be available");
-      if (!payload.available) return;
-      const workspaceDtoUrl = `https://dto-entry.example.invalid/w/${launchedWorkspaceId}/`;
-      const items = payload.data.items.map((workspace) => workspace.id === launchedWorkspaceId
-        ? { ...workspace, url: workspaceDtoUrl }
-        : workspace);
-      if (items.some((workspace) => workspace.id === launchedWorkspaceId)) workspaceDtoFixtureReads += 1;
-      if (authoritativeReadRequests.length === 1) {
-        authoritativeReadStarted.resolve();
-      } else if (authoritativeReadRequests.length === 2) {
-        customerOpenReadStarted.resolve();
-      }
-      await releaseAuthoritativeRead.promise;
-      await route.fulfill({
-        response: upstream,
-        body: JSON.stringify({ ...payload, data: { ...payload.data, items } })
-      });
-    });
-
-    await page.route((url) => url.origin === demo.origin && /\/api\/workspaces\/[^/]+\/runtime-status$/.test(url.pathname), async (route) => {
-      const workspaceId = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[3] || "");
-      if (route.request().method() !== "GET" || workspaceId !== launchedWorkspaceId) {
-        await route.fallback();
-        return;
-      }
-      const upstream = await route.fetch();
-      const payload = await upstream.json() as SourceEnvelope<WorkspaceRuntimeDTO>;
-      assert.equal(payload.available, true, "Fabric Runtime read must be available");
-      if (!payload.available) return;
-      runtimeFixtureReads += 1;
-      await route.fulfill({
-        response: upstream,
-        body: JSON.stringify({
-          ...payload,
-          data: {
-            ...payload.data,
-            url: `https://runtime-entry.example.invalid/w/${launchedWorkspaceId}/`
-          }
-        })
-      });
-    });
-
-    await login(page, demo.origin);
-    await page.getByRole("link", { name: "工作空间", exact: true }).filter({ visible: true }).first().click();
-    await page.waitForURL((url) => url.pathname === "/console/workspaces");
-    const workspaceListPage = page.locator(".workspace-list-page");
-    const firstWorkspaceRow = workspaceListPage.locator(".workspace-list-row").first();
-    await firstWorkspaceRow.getByText("查看详情", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await workspaceListPage.getByText("生命周期状态", { exact: true }).count(), 0);
-    await page.getByRole("button", { name: "新建工作空间", exact: true }).click();
-    await page.waitForURL((url) => url.pathname === "/console/workspaces/new");
-    await page.getByRole("heading", { name: "新建工作空间", exact: true }).waitFor({ state: "visible" });
-    await assertNoHorizontalOverflow(page);
-
-    const basicPlan = page.getByRole("radio", { name: /Basic/ });
-    await basicPlan.waitFor({ state: "visible" });
-    await basicPlan.click();
-    assert.equal(await basicPlan.isChecked(), true);
-    await page.getByLabel("工作空间名称").fill(journeyName);
-    const actualDue = page.locator(".workspace-order-summary__total");
-    await actualDue.getByText("实际应付", { exact: true }).waitFor({ state: "visible" });
-    await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "核对开通信息", exact: true }).click();
-    await page.getByRole("heading", { name: "确认开通信息", exact: true }).waitFor({ state: "visible" });
-    await page.getByText("请在权益到期前自行从工作空间下载并妥善保存数据。到期后，平台不承担数据保管或恢复责任。", { exact: true }).waitFor({ state: "visible" });
-    await actualDue.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
-    const confirmation = page.getByRole("checkbox", {
-      name: "我确认一次性预付工作空间月度总额并开通",
-      exact: true
-    });
-    await confirmation.waitFor({ state: "visible" });
-    assert.equal(await confirmation.getAttribute("aria-checked"), "false");
-    const uncheckedBorder = await confirmation.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { borderWidth: style.borderWidth, borderStyle: style.borderStyle };
-    });
-    assert.notEqual(uncheckedBorder.borderWidth, "0px", "unchecked confirmation checkbox needs a visible border");
-    assert.notEqual(uncheckedBorder.borderStyle, "none", "unchecked confirmation checkbox needs a visible border");
-
-    const submit = page.getByRole("button", { name: "确认预付并开通", exact: true });
-    await submit.waitFor({ state: "visible" });
-    assert.equal(await submit.isDisabled(), true, "launch must remain blocked before confirmation");
-
-    const focusedConfirmation = await focusByKeyboard(page, ".launch-confirm-check button[role=\"checkbox\"]");
-    const focusStyles = await focusedConfirmation.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, boxShadow: style.boxShadow };
-    });
-    assert.ok(
-      (focusStyles.outlineStyle !== "none" && focusStyles.outlineWidth !== "0px") || focusStyles.boxShadow !== "none",
-      "confirmation checkbox needs a visible keyboard focus state"
-    );
-
-    await page.keyboard.press("Space");
-    assert.equal(await confirmation.getAttribute("aria-checked"), "true");
-    assert.equal(await submit.isDisabled(), false, "launch becomes available only after confirmation");
-    await assertNoHorizontalOverflow(page);
-
-    const launchResponsePromise = page.waitForResponse((response) => {
-      const request = response.request();
-      return request.method() === "POST" && new URL(response.url()).pathname === "/api/workspace-launches";
-    });
-    await page.getByRole("button", { name: "确认预付并开通", exact: true }).click();
-    const launchResponse = await launchResponsePromise;
-    const launch = await launchResponse.json() as WorkspaceLaunchResponse;
-    assert.equal(launch.status, "succeeded");
-    assert.ok(launch.workspaceId);
-    await authoritativeReadStarted.promise;
-    assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
-    assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
-    assert.deepEqual(authoritativeReadRequests[0], { page: "1", pageSize: "50" });
-    await page.getByRole("heading", { name: "工作空间资源已开通", exact: true }).waitFor({ state: "visible" });
-    const viewWorkspace = page.getByRole("button", { name: "查看工作空间", exact: true });
-    await viewWorkspace.waitFor({ state: "visible" });
-    await viewWorkspace.click();
-    await customerOpenReadStarted.promise;
-    assert.equal(new URL(page.url()).pathname, "/console/workspaces/new");
-    assert.equal(await page.locator(".workspace-identity-panel").isVisible(), false);
-    assert.deepEqual(authoritativeReadRequests, [
-      { page: "1", pageSize: "50" },
-      { page: "1", pageSize: "50" }
-    ]);
-    assert.equal(launchPostCount, 1);
-    assert.equal(launchIdempotencyKeys.size, 1);
-    assert.notEqual([...launchIdempotencyKeys][0], "");
-
-    releaseAuthoritativeRead.resolve();
-    await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
-    const identity = page.locator(".workspace-identity-panel");
-    await identity.getByRole("heading", { name: journeyName, exact: true }).waitFor({ state: "visible" });
-    await identity.getByText("可使用", { exact: true }).waitFor({ state: "visible" });
-    await identity.getByText("BASIC", { exact: true }).waitFor({ state: "visible" });
-    await identity.getByText("$52.58", { exact: true }).waitFor({ state: "visible" });
-    await identity.getByText("2026/08/19", { exact: true }).waitFor({ state: "visible" });
-    await assertWorkspaceCustomerSurfaceDoesNotExposeImplementationTerms(page);
-    await assertNoHorizontalOverflow(page);
-
-    const access = page.locator(".workspace-access-panel");
-    const passwordRow = access.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
-    const keyRow = access.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
-    assert.equal(await credentialIsRevealed(passwordRow), false);
-    assert.equal(await credentialIsRevealed(keyRow), false);
-    await passwordRow.getByRole("button", { name: "显示", exact: true }).click();
-    await page.waitForFunction(() => {
-      const row = [...document.querySelectorAll(".workspace-access-panel .data-list > div")]
-        .find((candidate) => candidate.textContent?.includes("登录密码"));
-      return Boolean(row?.querySelector("code")?.textContent?.replaceAll("•", ""));
-    });
-    assert.equal(await credentialIsRevealed(passwordRow), true);
-    assert.equal(await credentialIsRevealed(keyRow), false);
-    const revealedPassword = await passwordRow.locator("code").textContent();
-    assert.equal(Boolean(revealedPassword), true, "revealed password must be present");
-    await passwordRow.getByRole("button", { name: "复制", exact: true }).click();
-    await page.getByText("登录密码已复制", { exact: true }).waitFor({ state: "visible" });
-    const copiedPassword = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copiedPassword === revealedPassword, true, "clipboard must equal the revealed password");
-
-    await keyRow.getByRole("button", { name: "显示", exact: true }).click();
-    await page.waitForFunction(() => {
-      const row = [...document.querySelectorAll(".workspace-access-panel .data-list > div")]
-        .find((candidate) => candidate.textContent?.includes("API 密钥"));
-      return Boolean(row?.querySelector("code")?.textContent?.replaceAll("•", ""));
-    });
-    assert.equal(await credentialIsRevealed(passwordRow), false);
-    assert.equal(await credentialIsRevealed(keyRow), true);
-    const revealedKey = await keyRow.locator("code").textContent();
-    assert.equal(Boolean(revealedKey), true, "revealed API key must be present");
-    assert.equal(revealedKey !== revealedPassword, true, "password and API key must differ");
-    await keyRow.getByRole("button", { name: "复制", exact: true }).click();
-    await page.getByText("API 密钥已复制", { exact: true }).waitFor({ state: "visible" });
-    const copiedKey = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(copiedKey === revealedKey, true, "clipboard must equal the revealed API key");
-    assert.equal(copiedKey !== copiedPassword, true, "copied password and API key must differ");
-
-    const openWorkspace = identity.getByRole("button", { name: "打开工作空间", exact: true });
-    await openWorkspace.click();
-    const openedWorkspace = await page.evaluate(() => (window as Window & {
-      openedWorkspace?: { url: string; target: string; features: string } | null;
-    }).openedWorkspace);
-    const expectedRuntimeUrl = `https://runtime-entry.example.invalid/w/${launch.workspaceId}/`;
-    const workspaceDtoUrl = `https://dto-entry.example.invalid/w/${launch.workspaceId}/`;
-    assert.deepEqual(openedWorkspace, {
-      url: expectedRuntimeUrl,
-      target: "_blank",
-      features: "noopener,noreferrer"
-    });
-    assert.notEqual(openedWorkspace?.url, workspaceDtoUrl);
-    assert.ok(workspaceDtoFixtureReads >= 1);
-    assert.ok(runtimeFixtureReads >= 1);
-
-    const advanced = page.locator("details.workspace-advanced-details");
-    await advanced.locator("summary").click();
-    await advanced.getByRole("heading", { name: "预算设置", exact: true }).waitFor({ state: "visible" });
-    await advanced.getByLabel("总额度（美元）").waitFor({ state: "visible" });
-    assert.equal(await advanced.getByText(/micros/i).count(), 0);
-    await advanced.getByText("$0.25", { exact: true }).waitFor({ state: "visible" });
-    const technical = page.locator("details.workspace-technical-details");
-    await technical.locator("summary").click();
-    await technical.getByText("Workspace ID", { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText("Runtime ready", { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText("Runtime URL", { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText(expectedRuntimeUrl, { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText("manual", { exact: true }).waitFor({ state: "visible" });
-    await technical.getByText("ready_pod_uses_retained_pvc", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await visibleTextCount(page, workspaceDtoUrl), 0);
-    await assertNoHorizontalOverflow(page);
-
-    await page.getByRole("button", { name: "工作空间列表", exact: true }).click();
-    await page.waitForURL((url) => url.pathname === "/console/workspaces");
-    assert.equal(await page.locator(".workspace-access-panel").count(), 0);
-    assert.equal(await page.locator(".credential-actions code").count(), 0);
-    const journeyRow = page.locator(".workspace-list-row").filter({ hasText: journeyName });
-    await journeyRow.getByText("查看详情", { exact: true }).waitFor({ state: "visible" });
-    await journeyRow.click();
-    await page.waitForURL((url) => url.pathname === `/console/workspaces/${encodeURIComponent(launch.workspaceId!)}`);
-    const returnedAccess = page.locator(".workspace-access-panel");
-    const returnedPasswordRow = returnedAccess.locator(".data-list > div").filter({ hasText: "登录密码" }).first();
-    const returnedKeyRow = returnedAccess.locator(".data-list > div").filter({ hasText: "API 密钥" }).first();
-    await returnedPasswordRow.waitFor({ state: "visible" });
-    assert.equal(await credentialIsRevealed(returnedPasswordRow), false);
-    assert.equal(await credentialIsRevealed(returnedKeyRow), false);
-    assert.equal(launchPostCount, 1);
-    assert.equal(launchIdempotencyKeys.size, 1);
-    await assertNoHorizontalOverflow(page);
-    assertBrowserAuditClean(audit);
-  } finally {
-    releaseAuthoritativeRead.resolve();
-    await context?.close();
-    await demo.close();
-  }
-}
 
 async function verifyWorkspaceDetailExperience() {
   const demo = await startConsoleDemoServer({ port: 0, log: false });

@@ -33,7 +33,7 @@ api=yaml.safe_load((root/'docs/spec/target/03_api_contract_complete.yaml').read_
 # Owner surfaces CloudIdentity authorizes. The set is every owner whose operations
 # are reachable through the BFF or whose work package has already switched a real
 # caller to this authority; an owner is added once, wholesale, never per action.
-owners={'capability','build','tenant','resource_catalog','serve','workspace'}
+owners={'capability','build','tenant','resource_catalog','serve','workspace','gateway'}
 # Runtime Control policy rows live in this table because CloudIdentity is the one
 # authorization owner; the x-owner below is the audience the decision names.
 runtime={'listRuntimeVersions','registerRuntimeVersion','setRuntimeVersionStatus','getBuildRuntimePolicy','setBuildRuntimePolicy'}

@@ -34,6 +34,7 @@ type credential struct {
 type Service struct {
 	api.UnimplementedTenantProductServiceServer
 	api.UnimplementedCloudIdentityAuthorizationServer
+	api.UnimplementedGatewayProductServiceServer
 	DB              *sql.DB
 	store           *ownerstore.Store
 	Gateway         *Gateway
@@ -74,9 +75,17 @@ func New(db *sql.DB, gateway *Gateway, signing []byte, admins []string, invitati
 	return s, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
-	return server.RegisterGroup("TenantProductService", func(g *grpc.Server) {
+	if err := server.RequireProductGroups("TenantProductService", "GatewayProductService"); err != nil {
+		return err
+	}
+	if err := server.RegisterGroup("TenantProductService", func(g *grpc.Server) {
 		api.RegisterTenantProductServiceServer(g, s)
 		api.RegisterCloudIdentityAuthorizationServer(g, s)
+	}); err != nil {
+		return err
+	}
+	return server.RegisterGroup("GatewayProductService", func(g *grpc.Server) {
+		api.RegisterGatewayProductServiceServer(g, s)
 	})
 }
 func randomID() string {
@@ -241,4 +250,63 @@ func (s *Service) Logout(ctx context.Context, r *api.LogoutRpcRequest) (*emptypb
 	delete(s.credentials, ref)
 	s.mu.Unlock()
 	return &emptypb.Empty{}, nil
+}
+
+// GetWallet returns the balance read directly from Sub2API's authoritative admin
+// user endpoint. No balance is copied into CloudIdentity and an unavailable
+// directory credential fails closed.
+func (s *Service) GetWallet(ctx context.Context, r *api.GetWalletRpcRequest) (*api.Wallet, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
+	}
+	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
+		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	}
+	out, _, _, err := s.session(ctx, owneridentity.SessionReference(r.GetContext().GetSessionId()))
+	if err != nil {
+		return nil, err
+	}
+	balance, err := s.Gateway.Balance(ctx, out.GetActorId())
+	if err != nil {
+		return nil, err
+	}
+	return &api.Wallet{
+		Source:           api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY,
+		Status:           api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE,
+		BalanceUsdMicros: balance.USDMicros,
+		Currency:         api.WalletCurrencyEnum_WALLET_CURRENCY_ENUM_USD,
+		FetchedAt:        timestamppb.Now(),
+	}, nil
+}
+
+// ListModels reads the caller's own Codex model catalog from the Gateway owner.
+// The catalog is read with the caller's active Gateway API key and carries no
+// token price; a missing key or unresolvable catalog fails closed rather than
+// returning an empty or fabricated catalog.
+func (s *Service) ListModels(ctx context.Context, r *api.ListModelsRpcRequest) (*api.ModelPage, error) {
+	if err := peer(ctx, owneridentity.ConsoleBFF); err != nil {
+		return nil, err
+	}
+	if r == nil || r.GetContext() == nil || r.GetContext().GetSessionId() == "" {
+		return nil, status.Error(codes.Unauthenticated, "active Cloud session required")
+	}
+	out, _, _, err := s.session(ctx, owneridentity.SessionReference(r.GetContext().GetSessionId()))
+	if err != nil {
+		return nil, err
+	}
+	models, err := s.Gateway.Models(ctx, out.GetActorId())
+	if err != nil {
+		return nil, err
+	}
+	page := &api.ModelPage{}
+	for _, model := range models {
+		page.Items = append(page.Items, &api.Model{
+			Id:           model.ID,
+			Name:         model.Name,
+			Capabilities: model.Capabilities,
+			Available:    model.Available,
+			FetchedAt:    timestamppb.Now(),
+		})
+	}
+	return page, nil
 }

@@ -20,14 +20,15 @@ import (
 
 // Server serves the Console BFF REST surface over typed owner reads.
 type Server struct {
-	reader     OwnerReader
-	identity   IdentityReader
-	capability api.CapabilityProductServiceClient
+	reader         OwnerReader
+	identity       IdentityReader
+	capability     api.CapabilityProductServiceClient
 	runtimeControl api.RuntimeControlProductServiceClient
-	build      api.BuildProductServiceClient
-	tenant     api.TenantProductServiceClient
-	catalog    api.ResourceCatalogProductServiceClient
-	workspace  api.WorkspaceProductServiceClient
+	build          api.BuildProductServiceClient
+	tenant         api.TenantProductServiceClient
+	catalog        api.ResourceCatalogProductServiceClient
+	gateway        api.GatewayProductServiceClient
+	workspace      api.WorkspaceProductServiceClient
 }
 
 // OwnerReader is the typed read surface the BFF needs. It is satisfied by the
@@ -63,6 +64,11 @@ func NewServer(reader OwnerReader, identity IdentityReader) *Server {
 		s.catalog = p.CatalogClient()
 	}
 	if p, ok := reader.(interface {
+		GatewayClient() api.GatewayProductServiceClient
+	}); ok {
+		s.gateway = p.GatewayClient()
+	}
+	if p, ok := reader.(interface {
 		WorkspaceClient() api.WorkspaceProductServiceClient
 	}); ok {
 		s.workspace = p.WorkspaceClient()
@@ -77,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerPublisherRoutes(mux)
 	s.registerMemberRoutes(mux)
 	s.registerCatalogRoutes(mux, s.catalog)
+	s.registerGatewayRoutes(mux, s.gateway)
 	s.registerWorkspaceRoutes(mux, s.workspace)
 	if reader, ok := s.reader.(ServeDeliveryReader); ok {
 		RegisterServeDeliveryRoutes(mux, reader, s.identity)

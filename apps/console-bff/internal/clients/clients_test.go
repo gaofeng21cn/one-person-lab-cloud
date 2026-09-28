@@ -42,6 +42,8 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 			return &api.CapabilityVersion{}, nil
 		case api.RuntimeControlProductService_ListRuntimeVersions_FullMethodName:
 			return &api.RuntimeVersionPage{}, nil
+		case api.GatewayProductService_GetWallet_FullMethodName:
+			return &api.Wallet{Source: api.WalletSourceEnum_WALLET_SOURCE_ENUM_GATEWAY, Status: api.WalletStatusEnum_WALLET_STATUS_ENUM_AVAILABLE}, nil
 		default:
 			return &api.Operation{}, nil
 		}
@@ -50,6 +52,7 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 	api.RegisterServeProductServiceServer(server, &api.UnimplementedServeProductServiceServer{})
 	api.RegisterBuildProductServiceServer(server, &api.UnimplementedBuildProductServiceServer{})
 	api.RegisterCapabilityProductServiceServer(server, &api.UnimplementedCapabilityProductServiceServer{})
+	api.RegisterGatewayProductServiceServer(server, &api.UnimplementedGatewayProductServiceServer{})
 	api.RegisterRuntimeControlProductServiceServer(server, &api.UnimplementedRuntimeControlProductServiceServer{})
 	api.RegisterOwnerOperationsServer(server, &api.UnimplementedOwnerOperationsServer{})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -87,10 +90,13 @@ func TestEveryBFFOwnerReadPreservesUserContextAndBFFIdentity(t *testing.T) {
 	if _, err := client.ListRuntimeVersions(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := client.Wallet(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := client.Operation(ctx, owneridentity.Build, "operation-a"); err != nil {
 		t.Fatal(err)
 	}
-	if len(methods) != 7 {
+	if len(methods) != 8 {
 		t.Fatalf("exercised %d methods", len(methods))
 	}
 }
