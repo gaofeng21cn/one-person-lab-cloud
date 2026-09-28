@@ -245,7 +245,13 @@ jobs:
           # and the fixture while refusing to overcommit the runner filesystem.
           available_bytes="$(df -B1 --output=avail /tmp | tail -n 1 | tr -d ' ')"
           [[ "$available_bytes" =~ ^[0-9]+$ ]]
-          (( available_bytes >= 14 * 1024 * 1024 * 1024 ))
+          # Fail explicitly instead of relying on `set -e` to abort on a bare `(( ))`.
+          # Older bash (notably macOS 3.2) does not exit there, so the check must be
+          # self-contained to behave the same on every runner and local shell.
+          if (( available_bytes < 14 * 1024 * 1024 * 1024 )); then
+            echo "insufficient free space for the Local qualification root: ${available_bytes} bytes" >&2
+            exit 1
+          fi
           mkdir -p "$OPL_QUALIFICATION_ROOT"/{storage,tmp,home}
           quota_image="$OPL_QUALIFICATION_ROOT/quota.img"
           truncate -s 12G "$quota_image"

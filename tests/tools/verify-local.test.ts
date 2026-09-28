@@ -176,7 +176,16 @@ if (command === 'sudo' && args[0] === 'umount' && process.env.QUALIFICATION_UNMO
   assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `umount ${root}/storage`));
   assert.ok(calls.some((call) => call.command === "sudo" && call.args.join(" ") === `rm -rf --one-file-system -- ${root}`));
   await writeFile(log, "");
-  await assert.rejects(run("bash", ["-c", prepare.run], { env: { ...env, GITHUB_RUN_ID: "low", GITHUB_RUN_ATTEMPT: "space", OPL_QUALIFICATION_ROOT: "/tmp/opl-local-first-deploy-low-space", QUALIFICATION_AVAILABLE_BYTES: "1024" } }));
+  // The prepare step requires "$OPL_QUALIFICATION_ROOT" to equal
+  // "/tmp/opl-local-first-deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" and to not
+  // already exist. Give the low-space case its own run id so the check never
+  // depends on a leftover directory from an earlier or concurrent run, and clean
+  // it up afterwards.
+  const lowSpaceRunId = `${process.pid}-${Date.now().toString(36)}`;
+  const lowSpaceRoot = `/tmp/opl-local-first-deploy-${lowSpaceRunId}-1`;
+  await rm(lowSpaceRoot, { recursive: true, force: true });
+  t.after(() => rm(lowSpaceRoot, { recursive: true, force: true }));
+  await assert.rejects(run("bash", ["-c", prepare.run], { env: { ...env, GITHUB_RUN_ID: lowSpaceRunId, GITHUB_RUN_ATTEMPT: "1", OPL_QUALIFICATION_ROOT: lowSpaceRoot, QUALIFICATION_AVAILABLE_BYTES: "1024" } }));
   assert.deepEqual((await commands()).map((call) => call.command), ["df"]);
   await writeFile(log, "");
   await assert.rejects(run("bash", ["-c", cleanup.run], { env: { ...env, OPL_QUALIFICATION_ROOT: temporary } }));
