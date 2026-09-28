@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_tenant_repository_binding_source_receipt",
+  "recordedAt": "2026-09-29T00:00:00+08:00",
+  "status": "cloud_source_implemented_local_chain_passed_hosted_pending",
+  "scope": "Generic Agent OCI Tenant destination binding. Tenant admission reserves one stable tenant_id -> repository destination; Build resolves its output repository from that binding instead of a global hashed path. IBD/OMA remains a reference sample only. No Instance deployment, provider mutation or real-money mutation.",
+  "implementation": {
+    "proto": [
+      "CreateTenantRequest.owner_email added as the initial repository-name candidate input only",
+      "TenantRepositoryBinding message added",
+      "CloudIdentityAuthorization.GetTenantRepositoryBinding added (Build/ConsoleBFF peer only)"
+    ],
+    "tenant": [
+      "services/gateway-integration/identity/create_tenant.go implements CreateTenant: platform-admin authorization, Tenant + owner membership + stable repository binding + durable Operation + immutable audit in one command transaction",
+      "services/gateway-integration/identity/repository_binding.go derives the slug candidate from the verified email local-part, resolves collisions with a deterministic suffix, and serves the binding read"
+    ],
+    "build": [
+      "services/build/internal/build/runner.go Runner.DestinationRepository joins the resolved binding into host/namespace/repository",
+      "services/build/internal/build/service.go CreateBuild reads the binding and persists <repository>:<job-id> as executor_ref, replacing the global-prefix + hashed Tenant/Package destination"
+    ],
+    "migration": "services/gateway-integration/migrations/0002_tenant_repository_binding.sql creates tenant.tenant_repository_bindings with a per-destination unique index, the installation registry facts, and the runtime writer grant",
+    "configuration": "OPL_WORKSPACE_REGISTRY_HOST / OPL_WORKSPACE_REGISTRY_NAMESPACE are supplied together; a half-configured pair fails startup. They carry no credential."
+  },
+  "focusedVerification": [
+    {
+      "command": "go test ./identity/ -run TestRepositorySlugCandidate",
+      "result": "passed",
+      "coverage": "email local-part slug derivation and collision-safe candidate shape"
+    },
+    {
+      "command": "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=... go test ./identity/ -run 'TestTenantRepositoryBindingPostgres|TestCreateTenantRequiresPlatformAdminPostgres'",
+      "result": "passed",
+      "coverage": "real CreateTenant over isolated PostgreSQL: platform-admin gate, first Tenant reserves huangrende, a second same-local-part Tenant gets huangrende-1, re-read is stable, unknown Tenant is NotFound, Build and ConsoleBFF may read, Ledger may not"
+    },
+    {
+      "command": "go test -tags=livebuild ./internal/build/ -run TestLivePackageBuildAndRestartReadback",
+      "result": "passed",
+      "coverage": "real owner chain with the Tenant-resolved destination: Capability upload, Runtime/WebUI admission, CreateBuild, three bound claims, BuildKit composition pushed to 127.0.0.1:<port>/result/tenant-live (host/namespace/repository), ready CapabilityVersion, Ledger receipts, lost-ack recovery, worker SIGKILL recovery, publisher browser"
+    },
+    {
+      "command": "npm run verify:local",
+      "result": "passed"
+    }
+  ],
+  "notProven": [
+    "A Tencent/TKE-hosted Cloud Build pushing a Tenant-resolved destination to the customer personal-TCR repository.",
+    "That the existing oplcloud/huangrende artifact is the output of a recorded Build job; its digest differs from the recorded local Build artifact.",
+    "Physical repository materialization on personal TCR: no Build push has yet run against the real installation registry."
+  ],
+  "boundary": "The single remaining hosted proof is a real Build on the deployed Cloud instance. Instance still deploys only one-person-lab-cloud and injects installation-level configuration; it does not run a per-application workflow.",
+  "sourceFilesSha256": {},
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false,
+  "source": {
+    "baseSha": "086ac33a76a27d69126179954477e1ec35b8b9f5",
+    "branch": "codex/tenant-repository-binding"
+  }
+}

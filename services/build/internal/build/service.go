@@ -38,6 +38,7 @@ type Service struct {
 	versions   api.CapabilityProductServiceClient
 	inboxes    map[string]api.DomainInboxClient
 	identity   api.CloudIdentityAuthorizationClient
+	tenantRepo api.CloudIdentityAuthorizationClient
 	runner     *Runner
 }
 
@@ -45,7 +46,7 @@ func New(store *ownerstore.Store, auth *ownerservice.Authorizer, capability api.
 	if store == nil || store.Schema() != "build" || capability == nil || versions == nil || runner == nil {
 		return nil, errors.New("build store, Capability clients and isolated runner are required")
 	}
-	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, runner: runner}, nil
+	return &Service{store: store, auth: auth, capability: capability, versions: versions, inboxes: inboxes, identity: identity, tenantRepo: identity, runner: runner}, nil
 }
 func (s *Service) Register(server *ownerservice.Server) error {
 	return server.RegisterGroup("BuildProductService", func(g *grpc.Server) {
@@ -198,6 +199,14 @@ func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.C
 	if err = s.runner.ValidateInput(input); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
+	binding, err := s.tenantRepo.GetTenantRepositoryBinding(ctx, &api.GetTenantRepositoryBindingRequest{TenantId: tenant(call)})
+	if err != nil {
+		return nil, err
+	}
+	repository, err := s.runner.DestinationRepository(binding)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	jobID, opID := id("build_"), id("op_")
 	now := time.Now().UTC()
 	job := &api.BuildJob{Id: jobID, OperationId: opID, PackageVersionId: input.PackageVersionId, RuntimeVersionId: input.RuntimeVersionId, WebuiVersionId: input.WebuiVersionId, Status: api.BuildJobStatusEnum_BUILD_JOB_STATUS_ENUM_QUEUED, Stage: "queued", CreatedAt: timestamppb.New(now), UpdatedAt: timestamppb.New(now)}
@@ -212,7 +221,7 @@ func (s *Service) create(ctx context.Context, call *api.CallContext, body *api.C
 	if retry != "" {
 		retryID = retry
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO build.build_jobs(id,tenant_id,package_version_id,runtime_version_id,webui_version_id,input_digest,input_snapshot,status,stage,retry_of_build_job_id,request_id,created_by,operation_id,catalog_policy_id,call_context,executor_ref) VALUES($1,$2,$3,$4,$5,$6,$7,'queued','queued',$8,$9,$10,$11,$12,$13,$14)`, jobID, tenant(call), input.PackageVersionId, input.RuntimeVersionId, input.WebuiVersionId, input.SnapshotDigest, wire(input), retryID, call.RequestId, call.ActorId, opID, input.RuntimeVersionId, wire(call), s.runner.Repository(tenant(call), input.PackageId)+":"+jobID)
+	_, err = tx.ExecContext(ctx, `INSERT INTO build.build_jobs(id,tenant_id,package_version_id,runtime_version_id,webui_version_id,input_digest,input_snapshot,status,stage,retry_of_build_job_id,request_id,created_by,operation_id,catalog_policy_id,call_context,executor_ref) VALUES($1,$2,$3,$4,$5,$6,$7,'queued','queued',$8,$9,$10,$11,$12,$13,$14)`, jobID, tenant(call), input.PackageVersionId, input.RuntimeVersionId, input.WebuiVersionId, input.SnapshotDigest, wire(input), retryID, call.RequestId, call.ActorId, opID, input.RuntimeVersionId, wire(call), repository+":"+jobID)
 	if err != nil {
 		return nil, databaseError(err)
 	}

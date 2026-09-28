@@ -86,6 +86,28 @@ message CreateTenantRequest {
  string name = 1;
  string billing_sub2api_user_id = 2;
  string owner_gateway_subject_id = 3;
+ // Verified owner email used only as the initial Tenant repository-name
+ // candidate. The Tenant identity stays the returned Tenant id; a rename never
+ // moves the existing binding.
+ string owner_email = 4;
+}
+
+// Tenant-scoped application OCI destination. The Tenant owner reserves one
+// stable binding per Tenant; Build reads it and never accepts a destination
+// from a request. Registry host/namespace are installation facts.
+message TenantRepositoryBinding {
+ string tenant_id = 1;
+ string registry_host = 2;
+ string registry_namespace = 3;
+ string repository = 4;
+ string status = 5;
+ google.protobuf.Timestamp created_at = 6;
+ google.protobuf.Timestamp updated_at = 7;
+}
+
+message GetTenantRepositoryBindingRequest {
+ CallContext context = 1;
+ string tenant_id = 2;
 }
 
 message BindTenantWalletRequest {
@@ -2339,6 +2361,9 @@ service CloudIdentityAuthorization {
  rpc AuthorizeAction(AuthorizationRequest) returns (AuthorizationDecision);
  rpc GetAuthorizationContext(GetAuthorizationContextRequest) returns (AuthorizationDecision);
  rpc IssueAcceptedOperationGrant(AcceptedOperationGrantRequest) returns (AcceptedOperationGrant);
+ // Read the Tenant's reserved application OCI destination. Build resolves its
+ // output repository here; the destination is never accepted from a caller.
+ rpc GetTenantRepositoryBinding(GetTenantRepositoryBindingRequest) returns (TenantRepositoryBinding);
 }
 message AdmissionRequest { CallContext context = 1; string workspace_id = 2; string capability_version_id = 3; string compute_plan_id = 4; string storage_plan_id = 5; repeated ModelSelection model_selections = 6; string purpose = 7; }
 message AdmissionResult { Observation outcome = 1; string admission_id = 2; string capability_snapshot_digest = 3; string provider_capability_version = 4; string policy_version_id = 5; string error_code = 6; google.protobuf.Timestamp expires_at = 7; string expected_interruption = 8; }

@@ -924,6 +924,27 @@ publication admission, same-digest promotion, recovery and public readback.
 [Status](status.md) owns retained release and Instance evidence, while
 [roadmap](roadmap.md) owns unresolved qualification outcomes.
 
+### Current Tenant-to-TCR Build Path
+
+`services/gateway-integration/identity.CreateTenant` is the Cloud Tenant
+admission entry. It writes `tenant.tenants`, the owner membership and one
+`tenant.tenant_repository_bindings` row in one command transaction. The binding
+uses the installation's `OPL_WORKSPACE_REGISTRY_HOST` /
+`OPL_WORKSPACE_REGISTRY_NAMESPACE` and derives the initial repository-name
+candidate from the verified owner email local-part, with a deterministic suffix
+on collision. `GetTenantRepositoryBinding` exposes it to Build and the Console
+BFF only, guarded by the signed mTLS peer.
+
+`services/build/internal/build.Runner.DestinationRepository` joins the resolved
+binding into `host/namespace/repository`, and `CreateBuild` stores
+`<repository>:<build-job-id>` as the immutable `executor_ref`. The isolated live
+BuildKit tests exercise the same resolver against a disposable loopback
+Registry. This is the selected personal-TCR destination policy
+`uswccr.ccs.tencentyun.com/oplcloud/<tenant-repository>`. What remains open is
+the hosted proof: no recorded Build job is bound to the existing
+`oplcloud/huangrende` artifact, and no Tencent/TKE-hosted Cloud Build has pushed
+a Tenant-resolved destination yet.
+
 
 ## Target owner transition under product review
 

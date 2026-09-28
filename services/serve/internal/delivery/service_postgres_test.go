@@ -53,6 +53,10 @@ func (*fakeIdentity) IssueAcceptedOperationGrant(context.Context, *api.AcceptedO
 	return nil, status.Error(codes.Unimplemented, "not used")
 }
 
+func (*fakeIdentity) GetTenantRepositoryBinding(context.Context, *api.GetTenantRepositoryBindingRequest, ...grpc.CallOption) (*api.TenantRepositoryBinding, error) {
+	return nil, status.Error(codes.Unimplemented, "not used")
+}
+
 // ownerAuthorizer is the real Serve authorizer bound to the fake CloudIdentity.
 func ownerAuthorizer(identity *fakeIdentity) delivery.AuthorizeFunc {
 	return ownerservice.NewAuthorizer(ownerservice.OwnerServe, identity).Authorize

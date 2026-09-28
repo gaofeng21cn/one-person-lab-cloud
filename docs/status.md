@@ -391,6 +391,36 @@ local command and process settings, including restart reauthentication.
 
 ### Tenant member and invitation governance
 
+### Tenant-scoped application OCI destination (Cloud source, local)
+
+CloudIdentity `CreateTenant` admits a Cloud Tenant, writes its owner membership
+and reserves one stable `tenant_id -> repository` binding in a single command
+transaction. The initial repository name derives from the verified owner email
+local-part; a collision receives a deterministic suffix, so two Tenants never
+alias one repository. The installation supplies `OPL_WORKSPACE_REGISTRY_HOST` /
+`OPL_WORKSPACE_REGISTRY_NAMESPACE` together as non-secret facts, and
+`GetTenantRepositoryBinding` exposes the binding to Build and the Console BFF
+only over the authenticated owner boundary.
+
+Build resolves its output destination from that binding through
+`Runner.DestinationRepository` and stores `<repository>:<job-id>` as the
+immutable `executor_ref`, replacing the previous global-prefix + hashed
+Tenant/Package path. The append-only
+[binding receipt](./evidence/source-checks/2026-09-29-tenant-repository-binding-local.json)
+records the exact commands and the remaining boundary.
+
+Verified locally: `TestRepositorySlugCandidate`; the real `CreateTenant` /
+`GetTenantRepositoryBinding` path over isolated PostgreSQL (platform-admin gate,
+first Tenant reserves `huangrende`, a second same-local-part Tenant gets
+`huangrende-1`, stable re-read, `NotFound` for an unknown Tenant, Build/BFF read
+allowed and Ledger read refused); and the full live owner chain
+`TestLivePackageBuildAndRestartReadback`, which pushed to
+`127.0.0.1:<port>/result/tenant-live` — the Tenant-resolved
+`host/namespace/repository`, not the hashed path. `npm run verify:local` passes.
+Still open: no Tencent/TKE-hosted Cloud Build has pushed a Tenant-resolved
+destination, and the existing `oplcloud/huangrende` digest is not bound to a
+recorded Build job.
+
 `services/gateway-integration` now also serves CloudIdentity's Tenant member
 surface: `getTenant`, `listMembers`, `listInvitations`, `inviteMember`,
 `acceptInvitation`, `revokeInvitation`, `updateMemberRole` and `removeMember`,
