@@ -2,14 +2,8 @@ package catalog
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -49,10 +43,14 @@ func (s *Service) CreateUpload(ctx context.Context, r *api.CreateUploadRpcReques
 		out.PartSizeBytes = s.Objects.Policy.PartBytes
 		out.Status = api.UploadSessionStatusEnum_UPLOAD_SESSION_STATUS_ENUM_UPLOADING
 		out.ExpiresAt = timestamppb.New(time.Now().Add(s.Objects.Policy.TTL))
+		providerRef, e := s.Objects.store.BeginUpload(ctx, out.Id, b.Sha256, b.SizeBytes)
+		if e != nil {
+			return status.Error(codes.Unavailable, "storage provider unavailable")
+		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO capability.package_versions(id,package_id,version_label,sha256,size_bytes,created_by) VALUES($1,$2,$3,$4,$5,$6)`, out.PackageVersionId, pkg, b.VersionLabel, b.Sha256, b.SizeBytes, r.Context.ActorId); e != nil {
 			return dbError(e)
 		}
-		_, e = tx.ExecContext(ctx, `INSERT INTO capability.upload_sessions(id,package_version_id,part_size_bytes,object_ref,provider_upload_ref,expires_at) VALUES($1,$2,$3,$4,$1,$5)`, out.Id, out.PackageVersionId, out.PartSizeBytes, b.Sha256, out.ExpiresAt.AsTime())
+		_, e = tx.ExecContext(ctx, `INSERT INTO capability.upload_sessions(id,package_version_id,part_size_bytes,object_ref,provider_upload_ref,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, out.Id, out.PackageVersionId, out.PartSizeBytes, b.Sha256, providerRef, out.ExpiresAt.AsTime())
 		return dbError(e)
 	})
 	return out, e
@@ -87,6 +85,41 @@ func (s *Service) readUpload(ctx context.Context, q interface {
 	}
 	return v, dbError(rows.Err())
 }
+
+// registeredParts reads every registered part identity for an upload, whether
+// or not it has been confirmed, so CompleteUpload can validate client claims
+// against the immutable registered identity rather than trusting the request.
+func (s *Service) registeredParts(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, upload string) (map[int32]ConfirmedPart, error) {
+	rows, e := q.QueryContext(ctx, `SELECT part_number,size_bytes,sha256,COALESCE(etag,''),observation_result FROM capability.upload_chunks WHERE upload_session_id=$1`, upload)
+	if e != nil {
+		return nil, dbError(e)
+	}
+	defer rows.Close()
+	out := map[int32]ConfirmedPart{}
+	for rows.Next() {
+		var p ConfirmedPart
+		var observation string
+		if e = rows.Scan(&p.PartNumber, &p.SizeBytes, &p.Sha256, &p.Etag, &observation); e != nil {
+			return nil, dbError(e)
+		}
+		p.Confirmed = observation == "confirmed"
+		out[p.PartNumber] = p
+	}
+	return out, dbError(rows.Err())
+}
+
+// providerUploadRef reads the provider session reference persisted at
+// CreateUpload. It is owner-internal and never crosses the public API.
+func (s *Service) providerUploadRef(ctx context.Context, upload string) (string, error) {
+	var ref string
+	if e := s.DB.QueryRowContext(ctx, `SELECT provider_upload_ref FROM capability.upload_sessions WHERE id=$1`, upload).Scan(&ref); e != nil {
+		return "", dbError(e)
+	}
+	return ref, nil
+}
+
 func (s *Service) GetUpload(ctx context.Context, r *api.GetUploadRpcRequest) (*api.UploadSession, error) {
 	if e := s.auth(ctx, r.GetContext(), "GetUpload", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.UploadId); e != nil {
 		return nil, e
@@ -135,8 +168,15 @@ func (s *Service) CreateUploadPart(ctx context.Context, r *api.CreateUploadPartR
 	if e = tx.Commit(); e != nil {
 		return nil, dbError(e)
 	}
-	p := partPermit{Upload: u.Id, Part: b.PartNumber, Size: b.SizeBytes, Digest: b.Sha256, Expires: u.ExpiresAt.AsTime().Unix()}
-	return &api.UploadPartAuthorization{UploadId: u.Id, PartNumber: b.PartNumber, Method: api.UploadPartAuthorizationMethodEnum_UPLOAD_PART_AUTHORIZATION_METHOD_ENUM_PUT, Url: s.Objects.PublicURL + "/parts?permit=" + s.Objects.permit(p), ContentType: "application/octet-stream", RequiredChecksumHeaderName: "X-OPL-SHA256", RequiredChecksumHeaderValue: b.Sha256, ExpiresAt: u.ExpiresAt}, nil
+	providerRef, e := s.providerUploadRef(ctx, u.Id)
+	if e != nil {
+		return nil, e
+	}
+	auth, e := s.Objects.store.AuthorizePart(ctx, u.Id, providerRef, int(b.PartNumber), b.SizeBytes, b.Sha256, u.ExpiresAt.AsTime())
+	if e != nil {
+		return nil, status.Error(codes.Unavailable, "upload authorization unavailable")
+	}
+	return &api.UploadPartAuthorization{UploadId: u.Id, PartNumber: b.PartNumber, Method: api.UploadPartAuthorizationMethodEnum_UPLOAD_PART_AUTHORIZATION_METHOD_ENUM_PUT, Url: auth.URL, ContentType: auth.ContentType, RequiredChecksumHeaderName: auth.ChecksumName, RequiredChecksumHeaderValue: auth.ChecksumValue, ExpiresAt: u.ExpiresAt}, nil
 }
 func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRequest) (*api.Operation, error) {
 	if e := s.auth(ctx, r.GetContext(), "CompleteUpload", api.AuthorizationResourceKind_AUTHORIZATION_RESOURCE_KIND_PACKAGE, r.UploadId); e != nil {
@@ -171,48 +211,64 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 			return status.Error(codes.FailedPrecondition, "upload expired")
 		}
 		parts := r.GetBody().GetParts()
-		if len(parts) != len(u.CompletedParts) || int64(len(parts)) != (u.SizeBytes+u.PartSizeBytes-1)/u.PartSizeBytes {
-			return status.Error(codes.FailedPrecondition, "all confirmed parts are required")
+		if int64(len(parts)) != (u.SizeBytes+u.PartSizeBytes-1)/u.PartSizeBytes {
+			return status.Error(codes.FailedPrecondition, "all registered parts are required")
+		}
+		// Part identity (session/partNumber -> size+sha256) was fixed at
+		// CreateUploadPart. A part the owner data plane already confirmed must
+		// also match its stored etag; a direct-to-storage part is confirmed by
+		// the provider during assembly instead.
+		registered, e := s.registeredParts(ctx, tx, u.Id)
+		if e != nil {
+			return e
 		}
 		for i, p := range parts {
-			actual := u.CompletedParts[i]
-			if p.PartNumber != actual.PartNumber || p.SizeBytes != actual.SizeBytes || p.Sha256 != actual.Sha256 || p.Etag != actual.Etag {
+			if int64(p.PartNumber) != int64(i)+1 {
+				return status.Error(codes.InvalidArgument, "parts must be numbered consecutively from 1")
+			}
+			actual, ok := registered[p.PartNumber]
+			if !ok || actual.SizeBytes != p.SizeBytes || actual.Sha256 != p.Sha256 {
+				return status.Error(codes.InvalidArgument, "parts differ from registered identity")
+			}
+			if actual.Confirmed && actual.Etag != p.Etag {
 				return status.Error(codes.InvalidArgument, "parts differ from owner readback")
 			}
 		}
-		f, e := os.CreateTemp(filepath.Join(s.Objects.Root, "pending"), "complete-")
+		confirmed := make([]ConfirmedPart, 0, len(parts))
+		for _, p := range parts {
+			confirmed = append(confirmed, ConfirmedPart{PartNumber: p.PartNumber, SizeBytes: p.SizeBytes, Sha256: p.Sha256, Etag: p.Etag})
+		}
+		providerRef, e := s.providerUploadRef(ctx, u.Id)
 		if e != nil {
+			return e
+		}
+		assembled, e := s.Objects.store.Assemble(ctx, u.Id, providerRef, u.Sha256, u.SizeBytes, confirmed)
+		if e == ErrStorageUnavailable {
 			return status.Error(codes.Unavailable, "object store unavailable")
 		}
-		defer os.Remove(f.Name())
-		h := sha256.New()
-		var size int64
-		for _, p := range parts {
-			part, e := os.Open(filepath.Join(s.Objects.Root, "parts", u.Id, strconv.Itoa(int(p.PartNumber))))
-			if e != nil {
-				f.Close()
-				return status.Error(codes.Unavailable, "part unavailable")
-			}
-			n, e := io.Copy(io.MultiWriter(f, h), io.LimitReader(part, p.SizeBytes+1))
-			part.Close()
-			if e != nil || n != p.SizeBytes {
-				f.Close()
-				return status.Error(codes.DataLoss, "part integrity failed")
-			}
-			size += n
+		if e == ErrObjectIntegrity {
+			return status.Error(codes.DataLoss, "part integrity failed")
 		}
-		if e = f.Close(); e != nil {
-			return status.Error(codes.Unavailable, "object write failed")
+		if e != nil && e != ErrDigestMismatch {
+			return status.Error(codes.Unavailable, "object store unavailable")
 		}
+		digestMismatch := e == ErrDigestMismatch
 		validation := ""
 		var manifest []byte
-		if size != u.SizeBytes || "sha256:"+hex.EncodeToString(h.Sum(nil)) != u.Sha256 {
+		if digestMismatch {
 			validation = "PACKAGE_DIGEST_MISMATCH"
 		} else {
-			manifest, e = s.Objects.validateArchive(f.Name())
+			manifest, e = s.Objects.validateArchive(assembled.File.Name())
 			if e != nil {
 				validation = "PACKAGE_VALIDATION_FAILED"
+			} else if e = s.Objects.store.Promote(ctx, u.Id, u.Sha256, assembled); e != nil {
+				assembled.Cleanup()
+				return status.Error(codes.Unavailable, "immutable object write failed")
 			}
+			assembled.Cleanup()
+		}
+		if digestMismatch && assembled != nil {
+			assembled.Cleanup()
 		}
 		now := time.Now()
 		out.OperationId = id("op")
@@ -236,9 +292,6 @@ func (s *Service) CompleteUpload(ctx context.Context, r *api.CompleteUploadRpcRe
 				return dbError(e)
 			}
 		} else {
-			if e = s.Objects.putImmutable(f.Name(), u.Sha256); e != nil {
-				return status.Error(codes.Unavailable, "immutable object write failed")
-			}
 			if _, e = tx.ExecContext(ctx, `UPDATE capability.package_versions SET status='uploaded',object_ref=$1,manifest=$2,verified_at=now(),updated_at=now() WHERE id=$3 AND status='upload_pending'`, u.Sha256, manifest, u.PackageVersionId); e != nil {
 				return dbError(e)
 			}
