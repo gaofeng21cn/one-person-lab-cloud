@@ -47,6 +47,33 @@ state must not be mistaken for the deployment workflow source. No new Candidate,
 production deployment, customer migration, financial/provider action or release
 was performed by this audit. Actual rollout requires fresh owner evidence.
 
+## September 30 Serial Integration Stage 1 Merge And Capability Overlay
+
+Under the section-11 serial window (`codex/tke-serial-integration`), the branch
+first reconciled `origin/main` before continuing: PRs #684 (build registry blob
+redirect), #686 (deployment-unit docs), #688 (CloudIdentity owner readiness) and
+#689 (Capability COS storage/storage-provider) were merged at `336da3dd`. Two of
+them (`services/internal/ownerservice/bootstrap.go`, `services/build/internal/build/runner.go`)
+were byte-identical on both sides, so they merged as a single copy.
+
+The capability byte plane required a real reconciliation, not a blind side pick:
+`origin/main` (#689, canonical) keeps `Storage.Assemble` plus a separate,
+archive-validated `Promote`, while this branch's pre-final capture did the
+content-addressed copy inside `Assemble`. The merge kept #689's
+validation-before-promote model as the base and overlaid only the W08
+acceptance behaviours it lacked: the upload **resume** seam
+(`Storage.ListParts` + `ProviderParts`, implemented for the local and COS
+providers, so `GetUpload` reports exactly the shards the provider holds and only
+the missing ones are re-sent) and the COS **crash-recovery** window (when the
+multipart is gone, `Assemble` re-verifies the content-addressed immutable object
+instead of failing or starting a second upload identity). The merge also kept
+main's peer loop and re-added the branch's `GatewayStore` wiring in
+`services/gateway-integration/cmd/server/main.go`. Focused module builds and an
+isolated-PostgreSQL Capability COS-provider test pass
+([receipt](evidence/source-checks/2026-09-30-tke-serial-merge-interleaving.json)).
+No `docs/spec/target` checks or `npm run verify:local:full` were rerun, because no
+machine contract/schema/spec-validation input changed in this merge.
+
 ## September 30 Serial Integration Stage 4 Source Progress (Secret Injection)
 
 **Stage 4 (I05 Secret injection):** the default OPL App's platform Gateway

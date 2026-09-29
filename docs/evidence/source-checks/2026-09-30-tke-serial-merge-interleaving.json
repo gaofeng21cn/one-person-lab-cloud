@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_merge_interleaving_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T06:20:00Z",
+  "result": "origin_main_merged_into_serial_branch_capability_cos_overlay_restored_focused_tests_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration - stage 1 reconcile origin/main interleaving and restore the W08 Capability COS overlay",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "preMergeHeadSha": "9bed4b3bddc302994d08248a25dae86af285f618",
+  "originMainSha": "97e4f942caf9cfa067662cf2c1e0eb0a2efbf942",
+  "mergeCommitSha": "336da3ddf91ba4b307ee61588e192a9ba470bbd6",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.1",
+  "scope": "Reconcile the four-domain branch with origin/main (PRs #684 build registry redirect, #686 deployment-unit docs, #688 CloudIdentity readiness, #689 capability COS storage/storage-provider) without blindly replacing either side, then restore the W08 Capability acceptance behaviours the canonical #689 base did not carry. No provider, wallet, production or Instance action.",
+  "decisions": [
+    "services/internal/ownerservice/bootstrap.go and services/build/internal/build/runner.go were byte-identical on both sides (#688/#684), so the merge kept a single copy with no conflict.",
+    "The capability byte plane had two parallel implementations: origin/main (#689, canonical) keeps Storage.Assemble plus a separate archive-validated Promote; the branch's pre-final capture did the content-addressed copy inside Assemble. The merge kept origin/main's Promote model as the base, because validation-before-promote is the canonical #689 semantic, and overlaid only the W08 behaviours #689 lacked.",
+    "services/gateway-integration/cmd/server/main.go: the merge kept main's peer loop and re-added the branch's GatewayStore wiring (OPL_GATEWAY_DATABASE_URL branch + gatewaymigrations import + s.GatewayStore); verified by diff vs origin/main showing only the added block."
+  ],
+  "implemented": [
+    "services/capability/catalog/storage.go + local_storage.go + cos_storage.go: restored the W08 resume/finalize reconciliation seam - Storage.ListParts plus ProviderParts/ProviderPart, implemented for both the local and the COS provider, so GetUpload only reports the shards the provider actually holds and a resumed upload re-sends only the missing ones.",
+    "services/capability/catalog/cos_storage.go: restored the crash-recovery window - Assemble falls back to the content-addressed immutable object (re-verified) when the multipart is gone, and ListParts reports the finalized upload (Complete) instead of failing or starting a second upload identity.",
+    "services/capability/catalog/uploads.go: GetUpload reconciles an UPLOADING session through reconcileUploadParts against the registered part identity, without rewriting the owner data-plane observation; CompleteUpload keeps the canonical validation-before-Promote path."
+  ],
+  "verification": {
+    "commands": [
+      "GOFLAGS=-mod=readonly go -C services/capability vet ./... ; go build ./...",
+      "GOFLAGS=-mod=readonly go -C services/capability test ./... -count=1",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/capability test ./... -count=1",
+      "GOFLAGS=-mod=readonly go build ./... across all 15 modules; go.mod/go.sum sha256 diff before/after shows no churn"
+    ],
+    "environment": "local loopback PostgreSQL container for the owner-migration tests; no other external dependency",
+    "result": "PASS",
+    "cases": [
+      "TestGetUploadReconcilesDirectProviderShardsForResume (capability): a real isolated PostgreSQL Capability owner over a real COS-provider fake; GetUpload reports exactly the shard the provider holds, reconciliation does not rewrite the owner observation, cross-tenant readback is refused, a never-received shard is not reported.",
+      "TestCompleteUploadFinalizesDirectProviderUploadAndReadsBack / TestCompleteUploadRecoversArtifactCopiedBeforeOwnerCommit: finalize reads back; the crash window (validated bytes copied to the content-addressed key before the owner commit) is recovered from the immutable object.",
+      "TestCOSAssembleRecoversCopiedImmutableObjectAfterCrash / TestCOSRecoveryReVerifiesTheImmutableObject / TestCOSListPartsReconcilesMidUploadShards: the COS provider itself, over real SDK request/response shapes, recovers the copied artifact, re-verifies (tamper -> digest mismatch), fails closed for an unknown finalized upload, and reports exactly the mid-upload shards."
+    ]
+  },
+  "notRun": [
+    "No real Tencent COS bucket, TCR, Sub2API, provider purchase, real charge, route mutation, Candidate build, Instance deployment or production readback.",
+    "docs/spec/target checks and npm run verify:local:full were not rerun in this slice; they are the stage-6 obligation and no machine contract/schema/spec-validation input changed in this merge."
+  ],
+  "claimBoundary": "This receipt claims the origin/main interleaving merge and the restored W08 Capability COS resume/recovery source behaviours, proven by focused module builds and isolated-PostgreSQL COS-provider tests. It claims no deployment, no provider or wallet action, no Candidate and no production acceptance.",
+  "secrets": "none: no credentials, tokens, keys, customer data or private addresses.",
+  "fileHashes": {
+    "services/capability/catalog/cos_storage.go": "faf532ca672308b8e22a5fb5a91c67f74a232550e6d2f4bc11c53347cc6402f0",
+    "services/capability/catalog/cos_storage_recovery_test.go": "f41fd81672812cba008eb4b06a3f9233ab4caf6f65178173b7bde19048eb99d8",
+    "services/capability/catalog/local_storage.go": "34db14380e31cef28d5dde56d25d733aa401f23ae0d9e59fac1e43d26e7136e0",
+    "services/capability/catalog/storage.go": "781c9a6ce5eede05a6cbad15c6e421ea33b884746341025cb55e96004150a51a",
+    "services/capability/catalog/uploads.go": "c237964f84357b94231037edbd161ae607c113fe0d68ed8a04b948fa5dd0a510",
+    "services/gateway-integration/cmd/server/main.go": "cec15b159184c8a58c51163439e3b030380d30e975b127f8dd0555a4e743a1b9"
+  }
+}
