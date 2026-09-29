@@ -214,6 +214,23 @@ operation. Where an Instance verification path provides both
 `OPL_RUNTIME_PROVIDER` and `OPL_FABRIC_PROVIDER`, it only verifies that they
 agree; `OPL_RUNTIME_PROVIDER` is not a third Provider.
 
+### Deployment Unit Composition
+
+An Instance deployment unit carries a service only once that service's
+capability and real callers have moved to it; the target service set is not
+deployed ahead of the migration. Each service enters the `opl-instance-medopl`
+unit in the same change that moves its capability off Control Plane, so the unit
+never runs a process with no current caller, and the manifest, Secret references
+and readback are reviewed with the capability they carry. Cloud owns which
+capability each service owns; `opl-instance-medopl` owns the concrete unit.
+
+The current `managed_tke` unit runs Control Plane, Fabric and Ledger.
+`services/gateway-integration` (`tenant`/CloudIdentity) precedes the remaining
+target services because every target owner authorizes inbound calls through the
+CloudIdentity gRPC boundary; Build and Capability, then Workspace and Resource
+Catalog, then Serve and Runtime Control follow. The Console BFF replaces the
+Control Plane browser surface only when the capability it serves has moved.
+
 ## Development And Supply-Chain Authority
 
 GitHub Actions, dependency scanners, code scanners, and cloud coding agents are
