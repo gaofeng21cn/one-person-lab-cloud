@@ -50,6 +50,11 @@ type RuntimeObservation struct {
 	Components []contracts.WorkspaceApplicationRuntimeComponentState
 	// ReadinessEvidenceRef is the provider evidence identity for a ready report.
 	ReadinessEvidenceRef string
+	// AppliedModelConfigurationVersion is the model configuration version the
+	// running application independently reported as applied. It is 0 when the
+	// executing runtime has not confirmed a version: the requested version is
+	// delivery intent and is never promoted to an applied fact.
+	AppliedModelConfigurationVersion int64
 	// ObservedAt is when the runtime reported this state.
 	ObservedAt time.Time
 }
@@ -164,7 +169,11 @@ func recordDeploymentObservation(ctx context.Context, tx *sql.Tx, cmd *api.Runti
 	if readinessRef != "" {
 		ref = readinessRef
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), cmd.GetModelConfigurationVersion())
+	// The applied model configuration version is the value the executing runtime
+	// independently reported, never the version the command requested. A runtime
+	// that has not read the applied version back leaves it 0, so a client can never
+	// read a desired version as an applied fact.
+	_, err = tx.ExecContext(ctx, `UPDATE serve.agent_runtime_instances SET status=$2,access_url=$3,readiness_evidence_ref=$4,observed_at=$5,applied_model_configuration_version=$6,updated_at=now() WHERE id=$1`, cmd.GetRuntimeInstanceId(), state, url, ref, observedAt.UTC(), observation.AppliedModelConfigurationVersion)
 	if err != nil {
 		return nil, dbError(err)
 	}

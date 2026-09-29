@@ -47,6 +47,27 @@ state must not be mistaken for the deployment workflow source. No new Candidate,
 production deployment, customer migration, financial/provider action or release
 was performed by this audit. Actual rollout requires fresh owner evidence.
 
+## September 30 Serial Integration Stage 5 Source Progress (Serve Model Applied Fact)
+
+**Stage 5 (I08, model applied fact):** the section-11 red line that Serve must not
+write the requested `modelConfigurationVersion` as the applied fact is now
+closed. `RuntimeObservation` carries an `AppliedModelConfigurationVersion` — the
+version the executing runtime independently reported — and
+`recordDeploymentObservation` persists that observed value instead of
+`command.GetModelConfigurationVersion()`. The `serve.agent_readiness_observed.v1`
+event and the `StartRuntime` readback likewise carry the observed value, so a
+runtime that has not read a version back reports applied `0` rather than the
+desired version. A focused isolated-PostgreSQL test proves a requested version
+leaves applied `0` until the runtime reports it
+([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-model-applied.json)).
+
+Still open in Stage 5: driving the publisher `opl-model-config/v1` apply/readback
+(`PUT applyPath` / `GET readbackPath`) so the adapter can actually obtain an
+applied version; the real `RouteProvider` wiring and Deploy-to-Fence/Activate
+orchestration (I07); moving TKE application execution and its real caller from
+Fabric to Serve and retiring the old Fabric HTTP writer (I06). No Candidate,
+deployment or provider action was performed.
+
 ## September 30 Serial Integration Stage 1 Merge And Capability Overlay
 
 Under the section-11 serial window (`codex/tke-serial-integration`), the branch

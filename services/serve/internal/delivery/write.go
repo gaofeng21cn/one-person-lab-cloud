@@ -459,7 +459,7 @@ func appendReadinessEvent(ctx context.Context, tx *sql.Tx, store *ownerstore.Sto
 		// the execution boundary was given; an application that declares no Secret
 		// needs none, and absence of a binding is never treated as proof.
 		CredentialInjectionVerified:      r.GetManagedKeyBinding() != nil && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretBindingId()) != "" && strings.TrimSpace(r.GetManagedKeyBinding().GetSecretVersion()) != "",
-		AppliedModelConfigurationVersion: r.GetModelConfigurationVersion(),
+		AppliedModelConfigurationVersion: o.AppliedModelConfigurationVersion,
 		ReceiptId: func() *string {
 			if o.ReadinessEvidenceRef == "" {
 				return nil

@@ -182,7 +182,7 @@ func runtimeObservationReadback(command *api.RuntimeDeployCommand, observation R
 	readback := &api.RuntimeReadback{
 		RuntimeInstanceId: command.GetRuntimeInstanceId(), WorkspaceId: command.GetWorkspaceId(), DeploymentId: command.GetDeploymentId(),
 		State: observation.State, Artifact: command.GetDeploymentDescriptor().GetArtifact(),
-		AppliedModelConfigurationVersion: command.GetModelConfigurationVersion(),
+		AppliedModelConfigurationVersion: observation.AppliedModelConfigurationVersion,
 		DeploymentDescriptorDigest:       command.GetDeploymentDescriptorDigest(), ExecutionEpoch: command.GetExecutionEpoch(),
 		DeploymentDescriptorObjectRef: command.GetDeploymentDescriptorObjectRef(), Outcome: api.Observation_OBSERVATION_UNKNOWN,
 	}

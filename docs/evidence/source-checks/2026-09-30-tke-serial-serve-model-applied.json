@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_serve_model_applied_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T07:05:00Z",
+  "result": "serve_no_longer_records_requested_model_version_as_applied_focused_postgres_test_passed",
+  "window": "serial",
+  "windowTitle": "Serial integration stage 5 - I08 Serve never records the requested model configuration version as applied",
+  "sourceBaseSha": "bf9027253dd852383c6069e7dad9fc7d436efbe3",
+  "predecessorSha": "d75174a87144515bc45293751d582d8efd109a03",
+  "branch": "codex/tke-serial-integration",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.5",
+  "scope": "Close the section-11 red line that Serve must not write the requested modelConfigurationVersion as the applied fact. No contract, schema, migration, generator or external action changed.",
+  "implemented": [
+    "services/serve/internal/delivery/runtime.go: RuntimeObservation carries AppliedModelConfigurationVersion, the version the executing runtime independently reported; recordDeploymentObservation persists that observed value instead of command.GetModelConfigurationVersion().",
+    "services/serve/internal/delivery/write.go+appendReadinessEvent: the serve.agent_readiness_observed.v1 event carries the independently observed applied version, not the requested one.",
+    "services/serve/internal/delivery/runtime_bridge.go+runtimeObservationReadback: StartRuntime's readback reports the observed applied version (0 until a runtime confirms one) rather than echoing the requested version.",
+    "services/serve/internal/delivery/runtime_postgres_test.go: TestServeNeverRecordsRequestedModelVersionAsApplied proves a requested version in the command leaves applied 0 until the runtime reports it, then records exactly the runtime-reported version."
+  ],
+  "verification": {
+    "commands": [
+      "GOFLAGS=-mod=readonly go -C services/serve vet ./internal/delivery/",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./... -count=1",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/workspace test ./... -count=1"
+    ],
+    "environment": "local loopback PostgreSQL container for the owner-migration tests",
+    "result": "PASS",
+    "cases": [
+      "TestServeNeverRecordsRequestedModelVersionAsApplied: requested=7 with an unconfirmed runtime leaves applied_model_configuration_version=0; a runtime-reported 7 is recorded.",
+      "Existing Serve observation/route/lifecycle and Workspace runtime recovery suites still pass."
+    ]
+  },
+  "notRun": [
+    "The publisher-contract opl-model-config/v1 apply/readback execution (PUT applyPath / GET readbackPath) is not yet driven by the Serve adapter: no producer currently reports the applied version, so the applied value is now honestly 0 rather than the requested version. That integration is the remaining I08 work and requires the publisher model-config contract to be admitted and executed.",
+    "No real runtime, TKE cluster, Candidate build, Instance deployment or production readback."
+  ],
+  "claimBoundary": "This receipt claims a Cloud source correctness change with a focused isolated-PostgreSQL test: Serve never records the requested model configuration version as applied. It does not claim the publisher model-config apply/readback execution, a real runtime applied readback, deployment, Candidate or production acceptance.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/serve/internal/delivery/runtime.go": "e02304d0afe063c8a12780f5fd7a6bee60f6ad977f43175cc461fc64c183e750",
+    "services/serve/internal/delivery/write.go": "3893499185800579eb436039e754e22f53d8e5162ad3fdf8a9e0b2b8faf96fa5",
+    "services/serve/internal/delivery/runtime_bridge.go": "0a725127195ec34d3e8644505b38a9486f789749f986090d42ba07c00c5a03ea",
+    "services/serve/internal/delivery/runtime_postgres_test.go": "d4b34e0cf609f473fff7a20da7650fbbf6da2b61c082576c5694203ca40bff96"
+  }
+}
