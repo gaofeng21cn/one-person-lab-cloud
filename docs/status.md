@@ -100,6 +100,16 @@ deployment or provider action was performed.
 I06 and I07 each depend on a not-yet-frozen external contract, established by
 read-only review and recorded rather than fabricated
 ([boundary receipt](evidence/source-checks/2026-09-30-tke-serial-serve-exec-route-boundary.json)).
+The exact decision for each is now pinned: I06 needs the typed
+application-execution owner boundary between Serve and Fabric (FabricCoordination
+has only resource/Secret RPCs); I07 needs the installation route object's
+conditional-revision CAS performer, and the Instance source already shows the
+object — one `Ingress` in `opl-instance-medopl/deploy/tke/opl-cloud.k8s.json`
+serving `cloud/workspace/*.<application domain>` — but no Cloud source mutates it.
+I08's Serving half is the same kind of boundary: the publisher
+`opl-model-config/v1` apply/readback wire is not carried by
+`WorkspaceApplicationRuntimeInput`. No other requisite for I06/I07 is missing in
+Cloud source ([confirmation](evidence/source-checks/2026-09-30-tke-serial-i06-i07-blocker-confirmation.json)).
 I06 needs a typed application-execution owner boundary between Serve and Fabric
 (`FabricCoordination` has no application-execution RPC, so Serve still reaches
 execution over Fabric's signed `/fabric/workspace-application-runtimes` HTTP
