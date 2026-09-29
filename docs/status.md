@@ -81,6 +81,13 @@ desired version. A focused isolated-PostgreSQL test proves a requested version
 leaves applied `0` until the runtime reports it
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-serve-model-applied.json)).
 
+The Workspace launch path is now proven to resolve the default OPL App order
+source from the approved Runtime Release: `resolveApplicationSource` stamps
+`runtime_release` provenance on the descriptor, never `build`, carries the
+release's own artifact and application revision template, and refuses an
+unapproved release instead of substituting one
+([source receipt](evidence/source-checks/2026-09-30-tke-serial-workspace-default-app-source.json)).
+
 The default OPL App is now proven deployable end to end inside Serve's own owner
 store: after reservation it reaches a committed `active` deployment through the
 real runtime adapter, `GetWorkspaceAccess` returns the confirmed entry, exactly
