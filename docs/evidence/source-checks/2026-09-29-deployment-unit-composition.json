@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "kind": "opl_cloud_deployment_unit_composition_source_receipt",
+  "recordedAt": "2026-09-29T00:00:00+08:00",
+  "status": "cloud_source_documented_no_deployment",
+  "scope": "Records the missing SSOT rule that composes the opl-instance-medopl deployment unit from capability migration. Documentation and specification only: no service was deployed, no Instance manifest was changed, no provider or money mutation ran.",
+  "problem": {
+    "statement": "No canonical owner stated that a target service may only enter the Instance unit after its capability and real callers have moved. Without that rule, 'deploy the whole target service set first' reads as a legitimate sequencing shortcut.",
+    "observedConsequence": "Deploying the target services ahead of their callers produces processes that can never become ready: every target owner resolves CloudIdentity from OPL_CLOUD_IDENTITY_URL and fails readiness when it is absent, and the only CloudIdentityAuthorization registrar is services/gateway-integration, which is not in the Instance unit."
+  },
+  "sourceEvidence": [
+    {
+      "fact": "CloudIdentityAuthorization has exactly one non-test registrar, and it is the target gateway-integration service",
+      "path": "services/gateway-integration/identity/service.go",
+      "line": 87,
+      "command": "rg -n 'RegisterCloudIdentityAuthorizationServer' --type go --glob '!*_test.go'"
+    },
+    {
+      "fact": "Every target owner resolves the CloudIdentity address from OPL_CLOUD_IDENTITY_URL",
+      "path": "services/internal/ownerservice/config.go",
+      "line": 69
+    },
+    {
+      "fact": "With a database but no CloudIdentity address the owner installs a failing cloud_identity readiness check instead of claiming health",
+      "path": "services/internal/ownerservice/bootstrap.go",
+      "line": 67
+    },
+    {
+      "fact": "The Instance renderer and deploy set enumerate exactly three deployments today",
+      "path": "../opl-instance-medopl/tools/render-tke-manifest.ts",
+      "line": 8,
+      "command": "rg -n 'opl-cloud-control-plane' tools/render-tke-manifest.ts"
+    },
+    {
+      "fact": "The deployment target planner has one receipt path per enumerated deployment",
+      "path": "../opl-instance-medopl/tools/deployment-target-plan.mjs",
+      "line": 9
+    },
+    {
+      "fact": "Instance documentation states the --deploy-only set is exactly the three current deployments",
+      "path": "../opl-instance-medopl/docs/runtime/tke-production-deployment.md",
+      "line": 65
+    },
+    {
+      "fact": "The target architecture already fixes the ceiling at nine domain deployment units plus one Console BFF",
+      "path": "docs/spec/target/01_domain_ownership_matrix.md",
+      "line": 51
+    }
+  ],
+  "implementation": {
+    "architecture": "docs/architecture.md gains 'Deployment Unit Composition': a service enters the unit in the same change that moves its capability off Control Plane; gateway-integration precedes the rest because every target owner authorizes through its gRPC boundary; the Console BFF replaces the Control Plane browser surface only after the capability it serves has moved.",
+    "roadmap": "docs/roadmap.md maps each deployment batch to the work packages it carries (W02/W03/W13, W07/W08/W09, W06/W15, W10/W17, W14/W16/W22/W23/W26) and records that running the full target service set before its callers have moved is not a stage of the chain and carries no acceptance.",
+    "ownership": "Cloud owns which capability each service owns; opl-instance-medopl owns the concrete unit. No new decisions entry, framework, service or workflow was added."
+  },
+  "focusedVerification": [
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "coverage": "no whitespace or conflict-marker defects in the documentation change"
+    },
+    {
+      "command": "rg -n 'Deployment Unit Composition' docs/ && rg -n 'deployment-unit-composition' docs/",
+      "result": "passed",
+      "coverage": "the architecture owner defines the section and the roadmap projection links to that exact anchor instead of restating the rule"
+    }
+  ],
+  "notProven": [
+    "That any target service is deployed on Tencent/TKE.",
+    "That gateway-integration runs in the Instance unit or is ready there.",
+    "That CloudIdentity authorization serves any target owner in production.",
+    "Any Instance receipt: this change produces no deployment, rollback or provider qualification evidence."
+  ],
+  "boundary": "This receipt binds a documentation rule only. The Instance unit stays at its current three deployments until the owner of opl-instance-medopl adopts a batch, and Cloud does not dispatch that deployment.",
+  "sourceFilesSha256": {},
+  "productionDeploymentDispatched": false,
+  "realMoneyOrProviderMutation": false,
+  "source": {
+    "baseSha": "bf902725",
+    "commitSha": "6b1fd6bb",
+    "branch": "codex/deployment-unit-composition"
+  }
+}
