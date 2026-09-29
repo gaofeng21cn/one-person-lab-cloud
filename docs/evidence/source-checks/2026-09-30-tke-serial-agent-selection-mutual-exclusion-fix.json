@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "opl_cloud_tke_serial_agent_selection_mutual_exclusion_fix_source_check",
+  "revision": 1,
+  "recordedAt": "2026-09-30T11:45:00Z",
+  "result": "the_built_agent_path_no_longer_presents_selection_and_legacy_capability_version_together_and_serve_reads_the_capability_from_the_selection",
+  "window": "serial",
+  "windowTitle": "Serial integration regression fix - built Agent delivery refused by the mutual-exclusion guard",
+  "sourceBaseSha": "f3a1c6ce",
+  "branch": "codex/tke-agent-selection-fix",
+  "workspace": "/Users/huangrende/Documents/ChatGPT/one-person-lab-cloud",
+  "taskDefinition": "docs/spec/target/14_implementation_work_packages.md#11.6",
+  "scope": "Fix a real regression found by the Cloud Qualification fabric job (run 36644007785, TestLocalFirstApplicationDeploymentQualification): the Workspace caller presented both the explicit agent applicationSelection and the legacy top-level capabilityVersionId, which Serve refuses as mutually exclusive, so no built Agent could be delivered.",
+  "rootCause": "While adding the default-App application selection union, services/workspace/internal/launch/runtime.go set both ApplicationSelection and CapabilityVersionId on the Reserve and Deploy commands, and Serve's Reserve/validateReserved treated the legacy top-level CapabilityVersionId as the agent source. Serve correctly requires exactly one source, so the built-Agent flow was refused with 'application selection and capability version are mutually exclusive'.",
+  "implemented": [
+    "services/workspace/internal/launch/runtime.go: the Reserve and Deploy commands carry only ApplicationSelection; the agent's CapabilityVersion lives inside the selection (its single authoritative source).",
+    "services/serve/internal/delivery/write.go: Reserve reads the agent capability version from selection.GetCapabilityVersionId(), never from the legacy top-level field.",
+    "services/serve/internal/delivery/runtime.go: validateReserved validates the agent capability version against the explicit selection (falling back to the legacy field only when no selection was presented), so a reserved Agent row validates for both the current and a recovered legacy command shape.",
+    "services/serve/internal/delivery/write_postgres_test.go: TestServeAgentReservationFromSelectionWithoutLegacyField reserves and deploys a built Agent from the explicit selection alone and asserts the reserved row records the capability version from that selection."
+  ],
+  "verification": {
+    "commands": [
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/serve test ./... -count=1",
+      "OPL_OWNER_MIGRATION_TEST_ADMIN_DSN=postgres://postgres:postgres@127.0.0.1:54555/postgres?sslmode=disable GOFLAGS=-mod=readonly go -C services/workspace test ./... -count=1",
+      "Cloud Qualification run 36644007785 on main HEAD f3a1c6ce reproduced the failure in the fabric job before this fix"
+    ],
+    "environment": "local loopback PostgreSQL container; the failing job is the real Linux qualification host in the Cloud Qualification workflow",
+    "result": "PASS",
+    "cases": [
+      "Serve and Workspace modules pass with the fix; the new regression test passes.",
+      "The pre-fix failure is a real Cloud Qualification failure, not a local-only artifact."
+    ]
+  },
+  "notRun": [
+    "Re-dispatch of the Cloud Qualification workflow to confirm the fabric job now passes (the fabric job needs the qualification host's privileged project-quota and Docker paths).",
+    "Candidate build, Instance deployment, production readback."
+  ],
+  "claimBoundary": "This receipt claims the built-Agent delivery regression is fixed in source with focused module tests and that the failure was reproduced by a real Cloud Qualification run. It does not claim the qualification job has been re-verified green until the workflow is re-dispatched.",
+  "secrets": "none",
+  "fileHashes": {
+    "services/serve/internal/delivery/runtime.go": "4618fd33fc5719b85e2fa13e7be81604288c1c0864a56196c7f64550b0182ec5",
+    "services/serve/internal/delivery/write.go": "75826dd3f7ccaf66a2daedee842ffab339069a529339ca25d825db2295b16150",
+    "services/serve/internal/delivery/write_postgres_test.go": "ad134a857f25c701ac0ccf12c7aa01167ae88b749af2da5a7893ea97f6368db0",
+    "services/workspace/internal/launch/runtime.go": "1d701dca81161842dc943180fd2af9eb4cc311d05e2c02984be02e21252bd2e5"
+  }
+}

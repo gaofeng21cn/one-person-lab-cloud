@@ -70,6 +70,21 @@ current source. `npm run verify:local`, `npm run validate:product-boundary` and
 default-OPL-App Serve/Workspace tests were added
 ([receipt](evidence/source-checks/2026-09-30-tke-serial-full-verification-green.json)). It still does not substitute for the Instance TKE acceptance.
 
+## September 30 Serial Integration Regression Fix (Built-Agent Selection)
+
+A real regression surfaced by the Cloud Qualification `fabric` job (run
+`36644007785`, `TestLocalFirstApplicationDeploymentQualification`): the Workspace
+caller presented both the explicit agent `applicationSelection` and the legacy
+top-level `capabilityVersionId`, which Serve refuses as mutually exclusive, so no
+built Agent could be delivered. This was introduced while adding the
+default-App selection union. `services/workspace/internal/launch/runtime.go`
+now carries only `ApplicationSelection` on Reserve/Deploy, and Serve's
+`Reserve`/`validateReserved` read the agent's CapabilityVersion from the explicit
+selection (the legacy field is a fallback only when no selection is presented).
+A focused regression test reserves and deploys a built Agent from the selection
+alone
+([receipt](evidence/source-checks/2026-09-30-tke-serial-agent-selection-mutual-exclusion-fix.json)).
+
 ## September 30 Serial Integration Merged To Canonical Main
 
 The serial integration branch is merged into canonical `main`: PR

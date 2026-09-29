@@ -176,7 +176,10 @@ func (s *Service) Reserve(ctx context.Context, r *api.RuntimeReservationCommand)
 	}
 	peerCall := nextOwnerCall(call)
 	applicationKind := "agent"
-	capabilityVersionID := r.GetCapabilityVersionId()
+	// The explicit application selection is the single source of the capability
+	// version for a built Agent; the legacy top-level field is never combined with
+	// it.
+	capabilityVersionID := selection.GetCapabilityVersionId()
 	runtimeVersionID := ""
 	var dataCompatibility *api.DataCompatibility
 	switch selection.GetKind() {
